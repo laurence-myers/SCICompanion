@@ -1,0 +1,46 @@
+name: Nightly Build
+
+on: [push]
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yaml
+
+  create-nightly-release:
+    runs-on: windows-latest
+
+    needs: build
+
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: release-artifacts/
+
+    - name: Get the current date (UTC)
+      id: get-date
+      shell: bash
+      run: |
+        echo "nightly_date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
+    
+    - name: Re-zip each artifact
+      shell: powershell
+      run: |
+        Get-ChildItem release-artifacts -Directory |
+        Foreach-Object {
+            Compress-Archive -Path $_.FullName -DestinationPath ("release-artifacts/" + ($_ -replace "[0-9a-z]{40}","${{ steps.get-date.outputs.nightly_date }}") + ".zip")
+        }
+    - name: Create a release
+      uses: ncipollo/release-action@v1
+      with:
+        artifactErrorsFailBuild: true
+        artifacts: "release-artifacts/*.zip"
+        commit: ${{ github.sha }}
+        generateReleaseNotes: true
+        name: Nightly build for ${{ steps.get-date.outputs.nightly_date }} 
+        prerelease: true
+        skipIfReleaseExists: true
+        tag: nightly/${{ steps.get-date.outputs.nightly_date }}
