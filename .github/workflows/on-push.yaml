@@ -3,7 +3,5 @@ name: Build On Push
 on: [push]
 
 jobs:
-  build: # Temporary placeholder job
-    runs-on: windows-latest
-    steps:
-    - uses: actions/checkout@v2
+  build:
+    uses: ./.github/workflows/build.yaml

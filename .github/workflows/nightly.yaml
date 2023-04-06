@@ -1,26 +1,39 @@
 name: Nightly Build
 
-on: [push]
+on:
+  schedule:
+    - cron: '15 7 * * *'
 
 jobs:
+  # Only execute if the current commit does _not_ have a tag that starts with "nightly/".
+  # This is intended to avoid creating a nightly build if there's no changes.
   check-should-execute:
     runs-on: windows-latest
+    outputs:
+      should_execute: ${{ steps.should_execute_step.outputs.should_execute }}
     steps:
       - uses: actions/checkout@v3
-      - shell: bash
+      - id: should_execute_step
+        shell: bash
         run: |
-          echo "commit_is_tagged=$(git tag --list nightly/* --points-at HEAD)" >> $GITHUB_OUTPUT
+          git tag --points-at ${{ github.sha }}
+          if [ $(git tag --list nightly/* --points-at HEAD) ]; then
+            echo "Nightly tag found, skipping build."
+          else
+            echo "No nightly tag found, building."
+            echo "should_execute=true" >> $GITHUB_OUTPUT
+          fi
 
   build:
     needs: check-should-execute
-    if: ${{ needs.check-should-execute.outputs.commit_is_tagged == '' }}
+    if: ${{ needs.check-should-execute.outputs.should_execute }}
     uses: ./.github/workflows/build.yaml
 
   create-nightly-release:
     runs-on: windows-latest
 
     needs: [check-should-execute, build]
-    if: ${{ needs.check-should-execute.outputs.commit_is_tagged == '' }}
+    if: ${{ needs.check-should-execute.outputs.should_execute }}
 
     permissions:
       contents: write
