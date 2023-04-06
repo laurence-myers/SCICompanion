@@ -3,13 +3,24 @@ name: Nightly Build
 on: [push]
 
 jobs:
+  check-should-execute:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - shell: bash
+        run: |
+          echo "commit_is_tagged=$(git tag --list nightly/* --points-at HEAD)" >> $GITHUB_OUTPUT
+
   build:
+    needs: check-should-execute
+    if: ${{ needs.check-should-execute.outputs.commit_is_tagged == '' }}
     uses: ./.github/workflows/build.yaml
 
   create-nightly-release:
     runs-on: windows-latest
 
-    needs: build
+    needs: [check-should-execute, build]
+    if: ${{ needs.check-should-execute.outputs.commit_is_tagged == '' }}
 
     permissions:
       contents: write
@@ -26,6 +37,8 @@ jobs:
       run: |
         echo "nightly_date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
     
+    # actions/download-artifact will unzip each artifact to its own directory, so we need to re-zip them.
+    # We'll also replace the commit SHA with the date in the zip file name.
     - name: Re-zip each artifact
       shell: powershell
       run: |
