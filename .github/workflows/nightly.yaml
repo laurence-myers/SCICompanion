@@ -13,6 +13,8 @@ jobs:
       should_execute: ${{ steps.should_execute_step.outputs.should_execute }}
     steps:
       - uses: actions/checkout@v3
+      - name: Get tags
+        run: git fetch --tags origin
       - id: should_execute_step
         shell: bash
         run: |
