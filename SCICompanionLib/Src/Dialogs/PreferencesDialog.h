@@ -59,6 +59,9 @@ private:
 	CExtCheckBox m_wndCheck11;
 	CExtCheckBox m_wndCheck12;
 	CExtCheckBox m_wndCheck13;
+#ifdef ENABLE_UNUSEDINSTANCEWARNINGS
+	CExtCheckBox m_wndCheck14;
+#endif
 	CExtButton m_wndOk;
 	CExtButton m_wndCancel;
 

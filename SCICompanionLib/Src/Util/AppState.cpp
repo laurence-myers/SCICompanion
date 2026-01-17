@@ -112,6 +112,9 @@ AppState::AppState(CWinApp *pApp) : _resourceMap(this, &_resourceRecency)
 	_onionLeftOnTop = FALSE;
 	_onionRightOnTop = FALSE;
 	_onionWrap = TRUE;
+//#ifdef ENABLE_UNUSEDINSTANCEWARNINGS
+	_fWarnOnUnusedInstances = TRUE;
+//#endif
 
 	_pVocabTemplate = nullptr;
 

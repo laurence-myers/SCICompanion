@@ -823,6 +823,7 @@
 #define IDC_COMBOFILES                  1403
 #define IDC_CHECKINDICES                1404
 #define IDC_CHECKPOLYGONS               1405
+#define IDC_UNUSEDINSTANCEWARNINGS      1406
 #define ID_PENTOOL                      32771
 #define ID_ZOOM                         32773
 #define ID_HISTORY                      32775

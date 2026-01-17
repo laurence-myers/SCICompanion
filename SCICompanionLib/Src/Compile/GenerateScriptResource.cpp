@@ -1572,17 +1572,20 @@ bool GenerateScriptResource_SCI11(Script &script, PrecompiledHeaders &headers, C
 	}
 
 #ifdef ENABLE_UNUSEDINSTANCEWARNINGS
-	// Some validation
-	for (const auto &instance : script.GetClasses())
+	if (appState->_fWarnOnUnusedInstances)
 	{
-		if (instance->IsInstance())
+		// Some validation
+		for (const auto &instance : script.GetClasses())
 		{
-			if (!context.WasInstanceReferenceWritten(instance->GetName()))
+			if (instance->IsInstance())
 			{
-				// It might be a public export
-				if (!instance->IsPublic())
+				if (!context.WasInstanceReferenceWritten(instance->GetName()))
 				{
-					context.ReportWarning(instance.get(), "Instance '%s' is not used anywhere.", instance->GetName().c_str());
+					// It might be a public export
+					if (!instance->IsPublic())
+					{
+						context.ReportWarning(instance.get(), "Instance '%s' is not used anywhere.", instance->GetName().c_str());
+					}
 				}
 			}
 		}

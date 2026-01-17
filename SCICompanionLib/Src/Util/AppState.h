@@ -173,6 +173,10 @@ public:
 	BOOL _onionRightOnTop;
 	BOOL _onionWrap;
 
+//#ifdef ENABLE_UNUSEDINSTANCEWARNINGS
+	BOOL _fWarnOnUnusedInstances;
+//#endif
+
 	// This is a hack, but we're making this as a spot fix to allow
 	// for per-game aspect ratio.
 	bool _fUseOriginalAspectRatioCached;
