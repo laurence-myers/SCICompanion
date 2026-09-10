@@ -875,5 +875,11 @@ bool scii::_is_label_instruction()
 // We use the node pointer as a < comparator.  Just something consistent but meaningless.
 bool operator<(const code_pos &_Right, const code_pos &_Left)
 {
-	return _Right._Mynode() < _Left._Mynode();
+	// code_pos is a std::list<scii>::iterator. We need a consistent (if
+	// meaningless) ordering so code_pos can be used as a std::multimap key. It
+	// must also work for the end() iterator, which cannot be dereferenced, so we
+	// compare the underlying list-node pointers. VS2015's list iterator exposed
+	// _Mynode() for this; VS2017+ removed it, but the public _Ptr node pointer
+	// is present on the v140-v143 toolsets and is valid for end() too.
+	return _Right._Ptr < _Left._Ptr;
 }
