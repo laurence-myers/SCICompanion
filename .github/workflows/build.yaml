@@ -19,22 +19,24 @@ jobs:
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
 
-    # Install VS 2015 (Platform Tools v140), and Windows 8.1 SDK. See: https://stackoverflow.com/a/74673996/953887
-    - name: Install MSVC 2015 (v140) and Windows 8.1 SDK
+    # Install VS 2017 (Platform Tools v141), and Windows 11 SDK. See: https://stackoverflow.com/a/74673996/953887
+    - name: Install MSVC 2017 (v141) and Windows 11 SDK
       shell: powershell
       run: |
         $VS_BTOOLS_EXE="vs_buildtools.exe"
         $VS_BTOOLS_URI="https://aka.ms/vs/15/release/vs_buildtools.exe"
         Invoke-WebRequest -Uri $VS_BTOOLS_URI -OutFile $VS_BTOOLS_EXE
-        Start-Process -FilePath ./vs_BuildTools.exe -ArgumentList `
-        "--add", "Microsoft.VisualStudio.Component.VC.140", `
-        "--add", "Microsoft.VisualStudio.Component.Windows81SDK", `
+        Start-Process -FilePath ./vs_buildtools.exe -ArgumentList `
+        "--add", "Microsoft.VisualStudio.Component.VC.v141.x86.x64", `
+        "--add", "Microsoft.VisualStudio.Component.VC.v141.ATL", `
+        "--add", "Microsoft.VisualStudio.Component.VC.v141.MFC", `
+        "--add", "Microsoft.VisualStudio.Component.Windows11SDK.26100", `
         "--quiet", "--norestart", "--force", "--wait" -Wait -PassThru
 
     # Compile the solution
     - name: Build
       run: |
-        msbuild SCICompanion.sln /m /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }} /p:VisualStudioVersion=14.0 /p:WindowsTargetPlatformVersion=8.1
+        msbuild SCICompanion.sln /m /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }} /p:VisualStudioVersion=15.0 /p:WindowsTargetPlatformVersion=10.0.26100.0
         mkdir artifacts
         copy ${{ matrix.configuration }}\*.exe artifacts
         Get-ChildItem ${{ matrix.configuration }} -Directory |
