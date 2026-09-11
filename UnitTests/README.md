@@ -64,20 +64,33 @@ decompile.
 started with 7 known fallbacks. The Family 1 and Family 6 fixes each removed
 one, so the baseline is now 5. Lower `BASELINE` when a fix removes more.
 
-### Families still open
+### Families still open (3, 4, 8)
 
-- Family 2 (compound-condition early abort) is fixed, but has no isolated
-  fixture. The disabled shape entangles with Family 3, so a minimal case fails
-  for the Family 3 reason instead. The baseline test guards it.
-- Family 3 (and/or value join) needs a new "condition value" structure so the
-  materialised boolean is not mis-valued. `F3_ValueJoin` pins it.
-- Family 4 (a compound condition whose else edge is the loop exit, next to a
-  break) needs care in the break/continue restructuring, which affects every
-  loop. `F4_BreakElseEdge` pins it.
-- Family 8 (a discarded value before an if) is not covered. A minimal asm
-  fixture does not reproduce it. The decompiler resolves the simplified shape.
-  It needs the enclosing structure of the larger original function. Author that
-  fixture with its fix, and check it against the real function.
+Family 2 is fixed but has no isolated fixture. The disabled shape entangles with
+Family 3, so a minimal case fails for the Family 3 reason instead. The baseline
+test guards it.
+
+Families 3, 4 and 8 were attempted and verified against the sluicebox golden
+decompilation of the real QfG4 scripts (and its source at
+`E:\Code\Cs\sci-tools\SCI\Decompile`). They share one root cause and need one
+architectural change:
+
+- Family 3 (and/or value join): re-enabling the disabled negated-compound
+  cases produces `(not (not ...))` and regressed 11 real scripts, confirmed by
+  a full before/after dump diffed against golden. `F3_ValueJoin` pins it.
+- Family 4 (compound else edge is the loop exit): `F4_BreakElseEdge` pins it.
+- Family 8 (a statement before an if condition): the failing chunk is a
+  side-effecting assignment that is a leading child of a condition inside a
+  `ret` node (an if used as a return value). The lift pass cannot move a
+  statement past a value-consumer.
+
+Root cause: SCI Companion detects compound conditions and consumes instructions
+at the CFG level, which entangles statements and values. sluicebox instead
+builds a correct nested-if AST, then transforms it with dedicated AST passes
+(`IfThenToAndConverter`: `(if A (if B C))` -> `(if (and A B) C)`; `CondCreator`;
+`NaryReducer`; `ForContIfFinder`). The correct fix is that AST-transform
+pipeline, run on correct nested-if output. It is a major feature, and a naive
+CFG-level fix produces semantically wrong output, so these stay deferred.
 
 ## Other tests
 

@@ -29,9 +29,9 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 // assembly with the family's warning. When the fix lands, flip the block
 // marked "PART B" to assert a clean decompile (fallbacks == 0, no asm).
 //
-// Families 2, 3, 4 and 8 are not covered here. A minimal asm fixture does not
-// reproduce them. They need the enclosing structure of the larger original
-// functions. Author those fixtures with their fix (test-first).
+// Families 1, 2, 5, 6, 7 are fixed. Families 3 and 4 are pinned (reproduced,
+// not yet fixed). Family 8 has no minimal fixture. Families 3, 4, 8 share one
+// root cause and need an AST-transform pipeline; see UnitTests\README.md.
 
 namespace UnitTests
 {
