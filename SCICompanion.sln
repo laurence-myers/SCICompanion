@@ -15,6 +15,12 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SCICompanion", "SCICompanio
 		{89CFFC49-D858-481E-99C5-E312F7C1EA95} = {89CFFC49-D858-481E-99C5-E312F7C1EA95}
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "UnitTests", "UnitTests\UnitTests.vcxproj", "{00FF83C9-DD78-4F2C-BC94-8577D79B52CE}"
+	ProjectSection(ProjectDependencies) = postProject
+		{761DE01C-57F6-45C5-AAFC-AC48000C423F} = {761DE01C-57F6-45C5-AAFC-AC48000C423F}
+		{89CFFC49-D858-481E-99C5-E312F7C1EA95} = {89CFFC49-D858-481E-99C5-E312F7C1EA95}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Kawa|Win32 = Kawa|Win32
@@ -58,6 +64,13 @@ Global
 		{6F805ECA-9DC8-42E0-A918-38A7315C7E8F}.Regular|Win32.Build.0 = Release|Win32
 		{6F805ECA-9DC8-42E0-A918-38A7315C7E8F}.Regular|x64.ActiveCfg = Debug|Win32
 		{6F805ECA-9DC8-42E0-A918-38A7315C7E8F}.Regular|x64.Build.0 = Debug|Win32
+		{00FF83C9-DD78-4F2C-BC94-8577D79B52CE}.Kawa|Win32.ActiveCfg = Kawa|Win32
+		{00FF83C9-DD78-4F2C-BC94-8577D79B52CE}.Kawa|Win32.Build.0 = Kawa|Win32
+		{00FF83C9-DD78-4F2C-BC94-8577D79B52CE}.Kawa|x64.ActiveCfg = Kawa|Win32
+		{00FF83C9-DD78-4F2C-BC94-8577D79B52CE}.Mild|Win32.ActiveCfg = Kawa|Win32
+		{00FF83C9-DD78-4F2C-BC94-8577D79B52CE}.Mild|x64.ActiveCfg = Kawa|Win32
+		{00FF83C9-DD78-4F2C-BC94-8577D79B52CE}.Regular|Win32.ActiveCfg = Release|Win32
+		{00FF83C9-DD78-4F2C-BC94-8577D79B52CE}.Regular|x64.ActiveCfg = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

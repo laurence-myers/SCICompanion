@@ -16,35 +16,52 @@
 #include "Helper.h"
 #include "AppState.h"
 #include "ClassBrowser.h"
+#include "SyntaxParser.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
+// The tests run from vstest, so the current directory is not the output folder.
+// Resolve data files against the directory of this test module instead.
+static std::string GetModuleDirectory()
+{
+    HMODULE hModule = nullptr;
+    GetModuleHandleEx(
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        reinterpret_cast<LPCTSTR>(&GetModuleDirectory), &hModule);
+    char szPath[MAX_PATH] = {};
+    GetModuleFileName(hModule, szPath, MAX_PATH);
+    std::string path = szPath;
+    size_t slash = path.find_last_of('\\');
+    if (slash != std::string::npos)
+    {
+        path = path.substr(0, slash);
+    }
+    return path;
+}
+
 std::string GetTestFileDirectory(const std::string &subDirectory)
 {
-    char szPath[MAX_PATH];
-    GetCurrentDirectory(MAX_PATH, szPath);
-    std::string folder = szPath;
-    folder += "\\TestFiles\\" + subDirectory;
-    return folder;
+    return GetModuleDirectory() + "\\TestFiles\\" + subDirectory;
 }
 
 std::string SetUpGame(const std::string &name)
 {
-    char szPath[MAX_PATH];
-    GetCurrentDirectory(MAX_PATH, szPath);
-    std::string srcGameFolder = szPath;
-    srcGameFolder += name;
+    std::string moduleDir = GetModuleDirectory();
+    std::string srcGameFolder = moduleDir + name;
 
     std::string gameFolder = GetRandomTempFolder();
     Assert::IsFalse(gameFolder.empty());
     CopyFilesOver(nullptr, srcGameFolder, gameFolder);
 
     appState = new AppState(nullptr);
+    // AppState(nullptr) does not run InitInstance, so the grammars are not
+    // loaded. Load them now, or SyntaxParser_Parse fails.
+    InitializeSyntaxParsers();
     appState->GetResourceMap().SetGameFolder(gameFolder);
 
-    // Normally ResourceMap uses the module filename for this. But unit tests are run from another exe.
-    std::string exeFolder = szPath;
-    exeFolder += "\\";
+    // Point the include folder at the module folder. The app post-build put the
+    // "include" folder (sci.sh, keys.sh) there.
+    std::string exeFolder = moduleDir + "\\";
     appState->GetResourceMap().SetIncludeFolderForTest(exeFolder);
 
     return gameFolder;
@@ -68,8 +85,7 @@ void CleanUpGame(const std::string &gameFolder)
     fileOp.pFrom = szPath;
     fileOp.pTo = nullptr;
     fileOp.fFlags = FOF_SILENT | FOF_NOCONFIRMATION | FOF_NOERRORUI;
-    int result = SHFileOperation(&fileOp);
-
+    SHFileOperation(&fileOp);
 }
 
 std::string SetUpGameSCI0()

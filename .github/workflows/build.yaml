@@ -31,6 +31,9 @@ jobs:
         # setup.exe is the installer engine, so -Wait waits for the real work.
         # Do not pass --wait. The installed engine rejects it (exit code 87).
         $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+        # The C++ unit test framework (VC\Auxiliary\VS\UnitTest) ships with the
+        # Desktop C++ workload (VC.CoreIde), already on the image, so it needs
+        # no --add here.
         $vsArgs = "modify --installPath `"$installPath`"" +
           " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL" +
           " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.MFC" +
@@ -52,10 +55,26 @@ jobs:
         copy ${{ matrix.configuration }}\*.exe artifacts
         # The build writes the manifest next to the exe. Ship it too.
         Copy-Item ${{ matrix.configuration }}\*.manifest artifacts -ErrorAction SilentlyContinue
+        # Skip TestFiles: the test post-build drops fixtures and pic data there.
         Get-ChildItem ${{ matrix.configuration }} -Directory |
+        Where-Object { $_.Name -ne "TestFiles" } |
         Foreach-Object {
             Copy-Item -Path $_.FullName -Destination "artifacts" -recurse
         }
+
+    # Run the decompiler unit tests. The wider suite has pre-existing failures
+    # (SCI0 compile, pic pixel diffs) unrelated to this work, so RunTests.ps1
+    # defaults to the decompiler suite.
+    - name: Test
+      shell: pwsh
+      run: .\UnitTests\RunTests.ps1 -Configuration ${{ matrix.configuration }}
+
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: TestResults-${{ matrix.configuration }}-${{ matrix.platform }}-${{ github.sha }}
+        path: TestResults
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
