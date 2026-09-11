@@ -1609,6 +1609,57 @@ void _FixupConfusingBranches(code_pos start, code_pos end, const std::string &st
 	}
 }
 
+
+	// A folded inner loop (e.g. an empty "for" ending a "while" body in QFG4
+	// rm330): the inner loop conditional exit branches backward to the outer
+	// loop head, and a dead "jmp <outer head>" follows the inner latch. The
+	// dead jmp has no predecessor, so it is pruned, and the inner loop has no
+	// forward exit. Its follow node cannot be found. Retarget the backward
+	// conditional exit onto the dead jmp, so the inner loop gets a real exit.
+	void _FixupFoldedLoopExits(code_pos start, code_pos end, const std::string &statusPrefix, IDecompilerResults &results)
+{
+	std::vector<uint16_t> branchTargets;
+	code_pos cur = start;
+	while (cur != end)
+	{
+		if (cur->_is_branch_instruction())
+		{
+			branchTargets.push_back(cur->get_branch_target()->get_final_offset_dontcare());
+		}
+		++cur;
+	}
+
+	cur = start;
+	while (cur != end)
+	{
+		if (cur->is_conditional_branch_instruction() &&
+			(cur->get_branch_target()->get_final_offset_dontcare() < cur->get_final_offset_dontcare()))
+		{
+			uint16_t target = cur->get_branch_target()->get_final_offset_dontcare();
+			code_pos prev = cur;
+			code_pos scan = cur;
+			++scan;
+			while (scan != end)
+			{
+				bool deadByFallthrough = (prev->get_opcode() == Opcode::JMP) || (prev->get_opcode() == Opcode::RET);
+				bool notABranchTarget = std::find(branchTargets.begin(), branchTargets.end(),
+					scan->get_final_offset_dontcare()) == branchTargets.end();
+				if ((scan->get_opcode() == Opcode::JMP) &&
+					(scan->get_branch_target()->get_final_offset_dontcare() == target) &&
+					deadByFallthrough && notABranchTarget)
+				{
+					cur->set_branch_target(scan, true);
+					results.AddResult(DecompilerResultType::Important, fmt::format("Restructured folded loop exit in {0}", statusPrefix));
+					break;
+				}
+				prev = scan;
+				++scan;
+			}
+		}
+		++cur;
+	}
+}
+
 ControlFlowNode *ControlFlowGraph::_PartitionCode(code_pos start, code_pos end)
 {
 	// I feel this would be so much faster if code_pos were just an index into a vector of instructions
@@ -1865,6 +1916,7 @@ bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 	{
 		_RepairBranches(start, end);
 		_FixupConfusingBranches(start, end, _contextName, _decompilerResults);
+		_FixupFoldedLoopExits(start, end, _contextName, _decompilerResults);
 
 		bool showFile = _debug && (!_pszDebugFilter || PathMatchSpec(_contextName.c_str(), _pszDebugFilter));
 

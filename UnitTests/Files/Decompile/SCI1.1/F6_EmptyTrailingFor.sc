@@ -13,18 +13,18 @@
 (procedure (f6EmptyTrailingFor &tmp temp0 temp1)
 	(asm
 	outerHead:
-		lat temp0
+		lst temp0
 		ldi 100
 		lt?
 		bnt outerExit
 		ldi 0
 		sat temp1
 	innerHead:
-		lat temp1
+		lst temp1
 		ldi 70
 		lt?
 		bnt outerHead
-		lat temp1
+		lst temp1
 		ldi 1
 		add
 		sat temp1

@@ -103,17 +103,19 @@ namespace UnitTests
                 L"expected the two while loops to reconstruct");
         }
 
-        // Family 6: an empty trailing for leaves a pruned dead back-jump.
+        // Family 6: an empty trailing for leaves a pruned dead back-jump. Fixed:
+        // the folded exit is retargeted to the dead jump, giving a real exit.
         TEST_METHOD(Family6_EmptyTrailingFor)
         {
             _gameFolder = SetUpGameSCI11();
             DecompileOutput out = DecompileAndRoundTrip("F6_EmptyTrailingFor", 906);
             LogWarnings("F6", out);
-            // PART B: flip once the branch fixup handles the folded for exit.
-            Assert::IsTrue(out.fallbacks >= 1, L"expected a fallback");
-            Assert::IsTrue(out.HasWarningContaining("Can't find follow node"),
-                L"expected the Family 6 control-flow warning");
-            Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");
+            Assert::AreEqual(0, out.fallbacks, L"should decompile with no fallback");
+            Assert::IsFalse(out.ContainsAsm(), L"should have no asm");
+            Assert::IsFalse(out.HasWarningContaining("Can't find follow node"),
+                L"the Family 6 warning should be gone");
+            Assert::IsTrue(out.text.find("(while") != std::string::npos,
+                L"expected the outer while to reconstruct");
         }
 
         // Family 7: a class opcode names a species that is not in the table.
@@ -152,7 +154,7 @@ namespace UnitTests
             // template has more than 80 scripts.
             Assert::IsTrue(processed >= 80, L"too few scripts decompiled; check the template game data");
 
-            const int BASELINE = 6;   // was 7; the Family 1 fix removed one. Lower again when a fix helps.
+            const int BASELINE = 5;   // was 7; Family 1 and Family 6 fixes each removed one. Lower again when a fix helps.
             Assert::IsTrue(fallbacks <= BASELINE, L"template fallbacks grew beyond baseline");
         }
 
