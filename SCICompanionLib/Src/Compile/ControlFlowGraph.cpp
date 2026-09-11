@@ -1232,8 +1232,12 @@ void ControlFlowGraph::_FindCompoundConditions(ControlFlowNode *structure)
 							_ReplaceNodeInFollowNodes(newConditionNode);
 
 							changesMade = true;
+							// Restart the search only when we built a compound. An
+							// unsupported shape (a disabled negated compound) must not
+							// abort the search, or later compounds go unbuilt and their
+							// leftover two-way node fails if-follow resolution.
+							break;
 						}
-						break;  // Restart anew
 					}
 				}
 			}
