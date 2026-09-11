@@ -104,6 +104,21 @@ namespace UnitTests
             Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");
         }
 
+        // Family 4: a compound condition whose else edge is the loop exit, next
+        // to a break. NOT fixed. The fix needs delicate surgery on the
+        // break/continue restructuring, which affects every loop; see the plan.
+        // This pins the current fallback and proves the asm round-trips.
+        TEST_METHOD(Family4_BreakElseEdge)
+        {
+            _gameFolder = SetUpGameSCI11();
+            DecompileOutput out = DecompileAndRoundTrip("F4_BreakElseEdge", 904);
+            LogWarnings("F4", out);
+            Assert::IsTrue(out.fallbacks >= 1, L"expected a fallback (Family 4 not fixed yet)");
+            Assert::IsTrue(out.HasWarningContaining("Exit needs two predecessors"),
+                L"expected the Family 4 control-flow warning");
+            Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");
+        }
+
         // Family 5: an empty leading while swallows the next loop. Fixed: child
         // collection is bounded to the loop's address range.
         TEST_METHOD(Family5_EmptyLeadingWhile)

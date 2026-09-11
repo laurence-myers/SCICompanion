@@ -50,6 +50,7 @@ decompiles fine, so a fixture must bypass the compiler with asm.
 | `D0_Plain` | 901 | (smoke) | decompiles clean |
 | `F1_LoopHeadContinue` | 900 | 1 | fixed; reconstructs the if |
 | `F3_ValueJoin` | 903 | 3 | not fixed; pins the fallback |
+| `F4_BreakElseEdge` | 904 | 4 | not fixed; pins the fallback |
 | `F5_EmptyLeadingWhile` | 905 | 5 | fixed; reconstructs both loops |
 | `F6_EmptyTrailingFor` | 906 | 6 | fixed; reconstructs the loops |
 | `F7_UnknownClass` | 907 | 7 | class stays as asm; clear message |
@@ -70,11 +71,13 @@ one, so the baseline is now 5. Lower `BASELINE` when a fix removes more.
   for the Family 3 reason instead. The baseline test guards it.
 - Family 3 (and/or value join) needs a new "condition value" structure so the
   materialised boolean is not mis-valued. `F3_ValueJoin` pins it.
-- Families 4 (compound else-edge is the loop exit) and 8 (a discarded value
-  before an if) are not covered. A minimal asm fixture does not reproduce them.
-  The decompiler resolves the simplified shape. They need the enclosing
-  structure of the larger original functions. Author those fixtures with their
-  fix, and check each against the real function.
+- Family 4 (a compound condition whose else edge is the loop exit, next to a
+  break) needs care in the break/continue restructuring, which affects every
+  loop. `F4_BreakElseEdge` pins it.
+- Family 8 (a discarded value before an if) is not covered. A minimal asm
+  fixture does not reproduce it. The decompiler resolves the simplified shape.
+  It needs the enclosing structure of the larger original function. Author that
+  fixture with its fix, and check it against the real function.
 
 ## Other tests
 
