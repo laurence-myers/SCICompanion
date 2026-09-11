@@ -614,6 +614,12 @@ void CollectMoreChildren(ControlFlowNode *structure, const DominatorMap &dominat
 {
 	ControlFlowNode *followNode = (*structure)[SemId::Follow];
 	ControlFlowNode *head = (*structure)[SemId::Head];
+	// A real loop child lies between the head and the follow node in address.
+	// An empty leading loop dominates every node, and its follow node is the
+	// head of the next loop. Without this bound the walk pulls the whole next
+	// loop, and the follow node itself, into this loop's children.
+	uint16_t headAddress = head->GetStartingAddress();
+	uint16_t followAddress = followNode->GetStartingAddress();
 	stack<ControlFlowNode*> toProcess;
 	toProcess.push(followNode);
 	while (!toProcess.empty())
@@ -622,7 +628,10 @@ void CollectMoreChildren(ControlFlowNode *structure, const DominatorMap &dominat
 		for (ControlFlowNode *pred : node->Predecessors())
 		{
 			const NodeSet &predDoms = dominators.at(pred);
-			if ((pred != head) && (predDoms.contains(head)))
+			uint16_t predAddress = pred->GetStartingAddress();
+			if ((pred != head) && (pred != followNode) &&
+				(predAddress > headAddress) && (predAddress < followAddress) &&
+				(predDoms.contains(head)))
 			{
 				// It's a predecessor that's dominated by the structure header. It's definitely
 				// one of its children. Avoid needless processing by only adding it if it's not already

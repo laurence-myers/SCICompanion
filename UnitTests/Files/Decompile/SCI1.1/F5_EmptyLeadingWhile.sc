@@ -18,7 +18,7 @@
 	w2:
 		lat temp1
 		bnt w2end
-		lat temp2
+		lst temp2
 		ldi 1
 		add
 		sat temp2

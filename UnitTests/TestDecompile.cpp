@@ -88,17 +88,19 @@ namespace UnitTests
                 L"the if at the end of the loop body should reconstruct");
         }
 
-        // Family 5: an empty leading while swallows the next loop.
+        // Family 5: an empty leading while swallows the next loop. Fixed: child
+        // collection is bounded to the loop's address range.
         TEST_METHOD(Family5_EmptyLeadingWhile)
         {
             _gameFolder = SetUpGameSCI11();
             DecompileOutput out = DecompileAndRoundTrip("F5_EmptyLeadingWhile", 905);
             LogWarnings("F5", out);
-            // PART B: flip once child collection is bounded.
-            Assert::IsTrue(out.fallbacks >= 1, L"expected a fallback");
-            Assert::IsTrue(out.HasWarningContaining("Unable to replace node in follow nodes"),
-                L"expected the Family 5 control-flow warning");
-            Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");
+            Assert::AreEqual(0, out.fallbacks, L"should decompile with no fallback");
+            Assert::IsFalse(out.ContainsAsm(), L"should have no asm");
+            Assert::IsFalse(out.HasWarningContaining("Unable to replace node in follow nodes"),
+                L"the Family 5 warning should be gone");
+            Assert::IsTrue(out.text.find("(while") != std::string::npos,
+                L"expected the two while loops to reconstruct");
         }
 
         // Family 6: an empty trailing for leaves a pruned dead back-jump.
