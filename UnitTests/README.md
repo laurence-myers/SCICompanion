@@ -51,7 +51,7 @@ decompiles fine, so a fixture must bypass the compiler with asm.
 | `F1_LoopHeadContinue` | 900 | 1 | Inconsistent then/else branches |
 | `F5_EmptyLeadingWhile` | 905 | 5 | Unable to replace node in follow nodes |
 | `F6_EmptyTrailingFor` | 906 | 6 | Can't find follow node for structure |
-| `F7_UnknownClass` | 907 | 7 | Unexpected opcode (class 40) |
+| `F7_UnknownClass` | 907 | 7 | Class N has no name (stays as asm) |
 
 Each family test pins the current (broken) behaviour: the function falls back
 to assembly with the family's warning. When a fix lands, flip the block marked

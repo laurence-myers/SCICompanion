@@ -113,17 +113,19 @@ namespace UnitTests
         }
 
         // Family 7: a class opcode names a species that is not in the table.
+        // A bare number has no class-opcode form and would emit the wrong
+        // opcode, so the function correctly stays as asm to round-trip. The fix
+        // replaces the cryptic "Unexpected opcode" with a clear message.
         TEST_METHOD(Family7_UnknownClass)
         {
             _gameFolder = SetUpGameSCI11();
             DecompileOutput out = DecompileAndRoundTrip("F7_UnknownClass", 907);
             LogWarnings("F7", out);
-            // PART B: flip once the class opcode emits the bare number.
-            // Pin opcode 40 (class), or the generic "Unexpected opcode" could
-            // match a different opcode's fallback.
             Assert::IsTrue(out.fallbacks >= 1, L"expected a fallback");
-            Assert::IsTrue(out.HasWarningContaining("Unexpected opcode.: 40"),
-                L"expected the Family 7 class-opcode warning");
+            Assert::IsTrue(out.HasWarningContaining("has no name"),
+                L"expected the clear unknown-class message");
+            Assert::IsFalse(out.HasWarningContaining("Unexpected opcode"),
+                L"the cryptic message should be gone");
             Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");
         }
 
