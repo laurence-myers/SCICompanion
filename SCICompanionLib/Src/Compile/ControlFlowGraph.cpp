@@ -207,7 +207,14 @@ ControlFlowNode *ControlFlowGraph::_ReplaceIfStatementInWorkingSet(ControlFlowNo
 	// single successor. There shouldn't be any more branching at this point, other than the if statements
 	// that we are collected. And we go from the most nested to the least.
 	ControlFlowNode *ifNode = MakeStructuredNode<IfNode>(ifHeader);
-	ExitNode *exitPoint = MakeNode<ExitNode>(ifFollowNode->GetStartingAddress());
+	// When the follow node is a common latch, use the loop-head address it
+	// stands for. Its own sort-only token address can collide with a real node
+	// and would never match the branch target (the loop head), which trips the
+	// then/else check below.
+	uint16_t exitAddress = (ifFollowNode->Type == CFGNodeType::CommonLatch)
+		? static_cast<CommonLatchNode*>(ifFollowNode)->headAddress
+		: ifFollowNode->GetStartingAddress();
+	ExitNode *exitPoint = MakeNode<ExitNode>(exitAddress);
 	// No tail for if node
 	stack<ControlFlowNode*> toProcess;
 	toProcess.push(ifHeader);
@@ -1315,6 +1322,9 @@ bool _CheckForSameHeader(ControlFlowGraph &cfg, ControlFlowNode &parent, vector<
 			// The address is needed before insertion, as it is used to sort.
 			assert(tokenAddress != 0);
 			CommonLatchNode *common = cfg.MakeNode<CommonLatchNode>(tokenAddress);
+			// Record the real loop-head address. A conditional back edge (bnt to
+			// the loop head) later needs it to resolve then/else.
+			common->headAddress = blocksWithSameHeader[0]->head->GetStartingAddress();
 			parent.InsertChild(common);
 			for (NodeBlock *block : blocksWithSameHeader)
 			{

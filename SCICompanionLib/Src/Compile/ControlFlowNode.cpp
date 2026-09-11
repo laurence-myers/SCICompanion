@@ -100,8 +100,20 @@ bool MaybeGetThenAndElseBranches(ControlFlowNode *node, ControlFlowNode **thenNo
 	return false;
 }
 
+// The address a branch target must match to select this successor. A common
+// latch node stands for the loop head it feeds, so use that head address, not
+// its sort-only token address.
+static uint16_t BranchTargetAddress(ControlFlowNode *node)
+{
+	if (node->Type == CFGNodeType::CommonLatch)
+	{
+		return static_cast<CommonLatchNode*>(node)->headAddress;
+	}
+	return node->GetStartingAddress();
+}
+
 // Given a node that represents a raw code branch or a compound condition, returns
-// which of its two successor nodes is the "then"  branch, and which is the "else" 
+// which of its two successor nodes is the "then"  branch, and which is the "else"
 void GetThenAndElseBranches(ControlFlowNode *node, ControlFlowNode **thenNode, ControlFlowNode **elseNode)
 {
 	*thenNode = nullptr;
@@ -153,14 +165,14 @@ void GetThenAndElseBranches(ControlFlowNode *node, ControlFlowNode **thenNode, C
 		if (lastInstruction.get_opcode() == Opcode::BNT)
 		{
 			uint16_t target = lastInstruction.get_branch_target()->get_final_offset();
-			if (target == one->GetStartingAddress())
+			if (target == BranchTargetAddress(one))
 			{
 				*elseNode = one;
 				*thenNode = two;
 			}
 			else
 			{
-				if (target != two->GetStartingAddress())
+				if (target != BranchTargetAddress(two))
 				{
 					throw ControlFlowException(node, "Inconsistent then/else branches. Possible \"continue\" statement?");
 				}
@@ -171,14 +183,14 @@ void GetThenAndElseBranches(ControlFlowNode *node, ControlFlowNode **thenNode, C
 		else if (lastInstruction.get_opcode() == Opcode::BT)
 		{
 			uint16_t target = lastInstruction.get_branch_target()->get_final_offset();
-			if (target == one->GetStartingAddress())
+			if (target == BranchTargetAddress(one))
 			{
 				*elseNode = two;
 				*thenNode = one;
 			}
 			else
 			{
-				assert(target == two->GetStartingAddress());
+				assert(target == BranchTargetAddress(two));
 				*elseNode = one;
 				*thenNode = two;
 			}

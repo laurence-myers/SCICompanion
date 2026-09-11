@@ -16,13 +16,13 @@
 		ldi 0
 		sat temp0
 	loopHead:
-		lat temp0
+		lst temp0
 		ldi 10
 		lt?
 		bnt loopExit
 		lat temp1
 		bnt loopHead
-		lat temp0
+		lst temp0
 		ldi 1
 		add
 		sat temp0

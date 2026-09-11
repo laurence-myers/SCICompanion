@@ -73,17 +73,19 @@ namespace UnitTests
             Assert::IsFalse(out.ContainsAsm(), L"plain fixture should have no asm");
         }
 
-        // Family 1: a conditional branch to the loop head.
+        // Family 1: a conditional branch to the loop head. Fixed: the common
+        // latch resolves to the loop head, so the if reconstructs.
         TEST_METHOD(Family1_LoopHeadContinue)
         {
             _gameFolder = SetUpGameSCI11();
             DecompileOutput out = DecompileAndRoundTrip("F1_LoopHeadContinue", 900);
             LogWarnings("F1", out);
-            // PART B: flip to Assert::AreEqual(0, out.fallbacks) once fixed.
-            Assert::IsTrue(out.fallbacks >= 1, L"expected a fallback");
-            Assert::IsTrue(out.HasWarningContaining("Inconsistent then/else branches"),
-                L"expected the Family 1 control-flow warning");
-            Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");
+            Assert::AreEqual(0, out.fallbacks, L"should decompile with no fallback");
+            Assert::IsFalse(out.ContainsAsm(), L"should have no asm");
+            Assert::IsFalse(out.HasWarningContaining("Inconsistent then/else"),
+                L"the Family 1 warning should be gone");
+            Assert::IsTrue(out.text.find("(if temp1") != std::string::npos,
+                L"the if at the end of the loop body should reconstruct");
         }
 
         // Family 5: an empty leading while swallows the next loop.
@@ -148,7 +150,7 @@ namespace UnitTests
             // template has more than 80 scripts.
             Assert::IsTrue(processed >= 80, L"too few scripts decompiled; check the template game data");
 
-            const int BASELINE = 7;   // ScrollableInventory, SaveRestoreDialog, Controls, Gauge, System; lower when a fix helps
+            const int BASELINE = 6;   // was 7; the Family 1 fix removed one. Lower again when a fix helps.
             Assert::IsTrue(fallbacks <= BASELINE, L"template fallbacks grew beyond baseline");
         }
 

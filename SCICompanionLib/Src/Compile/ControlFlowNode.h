@@ -319,10 +319,11 @@ struct InvertNode : public StructuredNode
 
 struct CommonLatchNode : public ControlFlowNode
 {
-	CommonLatchNode(uint16_t tokenAddress) : ControlFlowNode(nullptr, CFGNodeType::CommonLatch, {}), tokenStartingAddress(tokenAddress) {}
+	CommonLatchNode(uint16_t tokenAddress) : ControlFlowNode(nullptr, CFGNodeType::CommonLatch, {}), tokenStartingAddress(tokenAddress), headAddress(0xffff) {}
 	void Accept(ICFGNodeVisitor &visitor) const { visitor.Visit(*this); }
 
-	uint16_t tokenStartingAddress;  // Don't use this for anything real?
+	uint16_t tokenStartingAddress;  // Sort key only. Do not use as a branch target.
+	uint16_t headAddress;  // Address of the loop head this latch feeds. Used to resolve then/else.
 };
 
 struct FakeBreakOrContinueNode : public ControlFlowNode
