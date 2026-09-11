@@ -30,6 +30,15 @@ sorted_vector<ControlFlowNode*> fooTest;
 
 bool EndsWithConditionalBranch(ControlFlowNode *node)
 {
+	// A conditional branch whose target is the very next instruction (e.g. the
+	// trailing bnt/bt of an "and"/"or" expression used as a statement, as in
+	// QFG4 rm632::init) leaves the node with a single successor. That is a no-op
+	// branch, not a real two-way decision, so it must not be treated as a term of
+	// a compound condition (doing so later trips GetThenAndElseBranches).
+	if (node->Successors().size() != 2)
+	{
+		return false;
+	}
 	return node->Type == CFGNodeType::CompoundCondition ||
 		node->endsWith(Opcode::BNT) ||
 		node->endsWith(Opcode::BT);
