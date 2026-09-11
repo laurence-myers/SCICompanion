@@ -15,30 +15,45 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # Add msbuild action
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
 
-    # Install VS 2017 (Platform Tools v141), and Windows 11 SDK. See: https://stackoverflow.com/a/74673996/953887
-    - name: Install MSVC 2017 (v141) and Windows 11 SDK
-      shell: powershell
+    # The solution needs the v141 toolset and the Windows 11 SDK (10.0.26100.0).
+    # Add them to the Visual Studio instance that MSBuild uses. Do not install a
+    # separate Build Tools instance. MSBuild does not find the toolset there.
+    - name: Install v141 toolset, ATL/MFC, and Windows 11 SDK
+      shell: pwsh
       run: |
-        $VS_BTOOLS_EXE="vs_buildtools.exe"
-        $VS_BTOOLS_URI="https://aka.ms/vs/15/release/vs_buildtools.exe"
-        Invoke-WebRequest -Uri $VS_BTOOLS_URI -OutFile $VS_BTOOLS_EXE
-        Start-Process -FilePath ./vs_buildtools.exe -ArgumentList `
-        "--add", "Microsoft.VisualStudio.Component.VC.v141.x86.x64", `
-        "--add", "Microsoft.VisualStudio.Component.VC.v141.ATL", `
-        "--add", "Microsoft.VisualStudio.Component.VC.v141.MFC", `
-        "--add", "Microsoft.VisualStudio.Component.Windows11SDK.26100", `
-        "--quiet", "--norestart", "--force", "--wait" -Wait -PassThru
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $installPath = & $vswhere -latest -products '*' -property installationPath
+        if (-not $installPath) { throw "Visual Studio not found." }
 
-    # Compile the solution
+        # setup.exe is the installer engine, so -Wait waits for the real work.
+        # Do not pass --wait. The installed engine rejects it (exit code 87).
+        $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+        $vsArgs = "modify --installPath `"$installPath`"" +
+          " --add Microsoft.VisualStudio.Component.VC.v141.x86.x64" +
+          " --add Microsoft.VisualStudio.Component.VC.v141.ATL" +
+          " --add Microsoft.VisualStudio.Component.VC.v141.MFC" +
+          " --add Microsoft.VisualStudio.Component.Windows11SDK.26100" +
+          " --quiet --norestart --force --nocache"
+        $proc = Start-Process -FilePath $setup -ArgumentList $vsArgs -Wait -PassThru -NoNewWindow
+        # 0 = done. 3010 = done, reboot pending.
+        if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) { throw "Install failed ($($proc.ExitCode))." }
+
+        # Stop here if the toolset did not install.
+        $toolset = Get-ChildItem -ErrorAction SilentlyContinue `
+          -Path "$installPath\MSBuild\Microsoft\VC\*\Platforms\Win32\PlatformToolsets\v141\Toolset.props"
+        if (-not $toolset) { throw "v141 toolset not found after install." }
+
+    # The toolset and SDK come from the project files.
     - name: Build
       run: |
-        msbuild SCICompanion.sln /m /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }} /p:VisualStudioVersion=15.0 /p:WindowsTargetPlatformVersion=10.0.26100.0
+        msbuild SCICompanion.sln /m /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }}
         mkdir artifacts
         copy ${{ matrix.configuration }}\*.exe artifacts
+        # The build writes the manifest next to the exe. Ship it too.
+        Copy-Item ${{ matrix.configuration }}\*.manifest artifacts -ErrorAction SilentlyContinue
         Get-ChildItem ${{ matrix.configuration }} -Directory |
         Foreach-Object {
             Copy-Item -Path $_.FullName -Destination "artifacts" -recurse
