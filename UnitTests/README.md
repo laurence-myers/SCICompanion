@@ -45,28 +45,36 @@ failure. The fixture uses a hand-written `(asm ...)` block. The asm matches
 Sierra's exact bytecode. SCI Companion's own compiler emits cleaner code that
 decompiles fine, so a fixture must bypass the compiler with asm.
 
-| Fixture | Script | Family | Warning it reproduces |
+| Fixture | Script | Family | Status |
 |---|---|---|---|
-| `D0_Plain` | 901 | (smoke) | none; decompiles clean |
-| `F1_LoopHeadContinue` | 900 | 1 | Inconsistent then/else branches |
-| `F5_EmptyLeadingWhile` | 905 | 5 | Unable to replace node in follow nodes |
-| `F6_EmptyTrailingFor` | 906 | 6 | Can't find follow node for structure |
-| `F7_UnknownClass` | 907 | 7 | Class N has no name (stays as asm) |
+| `D0_Plain` | 901 | (smoke) | decompiles clean |
+| `F1_LoopHeadContinue` | 900 | 1 | fixed; reconstructs the if |
+| `F3_ValueJoin` | 903 | 3 | not fixed; pins the fallback |
+| `F5_EmptyLeadingWhile` | 905 | 5 | fixed; reconstructs both loops |
+| `F6_EmptyTrailingFor` | 906 | 6 | fixed; reconstructs the loops |
+| `F7_UnknownClass` | 907 | 7 | class stays as asm; clear message |
 
-Each family test pins the current (broken) behaviour: the function falls back
-to assembly with the family's warning. When a fix lands, flip the block marked
-`PART B` to assert a clean decompile.
+A fixed family's test asserts a clean decompile. A not-fixed family's test pins
+the current fallback (the warning plus an asm block) and proves the asm
+round-trips. When a fix lands, flip the pinning block to assert a clean
+decompile.
 
 `TemplateGame_FallbackBaseline` guards against new fallbacks. The template game
-has 7 known fallbacks in 5 scripts (ScrollableInventory, SaveRestoreDialog,
-Controls, Gauge, System). Lower `BASELINE` when a fix removes some.
+started with 7 known fallbacks. The Family 1 and Family 6 fixes each removed
+one, so the baseline is now 5. Lower `BASELINE` when a fix removes more.
 
-### Families not covered yet
+### Families still open
 
-Families 2, 3, 4 and 8 are not covered. A minimal asm fixture does not
-reproduce them. The decompiler resolves the simplified shape. These bugs need
-the enclosing structure of the larger original functions. Author those fixtures
-with their fix. Check each fixture against the real function.
+- Family 2 (compound-condition early abort) is fixed, but has no isolated
+  fixture. The disabled shape entangles with Family 3, so a minimal case fails
+  for the Family 3 reason instead. The baseline test guards it.
+- Family 3 (and/or value join) needs a new "condition value" structure so the
+  materialised boolean is not mis-valued. `F3_ValueJoin` pins it.
+- Families 4 (compound else-edge is the loop exit) and 8 (a discarded value
+  before an if) are not covered. A minimal asm fixture does not reproduce them.
+  The decompiler resolves the simplified shape. They need the enclosing
+  structure of the larger original functions. Author those fixtures with their
+  fix, and check each against the real function.
 
 ## Other tests
 

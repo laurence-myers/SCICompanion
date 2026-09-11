@@ -88,6 +88,22 @@ namespace UnitTests
                 L"the if at the end of the loop body should reconstruct");
         }
 
+        // Family 3: an and/or value materialised through branches. NOT fixed.
+        // A correct fix needs a new "condition value" structure so the boolean
+        // is not mis-valued; see the plan. This pins the current fallback and
+        // proves the asm round-trips. Flip to a clean-decompile assert when
+        // Family 3 lands.
+        TEST_METHOD(Family3_ValueJoin)
+        {
+            _gameFolder = SetUpGameSCI11();
+            DecompileOutput out = DecompileAndRoundTrip("F3_ValueJoin", 903);
+            LogWarnings("F3", out);
+            Assert::IsTrue(out.fallbacks >= 1, L"expected a fallback (Family 3 not fixed yet)");
+            Assert::IsTrue(out.HasWarningContaining("Exit needs two predecessors"),
+                L"expected the Family 3 control-flow warning");
+            Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");
+        }
+
         // Family 5: an empty leading while swallows the next loop. Fixed: child
         // collection is bounded to the loop's address range.
         TEST_METHOD(Family5_EmptyLeadingWhile)

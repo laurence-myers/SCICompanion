@@ -158,6 +158,7 @@
   <ItemGroup>
     <None Include="Files\Decompile\SCI1.1\D0_Plain.sc" />
     <None Include="Files\Decompile\SCI1.1\F1_LoopHeadContinue.sc" />
+    <None Include="Files\Decompile\SCI1.1\F3_ValueJoin.sc" />
     <None Include="Files\Decompile\SCI1.1\F5_EmptyLeadingWhile.sc" />
     <None Include="Files\Decompile\SCI1.1\F6_EmptyTrailingFor.sc" />
     <None Include="Files\Decompile\SCI1.1\F7_UnknownClass.sc" />
