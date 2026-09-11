@@ -18,10 +18,10 @@ jobs:
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
 
-    # The solution needs the v141 toolset and the Windows 11 SDK (10.0.26100.0).
-    # Add them to the Visual Studio instance that MSBuild uses. Do not install a
-    # separate Build Tools instance. MSBuild does not find the toolset there.
-    - name: Install v141 toolset, ATL/MFC, and Windows 11 SDK
+    # The image ships the v143 toolset (MSVC 14.44) and the Windows 11 SDK.
+    # MFC is installed per toolset version, and the image only has MFC for
+    # its latest toolset. Add MFC and ATL for 14.44. This is a small install.
+    - name: Install MFC and ATL for the 14.44 toolset
       shell: pwsh
       run: |
         $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -32,19 +32,17 @@ jobs:
         # Do not pass --wait. The installed engine rejects it (exit code 87).
         $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
         $vsArgs = "modify --installPath `"$installPath`"" +
-          " --add Microsoft.VisualStudio.Component.VC.v141.x86.x64" +
-          " --add Microsoft.VisualStudio.Component.VC.v141.ATL" +
-          " --add Microsoft.VisualStudio.Component.VC.v141.MFC" +
-          " --add Microsoft.VisualStudio.Component.Windows11SDK.26100" +
+          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL" +
+          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.MFC" +
           " --quiet --norestart --force --nocache"
         $proc = Start-Process -FilePath $setup -ArgumentList $vsArgs -Wait -PassThru -NoNewWindow
         # 0 = done. 3010 = done, reboot pending.
         if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) { throw "Install failed ($($proc.ExitCode))." }
 
-        # Stop here if the toolset did not install.
-        $toolset = Get-ChildItem -ErrorAction SilentlyContinue `
-          -Path "$installPath\MSBuild\Microsoft\VC\*\Platforms\Win32\PlatformToolsets\v141\Toolset.props"
-        if (-not $toolset) { throw "v141 toolset not found after install." }
+        # Stop here if MFC did not land for 14.44.
+        $mfc = Get-ChildItem -ErrorAction SilentlyContinue `
+          -Path "$installPath\VC\Tools\MSVC\14.44.*\atlmfc\lib\x86\mfc140.lib"
+        if (-not $mfc) { throw "MFC for the 14.44 toolset was not found after the install." }
 
     # The toolset and SDK come from the project files.
     - name: Build
