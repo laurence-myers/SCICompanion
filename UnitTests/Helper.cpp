@@ -44,6 +44,11 @@ std::string GetTestFileDirectory(const std::string &subDirectory)
     return GetModuleDirectory() + "\\TestFiles\\" + subDirectory;
 }
 
+std::string GetTestModuleDirectory()
+{
+    return GetModuleDirectory();
+}
+
 std::string SetUpGame(const std::string &name)
 {
     std::string moduleDir = GetModuleDirectory();

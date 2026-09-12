@@ -15,6 +15,9 @@
 
 std::string SetUpGame(const std::string &name);
 std::string GetTestFileDirectory(const std::string &subDirectory);
+// The directory of the test module (the build output folder). Snapshot actuals
+// are written under here so RunTests.ps1 -UpdateSnapshots can copy them back.
+std::string GetTestModuleDirectory();
 void CleanUpGame(const std::string &gameFolder);
 std::string SetUpGameSCI0();
 std::string SetUpGameSCI11();

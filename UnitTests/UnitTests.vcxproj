@@ -126,12 +126,14 @@
   <ItemGroup>
     <ClInclude Include="Helper.h" />
     <ClInclude Include="DecompileHelper.h" />
+    <ClInclude Include="AstPassHelper.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Helper.cpp" />
     <ClCompile Include="DecompileHelper.cpp" />
+    <ClCompile Include="AstPassHelper.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Kawa|Win32'">Create</PrecompiledHeader>
@@ -141,6 +143,7 @@
     <ClCompile Include="TestClassBrowser.cpp" />
     <ClCompile Include="TestCompile.cpp" />
     <ClCompile Include="TestDecompile.cpp" />
+    <ClCompile Include="TestAstPasses.cpp" />
     <ClCompile Include="TestPicDraw.cpp" />
     <ClCompile Include="TestPolygonLoad.cpp" />
     <ClCompile Include="TestResource.cpp" />

@@ -13,8 +13,10 @@ MSBuild.exe SCICompanion.sln -m -p:Configuration=Kawa -p:Platform=Win32
 ```
 
 `RunTests.ps1` finds `vstest.console.exe` with `vswhere`, runs the DLL, and
-writes `TestResults\UnitTests.trx`. By default it runs only the decompiler
-suite (`TestDecompile`). Pass `-All` to run every test.
+writes `TestResults\UnitTests.trx`. By default it runs the decompiler suites
+(`TestDecompile` and `TestAstPasses`). Pass `-All` to run every test. Pass
+`-UpdateSnapshots` to accept a deliberate change in decompiler output (see
+Snapshots below).
 
 Only the **Kawa** solution configuration builds the test project. The test DLL
 and its data land in the `Kawa` output folder next to `SCICompanion.exe`. The
@@ -24,19 +26,53 @@ decompiler config there. The test post-build copies the fixtures to
 
 GitHub Actions builds the solution and runs `RunTests.ps1` in `build.yaml`.
 
-## Decompiler tests
+## Test levels
 
-`TestDecompile.cpp` checks the decompiler against the SCI1.1 template game. No
-Sierra game data is needed. `DecompileHelper` provides the harness:
+The decompiler work is guarded at three levels, all without Sierra game data.
+
+**Unit (`TestAstPasses.cpp`).** Parses a small Sierra-syntax procedure with
+`AstPassHelper`, runs the AST passes on it, and compares the printed text. No
+bytecode. `ParseSierraScript` and `ScriptToText` parse and print; `WrapProcedure`
+wraps a body; `ApplyAllPasses` parses, runs the passes, and returns normalized
+text.
+
+**Integration (`TestDecompile.cpp` fixtures).** `DecompileHelper` compiles a
+fixture, decompiles it, and checks the result:
 
 - `CompileFixture` compiles a fixture script into the temporary game.
 - `DecompileToText` decompiles a compiled script to source text and
   diagnostics.
-- `DecompileAndRoundTrip` compiles, decompiles, recompiles the decompiled text,
-  and decompiles again. It asserts the two decompiles match, so every fixture
-  survives decompile, recompile, and decompile.
-- `CountFallbacksAllScripts` decompiles every template script and counts the
-  functions that fall back to assembly.
+- `DecompileAndRoundTrip` compiles, decompiles, recompiles, and decompiles
+  again, asserting the two decompiles match (round-trip stability).
+- `AssertDecompileMatchesExpected` also compares the decompiled text with a
+  committed `<fixture>.expected.sc` oracle (fidelity, not just stability).
+
+**Regression (`TestDecompile.cpp` template guards).**
+
+- `TemplateGame_FallbackBaseline` counts assembly fallbacks across the template
+  and asserts the set of failing scripts against an allowlist.
+- `TemplateGame_Recompiles` decompiles every template script, writes all
+  sources, and recompiles them, asserting each one compiles (allowlist for two
+  pre-existing defects). `CountFallbacksAllScripts` and
+  `RecompileAllDecompiledScripts` back these.
+- `TemplateGame_Snapshot` compares the decompiled text of every template script
+  with a committed snapshot (see below).
+
+## Snapshots
+
+`Files\Decompile\Snapshots\SCI1.1\<title>.sc` holds the decompiled text of every
+template script. `TemplateGame_Snapshot` fails on any change. To accept an
+intended change, review it, then run:
+
+```
+.\UnitTests\RunTests.ps1 -UpdateSnapshots
+```
+
+which reruns the snapshot test (it writes actuals to `Kawa\SnapshotActuals`) and
+copies them into the committed folder. Commit the snapshot change with the code
+change so the review shows exactly what moved. `Tools\CompareDecompile.ps1`
+diffs two folders of `.sc` files, in exact mode (snapshot review) or structural
+mode (the QfG4 golden diff, which ignores names and formatting).
 
 ## Fixtures
 

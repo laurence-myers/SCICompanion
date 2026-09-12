@@ -167,7 +167,8 @@ namespace UnitTests
         }
 
         // Regression guard: total assembly fallbacks across the template game
-        // must not grow. Lower BASELINE deliberately when a fix helps.
+        // must not grow, and no new script may fall back. Lower BASELINE and
+        // shrink the allowlist deliberately when a fix helps.
         TEST_METHOD(TemplateGame_FallbackBaseline)
         {
             _gameFolder = SetUpGameSCI11();
@@ -187,6 +188,65 @@ namespace UnitTests
 
             const int BASELINE = 5;   // was 7; Family 1 and Family 6 fixes each removed one. Lower again when a fix helps.
             Assert::IsTrue(fallbacks <= BASELINE, L"template fallbacks grew beyond baseline");
+
+            // The set of scripts that fall back. A new failure is caught even
+            // when a fix removes a different one. Remove entries as fixes land.
+            std::set<std::string> allowed = {
+                "ScrollableInventory", "SaveRestoreDialog", "Gauge", "System" };
+            for (const std::string &name : failed)
+            {
+                Assert::IsTrue(allowed.count(name) == 1,
+                    std::wstring(L"new fallback script: ").append(name.begin(), name.end()).c_str());
+            }
+        }
+
+        // Regression guard: the decompiled text of every template script
+        // recompiles. Catches a newly-emitted construct the compiler rejects.
+        // Two scripts have pre-existing round-trip defects unrelated to this
+        // work (Main emits a name the parser rejects; SaveRestoreDialog falls
+        // back to asm that does not re-parse). They are allowlisted; shrink the
+        // list when they are fixed. A script not on the list must recompile.
+        TEST_METHOD(TemplateGame_Recompiles)
+        {
+            _gameFolder = SetUpGameSCI11();
+            std::vector<std::string> failed;
+            int processed = 0;
+            RecompileAllDecompiledScripts(&failed, &processed);
+            std::string msg = fmt::format("Recompile: {0} scripts, {1} failed", processed, failed.size());
+            for (const std::string &name : failed)
+            {
+                msg += "\n  " + name;
+            }
+            Logger::WriteMessage(std::wstring(msg.begin(), msg.end()).c_str());
+
+            Assert::IsTrue(processed >= 80, L"too few scripts processed; check the template game data");
+            std::set<std::string> allowed = { "Main", "SaveRestoreDialog" };
+            for (const std::string &name : failed)
+            {
+                Assert::IsTrue(allowed.count(name) == 1,
+                    std::wstring(L"decompiled script no longer recompiles: ").append(name.begin(), name.end()).c_str());
+            }
+        }
+
+        // Regression guard: the decompiled text of every template script matches
+        // its committed snapshot. Any output change fails here. Accept an
+        // intended change with RunTests.ps1 -UpdateSnapshots, then commit the
+        // snapshot change with the code.
+        TEST_METHOD(TemplateGame_Snapshot)
+        {
+            _gameFolder = SetUpGameSCI11();
+            SnapshotResult r = CompareTemplateSnapshots();
+            std::string msg = fmt::format("Snapshot: {0} scripts, {1} changed, {2} missing",
+                r.processed, r.mismatched.size(), r.missingExpected.size());
+            for (const std::string &name : r.mismatched) { msg += "\n  changed: " + name; }
+            for (const std::string &name : r.missingExpected) { msg += "\n  missing: " + name; }
+            Logger::WriteMessage(std::wstring(msg.begin(), msg.end()).c_str());
+
+            Assert::IsTrue(r.processed >= 80, L"too few scripts; check the template game data");
+            Assert::IsTrue(r.missingExpected.empty(),
+                L"a snapshot is missing; run RunTests.ps1 -UpdateSnapshots to create it");
+            Assert::IsTrue(r.mismatched.empty(),
+                L"a snapshot changed; review then run RunTests.ps1 -UpdateSnapshots");
         }
 
     private:

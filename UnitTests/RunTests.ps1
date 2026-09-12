@@ -12,8 +12,11 @@
 #>
 param(
     [string]$Configuration = "Kawa",
-    [string]$Filter = "FullyQualifiedName~TestDecompile",
-    [switch]$All
+    [string]$Filter = "FullyQualifiedName~TestDecompile|FullyQualifiedName~TestAstPasses",
+    [switch]$All,
+    # After the run, copy the decompiled template snapshots the test wrote into
+    # the source tree, so an intended output change is committed with the code.
+    [switch]$UpdateSnapshots
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,4 +54,20 @@ if (-not $All) {
 
 Write-Host "Running: $vstest $($vstestArgs -join ' ')"
 & $vstest @vstestArgs
-exit $LASTEXITCODE
+$testExit = $LASTEXITCODE
+
+if ($UpdateSnapshots) {
+    # The snapshot test writes each decompiled script to SnapshotActuals next to
+    # the test DLL. Copy those into the committed snapshot folder.
+    $actuals = Join-Path $repoRoot "$Configuration\SnapshotActuals\SCI1.1"
+    $committed = Join-Path $PSScriptRoot "Files\Decompile\Snapshots\SCI1.1"
+    if (-not (Test-Path $actuals)) {
+        throw "No snapshot actuals at $actuals. Run the snapshot test first."
+    }
+    New-Item -ItemType Directory -Force -Path $committed | Out-Null
+    Copy-Item -Path (Join-Path $actuals "*.sc") -Destination $committed -Force
+    Write-Host "Updated snapshots in $committed"
+    exit 0
+}
+
+exit $testExit
