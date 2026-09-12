@@ -489,6 +489,7 @@
     <ClCompile Include="Src\Compile\Compile.cpp" />
     <ClCompile Include="Src\Compile\CompileContext.cpp" />
     <ClCompile Include="Src\Compile\CompiledScript.cpp" />
+    <ClCompile Include="Src\Compile\AstRewrite.cpp" />
     <ClCompile Include="Src\Compile\DecompilerCore.cpp" />
     <ClCompile Include="Src\Compile\ParserCommon.cpp" />
     <ClCompile Include="Src\Compile\PMachine.cpp" />
@@ -680,6 +681,7 @@
     <ClInclude Include="Src\Compile\CompileContext.h" />
     <ClInclude Include="Src\Compile\CompiledScript.h" />
     <ClInclude Include="Src\Compile\CompileInterfaces.h" />
+    <ClInclude Include="Src\Compile\AstRewrite.h" />
     <ClInclude Include="Src\Compile\DecompilerCore.h" />
     <ClInclude Include="Src\Compile\ParserCommon.h" />
     <ClInclude Include="Src\Compile\PMachine.h" />

@@ -16,7 +16,10 @@
 #include "Helper.h"
 #include "AstPassHelper.h"
 #include "ScriptOMAll.h"
+#include "AstRewrite.h"
+#include "DecompilerResults.h"
 #include "AppState.h"
+#include <set>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -29,6 +32,66 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace UnitTests
 {
+    // Records the slot kind of every node visited, so a test can check the
+    // walker reaches each kind of child.
+    class RecordingPass : public AstPass
+    {
+    public:
+        std::set<SlotKind> kinds;
+        int visits = 0;
+        const char *Name() const override { return "Recording"; }
+        RewriteResult Rewrite(std::unique_ptr<sci::SyntaxNode> &, const AstContext &ctx) override
+        {
+            kinds.insert(ctx.Kind());
+            visits++;
+            return RewriteResult::None;
+        }
+    };
+
+    // Deletes every statement that is a return, to exercise Removed and the
+    // no-advance rule.
+    class DeleteReturnsPass : public AstPass
+    {
+    public:
+        const char *Name() const override { return "DeleteReturns"; }
+        RewriteResult Rewrite(std::unique_ptr<sci::SyntaxNode> &slot, const AstContext &ctx) override
+        {
+            if ((ctx.Kind() == SlotKind::Statement) &&
+                (slot->GetNodeType() == sci::NodeTypeReturn))
+            {
+                return RewriteResult::Removed;
+            }
+            return RewriteResult::None;
+        }
+    };
+
+    // Always claims a change without doing anything, to force the fixpoint
+    // driver to hit its sweep cap.
+    class NeverSettlesPass : public AstPass
+    {
+    public:
+        const char *Name() const override { return "NeverSettles"; }
+        RewriteResult Rewrite(std::unique_ptr<sci::SyntaxNode> &, const AstContext &) override
+        {
+            return RewriteResult::Changed;
+        }
+    };
+
+    class CollectResults : public IDecompilerResults
+    {
+    public:
+        void AddResult(DecompilerResultType, const std::string &message) override { messages.push_back(message); }
+        bool IsAborted() override { return false; }
+        void InformStats(bool, int) override {}
+        void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &) override {}
+        std::vector<std::string> messages;
+    };
+
+    static sci::FunctionBase &FirstProcedure(sci::Script &script)
+    {
+        return *script.GetProceduresNC()[0];
+    }
+
     TEST_CLASS(TestAstPasses)
     {
     public:
@@ -68,6 +131,72 @@ namespace UnitTests
             std::string actual = ApplyAllPasses("(if (and a (or b c)) (= t 1))");
             Assert::IsTrue(actual.find("(and a (or b c))") != std::string::npos,
                 L"the compound condition should print as written");
+        }
+
+        // The walker reaches every kind of child in a script that uses many
+        // constructs.
+        TEST_METHOD(Framework_SlotCoverage)
+        {
+            std::string body =
+                "(= t (+ a b))"
+                "(if (and a (not b)) (= t 1) else (return b))"
+                "(while (< t 10) (Prints a) (break))"
+                "(switch a (1 (= t 1)) (else (= t 2)))"
+                "(= u (self foo: (if a b)))"
+                "(return (or a b))";
+            std::unique_ptr<sci::Script> script = ParseSierraScript(WrapProcedure(body));
+            RecordingPass rec;
+            RunPassOnce(FirstProcedure(*script), rec);
+
+            // The pass is applied only to replaceable slots. Typed children
+            // (AssignTarget, SendParamNode, CaseNode) are traversed but never
+            // offered to the pass; their descent is proven by reaching the
+            // replaceable slots inside them (SendArg inside a send param,
+            // CaseValue inside a case).
+            const SlotKind expected[] = {
+                SlotKind::Statement, SlotKind::IfCondition, SlotKind::IfThen, SlotKind::IfElse,
+                SlotKind::AndOrOperand, SlotKind::NotOperand, SlotKind::Operand,
+                SlotKind::WhileCondition, SlotKind::ReturnValue, SlotKind::AssignValue,
+                SlotKind::ProcArg, SlotKind::SendArg,
+                SlotKind::SwitchValue, SlotKind::CaseValue,
+            };
+            for (SlotKind k : expected)
+            {
+                Assert::IsTrue(rec.kinds.count(k) == 1,
+                    (std::wstring(L"slot kind not visited: ") + std::to_wstring((int)k)).c_str());
+            }
+            Assert::IsTrue(rec.visits > 20, L"expected many node visits");
+        }
+
+        // Removing statements during the walk does not skip or revisit
+        // siblings: every return goes, everything else stays.
+        TEST_METHOD(Framework_RemoveIsSafe)
+        {
+            std::string body = "(return a)(= t 1)(return b)(= u 2)(return c)";
+            std::unique_ptr<sci::Script> script = ParseSierraScript(WrapProcedure(body));
+            DeleteReturnsPass del;
+            RunPassOnce(FirstProcedure(*script), del);
+            std::string text = NormalizeWhitespace(ScriptToText(*script));
+            Assert::IsTrue(text.find("(return") == std::string::npos, L"all returns removed");
+            Assert::IsTrue(text.find("(= t 1)") != std::string::npos, L"kept t");
+            Assert::IsTrue(text.find("(= u 2)") != std::string::npos, L"kept u");
+        }
+
+        // The fixpoint driver stops at the sweep cap and reports it, instead of
+        // looping forever, when a pass never settles.
+        TEST_METHOD(Framework_NonConvergenceReported)
+        {
+            std::unique_ptr<sci::Script> script = ParseSierraScript(WrapProcedure("(= t 1)"));
+            NeverSettlesPass never;
+            CollectResults results;
+            std::vector<AstPass *> passes = { &never };
+            RunPassesToFixpoint(FirstProcedure(*script), passes, 4, &results);
+            bool warned = false;
+            for (const std::string &m : results.messages)
+            {
+                if (m.find("did not converge") != std::string::npos) { warned = true; }
+            }
+            Assert::IsTrue(warned, L"expected a non-convergence warning");
         }
 
     private:
