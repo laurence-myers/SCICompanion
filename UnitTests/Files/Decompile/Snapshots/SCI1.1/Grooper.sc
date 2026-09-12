@@ -163,9 +163,7 @@
 				(client loop?)
 			else
 				(= cycleCnt gGameTime)
-				(= loopIndex
-					(+ loopIndex (* cycleDir (/ 8 numOfLoops)))
-				)
+				(+= loopIndex (* cycleDir (/ 8 numOfLoops)))
 				(= loopIndex (UModulo loopIndex 8))
 				[local8 loopIndex]
 			)

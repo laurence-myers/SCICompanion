@@ -35,7 +35,7 @@
 		(while argc
 			(= temp1 (* (/ [param1 (-- argc)] 16) 2))
 			(= temp0 (Memory 5 (+ array temp1)))
-			(= temp0 (| temp0 (>> $8000 (mod [param1 argc] 16))))
+			(|= temp0 (>> $8000 (mod [param1 argc] 16)))
 			(Memory 6 (+ array temp1) temp0)
 		)
 	)
@@ -44,9 +44,7 @@
 		(while argc
 			(= temp1 (* (/ [param1 (-- argc)] 16) 2))
 			(= temp0 (Memory 5 (+ array temp1)))
-			(= temp0
-				(& temp0 (~ (>> $8000 (mod [param1 argc] 16))))
-			)
+			(&= temp0 (~ (>> $8000 (mod [param1 argc] 16))))
 			(Memory 6 (+ array temp1) temp0)
 		)
 	)

@@ -105,8 +105,8 @@
 	
 	(method (atEnd)
 		(return
-			(if (and (& endType $0002) (<= (- value 2) 0))
-			else
+			(or
+				(and (& endType $0002) (<= (- value 2) 0))
 				(== (self at: (+ value 2)) -32768)
 			)
 		)
@@ -127,13 +127,13 @@
 		(return 0)
 	)
 	
-	(method (nextValue &tmp temp0)
-		(= temp0 (- (* (not (& endType $0002)) 4) 2))
+	(method (nextValue &tmp theValue)
+		(= theValue (- (* (not (& endType $0002)) 4) 2))
 		(return
 			(if argc
-				(return (= value (+ value temp0)))
+				(return (+= value theValue))
 			else
-				(return (+ value temp0))
+				(return (+ value theValue))
 			)
 		)
 	)

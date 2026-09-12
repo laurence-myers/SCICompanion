@@ -7,7 +7,7 @@
 )
 
 (procedure (DisposeLoad param1 param2 &tmp temp0 temp1)
-	(= argc (- argc 2))
+	(-= argc 2)
 	(= temp0 0)
 	(while (<= temp0 argc)
 		(= temp1 [param2 temp0])

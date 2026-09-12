@@ -27,13 +27,13 @@
 			)
 		)
 		(if (== handle -1) (= handle 0))
-		(return (if handle self else 0))
+		(return (and handle self))
 	)
 	
 	(method (readString param1 param2)
 		(if (!= argc 2) (return 0))
 		(if (not handle) (self open: 1))
-		(return (if handle (FileIO 5 param1 param2 handle) else 0))
+		(return (and handle (FileIO 5 param1 param2 handle)))
 	)
 	
 	(method (writeString param1 &tmp temp0)
@@ -50,19 +50,19 @@
 	
 	(method (write param1 param2 &tmp temp0)
 		(if (not handle) (self open:))
-		(return (if handle (FileIO 3 handle param1 param2) else 0))
+		(return (and handle (FileIO 3 handle param1 param2)))
 	)
 	
 	(method (read param1 param2)
 		(if (!= argc 2) (return 0))
 		(if (not handle) (self open: 1))
-		(return (if handle (FileIO 2 handle param1 param2) else 0))
+		(return (and handle (FileIO 2 handle param1 param2)))
 	)
 	
 	(method (seek param1 param2 &tmp temp0)
 		(= temp0 (if (>= argc 2) param2 else 0))
 		(if (not handle) (self open: 1))
-		(return (if handle (FileIO 7 handle param1 temp0) else 0))
+		(return (and handle (FileIO 7 handle param1 temp0)))
 	)
 	
 	(method (close)

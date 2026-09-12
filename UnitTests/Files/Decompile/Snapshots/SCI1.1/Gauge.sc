@@ -64,7 +64,7 @@
 			setSize:
 		)
 		(self add: newDButton_2 setSize:)
-		(= nsBottom (+ nsBottom 8))
+		(+= nsBottom 8)
 		(= newDButton_3 (DButton new:))
 		(newDButton_3 text: {OK} setSize: moveTo: 4 nsBottom)
 		(= newDButton_4 (DButton new:))

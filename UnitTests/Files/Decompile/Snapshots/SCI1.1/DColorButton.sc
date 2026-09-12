@@ -63,7 +63,7 @@
 						(= temp1 temp0)
 					)
 					(param1 dispose:)
-					(breakif (not (MouseStillDown)))
+					(breakif(not (MouseStillDown)))
 				)
 				(if temp0
 					(if (& state $0008)
@@ -98,9 +98,9 @@
 	)
 	
 	(method (setSize param1 &tmp [temp0 2] temp2 temp3)
-		(TextSize @temp0 text font (if argc param1 else 0))
-		(= temp2 (+ temp2 2))
-		(= temp3 (+ temp3 2))
+		(TextSize @temp0 text font (and argc param1))
+		(+= temp2 2)
+		(+= temp3 2)
 		(= nsBottom (+ nsTop temp2))
 		(= temp3 (* (/ (+ temp3 15) 16) 16))
 		(= nsRight (+ temp3 nsLeft))

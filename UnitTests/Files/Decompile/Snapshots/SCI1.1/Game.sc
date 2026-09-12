@@ -456,8 +456,9 @@
 			((& (param1 type?) $0040) 0)
 			(
 				(not
-					(if
-					(and script (or (script handleEvent: param1) 1))
+					(and
+						script
+						(or (script handleEvent: param1) 1)
 						(param1 claimed?)
 					)
 				)
@@ -650,10 +651,7 @@
 		(if inset (inset dispose:))
 		(if (and argc param1)
 			(param1
-				init:
-					(if (>= argc 2) param2 else 0)
-					self
-					(if (>= argc 3) param3 else 0)
+				init: (and (>= argc 2) param2) self (and (>= argc 3) param3)
 			)
 		)
 	)
@@ -748,8 +746,8 @@
 	(method (doit param1 &tmp temp0)
 		(if (param1 underBits?)
 			(= temp0 (param1 signal?))
-			(= temp0 (| temp0 $0001))
-			(= temp0 (& temp0 $fffb))
+			(|= temp0 $0001)
+			(&= temp0 $fffb)
 			(param1 underBits: 0 signal: temp0)
 		)
 	)

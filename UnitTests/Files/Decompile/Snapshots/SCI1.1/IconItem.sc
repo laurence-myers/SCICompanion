@@ -32,7 +32,7 @@
 	)
 	
 	(method (show theNsLeft theNsTop &tmp [temp0 7])
-		(= signal (| signal $0020))
+		(|= signal $0020)
 		(if argc
 			(= nsRight
 				(+ (= nsLeft theNsLeft) (CelWide view loop cel))
@@ -119,15 +119,11 @@
 	
 	(method (onMe param1)
 		(return
-			(if
-				(and
-					(>= (param1 x?) nsLeft)
-					(>= (param1 y?) nsTop)
-					(<= (param1 x?) nsRight)
-				)
+			(and
+				(>= (param1 x?) nsLeft)
+				(>= (param1 y?) nsTop)
+				(<= (param1 x?) nsRight)
 				(<= (param1 y?) nsBottom)
-			else
-				0
 			)
 		)
 	)
@@ -335,7 +331,7 @@
 	
 	(method (show &tmp temp0 temp1 temp2 temp3 theY temp5 temp6 temp7)
 		(gSounds pause:)
-		(= state (| state $0020))
+		(|= state $0020)
 		(gGame setCursor: 999 1)
 		(= temp0 (self at: 0))
 		(= height
@@ -419,7 +415,7 @@
 	(method (hide &tmp temp0 temp1 temp2)
 		(if (& state $0020)
 			(gSounds pause: 0)
-			(= state (& state $ffdf))
+			(&= state $ffdf)
 			(= temp0 (FirstNode elements))
 			(while temp0
 				(= temp1 (NextNode temp0))
@@ -481,7 +477,7 @@
 	
 	(method (select theCurIcon param2)
 		(return
-			(if (theCurIcon select: (if (>= argc 2) param2))
+			(if (theCurIcon select: (and (>= argc 2) param2))
 				(if (not (& (theCurIcon signal?) $0002))
 					(= curIcon theCurIcon)
 				)
@@ -586,12 +582,10 @@
 					(cond 
 						(
 							(not
-								(if
-									(and
-										(<= 0 temp0)
-										(<= temp0 (+ y height))
-										(<= 0 temp1)
-									)
+								(and
+									(<= 0 temp0)
+									(<= temp0 (+ y height))
+									(<= 0 temp1)
 									(<= temp1 320)
 								)
 							)
@@ -721,7 +715,7 @@
 				(++ temp0)
 			)
 		else
-			(= state (| state $0004))
+			(|= state $0004)
 		)
 	)
 	
@@ -740,7 +734,7 @@
 				(++ temp0)
 			)
 		else
-			(= state (& state $fffb))
+			(&= state $fffb)
 		)
 	)
 	

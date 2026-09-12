@@ -428,10 +428,10 @@ void SetConditionExpression(ConditionNode &conditionOwner, unique_ptr<SyntaxNode
 	conditionOwner.SetCondition(make_unique<ConditionalExpression>(move(expr)));
 }
 
-unique_ptr<SyntaxNode> MakeAnd(unique_ptr<SyntaxNode> a, unique_ptr<SyntaxNode> b, const SyntaxNode *posSource)
+static unique_ptr<SyntaxNode> MakeLogical(BinaryOperator kind, unique_ptr<SyntaxNode> a, unique_ptr<SyntaxNode> b, const SyntaxNode *posSource)
 {
 	auto op = make_unique<BinaryOp>();
-	op->Operator = BinaryOperator::LogicalAnd;
+	op->Operator = kind;
 	if (posSource)
 	{
 		op->SetPosition(posSource->GetPosition());
@@ -439,6 +439,16 @@ unique_ptr<SyntaxNode> MakeAnd(unique_ptr<SyntaxNode> a, unique_ptr<SyntaxNode> 
 	op->SetStatement1(move(a));
 	op->SetStatement2(move(b));
 	return op;
+}
+
+unique_ptr<SyntaxNode> MakeAnd(unique_ptr<SyntaxNode> a, unique_ptr<SyntaxNode> b, const SyntaxNode *posSource)
+{
+	return MakeLogical(BinaryOperator::LogicalAnd, move(a), move(b), posSource);
+}
+
+unique_ptr<SyntaxNode> MakeOr(unique_ptr<SyntaxNode> a, unique_ptr<SyntaxNode> b, const SyntaxNode *posSource)
+{
+	return MakeLogical(BinaryOperator::LogicalOr, move(a), move(b), posSource);
 }
 
 static bool StructEqual(const SyntaxNode *a, const SyntaxNode *b)

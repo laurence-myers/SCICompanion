@@ -159,8 +159,9 @@ std::unique_ptr<sci::SyntaxNode> &ConditionSlot(sci::ConditionNode &conditionOwn
 // Wraps a bare expression in a ConditionalExpression, for a ConditionNode.
 void SetConditionExpression(sci::ConditionNode &conditionOwner, std::unique_ptr<sci::SyntaxNode> expr);
 
-// Builds (and a b) / (or a b) / (not a), copying position from a source node.
+// Builds (and a b) / (or a b), copying position from a source node.
 std::unique_ptr<sci::SyntaxNode> MakeAnd(std::unique_ptr<sci::SyntaxNode> a, std::unique_ptr<sci::SyntaxNode> b, const sci::SyntaxNode *posSource);
+std::unique_ptr<sci::SyntaxNode> MakeOr(std::unique_ptr<sci::SyntaxNode> a, std::unique_ptr<sci::SyntaxNode> b, const sci::SyntaxNode *posSource);
 
 // True if the two nodes read the same variable or property, comparing an
 // assignment target (an LValue) with a value expression (a token, an indexed

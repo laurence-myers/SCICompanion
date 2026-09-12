@@ -183,9 +183,7 @@
 						addColorButton: (- temp4 1) curNoun curVerb curCase temp4 x temp3 modNum
 					)
 					(= temp2 (NodeValue ((newPrint dialog?) last:)))
-					(= temp3
-						(+ temp3 (- (temp2 nsBottom?) (temp2 nsTop?)) 4)
-					)
+					(+= temp3 (+ (- (temp2 nsBottom?) (temp2 nsTop?)) 4))
 					(++ temp4)
 				)
 				(= whichSelect (newPrint init:))
@@ -426,9 +424,7 @@
 						addColorButton: (- temp6 1) curNoun curVerb curCase temp6 4 temp5 modNum
 					)
 					(= temp4 (NodeValue ((newPrint dialog?) last:)))
-					(= temp5
-						(+ temp5 (- (temp4 nsBottom?) (temp4 nsTop?)) 4)
-					)
+					(+= temp5 (+ (- (temp4 nsBottom?) (temp4 nsTop?)) 4))
 					(++ temp6)
 				)
 				(= whichSelect (newPrint init:))

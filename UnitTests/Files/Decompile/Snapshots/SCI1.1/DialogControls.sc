@@ -52,8 +52,8 @@
 	
 	(method (setSize &tmp [temp0 2] temp2 temp3)
 		(TextSize @temp0 text font 0 0)
-		(= temp2 (+ temp2 2))
-		(= temp3 (+ temp3 2))
+		(+= temp2 2)
+		(+= temp3 2)
 		(= nsBottom (+ nsTop temp2))
 		(= temp3 (* (/ (+ temp3 15) 16) 16))
 		(= nsRight (+ temp3 nsLeft))
@@ -136,13 +136,13 @@
 						((< (param1 y?) (+ nsTop 10))
 							(repeat
 								(self retreat: 1)
-								(breakif (not (MouseStillDown)))
+								(breakif(not (MouseStillDown)))
 							)
 						)
 						((> (param1 y?) (- nsBottom 10))
 							(repeat
 								(self advance: 1)
-								(breakif (not (MouseStillDown)))
+								(breakif(not (MouseStillDown)))
 							)
 						)
 						(else
@@ -158,13 +158,7 @@
 				)
 			)
 		)
-		(return
-			(if (and (param1 claimed?) (& state $0002))
-				self
-			else
-				0
-			)
-		)
+		(return (and (param1 claimed?) (& state $0002) self))
 	)
 	
 	(method (setSize &tmp [temp0 2] temp2 temp3)
@@ -182,7 +176,7 @@
 			(while (< temp1 300)
 				(if (== 0 (StrLen theText)) (return -1))
 				(if (not (StrCmp param1 theText)) (return temp1))
-				(= theText (+ theText x))
+				(+= theText x)
 				(++ temp1)
 			)
 		)
@@ -199,12 +193,8 @@
 		(= temp0 0)
 		(while (and param1 (StrAt cursor x))
 			(= temp0 1)
-			(= cursor (+ cursor x))
-			(if (< (+ mark 1) y)
-				(++ mark)
-			else
-				(= topString (+ topString x))
-			)
+			(+= cursor x)
+			(if (< (+ mark 1) y) (++ mark) else (+= topString x))
 			(-- param1)
 		)
 		(return (if temp0 (self draw:) 1 else 0))
@@ -214,8 +204,8 @@
 		(= temp0 0)
 		(while (and param1 (!= cursor text))
 			(= temp0 1)
-			(= cursor (- cursor x))
-			(if mark (-- mark) else (= topString (- topString x)))
+			(-= cursor x)
+			(if mark (-- mark) else (-= topString x))
 			(-- param1)
 		)
 		(return (if temp0 (self draw:) 1 else 0))

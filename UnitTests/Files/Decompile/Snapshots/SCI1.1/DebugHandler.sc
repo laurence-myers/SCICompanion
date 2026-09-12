@@ -491,12 +491,12 @@
 			(< temp2 (- (newDText nsRight?) (newDText nsLeft?)))
 				(= temp2 (- (newDText nsRight?) (newDText nsLeft?)))
 			)
-			(= temp1
-				(+ temp1 (- (newDText nsBottom?) (newDText nsTop?)) 1)
+			(+= temp1
+				(+ (- (newDText nsBottom?) (newDText nsTop?)) 1)
 			)
 			(if (> temp1 140)
 				(= temp1 4)
-				(= temp0 (+ temp0 temp2 10))
+				(+= temp0 (+ temp2 10))
 				(= temp2 0)
 			)
 			(= gInvFirst (gInv next: gInvFirst))

@@ -79,7 +79,7 @@
 		(while (and temp9 (< temp7 nFiles))
 			(StrCpy theText @temp0)
 			(++ temp7)
-			(= theText (+ theText 13))
+			(+= theText 13)
 			(= temp9 (FileIO 9 @temp0))
 		)
 		(StrAt text (* nFiles 13) 0)

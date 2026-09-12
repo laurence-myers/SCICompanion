@@ -243,8 +243,8 @@
 	)
 )
 
-(procedure (AddToScore param1)
-	(= gScore (+ gScore param1))
+(procedure (AddToScore theGScore)
+	(+= gScore theGScore)
 	(statusLineCode doit:)
 	(rm0Sound
 		priority: 15
@@ -278,9 +278,7 @@
 	(= temp0
 		(GetAngle (param1 x?) (param1 y?) temp1 temp2)
 	)
-	(param1
-		setHeading: temp0 (if (IsObject temp3) temp3 else 0)
-	)
+	(param1 setHeading: temp0 (and (IsObject temp3) temp3))
 )
 
 (procedure (Die theGDeathReason)
@@ -316,7 +314,7 @@
 		(Prints {polyBuffer is not a pointer. Polygon ignored.})
 	else
 		(= temp0 (Memory 5 param1))
-		(= param1 (+ param1 2))
+		(+= param1 2)
 		(while temp0
 			(gRoom
 				addObstacle:
@@ -338,7 +336,7 @@
 			(return 0)
 		else
 			(= temp0 (Memory 5 param1))
-			(= param1 (+ param1 2))
+			(+= param1 2)
 			(return (localproc_0403 param1 &rest))
 		)
 	)
@@ -1168,9 +1166,7 @@
 				(param1 isKindOf: IconItem)
 				(& (param1 signal?) $0004)
 			)
-			(= gCheckedIcons
-				(| gCheckedIcons (>> $8000 (gIconBar indexOf: param1)))
-			)
+			(|= gCheckedIcons (>> $8000 (gIconBar indexOf: param1)))
 		)
 	)
 )

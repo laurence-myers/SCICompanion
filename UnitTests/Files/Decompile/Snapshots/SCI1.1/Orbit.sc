@@ -68,7 +68,7 @@
 		)
 		(if xTilt
 			(= temp2 (CosMult xTilt temp2))
-			(= temp3 (+ temp3 (SinMult xTilt temp2)))
+			(+= temp3 (SinMult xTilt temp2))
 		)
 		(= x (+ centerObjX temp2))
 		(= y (- centerObjY temp3))

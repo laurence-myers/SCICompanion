@@ -19,6 +19,7 @@
 #include "DisassembleHelper.h"
 #include "ControlFlowGraph.h"
 #include "DecompilerNew.h"
+#include "DecompilerAstPasses.h"
 #include "DecompilerFallback.h"
 #include "format.h"
 #include "DecompilerConfig.h"
@@ -810,80 +811,6 @@ private:
 	stack<bool> useHex;
 };
 
-class CollapseNots : public IExploreNode
-{
-public:
-	CollapseNots(FunctionBase &func)
-	{
-		func.Traverse(*this);
-	}
-
-	void ExploreNode(SyntaxNode &node, ExploreNodeState state) override
-	{
-		if (state == ExploreNodeState::Pre)
-		{
-			ConditionalExpression *condExp = SafeSyntaxNode<ConditionalExpression>(&node);
-			if (condExp)
-			{
-				_Process(condExp->GetStatements()[0]);
-			}
-		}
-	}
-
-private:
-	unique_ptr<SyntaxNode> _PutInNot(unique_ptr<SyntaxNode> other)
-	{
-		unique_ptr<UnaryOp> unaryOp = make_unique<UnaryOp>();
-		unaryOp->Operator = UnaryOperator::LogicalNot;
-		unaryOp->SetStatement1(move(other));
-		return unique_ptr<SyntaxNode>(move(unaryOp));
-	}
-
-	void _Process(unique_ptr<SyntaxNode> &statement)
-	{
-		// If this is a binary op of and or or, then procede onward with each one
-		// See if we have a binary operation underneath us for an and/or
-		BinaryOp *binOp = SafeSyntaxNode<BinaryOp>(statement.get());
-		if (binOp && ((binOp->Operator == BinaryOperator::LogicalAnd) || (binOp->Operator == BinaryOperator::LogicalOr)))
-		{
-			_Process(binOp->GetStatement1Internal());
-			_Process(binOp->GetStatement2Internal());
-		}
-		else
-		{
-			// If this is a not
-			UnaryOp *unary = SafeSyntaxNode<UnaryOp>(statement.get());
-			if (unary && (unary->Operator == UnaryOperator::LogicalNot))
-			{
-				// Then let's see if it contains a binary op, in which case, we'll apply DeMorgan's theorem.
-				BinaryOp *child = SafeSyntaxNode<BinaryOp>(unary->GetStatement1());
-				if (child && ((child->Operator == BinaryOperator::LogicalAnd) || (child->Operator == BinaryOperator::LogicalOr)))
-				{
-					// Ok. We need to replace the unary op with its child.
-					unique_ptr<SyntaxNode> binaryOpStatement = move(unary->GetStatement1Internal());
-					statement = move(binaryOpStatement);
-					// That should do it.
-					// Now we need to switch the operator
-					if (child->Operator == BinaryOperator::LogicalAnd)
-					{
-						child->Operator = BinaryOperator::LogicalOr;
-					}
-					else
-					{
-						child->Operator = BinaryOperator::LogicalAnd;
-					}
-					
-					// Then we need to go insert unary nots in front of both statements of the binary operator.
-					unique_ptr<SyntaxNode> binOpStatement1 = move(child->GetStatement1Internal());
-					child->SetStatement1(_PutInNot(move(binOpStatement1)));
-					unique_ptr<SyntaxNode> binOpStatement2 = move(child->GetStatement2Internal());
-					child->SetStatement2(_PutInNot(move(binOpStatement2)));
-				}
-			}
-		}
-	}
-};
-
 class ResolveCallSiteParameters : public IExploreNode
 {
 public:
@@ -1192,7 +1119,11 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 
 	if (!lookups.DecompileResults().IsAborted())
 	{
-		CollapseNots collapseNots(func);
+		if (success)
+		{
+			AstPassOptions astOptions;
+			RunDecompilerAstPasses(func, astOptions, &lookups.DecompileResults());
+		}
 		ResolveCallSiteParameters resolveCallSiteParameters(lookups, func);
 		DetermineHexValues determineHexValues(func);
 		DetermineNegativeValues determinedNegValues(func);

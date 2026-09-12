@@ -39,12 +39,12 @@
 		(if (> theTheLsLeft theLsRight)
 			(= theLsRight theTheLsLeft)
 		)
-		(= temp0 (+ temp0 2))
+		(+= temp0 2)
 	)
-	(= theLsLeft (- theLsLeft 2))
-	(= theLsTop (- theLsTop 2))
-	(= theLsRight (+ theLsRight 2))
-	(= theLsBottom (+ theLsBottom 2))
+	(-= theLsLeft 2)
+	(-= theLsTop 2)
+	(+= theLsRight 2)
+	(+= theLsBottom 2)
 )
 
 (procedure (localproc_0203 param1 param2 param3 param4)
@@ -81,7 +81,8 @@
 			)
 			(= temp0 (GetDistance param1 param2 param3 param4))
 			(return
-				(if temp0
+				(and
+					temp0
 					(/
 						(Abs
 							(localproc_0203
@@ -93,8 +94,6 @@
 						)
 						temp0
 					)
-				else
-					0
 				)
 			)
 		else
@@ -137,7 +136,7 @@
 			(StrCat @temp8 {_})
 			(StrCat text @temp8)
 			(TextSize @temp4 @temp8 0 0)
-			(= temp48 (+ temp48 temp7))
+			(+= temp48 temp7)
 			(Memory 6 (+ temp1 4) temp48)
 			(if (not (Memory 5 (+ temp1 2)))
 				(= temp49 (StrAt temp2 0))
@@ -146,12 +145,12 @@
 						(<= 65 temp49)
 						(<= (= temp49 (StrAt temp2 0)) 90)
 					)
-					(= temp49 (+ temp49 32))
+					(+= temp49 32)
 				)
 				(Memory 6 (+ temp1 2) temp49)
 			)
 			(++ temp0)
-			(= temp1 (+ temp1 6))
+			(+= temp1 6)
 		)
 		(DrawStatus text)
 	)
@@ -173,7 +172,7 @@
 				(return 0)
 			)
 			(++ temp1)
-			(= theArray (+ theArray 6))
+			(+= theArray 6)
 		)
 		(return (param1 claimed: 1))
 	)
@@ -308,17 +307,17 @@
 	(method (undo param1 &tmp temp0 temp1 temp2 temp3)
 		(self eachElementDo: 111 release:)
 		(= closed (Memory 5 param1))
-		(= param1 (+ param1 2))
+		(+= param1 2)
 		(= temp1 (Memory 5 param1))
-		(= param1 (+ param1 2))
+		(+= param1 2)
 		(= temp3 (Memory 5 param1))
-		(= param1 (+ param1 2))
+		(+= param1 2)
 		(= temp2 0)
 		(while (< temp2 temp1)
-			(= param1 (+ param1 2))
+			(+= param1 2)
 			(self add: (Memory 5 param1) (Memory 5 param1) 0)
 			(++ temp2)
-			(= param1 (+ param1 2))
+			(+= param1 2)
 		)
 		(self setCur: (FindKey elements (self at: temp3)) 0)
 	)
@@ -327,21 +326,21 @@
 		(= temp0 (Memory 2 (* 2 (+ (* 2 size) 3))))
 		(= temp1 temp0)
 		(Memory 6 temp1 closed)
-		(= temp1 (+ temp1 2))
+		(+= temp1 2)
 		(Memory 6 temp1 size)
-		(= temp1 (+ temp1 2))
+		(+= temp1 2)
 		(Memory 6 temp1 (self indexOf: curPt))
-		(= temp1 (+ temp1 2))
+		(+= temp1 2)
 		(= _EditablePolygonFirst (self first:))
 		(while _EditablePolygonFirst
 			(= temp3 (NodeValue _EditablePolygonFirst))
 			(Memory 6 temp1 (temp3 x?))
-			(= temp1 (+ temp1 2))
+			(+= temp1 2)
 			(Memory 6 temp1 (temp3 y?))
 			(= _EditablePolygonFirst
 				(NextNode _EditablePolygonFirst)
 			)
-			(= temp1 (+ temp1 2))
+			(+= temp1 2)
 		)
 		(return temp0)
 	)
@@ -495,7 +494,7 @@
 			(Memory 6 temp0 (temp3 x?))
 			(Memory 6 (+ temp0 2) (temp3 y?))
 			(= temp2 (NextNode temp2))
-			(= temp0 (+ temp0 4))
+			(+= temp0 4)
 		)
 		(if (== srcList 1)
 			(gAltPolyList
@@ -544,7 +543,7 @@
 				(= temp2 (NodeValue temp3))
 				(Format @temp4 943 0 (temp2 x?) (temp2 y?))
 				(= temp1 (+ (StrLen @temp4) 1))
-				(= temp0 (+ temp0 temp1))
+				(+= temp0 temp1)
 				(if (>= temp0 80)
 					(param1 writeString: {\n\n\t\t\t\t\t\t})
 					(= temp14 1)
@@ -634,10 +633,10 @@
 			)
 			(if (not temp8)
 				(cond 
-					((> (= temp5 (- temp4 temp9)) 180) (= temp5 (- temp5 360)))
-					((< temp5 -180) (= temp5 (+ temp5 360)))
+					((> (= temp5 (- temp4 temp9)) 180) (-= temp5 360))
+					((< temp5 -180) (+= temp5 360))
 				)
-				(= temp7 (+ temp7 temp5))
+				(+= temp7 temp5)
 			)
 			(= temp9 temp4)
 			(if
@@ -708,7 +707,7 @@
 		(= local0 1)
 		(gGame setCursor: 999 1)
 		(self readObstacles:)
-		(self changeState: (if size 1 else 0))
+		(self changeState: (and size 1))
 		(self draw:)
 	)
 	
@@ -717,7 +716,7 @@
 		(repeat
 			(= newEvent (Event new:))
 			(if
-			(not (if curMenu (curMenu handleEvent: newEvent)))
+			(not (and curMenu (curMenu handleEvent: newEvent)))
 				(GlobalToLocal newEvent)
 				(if (self handleEvent: newEvent) (break))
 			)
@@ -1183,7 +1182,7 @@
 				srcList: param2
 			)
 			(++ temp0)
-			(= temp1 (+ temp1 4))
+			(+= temp1 4)
 		)
 		(polyEditAdd closed: 1)
 	)

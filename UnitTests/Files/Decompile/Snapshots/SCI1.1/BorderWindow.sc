@@ -17,10 +17,10 @@
 		param5
 		param12
 	)
-	(= param1 (- param1 param10))
-	(= param2 (- param2 param10))
-	(= param4 (+ param4 param10))
-	(= param3 (+ param3 param10))
+	(-= param1 param10)
+	(-= param2 param10)
+	(+= param4 param10)
+	(+= param3 param10)
 	(Graph
 		11
 		param1
@@ -127,7 +127,7 @@
 	(method (open &tmp temp0 temp1)
 		(SetPort 0)
 		(= temp1 1)
-		(if (!= priority -1) (= temp1 (| temp1 $0002)))
+		(if (!= priority -1) (|= temp1 $0002))
 		(= lsTop (- top bevelWid))
 		(= lsLeft (- left bevelWid))
 		(= lsRight (+ right bevelWid shadowWid))
@@ -200,15 +200,15 @@
 	
 	(method (open &tmp temp0 temp1 theTop theLeft theBottom theRight)
 		(= temp0 1)
-		(if (!= priority -1) (= temp0 (| temp0 $0002)))
+		(if (!= priority -1) (|= temp0 $0002))
 		(= theTop top)
 		(= theLeft left)
 		(= theBottom bottom)
 		(= theRight right)
-		(= top (- top (+ bevelWid topBordHgt)))
-		(= left (- left (+ bevelWid sideBordWid)))
-		(= bottom (+ bottom bevelWid botBordHgt))
-		(= right (+ right bevelWid sideBordWid))
+		(-= top (+ bevelWid topBordHgt))
+		(-= left (+ bevelWid sideBordWid))
+		(+= bottom (+ bevelWid botBordHgt))
+		(+= right (+ bevelWid sideBordWid))
 		(= xOffset (+ bevelWid sideBordWid))
 		(= yOffset (+ bevelWid topBordHgt))
 		(super open:)

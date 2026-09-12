@@ -22,6 +22,7 @@
 #include "CompileContext.h"
 #include "CrystalScriptStream.h"
 #include "CCrystalTextBuffer.h"
+#include "DecompilerAstPasses.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -116,7 +117,10 @@ std::string NormalizeWhitespace(const std::string &text)
 std::string ApplyAllPasses(const std::string &body)
 {
     std::unique_ptr<sci::Script> script = ParseSierraScript(WrapProcedure(body));
-    // WP3 inserts the AST pass driver here, over each procedure. Until then
-    // this is a parse/print identity, which the harness self-test relies on.
+    AstPassOptions options;
+    for (auto &proc : script->GetProceduresNC())
+    {
+        RunDecompilerAstPasses(*proc, options, nullptr);
+    }
     return NormalizeWhitespace(ScriptToText(*script));
 }

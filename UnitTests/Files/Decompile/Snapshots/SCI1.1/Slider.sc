@@ -163,7 +163,7 @@
 			(= temp6
 				(if temp7 (self doit: temp3) else (self doit:))
 			)
-			(= temp4 (- temp4 (* yStep temp5)))
+			(-= temp4 (* yStep temp5))
 		)
 		(return temp6)
 	)

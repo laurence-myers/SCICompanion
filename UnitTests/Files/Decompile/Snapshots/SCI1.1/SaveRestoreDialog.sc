@@ -874,7 +874,7 @@ code_088c:
 			(localproc_0218)
 			(= temp0 0)
 		)
-		(return (if (== temp0 newName) else (== temp0 button1)))
+		(return (or (== temp0 newName) (== temp0 button1)))
 	)
 )
 

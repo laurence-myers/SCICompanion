@@ -39,8 +39,9 @@
 				(gTheDoits delete: self)
 				(if
 					(not
-						(if
-						(and (IsObject client) (IsObject (client actions?)))
+						(and
+							(IsObject client)
+							(IsObject (client actions?))
 							((client actions?) doVerb: theVerb)
 						)
 					)
@@ -76,7 +77,7 @@
 	)
 	
 	(method (init param1)
-		(self initialize: (if argc param1 else 0))
+		(self initialize: (and argc param1))
 		(if (self respondsTo: 5)
 			(gCast add: self)
 		else
@@ -203,7 +204,7 @@
 				((& state $0004)
 					(if
 						(or
-							(not (if (or nsLeft nsRight nsTop) else nsBottom))
+							(not (or nsLeft nsRight nsTop nsBottom))
 							(and
 								(<= nsLeft temp0)
 								(<= temp0 nsRight)
@@ -219,7 +220,7 @@
 				((IsObject onMeCheck) (AvoidPath temp0 temp1 onMeCheck))
 				(
 					(or
-						(not (if (or nsLeft nsRight nsTop) else nsBottom))
+						(not (or nsLeft nsRight nsTop nsBottom))
 						(and
 							(<= nsLeft temp0)
 							(<= temp0 nsRight)
@@ -247,7 +248,7 @@
 	)
 	
 	(method (setName param1)
-		(= state (| state $0001))
+		(|= state $0001)
 		(= name (Memory 1 (+ (StrLen param1) 1)))
 		(StrCpy name param1)
 	)
@@ -256,19 +257,19 @@
 		(switch theOnMeCheck
 			(26505
 				(= onMeCheck theOnMeCheck)
-				(= state (& state $fffb))
+				(&= state $fffb)
 			)
 			(2
 				(= onMeCheck theOnMeCheck_2)
-				(= state (& state $fffb))
+				(&= state $fffb)
 			)
 			(1
 				(= temp0 (= onMeCheck 0))
 				(while (< temp0 (- argc 1))
-					(= onMeCheck (| onMeCheck [theOnMeCheck_2 temp0]))
+					(|= onMeCheck [theOnMeCheck_2 temp0])
 					(++ temp0)
 				)
-				(= state (| state $0004))
+				(|= state $0004)
 			)
 		)
 	)

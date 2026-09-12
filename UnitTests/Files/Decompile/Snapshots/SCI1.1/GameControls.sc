@@ -35,7 +35,7 @@
 		(and gPseudoMouse (gPseudoMouse respondsTo: 173))
 			(gPseudoMouse stop:)
 		)
-		(= state (| state $0020))
+		(|= state $0020)
 		(if (IsObject window)
 			(window open:)
 		else
@@ -92,12 +92,12 @@
 		(if window (window dispose:) (= window 0))
 		(if (& state $0020)
 			(gSounds pause: 0)
-			(= state (& state $ffdf))
+			(&= state $ffdf)
 		)
 	)
 	
 	(method (select param1 param2)
-		(param1 select: (if (>= argc 2) param2 else 0))
+		(param1 select: (and (>= argc 2) param2))
 	)
 	
 	(method (swapCurIcon)

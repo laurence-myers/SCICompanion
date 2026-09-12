@@ -92,6 +92,23 @@ namespace UnitTests
         return *script.GetProceduresNC()[0];
     }
 
+    // Extracts the procedure body from normalized "(procedure (astCase ...) BODY)"
+    // text, so a test can compare the body exactly.
+    static std::string Body(const std::string &full)
+    {
+        size_t proc = full.find("(procedure ");
+        size_t sigClose = (proc == std::string::npos) ? full.find(')') : full.find(')', proc);
+        size_t procClose = full.rfind(')');          // closes (procedure ...)
+        if ((sigClose == std::string::npos) || (procClose <= sigClose))
+        {
+            return full;
+        }
+        std::string inner = full.substr(sigClose + 1, procClose - sigClose - 1);
+        size_t start = inner.find_first_not_of(' ');
+        size_t end = inner.find_last_not_of(' ');
+        return (start == std::string::npos) ? std::string() : inner.substr(start, end - start + 1);
+    }
+
     TEST_CLASS(TestAstPasses)
     {
     public:
@@ -131,6 +148,79 @@ namespace UnitTests
             std::string actual = ApplyAllPasses("(if (and a (or b c)) (= t 1))");
             Assert::IsTrue(actual.find("(and a (or b c))") != std::string::npos,
                 L"the compound condition should print as written");
+        }
+
+        // --- IfThenToAnd ---
+
+        TEST_METHOD(IfToAnd_NestedMerge)
+        {
+            Assert::AreEqual(std::string("(if (and a b) (= t 1))"),
+                Body(ApplyAllPasses("(if a (if b (= t 1)))")));
+        }
+        TEST_METHOD(IfToAnd_NestedChain)
+        {
+            Assert::AreEqual(std::string("(if (and a b c) (= t 1))"),
+                Body(ApplyAllPasses("(if a (if b (if c (= t 1))))")));
+        }
+        TEST_METHOD(IfToAnd_InnerElseNotMerged)
+        {
+            std::string out = ApplyAllPasses("(if a (if b (= t 1) else (= t 2)))");
+            Assert::IsTrue(out.find("(and") == std::string::npos, L"must not merge when inner has an else");
+        }
+        TEST_METHOD(IfToAnd_ValueReturn)
+        {
+            Assert::AreEqual(std::string("(return (and a b))"),
+                Body(ApplyAllPasses("(return (if a b))")));
+        }
+        TEST_METHOD(IfToAnd_ValueSendArg)
+        {
+            Assert::AreEqual(std::string("(self foo: (and a b))"),
+                Body(ApplyAllPasses("(self foo: (if a b))")));
+        }
+        TEST_METHOD(IfToAnd_ElseZero)
+        {
+            Assert::AreEqual(std::string("(return (and a b))"),
+                Body(ApplyAllPasses("(return (if a b else 0))")));
+        }
+        TEST_METHOD(IfToAnd_AssignValueKeptAsIf)
+        {
+            std::string out = ApplyAllPasses("(= t (if a b))");
+            Assert::IsTrue(out.find("(if a") != std::string::npos, L"an assignment value stays an if");
+            Assert::IsTrue(out.find("(and") == std::string::npos, L"an assignment value is not an and");
+        }
+        TEST_METHOD(IfToAnd_ControlFlowNotAbsorbed)
+        {
+            std::string out = ApplyAllPasses("(return (if a (return 1) else 0))");
+            Assert::IsTrue(out.find("(and") == std::string::npos, L"a return must not become an and operand");
+        }
+
+        // --- DoubleNot ---
+
+        TEST_METHOD(DoubleNot_BooleanCollapses)
+        {
+            Assert::AreEqual(std::string("(if a (= t 1))"),
+                Body(ApplyAllPasses("(if (not (not a)) (= t 1))")));
+        }
+        TEST_METHOD(DoubleNot_ValueKept)
+        {
+            std::string out = ApplyAllPasses("(= t (not (not a)))");
+            Assert::IsTrue(out.find("(not (not a))") != std::string::npos, L"a value double-not is kept");
+        }
+
+        // --- MathAssignment ---
+
+        TEST_METHOD(Math_AddAssign)
+        {
+            Assert::AreEqual(std::string("(+= t 1)"), Body(ApplyAllPasses("(= t (+ t 1))")));
+        }
+        TEST_METHOD(Math_OrAssign)
+        {
+            Assert::AreEqual(std::string("(|= t 4)"), Body(ApplyAllPasses("(= t (| t 4))")));
+        }
+        TEST_METHOD(Math_NotWhenOperandOrderDiffers)
+        {
+            std::string out = ApplyAllPasses("(= t (+ 1 t))");
+            Assert::IsTrue(out.find("(= t (+ 1 t))") != std::string::npos, L"(+ 1 t) is not a compound assign");
         }
 
         // The walker reaches every kind of child in a script that uses many

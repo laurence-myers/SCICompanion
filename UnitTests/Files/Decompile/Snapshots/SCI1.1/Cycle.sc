@@ -135,7 +135,7 @@
 	
 	(method (init param1 param2)
 		(super
-			init: param1 (param1 lastCel:) 1 (if (== argc 2) param2 else 0)
+			init: param1 (param1 lastCel:) 1 (and (== argc 2) param2)
 		)
 	)
 )
@@ -151,7 +151,7 @@
 	)
 	
 	(method (init param1 param2)
-		(super init: param1 0 -1 (if (== argc 2) param2 else 0))
+		(super init: param1 0 -1 (and (== argc 2) param2))
 	)
 )
 
@@ -217,7 +217,7 @@
 	)
 	
 	(method (onTarget)
-		(return (if (== (client x?) x) (== (client y?) y) else 0))
+		(return (and (== (client x?) x) (== (client y?) y)))
 	)
 	
 	(method (motionCue)
@@ -248,10 +248,9 @@
 	
 	(method (onTarget)
 		(return
-			(if (<= (Abs (- (client x?) x)) (client xStep?))
+			(and
+				(<= (Abs (- (client x?) x)) (client xStep?))
 				(<= (Abs (- (client y?) y)) (client yStep?))
-			else
-				0
 			)
 		)
 	)

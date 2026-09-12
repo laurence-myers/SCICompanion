@@ -53,10 +53,10 @@
 	
 	(method (init &tmp temp0)
 		(= temp0 (if (& signal $0020) gAddToPics else gCast))
-		(= signal (& signal $7fff))
+		(&= signal $7fff)
 		(if (not (temp0 contains: self))
 			(= lsRight (= lsBottom (= lsLeft (= lsTop 0))))
-			(= signal (& signal $ff77))
+			(&= signal $ff77)
 		)
 		(BaseSetter self)
 		(temp0 add: self)
@@ -70,7 +70,7 @@
 	
 	(method (dispose)
 		(self startUpd: hide:)
-		(= signal (| signal $8000))
+		(|= signal $8000)
 	)
 	
 	(method (showSelf)
@@ -95,7 +95,7 @@
 			(and (not (IsObject onMeCheck)) (& signal $1000))
 				(if
 					(or
-						(not (if (or nsLeft nsRight nsTop) else nsBottom))
+						(not (or nsLeft nsRight nsTop nsBottom))
 						(and
 							(<= nsLeft temp0)
 							(<= temp0 nsRight)
@@ -131,33 +131,33 @@
 	)
 	
 	(method (stopUpd)
-		(= signal (| signal $0001))
-		(= signal (& signal $fffd))
+		(|= signal $0001)
+		(&= signal $fffd)
 	)
 	
 	(method (forceUpd)
-		(= signal (| signal $0040))
+		(|= signal $0040)
 	)
 	
 	(method (startUpd)
-		(= signal (| signal $0002))
-		(= signal (& signal $fffe))
+		(|= signal $0002)
+		(&= signal $fffe)
 	)
 	
 	(method (setPri thePriority)
 		(cond 
-			((== argc 0) (= signal (| signal $0010)))
-			((== thePriority -1) (= signal (& signal $ffef)))
-			(else (= priority thePriority) (= signal (| signal $0010)))
+			((== argc 0) (|= signal $0010))
+			((== thePriority -1) (&= signal $ffef))
+			(else (= priority thePriority) (|= signal $0010))
 		)
 		(self forceUpd:)
 	)
 	
 	(method (setLoop theLoop)
 		(cond 
-			((== argc 0) (= signal (| signal $0800)))
-			((== theLoop -1) (= signal (& signal $f7ff)))
-			(else (= loop theLoop) (= signal (| signal $0800)))
+			((== argc 0) (|= signal $0800))
+			((== theLoop -1) (&= signal $f7ff))
+			(else (= loop theLoop) (|= signal $0800))
 		)
 		(self forceUpd:)
 	)
@@ -181,25 +181,25 @@
 	
 	(method (ignoreActors param1)
 		(if (or (== 0 argc) param1)
-			(= signal (| signal $4000))
+			(|= signal $4000)
 		else
-			(= signal (& signal $bfff))
+			(&= signal $bfff)
 		)
 	)
 	
 	(method (hide)
-		(= signal (| signal $0008))
+		(|= signal $0008)
 	)
 	
 	(method (show)
-		(= signal (& signal $fff7))
+		(&= signal $fff7)
 	)
 	
 	(method (delete)
 		(if (& signal $8000)
-			(= signal (& signal $7fff))
+			(&= signal $7fff)
 			(cond 
-				((gAddToPics contains: self) (gAddToPics delete: self) (= signal (& signal $ffdf)))
+				((gAddToPics contains: self) (gAddToPics delete: self) (&= signal $ffdf))
 				((& signal $0020) (gCast delete: self) (gAddToPics add: self) (return))
 				(else (gCast delete: self))
 			)
@@ -212,9 +212,9 @@
 	
 	(method (addToPic)
 		(if (gCast contains: self)
-			(= signal (| signal $8021))
+			(|= signal $8021)
 		else
-			(= signal (| signal $0020))
+			(|= signal $0020)
 			(self init:)
 		)
 	)
@@ -231,11 +231,8 @@
 	
 	(method (setScale param1 &tmp temp0 temp1 temp2 [temp3 40])
 		(cond 
-			((not argc)
-				(= scaleSignal (| scaleSignal $0001))
-				(= scaleSignal (& scaleSignal (~ $0002)))
-			)
-			((not param1) (= scaleSignal (& scaleSignal (~ (| $0001 $0002)))))
+			((not argc) (|= scaleSignal $0001) (&= scaleSignal (~ $0002)))
+			((not param1) (&= scaleSignal (~ (| $0001 $0002))))
 			((< param1 (gRoom vanishingY?))
 				(Printf
 					{<%s setScale:> y value less than vanishingY}
@@ -246,7 +243,7 @@
 				(= temp0 (- param1 (gRoom vanishingY?)))
 				(= temp1 (- 190 param1))
 				(= temp2 (+ (/ (* temp1 100) temp0) 100))
-				(= scaleSignal (| scaleSignal $0001 $0002))
+				(|= scaleSignal (| $0001 $0002))
 				(= maxScale (/ (* temp2 128) 100))
 			)
 		)
@@ -350,8 +347,8 @@
 		(cond 
 			((not argc) (super setScale:))
 			((IsObject param1)
-				(= scaleSignal (| scaleSignal $0001))
-				(= scaleSignal (& scaleSignal (~ $0002)))
+				(|= scaleSignal $0001)
+				(&= scaleSignal (~ $0002))
 				(= scaler
 					(if (& (param1 -info-?) $8000)
 						(param1 new:)
@@ -596,16 +593,16 @@
 	
 	(method (ignoreHorizon param1)
 		(if (or (not argc) param1)
-			(= signal (| signal $2000))
+			(|= signal $2000)
 		else
-			(= signal (& signal $dfff))
+			(&= signal $dfff)
 		)
 	)
 	
-	(method (observeControl param1 &tmp temp0)
+	(method (observeControl theIllegalBits &tmp temp0)
 		(= temp0 0)
 		(while (< temp0 argc)
-			(= illegalBits (| illegalBits [param1 temp0]))
+			(|= illegalBits [theIllegalBits temp0])
 			(++ temp0)
 		)
 	)
@@ -613,7 +610,7 @@
 	(method (ignoreControl param1 &tmp temp0)
 		(= temp0 0)
 		(while (< temp0 argc)
-			(= illegalBits (& illegalBits (~ [param1 temp0])))
+			(&= illegalBits (~ [param1 temp0]))
 			(++ temp0)
 		)
 	)
@@ -647,11 +644,11 @@
 	
 	(method (inRect param1 param2 param3 param4)
 		(return
-			(if
-			(and (<= param1 x) (<= x param3) (<= param2 y))
+			(and
+				(<= param1 x)
+				(<= x param3)
+				(<= param2 y)
 				(<= y param4)
-			else
-				0
 			)
 		)
 	)
@@ -744,17 +741,17 @@
 			)
 			(else 
 				(= temp4 (GetAngle x y temp0 gRoomVanishingY))
-				(if (< 180 temp4) (= temp4 (- temp4 360)))
+				(if (< 180 temp4) (-= temp4 360))
 				(= temp4 (+ (/ (+ temp4 90) 2) (* 45 (- param1 2))))
 				(= temp2 (SinMult temp4 100))
 				(= temp3 (- (CosMult temp4 100)))
 			)
 		)
-		(= temp5 (/ temp5 5))
+		(/= temp5 5)
 		(while
 		(and (< (Abs temp3) temp5) (< (Abs temp2) temp5))
-			(= temp2 (* temp2 5))
-			(= temp3 (* temp3 5))
+			(*= temp2 5)
+			(*= temp3 5)
 		)
 		(= gRoomObstacles (gRoom obstacles?))
 		(if (and gRoomObstacles gEgoUseObstacles)
@@ -783,9 +780,7 @@
 	(method (setHeading theHeading param2)
 		(if argc (= heading theHeading))
 		(if looper
-			(looper
-				doit: self heading (if (>= argc 2) param2 else 0)
-			)
+			(looper doit: self heading (and (>= argc 2) param2))
 		else
 			(DirLoop self heading)
 			(if (and (>= argc 2) (IsObject param2))

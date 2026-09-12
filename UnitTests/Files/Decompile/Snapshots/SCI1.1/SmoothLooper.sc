@@ -123,7 +123,7 @@
 				(= newMover 0)
 			)
 		else
-			(= nextLoop (- nextLoop 16))
+			(-= nextLoop 16)
 			(client loop: nextLoop cel: 0 setCycle: End self)
 			(= nextLoop
 				(switch nextLoop

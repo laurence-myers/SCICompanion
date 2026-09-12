@@ -150,10 +150,7 @@
 					(and
 						(== (gEgo loop?) 8)
 						(!= curTicks -1)
-						(<=
-							(= curTicks (- curTicks (Abs (- gGameTime lastTicks))))
-							0
-						)
+						(<= (-= curTicks (Abs (- gGameTime lastTicks))) 0)
 					)
 					(= curTicks -1)
 					(super doit: &rest)

@@ -27,8 +27,8 @@
 	
 	(method (setTarget)
 		(if (!= (points at: value) -32768)
-			(= x (+ x (points at: value)))
-			(= y (+ y (points at: (++ value))))
+			(+= x (points at: value))
+			(+= y (points at: (++ value)))
 			(++ value)
 		)
 	)

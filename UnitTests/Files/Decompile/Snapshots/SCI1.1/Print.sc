@@ -42,10 +42,10 @@
 	(while (< temp3 temp1)
 		(if (== (StrAt param1 temp3) 37)
 			(switch (StrAt param1 (++ temp3))
-				(100 (= temp0 (+ temp0 5)))
-				(120 (= temp0 (+ temp0 4)))
+				(100 (+= temp0 5))
+				(120 (+= temp0 4))
 				(115
-					(= temp0 (+ temp0 (StrLen [param2 temp2])))
+					(+= temp0 (StrLen [param2 temp2]))
 				)
 			)
 			(++ temp2)
@@ -114,7 +114,7 @@
 		(if saveCursor (gGame setCursor: 999))
 		(if (not dialog) (= dialog (Dialog new:)))
 		(dialog
-			window: (if window else gWindow)
+			window: (or window gWindow)
 			name: {PODialog}
 			caller: self
 		)
@@ -124,7 +124,7 @@
 		(= temp4 (if (== y -1) (dialog nsTop?) else y))
 		(dialog moveTo: temp3 temp4)
 		(= temp1 (GetPort))
-		(dialog open: (if title 4 else 0) 15)
+		(dialog open: (and title 4) 15)
 		(return
 			(if modeless
 				(= gOldPort (GetPort))

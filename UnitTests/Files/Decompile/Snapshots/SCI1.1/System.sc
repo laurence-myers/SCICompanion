@@ -20,8 +20,8 @@
 )
 
 (procedure (UModulo param1 param2)
-	(= param1 (- param1 (* param2 (/ param1 param2))))
-	(if (< param1 0) (= param1 (+ param1 param2)))
+	(-= param1 (* param2 (/ param1 param2)))
+	(if (< param1 0) (+= param1 param2))
 	(return param1)
 )
 
@@ -122,9 +122,7 @@ code_02b2:
 (procedure (IsOneOf param1 param2 &tmp temp0)
 	(= temp0 0)
 	(while (< temp0 (- argc 1))
-		(if (== param1 [param2 temp0])
-			(return (if param1 else 1))
-		)
+		(if (== param1 [param2 temp0]) (return (or param1 1)))
 		(++ temp0)
 	)
 	(return 0)
@@ -344,7 +342,7 @@ code_02b2:
 			(-- param1)
 			(= temp0 (NextNode temp0))
 		)
-		(return (if temp0 (NodeValue temp0) else 0))
+		(return (and temp0 (NodeValue temp0)))
 	)
 	
 	(method (last)
@@ -502,10 +500,7 @@ code_02b2:
 			(
 				(and
 					ticks
-					(<=
-						(= ticks (- ticks (Abs (- gGameTime lastTicks))))
-						0
-					)
+					(<= (-= ticks (Abs (- gGameTime lastTicks))) 0)
 				)
 				(= ticks 0)
 				(self cue:)

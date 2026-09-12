@@ -18,33 +18,25 @@
 		(= gPEventX_2 (gPEvent x?))
 		(= gPEventY_2 (gPEvent y?))
 		(switch prevDir
-			(1
-				(= gPEventY_2 (- gPEventY_2 cursorInc))
-			)
+			(1 (-= gPEventY_2 cursorInc))
 			(2
-				(= gPEventX_2 (+ gPEventX_2 cursorInc))
-				(= gPEventY_2 (- gPEventY_2 cursorInc))
+				(+= gPEventX_2 cursorInc)
+				(-= gPEventY_2 cursorInc)
 			)
-			(3
-				(= gPEventX_2 (+ gPEventX_2 cursorInc))
-			)
+			(3 (+= gPEventX_2 cursorInc))
 			(4
-				(= gPEventX_2 (+ gPEventX_2 cursorInc))
-				(= gPEventY_2 (+ gPEventY_2 cursorInc))
+				(+= gPEventX_2 cursorInc)
+				(+= gPEventY_2 cursorInc)
 			)
-			(5
-				(= gPEventY_2 (+ gPEventY_2 cursorInc))
-			)
+			(5 (+= gPEventY_2 cursorInc))
 			(6
-				(= gPEventX_2 (- gPEventX_2 cursorInc))
-				(= gPEventY_2 (+ gPEventY_2 cursorInc))
+				(-= gPEventX_2 cursorInc)
+				(+= gPEventY_2 cursorInc)
 			)
-			(7
-				(= gPEventX_2 (- gPEventX_2 cursorInc))
-			)
+			(7 (-= gPEventX_2 cursorInc))
 			(8
-				(= gPEventX_2 (- gPEventX_2 cursorInc))
-				(= gPEventY_2 (- gPEventY_2 cursorInc))
+				(-= gPEventX_2 cursorInc)
+				(-= gPEventY_2 cursorInc)
 			)
 		)
 		(gGame setCursor: gCursorNumber 1 gPEventX_2 gPEventY_2)

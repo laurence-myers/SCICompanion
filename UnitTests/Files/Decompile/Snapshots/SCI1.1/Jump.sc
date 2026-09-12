@@ -55,10 +55,10 @@
 				)
 			)
 		)
-		(if (not (if waitApogeeX (< (* xStep gx) 0)))
+		(if (not (and waitApogeeX (< (* xStep gx) 0)))
 			(= waitApogeeX 0)
 		)
-		(if (not (if waitApogeeY (< (* yStep gy) 0)))
+		(if (not (and waitApogeeY (< (* yStep gy) 0)))
 			(= waitApogeeY 0)
 		)
 		(= b-moveCnt gGameTime)
@@ -74,8 +74,8 @@
 			(client x: (+ xLast xStep) y: (+ yLast yStep))
 			(= theXStep xStep)
 			(= theYStep yStep)
-			(= xStep (+ xStep gx))
-			(= yStep (+ yStep gy))
+			(+= xStep gx)
+			(+= yStep gy)
 			(if
 				(and
 					(not waitApogeeX)

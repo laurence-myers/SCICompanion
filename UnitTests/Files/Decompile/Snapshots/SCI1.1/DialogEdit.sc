@@ -260,11 +260,7 @@
 	
 	(method (select param1)
 		(self hide:)
-		(if param1
-			(= state (| state $0008))
-		else
-			(= state (& state (~ $0008)))
-		)
+		(if param1 (|= state $0008) else (&= state (~ $0008)))
 		(self draw:)
 	)
 	
@@ -287,7 +283,7 @@
 				)
 				(self moveTo: temp0 temp1)
 				(param1 dispose:)
-				(breakif (not (MouseStillDown)))
+				(breakif(not (MouseStillDown)))
 			)
 			(DrawStatus {_} 0 0)
 			(DrawStatus 0)
@@ -598,8 +594,8 @@
 	
 	(method (setSize &tmp [temp0 2] temp2 temp3)
 		(TextSize @temp0 text font 0 0)
-		(= temp2 (+ temp2 2))
-		(= temp3 (+ temp3 2))
+		(+= temp2 2)
+		(+= temp3 2)
 		(= nsBottom (+ nsTop temp2))
 		(= temp3 (* (/ (+ temp3 15) 16) 16))
 		(= nsRight (+ temp3 nsLeft))

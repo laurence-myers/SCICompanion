@@ -55,7 +55,7 @@
 			x: (WordAt points (+ value 2))
 			y: (WordAt points (+ value 3))
 		)
-		(= value (+ value (* cycleDir 4)))
+		(+= value (* cycleDir 4))
 		(if
 			(or
 				(and (== cycleDir 1) (>= value size))

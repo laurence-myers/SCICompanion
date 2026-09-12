@@ -139,15 +139,15 @@
 	)
 	
 	(method (doit)
-		(if (and (!= ticks -1) (> (- gGameTime ticks) 0))
-			(if
-				(and
-					(if (& gMessageType $0002) (== (DoAudio 6) -1) else 1)
-					(or (not keepWindow) (& gMessageType $0002))
-				)
-				(self dispose: disposeWhenDone)
-				(return 0)
+		(if
+			(and
+				(!= ticks -1)
+				(> (- gGameTime ticks) 0)
+				(if (& gMessageType $0002) (== (DoAudio 6) -1) else 1)
+				(or (not keepWindow) (& gMessageType $0002))
 			)
+			(self dispose: disposeWhenDone)
+			(return 0)
 		)
 		(return 1)
 	)
@@ -192,10 +192,11 @@
 	
 	(method (handleEvent param1)
 		(return
-			(cond 
-				((param1 claimed?))
-				((== ticks -1) (return 0))
-				(else
+			(or
+				(param1 claimed?)
+				(if (== ticks -1)
+					(return 0)
+				else
 					(if (not cueVal)
 						(switch (param1 type?)
 							(256 (= cueVal 0))
@@ -602,30 +603,27 @@
 			(+
 				nsLeft
 				(Max
-					(if view (CelWide view loop cel) else 0)
-					(if (IsObject bust)
+					(and view (CelWide view loop cel))
+					(and
+						(IsObject bust)
 						(+
 							(bust nsLeft?)
 							(CelWide (bust view?) (bust loop?) (bust cel?))
 						)
-					else
-						0
 					)
-					(if (IsObject eyes)
+					(and
+						(IsObject eyes)
 						(+
 							(eyes nsLeft?)
 							(CelWide (eyes view?) (eyes loop?) (eyes cel?))
 						)
-					else
-						0
 					)
-					(if (IsObject mouth)
+					(and
+						(IsObject mouth)
 						(+
 							(mouth nsLeft?)
 							(CelWide (mouth view?) (mouth loop?) (mouth cel?))
 						)
-					else
-						0
 					)
 				)
 			)
@@ -634,30 +632,27 @@
 			(+
 				nsTop
 				(Max
-					(if view (CelHigh view loop cel) else 0)
-					(if (IsObject bust)
+					(and view (CelHigh view loop cel))
+					(and
+						(IsObject bust)
 						(+
 							(bust nsTop?)
 							(CelHigh (bust view?) (bust loop?) (bust cel?))
 						)
-					else
-						0
 					)
-					(if (IsObject eyes)
+					(and
+						(IsObject eyes)
 						(+
 							(eyes nsTop?)
 							(CelHigh (eyes view?) (eyes loop?) (eyes cel?))
 						)
-					else
-						0
 					)
-					(if (IsObject mouth)
+					(and
+						(IsObject mouth)
 						(+
 							(mouth nsTop?)
 							(CelHigh (mouth view?) (mouth loop?) (mouth cel?))
 						)
-					else
-						0
 					)
 				)
 			)

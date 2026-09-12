@@ -27,11 +27,7 @@
 			)
 		)
 		(if temp0 (return))
-		(if (< param2 param3)
-			(= temp1 (+ temp1 4))
-		else
-			(= temp1 (- temp1 4))
-		)
+		(if (< param2 param3) (+= temp1 4) else (-= temp1 4))
 	)
 )
 
@@ -732,13 +728,13 @@ code_060d:
 		)
 		(= temp0 (PicNotValid))
 		(PicNotValid 0)
-		(= state (| state $0020))
+		(|= state $0020)
 		(= temp1
 			(self
 				drawInvWindow: (if argc param1 else gEgo) (gIconBar curIcon?)
 			)
 		)
-		(if (not temp1) (= state (& state $ffdf)))
+		(if (not temp1) (&= state $ffdf))
 		(PicNotValid temp0)
 		(return temp1)
 	)
@@ -746,7 +742,7 @@ code_060d:
 	(method (hide &tmp temp0)
 		(if (& state $0020)
 			(gSounds pause: 0)
-			(= state (& state $ffdf))
+			(&= state $ffdf)
 		)
 		(if window (window dispose:))
 		(if
@@ -838,11 +834,8 @@ code_060d:
 				)
 			else
 				(++ temp3)
-				(= temp5
-					(+
-						temp5
-						(CelWide (temp9 view?) (temp9 loop?) (temp9 cel?))
-					)
+				(+= temp5
+					(CelWide (temp9 view?) (temp9 loop?) (temp9 cel?))
 				)
 				(= temp7
 					(CelHigh (temp9 view?) (temp9 loop?) (temp9 cel?))
@@ -925,10 +918,10 @@ code_060d:
 							nsBottom: (+ (temp9 nsTop?) temp7)
 						)
 						(if (-- temp20)
-							(= temp17 (+ temp17 temp2))
+							(+= temp17 temp2)
 						else
 							(= temp20 local0)
-							(= temp18 (+ temp18 temp1))
+							(+= temp18 temp1)
 							(= temp17 temp19)
 						)
 					else
@@ -1089,7 +1082,7 @@ code_060d:
 		(self highlight: temp0 1)
 	)
 	
-	(method (drawInvWindow param1 param2 &tmp theTheCurPos theTheTheCurPos theTheTheTheCurPos theTheTheTheTheCurPos theTheTheTheTheCurPos_2_2 theTheTheTheTheTheCurPos_2_2 theTheTheTheTheCurPos_2 theTheTheTheCurPos_2 scrollableInventoryFirst temp9 temp10 temp11 temp12 temp13 temp14 temp15 temp16 temp17 temp18 theNumCols theCurPos scrollableInventoryWindow)
+	(method (drawInvWindow param1 param2 &tmp theTheCurPos theTheTheCurPos theTheTheTheCurPos theTheTheTheTheCurPos theTheTheTheTheCurPos_2_2 theTheTheTheTheTheCurPos_2_2 theTheTheTheTheCurPos_2 theTheTheTheCurPos_2 scrollableInventoryFirst temp9 temp10 temp11 temp12 temp13 temp14 temp15 theTheTheTheTheCurPos_3 theTheTheTheCurPos_3 theTheTheTheTheTheCurPos_3 theNumCols theCurPos scrollableInventoryWindow)
 		(= theTheTheTheTheTheCurPos_2_2 0)
 		(= theTheTheTheTheCurPos_2_2 theTheTheTheTheTheCurPos_2_2)
 		(= theTheTheTheTheCurPos theTheTheTheTheCurPos_2_2)
@@ -1126,11 +1119,8 @@ code_060d:
 				)
 			else
 				(++ theTheTheTheTheCurPos)
-				(= theTheTheTheTheTheCurPos_2_2
-					(+
-						theTheTheTheTheTheCurPos_2_2
-						(CelWide (temp9 view?) (temp9 loop?) (temp9 cel?))
-					)
+				(+= theTheTheTheTheTheCurPos_2_2
+					(CelWide (temp9 view?) (temp9 loop?) (temp9 cel?))
 				)
 				(= theTheTheTheCurPos_2
 					(CelHigh (temp9 view?) (temp9 loop?) (temp9 cel?))
@@ -1183,7 +1173,7 @@ code_060d:
 		)
 		(= theNumCols numCols)
 		(if theTheCurPos
-			(= temp17
+			(= theTheTheTheCurPos_3
 				(+
 					2
 					(if (scrollableInventoryWindow respondsTo: 367)
@@ -1193,7 +1183,7 @@ code_060d:
 					)
 				)
 			)
-			(= temp16
+			(= theTheTheTheTheCurPos_3
 				(+
 					4
 					(if (scrollableInventoryWindow respondsTo: 366)
@@ -1203,7 +1193,7 @@ code_060d:
 					)
 				)
 			)
-			(= temp18 temp16)
+			(= theTheTheTheTheTheCurPos_3 theTheTheTheTheCurPos_3)
 			(= theCurPos curPos)
 			(while
 				(and
@@ -1219,36 +1209,38 @@ code_060d:
 						(CelHigh (temp9 view?) (temp9 loop?) (temp9 cel?))
 					)
 					(temp9
-						nsLeft: (+
-							temp16
-							(/ (- theTheTheTheCurPos theTheTheTheCurPos_2) 2)
-						)
-						nsTop: (+
-							temp17
-							(/ (- theTheTheCurPos theTheTheTheCurPos_2) 2)
-						)
+						nsLeft:
+							(+
+								theTheTheTheTheCurPos_3
+								(/ (- theTheTheTheCurPos theTheTheTheCurPos_2) 2)
+							)
+						nsTop:
+							(+
+								theTheTheTheCurPos_3
+								(/ (- theTheTheCurPos theTheTheTheCurPos_2) 2)
+							)
 					)
 					(temp9
 						nsRight: (+ (temp9 nsLeft?) theTheTheTheTheCurPos_2)
 						nsBottom: (+ (temp9 nsTop?) theTheTheTheCurPos_2)
 					)
 					(if (-- theNumCols)
-						(= temp16 (+ temp16 theTheTheTheCurPos))
+						(+= theTheTheTheTheCurPos_3 theTheTheTheCurPos)
 					else
 						(= theNumCols numCols)
-						(= temp17 (+ temp17 theTheTheCurPos))
-						(= temp16 temp18)
+						(+= theTheTheTheCurPos_3 theTheTheCurPos)
+						(= theTheTheTheTheCurPos_3 theTheTheTheTheTheCurPos_3)
 					)
 				else
-					(= temp16 (temp9 nsLeft?))
-					(= temp17 (temp9 nsTop?))
+					(= theTheTheTheTheCurPos_3 (temp9 nsLeft?))
+					(= theTheTheTheCurPos_3 (temp9 nsTop?))
 				)
 				(temp9 show:)
 				(if (== temp9 param2) (temp9 highlight:))
 				(++ theCurPos)
 			)
 		)
-		(= temp16
+		(= theTheTheTheTheCurPos_3
 			(/
 				(-
 					(-
@@ -1266,7 +1258,7 @@ code_060d:
 				(scrollableInventoryWindow top?)
 			)
 		)
-		(= temp17 32767)
+		(= theTheTheTheCurPos_3 32767)
 		(if firstThru
 			(= scrollableInventoryFirst (self first:))
 			(while scrollableInventoryFirst
@@ -1279,18 +1271,20 @@ code_060d:
 						(CelHigh (temp9 view?) (temp9 loop?) (temp9 cel?))
 					)
 					(if (not (& (temp9 signal?) $0080))
-						(if (== temp17 32767)
-							(= temp17 (- temp11 theTheTheTheCurPos_2))
+						(if (== theTheTheTheCurPos_3 32767)
+							(= theTheTheTheCurPos_3 (- temp11 theTheTheTheCurPos_2))
 						)
 						(temp9
-							nsLeft: temp16
-							nsTop: temp17
-							nsBottom: (+ temp17 theTheTheTheCurPos_2)
-							nsRight: (+ temp16 theTheTheTheTheCurPos_2)
+							nsLeft: theTheTheTheTheCurPos_3
+							nsTop: theTheTheTheCurPos_3
+							nsBottom: (+ theTheTheTheCurPos_3 theTheTheTheCurPos_2)
+							nsRight: (+ theTheTheTheTheCurPos_3 theTheTheTheTheCurPos_2)
 						)
 					)
-					(= temp16 (+ (temp9 nsLeft?) theTheTheTheTheCurPos_2))
-					(= temp17 (temp9 nsTop?))
+					(= theTheTheTheTheCurPos_3
+						(+ (temp9 nsLeft?) theTheTheTheTheCurPos_2)
+					)
+					(= theTheTheTheCurPos_3 (temp9 nsTop?))
 					(temp9 signal: (& (temp9 signal?) $fffb))
 					(temp9 show:)
 				)
@@ -1316,18 +1310,9 @@ code_060d:
 	
 	(method (scroll param1)
 		(cond 
-			((and argc (> 0 param1))
-				(if (< (= curPos (- curPos scrollAmount)) 0)
-					(= curPos 0)
-				)
-			)
+			((and argc (> 0 param1)) (if (< (-= curPos scrollAmount) 0) (= curPos 0)))
 			(
-				(>
-					(= curPos (+ curPos scrollAmount))
-					(- size dispAmount)
-				)
-				(= curPos (- size dispAmount))
-			)
+			(> (+= curPos scrollAmount) (- size dispAmount)) (= curPos (- size dispAmount)))
 		)
 		(= firstThru 0)
 		(selectIcon select:)

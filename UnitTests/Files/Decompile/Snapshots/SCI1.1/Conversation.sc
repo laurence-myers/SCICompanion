@@ -24,7 +24,7 @@
 	(method (showSelf &tmp [temp0 40])
 		(= whoSays
 			(gMessager
-				findTalker: (Message 0 modNum noun verb case (if sequence else 1))
+				findTalker: (Message 0 modNum noun verb case (or sequence 1))
 			)
 		)
 		(if (not (IsObject whoSays))

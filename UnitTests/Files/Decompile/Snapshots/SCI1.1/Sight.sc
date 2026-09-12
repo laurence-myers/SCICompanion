@@ -12,15 +12,11 @@
 (procedure (IsOnScreen param1)
 	(return
 		(not
-			(if
-				(and
-					(<= 0 (param1 x?))
-					(<= (param1 x?) 319)
-					(<= 0 (- (param1 y?) (param1 z?)))
-				)
+			(and
+				(<= 0 (param1 x?))
+				(<= (param1 x?) 319)
+				(<= 0 (- (param1 y?) (param1 z?)))
 				(<= (- (param1 y?) (param1 z?)) 189)
-			else
-				0
 			)
 		)
 	)
@@ -77,7 +73,7 @@
 )
 
 (procedure (AngleDiff param1 param2)
-	(if (>= argc 2) (= param1 (- param1 param2)))
+	(if (>= argc 2) (-= param1 param2))
 	(return
 		(cond 
 			((<= param1 -180) (+ param1 360))

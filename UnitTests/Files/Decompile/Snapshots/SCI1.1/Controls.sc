@@ -47,19 +47,11 @@
 	)
 	
 	(method (enable param1)
-		(if param1
-			(= state (| state $0001))
-		else
-			(= state (& state (~ $0001)))
-		)
+		(if param1 (|= state $0001) else (&= state (~ $0001)))
 	)
 	
 	(method (select param1)
-		(if param1
-			(= state (| state $0008))
-		else
-			(= state (& state (~ $0008)))
-		)
+		(if param1 (|= state $0008) else (&= state (~ $0008)))
 		(self draw:)
 	)
 	
@@ -85,15 +77,11 @@
 	
 	(method (check param1)
 		(return
-			(if
-				(and
-					(>= (param1 x?) nsLeft)
-					(>= (param1 y?) nsTop)
-					(< (param1 x?) nsRight)
-				)
+			(and
+				(>= (param1 x?) nsLeft)
+				(>= (param1 y?) nsTop)
+				(< (param1 x?) nsRight)
 				(< (param1 y?) nsBottom)
-			else
-				0
 			)
 		)
 	)
@@ -111,7 +99,7 @@
 						(= temp1 temp0)
 					)
 					(param1 dispose:)
-					(breakif (not (MouseStillDown)))
+					(breakif(not (MouseStillDown)))
 				)
 				(if temp0 (HiliteControl self))
 				(return temp0)
@@ -124,11 +112,11 @@
 	(method (setSize)
 	)
 	
-	(method (move param1 param2)
-		(= nsRight (+ nsRight param1))
-		(= nsLeft (+ nsLeft param1))
-		(= nsTop (+ nsTop param2))
-		(= nsBottom (+ nsBottom param2))
+	(method (move theNsRight theNsTop)
+		(+= nsRight theNsRight)
+		(+= nsLeft theNsRight)
+		(+= nsTop theNsTop)
+		(+= nsBottom theNsTop)
 	)
 	
 	(method (moveTo param1 param2)
@@ -214,7 +202,7 @@
 	)
 	
 	(method (setSize param1 &tmp [temp0 2] temp2 temp3)
-		(TextSize @temp0 text font (if argc param1 else 0))
+		(TextSize @temp0 text font (and argc param1))
 		(= nsBottom (+ nsTop temp2))
 		(= nsRight (+ nsLeft temp3))
 	)
@@ -370,11 +358,11 @@
 		)
 	)
 	
-	(method (move param1 param2)
-		(= nsRight (+ nsRight param1))
-		(= nsLeft (+ nsLeft param1))
-		(= nsTop (+ nsTop param2))
-		(= nsBottom (+ nsBottom param2))
+	(method (move theNsRight theNsTop)
+		(+= nsRight theNsRight)
+		(+= nsLeft theNsRight)
+		(+= nsTop theNsTop)
+		(+= nsBottom theNsTop)
 	)
 	
 	(method (moveTo param1 param2)
@@ -432,8 +420,8 @@
 			)
 			(= dialogFirst (self next: dialogFirst))
 		)
-		(= nsRight (+ nsRight 4))
-		(= nsBottom (+ nsBottom 4))
+		(+= nsRight 4)
+		(+= nsBottom 4)
 		(self moveTo: 0 0)
 	)
 	
