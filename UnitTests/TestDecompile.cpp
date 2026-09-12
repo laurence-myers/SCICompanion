@@ -73,6 +73,20 @@ namespace UnitTests
             Assert::IsFalse(out.ContainsAsm(), L"plain fixture should have no asm");
         }
 
+        // The value-and/or compiler fix: a logical and/or used for its value
+        // compiles to Sierra-semantic bytecode (the last evaluated operand is
+        // left in the accumulator) and round-trips. Fidelity to (and a b) comes
+        // with the AST passes; here we only require a stable round trip with no
+        // fallback.
+        TEST_METHOD(Compiler_ValueAndOr)
+        {
+            _gameFolder = SetUpGameSCI11();
+            DecompileOutput out = DecompileAndRoundTrip("C1_ValueAndOr", 908);
+            LogWarnings("C1", out);
+            Assert::AreEqual(0, out.fallbacks, L"value and/or should not fall back");
+            Assert::IsFalse(out.ContainsAsm(), L"value and/or should have no asm");
+        }
+
         // Family 1: a conditional branch to the loop head. Fixed: the common
         // latch resolves to the loop head, so the if reconstructs.
         TEST_METHOD(Family1_LoopHeadContinue)

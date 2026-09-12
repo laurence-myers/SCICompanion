@@ -2397,8 +2397,34 @@ CodeResult BinaryOp::OutputByteCode(CompileContext &context) const
 	{
 		if (Operator == BinaryOperator::LogicalAnd || Operator == BinaryOperator::LogicalOr)
 		{
-			// Handle && and || when not used in a condition.
-			// Basically, we write an "if statement" that evaluates to 1 or 0
+			// A logical and/or used for its value, not as a condition.
+			if (context.GetLanguage() == LangSyntaxSCI)
+			{
+				// Sierra semantics: the value is the last operand evaluated by the
+				// short circuit, not a normalized 1 or 0. Sierra's own scripts rely
+				// on this (e.g. (Log 1 {x} (and i (i name:)))). Evaluate the
+				// expression as a condition, but resolve both the success and
+				// failure exits to the end of the expression, so whichever operand
+				// the short circuit stops on is left in the accumulator.
+				branch_block blockSuccess(context, BranchBlockIndex::Success);
+				branch_block blockFailure(context, BranchBlockIndex::Failure);
+				{
+					declare_conditional isCondition(context, true);
+					if (Operator == BinaryOperator::LogicalAnd)
+					{
+						_OutputByteCodeAnd(context);
+					}
+					else
+					{
+						_OutputByteCodeOr(context);
+					}
+				}
+				// Both exits land here, at the end of the expression.
+				blockFailure.leave();
+				blockSuccess.leave();
+				return CodeResult(PushToStackIfAppropriate(context, GetLineNumber()), DataTypeAny);
+			}
+			// SCI Studio syntax: write an "if statement" that evaluates to 1 or 0.
 			return _WriteFakeIfStatement(context, *this);
 		}
 		else

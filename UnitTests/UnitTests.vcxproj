@@ -159,6 +159,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <None Include="Files\Decompile\SCI1.1\C1_ValueAndOr.sc" />
     <None Include="Files\Decompile\SCI1.1\D0_Plain.sc" />
     <None Include="Files\Decompile\SCI1.1\F1_LoopHeadContinue.sc" />
     <None Include="Files\Decompile\SCI1.1\F3_ValueJoin.sc" />
