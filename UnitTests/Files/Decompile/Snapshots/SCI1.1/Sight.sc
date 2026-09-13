@@ -50,29 +50,27 @@
 	(= temp4 (param1 y?))
 	(= theGEgoX (theGEgo x?))
 	(= theGEgoY (theGEgo y?))
-	(return
-		(cond 
-			((== param1 theGEgo) 0)
-			(
-				(or
-					(<
-						(/ temp1 2)
-						(Abs
-							(AngleDiff
-								(GetAngle theGEgoX theGEgoY temp3 temp4)
-								(theGEgo heading?)
-							)
+	(cond 
+		((== param1 theGEgo) 0)
+		(
+			(or
+				(<
+					(/ temp1 2)
+					(Abs
+						(AngleDiff
+							(GetAngle theGEgoX theGEgoY temp3 temp4)
+							(theGEgo heading?)
 						)
 					)
-					(<
-						temp2
-						(GetDistance theGEgoX theGEgoY temp3 temp4 gPicAngle)
-					)
 				)
-				(return 1)
+				(<
+					temp2
+					(GetDistance theGEgoX theGEgoY temp3 temp4 gPicAngle)
+				)
 			)
-			(else (return 0))
+			(return 1)
 		)
+		(else (return 0))
 	)
 )
 

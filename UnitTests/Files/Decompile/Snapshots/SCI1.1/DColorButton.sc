@@ -29,43 +29,13 @@
 	)
 	
 	(method (track param1 &tmp temp0 temp1 theSfc theSbc)
-		(return
-			(if (== 1 (param1 type?))
-				(= temp1 0)
-				(repeat
-					(= param1 (Event new: -32768))
-					(param1 localize:)
-					(= temp0 (self check: param1))
-					(if (!= temp0 temp1)
-						(if (& state $0008)
-							(= theSfc sfc)
-							(= theSbc sbc)
-						else
-							(= theSfc hfc)
-							(= theSbc hbc)
-						)
-						(Display
-							text
-							dsCOORD
-							nsLeft
-							nsTop
-							dsWIDTH
-							(- nsRight nsLeft)
-							dsFONT
-							font
-							dsCOLOR
-							theSfc
-							dsBACKGROUND
-							theSbc
-							dsALIGN
-							mode
-						)
-						(= temp1 temp0)
-					)
-					(param1 dispose:)
-					(breakif(not (MouseStillDown)))
-				)
-				(if temp0
+		(if (== 1 (param1 type?))
+			(= temp1 0)
+			(repeat
+				(= param1 (Event new: -32768))
+				(param1 localize:)
+				(= temp0 (self check: param1))
+				(if (!= temp0 temp1)
 					(if (& state $0008)
 						(= theSfc sfc)
 						(= theSbc sbc)
@@ -89,11 +59,39 @@
 						dsALIGN
 						mode
 					)
+					(= temp1 temp0)
 				)
-				(return temp0)
-			else
-				(return self)
+				(param1 dispose:)
+				(breakif(not (MouseStillDown)))
 			)
+			(if temp0
+				(if (& state $0008)
+					(= theSfc sfc)
+					(= theSbc sbc)
+				else
+					(= theSfc hfc)
+					(= theSbc hbc)
+				)
+				(Display
+					text
+					dsCOORD
+					nsLeft
+					nsTop
+					dsWIDTH
+					(- nsRight nsLeft)
+					dsFONT
+					font
+					dsCOLOR
+					theSfc
+					dsBACKGROUND
+					theSbc
+					dsALIGN
+					mode
+				)
+			)
+			(return temp0)
+		else
+			(return self)
 		)
 	)
 	

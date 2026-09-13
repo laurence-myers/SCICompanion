@@ -31,7 +31,7 @@
 			(return 0)
 		)
 		(= const (- backSize (/ (* slopeNum backY) slopeDen)))
-		(return (self doit:))
+		(self doit:)
 	)
 	
 	(method (doit &tmp clientY theBackSize)

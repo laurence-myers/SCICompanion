@@ -962,13 +962,18 @@ void _DetermineIfFunctionReturnsValue(std::list<scii> code, DecompileLookups &lo
 				case Opcode::ULE:
 				case Opcode::PTOA:
 				case Opcode::LOFSA:
+				case Opcode::CLASS:
+				case Opcode::LEA:
 					lookups.FunctionDecompileHints.ReturnsValue = true;
 					break;
 
 				default:
+					// A plain load. A store or a ++/-- is a statement of its own
+					// (the golden decompilations never return one).
 					if ((opcode >= Opcode::LAG) && (opcode <= Opcode::LastLoadStore))
 					{
-						if (!_IsVOStoreOperation(opcode) && !_IsVOPureStack(opcode))
+						if (!_IsVOStoreOperation(opcode) && !_IsVOIncremented(opcode) &&
+							!_IsVODecremented(opcode) && !_IsVOPureStack(opcode))
 						{
 							lookups.FunctionDecompileHints.ReturnsValue = true;
 						}

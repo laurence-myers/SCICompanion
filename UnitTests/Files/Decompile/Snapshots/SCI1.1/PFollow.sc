@@ -54,31 +54,33 @@
 	)
 	
 	(method (doit &tmp temp0 temp1)
-		(if
-			(>
-				(GetDistance targetX targetY (who x?) (who y?))
-				distance
-			)
-			(if points (Memory 3 points))
-			(= points 0)
-			(= value 2)
-			(self init: client who)
-			0
-		else
-			(= temp0 (client distanceTo: who))
-			(if (<= temp0 distance)
-				(= temp1
-					(GetAngle (client x?) (client y?) (who x?) (who y?))
+		(return
+			(if
+				(>
+					(GetDistance targetX targetY (who x?) (who y?))
+					distance
 				)
-				(if (!= (client heading?) temp1)
-					(client setHeading: temp1)
-				)
-				(= xLast (client x?))
-				(= yLast (client y?))
-				(= b-moveCnt gGameTime)
+				(if points (Memory 3 points))
+				(= points 0)
+				(= value 2)
+				(self init: client who)
 				0
 			else
-				(super doit:)
+				(= temp0 (client distanceTo: who))
+				(if (<= temp0 distance)
+					(= temp1
+						(GetAngle (client x?) (client y?) (who x?) (who y?))
+					)
+					(if (!= (client heading?) temp1)
+						(client setHeading: temp1)
+					)
+					(= xLast (client x?))
+					(= yLast (client y?))
+					(= b-moveCnt gGameTime)
+					0
+				else
+					(super doit:)
+				)
 			)
 		)
 	)

@@ -13,7 +13,7 @@
 		(= temp3 (WordAt param1 (* 2 temp0)))
 		(++ temp0)
 	)
-	(return (-- temp0))
+	(-- temp0)
 )
 
 (procedure (localproc_005c param1 &tmp temp0 temp1 temp2 temp3)

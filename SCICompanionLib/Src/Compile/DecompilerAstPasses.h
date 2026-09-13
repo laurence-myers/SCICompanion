@@ -29,6 +29,9 @@ struct AstPassOptions
 //  - double nots in a boolean context collapse
 //  - loop-exit else-breaks are folded into the loop test and factored out
 //  - (= a (op a b)) becomes (op= a b)
+//  - return values take the golden shape: a returned loop or if with a
+//    return inside is unwrapped, a value that the final ret follows is
+//    returned, a final bare (return) is dropped
 // Runs after control-flow decompilation, on a function that decompiled
 // successfully. See AstRewrite for the framework.
 void RunDecompilerAstPasses(sci::FunctionBase &func, const AstPassOptions &options, IDecompilerResults *results);

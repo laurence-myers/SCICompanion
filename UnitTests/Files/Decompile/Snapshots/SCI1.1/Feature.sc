@@ -143,7 +143,7 @@
 				)
 			)
 		)
-		(return (param1 claimed?))
+		(param1 claimed?)
 	)
 	
 	(method (doVerb param1 &tmp temp0 temp1)
@@ -177,13 +177,11 @@
 			)
 		)
 		(if (> temp1 180) (= temp1 (- 360 temp1)))
-		(return
-			(if (<= temp1 sightAngle)
-				(return 1)
-			else
-				(if (!= sightAngle 26505) (self notFacing:))
-				(return 0)
-			)
+		(if (<= temp1 sightAngle)
+			(return 1)
+		else
+			(if (!= sightAngle 26505) (self notFacing:))
+			(return 0)
 		)
 	)
 	

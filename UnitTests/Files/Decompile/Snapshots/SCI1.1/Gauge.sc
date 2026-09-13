@@ -156,7 +156,7 @@
 				)
 			)
 		)
-		(return (super handleEvent: param1))
+		(super handleEvent: param1)
 	)
 	
 	(method (update param1 &tmp temp0 temp1)

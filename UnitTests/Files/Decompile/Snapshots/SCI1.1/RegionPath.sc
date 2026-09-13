@@ -129,12 +129,10 @@
 	
 	(method (nextValue &tmp theValue)
 		(= theValue (- (* (not (& endType $0002)) 4) 2))
-		(return
-			(if argc
-				(return (+= value theValue))
-			else
-				(return (+ value theValue))
-			)
+		(if argc
+			(return (+= value theValue))
+		else
+			(return (+ value theValue))
 		)
 	)
 	

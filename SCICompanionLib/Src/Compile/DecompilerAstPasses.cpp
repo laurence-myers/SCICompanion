@@ -483,6 +483,383 @@ namespace
 			return changed ? RewriteResult::Changed : RewriteResult::None;
 		}
 	};
+
+	//
+	// ReturnCleanup: the shape of return values.
+	//
+	// A function returns whatever the accumulator holds, so a ret after a
+	// statement is ambiguous: the source may or may not have returned the
+	// statement. These rules follow the golden decompilations (sluicebox's
+	// ReturnCleaner):
+	//  - (return S) where S is a loop, or an if/switch with a return inside,
+	//    becomes S followed by a bare (return). Source never returns such a
+	//    statement; a branch left its value in the accumulator.
+	//  - A statement that a bare (return) follows (the function's final ret
+	//    follows the last statement of the body) is absorbed into the return
+	//    when it looks like a value: a number, a variable, a string, a
+	//    comparison, math, or an if/switch whose branches end in one. When
+	//    the function returns a value elsewhere, any statement is absorbed.
+	//    A loop, control flow, or a structure with a return inside never is.
+	//  - A bare (return) at the end of the function body is deleted.
+	// Functions named onMe/onTarget always return a value. handleEvent,
+	// changeState and init absorb only unmistakable values (a comparison,
+	// math, an indexed variable): stray values are common there.
+	//
+
+	bool IsLoop(const SyntaxNode *node)
+	{
+		if (!node)
+		{
+			return false;
+		}
+		NodeType t = node->GetNodeType();
+		return (t == NodeTypeWhileLoop) || (t == NodeTypeDoLoop) || (t == NodeTypeForLoop);
+	}
+
+	// The last meaningful statement of a list, and the one before it.
+	SyntaxNode *LastOf(const SyntaxNodeVector &list, SyntaxNode **prev)
+	{
+		SyntaxNode *last = nullptr;
+		*prev = nullptr;
+		for (const unique_ptr<SyntaxNode> &s : list)
+		{
+			if (!SafeSyntaxNode<Comment>(s.get()))
+			{
+				*prev = last;
+				last = s.get();
+			}
+		}
+		return last;
+	}
+
+	// The same for an if branch: a code block, or a bare statement.
+	SyntaxNode *LastOfBranch(SyntaxNode *branch, SyntaxNode **prev)
+	{
+		CodeBlock *cb = AsCodeBlock(branch);
+		if (cb)
+		{
+			return LastOf(cb->GetStatements(), prev);
+		}
+		*prev = nullptr;
+		return (branch && !SafeSyntaxNode<Comment>(branch)) ? branch : nullptr;
+	}
+
+	// True if a branch of the node ends in a return statement.
+	bool EndsInReturn(SyntaxNode *node)
+	{
+		if (!node)
+		{
+			return false;
+		}
+		SyntaxNode *prev;
+		switch (node->GetNodeType())
+		{
+		case NodeTypeReturn:
+			return true;
+		case NodeTypeCodeBlock:
+			return EndsInReturn(LastOf(AsCodeBlock(node)->GetStatements(), &prev));
+		case NodeTypeIf:
+		{
+			IfStatement *if_ = SafeSyntaxNode<IfStatement>(node);
+			return EndsInReturn(LastOfBranch(if_->GetStatement1(), &prev)) ||
+				EndsInReturn(LastOfBranch(if_->GetStatement2(), &prev));
+		}
+		case NodeTypeSwitch:
+		{
+			SwitchStatement *sw = SafeSyntaxNode<SwitchStatement>(node);
+			for (const unique_ptr<CaseStatement> &c : sw->_cases)
+			{
+				if (EndsInReturn(LastOf(c->GetCodeSegments(), &prev)))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+		default:
+			return false;
+		}
+	}
+
+	// A value that is pointless as a statement, so it must be a return value:
+	// an indexed variable, an address-of, a not or negation, math, a
+	// comparison, an and/or.
+	bool IsUnmistakableValue(SyntaxNode *node)
+	{
+		if (!node)
+		{
+			return false;
+		}
+		switch (node->GetNodeType())
+		{
+		case NodeTypeBinaryOperation:
+		case NodeTypeNaryOperation:
+			return true;
+		case NodeTypeUnaryOperation:
+		{
+			UnaryOperator op = SafeSyntaxNode<UnaryOp>(node)->Operator;
+			return (op == UnaryOperator::LogicalNot) || (op == UnaryOperator::BinaryNot) || (op == UnaryOperator::Negate);
+		}
+		case NodeTypeValue:
+		case NodeTypeComplexValue:
+		{
+			ComplexPropertyValue *indexed = SafeSyntaxNode<ComplexPropertyValue>(node);
+			return (indexed && indexed->GetIndexer()) || (AsValue(node)->GetType() == ValueType::Pointer);
+		}
+		default:
+			return false;
+		}
+	}
+
+	// An if whose else is a single if: an if-else-if chain (a cond).
+	bool IsIfChain(IfStatement *if_)
+	{
+		SyntaxNode *prev;
+		SyntaxNode *elseLast = LastOfBranch(if_->GetStatement2(), &prev);
+		return elseLast && !prev && (elseLast->GetNodeType() == NodeTypeIf);
+	}
+
+	bool LooksLikeValue(SyntaxNode *node, bool noZero, SyntaxNode *prev);
+
+	bool BranchLooksLikeValue(SyntaxNode *branch, bool noZero)
+	{
+		SyntaxNode *prev;
+		SyntaxNode *last = LastOfBranch(branch, &prev);
+		return LooksLikeValue(last, noZero, prev);
+	}
+
+	// True if the node looks like a value the function returns. noZero: a 0
+	// does not count (the cases of a cond or switch end in stray zeros).
+	// prev: the statement before it; a number after another number is a stray
+	// value too.
+	bool LooksLikeValue(SyntaxNode *node, bool noZero, SyntaxNode *prev)
+	{
+		if (!node)
+		{
+			return false;
+		}
+		if (IsUnmistakableValue(node))
+		{
+			return true;
+		}
+		switch (node->GetNodeType())
+		{
+		case NodeTypeValue:
+		case NodeTypeComplexValue:
+		{
+			PropertyValueBase *value = AsValue(node);
+			if (value->GetType() == ValueType::Number)
+			{
+				if (noZero && (value->GetNumberValue() == 0))
+				{
+					return false;
+				}
+				PropertyValueBase *before = AsValue(prev);
+				return !(before && (before->GetType() == ValueType::Number));
+			}
+			return value->GetType() != ValueType::None;
+		}
+		case NodeTypeCodeBlock:
+		{
+			SyntaxNode *before;
+			SyntaxNode *last = LastOf(AsCodeBlock(node)->GetStatements(), &before);
+			return LooksLikeValue(last, noZero, before);
+		}
+		case NodeTypeIf:
+		{
+			IfStatement *if_ = SafeSyntaxNode<IfStatement>(node);
+			bool chainNoZero = noZero || IsIfChain(if_);
+			return BranchLooksLikeValue(if_->GetStatement1(), chainNoZero) ||
+				BranchLooksLikeValue(if_->GetStatement2(), chainNoZero);
+		}
+		case NodeTypeSwitch:
+		{
+			SwitchStatement *sw = SafeSyntaxNode<SwitchStatement>(node);
+			for (const unique_ptr<CaseStatement> &c : sw->_cases)
+			{
+				SyntaxNode *before;
+				SyntaxNode *last = LastOf(c->GetCodeSegments(), &before);
+				if (LooksLikeValue(last, true, before))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+		default:
+			return false;
+		}
+	}
+
+	// The index of the next meaningful statement after index, or the size.
+	size_t NextMeaningful(const SyntaxNodeVector &list, size_t index)
+	{
+		size_t next = index + 1;
+		while ((next < list.size()) && SafeSyntaxNode<Comment>(list[next].get()))
+		{
+			next++;
+		}
+		return next;
+	}
+
+	bool IsBareReturn(SyntaxNode *node)
+	{
+		ReturnStatement *ret = SafeSyntaxNode<ReturnStatement>(node);
+		return ret && !ret->GetStatement1();
+	}
+
+	// Records whether the function has a return with a value.
+	class ReturnValueScan : public AstPass
+	{
+	public:
+		bool found = false;
+		const char *Name() const override { return "ReturnValueScan"; }
+		RewriteResult Rewrite(unique_ptr<SyntaxNode> &slot, const AstContext &) override
+		{
+			ReturnStatement *ret = SafeSyntaxNode<ReturnStatement>(slot.get());
+			if (ret && ret->GetStatement1())
+			{
+				found = true;
+			}
+			return RewriteResult::None;
+		}
+	};
+
+	class ReturnCleanup : public AstPass
+	{
+	public:
+		ReturnCleanup(const string &functionName, bool returnsValue)
+			: _returnsValue(returnsValue || (functionName == "onMe") || (functionName == "onTarget")),
+			_cautious((functionName == "handleEvent") || (functionName == "changeState") || (functionName == "init")) {}
+		const char *Name() const override { return "ReturnCleanup"; }
+
+		RewriteResult Rewrite(unique_ptr<SyntaxNode> &slot, const AstContext &ctx) override
+		{
+			SlotKind kind = ctx.Kind();
+			if ((kind != SlotKind::Statement) && (kind != SlotKind::IfThen) && (kind != SlotKind::IfElse))
+			{
+				return RewriteResult::None;
+			}
+			ReturnStatement *ret = SafeSyntaxNode<ReturnStatement>(slot.get());
+			if (ret)
+			{
+				return ret->GetStatement1() ? Unwrap(slot, ctx) : DropFinal(ctx);
+			}
+			return Absorb(slot, ctx);
+		}
+
+	private:
+		bool _returnsValue;   // a ret in this function returns a value, so every ret does
+		bool _cautious;       // absorb only unmistakable values
+
+		// True when nothing meaningful follows the slot in the function body:
+		// it is last in its list, and so is every plain code block above it,
+		// up to the function (the root frame, see RunPassOnce).
+		static bool AtFunctionEnd(const AstContext &ctx)
+		{
+			for (size_t i = ctx._frames.size(); i > 1; i--)
+			{
+				const AstContext::Frame &frame = ctx._frames[i - 1];
+				if ((frame.kind != SlotKind::Statement) || !frame.list ||
+					(NextMeaningful(*frame.list, frame.index) != frame.list->size()))
+				{
+					return false;
+				}
+				NodeType parent = ctx._frames[i - 2].node->GetNodeType();
+				if ((parent != NodeTypeCodeBlock) && (parent != NodeTypeFunction))
+				{
+					return false;
+				}
+			}
+			return ctx._frames.size() > 1;
+		}
+
+		// A send, a call, or an assignment: a statement whose value a cautious
+		// function does not return (the golden decompilations never do).
+		static bool IsSideEffectStatement(const SyntaxNode *node)
+		{
+			NodeType t = node->GetNodeType();
+			return (t == NodeTypeSendCall) || (t == NodeTypeProcedureCall) || (t == NodeTypeAssignment);
+		}
+
+		// (return S) with a loop or a return inside S, or a side-effect
+		// statement in a cautious function: S, then a bare return.
+		RewriteResult Unwrap(unique_ptr<SyntaxNode> &slot, const AstContext &ctx)
+		{
+			ReturnStatement *ret = static_cast<ReturnStatement *>(slot.get());
+			SyntaxNode *value = ret->GetStatement1();
+			if (!IsLoop(value) && !EndsInReturn(value) && !(_cautious && IsSideEffectStatement(value)))
+			{
+				return RewriteResult::None;
+			}
+			unique_ptr<SyntaxNode> statement = move(ret->GetStatement1Internal());
+			unique_ptr<SyntaxNode> bare = make_unique<ReturnStatement>();
+			if (ctx.List())
+			{
+				slot = move(statement);
+				ctx.List()->insert(ctx.List()->begin() + ctx.Index() + 1, move(bare));
+			}
+			else
+			{
+				// A bare if branch (parsed source). Make it a block.
+				unique_ptr<CodeBlock> block = make_unique<CodeBlock>();
+				block->AddStatement(move(statement));
+				block->AddStatement(move(bare));
+				slot = move(block);
+			}
+			return RewriteResult::Replaced;
+		}
+
+		static RewriteResult DropFinal(const AstContext &ctx)
+		{
+			return AtFunctionEnd(ctx) ? RewriteResult::Removed : RewriteResult::None;
+		}
+
+		// A statement that a bare return follows becomes the return value.
+		RewriteResult Absorb(unique_ptr<SyntaxNode> &slot, const AstContext &ctx)
+		{
+			if (!ctx.List())
+			{
+				return RewriteResult::None;
+			}
+			SyntaxNodeVector &list = *ctx.List();
+			size_t index = ctx.Index();
+			size_t next = NextMeaningful(list, index);
+			bool bareReturnFollows = (next < list.size()) && IsBareReturn(list[next].get());
+			if (!bareReturnFollows && !AtFunctionEnd(ctx))
+			{
+				return RewriteResult::None;
+			}
+			// The value's tail: through code blocks (parsed source can hold
+			// one at statement level), the last meaningful statement.
+			SyntaxNode *value = slot.get();
+			SyntaxNode *tail = value;
+			while (tail && AsCodeBlock(tail))
+			{
+				SyntaxNode *prevInBlock;
+				tail = LastOf(AsCodeBlock(tail)->GetStatements(), &prevInBlock);
+			}
+			if (!tail || SafeSyntaxNode<Comment>(tail) || IsControlFlow(tail) || IsLoop(tail) || EndsInReturn(value))
+			{
+				return RewriteResult::None;
+			}
+			SyntaxNode *prev = (index > 0) ? list[index - 1].get() : nullptr;
+			bool absorb = _cautious ? IsUnmistakableValue(value) : (_returnsValue || LooksLikeValue(value, false, prev));
+			if (!absorb)
+			{
+				return RewriteResult::None;
+			}
+			unique_ptr<ReturnStatement> ret = make_unique<ReturnStatement>();
+			ret->SetStatement1(move(slot));
+			slot = move(ret);
+			if (bareReturnFollows)
+			{
+				list.erase(list.begin() + next);
+			}
+			_returnsValue = true;
+			return RewriteResult::Replaced;
+		}
+	};
 }
 
 void RunDecompilerAstPasses(FunctionBase &func, const AstPassOptions &options, IDecompilerResults *results)
@@ -513,5 +890,15 @@ void RunDecompilerAstPasses(FunctionBase &func, const AstPassOptions &options, I
 	{
 		MathAssignment mathAssignment;
 		RunPassOnce(func, mathAssignment);
+	}
+
+	// Return values take the golden shape (see ReturnCleanup). Last, as it
+	// reads the settled statement shapes.
+	{
+		ReturnValueScan scan;
+		RunPassOnce(func, scan);
+		ReturnCleanup returnCleanup(func.GetName(), scan.found);
+		vector<AstPass *> returnPasses = { &returnCleanup };
+		RunPassesToFixpoint(func, returnPasses, options.maxSweeps, results);
 	}
 }

@@ -89,32 +89,34 @@
 			(= temp0 param1)
 			(= temp1 param2)
 		)
-		(cond 
-			((& signal $0080) 0)
-			(
-			(and (not (IsObject onMeCheck)) (& signal $1000))
-				(if
-					(or
-						(not (or nsLeft nsRight nsTop nsBottom))
-						(and
-							(<= nsLeft temp0)
-							(<= temp0 nsRight)
-							(<= nsTop temp1)
-							(<= temp1 nsBottom)
+		(return
+			(cond 
+				((& signal $0080) 0)
+				(
+				(and (not (IsObject onMeCheck)) (& signal $1000))
+					(if
+						(or
+							(not (or nsLeft nsRight nsTop nsBottom))
+							(and
+								(<= nsLeft temp0)
+								(<= temp0 nsRight)
+								(<= nsTop temp1)
+								(<= temp1 nsBottom)
+							)
 						)
-					)
-					(not
-						(IsItSkip
-							view
-							loop
-							cel
-							(- temp1 nsTop)
-							(- temp0 nsLeft)
+						(not
+							(IsItSkip
+								view
+								loop
+								cel
+								(- temp1 nsTop)
+								(- temp0 nsLeft)
+							)
 						)
 					)
 				)
+				(else (super onMe: temp0 temp1))
 			)
-			(else (super onMe: temp0 temp1))
 		)
 	)
 	

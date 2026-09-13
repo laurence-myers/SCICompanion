@@ -321,46 +321,42 @@
 	)
 	
 	(method (say param1 param2)
-		(return
-			(if normal
-				(super say: param1 param2 &rest)
+		(if normal
+			(super say: param1 param2 &rest)
+		else
+			(if (and (> view 0) (not underBits)) (self init:))
+			(if gIconBar (gIconBar disable:))
+			(if (not initialized) (self init:))
+			(= caller (if (and (> argc 1) param2) param2 else 0))
+			(if (IsObject gFastCast)
+				(gFastCast add: self)
 			else
-				(if (and (> view 0) (not underBits)) (self init:))
-				(if gIconBar (gIconBar disable:))
-				(if (not initialized) (self init:))
-				(= caller (if (and (> argc 1) param2) param2 else 0))
-				(if (IsObject gFastCast)
-					(gFastCast add: self)
-				else
-					(= gFastCast (EventHandler new:))
-					(gFastCast name: {fastCast} add: self)
-				)
-				(if (& gMessageType $0002) (self startAudio:))
-				(if (& gMessageType $0001) (self startText: param1))
-				(= ticks (+ ticks 60 gGameTime))
-				(return 1)
+				(= gFastCast (EventHandler new:))
+				(gFastCast name: {fastCast} add: self)
 			)
+			(if (& gMessageType $0002) (self startAudio:))
+			(if (& gMessageType $0001) (self startText: param1))
+			(= ticks (+ ticks 60 gGameTime))
+			(return 1)
 		)
 	)
 	
 	(method (startText param1 &tmp temp0)
-		(return
-			(if normal
-				(super startText: param1 &rest)
-			else
-				(if (not viewInPrint) (self show:))
-				(if (not (& gMessageType $0002))
-					(= temp0 (StrLen param1))
-					(= ticks (Max 240 (* 8 temp0)))
-				)
-				(if mouth (mouth setCycle: RandCycle (* 4 temp0) 0 1))
-				(if (and eyes (not (eyes cycler?)))
-					(eyes setCycle: Blink blinkSpeed)
-				)
-				(if gDialog (gDialog dispose:))
-				(self display: param1)
-				(return temp0)
+		(if normal
+			(super startText: param1 &rest)
+		else
+			(if (not viewInPrint) (self show:))
+			(if (not (& gMessageType $0002))
+				(= temp0 (StrLen param1))
+				(= ticks (Max 240 (* 8 temp0)))
 			)
+			(if mouth (mouth setCycle: RandCycle (* 4 temp0) 0 1))
+			(if (and eyes (not (eyes cycler?)))
+				(eyes setCycle: Blink blinkSpeed)
+			)
+			(if gDialog (gDialog dispose:))
+			(self display: param1)
+			(return temp0)
 		)
 	)
 	

@@ -73,12 +73,10 @@
 	(method (handleEvent param1 &tmp temp0 temp1 temp2)
 		(= temp1 (param1 type?))
 		(= temp2 (param1 message?))
-		(return
-			(cond 
-				((and script (script handleEvent: param1)) 1)
-				((& temp1 $0040) (return 0))
-				(else (super handleEvent: param1 &rest))
-			)
+		(cond 
+			((and script (script handleEvent: param1)) 1)
+			((& temp1 $0040) (return 0))
+			(else (super handleEvent: param1 &rest))
 		)
 	)
 	

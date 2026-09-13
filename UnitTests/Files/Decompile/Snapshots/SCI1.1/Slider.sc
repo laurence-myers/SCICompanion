@@ -71,23 +71,21 @@
 	)
 	
 	(method (select param1 &tmp newEvent)
-		(return
-			(if (and argc param1)
-				(while (!= ((= newEvent (Event new:)) type?) 2)
-					(newEvent localize:)
-					(cond 
-						((< (newEvent y?) (- sTop yStep)) (self move: yStep (not (& signal $0200))))
-						((> (newEvent y?) (+ sTop yStep)) (self move: (- yStep) (not (& signal $0200))))
-					)
-					(newEvent dispose:)
-				)
-				(if (& signal $0200)
-					(self doit: (self posnToValue: sTop))
+		(if (and argc param1)
+			(while (!= ((= newEvent (Event new:)) type?) 2)
+				(newEvent localize:)
+				(cond 
+					((< (newEvent y?) (- sTop yStep)) (self move: yStep (not (& signal $0200))))
+					((> (newEvent y?) (+ sTop yStep)) (self move: (- yStep) (not (& signal $0200))))
 				)
 				(newEvent dispose:)
-			else
-				(return 1)
 			)
+			(if (& signal $0200)
+				(self doit: (self posnToValue: sTop))
+			)
+			(newEvent dispose:)
+		else
+			(return 1)
 		)
 	)
 	

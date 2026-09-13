@@ -114,6 +114,7 @@ expected file is missing, the test writes the actual to
 | `F11_LatchTrampoline` | 924 | (structurer) | fixed; a shared `jmp head` folds into the common latch |
 | `P2_CondInLoop` | 926 | (compiler) | SCI Companion dialect; nested conds in a loop round-trip stably |
 | `F12_BreakJoin` | 925 | (structurer) | fixed; a break edge into a shared statement moves to the if's follow |
+| `R1_ReturnShapes` | 927 | (returns) | fixed; an if whose branches return is not returned, a value if at the end is, a `++` is not a return value |
 | `A1_ReusedAcc` | 928 | (chunk stage) | fixed; a store whose value a later send reuses stays a statement |
 
 `TemplateGame_FallbackBaseline` guards against new fallbacks. The template game
@@ -137,6 +138,16 @@ loop exit inside a loop body becomes an if with a synthesized else-break
 value-position ifs become `and`/`or`, loop cleanup folds the breaks, double
 nots collapse in boolean context, and `(= a (+ a b))` becomes `(+= a b)`.
 `TestAstPasses` covers the passes on parsed source, with no game data.
+
+Return values (`R1_ReturnShapes`): a function returns the accumulator, so
+whether a statement before a `ret` is the return value is a judgement. The
+`ReturnCleanup` pass (last in `DecompilerAstPasses.cpp`) follows the golden
+decompilations: a returned loop, or if/switch with a return inside, is
+unwrapped; a value-shaped statement that the final ret follows is returned;
+a final bare `(return)` is dropped; `onMe`/`onTarget` always return a value;
+`handleEvent`/`changeState`/`init` return only unmistakable values. The
+`ReturnsValue` hint (`_DetermineIfFunctionReturnsValue`) no longer counts a
+`++`/`--` before a `ret`.
 
 Reused accumulator (`A1_ReusedAcc`): Sierra's compiler drops the load of a
 send target or pushed argument when the accumulator already holds that

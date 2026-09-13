@@ -196,7 +196,7 @@
 )
 
 (procedure (IsObjectOnControl param1 param2)
-	(return (if (& (param1 onControl: 1) param2) (return 1) else 0))
+	(if (& (param1 onControl: 1) param2) (return 1) else 0)
 )
 
 (procedure (SetUpEgo param1 param2)
@@ -327,15 +327,13 @@
 )
 
 (procedure (CreateNewPolygon param1 &tmp temp0)
-	(return
-		(if (u< param1 100)
-			(Prints {polyBuffer is not a pointer. Polygon ignored.})
-			(return 0)
-		else
-			(= temp0 (Memory 5 param1))
-			(+= param1 2)
-			(return (localproc_0403 param1 &rest))
-		)
+	(if (u< param1 100)
+		(Prints {polyBuffer is not a pointer. Polygon ignored.})
+		(return 0)
+	else
+		(= temp0 (Memory 5 param1))
+		(+= param1 2)
+		(return (localproc_0403 param1 &rest))
 	)
 )
 
@@ -834,13 +832,11 @@
 	)
 	
 	(method (select &tmp temp0)
-		(return
-			(if (super select: &rest)
-				(gIconBar hide:)
-				(return 1)
-			else
-				(return 0)
-			)
+		(if (super select: &rest)
+			(gIconBar hide:)
+			(return 1)
+		else
+			(return 0)
 		)
 	)
 )
@@ -1086,16 +1082,14 @@
 	)
 	
 	(method (select &tmp theGCursorNumber)
-		(return
-			(if (super select: &rest)
-				(gIconBar hide:)
-				(= theGCursorNumber gCursorNumber)
-				(gInv showSelf: gEgo)
-				(gGame setCursor: theGCursorNumber 1)
-				(return 1)
-			else
-				(return 0)
-			)
+		(if (super select: &rest)
+			(gIconBar hide:)
+			(= theGCursorNumber gCursorNumber)
+			(gInv showSelf: gEgo)
+			(gGame setCursor: theGCursorNumber 1)
+			(return 1)
+		else
+			(return 0)
 		)
 	)
 )
@@ -1120,14 +1114,12 @@
 	)
 	
 	(method (select)
-		(return
-			(if (super select: &rest)
-				(gIconBar hide:)
-				(gGame showControls:)
-				(return 1)
-			else
-				(return 0)
-			)
+		(if (super select: &rest)
+			(gIconBar hide:)
+			(gGame showControls:)
+			(return 1)
+		else
+			(return 0)
 		)
 	)
 )
@@ -1220,12 +1212,14 @@
 	(properties)
 	
 	(method (doit param1)
-		(switch param1
-			(1 1)
-			(2 2)
-			(3 4)
-			(4 8)
-			(else  -32768)
+		(return
+			(switch param1
+				(1 1)
+				(2 2)
+				(3 4)
+				(4 8)
+				(else  -32768)
+			)
 		)
 	)
 )
@@ -1254,15 +1248,13 @@
 				(99 gNarrator)
 			)
 		)
-		(return
-			(if temp0
-				(if (not (temp0 isKindOf: Narrator))
-					(Prints {Invalid talker.})
-				)
-				(return temp0)
-			else
-				(return (super findTalker: theGCurrentTalkerNumber))
+		(if temp0
+			(if (not (temp0 isKindOf: Narrator))
+				(Prints {Invalid talker.})
 			)
+			(return temp0)
+		else
+			(return (super findTalker: theGCurrentTalkerNumber))
 		)
 	)
 )

@@ -139,6 +139,15 @@ namespace UnitTests
             AssertDecompileMatchesExpected("F12_BreakJoin", 925);
         }
 
+        // Return values take the golden shape: an if whose branches return is
+        // not itself returned; a value-shaped if at the end of the function
+        // is; a ++ before the final ret is not a return value.
+        TEST_METHOD(ReturnShapes)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("R1_ReturnShapes", 927);
+        }
+
         // Sierra reuses the accumulator: a store, then the pushes of a send
         // whose target or pushed argument is that variable, with no load. The
         // store is a statement of its own; the send reads the variable.

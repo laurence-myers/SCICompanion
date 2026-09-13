@@ -44,48 +44,46 @@
 	(Format @temp25 {%d} temp2)
 	(Format @temp35 {%d} temp3)
 	(Format @temp45 {%d} temp4)
-	(return
-		(if
-			(Print
-				addTitle: @local42
-				font: 0
-				addText: {Enter new message parameters:}
-				addText: {Noun} 5 25
-				addText: {Verb} 85 25
-				addText: {Case} 5 39
-				addText: {Seq} 85 39
-				addText: {Module} 47 53
-				addEdit: @temp5 4 45 25 @temp5
-				addEdit: @temp15 4 125 25 @temp15
-				addEdit: @temp25 4 45 39 @temp25
-				addEdit: @temp35 4 125 39 @temp35
-				addEdit: @temp45 5 101 53 @temp45
-				addButton: 1 {___OK___} 18 67
-				addButton: 0 {Cancel} 91 67
-				init:
-			)
-			(= temp0 (ReadNumber @temp5))
-			(= temp1 (ReadNumber @temp15))
-			(= temp2 (ReadNumber @temp25))
-			(= temp3 (ReadNumber @temp35))
-			(= temp4 (ReadNumber @temp45))
-			(cond 
-				((not (Message 0 temp4 temp0 temp1 temp2 temp3)) (Prints {Can't find message!}) (return 0))
-				((not (Message 2 temp4 temp0 temp1 temp2 temp3)) (Prints {Message contains no text!}) (return 0))
-				(else
-					(param1
-						noun: temp0
-						verb: temp1
-						case: temp2
-						seq: temp3
-						modNum: temp4
-					)
-					(return 1)
-				)
-			)
-		else
-			(return 0)
+	(if
+		(Print
+			addTitle: @local42
+			font: 0
+			addText: {Enter new message parameters:}
+			addText: {Noun} 5 25
+			addText: {Verb} 85 25
+			addText: {Case} 5 39
+			addText: {Seq} 85 39
+			addText: {Module} 47 53
+			addEdit: @temp5 4 45 25 @temp5
+			addEdit: @temp15 4 125 25 @temp15
+			addEdit: @temp25 4 45 39 @temp25
+			addEdit: @temp35 4 125 39 @temp35
+			addEdit: @temp45 5 101 53 @temp45
+			addButton: 1 {___OK___} 18 67
+			addButton: 0 {Cancel} 91 67
+			init:
 		)
+		(= temp0 (ReadNumber @temp5))
+		(= temp1 (ReadNumber @temp15))
+		(= temp2 (ReadNumber @temp25))
+		(= temp3 (ReadNumber @temp35))
+		(= temp4 (ReadNumber @temp45))
+		(cond 
+			((not (Message 0 temp4 temp0 temp1 temp2 temp3)) (Prints {Can't find message!}) (return 0))
+			((not (Message 2 temp4 temp0 temp1 temp2 temp3)) (Prints {Message contains no text!}) (return 0))
+			(else
+				(param1
+					noun: temp0
+					verb: temp1
+					case: temp2
+					seq: temp3
+					modNum: temp4
+				)
+				(return 1)
+			)
+		)
+	else
+		(return 0)
 	)
 )
 
@@ -1178,7 +1176,7 @@
 							(2 (curItem editWidth:))
 						)
 					)
-					(120 (return (self exit:)))
+					(120 (self exit:) (return))
 				)
 			)
 		)

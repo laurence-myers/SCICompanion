@@ -125,15 +125,13 @@
 	)
 	
 	(method (handleEvent param1 &tmp [temp0 2])
-		(return
-			(cond 
-				((and inset (inset handleEvent: param1)) 0)
-				((& (param1 type?) $4000)
-					(cond 
-						((self onMe: param1) (param1 claimed: 1) (self doVerb: (param1 message?)))
-						(disposeNotOnMe (param1 claimed: 1) (self dispose:))
-						(else (return 0))
-					)
+		(cond 
+			((and inset (inset handleEvent: param1)) 0)
+			((& (param1 type?) $4000)
+				(cond 
+					((self onMe: param1) (param1 claimed: 1) (self doVerb: (param1 message?)))
+					(disposeNotOnMe (param1 claimed: 1) (self dispose:))
+					(else (return 0))
 				)
 			)
 		)
@@ -220,12 +218,10 @@
 			(= temp0 param1)
 			(= temp1 param2)
 		)
-		(return
-			(if view
-				(return (insetView onMe: param1 param2))
-			else
-				(return 1)
-			)
+		(if view
+			(return (insetView onMe: param1 param2))
+		else
+			(return 1)
 		)
 	)
 )

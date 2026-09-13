@@ -639,11 +639,13 @@
 	)
 	
 	(method (roomToEdge param1)
-		(switch param1
-			(north 1)
-			(south 3)
-			(east 2)
-			(west 4)
+		(return
+			(switch param1
+				(north 1)
+				(south 3)
+				(east 2)
+				(west 4)
+			)
 		)
 	)
 	

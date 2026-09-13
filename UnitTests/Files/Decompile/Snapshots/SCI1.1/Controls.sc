@@ -91,25 +91,23 @@
 	)
 	
 	(method (track param1 &tmp temp0 temp1)
-		(return
-			(if (== 1 (param1 type?))
-				(= temp1 0)
-				(repeat
-					(= param1 (Event new: -32768))
-					(param1 localize:)
-					(= temp0 (self check: param1))
-					(if (!= temp0 temp1)
-						(HiliteControl self)
-						(= temp1 temp0)
-					)
-					(param1 dispose:)
-					(breakif(not (MouseStillDown)))
+		(if (== 1 (param1 type?))
+			(= temp1 0)
+			(repeat
+				(= param1 (Event new: -32768))
+				(param1 localize:)
+				(= temp0 (self check: param1))
+				(if (!= temp0 temp1)
+					(HiliteControl self)
+					(= temp1 temp0)
 				)
-				(if temp0 (HiliteControl self))
-				(return temp0)
-			else
-				(return self)
+				(param1 dispose:)
+				(breakif(not (MouseStillDown)))
 			)
+			(if temp0 (HiliteControl self))
+			(return temp0)
+		else
+			(return self)
 		)
 	)
 	
@@ -522,17 +520,15 @@
 	)
 	
 	(method (check &tmp theLastSeconds)
-		(return
-			(if
-				(and
-					seconds
-					(!= lastSeconds (= theLastSeconds (GetTime 1)))
-				)
-				(= lastSeconds theLastSeconds)
-				(return (not (-- seconds)))
-			else
-				0
+		(if
+			(and
+				seconds
+				(!= lastSeconds (= theLastSeconds (GetTime 1)))
 			)
+			(= lastSeconds theLastSeconds)
+			(return (not (-- seconds)))
+		else
+			0
 		)
 	)
 )

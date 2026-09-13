@@ -20,91 +20,89 @@
 	(method (dispatchEvent param1 &tmp gWindowEraseOnly temp1 temp2 [temp3 50] temp53 temp54)
 		(= temp53 (param1 type?))
 		(= temp54 (param1 message?))
-		(return
-			(cond 
-				((& temp53 $2000)
-					(= temp1 (self firstTrue: 226 param1))
-					(if
-						(and
-							temp1
-							((= temp1 (self firstTrue: 226 param1)) helpVerb?)
-						)
-						(= temp2 (GetPort))
-						(if (gWindow respondsTo: 244)
-							(= gWindowEraseOnly (gWindow eraseOnly?))
-							(gWindow eraseOnly: 1)
-							(Print
-								font: gFont
-								width: 250
-								addText: (temp1 noun?) (temp1 helpVerb?) 0 1 0 0 (temp1 modNum?)
-								init:
-							)
-							(gWindow eraseOnly: gWindowEraseOnly)
-						else
-							(Print
-								font: gFont
-								width: 250
-								addText: (temp1 noun?) (temp1 helpVerb?) 0 1 0 0 (temp1 modNum?)
-								init:
-							)
-						)
-						(SetPort temp2)
+		(cond 
+			((& temp53 $2000)
+				(= temp1 (self firstTrue: 226 param1))
+				(if
+					(and
+						temp1
+						((= temp1 (self firstTrue: 226 param1)) helpVerb?)
 					)
-					(if helpIconItem
-						(helpIconItem signal: (& (helpIconItem signal?) $ffef))
+					(= temp2 (GetPort))
+					(if (gWindow respondsTo: 244)
+						(= gWindowEraseOnly (gWindow eraseOnly?))
+						(gWindow eraseOnly: 1)
+						(Print
+							font: gFont
+							width: 250
+							addText: (temp1 noun?) (temp1 helpVerb?) 0 1 0 0 (temp1 modNum?)
+							init:
+						)
+						(gWindow eraseOnly: gWindowEraseOnly)
+					else
+						(Print
+							font: gFont
+							width: 250
+							addText: (temp1 noun?) (temp1 helpVerb?) 0 1 0 0 (temp1 modNum?)
+							init:
+						)
 					)
-					(gGame setCursor: 999)
-					(return 0)
+					(SetPort temp2)
 				)
-				((& temp53 $0040)
-					(switch temp54
-						(5
-							(cond 
-								(
-									(and
-										(IsObject highlightedIcon)
-										(highlightedIcon respondsTo: 198)
-									)
-									(highlightedIcon retreat:)
-									(return 0)
-								)
-								(
-									(or
-										(not (IsObject highlightedIcon))
-										(& (highlightedIcon signal?) $0100)
-									)
-									(self advance:)
-									(return 0)
-								)
-							)
-						)
-						(1
-							(cond 
-								(
-									(and
-										(IsObject highlightedIcon)
-										(highlightedIcon respondsTo: 197)
-									)
-									(highlightedIcon advance:)
-									(return 0)
-								)
-								(
-									(or
-										(not (IsObject highlightedIcon))
-										(& (highlightedIcon signal?) $0100)
-									)
-									(self retreat:)
-									(return 0)
-								)
-							)
-						)
-						(else 
-							(super dispatchEvent: param1)
-						)
-					)
+				(if helpIconItem
+					(helpIconItem signal: (& (helpIconItem signal?) $ffef))
 				)
-				(else (super dispatchEvent: param1))
+				(gGame setCursor: 999)
+				(return 0)
 			)
+			((& temp53 $0040)
+				(switch temp54
+					(5
+						(cond 
+							(
+								(and
+									(IsObject highlightedIcon)
+									(highlightedIcon respondsTo: 198)
+								)
+								(highlightedIcon retreat:)
+								(return 0)
+							)
+							(
+								(or
+									(not (IsObject highlightedIcon))
+									(& (highlightedIcon signal?) $0100)
+								)
+								(self advance:)
+								(return 0)
+							)
+						)
+					)
+					(1
+						(cond 
+							(
+								(and
+									(IsObject highlightedIcon)
+									(highlightedIcon respondsTo: 197)
+								)
+								(highlightedIcon advance:)
+								(return 0)
+							)
+							(
+								(or
+									(not (IsObject highlightedIcon))
+									(& (highlightedIcon signal?) $0100)
+								)
+								(self retreat:)
+								(return 0)
+							)
+						)
+					)
+					(else 
+						(super dispatchEvent: param1)
+					)
+				)
+			)
+			(else (super dispatchEvent: param1))
 		)
 	)
 )

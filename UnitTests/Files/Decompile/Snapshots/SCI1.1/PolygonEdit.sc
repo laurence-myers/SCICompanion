@@ -57,52 +57,50 @@
 )
 
 (procedure (localproc_022e param1 param2 param3 param4 param5 param6 &tmp temp0)
-	(return
-		(if
-			(and
-				(<=
-					0
-					(localproc_0203
-						(- param3 param1)
-						(- param4 param2)
-						(- param5 param1)
-						(- param6 param2)
-					)
-				)
-				(<=
-					0
-					(localproc_0203
-						(- param1 param3)
-						(- param2 param4)
-						(- param5 param3)
-						(- param6 param4)
-					)
+	(if
+		(and
+			(<=
+				0
+				(localproc_0203
+					(- param3 param1)
+					(- param4 param2)
+					(- param5 param1)
+					(- param6 param2)
 				)
 			)
-			(= temp0 (GetDistance param1 param2 param3 param4))
-			(return
-				(if temp0
-					(/
-						(Abs
-							(localproc_0203
-								(- param4 param2)
-								(- param1 param3)
-								(- param5 param1)
-								(- param6 param2)
-							)
+			(<=
+				0
+				(localproc_0203
+					(- param1 param3)
+					(- param2 param4)
+					(- param5 param3)
+					(- param6 param4)
+				)
+			)
+		)
+		(= temp0 (GetDistance param1 param2 param3 param4))
+		(return
+			(if temp0
+				(/
+					(Abs
+						(localproc_0203
+							(- param4 param2)
+							(- param1 param3)
+							(- param5 param1)
+							(- param6 param2)
 						)
-						temp0
 					)
-				else
-					0
+					temp0
 				)
+			else
+				0
 			)
-		else
-			(return
-				(Min
-					(GetDistance param5 param6 param1 param2)
-					(GetDistance param5 param6 param3 param4)
-				)
+		)
+	else
+		(return
+			(Min
+				(GetDistance param5 param6 param1 param2)
+				(GetDistance param5 param6 param3 param4)
 			)
 		)
 	)
@@ -175,7 +173,7 @@
 			(++ temp1)
 			(+= theArray 6)
 		)
-		(return (param1 claimed: 1))
+		(param1 claimed: 1)
 	)
 )
 
@@ -890,7 +888,7 @@
 					(114
 						(if (== state 1) (self draw:))
 					)
-					(120 (return (self exit:)))
+					(120 (self exit:) (return))
 					(27
 						(if (== state 0) (self finishAdding:))
 					)

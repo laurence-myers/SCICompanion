@@ -227,6 +227,135 @@ namespace UnitTests
             Assert::IsTrue(out.find("(= t (+ 1 t))") != std::string::npos, L"(+ 1 t) is not a compound assign");
         }
 
+        // --- ReturnCleanup ---
+
+        // Parses a script with one instance whose method named methodName has
+        // the body, runs the passes on that method, and returns the normalized
+        // text of the whole script. For the rules keyed on a method name.
+        static std::string ApplyAllPassesToMethod(const std::string &methodName, const std::string &body)
+        {
+            std::string text;
+            text += ";;; Sierra Script 1.0 - (do not remove this comment)\n";
+            text += "(script# 990)\n";
+            text += "(include sci.sh)\n";
+            text += "(instance astObj of Object\n(properties)\n";
+            text += "(method (" + methodName + " a b c &tmp t u)\n" + body + "\n)\n)\n";
+            std::unique_ptr<sci::Script> script = ParseSierraScript(text);
+            AstPassOptions options;
+            for (auto &cls : script->GetClassesNC())
+            {
+                for (auto &method : cls->GetMethodsNC())
+                {
+                    RunDecompilerAstPasses(*method, options, nullptr);
+                }
+            }
+            return NormalizeWhitespace(ScriptToText(*script));
+        }
+
+        // An if whose branches return is not itself returned.
+        TEST_METHOD(Return_UnwrapsIfWithReturns)
+        {
+            Assert::AreEqual(std::string("(if a (return 1) else (return 0))"),
+                Body(ApplyAllPasses("(return (if a (return 1) else (return 0)))")));
+        }
+        TEST_METHOD(Return_UnwrapsIfWithReturnInThen)
+        {
+            Assert::AreEqual(std::string("(if a (return 1))"),
+                Body(ApplyAllPasses("(return (if a (return 1)))")));
+        }
+        TEST_METHOD(Return_UnwrapsLoop)
+        {
+            Assert::AreEqual(std::string("(while a (-- t) )"),
+                Body(ApplyAllPasses("(return (while a (-- t)))")));
+        }
+        // Not at the end of the function, the bare return stays. The function
+        // returns a value (the 1), so its final statement is returned too.
+        TEST_METHOD(Return_UnwrapKeepsMidFunctionReturn)
+        {
+            Assert::AreEqual(std::string("(if b (if a (return 1)) (return)) (return (= t 2))"),
+                Body(ApplyAllPasses("(if b (return (if a (return 1)))) (= t 2)")));
+        }
+
+        // The last statement of the body is followed by the final ret. A
+        // value-shaped statement there is the return value.
+        TEST_METHOD(Return_WrapsFinalIfValue)
+        {
+            Assert::AreEqual(std::string("(return (if a b else (Foo c)))"),
+                Body(ApplyAllPasses("(if a b else (Foo c))")));
+        }
+        TEST_METHOD(Return_WrapsFinalSwitch)
+        {
+            Assert::AreEqual(std::string("(return (switch a (1 b) (2 c) ) )"),
+                Body(ApplyAllPasses("(switch a (1 b) (2 c))")));
+        }
+        TEST_METHOD(Return_WrapsFinalOr)
+        {
+            Assert::AreEqual(std::string("(return (or a b))"),
+                Body(ApplyAllPasses("(or a b)")));
+        }
+        TEST_METHOD(Return_FinalSendNotWrapped)
+        {
+            Assert::AreEqual(std::string("(Foo a)"), Body(ApplyAllPasses("(Foo a)")));
+            Assert::AreEqual(std::string("(if a (Foo b) else (++ t))"),
+                Body(ApplyAllPasses("(if a (Foo b) else (++ t))")));
+        }
+        // A zero at the end of a switch case, or of a cond case, is stray.
+        TEST_METHOD(Return_StrayZeroNotValue)
+        {
+            Assert::AreEqual(std::string("(switch a (1 0) (2 (Foo b)) )"),
+                Body(ApplyAllPasses("(switch a (1 0) (2 (Foo b)))")));
+            std::string cond = ApplyAllPasses("(if a 0 else (if b (Foo c)))");
+            Assert::IsTrue(cond.find("(return") == std::string::npos, L"a cond case ending in 0 is not a return value");
+        }
+        // Two numbers in a row are stray values, not a return value.
+        TEST_METHOD(Return_TwoNumbersNotValue)
+        {
+            Assert::AreEqual(std::string("(if a 1 2)"), Body(ApplyAllPasses("(if a 1 2)")));
+        }
+
+        // A bare return in the middle absorbs a value before it. The function
+        // then returns a value, so its final statement is returned too.
+        TEST_METHOD(Return_MidBareReturnAbsorbsValue)
+        {
+            Assert::AreEqual(std::string("(if a (return (+ b c))) (return (= t 1))"),
+                Body(ApplyAllPasses("(if a (+ b c) (return)) (= t 1)")));
+        }
+        TEST_METHOD(Return_FinalBareReturnRemoved)
+        {
+            Assert::AreEqual(std::string("(= t 1)"), Body(ApplyAllPasses("(= t 1) (return)")));
+        }
+        // A function that returns a value somewhere returns one everywhere.
+        TEST_METHOD(Return_RealReturnAbsorbsStatement)
+        {
+            Assert::AreEqual(std::string("(if a (return 5)) (return (= t 1))"),
+                Body(ApplyAllPasses("(if a (return 5)) (= t 1) (return)")));
+        }
+
+        // onMe always returns a value; init returns only an unmistakable one.
+        TEST_METHOD(Return_OnMeAlwaysReturns)
+        {
+            std::string out = ApplyAllPassesToMethod("onMe", "(if a (Foo b) else (Bar c))");
+            Assert::IsTrue(out.find("(return (if a (Foo b) else (Bar c)))") != std::string::npos, L"onMe returns its final if");
+        }
+        TEST_METHOD(Return_InitAbsorbsOnlyUnmistakable)
+        {
+            std::string kept = ApplyAllPassesToMethod("init", "(if a b else c)");
+            Assert::IsTrue(kept.find("(return") == std::string::npos, L"init keeps a plain value if");
+            std::string wrapped = ApplyAllPassesToMethod("init", "(== a b)");
+            Assert::IsTrue(wrapped.find("(return (== a b))") != std::string::npos, L"init returns a comparison");
+        }
+        // A cautious method never returns a send, a call, or an assignment,
+        // even when the chunk stage gave the ret that value.
+        TEST_METHOD(Return_HandleEventUnwrapsSend)
+        {
+            std::string atEnd = ApplyAllPassesToMethod("handleEvent", "(if a (return 1)) (return (b claimed:))");
+            Assert::IsTrue(atEnd.find("(if a (return 1)) (b claimed:) )") != std::string::npos, L"the final send is bare");
+            std::string mid = ApplyAllPassesToMethod("handleEvent", "(if a (b cue:) (return (b claimed: 1))) (return 0)");
+            Assert::IsTrue(mid.find("(if a (b cue:) (b claimed: 1) (return))") != std::string::npos, L"the mid-function send is bare and its return stays");
+            std::string plain = ApplyAllPasses("(if a (return 1)) (return (b claimed:))");
+            Assert::IsTrue(plain.find("(return (b claimed:))") != std::string::npos, L"an ordinary function keeps a returned send");
+        }
+
         // The walker reaches every kind of child in a script that uses many
         // constructs.
         TEST_METHOD(Framework_SlotCoverage)

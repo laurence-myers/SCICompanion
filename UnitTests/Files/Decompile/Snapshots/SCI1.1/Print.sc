@@ -52,7 +52,7 @@
 		)
 		(++ temp3)
 	)
-	(return (++ temp0))
+	(++ temp0)
 )
 
 (class Print of Obj
@@ -125,37 +125,35 @@
 		(dialog moveTo: temp3 temp4)
 		(= temp1 (GetPort))
 		(dialog open: (if title 4 else 0) 15)
-		(return
-			(if modeless
-				(= gOldPort (GetPort))
-				(SetPort temp1)
-				(= gDialog dialog)
-			else
-				(gSounds pause: 1)
-				(= theFirst first)
-				(cond 
-					((not theFirst)
-						(= theFirst (dialog firstTrue: 191 1))
-						(if (and theFirst (not (dialog firstTrue: 191 2)))
-							(theFirst state: (| (theFirst state?) $0002))
-						)
+		(if modeless
+			(= gOldPort (GetPort))
+			(SetPort temp1)
+			(= gDialog dialog)
+		else
+			(gSounds pause: 1)
+			(= theFirst first)
+			(cond 
+				((not theFirst)
+					(= theFirst (dialog firstTrue: 191 1))
+					(if (and theFirst (not (dialog firstTrue: 191 2)))
+						(theFirst state: (| (theFirst state?) $0002))
 					)
-					((not (IsObject theFirst)) (= theFirst (dialog at: theFirst)))
 				)
-				(= retValue (dialog doit: theFirst))
-				(SetPort temp1)
-				(cond 
-					((== retValue -1) (= retValue 0))
-					(
-					(and (IsObject retValue) (retValue isKindOf: DButton)) (= retValue (retValue value?)))
-					((not (dialog theItem?)) (= retValue 1))
-				)
-				(if saveCursor
-					(gGame setCursor: ((gIconBar curIcon?) cursor?))
-				)
-				(dialog dispose:)
-				(return retValue)
+				((not (IsObject theFirst)) (= theFirst (dialog at: theFirst)))
 			)
+			(= retValue (dialog doit: theFirst))
+			(SetPort temp1)
+			(cond 
+				((== retValue -1) (= retValue 0))
+				(
+				(and (IsObject retValue) (retValue isKindOf: DButton)) (= retValue (retValue value?)))
+				((not (dialog theItem?)) (= retValue 1))
+			)
+			(if saveCursor
+				(gGame setCursor: ((gIconBar curIcon?) cursor?))
+			)
+			(dialog dispose:)
+			(return retValue)
 		)
 	)
 	
