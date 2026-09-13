@@ -105,6 +105,14 @@ namespace UnitTests
             AssertDecompileMatchesExpected("F9_BreakInSwitchCase", 921);
         }
 
+        // A mid-body continue creates a second back edge and a common latch.
+        // The structurer resolves the mid-body jump to the head as a continue.
+        TEST_METHOD(MidBodyContinue)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F10_MidBodyContinue", 922);
+        }
+
         // A chained comparison compiled with a pprev folds back into one n-ary
         // comparison; a comparison with no shared operand stays an and.
         TEST_METHOD(ChainedComparison)
@@ -128,6 +136,14 @@ namespace UnitTests
         {
             _gameFolder = SetUpGameSCI11();
             AssertDecompileMatchesExpected("F12_BreakJoin", 925);
+        }
+
+        // Plain SCI Companion source: nested conds in a loop body. The text is
+        // its own oracle, so the compiler's jump dialect round-trips stably.
+        TEST_METHOD(Plain_CondInLoop)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("P2_CondInLoop", 926);
         }
 
         // Family 1: a conditional branch to the loop head. Fixed: the common

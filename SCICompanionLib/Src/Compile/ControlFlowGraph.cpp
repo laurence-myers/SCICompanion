@@ -783,6 +783,8 @@ vector<NodeBlock> ControlFlowGraph::_FindSwitchBlocks(DominatorMap &dominators, 
 // and look for nodes that end in unconditional jumps to the loop follow.
 // Then, we'll mark them at "break", and reconnect them to the subsequent node in
 // memory (that is a sibling of the current structure)
+static ControlFlowNode *_FindTrueLatch(ControlFlowNode *structure);
+
 void ControlFlowGraph::_ResolveBreaksOrContinues()
 {
 	bool changes = true;
@@ -800,7 +802,8 @@ void ControlFlowGraph::_ResolveBreaksOrContinues()
 				}
 				if (_allowContinues)
 				{
-					changes = _ResolveBreakOrContinue((*structure)[SemId::Head]->GetStartingAddress(), structure, SemanticTags::LoopContinue, (*structure)[SemId::Latch]);
+					ControlFlowNode *trueLatch = _FindTrueLatch(structure);
+					changes = _ResolveBreakOrContinue((*structure)[SemId::Head]->GetStartingAddress(), structure, SemanticTags::LoopContinue, (*structure)[SemId::Latch], trueLatch);
 					if (changes)
 					{
 						break;
@@ -927,9 +930,40 @@ bool _NodeSuccessorIsCommonLatchNode(ControlFlowNode *node)
 		(*node->Successors().begin())->Type == CFGNodeType::CommonLatch;
 }
 
-bool ControlFlowGraph::_ResolveBreakOrContinue(uint16_t loopFollowOrStartAddress, ControlFlowNode *structure, SemanticTags loopOrContinueTag, ControlFlowNode *latchToAvoid)
+// A loop with a common latch has many jumps to its head. The natural back edge
+// is the last one by address; every earlier one is a continue. Return the
+// natural back edge, or null when the loop has no common latch.
+static ControlFlowNode *_FindTrueLatch(ControlFlowNode *structure)
+{
+	ControlFlowNode *commonLatch = nullptr;
+	for (ControlFlowNode *child : structure->Children())
+	{
+		if (child->Type == CFGNodeType::CommonLatch)
+		{
+			commonLatch = child;
+			break;
+		}
+	}
+	if (!commonLatch)
+	{
+		return nullptr;
+	}
+	ControlFlowNode *trueLatch = nullptr;
+	for (ControlFlowNode *pred : commonLatch->Predecessors())
+	{
+		if ((pred->Type == CFGNodeType::RawCode) && pred->endsWith(Opcode::JMP) &&
+			(!trueLatch || (pred->GetStartingAddress() > trueLatch->GetStartingAddress())))
+		{
+			trueLatch = pred;
+		}
+	}
+	return trueLatch;
+}
+
+bool ControlFlowGraph::_ResolveBreakOrContinue(uint16_t loopFollowOrStartAddress, ControlFlowNode *structure, SemanticTags loopOrContinueTag, ControlFlowNode *latchToAvoid, ControlFlowNode *trueLatch, bool topLevel)
 {
 	bool changes = false;
+	bool isContinue = (loopOrContinueTag == SemanticTags::LoopContinue);
 	// We're looking for nodes that end in an unconditional jump to the loop follow address
 	for (ControlFlowNode *node : structure->Children())
 	{
@@ -937,9 +971,17 @@ bool ControlFlowGraph::_ResolveBreakOrContinue(uint16_t loopFollowOrStartAddress
 		{
 			if (node->endsWith(Opcode::JMP) &&
 				!node->ContainsTag(loopOrContinueTag) &&	// Not already identified
-				node != latchToAvoid &&					 // "continue" would be falsely identified if we don't check against latch.
-				!_NodeSuccessorIsCommonLatchNode(node))	 // A jmp to a common latch node means we're already identifying this as part of a regular loop structure. So no break/continue.
+				node != latchToAvoid)					 // "continue" would be falsely identified if we don't check against latch.
 			{
+				// A jmp to the common latch is normally part of the loop's back
+				// edge, not a break/continue. But a mid-body jump to the head is
+				// a continue: take it, except the natural back edge (the last
+				// one), a switch's toss, and only among the loop's own children.
+				if (_NodeSuccessorIsCommonLatchNode(node) &&
+					(!isContinue || !topLevel || (node == trueLatch) || node->startsWith(Opcode::TOSS)))
+				{
+					continue;
+				}
 				scii inst = node->getLastInstruction();
 				// Conveniently, end provides us with the address of the next instruction.
 				code_pos end = static_cast<RawCodeNode*>(node)->end;
@@ -962,7 +1004,7 @@ bool ControlFlowGraph::_ResolveBreakOrContinue(uint16_t loopFollowOrStartAddress
 		{
 			if ((child != latchToAvoid) && (child->Type != CFGNodeType::Loop))
 			{
-				changes = _ResolveBreakOrContinue(loopFollowOrStartAddress, child, loopOrContinueTag, latchToAvoid);
+				changes = _ResolveBreakOrContinue(loopFollowOrStartAddress, child, loopOrContinueTag, latchToAvoid, trueLatch, false);
 				if (changes)
 				{
 					break;
@@ -1244,7 +1286,31 @@ void ControlFlowGraph::_MergeLatchTrampolines()
 			RawCodeNode *raw = static_cast<RawCodeNode*>(pred);
 			code_pos second = raw->start;
 			++second;
-			if ((raw->start->get_opcode() == Opcode::JMP) && (second == raw->end) && (pred->Successors().size() == 1))
+			if ((raw->start->get_opcode() != Opcode::JMP) || (second != raw->end) || (pred->Successors().size() != 1))
+			{
+				continue;
+			}
+			// A real (continue) is also a bare "jmp head", but its if falls
+			// through into it. A trampoline is reached only by branches that
+			// name it. Leave a node that any raw predecessor falls into.
+			bool fallenInto = false;
+			uint16_t address = pred->GetStartingAddress();
+			for (ControlFlowNode *before : pred->Predecessors())
+			{
+				if (before->Type != CFGNodeType::RawCode)
+				{
+					continue;
+				}
+				code_pos last = static_cast<RawCodeNode*>(before)->end;
+				--last;
+				bool branchesHere = last->_is_branch_instruction() && (last->get_branch_target()->get_final_offset() == address);
+				if ((last->get_opcode() != Opcode::JMP) && !branchesHere)
+				{
+					fallenInto = true;
+					break;
+				}
+			}
+			if (!fallenInto)
 			{
 				trampolines.insert(pred);
 			}
@@ -2668,6 +2734,12 @@ bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 		{
 			_DoLoopTransforms();
 		}
+		// Before break/continue resolution: a shared bare "jmp head" is the end
+		// of several ifs, not a continue statement.
+		if (!_decompilerResults.IsAborted())
+		{
+			_MergeLatchTrampolines();
+		}
 		if (!_decompilerResults.IsAborted())
 		{
 			_RestructureBreaksAndContinues();
@@ -2675,10 +2747,6 @@ bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 		if (!_decompilerResults.IsAborted())
 		{
 			_ResolveBreaksOrContinues();
-		}
-		if (!_decompilerResults.IsAborted())
-		{
-			_MergeLatchTrampolines();
 		}
 
 		if (showFile)

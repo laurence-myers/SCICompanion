@@ -110,7 +110,9 @@ expected file is missing, the test writes the actual to
 | `F8_DeadValueStatement` | 919 | 8 | fixed; dead value becomes a bare statement |
 | `F9_BreakInSwitchCase` | 921 | (structurer) | fixed; break out of a loop from a switch case |
 | `N1_ChainedCompare` | 923 | (n-ary) | fixed; `(< 0 x 19)` folds from its pprev halves |
+| `F10_MidBodyContinue` | 922 | (structurer) | fixed; a mid-body `jmp head` is a `(continue)` |
 | `F11_LatchTrampoline` | 924 | (structurer) | fixed; a shared `jmp head` folds into the common latch |
+| `P2_CondInLoop` | 926 | (compiler) | SCI Companion dialect; nested conds in a loop round-trip stably |
 | `F12_BreakJoin` | 925 | (structurer) | fixed; a break edge into a shared statement moves to the if's follow |
 
 `TemplateGame_FallbackBaseline` guards against new fallbacks. The template game

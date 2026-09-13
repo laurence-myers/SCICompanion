@@ -95,17 +95,22 @@
 			(= temp2 (temp1 type?))
 			(= temp3 (temp1 message?))
 			(if gCuees (gCuees eachElementDo: 57))
-			(cond 
-				(gFastCast (gFastCast handleEvent: temp1))
-				((and (== temp2 1) temp4) (self advanceCurIcon:) (temp1 claimed: 1))
-				(
-					(and
-						(== temp2 0)
-						(= theCurIcon (self firstTrue: 226 temp1))
-						(!= theCurIcon highlightedIcon)
-					)
-					(self highlight: theCurIcon)
+			(if gFastCast (gFastCast handleEvent: temp1) (continue))
+			(if (and (== temp2 1) temp4)
+				(self advanceCurIcon:)
+				(temp1 claimed: 1)
+				(continue)
+			)
+			(if
+				(and
+					(== temp2 0)
+					(= theCurIcon (self firstTrue: 226 temp1))
+					(!= theCurIcon highlightedIcon)
 				)
+				(self highlight: theCurIcon)
+				(continue)
+			)
+			(cond 
 				(
 					(or
 						(== temp2 1)
@@ -117,21 +122,20 @@
 							(IsObject highlightedIcon)
 							(self select: highlightedIcon (== temp2 1))
 						)
-						(cond 
-							((== highlightedIcon okButton) (break))
-							((== highlightedIcon helpIconItem)
-								(if (!= (highlightedIcon cursor?) -1)
-									(gGame setCursor: (helpIconItem cursor?))
-								)
-								(cond 
-									((& state $0800) (self noClickHelp:))
-									(helpIconItem (helpIconItem signal: (| (helpIconItem signal?) $0010)))
-								)
+						(if (== highlightedIcon okButton) (break))
+						(if (== highlightedIcon helpIconItem)
+							(if (!= (highlightedIcon cursor?) -1)
+								(gGame setCursor: (helpIconItem cursor?))
 							)
-							(else
-								(= curIcon highlightedIcon)
-								(gGame setCursor: (curIcon cursor?))
+							(if (& state $0800) (self noClickHelp:) (continue))
+							(if helpIconItem
+								(helpIconItem signal: (| (helpIconItem signal?) $0010))
+								(continue)
 							)
+						else
+							(= curIcon highlightedIcon)
+							(gGame setCursor: (curIcon cursor?))
+							(continue)
 						)
 					)
 				)
@@ -190,45 +194,44 @@
 						(& temp2 $4000)
 						(= theCurIcon (self firstTrue: 226 temp1))
 					)
-					(cond 
-						((& temp2 $2000)
-							(if
-								(and
-									theCurIcon
+					(if (& temp2 $2000)
+						(if
+							(and
+								theCurIcon
+								(theCurIcon noun?)
+								(Message
+									0
+									(theCurIcon modNum?)
 									(theCurIcon noun?)
-									(Message
-										0
-										(theCurIcon modNum?)
-										(theCurIcon noun?)
-										(theCurIcon helpVerb?)
-										0
-										1
-										@temp10
-									)
-								)
-								(if (gWindow respondsTo: 244)
-									(= gWindowEraseOnly (gWindow eraseOnly?))
-									(gWindow eraseOnly: 1)
-									(Prints @temp10)
-									(gWindow eraseOnly: gWindowEraseOnly)
-								else
-									(Prints @temp10)
+									(theCurIcon helpVerb?)
+									0
+									1
+									@temp10
 								)
 							)
-							(helpIconItem signal: (& (helpIconItem signal?) $ffef))
-							(gGame setCursor: 999)
+							(if (gWindow respondsTo: 244)
+								(= gWindowEraseOnly (gWindow eraseOnly?))
+								(gWindow eraseOnly: 1)
+								(Prints @temp10)
+								(gWindow eraseOnly: gWindowEraseOnly)
+							else
+								(Prints @temp10)
+							)
 						)
-						((== theCurIcon okButton) (break))
+						(helpIconItem signal: (& (helpIconItem signal?) $ffef))
+						(gGame setCursor: 999)
+						(continue)
+					)
+					(if (== theCurIcon okButton) (break))
+					(cond 
 						((not (theCurIcon isKindOf: InventoryItem))
 							(if (self select: theCurIcon (not temp9))
 								(= curIcon theCurIcon)
 								(gGame setCursor: (curIcon cursor?))
 								(if (== theCurIcon helpIconItem)
-									(if (& state $0800)
-										(self noClickHelp:)
-									else
-										(helpIconItem signal: (| (helpIconItem signal?) $0010))
-									)
+									(if (& state $0800) (self noClickHelp:) (continue))
+									(helpIconItem signal: (| (helpIconItem signal?) $0010))
+									(continue)
 								)
 							)
 						)

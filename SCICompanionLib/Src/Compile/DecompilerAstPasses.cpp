@@ -551,6 +551,11 @@ namespace
 					ctx.List()->erase(ctx.List()->begin() + next);
 					changed = true;
 				}
+				else if (SafeSyntaxNode<Comment>(n))
+				{
+					// An empty comment (a dead jump after the return) is not code.
+					next++;
+				}
 				else
 				{
 					break;
