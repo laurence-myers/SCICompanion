@@ -1667,12 +1667,15 @@ public:
 			thenBlock &&
 			(thenBlock->GetStatements().size() == 1))
 		{
-			if (SafeSyntaxNode<BreakStatement>(thenBlock->GetStatements()[0].get()))
+			// (break 2) has no breakif form: the level would be lost.
+			const BreakStatement *breakStatement = SafeSyntaxNode<BreakStatement>(thenBlock->GetStatements()[0].get());
+			const ContinueStatement *continueStatement = SafeSyntaxNode<ContinueStatement>(thenBlock->GetStatements()[0].get());
+			if (breakStatement && (breakStatement->Levels == 1))
 			{
 				breakOrContinueIf = "breakif";
 				return true;
 			}
-			else if (SafeSyntaxNode<ContinueStatement>(thenBlock->GetStatements()[0].get()))
+			else if (continueStatement && (continueStatement->Levels == 1))
 			{
 				breakOrContinueIf = "contif";
 				return true;

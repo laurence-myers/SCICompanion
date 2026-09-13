@@ -187,6 +187,20 @@ namespace
 		return result;
 	}
 
+	// The meaningful statements of a list, skipping comment nodes.
+	vector<SyntaxNode *> MeaningfulStatementsOf(const SyntaxNodeVector &list)
+	{
+		vector<SyntaxNode *> result;
+		for (const unique_ptr<SyntaxNode> &s : list)
+		{
+			if (!SafeSyntaxNode<Comment>(s.get()))
+			{
+				result.push_back(s.get());
+			}
+		}
+		return result;
+	}
+
 	bool IsEmptyBlock(SyntaxNode *block)
 	{
 		return MeaningfulStatements(block).empty();
@@ -254,13 +268,13 @@ namespace
 
 			// Rule 1 (any position): (if A (if B C...)) -> (if (and A B) C...).
 			// The outer has no else, and its then is exactly one if with no else.
-			if (!if_->HasElse())
+			if (!if_->HasElse() && HasConditionExpression(*if_))
 			{
 				vector<SyntaxNode *> thenStmts = MeaningfulStatements(if_->GetStatement1());
 				if (thenStmts.size() == 1)
 				{
 					IfStatement *inner = SafeSyntaxNode<IfStatement>(thenStmts[0]);
-					if (inner && !inner->HasElse())
+					if (inner && !inner->HasElse() && HasConditionExpression(*inner))
 					{
 						unique_ptr<SyntaxNode> outerCond = move(ConditionSlot(*if_));
 						unique_ptr<SyntaxNode> innerCond = move(ConditionSlot(*inner));
@@ -352,7 +366,7 @@ namespace
 				return RewriteResult::Replaced;
 			}
 			IfStatement *if_ = SafeSyntaxNode<IfStatement>(slot.get());
-			if (!if_ || !if_->HasElse() || !IsEmptyBlock(if_->GetStatement1()))
+			if (!if_ || !if_->HasElse() || !IsEmptyBlock(if_->GetStatement1()) || !HasConditionExpression(*if_))
 			{
 				return RewriteResult::None;
 			}
@@ -485,17 +499,17 @@ namespace
 		RewriteResult Rewrite(unique_ptr<SyntaxNode> &slot, const AstContext &) override
 		{
 			WhileLoop *loop = SafeSyntaxNode<WhileLoop>(slot.get());
-			if (!loop || IsTrueCondition(*loop))
+			if (!loop || IsTrueCondition(*loop) || !HasConditionExpression(*loop))
 			{
 				return RewriteResult::None;
 			}
-			vector<SyntaxNode *> body = MeaningfulStatements2(loop->GetStatements());
+			vector<SyntaxNode *> body = MeaningfulStatementsOf(loop->GetStatements());
 			if (body.size() != 1)
 			{
 				return RewriteResult::None;
 			}
 			IfStatement *if_ = SafeSyntaxNode<IfStatement>(body[0]);
-			if (!if_ || !if_->HasElse())
+			if (!if_ || !if_->HasElse() || !HasConditionExpression(*if_))
 			{
 				return RewriteResult::None;
 			}
@@ -518,22 +532,13 @@ namespace
 					newBody.push_back(move(s));
 				}
 			}
+			else if (if_->GetStatement1())
+			{
+				// The parser can leave a single statement bare.
+				newBody.push_back(move(if_->GetStatement1Internal()));
+			}
 			loop->GetStatements().swap(newBody);
 			return RewriteResult::Changed;
-		}
-
-	private:
-		static vector<SyntaxNode *> MeaningfulStatements2(const SyntaxNodeVector &list)
-		{
-			vector<SyntaxNode *> result;
-			for (const unique_ptr<SyntaxNode> &s : list)
-			{
-				if (!SafeSyntaxNode<Comment>(s.get()))
-				{
-					result.push_back(s.get());
-				}
-			}
-			return result;
 		}
 	};
 
@@ -562,6 +567,11 @@ namespace
 			bool isContinue = IsSingleLevelContinue(lastThen) && IsSingleLevelContinue(lastElse);
 			if (!isBreak && !isContinue)
 			{
+				return RewriteResult::None;
+			}
+			if (MeaningfulStatementsOf(thenB->GetStatements()).size() == 1)
+			{
+				// The then would be empty: (if c (break) else ...) keeps its shape.
 				return RewriteResult::None;
 			}
 			thenB->GetStatements().pop_back();
@@ -615,7 +625,7 @@ namespace
 			CodeBlock *thenB = AsCodeBlock(if_->GetStatement1());
 			if (thenB)
 			{
-				while (thenB->GetStatements().size() > 1 && IsMatch(thenB->GetStatements().back().get(), wantBreak))
+				while ((MeaningfulStatementsOf(thenB->GetStatements()).size() > 1) && IsMatch(thenB->GetStatements().back().get(), wantBreak))
 				{
 					thenB->GetStatements().pop_back();
 					changed = true;
@@ -685,7 +695,7 @@ namespace
 		}
 
 	private:
-		static void Trim(SyntaxNodeVector &list, bool &changed)
+		static void Trim(SyntaxNodeVector &list, bool &changed, bool isThen = false)
 		{
 			for (;;)
 			{
@@ -701,6 +711,11 @@ namespace
 				SyntaxNode *last = list[index - 1].get();
 				if (IsSingleLevelContinue(last))
 				{
+					if (isThen && (MeaningfulStatementsOf(list).size() == 1))
+					{
+						// The then would be empty: (if c (continue)) keeps its shape.
+						return;
+					}
 					list.erase(list.begin() + index - 1);
 					changed = true;
 					continue;
@@ -711,7 +726,7 @@ namespace
 					CodeBlock *thenB = AsCodeBlock(if_->GetStatement1());
 					if (thenB)
 					{
-						Trim(thenB->GetStatements(), changed);
+						Trim(thenB->GetStatements(), changed, true);
 					}
 					CodeBlock *elseB = AsCodeBlock(if_->GetStatement2());
 					if (elseB)

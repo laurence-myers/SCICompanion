@@ -577,9 +577,9 @@ std::string DumpSelectorTable()
     lookups.Load(appState->GetResourceMap().Helper());
     const std::vector<std::string> &names = lookups.GetSelectorTable().GetNames();
     std::string out = fmt::format("names: {0}\n", names.size());
-    for (uint16_t i = 0; i < 4096; i++)
+    for (size_t i = 0; i < names.size(); i++)
     {
-        std::string name = lookups.GetSelectorTable().Lookup(i);
+        std::string name = lookups.GetSelectorTable().Lookup(static_cast<uint16_t>(i));
         if (!name.empty())
         {
             out += fmt::format("{0} {1}\n", i, name);

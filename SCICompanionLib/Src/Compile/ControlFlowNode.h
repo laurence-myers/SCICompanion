@@ -338,7 +338,9 @@ struct FakeBreakOrContinueNode : public ControlFlowNode
 
 struct IfNode : public StructuredNode
 {
-	IfNode(ControlFlowNode *head) : testHead(nullptr), StructuredNode(head, CFGNodeType::If, { SemId::Then, SemId::Else, SemId::Follow }) {}
+	// testHead is part of the sort key (GetStartingAddress), so it is set
+	// here, before the node goes into a sorted container.
+	IfNode(ControlFlowNode *head, ControlFlowNode *testHead = nullptr) : testHead(testHead), StructuredNode(head, CFGNodeType::If, { SemId::Then, SemId::Else, SemId::Follow }) {}
 	void Accept(ICFGNodeVisitor &visitor) const { visitor.Visit(*this); }
 
 	// The condition is the chain of nodes from testHead to the head (the branch

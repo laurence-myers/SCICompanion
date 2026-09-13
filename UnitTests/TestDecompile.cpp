@@ -83,10 +83,16 @@ namespace UnitTests
         TEST_METHOD(Compiler_ValueAndOr)
         {
             _gameFolder = SetUpGameSCI11();
-            DecompileOutput out = DecompileAndRoundTrip("C1_ValueAndOr", 908);
-            LogWarnings("C1", out);
-            Assert::AreEqual(0, out.fallbacks, L"value and/or should not fall back");
-            Assert::IsFalse(out.ContainsAsm(), L"value and/or should have no asm");
+            AssertDecompileMatchesExpected("C1_ValueAndOr", 908);
+        }
+
+        // Sierra's own sequence for an indexed compound assignment loads to
+        // the accumulator and pushes ("lati; push"), where SCI Companion
+        // emits "lsti". The decompiler folds both.
+        TEST_METHOD(SierraIndexedMathAssign)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("C3_SierraIndexedMathAssign", 932);
         }
 
         // Compiler: a compound assignment to an indexed variable with a simple
@@ -120,6 +126,13 @@ namespace UnitTests
         {
             _gameFolder = SetUpGameSCI11();
             AssertDecompileMatchesExpected("N1_ChainedCompare", 923);
+        }
+
+        // Sierra's own shape for a chained comparison, a variable last.
+        TEST_METHOD(SierraChainedComparison)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("N2_SierraChainedCompare", 933);
         }
 
         // A bare "jmp head" shared by several branches inside a loop body folds
@@ -476,7 +489,7 @@ namespace UnitTests
                 CreateDirectoryA(out, nullptr);
                 std::ofstream file(fmt::format("{0}\\_script_{1}.txt", out, number), std::ios::binary);
                 file << report;
-                std::ofstream selectors(fmt::format("{0}\_selectors.txt", out), std::ios::binary);
+                std::ofstream selectors(fmt::format("{0}\\_selectors.txt", out), std::ios::binary);
                 selectors << DumpSelectorTable();
                 Logger::WriteMessage(L"Wrote single-script dump.");
                 return;

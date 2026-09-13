@@ -428,6 +428,10 @@ public:
 	// the rest to the nearest call above. False when no call frame is open.
 	bool AddRestToEnclosingCall(code_pos code)
 	{
+		// The rest sits among the argument pushes of its call, so a call
+		// that still needs stack is preferred over an inner call whose
+		// arguments are complete (one left open for a reused accumulator).
+		ConsumptionNode *firstCall = nullptr;
 		for (int i = (int)frames.size() - 1; i >= 0; i--)
 		{
 			if (frames[i].node)
@@ -437,9 +441,21 @@ public:
 			ConsumptionNode *owner = frames[i].Parent;
 			if (owner && owner->_hasPos && IsCallOpcode(owner->GetCode()->get_opcode()))
 			{
-				owner->PrependChild()->SetPos(code);
-				return true;
+				if (frames[i].cStackConsume > 0)
+				{
+					owner->PrependChild()->SetPos(code);
+					return true;
+				}
+				if (!firstCall)
+				{
+					firstCall = owner;
+				}
 			}
+		}
+		if (firstCall)
+		{
+			firstCall->PrependChild()->SetPos(code);
+			return true;
 		}
 		return false;
 	}
@@ -448,12 +464,48 @@ public:
 	// enclosing call whose stack operands were pushed before the if), kept
 	// until that frame is current again. Later code first.
 	std::vector<code_pos> deferred;
+	// The instruction node whose frame the deferred code belongs to.
+	ConsumptionNode *deferredConsumer = nullptr;
 
-	// True when the frame on top is a condition of an if (or an and/or
-	// operand) and, below the ifs and conditions above it, an instruction
-	// frame still needs stack or accumulator. Any then, else, loop or case
-	// body between them ends the search: their code is not the consumer's.
-	bool ShouldDeferToEnclosingConsumer() const
+	// True when the deferred code can be offered now: its consumer's frame
+	// is the innermost one still needing operands, or that frame is gone.
+	bool DeferredConsumerIsCurrent() const
+	{
+		if (!deferredConsumer)
+		{
+			return true;
+		}
+		size_t i = frames.size();
+		while ((i > 0) && (frames[i - 1].node == nullptr) && (frames[i - 1].cAccConsume == 0) && (frames[i - 1].cStackConsume == 0))
+		{
+			if (frames[i - 1].Parent == deferredConsumer)
+			{
+				return true;
+			}
+			i--;
+		}
+		if ((i > 0) && (frames[i - 1].Parent == deferredConsumer))
+		{
+			return true;
+		}
+		for (size_t j = 0; j < frames.size(); j++)
+		{
+			if (frames[j].Parent == deferredConsumer)
+			{
+				return false;	// still open, below other frames
+			}
+		}
+		return true;	// popped: the code goes where the walk is now
+	}
+
+	// The consumer to defer to, when the frame on top is the condition of an
+	// if (or the first operand of an and/or) and, below the ifs and
+	// conditions above it, an instruction frame still needs stack or
+	// accumulator. Any then, else, loop or case body between them ends the
+	// search: their code is not the consumer's. The second operand of an
+	// and/or does not always run, so its code is never the consumer's.
+	// Returns nullptr when there is no such consumer.
+	ConsumptionNode *EnclosingConsumerToDeferTo() const
 	{
 		size_t i = frames.size();
 		// The instruction frames of the test that are satisfied (the branch
@@ -469,12 +521,12 @@ public:
 		}
 		if (i == 0)
 		{
-			return false;
+			return nullptr;
 		}
 		ChunkType top = frames[i - 1].Parent->GetType();
-		if ((top != ChunkType::Condition) && (top != ChunkType::First) && (top != ChunkType::Second))
+		if ((top != ChunkType::Condition) && (top != ChunkType::First))
 		{
-			return false;
+			return nullptr;
 		}
 		while ((i > 0) && frames[i - 1].node)
 		{
@@ -485,11 +537,10 @@ public:
 				case ChunkType::And:
 				case ChunkType::Or:
 				case ChunkType::First:
-				case ChunkType::Second:
 				case ChunkType::Invert:
 					break;
 				default:
-					return false;
+					return nullptr;
 			}
 			i--;
 		}
@@ -497,11 +548,11 @@ public:
 		{
 			if ((frames[i - 1].cAccConsume > 0) || (frames[i - 1].cStackConsume > 0))
 			{
-				return true;
+				return frames[i - 1].Parent;
 			}
 			i--;
 		}
-		return false;
+		return nullptr;
 	}
 
 	void AddInstructionToCurrent(code_pos code)
@@ -685,7 +736,12 @@ public:
 				// (the compiler dropped a load) stops here; what is left of
 				// the block is an enclosing call's operands, or statements
 				// before the if. Hand it to that frame after the if.
-				*deferRest = _context.ShouldDeferToEnclosingConsumer();
+				ConsumptionNode *consumer = _context.EnclosingConsumerToDeferTo();
+				if (consumer)
+				{
+					_context.deferredConsumer = consumer;
+					*deferRest = true;
+				}
 				return false;
 			}
 		}
@@ -705,7 +761,7 @@ public:
 		bool taken = false;
 		while (!_context.deferred.empty())
 		{
-			if (_context.ShouldDeferToEnclosingConsumer())
+			if (!_context.DeferredConsumerIsCurrent())
 			{
 				break;
 			}
@@ -715,6 +771,10 @@ public:
 				_context.deferred.erase(_context.deferred.begin());
 				taken = true;
 			}
+		}
+		if (_context.deferred.empty())
+		{
+			_context.deferredConsumer = nullptr;
 		}
 		if (taken)
 		{
@@ -893,6 +953,7 @@ public:
 
 	void Visit(const CaseNode &caseNode) override
 	{
+		_ProcessDeferred();
 		size_t levelCount = _context.GetLevelCount();
 		// Cases don't need to do acc consumption.
 
@@ -1136,17 +1197,23 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode2(ConsumptionNode &node, Decomp
 		case ChunkType::Or:
 		{
 			unique_ptr<BinaryOp> binaryOp = make_unique<BinaryOp>();
-			if (node.GetChild(ChunkType::First)->GetChildCount() != 1)
+			ConsumptionNode *first = node.GetChild(ChunkType::First);
+			ConsumptionNode *second = node.GetChild(ChunkType::Second);
+			if (!first || !second)
 			{
-				throw ConsumptionNodeException(node.GetChild(ChunkType::First), "Too many children for condition node.");
+				throw ConsumptionNodeException(&node, "Compound condition is missing an operand.");
 			}
-			_ApplySyntaxNodeToCodeNode1(*node.GetChild(ChunkType::First)->Child(0), *binaryOp, lookups);
+			if (first->GetChildCount() != 1)
+			{
+				throw ConsumptionNodeException(first, "Too many children for condition node.");
+			}
+			_ApplySyntaxNodeToCodeNode1(*first->Child(0), *binaryOp, lookups);
 
-			if (node.GetChild(ChunkType::Second)->GetChildCount() != 1)
+			if (second->GetChildCount() != 1)
 			{
-				throw ConsumptionNodeException(node.GetChild(ChunkType::Second), "Too many children for condition node.");
+				throw ConsumptionNodeException(second, "Too many children for condition node.");
 			}
-			_ApplySyntaxNodeToCodeNode2(*node.GetChild(ChunkType::Second)->Child(0), *binaryOp, lookups);
+			_ApplySyntaxNodeToCodeNode2(*second->Child(0), *binaryOp, lookups);
 
 			binaryOp->Operator = ((node._chunkType == ChunkType::And) ? BinaryOperator::LogicalAnd : BinaryOperator::LogicalOr);
 			return unique_ptr<SyntaxNode>(move(binaryOp));
@@ -2356,12 +2423,17 @@ unique_ptr<ConsumptionNode> StealNodeOrReuseAcc(ConsumptionNode *nodeToSteal, De
 
 unique_ptr<ConsumptionNode> CloneNode(ConsumptionNode *nodeToSteal, DecompileLookups &lookups)
 {
-	unique_ptr<ConsumptionNode> theClone = nodeToSteal->Clone();
-	if (theClone->_hasPos && IsOpcodeWeCanShortCircuit(theClone->GetCode()->get_opcode()))
+	if (nodeToSteal->_hasPos && IsOpcodeWeCanShortCircuit(nodeToSteal->GetCode()->get_opcode()))
 	{
-		theClone->SetTypeDontClearPos(ChunkType::ShortCircuitInstruction);
+		// The value is read back from the store's variable or property, so
+		// the store's own operand (an expression the code runs once) is not
+		// part of the clone.
+		unique_ptr<ConsumptionNode> shortCircuit = make_unique<ConsumptionNode>();
+		shortCircuit->SetType(ChunkType::ShortCircuitInstruction);
+		shortCircuit->SetPos(nodeToSteal->GetCode());
+		return shortCircuit;
 	}
-	return theClone;
+	return nodeToSteal->Clone();
 }
 
 void ReplaceNodeWithNode(ConsumptionNode *nodeToBeReplaced, unique_ptr<ConsumptionNode> stolen, DecompileLookups &lookups)
@@ -2489,10 +2561,30 @@ bool IsNearestAccSource(ConsumptionNode *candidate, ConsumptionNode *placeholder
 	{
 		return true;
 	}
+	Opcode candidateOpcode = candidate->GetCode()->get_opcode();
+	uint16_t candidateOperand = candidate->GetCode()->get_first_operand();
+	bool candidateIsVariable = (candidateOpcode >= Opcode::LAG) && (candidateOpcode <= Opcode::LastLoadStore);
 	--current;
 	while ((current->get_opcode() != Opcode::INDETERMINATE) && (current->get_final_offset_dontcare() > candidateOffset))
 	{
 		if (_GetInstructionConsumption(*current).cAccGenerate)
+		{
+			return false;
+		}
+		// A store, increment or decrement of the candidate's variable or
+		// property that leaves the accumulator alone (a stack form) changes
+		// the value the candidate would read back.
+		Opcode opcode = current->get_opcode();
+		if (candidateIsVariable && (opcode >= Opcode::LAG) && (opcode <= Opcode::LastLoadStore) &&
+			(_IsVOStoreOperation(opcode) || _IsVOIncremented(opcode) || _IsVODecremented(opcode)) &&
+			((static_cast<BYTE>(opcode) & 0x03) == (static_cast<BYTE>(candidateOpcode) & 0x03)) &&
+			(_IsVOIndexed(opcode) || (current->get_first_operand() == candidateOperand)))
+		{
+			return false;
+		}
+		if ((candidateOpcode == Opcode::PTOA) &&
+			((opcode == Opcode::ATOP) || (opcode == Opcode::IPTOA) || (opcode == Opcode::DPTOA) || (opcode == Opcode::IPTOS) || (opcode == Opcode::DPTOS)) &&
+			(current->get_first_operand() == candidateOperand))
 		{
 			return false;
 		}
@@ -3154,7 +3246,7 @@ bool _ResolveNeededAccWorker(ConsumptionNode *root, ConsumptionNode *chunk, Deco
 			{
 				changes = true;
 			}
-			else if (chunk->_hasPos && (chunk->GetCode()->get_opcode() == Opcode::RET))
+			else if ((child->GetType() == ChunkType::NeedsAccumulator) && chunk->_hasPos && (chunk->GetCode()->get_opcode() == Opcode::RET))
 			{
 				// A ret whose value comes from behind a structure boundary (the
 				// condition of the if it sits in, most often) returns whatever the
@@ -3162,6 +3254,7 @@ bool _ResolveNeededAccWorker(ConsumptionNode *root, ConsumptionNode *chunk, Deco
 				// clone would run the source a second time, a side effect the
 				// code did not have, as in (if (== (= fd (FileIO ...)) -1) (return)).
 				chunk->StealChild(i, &lookups);
+				changes = true;
 			}
 			else
 			{

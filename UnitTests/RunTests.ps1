@@ -52,17 +52,27 @@ if (-not $All) {
     $vstestArgs += "/TestCaseFilter:$Filter"
 }
 
+# The snapshot test writes each decompiled script to SnapshotActuals next to
+# the test DLL. Clear the last run's output first, so -UpdateSnapshots cannot
+# copy stale files from an earlier build.
+$actuals = Join-Path $repoRoot "$Configuration\SnapshotActuals\SCI1.1"
+if ($UpdateSnapshots -and (Test-Path $actuals)) {
+    Remove-Item -Recurse -Force $actuals
+}
+
 Write-Host "Running: $vstest $($vstestArgs -join ' ')"
 & $vstest @vstestArgs
 $testExit = $LASTEXITCODE
 
 if ($UpdateSnapshots) {
-    # The snapshot test writes each decompiled script to SnapshotActuals next to
-    # the test DLL. Copy those into the committed snapshot folder.
-    $actuals = Join-Path $repoRoot "$Configuration\SnapshotActuals\SCI1.1"
+    if ($testExit -ne 0) {
+        Write-Host "Tests failed (exit $testExit); snapshots not updated."
+        exit $testExit
+    }
+    # Copy the actuals into the committed snapshot folder.
     $committed = Join-Path $PSScriptRoot "Files\Decompile\Snapshots\SCI1.1"
     if (-not (Test-Path $actuals)) {
-        throw "No snapshot actuals at $actuals. Run the snapshot test first."
+        throw "No snapshot actuals at $actuals. Run the snapshot test (no -Filter that excludes it)."
     }
     New-Item -ItemType Directory -Force -Path $committed | Out-Null
     Copy-Item -Path (Join-Path $actuals "*.sc") -Destination $committed -Force

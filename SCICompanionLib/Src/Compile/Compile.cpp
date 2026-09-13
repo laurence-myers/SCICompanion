@@ -2454,6 +2454,9 @@ CodeResult BinaryOp::OutputByteCode(CompileContext &context) const
 		}
 		else
 		{
+			// The operands are values, also inside an if test: a logical
+			// and/or below a compare must not branch to the if's else.
+			declare_conditional isCondition(context, false);
 			SpeciesIndex wTypeLeft;
 			SpeciesIndex wTypeRight;
 			// pop()  operator  acc

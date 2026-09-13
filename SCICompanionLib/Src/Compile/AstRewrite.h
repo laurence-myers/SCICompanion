@@ -79,6 +79,8 @@ class AstContext;
 // been visited. A pass may replace *slot, edit the node or its children, insert
 // statements after the current one, or (for a Statement slot) erase later
 // siblings. It must not touch ancestors or earlier siblings. It must not throw.
+// The slot is a reference into the statement list, so a pass that inserts
+// into the list must be done with the slot before the insert.
 class AstPass
 {
 public:
@@ -155,6 +157,8 @@ bool IsTrueCondition(const sci::ConditionNode &conditionOwner);
 
 // The single mutable statement inside a ConditionNode's inner expression.
 std::unique_ptr<sci::SyntaxNode> &ConditionSlot(sci::ConditionNode &conditionOwner);
+// True when the owner has a condition with an expression (ConditionSlot is valid).
+bool HasConditionExpression(const sci::ConditionNode &conditionOwner);
 
 // Wraps a bare expression in a ConditionalExpression, for a ConditionNode.
 void SetConditionExpression(sci::ConditionNode &conditionOwner, std::unique_ptr<sci::SyntaxNode> expr);

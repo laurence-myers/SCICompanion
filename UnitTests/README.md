@@ -97,6 +97,7 @@ expected file is missing, the test writes the actual to
 | `F7_UnknownClass` | 907 | 7 | class stays as asm; clear message |
 | `C1_ValueAndOr` | 908 | (compiler) | value and/or round-trips |
 | `C2_IndexedMathAssign` | 920 | (compiler) | indexed `+=` compiles to Sierra's sequence |
+| `C3_SierraIndexedMathAssign` | 932 | (chunk stage) | Sierra's own `lati; push` sequence for an indexed `+=` folds back |
 | `F3_ValueIfReturn` | 909 | 3 | fixed; `(return (and a b))` |
 | `F3_OrThreeTerms` | 910 | 3 | fixed; n-ary or |
 | `F3_OrAndOr` | 911 | 3 | fixed; needs the branch deoptimizer |
@@ -110,6 +111,7 @@ expected file is missing, the test writes the actual to
 | `F8_DeadValueStatement` | 919 | 8 | fixed; dead value becomes a bare statement |
 | `F9_BreakInSwitchCase` | 921 | (structurer) | fixed; break out of a loop from a switch case |
 | `N1_ChainedCompare` | 923 | (n-ary) | fixed; `(< 0 x 19)` is built from its pprev at consumption, a send in the middle included |
+| `N2_SierraChainedCompare` | 933 | (n-ary) | fixed; Sierra's own chain shape with a variable last; the chain's `bnt` is neutralized only between two compares of the same operator |
 | `F10_MidBodyContinue` | 922 | (structurer) | fixed; a mid-body `jmp head` is a `(continue)`, written as an if-else by `IfContinueRefactor` |
 | `F11_LatchTrampoline` | 924 | (structurer) | fixed; a shared `jmp head` folds into the common latch |
 | `P2_CondInLoop` | 926 | (compiler) | SCI Companion dialect; nested conds in a loop round-trip stably |

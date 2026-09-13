@@ -206,8 +206,7 @@ ControlFlowNode *ControlFlowGraph::_ReplaceIfStatementInWorkingSet(ControlFlowNo
 	// At this point, we can probably assert that each node we encounter (other than the header) only has a
 	// single successor. There shouldn't be any more branching at this point, other than the if statements
 	// that we are collected. And we go from the most nested to the least.
-	IfNode *ifNode = MakeStructuredNode<IfNode>(ifHeader);
-	ifNode->testHead = testHead;
+	IfNode *ifNode = MakeStructuredNode<IfNode>(ifHeader, testHead);
 	// The value nodes that feed the test come first (testHead .. header).
 	for (ControlFlowNode *feed = testHead; feed != ifHeader; feed = *feed->Successors().begin())
 	{
@@ -2017,6 +2016,13 @@ bool ControlFlowGraph::_TryBuildIf(ControlFlowNode *structure, ControlFlowNode *
 // outside join means this is not an if. Returns false in that case.
 bool ControlFlowGraph::_DetachBreakJoins(ControlFlowNode *head, ControlFlowNode *follow)
 {
+	// The edges to move, as (join, predecessor). The graph is not changed
+	// until the whole walk succeeds: a failure must leave it as it was.
+	vector<pair<ControlFlowNode*, ControlFlowNode*>> moves;
+	auto isMoved = [&moves](ControlFlowNode *join, ControlFlowNode *pred)
+	{
+		return find(moves.begin(), moves.end(), make_pair(join, pred)) != moves.end();
+	};
 	for (int guard = 0; guard < 64; guard++)
 	{
 		NodeSet inside;
@@ -2032,7 +2038,7 @@ bool ControlFlowGraph::_DetachBreakJoins(ControlFlowNode *head, ControlFlowNode 
 			inside.insert(node);
 			for (ControlFlowNode *succ : node->Successors())
 			{
-				if (succ != follow)
+				if ((succ != follow) && !isMoved(succ, node))
 				{
 					toProcess.push(succ);
 				}
@@ -2049,7 +2055,7 @@ bool ControlFlowGraph::_DetachBreakJoins(ControlFlowNode *head, ControlFlowNode 
 			bool hasOutsidePred = false;
 			for (ControlFlowNode *pred : node->Predecessors())
 			{
-				if (!inside.contains(pred))
+				if (!inside.contains(pred) && !isMoved(node, pred))
 				{
 					hasOutsidePred = true;
 					break;
@@ -2059,28 +2065,30 @@ bool ControlFlowGraph::_DetachBreakJoins(ControlFlowNode *head, ControlFlowNode 
 			{
 				continue;
 			}
-			NodeSet insidePreds;
 			for (ControlFlowNode *pred : node->Predecessors())
 			{
-				if (inside.contains(pred))
+				if (inside.contains(pred) && !isMoved(node, pred))
 				{
 					if (!pred->ContainsTag(SemanticTags::LoopBreak) && !pred->ContainsTag(SemanticTags::LoopContinue))
 					{
 						return false;
 					}
-					insidePreds.insert(pred);
+					moves.push_back(make_pair(node, pred));
+					changed = true;
 				}
 			}
-			for (ControlFlowNode *pred : insidePreds)
+			if (changed)
 			{
-				node->ErasePredecessor(pred);
-				follow->InsertPredecessor(pred);
+				break;
 			}
-			changed = true;
-			break;
 		}
 		if (!changed)
 		{
+			for (const auto &move : moves)
+			{
+				move.first->ErasePredecessor(move.second);
+				follow->InsertPredecessor(move.second);
+			}
 			return true;
 		}
 	}
@@ -2214,7 +2222,10 @@ vector<ControlFlowNode*> _GetPostOrder(ControlFlowNode *structure)
 	vector<ControlFlowNode*> ordered;
 	NodeSet visited;
 	_GetPostOrder(visited, (*structure)[SemId::Head], ordered);
-	assert(ordered.size() == structure->Children().size());
+	if (ordered.size() != structure->Children().size())
+	{
+		throw ControlFlowException((*structure)[SemId::Head], "A child of the structure is not reachable from its head");
+	}
 	return ordered;
 }
 
@@ -2696,21 +2707,71 @@ bool _DoNothing(ControlFlowGraph &cfg, ControlFlowNode &parent, vector<NodeBlock
 // block. The n-ary compare is then built at instruction consumption
 // (_ResolvePPrevs), not from control flow. The old indexer trick has an "or"
 // before its pprev, not a bnt, and is left alone.
+static bool _IsCompareOpcode(Opcode opcode)
+{
+	switch (opcode)
+	{
+		case Opcode::EQ:
+		case Opcode::NE:
+		case Opcode::GT:
+		case Opcode::GE:
+		case Opcode::LT:
+		case Opcode::LE:
+		case Opcode::UGT:
+		case Opcode::UGE:
+		case Opcode::ULT:
+		case Opcode::ULE:
+			return true;
+		default:
+			return false;
+	}
+}
+
+// The next compare after pos, before any branch, return or other pprev.
+static Opcode _NextCompareOpcode(code_pos pos, code_pos end)
+{
+	for (; pos != end; ++pos)
+	{
+		Opcode opcode = pos->get_opcode();
+		if (_IsCompareOpcode(opcode))
+		{
+			return opcode;
+		}
+		if ((opcode == Opcode::PPREV) || (opcode == Opcode::RET) || (opcode == Opcode::JMP) ||
+			(opcode == Opcode::BNT) || (opcode == Opcode::BT))
+		{
+			break;
+		}
+	}
+	return Opcode::INDETERMINATE;
+}
+
 static void _NeutralizePprevBnt(code_pos start, code_pos end)
 {
 	if (start == end)
 	{
 		return;
 	}
+	code_pos prevPrev = end;
 	code_pos prev = start;
 	code_pos cur = start;
 	++cur;
 	while (cur != end)
 	{
-		if ((cur->get_opcode() == Opcode::PPREV) && (prev->get_opcode() == Opcode::BNT))
+		if ((cur->get_opcode() == Opcode::PPREV) && (prev->get_opcode() == Opcode::BNT) &&
+			(prevPrev != end) && _IsCompareOpcode(prevPrev->get_opcode()))
 		{
-			prev->set_branch_target(cur, true);
+			// The chain's shape: the compare before the bnt and the one after
+			// the pprev are the same operator, so the fold at consumption
+			// (_FoldNaryCompare) takes it. Any other shape keeps its branch.
+			code_pos next = cur;
+			++next;
+			if (_NextCompareOpcode(next, end) == prevPrev->get_opcode())
+			{
+				prev->set_branch_target(cur, true);
+			}
 		}
+		prevPrev = prev;
 		prev = cur;
 		++cur;
 	}

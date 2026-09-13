@@ -76,6 +76,13 @@ namespace
 			for (;;)
 			{
 				r = _pass.Rewrite(slot, _ctx);
+				if (r == RewriteResult::Removed)
+				{
+					// Only a statement in a list can be removed; a fixed slot
+					// keeps its node, so nothing changed.
+					assert(false && "AST pass removed a fixed slot");
+					r = RewriteResult::None;
+				}
 				if (r != RewriteResult::None)
 				{
 					_changed = true;
@@ -449,6 +456,12 @@ bool IsTrueCondition(const ConditionNode &conditionOwner)
 unique_ptr<SyntaxNode> &ConditionSlot(ConditionNode &conditionOwner)
 {
 	return conditionOwner.GetCondition()->GetStatements()[0];
+}
+
+bool HasConditionExpression(const ConditionNode &conditionOwner)
+{
+	const unique_ptr<ConditionalExpression> &cond = conditionOwner.GetCondition();
+	return cond && !cond->GetStatements().empty() && cond->GetStatements()[0];
 }
 
 void SetConditionExpression(ConditionNode &conditionOwner, unique_ptr<SyntaxNode> expr)

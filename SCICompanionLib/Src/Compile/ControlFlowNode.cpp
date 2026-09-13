@@ -100,7 +100,7 @@ bool MaybeGetThenAndElseBranches(ControlFlowNode *node, ControlFlowNode **thenNo
 	if (node->Successors().size() == 2)
 	{
 		GetThenAndElseBranches(node, thenNode, elseNode);
-		return (thenNode && elseNode);
+		return (*thenNode && *elseNode);
 	}
 	return false;
 }
@@ -141,11 +141,14 @@ void GetThenAndElseBranches(ControlFlowNode *node, ControlFlowNode **thenNode, C
 			*elseNode = two;
 			*thenNode = one;
 		}
-		else
+		else if (trueAddress == two->GetStartingAddress())
 		{
-			assert(trueAddress == two->GetStartingAddress());
 			*elseNode = one;
 			*thenNode = two;
+		}
+		else
+		{
+			throw ControlFlowException(node, "The then branch of a compound condition matches neither successor");
 		}
 	}
 	else if (node->Type == CFGNodeType::RawCode)

@@ -30,6 +30,67 @@
 using namespace sci;
 using namespace std;
 
+// True when the statements hold a continue of this loop (not of a nested
+// loop). A for loop's continue runs the step; a while loop's does not, so
+// the two shapes are not the same when the body has one.
+static bool ContainsLoopContinue(const SyntaxNodeVector &list)
+{
+    for (const unique_ptr<SyntaxNode> &s : list)
+    {
+        if (!s)
+        {
+            continue;
+        }
+        switch (s->GetNodeType())
+        {
+            case NodeTypeContinue:
+                return true;
+            case NodeTypeCodeBlock:
+                if (ContainsLoopContinue(static_cast<CodeBlock *>(s.get())->GetStatements()))
+                {
+                    return true;
+                }
+                break;
+            case NodeTypeIf:
+            {
+                IfStatement *if_ = static_cast<IfStatement *>(s.get());
+                for (SyntaxNode *branch : { if_->GetStatement1(), if_->GetStatement2() })
+                {
+                    if (!branch)
+                    {
+                        continue;
+                    }
+                    if (branch->GetNodeType() == NodeTypeContinue)
+                    {
+                        return true;
+                    }
+                    CodeBlock *block = SafeSyntaxNode<CodeBlock>(branch);
+                    if (block && ContainsLoopContinue(block->GetStatements()))
+                    {
+                        return true;
+                    }
+                }
+                break;
+            }
+            case NodeTypeSwitch:
+            {
+                SwitchStatement *sw = static_cast<SwitchStatement *>(s.get());
+                for (const unique_ptr<CaseStatement> &c : sw->_cases)
+                {
+                    if (ContainsLoopContinue(c->GetStatements()))
+                    {
+                        return true;
+                    }
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+    return false;
+}
+
 namespace
 {
     bool ReadWholeFile(const string &path, string &out)
@@ -81,6 +142,10 @@ namespace
             case NodeTypeForLoop:
             {
                 ForLoop *forLoop = static_cast<ForLoop *>(slot.get());
+                if (ContainsLoopContinue(forLoop->GetStatements()))
+                {
+                    return RewriteResult::None;
+                }
                 unique_ptr<WhileLoop> whileLoop = make_unique<WhileLoop>();
                 whileLoop->SetPosition(forLoop->GetPosition());
                 if (forLoop->GetCondition())
@@ -517,14 +582,26 @@ StructuralCompareResult CompareStructural(const string &expectedDir, const strin
     map<string, string> expectedFiles;
     map<string, string> actualFiles;
     error_code ec;
-    for (const auto &entry : filesystem::directory_iterator(expectedDir, ec))
+    filesystem::directory_iterator expectedEntries(expectedDir, ec);
+    if (ec)
+    {
+        result.unparsed.push_back(expectedDir + " (expected folder): " + ec.message());
+        return result;
+    }
+    for (const auto &entry : expectedEntries)
     {
         if (entry.is_regular_file() && (entry.path().extension() == ".sc"))
         {
             expectedFiles[entry.path().filename().string()] = entry.path().string();
         }
     }
-    for (const auto &entry : filesystem::directory_iterator(actualDir, ec))
+    filesystem::directory_iterator actualEntries(actualDir, ec);
+    if (ec)
+    {
+        result.unparsed.push_back(actualDir + " (actual folder): " + ec.message());
+        return result;
+    }
+    for (const auto &entry : actualEntries)
     {
         if (entry.is_regular_file() && (entry.path().extension() == ".sc"))
         {
@@ -547,8 +624,16 @@ StructuralCompareResult CompareStructural(const string &expectedDir, const strin
         }
         result.commonFiles++;
         string expectedText, actualText, error;
-        ReadWholeFile(pair.second, expectedText);
-        ReadWholeFile(actualIt->second, actualText);
+        if (!ReadWholeFile(pair.second, expectedText))
+        {
+            result.unparsed.push_back(name + " (expected): cannot read the file");
+            continue;
+        }
+        if (!ReadWholeFile(actualIt->second, actualText))
+        {
+            result.unparsed.push_back(name + " (actual): cannot read the file");
+            continue;
+        }
         unique_ptr<Script> expected = TryParseSierraScript(expectedText, &error);
         if (!expected)
         {
@@ -568,10 +653,19 @@ StructuralCompareResult CompareStructural(const string &expectedDir, const strin
         map<string, const StructuralFunction *> actualByKey;
         for (const StructuralFunction &f : actualFunctions)
         {
-            actualByKey[f.key] = &f;
+            if (!actualByKey.insert(make_pair(f.key, &f)).second)
+            {
+                result.differences.push_back(name + " :: " + f.display + " (duplicate key " + f.key + " in actual)");
+            }
         }
+        set<string> expectedKeys;
         for (const StructuralFunction &f : expectedFunctions)
         {
+            if (!expectedKeys.insert(f.key).second)
+            {
+                result.differences.push_back(name + " :: " + f.display + " (duplicate key " + f.key + " in expected)");
+                continue;
+            }
             auto it = actualByKey.find(f.key);
             if (it == actualByKey.end())
             {

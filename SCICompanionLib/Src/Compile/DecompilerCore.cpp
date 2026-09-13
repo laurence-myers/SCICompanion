@@ -1128,6 +1128,7 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 
 	// Take the raw data, and turn it into a list of scii instructions, and make sure the branch targets point to code_pos's
 	std::list<scii> code;
+	std::list<scii> originalCode;
 	const BYTE *discoveredEnd = _ConvertToInstructions(lookups, code, pBegin, pScriptResourceEnd, wBaseOffset, true);
 	if (discoveredEnd == nullptr)
 	{
@@ -1145,7 +1146,9 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 		// Insert a no-op at the beginning of code (so we can get an iterator to point to a spot before code)
 		code.insert(code.begin(), scii(lookups.GetVersion(), Opcode::INDETERMINATE, -1));
 
-		// Do some early things
+		// Do some early things. The fallback disassembles the original
+		// instructions, not the ones the dead-branch removal edited.
+		originalCode = code;
 		_RemoveDeadBranches(code);
 		_DetermineIfFunctionReturnsValue(code, lookups);
 
@@ -1188,7 +1191,7 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 		lookups.ResetOnFailure();
 
 		lookups.DecompileResults().AddResult(DecompilerResultType::Important, fmt::format("Falling back to disassembly for {0}", func.GetName()));
-		DisassembleFallback(func, code.begin(), code.end(), lookups);
+		DisassembleFallback(func, originalCode.begin(), originalCode.end(), lookups);
 	}
 
 	// Give some statistics.
