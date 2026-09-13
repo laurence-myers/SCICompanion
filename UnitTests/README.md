@@ -114,6 +114,7 @@ expected file is missing, the test writes the actual to
 | `F11_LatchTrampoline` | 924 | (structurer) | fixed; a shared `jmp head` folds into the common latch |
 | `P2_CondInLoop` | 926 | (compiler) | SCI Companion dialect; nested conds in a loop round-trip stably |
 | `F12_BreakJoin` | 925 | (structurer) | fixed; a break edge into a shared statement moves to the if's follow |
+| `A1_ReusedAcc` | 928 | (chunk stage) | fixed; a store whose value a later send reuses stays a statement |
 
 `TemplateGame_FallbackBaseline` guards against new fallbacks. The template game
 started with 7 known fallbacks. The Family 1 and Family 6 fixes each removed
@@ -136,6 +137,15 @@ loop exit inside a loop body becomes an if with a synthesized else-break
 value-position ifs become `and`/`or`, loop cleanup folds the breaks, double
 nots collapse in boolean context, and `(= a (+ a b))` becomes `(+= a b)`.
 `TestAstPasses` covers the passes on parsed source, with no game data.
+
+Reused accumulator (`A1_ReusedAcc`): Sierra's compiler drops the load of a
+send target or pushed argument when the accumulator already holds that
+variable from a store before the pushes. A send evaluates its target after
+its arguments, so at chunk enumeration (`EnumerateCodeChunks`,
+`ReusesAccumulator`) a generator met after all the stack operands is an
+earlier statement, and the send gets a `NeedsAccumulator` that resolves to a
+load of the variable. `aTop` joined the short-circuit set (a reused property
+store reads back as `pToa`).
 
 Family 2 is fixed but has no isolated fixture; the baseline test guards it.
 Family 8 (a statement before the test of an if that a `ret` consumes): the

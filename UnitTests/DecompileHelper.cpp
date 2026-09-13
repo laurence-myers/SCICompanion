@@ -154,12 +154,22 @@ bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::
     bool success = ok && !log.HasErrors() && SUCCEEDED(hr);
     if (!success && outError)
     {
+        // The first error. When no result is an error, the status and every
+        // message, so the failure is not silent.
         for (const CompileResult &r : log.Results())
         {
             if (r.IsError())
             {
                 *outError = r.GetMessage();
                 break;
+            }
+        }
+        if (outError->empty())
+        {
+            *outError = fmt::format("(compiled={0} commit={1:#x})", ok, (unsigned)hr);
+            for (const CompileResult &r : log.Results())
+            {
+                *outError += "\n  " + r.GetMessage();
             }
         }
     }
@@ -220,8 +230,10 @@ bool DecompileTemplateScriptByTitle(const std::string &title, DecompileOutput &o
 DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t scriptNumber)
 {
     AddFixtureScript(fixtureName);
-    Assert::IsTrue(CompileFixture(scriptNumber, fixtureName),
-        ToWString("Initial compile failed: " + fixtureName).c_str());
+    // Compile first: the message argument is built before the call otherwise.
+    std::string compileError;
+    bool compiled = CompileFixture(scriptNumber, fixtureName, &compileError);
+    Assert::IsTrue(compiled, ToWString("Initial compile failed: " + fixtureName + ": " + compileError).c_str());
 
     // The control-flow dump is added to the warnings only when analysis fails.
     // Set SCICOMP_DEBUG_CHUNKS to also get the chunk-tree dump.
@@ -230,7 +242,7 @@ DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t s
 
     std::string path = appState->GetResourceMap().Helper().GetScriptFileName(fixtureName);
     WriteTextFile(path, first.text);
-    std::string compileError;
+    compileError.clear();
     if (!CompileFixture(scriptNumber, fixtureName, &compileError))
     {
         Logger::WriteMessage(ToWString("Decompiled text:\n" + first.text).c_str());

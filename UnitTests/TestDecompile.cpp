@@ -139,6 +139,15 @@ namespace UnitTests
             AssertDecompileMatchesExpected("F12_BreakJoin", 925);
         }
 
+        // Sierra reuses the accumulator: a store, then the pushes of a send
+        // whose target or pushed argument is that variable, with no load. The
+        // store is a statement of its own; the send reads the variable.
+        TEST_METHOD(ReusedAccumulator)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("A1_ReusedAcc", 928);
+        }
+
         // Plain SCI Companion source: nested conds in a loop body. The text is
         // its own oracle, so the compiler's jump dialect round-trips stably.
         TEST_METHOD(Plain_CondInLoop)

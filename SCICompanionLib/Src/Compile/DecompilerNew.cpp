@@ -287,7 +287,33 @@ struct ContextFrame
 	ConsumptionNode *Parent;
 	int cStackConsume;
 	int cAccConsume;
+	bool stackOperandSeen;	// one of this instruction's stack operands was consumed
+
+	// Sierra evaluates the accumulator operand of an instruction after its
+	// stack operands. When every stack operand is consumed and the
+	// accumulator is still needed, the instruction had no load of its own:
+	// it reused a value the accumulator already held.
+	bool ReusesAccumulator() const
+	{
+		return (cAccConsume > 0) && stackOperandSeen && (cStackConsume == 0);
+	}
 };
+
+static bool IsCallOpcode(Opcode opcode)
+{
+	switch (opcode)
+	{
+		case Opcode::SEND:
+		case Opcode::CALL:
+		case Opcode::CALLB:
+		case Opcode::CALLE:
+		case Opcode::CALLK:
+		case Opcode::SELF:
+		case Opcode::SUPER:
+			return true;
+	}
+	return false;
+}
 
 class CodeChunkEnumContext
 {
@@ -396,6 +422,28 @@ public:
 		}
 	}
 
+	// &rest is an argument of the call it sits in, whatever operand's frame is
+	// open when the walk meets it: a target that reuses the accumulator has
+	// no load of its own, so its frame is still open at the rest. Attaches
+	// the rest to the nearest call above. False when no call frame is open.
+	bool AddRestToEnclosingCall(code_pos code)
+	{
+		for (int i = (int)frames.size() - 1; i >= 0; i--)
+		{
+			if (frames[i].node)
+			{
+				break;	// a structure frame: the call is not above it
+			}
+			ConsumptionNode *owner = frames[i].Parent;
+			if (owner && owner->_hasPos && IsCallOpcode(owner->GetCode()->get_opcode()))
+			{
+				owner->PrependChild()->SetPos(code);
+				return true;
+			}
+		}
+		return false;
+	}
+
 	void AddInstructionToCurrent(code_pos code)
 	{
 		ConsumptionNode *newChild = Current->PrependChild();
@@ -452,6 +500,7 @@ private:
 		assert(frame.cAccConsume <= 1);
 		frame.cStackConsume = cStackConsume;
 		assert(frame.cStackConsume <= 255);  // Any higher probably indicates a corrupt script.
+		frame.stackOperandSeen = false;
 		frame.Parent = Current;
 		frames.push_back(frame);
 	}
@@ -539,6 +588,18 @@ public:
 			else
 			{
 				Consumption consTemp = _GetInstructionConsumption(*cur, &_lookups);
+				if (consTemp.cAccGenerate && _context.Frame().ReusesAccumulator())
+				{
+					// The generator ran before this instruction's stack operands,
+					// so it is an earlier statement, not the operand: the compiler
+					// left its value in the accumulator and skipped the load
+					// ("sat x; pushi #foo; pushi 0; send" is (= x ...) (x foo:)).
+					// Record the need; the frame above takes the generator.
+					_context.AddStructured(ChunkType::NeedsAccumulator);
+					assert(_context.CanPopBeyond());
+					_context.PopFrame();
+					continue;
+				}
 				if (consTemp.cAccGenerate)
 				{
 					if (_context.Frame().cAccConsume)
@@ -556,6 +617,7 @@ public:
 					if (_context.Frame().cStackConsume)
 					{
 						_context.Frame().cStackConsume -= consTemp.cStackGenerate;
+						_context.Frame().stackOperandSeen = true;
 						if (_context.Frame().cAccConsume)
 						{
 							// We need to be careful here. We still need an acc. If the stack generating guy
@@ -579,6 +641,11 @@ public:
 					}
 				}
 
+				if ((cur->get_opcode() == Opcode::REST) && _context.AddRestToEnclosingCall(cur))
+				{
+					--cur;
+					continue;
+				}
 				_context.AddInstructionToCurrent(cur);
 				--cur;
 			}
@@ -1291,6 +1358,10 @@ void MorphInstructionIntoShortCircuit(scii &inst)
 		case Opcode::pSL:
 		case Opcode::nSL:
 			inst.set_opcode(Opcode::LSL);
+			break;
+
+		case Opcode::ATOP:
+			inst.set_opcode(Opcode::PTOA);
 			break;
 
 		default:
@@ -2054,6 +2125,8 @@ bool IsOpcodeWeCanShortCircuit(Opcode opcode)
 		case Opcode::nSG:
 		case Opcode::nSP:
 
+		case Opcode::ATOP:  // Store acc in property (acc retains value)
+
 			return true;
 	}
 	return false;
@@ -2661,8 +2734,12 @@ bool _LookForRestsAndMaybeLiftOutAssignmentsWorker(ConsumptionNode *root, Consum
 		size_t accChildIndex = GetIndexOfAccChild(chunk->_parentWeak, lookups);
 		ConsumptionNode *sendTarget = chunk->_parentWeak->Child(accChildIndex);
 		// If this contains a call anywhere, we need to try to lift any assignments out, in the
-		// hopes that that will pull the call out.
-		changes = _LiftOutAssignmentsWorker(root, sendTarget, lookups);
+		// hopes that that will pull the call out. A plain store as the target
+		// stays: ((= looper theLooper) init: self &rest) is how Sierra wrote it.
+		if (_IsCall(sendTarget, true))
+		{
+			changes = _LiftOutAssignmentsWorker(root, sendTarget, lookups);
+		}
 	}
 	if (!changes)
 	{
