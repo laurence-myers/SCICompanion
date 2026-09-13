@@ -483,6 +483,38 @@ static bool StructEqual(const SyntaxNode *a, const SyntaxNode *b)
 		const LValue *lb = static_cast<const LValue *>(b);
 		return (la->GetName() == lb->GetName()) && StructEqual(la->GetIndexer(), lb->GetIndexer());
 	}
+	case NodeTypeBinaryOperation:
+	{
+		const BinaryOp *ba = static_cast<const BinaryOp *>(a);
+		const BinaryOp *bb = static_cast<const BinaryOp *>(b);
+		return (ba->Operator == bb->Operator) &&
+			StructEqual(ba->GetStatement1(), bb->GetStatement1()) &&
+			StructEqual(ba->GetStatement2(), bb->GetStatement2());
+	}
+	case NodeTypeUnaryOperation:
+	{
+		const UnaryOp *ua = static_cast<const UnaryOp *>(a);
+		const UnaryOp *ub = static_cast<const UnaryOp *>(b);
+		return (ua->Operator == ub->Operator) &&
+			StructEqual(ua->GetStatement1(), ub->GetStatement1());
+	}
+	case NodeTypeNaryOperation:
+	{
+		const NaryOp *na = static_cast<const NaryOp *>(a);
+		const NaryOp *nb = static_cast<const NaryOp *>(b);
+		if ((na->Operator != nb->Operator) || (na->GetStatements().size() != nb->GetStatements().size()))
+		{
+			return false;
+		}
+		for (size_t i = 0; i < na->GetStatements().size(); i++)
+		{
+			if (!StructEqual(na->GetStatements()[i].get(), nb->GetStatements()[i].get()))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
 	default:
 		return false;
 	}

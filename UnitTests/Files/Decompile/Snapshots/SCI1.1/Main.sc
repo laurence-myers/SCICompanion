@@ -169,19 +169,14 @@
 
 (procedure (Bset param1 &tmp temp0)
 	(= temp0 (Btest param1))
-	(= [gFlags (/ param1 16)]
-		(| [gFlags (/ param1 16)] (>> $8000 (mod param1 16)))
-	)
+	(|= [gFlags (/ param1 16)] (>> $8000 (mod param1 16)))
 	(return temp0)
 )
 
 (procedure (Bclear param1 &tmp temp0)
 	(= temp0 (Btest param1))
-	(= [gFlags (/ param1 16)]
-		(&
-			[gFlags (/ param1 16)]
-			(~ (>> $8000 (mod param1 16)))
-		)
+	(&= [gFlags (/ param1 16)]
+		(~ (>> $8000 (mod param1 16)))
 	)
 	(return temp0)
 )

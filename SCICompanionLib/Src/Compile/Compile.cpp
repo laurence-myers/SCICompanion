@@ -2069,12 +2069,16 @@ CodeResult Assignment::OutputByteCode(CompileContext &context) const
 		case ResolvedToken::ScriptVariable:
 		case ResolvedToken::Parameter:
 		case ResolvedToken::TempVariable:
-			if (pIndexer &&
+		{
+			bool simpleIndexer = pIndexer &&
 				((pIndexer->GetNodeType() == NodeTypeValue) ||
-				((pIndexer->GetNodeType() == NodeTypeComplexValue) && !static_cast<const ComplexPropertyValue*>(pIndexer)->GetIndexer())))
+				((pIndexer->GetNodeType() == NodeTypeComplexValue) && !static_cast<const ComplexPropertyValue*>(pIndexer)->GetIndexer()));
+			// Sierra evaluated the indexer twice, even a complex one. Emit that
+			// sequence for Sierra syntax so a complex indexer round-trips; keep
+			// the older single-evaluation trick for Studio syntax.
+			if (pIndexer && (simpleIndexer || (context.GetLanguage() == LangSyntaxSCI)))
 			{
-				// A simple indexer (a variable or a number) can be evaluated
-				// twice. Emit Sierra's sequence, which the decompiler reads back:
+				// Emit Sierra's sequence, which the decompiler reads back:
 				//   index; lsti var; value; op; push; index; sati var
 				// The indexed store pops the value and leaves it in the acc.
 				OutputByteCodeToAccumulator(context, *pIndexer);
@@ -2128,6 +2132,7 @@ CodeResult Assignment::OutputByteCode(CompileContext &context) const
 				ocWhereWePutValue = OC_Accumulator; // It's sitting in the accumulator
 			}
 			break;
+		}
 		case ResolvedToken::ClassProperty:
 			// Load the property onto the stack
 			LoadProperty(context, wIndex, true, GetLineNumber());
