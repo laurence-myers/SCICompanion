@@ -115,7 +115,7 @@
 	)
 	
 	(method (snd2 param1 param2 param3 param4)
-		(if (and (<= 1 param1) (<= param1 15))
+		(if (<= 1 param1 15)
 			(if (< param2 128)
 				(DoSound 18 self param1 176 param2 param3)
 			else

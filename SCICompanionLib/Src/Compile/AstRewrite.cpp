@@ -456,7 +456,7 @@ unique_ptr<SyntaxNode> MakeOr(unique_ptr<SyntaxNode> a, unique_ptr<SyntaxNode> b
 	return MakeLogical(BinaryOperator::LogicalOr, move(a), move(b), posSource);
 }
 
-static bool StructEqual(const SyntaxNode *a, const SyntaxNode *b)
+bool StructEqual(const SyntaxNode *a, const SyntaxNode *b)
 {
 	if (a == b)
 	{

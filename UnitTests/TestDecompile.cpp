@@ -113,6 +113,14 @@ namespace UnitTests
             AssertDecompileMatchesExpected("F10_MidBodyContinue", 922);
         }
 
+        // A chained comparison compiled with a pprev folds back into one n-ary
+        // comparison; a comparison with no shared operand stays an and.
+        TEST_METHOD(ChainedComparison)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("N1_ChainedCompare", 923);
+        }
+
         // Family 1: a conditional branch to the loop head. Fixed: the common
         // latch resolves to the loop head, so the if reconstructs.
         TEST_METHOD(Family1_LoopHeadContinue)

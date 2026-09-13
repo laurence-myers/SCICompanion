@@ -168,5 +168,9 @@ std::unique_ptr<sci::SyntaxNode> MakeOr(std::unique_ptr<sci::SyntaxNode> a, std:
 // value, or an LValue).
 bool IsSameVariable(const sci::LValue &target, const sci::SyntaxNode &read);
 
+// True if the two nodes are structurally identical (same type, same scalar
+// value, children equal in order).
+bool StructEqual(const sci::SyntaxNode *a, const sci::SyntaxNode *b);
+
 // True if the function body contains a while, do, or for loop.
 bool FunctionHasLoop(sci::FunctionBase &func);
