@@ -1859,17 +1859,28 @@ public:
 		out.out << "(classdef " << classDef.GetName();
 		{
 			INDENT_BLOCK;
-			_MaybeNewLineIndent();
-			out.out << "script# ";
-			_OutputNumber(out.out, classDef.ScriptNumber, false, true);
+			// script#, super# and file# are optional. A synthesized classdef
+			// for a stripped class leaves them unset; print only class#.
+			if (classDef.ScriptNumber != 0xffff)
+			{
+				_MaybeNewLineIndent();
+				out.out << "script# ";
+				_OutputNumber(out.out, classDef.ScriptNumber, false, true);
+			}
 			_MaybeNewLineIndent();
 			out.out << "class# ";
 			_OutputNumber(out.out, classDef.ClassNumber, false, true);
-			_MaybeNewLineIndent();
-			out.out << "super# ";
-			_OutputNumber(out.out, classDef.SuperNumber, false, true);
-			_MaybeNewLineIndent();
-			out.out << "file# " << "\"" << classDef.File << "\"";
+			if (classDef.SuperNumber != 0xffff)
+			{
+				_MaybeNewLineIndent();
+				out.out << "super# ";
+				_OutputNumber(out.out, classDef.SuperNumber, false, true);
+			}
+			if (!classDef.File.empty())
+			{
+				_MaybeNewLineIndent();
+				out.out << "file# " << "\"" << classDef.File << "\"";
+			}
 			_MaybeNewLineIndent();
 			_MaybeNewLineIndent();
 

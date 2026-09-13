@@ -243,6 +243,12 @@ public:
 	//
 	ResolvedToken LookupToken(const sci::SyntaxNode *pNode, const std::string &str, WORD &wIndex, SpeciesIndex &dataType, WORD *pwScript = nullptr);
 	bool LookupSpeciesIndex(const std::string &str, SpeciesIndex &wSpeciesIndex);
+	// Register a class name from a classdef so a reference to it resolves to a
+	// species even when the class has no object file.
+	void AddClassDefSpecies(const std::string &name, uint16_t species);
+	// True for a species declared only by classdef: its methods and properties
+	// are unknown, so a send to it cannot be selector-checked.
+	bool IsClassDefSpecies(uint16_t species) const;
 	bool IsDefaultSelector(uint16_t value);
 	SpeciesIndex LookupTypeSpeciesIndex(const std::string &str, const ISourceCodePosition *pPos);
 	bool LookupTypeSpeciesIndex(const std::string &str, SpeciesIndex &wSpeciesIndex);
@@ -392,6 +398,9 @@ private:
 	VariableModifier _modifier; // Increment or decrement modifier
 
 	std::vector<SpeciesIndex> _allowedReturnValues; // Current allowed return values
+
+	// Class names declared by classdef, mapped to their species number.
+	std::unordered_map<std::string, uint16_t> _classDefSpecies;
 };
 
 template<typename T>

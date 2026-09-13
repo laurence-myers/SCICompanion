@@ -1675,21 +1675,19 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, Decompi
 		case Opcode::PUSHSELF:
 		{
 			std::string className = (bOpcode == Opcode::CLASS) ? lookups.LookupClassName(inst.get_first_operand()) : SelfToken;
+			if (className.empty() && (bOpcode == Opcode::CLASS))
+			{
+				// The species has no name. Its script is not in the game (QfG4
+				// keeps class-table entries for stripped scripts). Emit a
+				// synthesized name; a classdef gives it a species number, so
+				// the text round-trips without falling back to asm.
+				className = GetUnknownClassName(inst.get_first_operand());
+			}
 			if (!className.empty())
 			{
 				unique_ptr<PropertyValue> value = std::make_unique<PropertyValue>();
 				value->SetValue(className, ValueType::Token);
 				return unique_ptr<SyntaxNode>(move(value));
-			}
-			else if (bOpcode == Opcode::CLASS)
-			{
-				// The species has no name. Its script is not in the game (QfG4
-				// keeps class-table entries for stripped scripts). The class
-				// opcode has no high-level form for a bare number, so the whole
-				// function must stay as asm to round-trip. Throw a clear message
-				// instead of the generic "Unexpected opcode" below.
-				throw ConsumptionNodeException(&node,
-					fmt::format("Class {0} has no name. Its script is not in the game.", inst.get_first_operand()));
 			}
 		}
 		break;

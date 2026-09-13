@@ -983,6 +983,11 @@ void _DetermineIfFunctionReturnsValue(std::list<scii> code, DecompileLookups &lo
 	}
 }
 
+std::string GetUnknownClassName(uint16_t species)
+{
+	return fmt::format("Unknown_Class_{0}", species);
+}
+
 void _TrackExternalScriptUsage(std::list<scii> code, DecompileLookups &lookups)
 {
 	code_pos cur = code.end();
@@ -1007,6 +1012,12 @@ void _TrackExternalScriptUsage(std::list<scii> code, DecompileLookups &lookups)
 				if (lookups.GetSpeciesScriptNumber(classIndex, scriptNumber))
 				{
 					lookups.TrackUsingScript(scriptNumber);
+				}
+				if (lookups.LookupClassName(classIndex).empty())
+				{
+					// The species has no name: its defining script is not in
+					// the game. Record it so a classdef is emitted for it.
+					lookups.TrackUnknownSpecies(classIndex);
 				}
 				break;
 			}

@@ -426,6 +426,28 @@ bool CompileContext::LookupSpeciesIndex(const string &str, SpeciesIndex &wSpecie
 			return true;
 		}
 	}
+	// A classdef can name a class whose script is not in the game.
+	auto it = _classDefSpecies.find(str);
+	if (it != _classDefSpecies.end())
+	{
+		wSpeciesIndex = SpeciesIndex(it->second);
+		return true;
+	}
+	return false;
+}
+void CompileContext::AddClassDefSpecies(const string &name, uint16_t species)
+{
+	_classDefSpecies[name] = species;
+}
+bool CompileContext::IsClassDefSpecies(uint16_t species) const
+{
+	for (const auto &p : _classDefSpecies)
+	{
+		if (p.second == species)
+		{
+			return true;
+		}
+	}
 	return false;
 }
 bool CompileContext::IsDefaultSelector(uint16_t value)

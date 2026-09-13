@@ -1743,8 +1743,11 @@ CodeResult SendParam::OutputByteCode(CompileContext &context) const
 				}
 			}
 		}
-		else if ((calleeSpecies != DataTypeAny) && (calleeSpecies != DataTypeNone))
+		else if ((calleeSpecies != DataTypeAny) && (calleeSpecies != DataTypeNone) &&
+			!context.IsClassDefSpecies(calleeSpecies.Type()))
 		{
+			// A classdef-only species (its script is not in the game) has no
+			// known method or property list, so its selectors cannot be checked.
 			// We'll make a decision not to generate an error if the callee is of type 'var'.
 			// We need some way for code to call specific methods on something, so this will be it
 			// (e.g. by casting to var).
@@ -3105,7 +3108,11 @@ void VariableDecl::PreScan(CompileContext &context)
 	ForwardPreScan2(_segments, context);
 }
 
-void ClassDefDeclaration::PreScan(CompileContext &context) {}
+void ClassDefDeclaration::PreScan(CompileContext &context)
+{
+	// Register the class name so a reference to it resolves to its species.
+	context.AddClassDefSpecies(GetName(), ClassNumber);
+}
 void SelectorDeclaration::PreScan(CompileContext &context) {}
 
 void GlobalDeclaration::PreScan(CompileContext &context)
