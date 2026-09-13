@@ -783,8 +783,6 @@ vector<NodeBlock> ControlFlowGraph::_FindSwitchBlocks(DominatorMap &dominators, 
 // and look for nodes that end in unconditional jumps to the loop follow.
 // Then, we'll mark them at "break", and reconnect them to the subsequent node in
 // memory (that is a sibling of the current structure)
-static ControlFlowNode *_FindTrueLatch(ControlFlowNode *structure);
-
 void ControlFlowGraph::_ResolveBreaksOrContinues()
 {
 	bool changes = true;
@@ -802,8 +800,7 @@ void ControlFlowGraph::_ResolveBreaksOrContinues()
 				}
 				if (_allowContinues)
 				{
-					ControlFlowNode *trueLatch = _FindTrueLatch(structure);
-					changes = _ResolveBreakOrContinue((*structure)[SemId::Head]->GetStartingAddress(), structure, SemanticTags::LoopContinue, (*structure)[SemId::Latch], trueLatch);
+					changes = _ResolveBreakOrContinue((*structure)[SemId::Head]->GetStartingAddress(), structure, SemanticTags::LoopContinue, (*structure)[SemId::Latch]);
 					if (changes)
 					{
 						break;
@@ -930,40 +927,9 @@ bool _NodeSuccessorIsCommonLatchNode(ControlFlowNode *node)
 		(*node->Successors().begin())->Type == CFGNodeType::CommonLatch;
 }
 
-// A loop with a common latch has many jumps to its head. The natural back edge
-// is the last one by address; every earlier one is a continue. Return the
-// natural back edge, or null when the loop has no common latch.
-static ControlFlowNode *_FindTrueLatch(ControlFlowNode *structure)
-{
-	ControlFlowNode *commonLatch = nullptr;
-	for (ControlFlowNode *child : structure->Children())
-	{
-		if (child->Type == CFGNodeType::CommonLatch)
-		{
-			commonLatch = child;
-			break;
-		}
-	}
-	if (!commonLatch)
-	{
-		return nullptr;
-	}
-	ControlFlowNode *trueLatch = nullptr;
-	for (ControlFlowNode *pred : commonLatch->Predecessors())
-	{
-		if ((pred->Type == CFGNodeType::RawCode) && pred->endsWith(Opcode::JMP) &&
-			(!trueLatch || (pred->GetStartingAddress() > trueLatch->GetStartingAddress())))
-		{
-			trueLatch = pred;
-		}
-	}
-	return trueLatch;
-}
-
-bool ControlFlowGraph::_ResolveBreakOrContinue(uint16_t loopFollowOrStartAddress, ControlFlowNode *structure, SemanticTags loopOrContinueTag, ControlFlowNode *latchToAvoid, ControlFlowNode *trueLatch, bool topLevel)
+bool ControlFlowGraph::_ResolveBreakOrContinue(uint16_t loopFollowOrStartAddress, ControlFlowNode *structure, SemanticTags loopOrContinueTag, ControlFlowNode *latchToAvoid)
 {
 	bool changes = false;
-	bool isContinue = (loopOrContinueTag == SemanticTags::LoopContinue);
 	// We're looking for nodes that end in an unconditional jump to the loop follow address
 	for (ControlFlowNode *node : structure->Children())
 	{
@@ -971,17 +937,9 @@ bool ControlFlowGraph::_ResolveBreakOrContinue(uint16_t loopFollowOrStartAddress
 		{
 			if (node->endsWith(Opcode::JMP) &&
 				!node->ContainsTag(loopOrContinueTag) &&	// Not already identified
-				node != latchToAvoid)					 // "continue" would be falsely identified if we don't check against latch.
+				node != latchToAvoid &&					 // "continue" would be falsely identified if we don't check against latch.
+				!_NodeSuccessorIsCommonLatchNode(node))	 // A jmp to a common latch node means we're already identifying this as part of a regular loop structure. So no break/continue.
 			{
-				// A jmp to the common latch is normally part of the loop's back
-				// edge, not a break/continue. But a mid-body jump to the head is
-				// a continue: take it, except the natural back edge (the last
-				// one), a switch's toss, and only among the loop's own children.
-				if (_NodeSuccessorIsCommonLatchNode(node) &&
-					(!isContinue || !topLevel || (node == trueLatch) || node->startsWith(Opcode::TOSS)))
-				{
-					continue;
-				}
 				scii inst = node->getLastInstruction();
 				// Conveniently, end provides us with the address of the next instruction.
 				code_pos end = static_cast<RawCodeNode*>(node)->end;
@@ -1004,7 +962,7 @@ bool ControlFlowGraph::_ResolveBreakOrContinue(uint16_t loopFollowOrStartAddress
 		{
 			if ((child != latchToAvoid) && (child->Type != CFGNodeType::Loop))
 			{
-				changes = _ResolveBreakOrContinue(loopFollowOrStartAddress, child, loopOrContinueTag, latchToAvoid, trueLatch, false);
+				changes = _ResolveBreakOrContinue(loopFollowOrStartAddress, child, loopOrContinueTag, latchToAvoid);
 				if (changes)
 				{
 					break;
