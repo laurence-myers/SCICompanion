@@ -265,87 +265,6 @@ namespace
 		}
 	};
 
-	// A pure read that can be evaluated twice with the same result, so the two
-	// halves of a chained comparison may share it. A send or call is excluded.
-	bool IsSideEffectFreeOperand(const SyntaxNode *node)
-	{
-		if (!node)
-		{
-			return false;
-		}
-		switch (node->GetNodeType())
-		{
-		case NodeTypeValue:
-			return true;
-		case NodeTypeLValue:
-			return IsSideEffectFreeOperand(static_cast<const LValue *>(node)->GetIndexer()) ||
-				!static_cast<const LValue *>(node)->GetIndexer();
-		case NodeTypeComplexValue:
-			return IsSideEffectFreeOperand(static_cast<const ComplexPropertyValue *>(node)->GetIndexer()) ||
-				!static_cast<const ComplexPropertyValue *>(node)->GetIndexer();
-		default:
-			return false;
-		}
-	}
-
-	// (and (< a b) (< b c)) -> (< a b c), and the same for a longer chain. The
-	// shared middle must be identical and side-effect-free, so evaluating it
-	// once (as the n-ary form does) matches evaluating it on each side.
-	// Sierra's compiler produced the n-ary form with a pprev; the decompiler
-	// currently clones the middle into two comparisons, which this restores.
-	class ChainedComparison : public AstPass
-	{
-	public:
-		const char *Name() const override { return "ChainedComparison"; }
-		RewriteResult Rewrite(unique_ptr<SyntaxNode> &slot, const AstContext &) override
-		{
-			BinaryOp *andOp = SafeSyntaxNode<BinaryOp>(slot.get());
-			if (!andOp || (andOp->Operator != BinaryOperator::LogicalAnd))
-			{
-				return RewriteResult::None;
-			}
-			BinaryOp *right = SafeSyntaxNode<BinaryOp>(andOp->GetStatement2());
-			if (!right || !IsRelational(right->Operator))
-			{
-				return RewriteResult::None;
-			}
-
-			// The left side is either a comparison (a two-term chain) or an
-			// n-ary comparison already folded from an inner and (a longer chain).
-			BinaryOp *leftCompare = SafeSyntaxNode<BinaryOp>(andOp->GetStatement1());
-			NaryOp *leftNary = SafeSyntaxNode<NaryOp>(andOp->GetStatement1());
-
-			if (leftCompare && IsRelational(leftCompare->Operator) &&
-				(leftCompare->Operator == right->Operator) &&
-				IsSideEffectFreeOperand(leftCompare->GetStatement2()) &&
-				StructEqual(leftCompare->GetStatement2(), right->GetStatement1()))
-			{
-				unique_ptr<NaryOp> nary = make_unique<NaryOp>();
-				nary->Operator = right->Operator;
-				nary->SetPosition(andOp->GetPosition());
-				nary->GetStatements().push_back(move(leftCompare->GetStatement1Internal()));
-				nary->GetStatements().push_back(move(leftCompare->GetStatement2Internal()));
-				nary->GetStatements().push_back(move(right->GetStatement2Internal()));
-				slot = move(nary);
-				return RewriteResult::Replaced;
-			}
-
-			if (leftNary && (leftNary->Operator == right->Operator) && !leftNary->GetStatements().empty())
-			{
-				SyntaxNode *lastTerm = leftNary->GetStatements().back().get();
-				if (IsSideEffectFreeOperand(lastTerm) && StructEqual(lastTerm, right->GetStatement1()))
-				{
-					unique_ptr<NaryOp> nary(static_cast<NaryOp *>(andOp->GetStatement1Internal().release()));
-					nary->GetStatements().push_back(move(right->GetStatement2Internal()));
-					slot = move(nary);
-					return RewriteResult::Replaced;
-				}
-			}
-
-			return RewriteResult::None;
-		}
-	};
-
 	//
 	// Loop cleanup. These fold the else-break shapes the loop-exit synthesis
 	// produces back into loop tests and factored-out breaks.
@@ -580,13 +499,13 @@ void RunDecompilerAstPasses(FunctionBase &func, const AstPassOptions &options, I
 		RunPassesToFixpoint(func, loopPasses, options.maxSweeps, results);
 	}
 
-	// Fold nested and value-position ifs into and/or, collapse double nots, and
-	// fold a chained comparison's two halves into one n-ary comparison.
+	// Fold nested and value-position ifs into and/or, and collapse double nots.
+	// An n-ary comparison is built at instruction consumption from its pprev,
+	// so no pass folds one from two comparisons.
 	{
 		IfThenToAnd ifThenToAnd;
 		DoubleNot doubleNot;
-		ChainedComparison chainedComparison;
-		vector<AstPass *> condPasses = { &ifThenToAnd, &doubleNot, &chainedComparison };
+		vector<AstPass *> condPasses = { &ifThenToAnd, &doubleNot };
 		RunPassesToFixpoint(func, condPasses, options.maxSweeps, results);
 	}
 

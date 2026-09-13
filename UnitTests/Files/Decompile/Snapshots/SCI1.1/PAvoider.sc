@@ -108,7 +108,8 @@
 					)
 					(= temp14 0)
 				)
-				((<= 265 clientHeading 275) (= temp14 1))
+				(
+				(and (<= 265 clientHeading) (<= clientHeading 275)) (= temp14 1))
 				((>= temp1 0) (= temp14 2))
 				(else (= temp14 3))
 			)

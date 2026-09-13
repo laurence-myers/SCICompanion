@@ -109,7 +109,7 @@ expected file is missing, the test writes the actual to
 | `F8_AssignBeforeCondInRet` | 918 | 8 | fixed; statement lifts out of a value if |
 | `F8_DeadValueStatement` | 919 | 8 | fixed; dead value becomes a bare statement |
 | `F9_BreakInSwitchCase` | 921 | (structurer) | fixed; break out of a loop from a switch case |
-| `N1_ChainedCompare` | 923 | (n-ary) | fixed; `(< 0 x 19)` folds from its pprev halves |
+| `N1_ChainedCompare` | 923 | (n-ary) | fixed; `(< 0 x 19)` is built from its pprev at consumption, a send in the middle included |
 | `F10_MidBodyContinue` | 922 | (structurer) | fixed; a mid-body `jmp head` is a `(continue)` |
 | `F11_LatchTrampoline` | 924 | (structurer) | fixed; a shared `jmp head` folds into the common latch |
 | `P2_CondInLoop` | 926 | (compiler) | SCI Companion dialect; nested conds in a loop round-trip stably |

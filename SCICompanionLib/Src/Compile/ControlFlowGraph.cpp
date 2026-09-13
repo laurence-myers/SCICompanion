@@ -1219,8 +1219,10 @@ static NodeSet _LoopTestChain(ControlFlowNode *loop, uint16_t exitAddress)
 				}
 			}
 		}
-		else if ((node->Successors().size() == 1) && !pendingTargets.empty())
+		else if ((node->Successors().size() == 1) && (!pendingTargets.empty() || node->endsWith(Opcode::BNT)))
 		{
+			// A one-way node that ends in a bnt is the first half of an n-ary
+			// compare (its bnt was retargeted at the pprev); the test goes on.
 			next = *node->Successors().begin();
 		}
 		node = next;
@@ -2688,10 +2690,37 @@ bool _DoNothing(ControlFlowGraph &cfg, ControlFlowNode &parent, vector<NodeBlock
 	return true;
 }
 
+// Sierra compiles (< a b c) as "a b lt?; bnt FAIL; pprev; c lt?": the bnt
+// short-circuits when the first compare fails. Retarget it at the pprev, so
+// it is a no-op branch to the next instruction and the chain is one basic
+// block. The n-ary compare is then built at instruction consumption
+// (_ResolvePPrevs), not from control flow. The old indexer trick has an "or"
+// before its pprev, not a bnt, and is left alone.
+static void _NeutralizePprevBnt(code_pos start, code_pos end)
+{
+	if (start == end)
+	{
+		return;
+	}
+	code_pos prev = start;
+	code_pos cur = start;
+	++cur;
+	while (cur != end)
+	{
+		if ((cur->get_opcode() == Opcode::PPREV) && (prev->get_opcode() == Opcode::BNT))
+		{
+			prev->set_branch_target(cur, true);
+		}
+		prev = cur;
+		++cur;
+	}
+}
+
 bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 {
 	try
 	{
+		_NeutralizePprevBnt(start, end);
 		_DeoptimizeBntChains(start, end);
 		_UnchainBtToBnt(start, end);
 		_DeoptimizeBtChains(start, end);

@@ -191,10 +191,8 @@
 				(= temp3 (WordAt rects (++ temp0)))
 				(if
 					(and
-						(<= temp2 (param1 x?))
-						(<= (param1 x?) temp4)
-						(<= temp1 (param1 y?))
-						(<= (param1 y?) temp3)
+						(<= temp2 (param1 x?) temp4)
+						(<= temp1 (param1 y?) temp3)
 					)
 					(gTextCode doit: (/ temp0 4))
 					(param1 type: 0 claimed: 0)

@@ -267,9 +267,11 @@ ControlFlowNode *GetLoopTestNode(const ControlFlowNode *loop, bool *headSide)
 		{
 			break;
 		}
-		// Only a value node (an or's join, an if used as a value) can precede
-		// the test. Anything else is the start of the body.
-		if ((node->Type != CFGNodeType::CompoundCondition) && (node->Type != CFGNodeType::If))
+		// Only a value node (an or's join, an if used as a value, the first
+		// half of an n-ary compare with its no-op bnt) can precede the test.
+		// Anything else is the start of the body.
+		bool naryHalf = (node->Type == CFGNodeType::RawCode) && node->endsWith(Opcode::BNT);
+		if ((node->Type != CFGNodeType::CompoundCondition) && (node->Type != CFGNodeType::If) && !naryHalf)
 		{
 			break;
 		}

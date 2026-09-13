@@ -2706,7 +2706,67 @@ unique_ptr<ConsumptionNode> _LookBackwardsAndFindAndCloneAccGenerator(Consumptio
 	return nullptr;
 }
 
-void _ResolvePPrevs(const string &debugName, ConsumptionNode *root, ConsumptionNode *chunk, DecompileLookups &lookups)
+// Sierra compiles (< a b c) as "a b lt?; bnt; pprev; c lt?", and the bnt was
+// retargeted at the pprev before control flow (_NeutralizePprevBnt), so the
+// first compare sits under a no-op bnt statement right before the second.
+// Fold the two into one n-ary compare: [stack(first), acc(first), acc(second)]
+// under a Nary chunk that replaces the second compare. A longer chain folds
+// one operand at a time: the prev generator is then the n-ary's operand list.
+// The dead bnt statement is collected for removal after the walk (it may be
+// a sibling an outer frame is iterating). Returns true when it folded; the
+// second compare (the pprev's parent) is gone then.
+static bool _FoldNaryCompare(ConsumptionNode *prevGenerator, ConsumptionNode *pprev, DecompileLookups &lookups, vector<ConsumptionNode*> &deadStatements)
+{
+	ConsumptionNode *consumer = pprev->_parentWeak;
+	if (!consumer || !consumer->_hasPos || (consumer->GetChildCount() != 2) || !consumer->_parentWeak ||
+		!prevGenerator->_hasPos || (prevGenerator->GetCode()->get_opcode() != consumer->GetCode()->get_opcode()))
+	{
+		return false;
+	}
+	auto isNoOpBnt = [pprev](ConsumptionNode *stmt)
+	{
+		return stmt && stmt->_hasPos && stmt->_parentWeak && (stmt->GetCode()->get_opcode() == Opcode::BNT) &&
+			(stmt->GetCode()->get_branch_target() == pprev->GetCode());
+	};
+
+	ConsumptionNode *stmt = prevGenerator->_parentWeak;
+	if ((prevGenerator->GetChildCount() == 2) && isNoOpBnt(stmt))
+	{
+		// Two-term chain: the first compare under its no-op bnt.
+		size_t stackIndex = GetIndexOfStackChild(prevGenerator, lookups);
+		unique_ptr<ConsumptionNode> first = prevGenerator->StealChild(stackIndex);
+		unique_ptr<ConsumptionNode> second = prevGenerator->StealChild(0);
+		unique_ptr<ConsumptionNode> naryChild = make_unique<ConsumptionNode>();
+		naryChild->SetPos(consumer->GetCode());
+		naryChild->AppendChild(move(first));
+		naryChild->AppendChild(move(second));
+		naryChild->AppendChild(consumer->StealChild(GetIndexOfAccChild(consumer, lookups)));
+		unique_ptr<ConsumptionNode> nary = make_unique<ConsumptionNode>();
+		nary->SetType(ChunkType::Nary);
+		nary->AppendChild(move(naryChild));
+		ConsumptionNode *parent = consumer->_parentWeak;
+		parent->ReplaceChild(consumer->GetMyIndex(), move(nary));
+		deadStatements.push_back(stmt);
+		return true;
+	}
+
+	ConsumptionNode *nary = prevGenerator->_parentWeak;
+	if (nary && (nary->GetType() == ChunkType::Nary) && isNoOpBnt(nary->_parentWeak))
+	{
+		// A longer chain: append the new operand to the n-ary and move it on.
+		ConsumptionNode *naryStmt = nary->_parentWeak;
+		prevGenerator->AppendChild(consumer->StealChild(GetIndexOfAccChild(consumer, lookups)));
+		prevGenerator->SetPos(consumer->GetCode());
+		unique_ptr<ConsumptionNode> naryOwned = naryStmt->StealChild(nary->GetMyIndex());
+		ConsumptionNode *parent = consumer->_parentWeak;
+		parent->ReplaceChild(consumer->GetMyIndex(), move(naryOwned));
+		deadStatements.push_back(naryStmt);
+		return true;
+	}
+	return false;
+}
+
+void _ResolvePPrevs(const string &debugName, ConsumptionNode *root, ConsumptionNode *chunk, DecompileLookups &lookups, vector<ConsumptionNode*> &deadStatements)
 {
 	for (size_t i = 0; i < chunk->GetChildCount(); i++)
 	{
@@ -2730,6 +2790,12 @@ void _ResolvePPrevs(const string &debugName, ConsumptionNode *root, ConsumptionN
 					// Find the node that contains this code.
 					ConsumptionNode *theNode = _FindChunk(root, current);
 					assert(theNode);
+
+					if (theNode && _FoldNaryCompare(theNode, child, lookups, deadStatements))
+					{
+						// chunk (the second compare) was replaced by the n-ary.
+						return;
+					}
 
 					// At this point, we know that one of the children should be an acc producer. So let's clone that child
 					// and replace our pprev with it (or rather as child of pprev)
@@ -2768,7 +2834,21 @@ void _ResolvePPrevs(const string &debugName, ConsumptionNode *root, ConsumptionN
 	}
 	for (auto &child : chunk->Children())
 	{
-		_ResolvePPrevs(debugName, root, child.get(), lookups);
+		_ResolvePPrevs(debugName, root, child.get(), lookups, deadStatements);
+	}
+}
+
+void _ResolvePPrevs(const string &debugName, ConsumptionNode *root, DecompileLookups &lookups)
+{
+	vector<ConsumptionNode*> deadStatements;
+	_ResolvePPrevs(debugName, root, root, lookups, deadStatements);
+	// The no-op bnt statements the folds emptied.
+	for (ConsumptionNode *dead : deadStatements)
+	{
+		if (dead->_parentWeak)
+		{
+			dead->_parentWeak->StealChild(dead->GetMyIndex());
+		}
 	}
 }
 
@@ -3218,7 +3298,7 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 		// Moving this before pprevs for now..
 		_ResolveNeededAcc(mainChunk.get(), mainChunk.get(), lookups);
 
-		_ResolvePPrevs(debugTrackName, mainChunk.get(), mainChunk.get(), lookups);
+		_ResolvePPrevs(debugTrackName, mainChunk.get(), lookups);
 
 		// Commented out for now - this is not a good solution.
 #ifdef TRY_RESTRUCTURE_PPREVS

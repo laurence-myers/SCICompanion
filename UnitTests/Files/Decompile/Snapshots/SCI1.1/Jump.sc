@@ -46,7 +46,7 @@
 						(or
 							(> clientHeading 330)
 							(< clientHeading 30)
-							(< 150 clientHeading 210)
+							(and (< 150 clientHeading) (< clientHeading 210))
 						)
 						0
 					)

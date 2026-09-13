@@ -453,8 +453,28 @@ namespace UnitTests
         TEST_METHOD(Dump_FailingTemplateScripts)
         {
             _gameFolder = SetUpGameSCI11();
-            const char *titles[] = { "ScrollableInventory", "SaveRestoreDialog", "Gauge" };
-            for (const char *title : titles)
+            // SCICOMP_DUMP_TITLES overrides the list: comma-separated titles.
+            std::vector<std::string> titles = { "ScrollableInventory", "SaveRestoreDialog", "Gauge" };
+            if (const char *env = getenv("SCICOMP_DUMP_TITLES"))
+            {
+                titles.clear();
+                std::string list = env;
+                size_t start = 0;
+                while (start <= list.size())
+                {
+                    size_t comma = list.find(',', start);
+                    if (comma == std::string::npos)
+                    {
+                        comma = list.size();
+                    }
+                    if (comma > start)
+                    {
+                        titles.push_back(list.substr(start, comma - start));
+                    }
+                    start = comma + 1;
+                }
+            }
+            for (const std::string &title : titles)
             {
                 DecompileOutput out;
                 if (DecompileTemplateScriptByTitle(title, out))
