@@ -158,14 +158,32 @@ $env:SCICOMP_DUMP_GAME  = 'F:\Games\GOG\Quest for Glory 4 - dev'
 $env:SCICOMP_DUMP_OUT   = 'C:\dump\qfg4'
 $env:SCICOMP_DUMP_NAMES = 'E:\Code\Esoteric\sci-scripts\qfg4-cd-dos-1.0\src'
 vstest.console.exe Kawa\UnitTests.dll /Platform:x86 /TestCaseFilter:"FullyQualifiedName~Dump_ExistingGame"
-.\UnitTests\Tools\CompareDecompile.ps1 -Expected $env:SCICOMP_DUMP_NAMES -Actual $env:SCICOMP_DUMP_OUT -Mode Structural
+$env:SCICOMP_COMPARE_EXPECTED = $env:SCICOMP_DUMP_NAMES
+$env:SCICOMP_COMPARE_ACTUAL   = $env:SCICOMP_DUMP_OUT
+$env:SCICOMP_COMPARE_OUT      = 'C:\dump\qfg4-compare'
+vstest.console.exe Kawa\UnitTests.dll /Platform:x86 /TestCaseFilter:"FullyQualifiedName~Compare_Structural"
 ```
 
-`SCICOMP_DUMP_NAMES` names each output file after the golden file with the
-same `(script# N)` header, so the structural compare matches files by name.
-`<out>\_warnings.txt` lists every fallback. The golden tree is sluicebox's
-output for QfG4; it differs in variable names and formatting, which the
-structural mode ignores.
+Keep `SCICOMP_DUMP_OUT` short: the test creates it with `CreateDirectoryA`,
+which fails silently on a long path. `SCICOMP_DUMP_NAMES` names each output
+file after the golden file with the same `(script# N)` header, so the
+structural compare matches files by name. `<out>\_warnings.txt` lists every
+fallback. The golden tree is sluicebox's output for QfG4; it differs in
+variable names and formatting.
+
+`DiagnosticDumps::Compare_Structural` (`UnitTests\StructuralCompare.cpp`) is
+the structural compare. It parses both sides with the real parser, normalizes
+each function with AST passes (`cond` to nested ifs, `for` to `while` with the
+step at the end, unsigned compares to signed, then the decompiler's own passes
+so nested ifs, `op=` and loop shapes converge, then every value, variable,
+define, literal, send target and call name to one token; selector names stay)
+and compares the printed bodies per function. It writes
+`<out>\_structural.txt` (totals and the differing functions) and one
+`<file>.<function>.diff.txt` per difference with both normalized texts. Two
+unit tests in `TestAstPasses` pin it: golden style and SCI Companion style of
+one function compare equal, and a real difference is reported by name.
+`Tools\CompareDecompile.ps1` is now the exact text compare only, for
+reviewing a snapshot change.
 
 ## Other tests
 

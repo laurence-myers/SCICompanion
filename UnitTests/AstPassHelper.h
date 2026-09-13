@@ -34,6 +34,9 @@ std::string WrapProcedure(const std::string &body);
 // Parses Sierra-syntax script text into a Script. Asserts on a parse error.
 std::unique_ptr<sci::Script> ParseSierraScript(const std::string &text);
 
+// The same, but a parse error returns null and the messages in outError.
+std::unique_ptr<sci::Script> TryParseSierraScript(const std::string &text, std::string *outError);
+
 // Prints a Script back to Sierra-syntax text.
 std::string ScriptToText(const sci::Script &script);
 

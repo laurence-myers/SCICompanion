@@ -45,7 +45,7 @@ std::string WrapProcedure(const std::string &body)
     return text;
 }
 
-std::unique_ptr<sci::Script> ParseSierraScript(const std::string &text)
+std::unique_ptr<sci::Script> TryParseSierraScript(const std::string &text, std::string *outError)
 {
     // Write the text to a script file in the temporary game, then parse it the
     // same way the compiler parses a header (see CompileContext.cpp).
@@ -59,7 +59,14 @@ std::unique_ptr<sci::Script> ParseSierraScript(const std::string &text)
     auto script = std::make_unique<sci::Script>(scriptId);
 
     CCrystalTextBuffer buffer;
-    Assert::IsTrue(buffer.LoadFromFile(path.c_str()) != FALSE, L"Could not load parse buffer");
+    if (buffer.LoadFromFile(path.c_str()) == FALSE)
+    {
+        if (outError)
+        {
+            *outError = "Could not load parse buffer";
+        }
+        return nullptr;
+    }
     CScriptStreamLimiter limiter(&buffer);
     CCrystalScriptStream stream(&limiter);
 
@@ -70,12 +77,27 @@ std::unique_ptr<sci::Script> ParseSierraScript(const std::string &text)
 
     if (!ok)
     {
-        std::string message = "Parse failed:";
-        for (const CompileResult &r : log.Results())
+        if (outError)
         {
-            message += "\n  " + r.GetMessage();
+            std::string message = "Parse failed:";
+            for (const CompileResult &r : log.Results())
+            {
+                message += "\n  " + r.GetMessage();
+            }
+            *outError = message;
         }
-        Assert::Fail(AstToWString(message).c_str());
+        return nullptr;
+    }
+    return script;
+}
+
+std::unique_ptr<sci::Script> ParseSierraScript(const std::string &text)
+{
+    std::string error;
+    std::unique_ptr<sci::Script> script = TryParseSierraScript(text, &error);
+    if (!script)
+    {
+        Assert::Fail(AstToWString(error).c_str());
     }
     return script;
 }

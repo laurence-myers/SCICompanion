@@ -16,6 +16,7 @@
 #include <fstream>
 #include "Helper.h"
 #include "DecompileHelper.h"
+#include "StructuralCompare.h"
 #include "AppState.h"
 #include "format.h"
 
@@ -447,6 +448,27 @@ namespace UnitTests
             }
             std::ofstream file(std::string(out) + "\\_warnings.txt", std::ios::binary);
             file << report;
+            Logger::WriteMessage(std::wstring(report.begin(), report.end()).c_str());
+        }
+
+        // The structural compare of a dump against golden sources, per
+        // function: SCICOMP_COMPARE_EXPECTED (golden folder),
+        // SCICOMP_COMPARE_ACTUAL (the dump), SCICOMP_COMPARE_OUT (report and
+        // per-difference files). The template game only provides the parser's
+        // context.
+        TEST_METHOD(Compare_Structural)
+        {
+            const char *expected = getenv("SCICOMP_COMPARE_EXPECTED");
+            const char *actual = getenv("SCICOMP_COMPARE_ACTUAL");
+            const char *out = getenv("SCICOMP_COMPARE_OUT");
+            if (!expected || !actual)
+            {
+                Logger::WriteMessage(L"Skipped: set SCICOMP_COMPARE_EXPECTED and SCICOMP_COMPARE_ACTUAL.");
+                return;
+            }
+            _gameFolder = SetUpGameSCI11();
+            StructuralCompareResult result = CompareStructural(expected, actual, out ? out : "");
+            std::string report = result.Report();
             Logger::WriteMessage(std::wstring(report.begin(), report.end()).c_str());
         }
 

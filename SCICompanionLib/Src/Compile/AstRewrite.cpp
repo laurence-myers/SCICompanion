@@ -208,6 +208,29 @@ namespace
 				VisitList(loop->GetStatements(), SlotKind::Statement);
 				break;
 			}
+			// A for and a cond come from parsed source (the decompiler emits
+			// neither); the structural compare walks them.
+			case NodeTypeForLoop:
+			{
+				ForLoop *loop = SafeSyntaxNode<ForLoop>(&node);
+				if (loop->GetInitializer())
+				{
+					VisitList(loop->GetInitializer()->GetStatements(), SlotKind::Statement);
+				}
+				VisitConditionOf(*loop, SlotKind::WhileCondition);
+				VisitList(loop->GetStatements(), SlotKind::Statement);
+				if (loop->_looper)
+				{
+					VisitList(loop->_looper->GetStatements(), SlotKind::Statement);
+				}
+				break;
+			}
+			case NodeTypeCond:
+			{
+				CondStatement *cond = SafeSyntaxNode<CondStatement>(&node);
+				VisitFixed(cond->GetStatement1Internal(), SlotKind::Statement);
+				break;
+			}
 			case NodeTypeBinaryOperation:
 			{
 				BinaryOp *op = SafeSyntaxNode<BinaryOp>(&node);

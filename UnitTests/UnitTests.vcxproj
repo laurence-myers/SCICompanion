@@ -127,6 +127,7 @@
     <ClInclude Include="Helper.h" />
     <ClInclude Include="DecompileHelper.h" />
     <ClInclude Include="AstPassHelper.h" />
+    <ClInclude Include="StructuralCompare.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
@@ -134,6 +135,7 @@
     <ClCompile Include="Helper.cpp" />
     <ClCompile Include="DecompileHelper.cpp" />
     <ClCompile Include="AstPassHelper.cpp" />
+    <ClCompile Include="StructuralCompare.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Kawa|Win32'">Create</PrecompiledHeader>

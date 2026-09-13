@@ -15,6 +15,7 @@
 #include "CppUnitTest.h"
 #include "Helper.h"
 #include "AstPassHelper.h"
+#include "StructuralCompare.h"
 #include "ScriptOMAll.h"
 #include "AstRewrite.h"
 #include "DecompilerAstPasses.h"
@@ -305,6 +306,80 @@ namespace UnitTests
                 if (m.find("did not converge") != std::string::npos) { warned = true; }
             }
             Assert::IsTrue(warned, L"expected a non-convergence warning");
+        }
+
+        // The structural compare: golden style (for, cond, breakif, op=, sel:,
+        // defines) and SCI Companion style (while with a step, nested ifs, an if
+        // with a break, (= a (op a b)), sel?, numbers) of the same function
+        // compare equal. A real difference is reported by function.
+        TEST_METHOD(StructuralCompare_EquivalentForms)
+        {
+            std::string golden =
+                ";;; Sierra Script 1.0 - (do not remove this comment)\n"
+                "(script# 990)\n(include sci.sh)\n"
+                "(procedure (theProc theArg &tmp i ret)\n"
+                "\t(= ret 0)\n"
+                "\t(for ((= i 0)) (< i theArg) ((++ i))\n"
+                "\t\t(breakif (== (gEgo x:) fiOPEN))\n"
+                "\t\t(+= ret i)\n"
+                "\t)\n"
+                "\t(cond\n"
+                "\t\t((== ret 1) (Format @ret {%d} ret))\n"
+                "\t\t((u< ret 5) (gEgo setMotion: MoveTo 10 20))\n"
+                "\t\t(else (= ret -1))\n"
+                "\t)\n"
+                "\t(return ret)\n"
+                ")\n"
+                "(procedure (second)\n\t(return 1)\n)\n";
+            std::string companion =
+                ";;; Sierra Script 1.0 - (do not remove this comment)\n"
+                "(script# 990)\n(include sci.sh)\n"
+                "(procedure (proc990_0 param1 &tmp temp0 temp1)\n"
+                "\t(= temp1 0)\n"
+                "\t(= temp0 0)\n"
+                "\t(while (< temp0 param1)\n"
+                "\t\t(if (== (gHero x?) 0) (break))\n"
+                "\t\t(= temp1 (+ temp1 temp0))\n"
+                "\t\t(++ temp0)\n"
+                "\t)\n"
+                "\t(if (== temp1 1)\n"
+                "\t\t(Format @temp1 {%d} temp1)\n"
+                "\telse\n"
+                "\t\t(if (< temp1 5)\n"
+                "\t\t\t(gHero setMotion: MoveTo 10 20)\n"
+                "\t\telse\n"
+                "\t\t\t(= temp1 -1)\n"
+                "\t\t)\n"
+                "\t)\n"
+                "\t(return temp1)\n"
+                ")\n"
+                "(procedure (proc990_1)\n\t(return 1)\n)\n";
+            std::string detail;
+            std::vector<std::string> differences = CompareScriptTexts(golden, companion, &detail);
+            std::string msg = "differences: " + std::to_string(differences.size()) + "\n" + detail;
+            for (const std::string &d : differences)
+            {
+                msg += "\n  " + d;
+            }
+            Logger::WriteMessage(std::wstring(msg.begin(), msg.end()).c_str());
+            Assert::IsTrue(differences.empty(), L"equivalent forms should compare equal");
+        }
+
+        TEST_METHOD(StructuralCompare_RealDifference)
+        {
+            std::string golden =
+                ";;; Sierra Script 1.0 - (do not remove this comment)\n"
+                "(script# 990)\n(include sci.sh)\n"
+                "(procedure (theProc a)\n\t(if a (return 1))\n\t(return 0)\n)\n"
+                "(procedure (other)\n\t(return 2)\n)\n";
+            std::string actual =
+                ";;; Sierra Script 1.0 - (do not remove this comment)\n"
+                "(script# 990)\n(include sci.sh)\n"
+                "(procedure (theProc a)\n\t(if a (return 1))\n\t(= a 0)\n\t(return 0)\n)\n"
+                "(procedure (other)\n\t(return 2)\n)\n";
+            std::vector<std::string> differences = CompareScriptTexts(golden, actual);
+            Assert::AreEqual(size_t(1), differences.size(), L"one function differs");
+            Assert::AreEqual(std::string("theProc"), differences[0], L"the differing function is named");
         }
 
     private:
