@@ -110,7 +110,7 @@ expected file is missing, the test writes the actual to
 | `F8_DeadValueStatement` | 919 | 8 | fixed; dead value becomes a bare statement |
 | `F9_BreakInSwitchCase` | 921 | (structurer) | fixed; break out of a loop from a switch case |
 | `N1_ChainedCompare` | 923 | (n-ary) | fixed; `(< 0 x 19)` is built from its pprev at consumption, a send in the middle included |
-| `F10_MidBodyContinue` | 922 | (structurer) | fixed; a mid-body `jmp head` is a `(continue)` |
+| `F10_MidBodyContinue` | 922 | (structurer) | fixed; a mid-body `jmp head` is a `(continue)`, written as an if-else by `IfContinueRefactor` |
 | `F11_LatchTrampoline` | 924 | (structurer) | fixed; a shared `jmp head` folds into the common latch |
 | `P2_CondInLoop` | 926 | (compiler) | SCI Companion dialect; nested conds in a loop round-trip stably |
 | `F12_BreakJoin` | 925 | (structurer) | fixed; a break edge into a shared statement moves to the if's follow |
@@ -158,6 +158,25 @@ its arguments, so at chunk enumeration (`EnumerateCodeChunks`,
 earlier statement, and the send gets a `NeedsAccumulator` that resolves to a
 load of the variable. `aTop` joined the short-circuit set (a reused property
 store reads back as `pToa`).
+
+Value shapes (`TestAstPasses`, `CopyValue_*`, `IfToAnd_ValueContext*`,
+`Loop_*`): `CopyValue` gives a value if with an empty then the tested
+variable as its then (`(= x (if a a else b))`, `(= x (if (= t y) t else b))`,
+and a value `(or a b)` with a variable first takes the same form), as
+Sierra's compiler did not load the variable again. `IfThenToAnd` sees a
+value context through the branches of a value if (a cond case body that is
+one if becomes an and), never folds a cond case itself, keeps an assignment's
+own if, and leaves a branch with a return inside alone. In a loop,
+`IfContinueRefactor` turns an if whose then ends in a continue (body level)
+or a break or return (any depth) followed by more statements into an
+if-else, and `ContinueTrim` drops a continue at the end of the body. The
+chunk stage clones a reused plain load instead of stealing it, so a stray
+number before a send that reuses it stays a statement (`A1_ReusedAcc`).
+
+The structural compare keys exported procedures by export slot (from the
+public block, or a `proc<script>_<slot>` name) and local ones by ordinal,
+and skips golden procedures marked `; UNUSED` (dead code the decompiler
+never reaches).
 
 Family 2 is fixed but has no isolated fixture; the baseline test guards it.
 Family 8 (a statement before the test of an if that a `ret` consumes): the

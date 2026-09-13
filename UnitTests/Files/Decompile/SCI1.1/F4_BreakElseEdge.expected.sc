@@ -11,7 +11,8 @@
 		(if (or temp0 temp1)
 			(if (and temp0 temp1) (= temp2 1))
 			(break)
+		else
+			(= temp2 0)
 		)
-		(= temp2 0)
 	)
 )

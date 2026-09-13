@@ -373,8 +373,9 @@
 			)
 			(if (== _EditablePolygonFirst _EditablePolygonLast)
 				(break)
+			else
+				(= _EditablePolygonFirst the_EditablePolygonFirst)
 			)
-			(= _EditablePolygonFirst the_EditablePolygonFirst)
 		)
 		(return temp4)
 	)
@@ -399,9 +400,10 @@
 			)
 			(if (== _EditablePolygonFirst _EditablePolygonLast)
 				(break)
-			)
-			(= _EditablePolygonFirst
-				(self next: _EditablePolygonFirst)
+			else
+				(= _EditablePolygonFirst
+					(self next: _EditablePolygonFirst)
+				)
 			)
 		)
 		(return temp4)
@@ -479,8 +481,9 @@
 			(temp2 param1: temp3 &rest)
 			(if (== _EditablePolygonFirst _EditablePolygonLast)
 				(break)
+			else
+				(= _EditablePolygonFirst the_EditablePolygonFirst)
 			)
-			(= _EditablePolygonFirst the_EditablePolygonFirst)
 		)
 	)
 	

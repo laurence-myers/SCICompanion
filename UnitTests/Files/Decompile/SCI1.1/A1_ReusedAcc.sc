@@ -13,6 +13,7 @@
 ;   (= temp0 param1) (temp1 perform: temp0)
 ;   (= x param1) (temp1 perform: x)
 ;   ((= x temp0) init: self &rest)   the store target reuses temp0 across the pushes and the &rest
+;   6 (temp1 perform: 6)   a reused number stays a statement; the argument is a copy
 (class A1Reuse of Code
 	(properties
 		x 0
@@ -46,6 +47,12 @@
 			pushSelf
 			&rest 2
 			aTop x
+			send 6
+			ldi 6
+			pushi #perform
+			pushi 1
+			push
+			lat temp1
 			send 6
 			ret
 		)

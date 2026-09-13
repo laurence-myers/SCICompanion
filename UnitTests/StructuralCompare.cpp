@@ -25,6 +25,7 @@
 #include <fstream>
 #include <sstream>
 #include <map>
+#include <set>
 
 using namespace sci;
 using namespace std;
@@ -324,15 +325,68 @@ namespace
     }
 }
 
-vector<StructuralFunction> NormalizeScriptForCompare(Script &script)
+set<string> UnusedProcedureNames(const string &text)
+{
+    // A golden line "(procedure (localproc_3 ...) ; UNUSED" is dead code the
+    // decompiler never reaches, so it emits no such procedure.
+    set<string> names;
+    size_t pos = 0;
+    while ((pos = text.find("(procedure (", pos)) != string::npos)
+    {
+        size_t nameStart = pos + 12;
+        size_t nameEnd = text.find_first_of(" )", nameStart);
+        size_t lineEnd = text.find('\n', pos);
+        if ((nameEnd != string::npos) && (lineEnd != string::npos) && (text.find("; UNUSED", nameEnd) < lineEnd))
+        {
+            names.insert(text.substr(nameStart, nameEnd - nameStart));
+        }
+        pos = nameStart;
+    }
+    return names;
+}
+
+vector<StructuralFunction> NormalizeScriptForCompare(Script &script, const set<string> *skipProcedures)
 {
     vector<StructuralFunction> functions;
-    int procedureIndex = 0;
+    // An exported procedure is keyed by its export slot (from the public
+    // block, or a proc<script>_<slot> name); the two sides order them
+    // differently and name them differently. A local one is keyed by its
+    // ordinal among the locals.
+    map<string, int> exportSlots;
+    for (auto &entry : script.GetExports())
+    {
+        exportSlots[entry->Name] = entry->Slot;
+    }
+    int localIndex = 0;
     for (auto &proc : script.GetProceduresNC())
     {
+        const string &name = proc->GetName();
+        if (skipProcedures && skipProcedures->count(name))
+        {
+            continue;
+        }
         NormalizeFunction(*proc);
         StructuralFunction f;
-        f.key = fmt::format("proc#{0}", procedureIndex++);
+        auto slot = exportSlots.find(name);
+        size_t underscore = name.rfind('_');
+        if (exportSlots.empty())
+        {
+            // No public block (a unit test script): by ordinal.
+            f.key = fmt::format("proc#{0}", localIndex++);
+        }
+        else if (slot != exportSlots.end())
+        {
+            f.key = fmt::format("export#{0}", slot->second);
+        }
+        else if ((name.compare(0, 4, "proc") == 0) && (underscore != string::npos) && (underscore + 1 < name.size()) &&
+            (name.find_first_not_of("0123456789", underscore + 1) == string::npos))
+        {
+            f.key = "export#" + name.substr(underscore + 1);
+        }
+        else
+        {
+            f.key = fmt::format("local#{0}", localIndex++);
+        }
         f.display = proc->GetName();
         f.text = FunctionBodyText(script, *proc, false);
         functions.push_back(f);
@@ -404,7 +458,8 @@ vector<string> CompareScriptTexts(const string &expectedText, const string &actu
     {
         return { "<unparsed> actual: " + error };
     }
-    return CompareFunctionLists(NormalizeScriptForCompare(*expected), NormalizeScriptForCompare(*actual), outDetail);
+    set<string> unused = UnusedProcedureNames(expectedText);
+    return CompareFunctionLists(NormalizeScriptForCompare(*expected, &unused), NormalizeScriptForCompare(*actual), outDetail);
 }
 
 string StructuralCompareResult::Report() const
@@ -506,7 +561,8 @@ StructuralCompareResult CompareStructural(const string &expectedDir, const strin
             result.unparsed.push_back(name + " (actual): " + error);
             continue;
         }
-        vector<StructuralFunction> expectedFunctions = NormalizeScriptForCompare(*expected);
+        set<string> unused = UnusedProcedureNames(expectedText);
+        vector<StructuralFunction> expectedFunctions = NormalizeScriptForCompare(*expected, &unused);
         vector<StructuralFunction> actualFunctions = NormalizeScriptForCompare(*actual);
         result.functionsCompared += static_cast<int>(expectedFunctions.size());
         map<string, const StructuralFunction *> actualByKey;

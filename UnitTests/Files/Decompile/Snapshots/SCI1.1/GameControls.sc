@@ -57,18 +57,21 @@
 		(while temp2
 			(= temp3 (NextNode temp2))
 			(= temp4 (NodeValue temp2))
-			(if (not (IsObject temp4)) (return))
-			(if
-				(and
-					(not (& (temp4 signal?) $0080))
-					(<= (temp4 nsRight?) 0)
-				)
-				(temp4 show: temp0 temp1)
-				(= temp0 (+ 20 (temp4 nsRight?)))
+			(if (not (IsObject temp4))
+				(return)
 			else
-				(temp4 show:)
+				(if
+					(and
+						(not (& (temp4 signal?) $0080))
+						(<= (temp4 nsRight?) 0)
+					)
+					(temp4 show: temp0 temp1)
+					(= temp0 (+ 20 (temp4 nsRight?)))
+				else
+					(temp4 show:)
+				)
+				(= temp2 temp3)
 			)
-			(= temp2 temp3)
 		)
 		(if (not okButton)
 			(= okButton (NodeValue (self first:)))
@@ -226,7 +229,7 @@
 	(method (doit)
 		(if theObj
 			(if (& signal $0040)
-				((if gGameControls else GameControls) hide:)
+				((or gGameControls GameControls) hide:)
 			)
 			(gGame panelObj: theObj panelSelector: selector)
 		)

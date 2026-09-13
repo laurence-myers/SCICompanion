@@ -110,10 +110,10 @@
 			(newDText draw:)
 			(cond 
 				(
-				(== (= temp0 (super doit: newDButton_3)) newDButton_2) (if (< theNormal maximum) (++ theNormal) (continue)))
-				((== temp0 newDButton) (if (> theNormal minimum) (-- theNormal) (continue)))
+				(== (= temp0 (super doit: newDButton_3)) newDButton_2) (if (< theNormal maximum) (++ theNormal)))
+				((== temp0 newDButton) (if (> theNormal minimum) (-- theNormal)))
+				((== temp0 newDButton_3) (break))
 				(else
-					(if (== temp0 newDButton_3) (break))
 					(if (== temp0 newDButton_4)
 						(= theNormal normal)
 						(continue)

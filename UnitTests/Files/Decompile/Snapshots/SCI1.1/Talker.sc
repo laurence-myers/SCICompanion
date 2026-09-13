@@ -191,34 +191,31 @@
 	)
 	
 	(method (handleEvent param1)
-		(return
-			(or
-				(param1 claimed?)
-				(if (== ticks -1)
-					(return 0)
-				else
-					(if (not cueVal)
-						(switch (param1 type?)
-							(256 (= cueVal 0))
-							(1
-								(= cueVal (& (param1 modifiers?) $0003))
-							)
-							(4
-								(= cueVal (== (param1 message?) 27))
-							)
+		(cond 
+			((param1 claimed?))
+			((== ticks -1) (return 0))
+			(else
+				(if (not cueVal)
+					(switch (param1 type?)
+						(256 (= cueVal 0))
+						(1
+							(= cueVal (& (param1 modifiers?) $0003))
+						)
+						(4
+							(= cueVal (== (param1 message?) 27))
 						)
 					)
-					(if
-						(or
-							(& (param1 type?) $4101)
-							(and
-								(& (param1 type?) $0004)
-								(IsOneOf (param1 message?) 13 27)
-							)
+				)
+				(if
+					(or
+						(& (param1 type?) $4101)
+						(and
+							(& (param1 type?) $0004)
+							(IsOneOf (param1 message?) 13 27)
 						)
-						(param1 claimed: 1)
-						(self dispose: disposeWhenDone)
 					)
+					(param1 claimed: 1)
+					(self dispose: disposeWhenDone)
 				)
 			)
 		)

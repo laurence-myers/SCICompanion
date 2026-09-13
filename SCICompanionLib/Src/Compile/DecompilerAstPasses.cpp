@@ -44,6 +44,125 @@ namespace
 		}
 	}
 
+	bool EndsInReturn(SyntaxNode *node);
+	std::vector<SyntaxNode *> MeaningfulStatements(SyntaxNode *block);
+
+	// A slot whose value is used, other than as a boolean.
+	bool IsPlainValueSlot(SlotKind kind)
+	{
+		switch (kind)
+		{
+		case SlotKind::AssignValue:
+		case SlotKind::SendArg:
+		case SlotKind::ProcArg:
+		case SlotKind::ReturnValue:
+		case SlotKind::Operand:
+		case SlotKind::CaseValue:
+		case SlotKind::SwitchValue:
+		case SlotKind::SendTarget:
+		case SlotKind::CastValue:
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	// True if the current node's value is used: its slot is a value slot, or
+	// it is the last statement of a branch of an if whose value is used (a
+	// cond case body is such a branch). boolean: a boolean slot counts too.
+	bool IsValueContext(const AstContext &ctx, bool boolean)
+	{
+		size_t i = ctx._frames.size();
+		while (i > 0)
+		{
+			const AstContext::Frame &frame = ctx._frames[i - 1];
+			if (IsPlainValueSlot(frame.kind) || (boolean && IsValueSlot(frame.kind)))
+			{
+				return true;
+			}
+			if ((frame.kind == SlotKind::IfThen) || (frame.kind == SlotKind::IfElse))
+			{
+				i--;	// the if itself
+				continue;
+			}
+			if ((frame.kind == SlotKind::Statement) && frame.list && (i >= 2))
+			{
+				const AstContext::Frame &block = ctx._frames[i - 2];
+				if ((block.node->GetNodeType() != NodeTypeCodeBlock) ||
+					((block.kind != SlotKind::IfThen) && (block.kind != SlotKind::IfElse)))
+				{
+					return false;
+				}
+				// The sole statement of the branch: a case body with several
+				// statements keeps its last if as an if (the golden text does).
+				vector<SyntaxNode *> statements = MeaningfulStatements(block.node);
+				if ((statements.size() != 1) || (statements[0] != frame.node))
+				{
+					return false;
+				}
+				i -= 2;	// the block, then the if
+				continue;
+			}
+			return false;
+		}
+		return false;
+	}
+
+	// True if the current node is the sole statement of the then of an if
+	// with no else: the nested-if merge takes that shape, and the golden
+	// text prefers the merge to an and in the case body.
+	bool IsSoleThenOfIfWithoutElse(const AstContext &ctx)
+	{
+		size_t i = ctx._frames.size();
+		if (i < 2)
+		{
+			return false;
+		}
+		const AstContext::Frame &frame = ctx._frames[i - 1];
+		const AstContext::Frame *ifFrame = nullptr;
+		if (frame.kind == SlotKind::IfThen)
+		{
+			ifFrame = &ctx._frames[i - 2];
+		}
+		else if ((frame.kind == SlotKind::Statement) && frame.list && (i >= 3))
+		{
+			const AstContext::Frame &block = ctx._frames[i - 2];
+			if ((block.node->GetNodeType() == NodeTypeCodeBlock) && (block.kind == SlotKind::IfThen) &&
+				(MeaningfulStatements(block.node).size() == 1))
+			{
+				ifFrame = &ctx._frames[i - 3];
+			}
+		}
+		if (!ifFrame)
+		{
+			return false;
+		}
+		IfStatement *parent = SafeSyntaxNode<IfStatement>(ifFrame->node);
+		return parent && !parent->HasElse();
+	}
+
+	// True if the current if is the else of another if (a cond case).
+	bool IsElseIf(const AstContext &ctx)
+	{
+		size_t i = ctx._frames.size();
+		if (i == 0)
+		{
+			return false;
+		}
+		const AstContext::Frame &frame = ctx._frames[i - 1];
+		if (frame.kind == SlotKind::IfElse)
+		{
+			return true;
+		}
+		if ((frame.kind == SlotKind::Statement) && frame.list && (i >= 2))
+		{
+			const AstContext::Frame &block = ctx._frames[i - 2];
+			return (block.node->GetNodeType() == NodeTypeCodeBlock) && (block.kind == SlotKind::IfElse) &&
+				(MeaningfulStatements(block.node).size() == 1);
+		}
+		return false;
+	}
+
 	// The meaningful statements of an if branch, skipping empty comment nodes.
 	// An if branch is a CodeBlock from the decompiler, but the parser can leave
 	// a single statement bare, so a non-block node counts as one statement.
@@ -152,14 +271,20 @@ namespace
 				}
 			}
 
-			// Value-position rules.
-			if (IsValueSlot(ctx.Kind()))
+			// Value-position rules. A branch with a return inside is never an
+			// operand. An assignment's own value stays an if, (= x (if a b)),
+			// as the golden text writes it; a value if inside one is folded.
+			// A cond case (an else-if) stays a case. The sole if in the then of
+			// an if without an else is left for the merge above (the parent is
+			// visited after its children).
+			if (IsValueContext(ctx, true) && (ctx.Kind() != SlotKind::AssignValue) && !IsElseIf(ctx) &&
+				!(if_->HasElse() ? false : IsSoleThenOfIfWithoutElse(ctx)))
 			{
 				if (!if_->HasElse())
 				{
 					// (if A B) -> (and A B)
 					vector<SyntaxNode *> thenStmts = MeaningfulStatements(if_->GetStatement1());
-					if ((thenStmts.size() == 1) && !IsControlFlow(thenStmts[0]))
+					if ((thenStmts.size() == 1) && !IsControlFlow(thenStmts[0]) && !EndsInReturn(thenStmts[0]))
 					{
 						unique_ptr<SyntaxNode> cond = move(ConditionSlot(*if_));
 						unique_ptr<SyntaxNode> thenExpr = TakeSingleStatement(if_->GetStatement1Internal());
@@ -173,7 +298,7 @@ namespace
 					if (IsEmptyBlock(if_->GetStatement1()))
 					{
 						vector<SyntaxNode *> elseStmts = MeaningfulStatements(if_->GetStatement2());
-						if ((elseStmts.size() == 1) && !IsControlFlow(elseStmts[0]))
+						if ((elseStmts.size() == 1) && !IsControlFlow(elseStmts[0]) && !EndsInReturn(elseStmts[0]))
 						{
 							unique_ptr<SyntaxNode> cond = move(ConditionSlot(*if_));
 							unique_ptr<SyntaxNode> elseExpr = TakeSingleStatement(if_->GetStatement2Internal());
@@ -184,6 +309,88 @@ namespace
 				}
 			}
 			return RewriteResult::None;
+		}
+	};
+
+	//
+	// CopyValue: an if whose value is used, with an else and an empty then,
+	// tests a variable or an assignment. Sierra's compiler did not load the
+	// variable again for the then, so the then is that variable: the golden
+	// text writes (= x (if a a else b)) and (= x (if (= t y) t else b)).
+	//
+	class CopyValue : public AstPass
+	{
+	public:
+		const char *Name() const override { return "CopyValue"; }
+		RewriteResult Rewrite(unique_ptr<SyntaxNode> &slot, const AstContext &ctx) override
+		{
+			if (!IsValueContext(ctx, false))
+			{
+				return RewriteResult::None;
+			}
+			// A value (or a b) with a variable first: the golden text writes
+			// (if a a else b) for it, as for the if with an empty then.
+			BinaryOp *op = SafeSyntaxNode<BinaryOp>(slot.get());
+			if (op && (op->Operator == BinaryOperator::LogicalOr) && op->GetStatement1() && op->GetStatement2())
+			{
+				unique_ptr<PropertyValue> copy = CopyOf(op->GetStatement1());
+				if (!copy)
+				{
+					return RewriteResult::None;
+				}
+				unique_ptr<IfStatement> made = make_unique<IfStatement>();
+				made->SetPosition(op->GetPosition());
+				SetConditionExpression(*made, move(op->GetStatement1Internal()));
+				copy->SetPosition(op->GetPosition());
+				unique_ptr<CodeBlock> then = make_unique<CodeBlock>();
+				then->AddStatement(move(copy));
+				made->SetStatement1(move(then));
+				unique_ptr<CodeBlock> elseB = make_unique<CodeBlock>();
+				elseB->AddStatement(move(op->GetStatement2Internal()));
+				made->SetStatement2(move(elseB));
+				slot = move(made);
+				return RewriteResult::Replaced;
+			}
+			IfStatement *if_ = SafeSyntaxNode<IfStatement>(slot.get());
+			if (!if_ || !if_->HasElse() || !IsEmptyBlock(if_->GetStatement1()))
+			{
+				return RewriteResult::None;
+			}
+			SyntaxNode *cond = ConditionSlot(*if_).get();
+			unique_ptr<PropertyValue> copy = CopyOf(cond);
+			if (!copy)
+			{
+				return RewriteResult::None;
+			}
+			copy->SetPosition(if_->GetPosition());
+			unique_ptr<CodeBlock> then = make_unique<CodeBlock>();
+			then->AddStatement(move(copy));
+			if_->SetStatement1(move(then));
+			return RewriteResult::Changed;
+		}
+
+	private:
+		static bool IsIndexed(SyntaxNode *node)
+		{
+			ComplexPropertyValue *complex = SafeSyntaxNode<ComplexPropertyValue>(node);
+			return complex && complex->GetIndexer();
+		}
+
+		// The variable a test leaves in the accumulator: the tested variable,
+		// or the target of a tested assignment. Null for anything else.
+		static unique_ptr<PropertyValue> CopyOf(SyntaxNode *cond)
+		{
+			PropertyValueBase *value = AsValue(cond);
+			Assignment *assign = SafeSyntaxNode<Assignment>(cond);
+			if (value && (value->GetType() == ValueType::Token) && !IsIndexed(cond))
+			{
+				return make_unique<PropertyValue>(*value);
+			}
+			if (assign && assign->_variable && !assign->_variable->HasIndexer())
+			{
+				return make_unique<PropertyValue>(assign->_variable->GetName(), ValueType::Token);
+			}
+			return nullptr;
 		}
 	};
 
@@ -440,6 +647,203 @@ namespace
 		static bool IsMatch(SyntaxNode *node, bool wantBreak)
 		{
 			return wantBreak ? IsSingleLevelBreak(node) : IsSingleLevelContinue(node);
+		}
+	};
+
+	// The statement list of a loop, or null.
+	SyntaxNodeVector *LoopBody(SyntaxNode *node)
+	{
+		switch (node->GetNodeType())
+		{
+		case NodeTypeWhileLoop:
+			return &SafeSyntaxNode<WhileLoop>(node)->GetStatements();
+		case NodeTypeDoLoop:
+			return &SafeSyntaxNode<DoLoop>(node)->GetStatements();
+		case NodeTypeForLoop:
+			return &SafeSyntaxNode<ForLoop>(node)->GetStatements();
+		default:
+			return nullptr;
+		}
+	}
+
+	// A continue at the end of a loop body is redundant, also at the end of
+	// the last if's branches there. Delete it, and an else it empties.
+	class ContinueTrim : public AstPass
+	{
+	public:
+		const char *Name() const override { return "ContinueTrim"; }
+		RewriteResult Rewrite(unique_ptr<SyntaxNode> &slot, const AstContext &) override
+		{
+			SyntaxNodeVector *body = LoopBody(slot.get());
+			if (!body)
+			{
+				return RewriteResult::None;
+			}
+			bool changed = false;
+			Trim(*body, changed);
+			return changed ? RewriteResult::Changed : RewriteResult::None;
+		}
+
+	private:
+		static void Trim(SyntaxNodeVector &list, bool &changed)
+		{
+			for (;;)
+			{
+				size_t index = list.size();
+				while ((index > 0) && SafeSyntaxNode<Comment>(list[index - 1].get()))
+				{
+					index--;
+				}
+				if (index == 0)
+				{
+					return;
+				}
+				SyntaxNode *last = list[index - 1].get();
+				if (IsSingleLevelContinue(last))
+				{
+					list.erase(list.begin() + index - 1);
+					changed = true;
+					continue;
+				}
+				IfStatement *if_ = SafeSyntaxNode<IfStatement>(last);
+				if (if_)
+				{
+					CodeBlock *thenB = AsCodeBlock(if_->GetStatement1());
+					if (thenB)
+					{
+						Trim(thenB->GetStatements(), changed);
+					}
+					CodeBlock *elseB = AsCodeBlock(if_->GetStatement2());
+					if (elseB)
+					{
+						Trim(elseB->GetStatements(), changed);
+						if (IsEmptyBlock(elseB))
+						{
+							if_->SetStatement2(nullptr);
+							changed = true;
+						}
+					}
+				}
+				return;
+			}
+		}
+	};
+
+	// In a loop body, an if with no else whose then ends by leaving (a
+	// continue, a break, or a return), followed by more of the body: the rest
+	// of the body becomes the else, and a continue at the end of the then is
+	// dropped. The then is then treated the same way. This gives the
+	// if-else-if chains the golden text has for loops that end in a cond.
+	class IfContinueRefactor : public AstPass
+	{
+	public:
+		const char *Name() const override { return "IfContinueRefactor"; }
+		RewriteResult Rewrite(unique_ptr<SyntaxNode> &slot, const AstContext &ctx) override
+		{
+			bool changed = false;
+			SyntaxNodeVector *body = LoopBody(slot.get());
+			if (body)
+			{
+				Process(*body, true, changed);
+			}
+			else
+			{
+				// A block anywhere inside a loop: the break and return forms
+				// (the golden text has them at any depth; a continue only at
+				// the body level).
+				CodeBlock *block = AsCodeBlock(slot.get());
+				if (block && InsideLoop(ctx))
+				{
+					Process(block->GetStatements(), false, changed);
+				}
+			}
+			return changed ? RewriteResult::Changed : RewriteResult::None;
+		}
+
+	private:
+		static bool InsideLoop(const AstContext &ctx)
+		{
+			for (size_t i = ctx._frames.size(); i > 0; i--)
+			{
+				NodeType t = ctx._frames[i - 1].node->GetNodeType();
+				if ((t == NodeTypeWhileLoop) || (t == NodeTypeDoLoop) || (t == NodeTypeForLoop))
+				{
+					return true;
+				}
+				if (t == NodeTypeFunction)
+				{
+					return false;
+				}
+			}
+			return false;
+		}
+
+		static void Process(SyntaxNodeVector &list, bool allowContinue, bool &changed)
+		{
+			for (size_t i = list.size(); i > 1; i--)
+			{
+				size_t ifIndex = i - 2;
+				IfStatement *if_ = SafeSyntaxNode<IfStatement>(list[ifIndex].get());
+				if (!if_ || if_->HasElse())
+				{
+					continue;
+				}
+				CodeBlock *thenB = AsCodeBlock(if_->GetStatement1());
+				if (!thenB)
+				{
+					continue;
+				}
+				vector<SyntaxNode *> thenStmts = MeaningfulStatements(thenB);
+				if (thenStmts.empty())
+				{
+					continue;
+				}
+				SyntaxNode *last = thenStmts.back();
+				bool leaves = (allowContinue && IsSingleLevelContinue(last)) || IsSingleLevelBreak(last) || (last->GetNodeType() == NodeTypeReturn);
+				if (!leaves)
+				{
+					continue;
+				}
+				// Nothing meaningful after the if: nothing to move.
+				bool restMeaningful = false;
+				for (size_t j = ifIndex + 1; j < list.size(); j++)
+				{
+					if (!SafeSyntaxNode<Comment>(list[j].get()))
+					{
+						restMeaningful = true;
+					}
+				}
+				if (!restMeaningful)
+				{
+					continue;
+				}
+				if (IsSingleLevelContinue(last))
+				{
+					SyntaxNodeVector &thenList = thenB->GetStatements();
+					for (size_t k = thenList.size(); k > 0; k--)
+					{
+						if (thenList[k - 1].get() == last)
+						{
+							thenList.erase(thenList.begin() + k - 1);
+							break;
+						}
+					}
+				}
+				// Empty comment nodes (dead jumps) stay out of the else, or the
+				// printed shape depends on them.
+				unique_ptr<CodeBlock> elseB = make_unique<CodeBlock>();
+				for (size_t j = ifIndex + 1; j < list.size(); j++)
+				{
+					if (!SafeSyntaxNode<Comment>(list[j].get()))
+					{
+						elseB->AddStatement(move(list[j]));
+					}
+				}
+				list.erase(list.begin() + ifIndex + 1, list.end());
+				if_->SetStatement2(move(elseB));
+				changed = true;
+				Process(thenB->GetStatements(), allowContinue, changed);
+			}
 		}
 	};
 
@@ -871,18 +1275,22 @@ void RunDecompilerAstPasses(FunctionBase &func, const AstPassOptions &options, I
 		LoopTestAbsorber absorber;
 		BreakContinueFactorOut factorOut;
 		IfThenElseBreakContinueTrim trim;
+		ContinueTrim continueTrim;
+		IfContinueRefactor refactor;
 		FinalBreakContinueTrim finalTrim;
-		vector<AstPass *> loopPasses = { &absorber, &factorOut, &trim, &finalTrim };
+		vector<AstPass *> loopPasses = { &absorber, &factorOut, &trim, &continueTrim, &refactor, &finalTrim };
 		RunPassesToFixpoint(func, loopPasses, options.maxSweeps, results);
 	}
 
 	// Fold nested and value-position ifs into and/or, and collapse double nots.
 	// An n-ary comparison is built at instruction consumption from its pprev,
-	// so no pass folds one from two comparisons.
+	// so no pass folds one from two comparisons. A copied then value comes
+	// first, so (if a a else b) stays an if and does not become (or a b).
 	{
+		CopyValue copyValue;
 		IfThenToAnd ifThenToAnd;
 		DoubleNot doubleNot;
-		vector<AstPass *> condPasses = { &ifThenToAnd, &doubleNot };
+		vector<AstPass *> condPasses = { &copyValue, &ifThenToAnd, &doubleNot };
 		RunPassesToFixpoint(func, condPasses, options.maxSweeps, results);
 	}
 

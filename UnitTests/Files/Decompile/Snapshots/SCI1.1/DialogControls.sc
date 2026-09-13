@@ -179,10 +179,11 @@
 		(= theText text)
 		(= temp1 0)
 		(while (< temp1 300)
-			(if (== 0 (StrLen theText)) (return -1))
-			(if (not (StrCmp param1 theText)) (return temp1))
-			(+= theText x)
-			(++ temp1)
+			(cond 
+				((== 0 (StrLen theText)) (return -1))
+				((not (StrCmp param1 theText)) (return temp1))
+				(else (+= theText x) (++ temp1))
+			)
 		)
 	)
 	

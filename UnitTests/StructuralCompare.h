@@ -15,6 +15,7 @@
 
 #include <string>
 #include <vector>
+#include <set>
 
 namespace sci
 {
@@ -57,7 +58,12 @@ struct StructuralCompareResult
 };
 
 // Normalizes every function of a parsed script and returns their bodies.
-std::vector<StructuralFunction> NormalizeScriptForCompare(sci::Script &script);
+// skipProcedures: names of procedures to leave out (golden dead code, see
+// UnusedProcedureNames).
+std::vector<StructuralFunction> NormalizeScriptForCompare(sci::Script &script, const std::set<std::string> *skipProcedures = nullptr);
+
+// The procedures a golden script marks "; UNUSED" on their header line.
+std::set<std::string> UnusedProcedureNames(const std::string &text);
 
 // Compares two script texts. Returns the display names of the functions that
 // differ (or "<unparsed>" when a side does not parse). outDetail, if given,

@@ -227,6 +227,75 @@ namespace UnitTests
             Assert::IsTrue(out.find("(= t (+ 1 t))") != std::string::npos, L"(+ 1 t) is not a compound assign");
         }
 
+        // --- CopyValue, value context ---
+
+        // A value if with an empty then tests a variable: the then is that
+        // variable. An assignment gives its target. An if-else-if chain in a
+        // value slot passes the context down.
+        TEST_METHOD(CopyValue_VariableThen)
+        {
+            Assert::AreEqual(std::string("(= t (if a a else b))"), Body(ApplyAllPasses("(= t (if a else b))")));
+            Assert::AreEqual(std::string("(= t (if (= u b) u else c))"), Body(ApplyAllPasses("(= t (if (= u b) else c))")));
+            std::string chain = ApplyAllPasses("(= t (if a else (if b else c)))");
+            Assert::IsTrue(chain.find("(a a)") != std::string::npos && chain.find("(b b)") != std::string::npos, L"each cond case gets its copy");
+        }
+        // A value or with a variable first is written as that if too.
+        TEST_METHOD(CopyValue_OrWithVariableFirst)
+        {
+            Assert::AreEqual(std::string("(= t (if a a else b))"), Body(ApplyAllPasses("(= t (or a b))")));
+            Assert::AreEqual(std::string("(= t (or (Foo) b))"), Body(ApplyAllPasses("(= t (or (Foo) b))")));
+        }
+        // In a boolean slot no copy is made: the empty-then if is an or.
+        TEST_METHOD(CopyValue_NotInBoolean)
+        {
+            Assert::AreEqual(std::string("(if (or a b) (= t 1))"), Body(ApplyAllPasses("(if (if a else b) (= t 1))")));
+        }
+        // A value if's branches are value slots too: an inner if there is an
+        // and, and an else-if (a cond case) is not merged with its inner if.
+        TEST_METHOD(IfToAnd_ValueContextPropagates)
+        {
+            // The else is itself an if: a cond case, which stays a case.
+            Assert::AreEqual(std::string("(return (cond (a (and b c)) (d e) ) )"),
+                Body(ApplyAllPasses("(return (if a (if b c) else (if d e)))")));
+            std::string cond = ApplyAllPasses("(return (if a (Foo) else (if b (if c d))))");
+            Assert::IsTrue(cond.find("((and b c) d)") != std::string::npos, std::wstring(cond.begin(), cond.end()).c_str());
+            // A statement cond case merges its inner if as usual.
+            std::string stmt = ApplyAllPasses("(if a (Foo) else (if b (if c (Bar))))");
+            Assert::IsTrue(stmt.find("((and b c) (Bar))") != std::string::npos, std::wstring(stmt.begin(), stmt.end()).c_str());
+        }
+        // An else with a return inside is not an or operand.
+        TEST_METHOD(IfToAnd_ReturnInsideElseNotOr)
+        {
+            std::string out = ApplyAllPasses("(return (if a else (if b (return 0) else c)))");
+            Assert::IsTrue(out.find("(or") == std::string::npos, L"a branch with a return stays an if");
+        }
+
+        // --- Loop continue shapes ---
+
+        TEST_METHOD(Loop_IfContinueBecomesElse)
+        {
+            Assert::AreEqual(std::string("(while a (if b (= t 1) else (= u 2)) )"),
+                Body(ApplyAllPasses("(while a (if b (= t 1) (continue)) (= u 2))")));
+            Assert::AreEqual(std::string("(repeat (if b (break) else (++ t)) )"),
+                Body(ApplyAllPasses("(repeat (if b (break)) (++ t))")));
+            Assert::AreEqual(std::string("(while a (if b (return) else (++ t)) )"),
+                Body(ApplyAllPasses("(while a (if b (return)) (++ t))")));
+        }
+        // The break and return forms apply at any depth inside a loop; the
+        // continue form only at the body level.
+        TEST_METHOD(Loop_NestedBreakBecomesElse)
+        {
+            Assert::AreEqual(std::string("(repeat (if a (if b (break) else (++ t))) )"),
+                Body(ApplyAllPasses("(repeat (if a (if b (break)) (++ t)))")));
+            Assert::AreEqual(std::string("(repeat (if a (if b (= u 1) (continue)) (++ t)) )"),
+                Body(ApplyAllPasses("(repeat (if a (if b (= u 1) (continue)) (++ t)))")));
+        }
+        TEST_METHOD(Loop_TailContinueDropped)
+        {
+            Assert::AreEqual(std::string("(while a (= t 1) (if b (= u 2)) )"),
+                Body(ApplyAllPasses("(while a (= t 1) (if b (= u 2) (continue)))")));
+        }
+
         // --- ReturnCleanup ---
 
         // Parses a script with one instance whose method named methodName has

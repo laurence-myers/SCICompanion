@@ -14,7 +14,7 @@
 		(cond 
 			((== temp0 1)
 				(if (& temp0 $0002) (= temp1 1) (continue))
-				(if (& temp0 $0004) (= temp1 2) (continue))
+				(if (& temp0 $0004) (= temp1 2))
 			)
 			((== temp0 3) (if (== temp1 0) (= temp1 3) (break)))
 			(else (= temp1 4))

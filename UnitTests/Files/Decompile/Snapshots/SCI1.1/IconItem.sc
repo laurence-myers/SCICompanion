@@ -352,14 +352,17 @@
 		(while temp5
 			(= temp6 (NextNode temp5))
 			(= temp7 (NodeValue temp5))
-			(if (not (IsObject temp7)) (return))
-			(if (<= (temp7 nsRight?) 0)
-				(temp7 show: temp3 theY)
-				(= temp3 (temp7 nsRight?))
+			(if (not (IsObject temp7))
+				(return)
 			else
-				(temp7 show:)
+				(if (<= (temp7 nsRight?) 0)
+					(temp7 show: temp3 theY)
+					(= temp3 (temp7 nsRight?))
+				else
+					(temp7 show:)
+				)
+				(= temp5 temp6)
 			)
-			(= temp5 temp6)
 		)
 		(if curInvIcon
 			(if (gEgo has: (gInv indexOf: curInvIcon))
@@ -424,10 +427,13 @@
 			(while temp0
 				(= temp1 (NextNode temp0))
 				(= temp2 (NodeValue temp0))
-				(if (not (IsObject temp2)) (return))
-				(= temp2 (NodeValue temp0))
-				(temp2 signal: (& (temp2 signal?) (~ $0020)))
-				(= temp0 temp1)
+				(if (not (IsObject temp2))
+					(return)
+				else
+					(= temp2 (NodeValue temp0))
+					(temp2 signal: (& (temp2 signal?) (~ $0020)))
+					(= temp0 temp1)
+				)
 			)
 			(if
 				(and
@@ -456,8 +462,11 @@
 			(if (not (IsObject temp0))
 				(= temp0 (NodeValue (self first:)))
 			)
-			(if (not (& (temp0 signal?) $0004)) (break))
-			(= temp1 (mod (+ temp1 1) size))
+			(if (not (& (temp0 signal?) $0004))
+				(break)
+			else
+				(= temp1 (mod (+ temp1 1) size))
+			)
 		)
 		(self highlight: temp0 (& state $0020))
 	)
@@ -473,8 +482,11 @@
 			(if (not (IsObject temp0))
 				(= temp0 (NodeValue (self last:)))
 			)
-			(if (not (& (temp0 signal?) $0004)) (break))
-			(= temp1 (mod (+ temp1 1) size))
+			(if (not (& (temp0 signal?) $0004))
+				(break)
+			else
+				(= temp1 (mod (+ temp1 1) size))
+			)
 		)
 		(self highlight: temp0 (& state $0020))
 	)
@@ -789,8 +801,11 @@
 		(= temp0 0)
 		(while (< temp0 size)
 			(= temp1 (self at: temp0))
-			(if (== (temp1 message?) param1) (return temp1))
-			(++ temp0)
+			(if (== (temp1 message?) param1)
+				(return temp1)
+			else
+				(++ temp0)
+			)
 		)
 		(return 0)
 	)

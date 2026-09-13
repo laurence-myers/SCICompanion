@@ -20,8 +20,7 @@
 			)
 			(++ temp1)
 		)
-		(if (not temp15) (break))
-		(-- temp0)
+		(if (not temp15) (break) else (-- temp0))
 	)
 )
 

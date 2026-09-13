@@ -54,8 +54,8 @@
 				(<= param1 (if (< argc 6) (param5 x?) else param5))
 				(<= (if (< argc 6) (param5 x?) else param5) param3)
 			)
-			(if
-			(<= param2 (if (< argc 6) (param5 y?) else param6))
+			(and
+				(<= param2 (if (< argc 6) (param5 y?) else param6))
 				(<= (if (< argc 6) (param5 y?) else param6) param4)
 			)
 		else
@@ -67,8 +67,11 @@
 (procedure (IsOneOf param1 param2 &tmp temp0)
 	(= temp0 0)
 	(while (< temp0 (- argc 1))
-		(if (== param1 [param2 temp0]) (return (or param1 1)))
-		(++ temp0)
+		(if (== param1 [param2 temp0])
+			(return (or param1 1))
+		else
+			(++ temp0)
+		)
 	)
 	(return 0)
 )
@@ -213,9 +216,12 @@
 		(while temp0
 			(= temp1 (NextNode temp0))
 			(= temp2 (NodeValue temp0))
-			(if (not (IsObject temp2)) (return))
-			(temp2 param1: &rest)
-			(= temp0 temp1)
+			(if (not (IsObject temp2))
+				(return)
+			else
+				(temp2 param1: &rest)
+				(= temp0 temp1)
+			)
 		)
 	)
 	
@@ -224,8 +230,11 @@
 		(while temp0
 			(= temp1 (NextNode temp0))
 			(= temp2 (NodeValue temp0))
-			(if (temp2 param1: &rest) (return temp2))
-			(= temp0 temp1)
+			(if (temp2 param1: &rest)
+				(return temp2)
+			else
+				(= temp0 temp1)
+			)
 		)
 		(return 0)
 	)
@@ -235,8 +244,11 @@
 		(while temp0
 			(= temp1 (NextNode temp0))
 			(= temp2 (NodeValue temp0))
-			(if (not (temp2 param1: &rest)) (return 0))
-			(= temp0 temp1)
+			(if (not (temp2 param1: &rest))
+				(return 0)
+			else
+				(= temp0 temp1)
+			)
 		)
 		(return 1)
 	)
@@ -356,9 +368,12 @@
 		(= temp0 0)
 		(= temp1 (FirstNode elements))
 		(while temp1
-			(if (== param1 (NodeValue temp1)) (return temp0))
-			(++ temp0)
-			(= temp1 (NextNode temp1))
+			(if (== param1 (NodeValue temp1))
+				(return temp0)
+			else
+				(++ temp0)
+				(= temp1 (NextNode temp1))
+			)
 		)
 		(return -1)
 	)
@@ -391,9 +406,12 @@
 		(while (and temp0 (not (temp3 claimed?)))
 			(= temp1 (NextNode temp0))
 			(= temp2 (NodeValue temp0))
-			(if (not (IsObject temp2)) (break))
-			(temp2 handleEvent: temp3)
-			(= temp0 temp1)
+			(if (not (IsObject temp2))
+				(break)
+			else
+				(temp2 handleEvent: temp3)
+				(= temp0 temp1)
+			)
 		)
 		(= temp4 (temp3 claimed?))
 		(temp3 dispose:)

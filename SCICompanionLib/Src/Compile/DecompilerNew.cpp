@@ -2132,6 +2132,26 @@ bool IsOpcodeWeCanShortCircuit(Opcode opcode)
 	return false;
 }
 
+// A load with no side effect: a number, a variable, a property, an object
+// address, a class, self.
+static bool IsPureLoad(Opcode opcode)
+{
+	switch (opcode)
+	{
+		case Opcode::LDI:
+		case Opcode::LOFSA:
+		case Opcode::CLASS:
+		case Opcode::SELFID:
+		case Opcode::PTOA:
+			return true;
+	}
+	if ((opcode >= Opcode::LAG) && (opcode <= Opcode::LastLoadStore))
+	{
+		return !_IsVOStoreOperation(opcode) && !_IsVOIncremented(opcode) && !_IsVODecremented(opcode) && !_IsVOPureStack(opcode);
+	}
+	return false;
+}
+
 unique_ptr<ConsumptionNode> StealNodeOrReuseAcc(ConsumptionNode *nodeToSteal, DecompileLookups &lookups)
 {
 	// If the node we want to steal is a sa* operation (e.g. the accumulator is written to a variable, and acc retains the value)
@@ -2143,6 +2163,12 @@ unique_ptr<ConsumptionNode> StealNodeOrReuseAcc(ConsumptionNode *nodeToSteal, De
 		newNode->SetType(ChunkType::ShortCircuitInstruction);
 		newNode->SetPos(nodeToSteal->GetCode());
 		return newNode;
+	}
+	// A reused plain load stays where it is as a statement (a stray value the
+	// source had); the user gets a copy. The golden text keeps both.
+	if (nodeToSteal->_hasPos && IsPureLoad(nodeToSteal->GetCode()->get_opcode()) && (nodeToSteal->GetChildCount() == 0))
+	{
+		return nodeToSteal->Clone();
 	}
 	else
 	{

@@ -94,8 +94,9 @@
 									)
 								)
 								(break)
+							else
+								(= gCastFirst (gCast next: gCastFirst))
 							)
-							(= gCastFirst (gCast next: gCastFirst))
 						)
 					)
 					(12288 (PolyEdit doit:))
@@ -243,8 +244,9 @@
 							(if
 							(or (== (newEvent type?) 1) (== (newEvent type?) 4))
 								(break)
+							else
+								(newEvent dispose:)
 							)
-							(newEvent dispose:)
 						)
 						(newEvent dispose:)
 						(Graph 8 temp165)
@@ -529,8 +531,9 @@
 					(== theNewDButton newDButton)
 				)
 				(break)
+			else
+				(gEgo get: (gInv indexOf: (theNewDButton value?)))
 			)
-			(gEgo get: (gInv indexOf: (theNewDButton value?)))
 		)
 		(self eachElementDo: 111 1 dispose:)
 	)

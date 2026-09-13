@@ -41,8 +41,11 @@
 		(if handle
 			(= temp0 0)
 			(while (< temp0 argc)
-				(if (not (FileIO 6 handle [param1 temp0])) (return 0))
-				(++ temp0)
+				(if (not (FileIO 6 handle [param1 temp0]))
+					(return 0)
+				else
+					(++ temp0)
+				)
 			)
 		)
 		(return 1)
