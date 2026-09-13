@@ -21,6 +21,7 @@
 #include "DecompilerNew.h"
 #include "DecompilerAstPasses.h"
 #include "DecompilerFallback.h"
+#include "SCISourceCodeFormatter.h"
 #include "format.h"
 #include "DecompilerConfig.h"
 #include <iterator>
@@ -1121,6 +1122,21 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 	{
 		if (success)
 		{
+			if (lookups.DebugInstructionConsumption)
+			{
+				// The text as the chunk stage made it, for diagnosing a pass.
+				std::stringstream ss;
+				sci::SourceCodeWriter writer(ss, LangSyntaxSCI);
+				if (auto *method = dynamic_cast<sci::MethodDefinition*>(&func))
+				{
+					OutputSourceCode_SCI(*method, writer);
+				}
+				else if (auto *proc = dynamic_cast<sci::ProcedureDefinition*>(&func))
+				{
+					OutputSourceCode_SCI(*proc, writer);
+				}
+				lookups.DecompileResults().AddResult(DecompilerResultType::Warning, "Before AST passes:\n" + ss.str());
+			}
 			AstPassOptions astOptions;
 			RunDecompilerAstPasses(func, astOptions, &lookups.DecompileResults());
 		}

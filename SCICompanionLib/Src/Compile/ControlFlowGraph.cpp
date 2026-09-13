@@ -1092,6 +1092,8 @@ void ControlFlowGraph::_DoLoopTransform(ControlFlowNode *loop)
 // from the head through the last "bnt" to the loop exit. An or inside the test
 // shows as a "bt" to a node further down the chain, so the walk continues while
 // such a target is pending. Empty for a loop with no head test.
+static bool _NeedsIncomingAcc(ControlFlowNode *node);
+
 static NodeSet _LoopTestChain(ControlFlowNode *loop, uint16_t exitAddress)
 {
 	vector<ControlFlowNode*> walked;
@@ -1120,6 +1122,13 @@ static NodeSet _LoopTestChain(ControlFlowNode *loop, uint16_t exitAddress)
 				{
 					haveTest = true;
 					lastTestIndex = walked.size() - 1;
+					next = thenNode;
+				}
+				else if (_NeedsIncomingAcc(elseNode))
+				{
+					// The false edge goes to a join that tests the value, as in
+					// (< a b c) with its pprev, or (not (if a b)). The test goes on.
+					pendingTargets.insert(elseNode);
 					next = thenNode;
 				}
 				else if (!pendingTargets.empty())
@@ -1348,6 +1357,88 @@ static ControlFlowNode *_TestChainHead(ControlFlowNode *node)
 	return node;
 }
 
+// A node that needs its accumulator from before it, while a branch still
+// jumps straight to it (a "bt" whose then is this node, or a "bnt" whose else
+// is): it is the join of an or, or of an if used as a value, that has not
+// been built yet. Structuring it now would give it the wrong operand. A
+// fall-through from a "bnt" does not count: there the accumulator is simply
+// still live from the node before, as in (and gX (not (gX foo:))).
+static bool _IsPendingJoin(ControlFlowNode *node)
+{
+	if (!_NeedsIncomingAcc(node))
+	{
+		return false;
+	}
+	for (ControlFlowNode *pred : node->Predecessors())
+	{
+		if ((pred->Type != CFGNodeType::RawCode) || (pred->Successors().size() != 2))
+		{
+			continue;
+		}
+		ControlFlowNode *thenNode, *elseNode;
+		if (!MaybeGetThenAndElseBranches(pred, &thenNode, &elseNode))
+		{
+			continue;
+		}
+		if (pred->endsWith(Opcode::BT) ? (thenNode == node) : (elseNode == node))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+// True if the chain of nodes is one expression: no value it makes is dropped.
+// A value is dropped when an instruction sets the accumulator while an
+// earlier value is still in it, unconsumed; that earlier value was a
+// statement, as in (if a (= t 1) (if b ...)), which must stay nested ifs.
+// A value if or or counts as one accumulator value. Any other structure, or a
+// jump, is not part of an expression.
+static bool _ChainIsValue(const vector<ControlFlowNode*> &chain)
+{
+	bool live = false;
+	for (ControlFlowNode *node : chain)
+	{
+		if (node->Type == CFGNodeType::RawCode)
+		{
+			RawCodeNode *raw = static_cast<RawCodeNode*>(node);
+			for (code_pos inst = raw->start; inst != raw->end; ++inst)
+			{
+				if (inst->get_opcode() == Opcode::JMP)
+				{
+					return false;
+				}
+				Consumption consumption = _GetInstructionConsumption(*inst);
+				if (consumption.cAccGenerate && live && !consumption.cAccConsume)
+				{
+					return false;
+				}
+				if (consumption.cAccConsume)
+				{
+					live = false;
+				}
+				if (consumption.cAccGenerate)
+				{
+					live = true;
+				}
+			}
+		}
+		else if ((node->Type == CFGNodeType::CompoundCondition) || (node->Type == CFGNodeType::If))
+		{
+			if (live)
+			{
+				return false;
+			}
+			live = true;
+		}
+		else
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
 static vector<ControlFlowNode*> _ChainFrom(ControlFlowNode *head, ControlFlowNode *tail)
 {
 	vector<ControlFlowNode*> chain;
@@ -1447,9 +1538,17 @@ void ControlFlowGraph::_StructureBranches(ControlFlowNode *structure)
 				continue;
 			}
 			bool isTest = isLoop && _IsTestNode(node, testChain);
+			// A test node may still be an if when its follow is inside the test:
+			// a value if within the loop condition, as in (< a b c) with its pprev.
+			bool ifInsideTest = false;
+			if (isTest)
+			{
+				auto ipdomIt = ipdom.find(node);
+				ifInsideTest = (ipdomIt != ipdom.end()) && _IsTestNode(ipdomIt->second, testChain);
+			}
 			if (_TryAndMerge(structure, node, testChainPtr) ||
 				_TryOrCollapse(structure, node, ipdom, testChainPtr) ||
-				(!isTest && _TryBuildIf(structure, node, ipdom)))
+				((!isTest || ifInsideTest) && _TryBuildIf(structure, node, ipdom)))
 			{
 				changes = true;
 				break;
@@ -1486,6 +1585,10 @@ bool ControlFlowGraph::_TryAndMerge(ControlFlowNode *structure, ControlFlowNode 
 	{
 		return false;
 	}
+	if (_IsPendingJoin(first))
+	{
+		return false;
+	}
 
 	vector<ControlFlowNode*> second;
 	ControlFlowNode *last = thenNode;
@@ -1499,7 +1602,9 @@ bool ControlFlowGraph::_TryAndMerge(ControlFlowNode *structure, ControlFlowNode 
 		{
 			break;
 		}
-		if (!_IsValueNode(last))
+		// A one-way node in the operand: a value if or or, or the raw code
+		// around one (the pushes before a value if used as an argument).
+		if ((last->Successors().size() != 1) || (last->Type == CFGNodeType::Exit) || (last->Type == CFGNodeType::FakeBreakOrContinue))
 		{
 			return false;
 		}
@@ -1529,12 +1634,20 @@ bool ControlFlowGraph::_TryAndMerge(ControlFlowNode *structure, ControlFlowNode 
 	{
 		return false;
 	}
+	if (_IsPendingJoin(last))
+	{
+		return false;
+	}
 	// Never merge across the loop test boundary.
 	if (testChain && (_IsTestNode(first, *testChain) != _IsTestNode(last, *testChain)))
 	{
 		return false;
 	}
 	second.push_back(last);
+	if (!_ChainIsValue(second))
+	{
+		return false;
+	}
 
 	vector<ControlFlowNode*> firstChain = _ChainFrom(_TestChainHead(first), first);
 	CompoundConditionNode *cc = MakeStructuredNode<CompoundConditionNode>(firstChain.front(), ConditionType::And);
@@ -1572,6 +1685,10 @@ bool ControlFlowGraph::_TryOrCollapse(ControlFlowNode *structure, ControlFlowNod
 	}
 	ControlFlowNode *join, *operandStart;
 	if (!MaybeGetThenAndElseBranches(first, &join, &operandStart))
+	{
+		return false;
+	}
+	if (_IsPendingJoin(first))
 	{
 		return false;
 	}
@@ -1625,6 +1742,10 @@ bool ControlFlowGraph::_TryOrCollapse(ControlFlowNode *structure, ControlFlowNod
 // if-else) whose follow is the post-dominator.
 bool ControlFlowGraph::_TryBuildIf(ControlFlowNode *structure, ControlFlowNode *head, const map<ControlFlowNode*, ControlFlowNode*> &ipdom)
 {
+	if (_IsPendingJoin(head))
+	{
+		return false;
+	}
 	auto it = ipdom.find(head);
 	if (it == ipdom.end())
 	{
@@ -1785,6 +1906,32 @@ vector<ControlFlowNode*> _GetPostOrder(ControlFlowNode *structure)
 // does not. Retarget the bt onto the bnt: the accumulator is true there, so the
 // bnt falls through, and the or now ends at one join node the structurer can
 // see (a; bt L; b; L: bnt ...).
+// A forward bnt whose target is itself a forward bnt: the accumulator is false
+// there, so the second bnt is taken. Retarget the first to the final target.
+// Sierra's compiler emits the direct form; the chained form comes from an if
+// used as the value of a test, (if (if a b) ...), which is (and a b).
+void _DeoptimizeBntChains(code_pos start, code_pos end)
+{
+	code_pos cur = start;
+	++cur;
+	while (cur != end)
+	{
+		if ((cur->get_opcode() == Opcode::BNT) && cur->is_forward_branch())
+		{
+			for (int hops = 0; hops < 8; hops++)
+			{
+				code_pos target = cur->get_branch_target();
+				if ((target == end) || (target == cur) || (target->get_opcode() != Opcode::BNT) || !target->is_forward_branch())
+				{
+					break;
+				}
+				cur->set_branch_target(target->get_branch_target(), true);
+			}
+		}
+		++cur;
+	}
+}
+
 void _UnchainBtToBnt(code_pos start, code_pos end)
 {
 	code_pos cur = start;
@@ -2193,6 +2340,7 @@ bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 {
 	try
 	{
+		_DeoptimizeBntChains(start, end);
 		_UnchainBtToBnt(start, end);
 		_DeoptimizeBtChains(start, end);
 		_FixupConfusingBranches(start, end, _contextName, _decompilerResults);
@@ -2211,7 +2359,7 @@ bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 
 		if (showFile)
 		{
-			CFGVisualize(_contextName + "_raw", discoveredControlStructures);
+			_decompilerResults.AddResult(DecompilerResultType::Warning, _contextName + " graph (raw):\n" + CFGVisualize(_contextName + "_raw", discoveredControlStructures));
 		}
 
 		// Yeah, we're calculating dominators a second time here, but that's ok.
@@ -2245,7 +2393,7 @@ bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 
 		if (showFile)
 		{
-			CFGVisualize(_contextName + "_loop", discoveredControlStructures);
+			_decompilerResults.AddResult(DecompilerResultType::Warning, _contextName + " graph (after loops):\n" + CFGVisualize(_contextName + "_loop", discoveredControlStructures));
 		}
 
 		if (!_decompilerResults.IsAborted())

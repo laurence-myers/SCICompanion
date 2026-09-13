@@ -21,3 +21,9 @@ std::string GetTestModuleDirectory();
 void CleanUpGame(const std::string &gameFolder);
 std::string SetUpGameSCI0();
 std::string SetUpGameSCI11();
+
+// Points the app state at a game folder that already exists, with no copy.
+// For read-only whole-game dumps (the golden diff). Nothing is written to the
+// game folder. Pair with CleanUpExistingGame, which does not delete anything.
+void SetUpExistingGame(const std::string &gameFolder);
+void CleanUpExistingGame();

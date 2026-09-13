@@ -74,6 +74,15 @@ DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t s
 int CountFallbacksAllScripts(std::vector<std::string> *outFailedScripts = nullptr,
     int *outProcessed = nullptr, std::vector<std::string> *outWarnings = nullptr);
 
+// Decompiles every script resource of the current game and writes each one to
+// outDir. When nameMapDir is not empty, a script is named after the file in
+// that folder whose "(script# N)" header has its number (so a dump can be
+// diffed against a golden tree by file name); otherwise it is "<N>.sc".
+// Appends "<name>: <warning>" lines to outWarnings. Loads lookups once.
+// Returns the total number of functions that fell back to assembly.
+int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
+    std::vector<std::string> *outWarnings, int *outProcessed = nullptr);
+
 // Compiles a fixture, decompiles it, and compares the decompiled text with the
 // expected file "<name>.expected.sc" in TestFiles\Decompile\SCI1.1. Asserts no
 // fallback, no asm, an exact match after whitespace normalization, and a stable

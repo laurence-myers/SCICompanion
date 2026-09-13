@@ -71,6 +71,11 @@ uint16_t ControlFlowNode::GetStartingAddress() const
 	{
 		address = 0;
 	}
+	else if ((Type == CFGNodeType::If) && static_cast<const IfNode*>(this)->testHead)
+	{
+		// The if starts where its test chain starts, not at the branch node.
+		address = static_cast<const IfNode*>(this)->testHead->GetStartingAddress();
+	}
 	else
 	{
 		assert((*this)[SemId::Head]);

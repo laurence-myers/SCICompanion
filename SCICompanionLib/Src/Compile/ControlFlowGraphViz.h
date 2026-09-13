@@ -15,4 +15,4 @@
 
 #include "ControlFlowNode.h"
 
-void CFGVisualize(const std::string &name, NodeSet &discoveredControlStructures);
+std::string CFGVisualize(const std::string &name, NodeSet &discoveredControlStructures);

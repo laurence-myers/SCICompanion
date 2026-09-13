@@ -2042,6 +2042,12 @@ void OutputSourceCode_SCI(const sci::MethodDefinition &method, sci::SourceCodeWr
 	output.DoTheThing(method);
 }
 
+void OutputSourceCode_SCI(const sci::ProcedureDefinition &proc, sci::SourceCodeWriter &out)
+{
+	SCISourceCodeFormatter output(out);
+	output.DoTheThing(proc);
+}
+
 void OutputSourceCode_SCI(const sci::ClassProperty &classProp, sci::SourceCodeWriter &out)
 {
 	SCISourceCodeFormatter output(out);

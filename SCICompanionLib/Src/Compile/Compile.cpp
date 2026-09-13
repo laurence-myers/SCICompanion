@@ -2066,7 +2066,24 @@ CodeResult Assignment::OutputByteCode(CompileContext &context) const
 		case ResolvedToken::ScriptVariable:
 		case ResolvedToken::Parameter:
 		case ResolvedToken::TempVariable:
-			if (pIndexer)
+			if (pIndexer &&
+				((pIndexer->GetNodeType() == NodeTypeValue) ||
+				((pIndexer->GetNodeType() == NodeTypeComplexValue) && !static_cast<const ComplexPropertyValue*>(pIndexer)->GetIndexer())))
+			{
+				// A simple indexer (a variable or a number) can be evaluated
+				// twice. Emit Sierra's sequence, which the decompiler reads back:
+				//   index; lsti var; value; op; push; index; sati var
+				// The indexed store pops the value and leaves it in the acc.
+				OutputByteCodeToAccumulator(context, *pIndexer);
+				VariableOperand(context, wIndex, TokenTypeToVOType(tokenType) | VO_STACK | VO_LOAD | VO_ACC_AS_INDEX_MOD, GetLineNumber());
+				OutputByteCodeToAccumulator(context, *_statement1);
+				WriteSimple(context, GetInstructionForBinaryOperator(theBinaryOperator), GetLineNumber());
+				WriteSimple(context, Opcode::PUSH, GetLineNumber());
+				OutputByteCodeToAccumulator(context, *pIndexer);
+				VariableOperand(context, wIndex, TokenTypeToVOType(tokenType) | VO_ACC | VO_STORE | VO_ACC_AS_INDEX_MOD, GetLineNumber());
+				ocWhereWePutValue = OC_Accumulator; // It's sitting in the accumulator
+			}
+			else if (pIndexer)
 			{
 				// A little bit more complicated:  a[10] += 5;
 				// Let's evaluate the indexer, and put it on the accumulator

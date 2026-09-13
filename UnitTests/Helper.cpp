@@ -65,6 +65,12 @@ std::string SetUpGame(const std::string &name)
         std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing, ec);
     Assert::IsFalse(static_cast<bool>(ec), L"copying the template game failed");
 
+    SetUpExistingGame(gameFolder);
+    return gameFolder;
+}
+
+void SetUpExistingGame(const std::string &gameFolder)
+{
     appState = new AppState(nullptr);
     // AppState(nullptr) does not run InitInstance, so the grammars are not
     // loaded. Load them now, or SyntaxParser_Parse fails.
@@ -73,19 +79,22 @@ std::string SetUpGame(const std::string &name)
 
     // Point the include folder at the module folder. The app post-build put the
     // "include" folder (sci.sh, keys.sh) there.
-    std::string exeFolder = moduleDir + "\\";
+    std::string exeFolder = GetModuleDirectory() + "\\";
     appState->GetResourceMap().SetIncludeFolderForTest(exeFolder);
-
-    return gameFolder;
 }
 
-void CleanUpGame(const std::string &gameFolder)
+void CleanUpExistingGame()
 {
     appState->GetClassBrowser().SetClassBrowserEvents(nullptr);
 
     appState->ResetClassBrowser();
     delete appState;
     appState = nullptr;
+}
+
+void CleanUpGame(const std::string &gameFolder)
+{
+    CleanUpExistingGame();
 
     std::error_code ec;
     std::filesystem::remove_all(gameFolder, ec);

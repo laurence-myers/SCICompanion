@@ -2149,6 +2149,16 @@ bool SkipGuaranteedExecutions(ConsumptionNode *&child, ConsumptionNode *&parent)
 		child = child->_parentWeak->_parentWeak;
 		return true;
 	}
+	// The first operand of an instruction runs before the instruction and
+	// before its other operands. So a statement at the start of that operand
+	// ran before the instruction. This lets an if used as a value (under a
+	// "ret", "push" or "sat") give up a leading statement.
+	else if (parent->_hasPos && parent->_parentWeak && (child->GetMyIndex() == 0))
+	{
+		parent = parent->_parentWeak;
+		child = child->_parentWeak;
+		return true;
+	}
 	// This is true, but needs more work...
 	/*
 	else if ((parent->GetType() == ChunkType::LoopBody) && (parent->_parentWeak->GetType() == ChunkType::While))
@@ -2185,8 +2195,40 @@ bool SkipStructuredLevels(ConsumptionNode *&child, ConsumptionNode *&parent)
 }
 
 
-template<typename _Func, typename _FuncCreate, typename _FuncReplace>
-bool TryToStealOrCloneSomething(ConsumptionNode *originalChild, ConsumptionNode *startSearchFrom, DecompileLookups &lookups, _Func satisfiesNeeds, _FuncCreate funcCreate, _FuncReplace funcReplace)
+bool AlwaysOkToTake(ConsumptionNode *, ConsumptionNode *) { return true; }
+
+// True if no instruction between the candidate's last instruction and the
+// instruction that needs the accumulator sets the accumulator. If one does,
+// the candidate is not what is in the accumulator there: the load in between
+// is, as in "lap p; lsgi g; lagi h", where lagi's index is p (lsgi leaves the
+// accumulator alone). The clone path then finds that load.
+bool IsNearestAccSource(ConsumptionNode *candidate, ConsumptionNode *placeholder)
+{
+	ConsumptionNode *needy = placeholder->_parentWeak;
+	if (!candidate->_hasPos || !needy || !needy->_hasPos)
+	{
+		return true;
+	}
+	uint16_t candidateOffset = candidate->GetCode()->get_final_offset_dontcare();
+	code_pos current = needy->GetCode();
+	if (current->get_final_offset_dontcare() <= candidateOffset)
+	{
+		return true;
+	}
+	--current;
+	while ((current->get_opcode() != Opcode::INDETERMINATE) && (current->get_final_offset_dontcare() > candidateOffset))
+	{
+		if (_GetInstructionConsumption(*current).cAccGenerate)
+		{
+			return false;
+		}
+		--current;
+	}
+	return true;
+}
+
+template<typename _Func, typename _FuncCreate, typename _FuncReplace, typename _FuncOk>
+bool TryToStealOrCloneSomething(ConsumptionNode *originalChild, ConsumptionNode *startSearchFrom, DecompileLookups &lookups, _Func satisfiesNeeds, _FuncCreate funcCreate, _FuncReplace funcReplace, _FuncOk okToTake)
 {
 	ConsumptionNode *child = startSearchFrom;
 	ConsumptionNode *parent = child->_parentWeak;
@@ -2202,6 +2244,12 @@ bool TryToStealOrCloneSomething(ConsumptionNode *originalChild, ConsumptionNode 
 				Consumption consumption = _GetInstructionConsumption(*parent->Child(i), lookups);
 				if (satisfiesNeeds(consumption))
 				{
+					if (!okToTake(parent->Child(i), originalChild))
+					{
+						// Something nearer supplies the value; leave it to the clone path.
+						done = true;
+						break;
+					}
 					// This is it.
 					unique_ptr<ConsumptionNode> stolen = funcCreate(parent->Child(i), lookups);
 					funcReplace(originalChild, move(stolen), lookups);
@@ -2355,7 +2403,7 @@ void _ResolveDUPs(ConsumptionNode *root, ConsumptionNode *chunk, DecompileLookup
 			}
 			if (!found)
 			{
-				found = TryToStealOrCloneSomething(child, child, lookups, GeneratesStack, CloneNode, ReplaceNodeWithNode);
+				found = TryToStealOrCloneSomething(child, child, lookups, GeneratesStack, CloneNode, ReplaceNodeWithNode, AlwaysOkToTake);
 			}
 			if (!found)
 			{
@@ -2744,7 +2792,7 @@ bool _ResolveNeededAccWorker(ConsumptionNode *root, ConsumptionNode *chunk, Deco
 			// currently are. For instance, if we're in an if Condition (without a compound condition)
 			// we can steal from any code before the [If] structure that are peers of the if.
 			// Let's start with a simple targeted case first.
-			if ((child->GetType() == ChunkType::NeedsAccumulator) && TryToStealOrCloneSomething(child, child, lookups, GeneratesAcc, StealNodeOrReuseAcc, ReplaceNodeWithNode))
+			if ((child->GetType() == ChunkType::NeedsAccumulator) && TryToStealOrCloneSomething(child, child, lookups, GeneratesAcc, StealNodeOrReuseAcc, ReplaceNodeWithNode, IsNearestAccSource))
 			{
 				changes = true;
 			}
@@ -2770,7 +2818,7 @@ bool _ResolveNeededAccWorker(ConsumptionNode *root, ConsumptionNode *chunk, Deco
 		else if (child->GetType() == ChunkType::NeedsStack)
 		{
 			// We can only steal stack, never clone
-			if (TryToStealOrCloneSomething(child, child, lookups, GeneratesStack, StealNode, ReplaceNodeWithNode))
+			if (TryToStealOrCloneSomething(child, child, lookups, GeneratesStack, StealNode, ReplaceNodeWithNode, AlwaysOkToTake))
 			{
 				changes = true;
 			}
@@ -3155,7 +3203,7 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 		{
 			std::stringstream ss;
 			mainChunk->Print(ss, 0);
-			ShowTextFile(ss.str().c_str(), debugTrackName + "_chunks_raw.txt");
+			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, debugTrackName + " chunks (raw):\n" + ss.str());
 		}
 
 		_LookForRestsAndMaybeLiftOutAssignments(mainChunk.get(), mainChunk.get(), lookups);
@@ -3178,7 +3226,7 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 		{
 			std::stringstream ss;
 			mainChunk->Print(ss, 0);
-			ShowTextFile(ss.str().c_str(), debugTrackName + "_chunks_final.txt");
+			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, debugTrackName + " chunks (final):\n" + ss.str());
 		}
 
 		// Now fill it in
@@ -3194,7 +3242,7 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 		{
 			std::stringstream ss;
 			mainChunk->Print(ss, 0);
-			ShowTextFile(ss.str().c_str(), debugTrackName + "_chunks.txt");
+			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, debugTrackName + " chunks (at failure):\n" + ss.str());
 		}
 
 		string message;

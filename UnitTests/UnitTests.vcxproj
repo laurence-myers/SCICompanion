@@ -160,6 +160,8 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Files\Decompile\SCI1.1\C1_ValueAndOr.sc" />
+    <None Include="Files\Decompile\SCI1.1\C2_IndexedMathAssign.sc" />
+    <None Include="Files\Decompile\SCI1.1\C2_IndexedMathAssign.expected.sc" />
     <None Include="Files\Decompile\SCI1.1\D0_Plain.sc" />
     <None Include="Files\Decompile\SCI1.1\F1_LoopHeadContinue.sc" />
     <None Include="Files\Decompile\SCI1.1\F3_AndAsArgument.sc" />
@@ -180,6 +182,10 @@
     <None Include="Files\Decompile\SCI1.1\F4_WhileAnd.expected.sc" />
     <None Include="Files\Decompile\SCI1.1\F4_WhileOr.sc" />
     <None Include="Files\Decompile\SCI1.1\F4_WhileOr.expected.sc" />
+    <None Include="Files\Decompile\SCI1.1\F8_AssignBeforeCondInRet.sc" />
+    <None Include="Files\Decompile\SCI1.1\F8_AssignBeforeCondInRet.expected.sc" />
+    <None Include="Files\Decompile\SCI1.1\F8_DeadValueStatement.sc" />
+    <None Include="Files\Decompile\SCI1.1\F8_DeadValueStatement.expected.sc" />
     <None Include="Files\Decompile\SCI1.1\P1_CompoundConditions.sc" />
     <None Include="Files\Decompile\SCI1.1\P1_CompoundConditions.expected.sc" />
     <None Include="Files\Decompile\SCI1.1\X_SharedThenBranch.sc" />

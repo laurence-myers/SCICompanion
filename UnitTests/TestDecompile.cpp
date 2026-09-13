@@ -13,6 +13,7 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "CppUnitTest.h"
+#include <fstream>
 #include "Helper.h"
 #include "DecompileHelper.h"
 #include "AppState.h"
@@ -85,6 +86,14 @@ namespace UnitTests
             LogWarnings("C1", out);
             Assert::AreEqual(0, out.fallbacks, L"value and/or should not fall back");
             Assert::IsFalse(out.ContainsAsm(), L"value and/or should have no asm");
+        }
+
+        // Compiler: a compound assignment to an indexed variable with a simple
+        // indexer compiles to Sierra's sequence, so the text round-trips.
+        TEST_METHOD(Compiler_IndexedMathAssign)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("C2_IndexedMathAssign", 920);
         }
 
         // Family 1: a conditional branch to the loop head. Fixed: the common
@@ -178,6 +187,21 @@ namespace UnitTests
         {
             _gameFolder = SetUpGameSCI11();
             AssertDecompileMatchesExpected("P1_CompoundConditions", 917);
+        }
+
+        // Family 8: a statement shares the block with the test of an if that
+        // a "ret" consumes as a value. Fixed: the lift pass climbs out of the
+        // first operand of an instruction, so the statement moves before the
+        // return.
+        TEST_METHOD(Family8_AssignBeforeCondInRet)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F8_AssignBeforeCondInRet", 918);
+        }
+        TEST_METHOD(Family8_DeadValueStatement)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F8_DeadValueStatement", 919);
         }
 
         // Family 5: an empty leading while swallows the next loop. Fixed: child
@@ -332,12 +356,69 @@ namespace UnitTests
                 CleanUpGame(_gameFolder);
                 _gameFolder.clear();
             }
+            if (_existingGame)
+            {
+                CleanUpExistingGame();
+                _existingGame = false;
+            }
+        }
+
+        // Decompiles every script of an existing game (read-only) to a folder,
+        // for the golden diff with Tools\CompareDecompile.ps1. Driven by
+        // environment variables so no local path is in the source:
+        //   SCICOMP_DUMP_GAME   game folder (required; the test skips without it)
+        //   SCICOMP_DUMP_OUT    output folder (required)
+        //   SCICOMP_DUMP_NAMES  golden folder used to name the files (optional)
+        // Warnings go to <out>\_warnings.txt.
+        TEST_METHOD(Dump_ExistingGame)
+        {
+            const char *game = getenv("SCICOMP_DUMP_GAME");
+            const char *out = getenv("SCICOMP_DUMP_OUT");
+            const char *namesDir = getenv("SCICOMP_DUMP_NAMES");
+            if (!game || !out)
+            {
+                Logger::WriteMessage(L"Skipped: set SCICOMP_DUMP_GAME and SCICOMP_DUMP_OUT.");
+                return;
+            }
+            SetUpExistingGame(game);
+            _existingGame = true;
+
+            // One script, with the control-flow and chunk-tree dumps on, for
+            // diagnosing a failure. SCICOMP_DUMP_SCRIPT is the script number.
+            if (const char *one = getenv("SCICOMP_DUMP_SCRIPT"))
+            {
+                uint16_t number = static_cast<uint16_t>(atoi(one));
+                DecompileOutput single = DecompileToText(number, true, true);
+                std::string report = single.text + "\n\n===== warnings =====\n";
+                for (const std::string &w : single.warnings)
+                {
+                    report += w + "\n";
+                }
+                CreateDirectoryA(out, nullptr);
+                std::ofstream file(fmt::format("{0}\\_script_{1}.txt", out, number), std::ios::binary);
+                file << report;
+                Logger::WriteMessage(L"Wrote single-script dump.");
+                return;
+            }
+
+            std::vector<std::string> warnings;
+            int processed = 0;
+            int fallbacks = DumpAllScripts(out, namesDir ? namesDir : "", &warnings, &processed);
+
+            std::string report = fmt::format("Dump: {0} scripts, {1} fallbacks\n", processed, fallbacks);
+            for (const std::string &w : warnings)
+            {
+                report += w + "\n";
+            }
+            std::ofstream file(std::string(out) + "\\_warnings.txt", std::ios::binary);
+            file << report;
+            Logger::WriteMessage(std::wstring(report.begin(), report.end()).c_str());
         }
 
         TEST_METHOD(Dump_FailingTemplateScripts)
         {
             _gameFolder = SetUpGameSCI11();
-            const char *titles[] = { "PolygonEdit", "Sync", "FileSelector", "DialogEdit", "FeatureWriter" };
+            const char *titles[] = { "Sight", "Jump", "PriorityTalker" };
             for (const char *title : titles)
             {
                 DecompileOutput out;
@@ -355,5 +436,6 @@ namespace UnitTests
 
     private:
         std::string _gameFolder;
+        bool _existingGame = false;
     };
 }

@@ -330,16 +330,21 @@ void RunPassesToFixpoint(FunctionBase &func, const vector<AstPass *> &passes,
 	while (changed)
 	{
 		changed = false;
+		std::string stillChanging;
 		for (AstPass *pass : passes)
 		{
-			changed |= RunPassOnce(func, *pass);
+			if (RunPassOnce(func, *pass))
+			{
+				changed = true;
+				stillChanging += std::string(" ") + pass->Name();
+			}
 		}
 		if (++sweeps >= maxSweeps)
 		{
 			if (changed && results)
 			{
 				results->AddResult(DecompilerResultType::Warning,
-					fmt::format("AST passes did not converge in {0}", func.GetName()));
+					fmt::format("AST passes did not converge in {0}:{1}", func.GetName(), stillChanging));
 			}
 			break;
 		}

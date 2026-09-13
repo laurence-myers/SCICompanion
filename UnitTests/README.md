@@ -96,6 +96,7 @@ expected file is missing, the test writes the actual to
 | `F6_EmptyTrailingFor` | 906 | 6 | fixed; reconstructs the loops |
 | `F7_UnknownClass` | 907 | 7 | class stays as asm; clear message |
 | `C1_ValueAndOr` | 908 | (compiler) | value and/or round-trips |
+| `C2_IndexedMathAssign` | 920 | (compiler) | indexed `+=` compiles to Sierra's sequence |
 | `F3_ValueIfReturn` | 909 | 3 | fixed; `(return (and a b))` |
 | `F3_OrThreeTerms` | 910 | 3 | fixed; n-ary or |
 | `F3_OrAndOr` | 911 | 3 | fixed; needs the branch deoptimizer |
@@ -105,6 +106,8 @@ expected file is missing, the test writes the actual to
 | `F4_WhileAnd` | 915 | 4 | fixed; else-break folded into the test |
 | `F4_WhileOr` | 916 | 4 | fixed; or as the loop test |
 | `P1_CompoundConditions` | 917 | (compiler) | SCI Companion dialect; text equals source |
+| `F8_AssignBeforeCondInRet` | 918 | 8 | fixed; statement lifts out of a value if |
+| `F8_DeadValueStatement` | 919 | 8 | fixed; dead value becomes a bare statement |
 
 `TemplateGame_FallbackBaseline` guards against new fallbacks. The template game
 started with 7 known fallbacks. The Family 1 and Family 6 fixes each removed
@@ -128,12 +131,34 @@ nots collapse in boolean context, and `(= a (+ a b))` becomes `(+= a b)`.
 `TestAstPasses` covers the passes on parsed source, with no game data.
 
 Family 2 is fixed but has no isolated fixture; the baseline test guards it.
-Family 8 (a statement before an if condition that a `ret` consumes) is still
-open; see the plan.
+Family 8 (a statement before the test of an if that a `ret` consumes): the
+lift pass in `DecompilerNew.cpp` (`SkipGuaranteedExecutions`) now climbs out
+of the first operand of an instruction, because that operand runs before the
+instruction. The statement moves to before the return.
 
 `DiagnosticDumps::Dump_FailingTemplateScripts` is not in the default filter.
 It decompiles named template scripts with the control-flow dump on, for
 diagnosing a new fallback. Edit its title list, then run it by name.
+
+### Golden diff against a real game
+
+`DiagnosticDumps::Dump_ExistingGame` (also outside the default filter)
+decompiles every script of an existing game, read-only, into a folder. It is
+driven by environment variables, so no local path lives in the source:
+
+```
+$env:SCICOMP_DUMP_GAME  = 'F:\Games\GOG\Quest for Glory 4 - dev'
+$env:SCICOMP_DUMP_OUT   = 'C:\dump\qfg4'
+$env:SCICOMP_DUMP_NAMES = 'E:\Code\Esoteric\sci-scripts\qfg4-cd-dos-1.0\src'
+vstest.console.exe Kawa\UnitTests.dll /Platform:x86 /TestCaseFilter:"FullyQualifiedName~Dump_ExistingGame"
+.\UnitTests\Tools\CompareDecompile.ps1 -Expected $env:SCICOMP_DUMP_NAMES -Actual $env:SCICOMP_DUMP_OUT -Mode Structural
+```
+
+`SCICOMP_DUMP_NAMES` names each output file after the golden file with the
+same `(script# N)` header, so the structural compare matches files by name.
+`<out>\_warnings.txt` lists every fallback. The golden tree is sluicebox's
+output for QfG4; it differs in variable names and formatting, which the
+structural mode ignores.
 
 ## Other tests
 

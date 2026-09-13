@@ -17,6 +17,7 @@
 #include "AstPassHelper.h"
 #include "ScriptOMAll.h"
 #include "AstRewrite.h"
+#include "DecompilerAstPasses.h"
 #include "DecompilerResults.h"
 #include "AppState.h"
 #include <set>
@@ -276,6 +277,21 @@ namespace UnitTests
 
         // The fixpoint driver stops at the sweep cap and reports it, instead of
         // looping forever, when a pass never settles.
+        // From QfG4 hero.sc: a value if with a real else inside a comparison,
+        // inside a nested if. The passes must settle.
+        TEST_METHOD(Passes_ConvergeOnValueIfInsideCompare)
+        {
+            std::unique_ptr<sci::Script> script = ParseSierraScript(WrapProcedure(
+                "(if (< a b) (if (>= (if c (- (+ c d) e) else 0) b) (return 1))) (return 0)"));
+            CollectResults results;
+            AstPassOptions options;
+            RunDecompilerAstPasses(FirstProcedure(*script), options, &results);
+            for (const std::string &m : results.messages)
+            {
+                Assert::IsTrue(m.find("did not converge") == std::string::npos, L"passes did not converge");
+            }
+        }
+
         TEST_METHOD(Framework_NonConvergenceReported)
         {
             std::unique_ptr<sci::Script> script = ParseSierraScript(WrapProcedure("(= t 1)"));
