@@ -113,6 +113,23 @@ namespace UnitTests
             AssertDecompileMatchesExpected("N1_ChainedCompare", 923);
         }
 
+        // A bare "jmp head" shared by several branches inside a loop body folds
+        // into the common latch, so the ifs that end there structure.
+        TEST_METHOD(LatchTrampoline)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F11_LatchTrampoline", 924);
+        }
+
+        // A break at the end of an if's else, followed by a statement that
+        // another branch also reaches: the break edge moves to the if's follow,
+        // so the if does not gather the shared statement.
+        TEST_METHOD(BreakJoin)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F12_BreakJoin", 925);
+        }
+
         // Family 1: a conditional branch to the loop head. Fixed: the common
         // latch resolves to the loop head, so the if reconstructs.
         TEST_METHOD(Family1_LoopHeadContinue)
@@ -285,13 +302,12 @@ namespace UnitTests
             // template has more than 80 scripts.
             Assert::IsTrue(processed >= 80, L"too few scripts decompiled; check the template game data");
 
-            const int BASELINE = 4;   // was 7; Family 1, Family 6 and the structurer each removed one. Lower again when a fix helps.
+            const int BASELINE = 0;   // was 7; every template script now decompiles. Keep at 0.
             Assert::IsTrue(fallbacks <= BASELINE, L"template fallbacks grew beyond baseline");
 
             // The set of scripts that fall back. A new failure is caught even
-            // when a fix removes a different one. Remove entries as fixes land.
-            std::set<std::string> allowed = {
-                "ScrollableInventory", "SaveRestoreDialog", "Gauge" };
+            // when a fix removes a different one. Empty: nothing falls back.
+            std::set<std::string> allowed = {};
             for (const std::string &name : failed)
             {
                 Assert::IsTrue(allowed.count(name) == 1,

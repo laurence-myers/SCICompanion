@@ -108,11 +108,16 @@ expected file is missing, the test writes the actual to
 | `P1_CompoundConditions` | 917 | (compiler) | SCI Companion dialect; text equals source |
 | `F8_AssignBeforeCondInRet` | 918 | 8 | fixed; statement lifts out of a value if |
 | `F8_DeadValueStatement` | 919 | 8 | fixed; dead value becomes a bare statement |
+| `F9_BreakInSwitchCase` | 921 | (structurer) | fixed; break out of a loop from a switch case |
+| `N1_ChainedCompare` | 923 | (n-ary) | fixed; `(< 0 x 19)` folds from its pprev halves |
+| `F11_LatchTrampoline` | 924 | (structurer) | fixed; a shared `jmp head` folds into the common latch |
+| `F12_BreakJoin` | 925 | (structurer) | fixed; a break edge into a shared statement moves to the if's follow |
 
 `TemplateGame_FallbackBaseline` guards against new fallbacks. The template game
 started with 7 known fallbacks. The Family 1 and Family 6 fixes each removed
-one, and the branch structurer removed one more (System's `InRect`), so the
-baseline is now 4. Lower `BASELINE` when a fix removes more.
+one, the branch structurer removed one more (System's `InRect`), and the
+loop-body fixes (latch trampolines, tail breaks, ret-only loop exits) removed
+the last four. The baseline is 0: every template script decompiles.
 
 ### How Families 3 and 4 are fixed
 

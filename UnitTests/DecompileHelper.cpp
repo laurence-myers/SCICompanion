@@ -209,7 +209,8 @@ bool DecompileTemplateScriptByTitle(const std::string &title, DecompileOutput &o
     {
         if (scriptId.GetTitle() == title)
         {
-            out = DecompileToText(scriptId.GetResourceNumber(), false, true);
+            bool debugChunks = (getenv("SCICOMP_DEBUG_CHUNKS") != nullptr);
+            out = DecompileToText(scriptId.GetResourceNumber(), debugChunks, true);
             return true;
         }
     }
@@ -223,7 +224,9 @@ DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t s
         ToWString("Initial compile failed: " + fixtureName).c_str());
 
     // The control-flow dump is added to the warnings only when analysis fails.
-    DecompileOutput first = DecompileToText(scriptNumber, false, true);
+    // Set SCICOMP_DEBUG_CHUNKS to also get the chunk-tree dump.
+    bool debugChunks = (getenv("SCICOMP_DEBUG_CHUNKS") != nullptr);
+    DecompileOutput first = DecompileToText(scriptNumber, debugChunks, true);
 
     std::string path = appState->GetResourceMap().Helper().GetScriptFileName(fixtureName);
     WriteTextFile(path, first.text);

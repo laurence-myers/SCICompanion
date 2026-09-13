@@ -102,87 +102,23 @@
 		(self setSize: center: open: 4 15)
 	)
 	
-	(method (doit param1 &tmp temp0 temp1)
-		(asm
-			pushi    #init
-			pushi    1
-			lsp      param1
-			self     6
-			lap      param1
-			sat      temp1
-code_0236:
-			pushi    #update
-			pushi    1
-			lst      temp1
-			self     6
-			pushi    #draw
-			pushi    0
-			lal      newDText
-			send     4
-			pushi    #doit
-			pushi    1
-			lsl      newDButton_3
-			super    Dialog,  6
-			sat      temp0
-			push    
-			lal      newDButton_2
-			eq?     
-			bnt      code_0263
-			lst      temp1
-			pToa     maximum
-			lt?     
-			bnt      code_027e
-			+at      temp1
-			jmp      code_0236
-code_0263:
-			lst      temp0
-			lal      newDButton
-			eq?     
-			bnt      code_0275
-			lst      temp1
-			pToa     minimum
-			gt?     
-			bnt      code_027e
-			-at      temp1
-			jmp      code_0236
-code_0275:
-			lst      temp0
-			lal      newDButton_3
-			eq?     
-			bnt      code_0280
-			jmp      code_02a3
-code_027e:
-			jmp      code_0236
-code_0280:
-			lst      temp0
-			lal      newDButton_4
-			eq?     
-			bnt      code_028d
-			pToa     normal
-			sat      temp1
-			jmp      code_0236
-code_028d:
-			lst      temp0
-			ldi      0
-			eq?     
-			bt       code_0299
-			lst      temp0
-			lal      newDButton_5
-			eq?     
-code_0299:
-			bnt      code_02a1
-			lap      param1
-			sat      temp1
-			jmp      code_02a3
-code_02a1:
-			jmp      code_0236
-code_02a3:
-			pushi    #dispose
-			pushi    0
-			self     4
-			lat      temp1
-			ret     
+	(method (doit theTheNormal &tmp temp0 theNormal)
+		(self init: theTheNormal)
+		(= theNormal theTheNormal)
+		(repeat
+			(self update: theNormal)
+			(newDText draw:)
+			(cond 
+				(
+				(== (= temp0 (super doit: newDButton_3)) newDButton_2) (if (< theNormal maximum) (++ theNormal)))
+				((== temp0 newDButton) (if (> theNormal minimum) (-- theNormal)))
+				((== temp0 newDButton_3) (break))
+				((== temp0 newDButton_4) (= theNormal normal))
+				((or (== temp0 0) (== temp0 newDButton_5)) (= theNormal theTheNormal) (break))
+			)
 		)
+		(self dispose:)
+		(return theNormal)
 	)
 	
 	(method (handleEvent param1)

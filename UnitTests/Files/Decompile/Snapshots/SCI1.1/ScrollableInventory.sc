@@ -63,645 +63,194 @@
 		(= heading normalHeading)
 	)
 	
-	(method (doit &tmp temp0 temp1 temp2 temp3 temp4 [temp5 2] temp7 temp8 temp9 [temp10 51])
-		(asm
-code_015e:
-			pushi    #type
-			pushi    0
-			pushi    #new
-			pushi    0
-			pushi    #curEvent
-			pushi    0
-			lag      gUser
-			send     4
-			send     4
-			sat      temp1
-			send     4
-			bnt      code_0179
-			jmp      code_015e
-code_0179:
-			pTos     state
-			ldi      32
-			and     
-			bnt      code_060d
-			pushi    #new
-			pushi    0
-			pushi    #curEvent
-			pushi    0
-			lag      gUser
-			send     4
-			send     4
-			sat      temp1
-			pushi    #x
-			pushi    0
-			send     4
-			sag      gPEventX
-			pushi    #y
-			pushi    0
-			lat      temp1
-			send     4
-			sag      gPEventY
-			pushi    #type
-			pushi    0
-			lat      temp1
-			send     4
-			sat      temp2
-			pushi    #message
-			pushi    0
-			lat      temp1
-			send     4
-			sat      temp3
-			pushi    #modifiers
-			pushi    0
-			lat      temp1
-			send     4
-			sat      temp4
-			ldi      0
-			sat      temp9
-			pushi    #localize
-			pushi    0
-			lat      temp1
-			send     4
-			pToa     curIcon
-			bnt      code_0235
-			lat      temp4
-			not     
-			bnt      code_0235
-			pTos     curIcon
-			pToa     selectIcon
-			ne?     
-			bnt      code_0235
-			lst      temp2
-			ldi      1
-			eq?     
-			bt       code_0206
-			lst      temp2
-			ldi      4
-			eq?     
-			bnt      code_01fa
-			lst      temp3
-			ldi      13
-			eq?     
-			bnt      code_01fa
-			ldi      1
-			sat      temp9
-			bt       code_0206
-code_01fa:
-			lst      temp2
-			ldi      256
-			eq?     
-			bnt      code_0206
-			ldi      1
-			sat      temp9
-code_0206:
-			bnt      code_0235
-			pTos     curIcon
-			pToa     helpIconItem
-			ne?     
-			bt       code_021b
-			pushi    #signal
-			pushi    0
-			pToa     helpIconItem
-			send     4
-			push    
-			ldi      16
-			and     
-code_021b:
-			bnt      code_0235
-			pushi    #type
-			pushi    1
-			pushi    16384
-			pushi    37
-			pushi    1
-			pushi    #message
-			pushi    0
-			pToa     curIcon
-			send     4
-			push    
-			lat      temp1
-			send     12
-code_0235:
-			pushi    1
-			lst      temp1
-			callk    MapKeyToDir,  2
-			pushi    #type
-			pushi    0
-			lat      temp1
-			send     4
-			sat      temp2
-			pushi    #message
-			pushi    0
-			lat      temp1
-			send     4
-			sat      temp3
-			lag      gCuees
-			bnt      code_025c
-			pushi    #eachElementDo
-			pushi    1
-			pushi    57
-			send     6
-code_025c:
-			lag      gFastCast
-			bnt      code_026c
-			pushi    #handleEvent
-			pushi    1
-			lst      temp1
-			send     6
-			jmp      code_0179
-code_026c:
-			lst      temp2
-			ldi      1
-			eq?     
-			bnt      code_028b
-			lat      temp4
-			bnt      code_028b
-			pushi    #advanceCurIcon
-			pushi    0
-			self     4
-			pushi    #claimed
-			pushi    1
-			pushi    1
-			lat      temp1
-			send     6
-			jmp      code_0179
-code_028b:
-			lst      temp2
-			ldi      0
-			eq?     
-			bnt      code_02b3
-			pushi    #firstTrue
-			pushi    2
-			pushi    226
-			lst      temp1
-			self     8
-			sat      temp0
-			bnt      code_02b3
-			push    
-			pToa     highlightedIcon
-			ne?     
-			bnt      code_02b3
-			pushi    #highlight
-			pushi    1
-			lst      temp0
-			self     6
-			jmp      code_0179
-code_02b3:
-			lst      temp2
-			ldi      1
-			eq?     
-			bt       code_02ce
-			lst      temp2
-			ldi      4
-			eq?     
-			bnt      code_02c8
-			lst      temp3
-			ldi      13
-			eq?     
-			bt       code_02ce
-code_02c8:
-			lst      temp2
-			ldi      256
-			eq?     
-code_02ce:
-			bnt      code_0368
-			pushi    1
-			pTos     highlightedIcon
-			callk    IsObject,  2
-			bnt      code_02f7
-			pushi    184
-			pushi    #view
-			pTos     highlightedIcon
-			lst      temp2
-			ldi      1
-			eq?     
-			push    
-			self     8
-			bnt      code_02f7
-			pTos     highlightedIcon
-			pToa     okButton
-			eq?     
-			bnt      code_02fa
-			jmp      code_060d
-code_02f7:
-			jmp      code_0179
-code_02fa:
-			pTos     highlightedIcon
-			pToa     helpIconItem
-			eq?     
-			bnt      code_034f
-			pushi    #cursor
-			pushi    0
-			pToa     highlightedIcon
-			send     4
-			push    
-			ldi      65535
-			ne?     
-			bnt      code_0322
-			pushi    #setCursor
-			pushi    1
-			pushi    #cursor
-			pushi    0
-			pToa     helpIconItem
-			send     4
-			push    
-			lag      gGame
-			send     6
-code_0322:
-			pTos     state
-			ldi      2048
-			and     
-			bnt      code_0334
-			pushi    #noClickHelp
-			pushi    0
-			self     4
-			jmp      code_0179
-code_0334:
-			pToa     helpIconItem
-			bnt      code_052d
-			pushi    14
-			pushi    #x
-			pushi    #signal
-			pushi    0
-			send     4
-			push    
-			ldi      16
-			or      
-			push    
-			pToa     helpIconItem
-			send     6
-			jmp      code_0179
-code_034f:
-			pToa     highlightedIcon
-			aTop     curIcon
-			pushi    #setCursor
-			pushi    1
-			pushi    #cursor
-			pushi    0
-			pToa     curIcon
-			send     4
-			push    
-			lag      gGame
-			send     6
-			jmp      code_0179
-code_0368:
-			lst      temp2
-			ldi      64
-			and     
-			bnt      code_0422
-			lst      temp3
-			dup     
-			ldi      3
-			eq?     
-			bnt      code_0382
-			pushi    #advance
-			pushi    0
-			self     4
-			jmp      code_041e
-code_0382:
-			dup     
-			ldi      7
-			eq?     
-			bnt      code_0392
-			pushi    #retreat
-			pushi    0
-			self     4
-			jmp      code_041e
-code_0392:
-			dup     
-			ldi      1
-			eq?     
-			bnt      code_03ca
-			pToa     highlightedIcon
-			bnt      code_03c1
-			pushi    3
-			push    
-			pushi    #nsTop
-			pushi    0
-			send     4
-			push    
-			ldi      1
-			sub     
-			push    
-			pushi    0
-			call     localproc_00de,  6
-			sat      temp0
-			bnt      code_03c1
-			pushi    #highlight
-			pushi    2
-			lst      temp0
-			pushi    1
-			self     8
-			jmp      code_041e
-code_03c1:
-			pushi    #retreat
-			pushi    0
-			self     4
-			jmp      code_041e
-code_03ca:
-			dup     
-			ldi      5
-			eq?     
-			bnt      code_040a
-			pToa     highlightedIcon
-			bnt      code_0401
-			pushi    3
-			push    
-			pushi    #nsBottom
-			pushi    0
-			send     4
-			push    
-			ldi      1
-			add     
-			push    
-			pushi    #bottom
-			pushi    0
-			pToa     window
-			send     4
-			push    
-			call     localproc_00de,  6
-			sat      temp0
-			bnt      code_0401
-			pushi    #highlight
-			pushi    2
-			lst      temp0
-			pushi    1
-			self     8
-			jmp      code_041e
-code_0401:
-			pushi    #advance
-			pushi    0
-			self     4
-			jmp      code_041e
-code_040a:
-			dup     
-			ldi      0
-			eq?     
-			bnt      code_041e
-			lst      temp2
-			ldi      4
-			and     
-			bnt      code_041e
-			pushi    #advanceCurIcon
-			pushi    0
-			self     4
-code_041e:
-			toss    
-			jmp      code_0179
-code_0422:
-			lst      temp2
-			ldi      4
-			eq?     
-			bnt      code_0457
-			lst      temp3
-			dup     
-			ldi      9
-			eq?     
-			bnt      code_043a
-			pushi    #advance
-			pushi    0
-			self     4
-			jmp      code_0453
-code_043a:
-			dup     
-			ldi      3840
-			eq?     
-			bnt      code_044a
-			pushi    #retreat
-			pushi    0
-			self     4
-			jmp      code_0453
-code_044a:
-			dup     
-			ldi      27
-			eq?     
-			bnt      code_0453
-			jmp      code_060d
-code_0453:
-			toss    
-			jmp      code_0179
-code_0457:
-			lst      temp2
-			ldi      16384
-			and     
-			bnt      code_052d
-			pushi    #firstTrue
-			pushi    2
-			pushi    226
-			lst      temp1
-			self     8
-			sat      temp0
-			bnt      code_052d
-			lst      temp2
-			ldi      8192
-			and     
-			bnt      code_0523
-			lat      temp0
-			bnt      code_04fe
-			pushi    #noun
-			pushi    0
-			send     4
-			bnt      code_04fe
-			pushi    7
-			pushi    0
-			pushi    #modNum
-			pushi    0
-			lat      temp0
-			send     4
-			push    
-			pushi    #noun
-			pushi    0
-			lat      temp0
-			send     4
-			push    
-			pushi    #helpVerb
-			pushi    0
-			lat      temp0
-			send     4
-			push    
-			pushi    0
-			pushi    1
-			lea      @temp10
-			push    
-			callk    Message,  14
-			bnt      code_04fe
-			pushi    #respondsTo
-			pushi    1
-			pushi    244
-			lag      gWindow
-			send     6
-			bnt      code_04f2
-			pushi    #eraseOnly
-			pushi    0
-			lag      gWindow
-			send     4
-			sat      temp7
-			pushi    #eraseOnly
-			pushi    1
-			pushi    1
-			lag      gWindow
-			send     6
-			pushi    1
-			lea      @temp10
-			push    
-			calle    Prints,  2
-			pushi    #eraseOnly
-			pushi    1
-			lst      temp7
-			lag      gWindow
-			send     6
-			jmp      code_04fe
-code_04f2:
-			pushi    1
-			lea      @temp10
-			push    
-			calle    Prints,  2
-code_04fe:
-			pushi    14
-			pushi    #x
-			pushi    #signal
-			pushi    0
-			pToa     helpIconItem
-			send     4
-			push    
-			ldi      65519
-			and     
-			push    
-			pToa     helpIconItem
-			send     6
-			pushi    #setCursor
-			pushi    1
-			pushi    999
-			lag      gGame
-			send     6
-			jmp      code_0179
-code_0523:
-			lst      temp0
-			pToa     okButton
-			eq?     
-			bnt      code_0530
-			jmp      code_060d
-code_052d:
-			jmp      code_0179
-code_0530:
-			pushi    #isKindOf
-			pushi    1
-			class    InventoryItem
-			push    
-			lat      temp0
-			send     6
-			not     
-			bnt      code_0596
-			pushi    #select
-			pushi    2
-			lst      temp0
-			lat      temp9
-			not     
-			push    
-			self     8
-			bnt      code_0179
-			lat      temp0
-			aTop     curIcon
-			pushi    #setCursor
-			pushi    1
-			pushi    #cursor
-			pushi    0
-			pToa     curIcon
-			send     4
-			push    
-			lag      gGame
-			send     6
-			lst      temp0
-			pToa     helpIconItem
-			eq?     
-			bnt      code_0179
-			pTos     state
-			ldi      2048
-			and     
-			bnt      code_057e
-			pushi    #noClickHelp
-			pushi    0
-			self     4
-			jmp      code_0179
-code_057e:
-			pushi    14
-			pushi    #x
-			pushi    #signal
-			pushi    0
-			pToa     helpIconItem
-			send     4
-			push    
-			ldi      16
-			or      
-			push    
-			pToa     helpIconItem
-			send     6
-			jmp      code_0179
-code_0596:
-			pToa     curIcon
-			bnt      code_0179
-			pushi    #respondsTo
-			pushi    1
-			pushi    244
-			lag      gWindow
-			send     6
-			bnt      code_05be
-			pushi    #eraseOnly
-			pushi    0
-			lag      gWindow
-			send     4
-			sat      temp7
-			pushi    #eraseOnly
-			pushi    1
-			pushi    1
-			lag      gWindow
-			send     6
-code_05be:
-			pushi    #isKindOf
-			pushi    1
-			class    InventoryItem
-			push    
-			pToa     curIcon
-			send     6
-			bnt      code_05df
-			pushi    #doVerb
-			pushi    1
-			pushi    #message
-			pushi    0
-			pToa     curIcon
-			send     4
-			push    
-			lat      temp0
-			send     6
-			jmp      code_05f1
-code_05df:
-			pushi    #doVerb
-			pushi    1
-			pushi    #message
-			pushi    0
-			lat      temp1
-			send     4
-			push    
-			lat      temp0
-			send     6
-code_05f1:
-			pushi    #respondsTo
-			pushi    1
-			pushi    244
-			lag      gWindow
-			send     6
-			bnt      code_0179
-			pushi    #eraseOnly
-			pushi    1
-			lst      temp7
-			lag      gWindow
-			send     6
-			jmp      code_0179
-code_060d:
-			pushi    #hide
-			pushi    0
-			self     4
-			ret     
+	(method (doit &tmp theCurIcon temp1 temp2 temp3 temp4 [temp5 2] gWindowEraseOnly temp8 temp9 [temp10 51])
+		(while ((= temp1 ((gUser curEvent?) new:)) type?)
 		)
+		(while (& state $0020)
+			(= gPEventX ((= temp1 ((gUser curEvent?) new:)) x?))
+			(= gPEventY (temp1 y?))
+			(= temp2 (temp1 type?))
+			(= temp3 (temp1 message?))
+			(= temp4 (temp1 modifiers?))
+			(= temp9 0)
+			(temp1 localize:)
+			(if
+				(and
+					curIcon
+					(not temp4)
+					(!= curIcon selectIcon)
+					(or
+						(== temp2 1)
+						(and (== temp2 4) (== temp3 13) (= temp9 1))
+						(and (== temp2 256) (= temp9 1))
+					)
+					(or
+						(!= curIcon helpIconItem)
+						(& (helpIconItem signal?) $0010)
+					)
+				)
+				(temp1 type: 16384 message: (curIcon message?))
+			)
+			(MapKeyToDir temp1)
+			(= temp2 (temp1 type?))
+			(= temp3 (temp1 message?))
+			(if gCuees (gCuees eachElementDo: 57))
+			(cond 
+				(gFastCast (gFastCast handleEvent: temp1))
+				((and (== temp2 1) temp4) (self advanceCurIcon:) (temp1 claimed: 1))
+				(
+					(and
+						(== temp2 0)
+						(= theCurIcon (self firstTrue: 226 temp1))
+						(!= theCurIcon highlightedIcon)
+					)
+					(self highlight: theCurIcon)
+				)
+				(
+					(or
+						(== temp2 1)
+						(and (== temp2 4) (== temp3 13))
+						(== temp2 256)
+					)
+					(if
+						(and
+							(IsObject highlightedIcon)
+							(self select: highlightedIcon (== temp2 1))
+						)
+						(cond 
+							((== highlightedIcon okButton) (break))
+							((== highlightedIcon helpIconItem)
+								(if (!= (highlightedIcon cursor?) -1)
+									(gGame setCursor: (helpIconItem cursor?))
+								)
+								(cond 
+									((& state $0800) (self noClickHelp:))
+									(helpIconItem (helpIconItem signal: (| (helpIconItem signal?) $0010)))
+								)
+							)
+							(else
+								(= curIcon highlightedIcon)
+								(gGame setCursor: (curIcon cursor?))
+							)
+						)
+					)
+				)
+				((& temp2 $0040)
+					(switch temp3
+						(3 (self advance:))
+						(7 (self retreat:))
+						(1
+							(if
+								(and
+									highlightedIcon
+									(= theCurIcon
+										(localproc_00de
+											highlightedIcon
+											(- (highlightedIcon nsTop?) 1)
+											0
+										)
+									)
+								)
+								(self highlight: theCurIcon 1)
+							else
+								(self retreat:)
+							)
+						)
+						(5
+							(if
+								(and
+									highlightedIcon
+									(= theCurIcon
+										(localproc_00de
+											highlightedIcon
+											(+ (highlightedIcon nsBottom?) 1)
+											(window bottom?)
+										)
+									)
+								)
+								(self highlight: theCurIcon 1)
+							else
+								(self advance:)
+							)
+						)
+						(0
+							(if (& temp2 $0004) (self advanceCurIcon:))
+						)
+					)
+				)
+				((== temp2 4)
+					(switch temp3
+						(9 (self advance:))
+						(3840 (self retreat:))
+						(27 (break))
+					)
+				)
+				(
+					(and
+						(& temp2 $4000)
+						(= theCurIcon (self firstTrue: 226 temp1))
+					)
+					(cond 
+						((& temp2 $2000)
+							(if
+								(and
+									theCurIcon
+									(theCurIcon noun?)
+									(Message
+										0
+										(theCurIcon modNum?)
+										(theCurIcon noun?)
+										(theCurIcon helpVerb?)
+										0
+										1
+										@temp10
+									)
+								)
+								(if (gWindow respondsTo: 244)
+									(= gWindowEraseOnly (gWindow eraseOnly?))
+									(gWindow eraseOnly: 1)
+									(Prints @temp10)
+									(gWindow eraseOnly: gWindowEraseOnly)
+								else
+									(Prints @temp10)
+								)
+							)
+							(helpIconItem signal: (& (helpIconItem signal?) $ffef))
+							(gGame setCursor: 999)
+						)
+						((== theCurIcon okButton) (break))
+						((not (theCurIcon isKindOf: InventoryItem))
+							(if (self select: theCurIcon (not temp9))
+								(= curIcon theCurIcon)
+								(gGame setCursor: (curIcon cursor?))
+								(if (== theCurIcon helpIconItem)
+									(if (& state $0800)
+										(self noClickHelp:)
+									else
+										(helpIconItem signal: (| (helpIconItem signal?) $0010))
+									)
+								)
+							)
+						)
+						(curIcon
+							(if (gWindow respondsTo: 244)
+								(= gWindowEraseOnly (gWindow eraseOnly?))
+								(gWindow eraseOnly: 1)
+							)
+							(if (curIcon isKindOf: InventoryItem)
+								(theCurIcon doVerb: (curIcon message?))
+							else
+								(theCurIcon doVerb: (temp1 message?))
+							)
+							(if (gWindow respondsTo: 244)
+								(gWindow eraseOnly: gWindowEraseOnly)
+							)
+						)
+					)
+				)
+			)
+		)
+		(self hide:)
 	)
 	
 	(method (showSelf param1)

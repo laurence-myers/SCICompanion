@@ -1211,6 +1211,76 @@ static bool _IsTestNode(ControlFlowNode *node, const NodeSet &testChain)
 	return false;
 }
 
+// Sierra's compiler sends a jump to the end of a loop body straight to the
+// loop head, but leaves a conditional branch pointed at such a jump. A node
+// that is only that "jmp head" is then the end of one or more ifs, and a
+// second name for the common latch. Fold each one into the common latch, and
+// point the branches at the loop head, so the ifs that end there see one
+// follow node. Nothing is lost: the node held no code.
+void ControlFlowGraph::_MergeLatchTrampolines()
+{
+	for (ControlFlowNode *loop : discoveredControlStructures)
+	{
+		if (loop->Type != CFGNodeType::Loop)
+		{
+			continue;
+		}
+		ControlFlowNode *latch = loop->MaybeGet(SemId::Latch);
+		ControlFlowNode *head = (*loop)[SemId::Head];
+		if (!latch || (latch->Type != CFGNodeType::CommonLatch) || (head->Type != CFGNodeType::RawCode))
+		{
+			continue;
+		}
+		code_pos headStart = static_cast<RawCodeNode*>(head)->start;
+
+		NodeSet trampolines;
+		for (ControlFlowNode *pred : latch->Predecessors())
+		{
+			if ((pred->Type != CFGNodeType::RawCode) || !loop->Children().contains(pred) ||
+				pred->ContainsTag(SemanticTags::LoopBreak) || pred->ContainsTag(SemanticTags::LoopContinue))
+			{
+				continue;
+			}
+			RawCodeNode *raw = static_cast<RawCodeNode*>(pred);
+			code_pos second = raw->start;
+			++second;
+			if ((raw->start->get_opcode() == Opcode::JMP) && (second == raw->end) && (pred->Successors().size() == 1))
+			{
+				trampolines.insert(pred);
+			}
+		}
+
+		for (ControlFlowNode *trampoline : trampolines)
+		{
+			uint16_t trampolineAddress = trampoline->GetStartingAddress();
+			NodeSet preds = trampoline->Predecessors();
+			for (ControlFlowNode *pred : preds)
+			{
+				if (pred->Type == CFGNodeType::RawCode)
+				{
+					code_pos last = static_cast<RawCodeNode*>(pred)->end;
+					--last;
+					if (last->_is_branch_instruction() && (last->get_branch_target()->get_final_offset() == trampolineAddress))
+					{
+						last->set_branch_target(headStart, false);
+					}
+				}
+				trampoline->ErasePredecessor(pred);
+				latch->InsertPredecessor(pred);
+			}
+			latch->ErasePredecessor(trampoline);
+			loop->EraseChild(trampoline);
+			for (ControlFlowNode *structure : discoveredControlStructures)
+			{
+				if (structure->MaybeGet(SemId::Follow) == trampoline)
+				{
+					(*structure)[SemId::Follow] = latch;
+				}
+			}
+		}
+	}
+}
+
 void ControlFlowGraph::_SolveLoopBranches()
 {
 	vector<ControlFlowNode*> loops;
@@ -1228,7 +1298,73 @@ void ControlFlowGraph::_SolveLoopBranches()
 				break;
 			}
 		}
+		while (_SynthesizeTailBreak(loop, exitAddress, testChain, latch))
+		{
+			if (_decompilerResults.IsAborted())
+			{
+				break;
+			}
+		}
 	}
+}
+
+// A body node whose one successor is the loop exit: a nested structure whose
+// own exit Sierra's compiler sent straight to the enclosing loop's exit, as in
+// "(while ...) (break)". Put a synthesized break between it and the latch, so
+// the body converges at the latch and the exit is reached only through the
+// loop test. Converts one node and returns true, or false when none is left.
+bool ControlFlowGraph::_SynthesizeTailBreak(ControlFlowNode *loop, uint16_t exitAddress, const NodeSet &testChain, ControlFlowNode *latch)
+{
+	for (ControlFlowNode *child : loop->Children())
+	{
+		if ((child == latch) || (child->Successors().size() != 1) || testChain.contains(child) ||
+			(child->Type == CFGNodeType::Exit) || (child->Type == CFGNodeType::FakeBreakOrContinue) ||
+			(child->Type == CFGNodeType::CommonLatch) ||
+			child->ContainsTag(SemanticTags::LoopBreak) || child->ContainsTag(SemanticTags::LoopContinue))
+		{
+			continue;
+		}
+		ControlFlowNode *exitNode = *child->Successors().begin();
+		if (!IsExitTo(exitNode, exitAddress))
+		{
+			continue;
+		}
+		if ((child->Type == CFGNodeType::RawCode) && child->endsWith(Opcode::RET))
+		{
+			// A ret leaves the function, so it needs no break. Send it on to the
+			// code after it, as a ret anywhere else in a function is (see
+			// _PartitionCode), or to the latch when nothing follows it.
+			uint16_t nextAddress = static_cast<RawCodeNode*>(child)->end->get_final_offset();
+			ControlFlowNode *next = latch;
+			for (ControlFlowNode *candidate : loop->Children())
+			{
+				if ((candidate != child) && (candidate->Type != CFGNodeType::Exit) && (candidate->GetStartingAddress() == nextAddress))
+				{
+					next = candidate;
+					break;
+				}
+			}
+			exitNode->ErasePredecessor(child);
+			next->InsertPredecessor(child);
+			if (exitNode->Predecessors().empty())
+			{
+				loop->EraseChild(exitNode);
+			}
+			return true;
+		}
+		FakeBreakOrContinueNode *fakeBreak = MakeNode<FakeBreakOrContinueNode>();
+		fakeBreak->Tags.insert(SemanticTags::LoopBreak);
+		loop->InsertChild(fakeBreak);
+		exitNode->ErasePredecessor(child);
+		fakeBreak->InsertPredecessor(child);
+		latch->InsertPredecessor(fakeBreak);
+		if (exitNode->Predecessors().empty())
+		{
+			loop->EraseChild(exitNode);
+		}
+		return true;
+	}
+	return false;
 }
 
 // A "bnt" to the loop exit inside the body means: if the test fails, leave the
@@ -1797,8 +1933,90 @@ bool ControlFlowGraph::_TryBuildIf(ControlFlowNode *structure, ControlFlowNode *
 	{
 		return false;
 	}
+	if (!_DetachBreakJoins(head, follow))
+	{
+		return false;
+	}
 	_ReplaceIfStatementInWorkingSet(structure, head, follow, _TestChainHead(head));
 	return true;
+}
+
+// The nodes between head and follow are the if's own. One of them with a
+// predecessor outside that set is a join the if does not own. When the if
+// reaches it only through a break or continue, that edge is a layout
+// convention (the break resolver sends a break on to the next statement); a
+// break never falls through, so move the edge to the follow. Any other
+// outside join means this is not an if. Returns false in that case.
+bool ControlFlowGraph::_DetachBreakJoins(ControlFlowNode *head, ControlFlowNode *follow)
+{
+	for (int guard = 0; guard < 64; guard++)
+	{
+		NodeSet inside;
+		stack<ControlFlowNode*> toProcess;
+		toProcess.push(head);
+		while (!toProcess.empty())
+		{
+			ControlFlowNode *node = pop_ptr(toProcess);
+			if (inside.contains(node))
+			{
+				continue;
+			}
+			inside.insert(node);
+			for (ControlFlowNode *succ : node->Successors())
+			{
+				if (succ != follow)
+				{
+					toProcess.push(succ);
+				}
+			}
+		}
+
+		bool changed = false;
+		for (ControlFlowNode *node : inside)
+		{
+			if (node == head)
+			{
+				continue;
+			}
+			bool hasOutsidePred = false;
+			for (ControlFlowNode *pred : node->Predecessors())
+			{
+				if (!inside.contains(pred))
+				{
+					hasOutsidePred = true;
+					break;
+				}
+			}
+			if (!hasOutsidePred)
+			{
+				continue;
+			}
+			NodeSet insidePreds;
+			for (ControlFlowNode *pred : node->Predecessors())
+			{
+				if (inside.contains(pred))
+				{
+					if (!pred->ContainsTag(SemanticTags::LoopBreak) && !pred->ContainsTag(SemanticTags::LoopContinue))
+					{
+						return false;
+					}
+					insidePreds.insert(pred);
+				}
+			}
+			for (ControlFlowNode *pred : insidePreds)
+			{
+				node->ErasePredecessor(pred);
+				follow->InsertPredecessor(pred);
+			}
+			changed = true;
+			break;
+		}
+		if (!changed)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 vector<NodeBlock> _FindBackEdges(DominatorMap &dominators, DominatorMap &postDominators, ControlFlowNode *structure)
@@ -2325,6 +2543,43 @@ ControlFlowNode *ControlFlowGraph::_PartitionCode(code_pos start, code_pos end)
 #endif
 	if ((*mainStructure)[SemId::Tail] == nullptr)
 	{
+		// A function that ends in a loop whose only exits are "ret"
+		// instructions: every ret falls through to the next code (see above),
+		// so no node is without successors, and the function's final ret is
+		// dead. Make an exit node at that final ret the tail, and send each ret
+		// to it. The loop then has exits and a follow node. Inside the loop, a
+		// ret goes back to the code after it (see _SynthesizeTailBreak). The
+		// exit node emits nothing, so the dead ret stays out of the text.
+		ControlFlowNode *finalRet = nullptr;
+		for (auto &pair : posToNode)
+		{
+			ControlFlowNode *node = pair.second;
+			if (node->Successors().empty() && node->Predecessors().empty() && node->endsWith(Opcode::RET) &&
+				(!finalRet || (node->GetStartingAddress() > finalRet->GetStartingAddress())))
+			{
+				finalRet = node;
+			}
+		}
+		if (finalRet)
+		{
+			ControlFlowNode *exit = MakeNode<ExitNode>(finalRet->GetStartingAddress());
+			mainStructure->InsertChild(exit);
+			NodeSet children = mainStructure->Children();
+			for (ControlFlowNode *node : children)
+			{
+				if ((node != exit) && (node->Type == CFGNodeType::RawCode) && node->endsWith(Opcode::RET) && (node->Successors().size() == 1))
+				{
+					ControlFlowNode *fallThrough = *node->Successors().begin();
+					fallThrough->ErasePredecessor(node);
+					exit->InsertPredecessor(node);
+				}
+			}
+			(*mainStructure)[SemId::Tail] = exit;
+		}
+	}
+
+	if ((*mainStructure)[SemId::Tail] == nullptr)
+	{
 		throw ControlFlowException(mainStructure, "Code partition failure.");
 	}
 	ExitNode *exitNode = MakeNode<ExitNode>(0xffff);
@@ -2420,6 +2675,10 @@ bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 		if (!_decompilerResults.IsAborted())
 		{
 			_ResolveBreaksOrContinues();
+		}
+		if (!_decompilerResults.IsAborted())
+		{
+			_MergeLatchTrampolines();
 		}
 
 		if (showFile)

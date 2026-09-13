@@ -2794,6 +2794,15 @@ bool _ResolveNeededAccWorker(ConsumptionNode *root, ConsumptionNode *chunk, Deco
 			{
 				changes = true;
 			}
+			else if (chunk->_hasPos && (chunk->GetCode()->get_opcode() == Opcode::RET))
+			{
+				// A ret whose value comes from behind a structure boundary (the
+				// condition of the if it sits in, most often) returns whatever the
+				// accumulator holds. A bare (return) compiles to exactly that. A
+				// clone would run the source a second time, a side effect the
+				// code did not have, as in (if (== (= fd (FileIO ...)) -1) (return)).
+				chunk->StealChild(i, &lookups);
+			}
 			else
 			{
 				// Go back and find one to clone.

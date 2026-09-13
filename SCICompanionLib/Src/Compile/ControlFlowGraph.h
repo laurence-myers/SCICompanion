@@ -69,10 +69,14 @@ private:
 	void _IdentifySwitchCases(ControlFlowNode *switchNodeIn);
 	void _ResolveBreaksOrContinues();
 
+	// A bare "jmp head" in a loop body is a second name for the common latch.
+	void _MergeLatchTrampolines();
+
 	// Loop-exit else edges: a "bnt" to the loop exit inside a loop body becomes
 	// an if whose else is a synthesized break.
 	void _SolveLoopBranches();
 	bool _SynthesizeElseBreak(ControlFlowNode *structure, uint16_t exitAddress, const NodeSet &testChain, ControlFlowNode *latch);
+	bool _SynthesizeTailBreak(ControlFlowNode *loop, uint16_t exitAddress, const NodeSet &testChain, ControlFlowNode *latch);
 
 	// Branch structuring: ands, ors and ifs, from the immediate post-dominators.
 	void _StructureAllBranches();
@@ -81,6 +85,7 @@ private:
 	bool _TryAndMerge(ControlFlowNode *structure, ControlFlowNode *first, const NodeSet *testChain);
 	bool _TryOrCollapse(ControlFlowNode *structure, ControlFlowNode *first, const std::map<ControlFlowNode*, ControlFlowNode*> &ipdom, const NodeSet *testChain);
 	bool _TryBuildIf(ControlFlowNode *structure, ControlFlowNode *head, const std::map<ControlFlowNode*, ControlFlowNode*> &ipdom);
+	bool _DetachBreakJoins(ControlFlowNode *head, ControlFlowNode *follow);
 	bool _ResolveBreakOrContinue(uint16_t loopFollowAddress, ControlFlowNode *structure, SemanticTags loopOrContinueTag, ControlFlowNode *latchToAvoid);
 	void _RestructureBreaksAndContinues();
 	bool _RestructureBreakOrContinue(uint16_t loopFollowOrHeadAddress, ControlFlowNode *ignore, ControlFlowNode *structure, bool isBreak);
