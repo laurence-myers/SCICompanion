@@ -81,7 +81,7 @@ private:
 	bool _TryAndMerge(ControlFlowNode *structure, ControlFlowNode *first, const NodeSet *testChain);
 	bool _TryOrCollapse(ControlFlowNode *structure, ControlFlowNode *first, const std::map<ControlFlowNode*, ControlFlowNode*> &ipdom, const NodeSet *testChain);
 	bool _TryBuildIf(ControlFlowNode *structure, ControlFlowNode *head, const std::map<ControlFlowNode*, ControlFlowNode*> &ipdom);
-	bool _ResolveBreakOrContinue(uint16_t loopFollowAddress, ControlFlowNode *structure, SemanticTags loopOrContinueTag, ControlFlowNode *latchToAvoid);
+	bool _ResolveBreakOrContinue(uint16_t loopFollowAddress, ControlFlowNode *structure, SemanticTags loopOrContinueTag, ControlFlowNode *latchToAvoid, ControlFlowNode *trueLatch = nullptr, bool topLevel = true);
 	void _RestructureBreaksAndContinues();
 	bool _RestructureBreakOrContinue(uint16_t loopFollowOrHeadAddress, ControlFlowNode *ignore, ControlFlowNode *structure, bool isBreak);
 	void _ReconnectBreakNodeToSubsequentCode(ControlFlowNode *structure, ControlFlowNode *breakNode, code_pos subsequentcode, SemanticTags loopOrContinueTag);

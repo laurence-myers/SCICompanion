@@ -96,6 +96,23 @@ namespace UnitTests
             AssertDecompileMatchesExpected("C2_IndexedMathAssign", 920);
         }
 
+        // A break out of a loop from inside a switch case. The structurer
+        // gathers the case body that jumps to the loop exit into the case and
+        // resolves it as a break.
+        TEST_METHOD(BreakInSwitchCase)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F9_BreakInSwitchCase", 921);
+        }
+
+        // A mid-body continue creates a second back edge and a common latch.
+        // The structurer resolves the mid-body jump to the head as a continue.
+        TEST_METHOD(MidBodyContinue)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F10_MidBodyContinue", 922);
+        }
+
         // Family 1: a conditional branch to the loop head. Fixed: the common
         // latch resolves to the loop head, so the if reconstructs.
         TEST_METHOD(Family1_LoopHeadContinue)
@@ -404,7 +421,7 @@ namespace UnitTests
         TEST_METHOD(Dump_FailingTemplateScripts)
         {
             _gameFolder = SetUpGameSCI11();
-            const char *titles[] = { "Sight", "Jump", "PriorityTalker" };
+            const char *titles[] = { "ScrollableInventory", "SaveRestoreDialog", "Gauge" };
             for (const char *title : titles)
             {
                 DecompileOutput out;

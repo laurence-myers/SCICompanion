@@ -15,6 +15,7 @@
 #include "ControlFlowNode.h"
 #include "TarjanAlgorithm.h"
 #include "PMachine.h"
+#include "format.h"
 
 using namespace std;
 
@@ -245,7 +246,15 @@ map<ControlFlowNode*, ControlFlowNode*> CalculateImmediateDominators(const Domin
 	if (immediateDominators.size() != (dominatorMap.size() - 1))
 	{
 		// Every node must have an immediate dominator except the header
-		throw ControlFlowException(dominatorMap.begin()->first,  "Problem with calculating dominators");
+		std::string diag = "Problem with calculating dominators; no imm-dom for:";
+		for (const auto &pair : dominatorMap)
+		{
+			if (!immediateDominators.count(pair.first))
+			{
+				diag += fmt::format(" {0:04x}(doms={1})", pair.first->GetStartingAddress(), pair.second.size());
+			}
+		}
+		throw ControlFlowException(dominatorMap.begin()->first, diag);
 	}
 	return immediateDominators;
 }

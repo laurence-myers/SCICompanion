@@ -338,6 +338,9 @@ void ControlFlowGraph::_ReplaceNodeInWorkingSet(ControlFlowNode *parent, Control
 	parent->NotifyChildrenReplacedBy(newNode);
 
 	NodeSet exitPoints;
+	// Exits made inside newNode for a break out of a structure that already has
+	// a single exit; kept apart from exitPoints so they never become the tail.
+	NodeSet innerExits;
 
 	// The easiest way to update the dominators is to just recalculate them entirely (possibly expensive though).
 	// That way, we just need to update the predecessors
@@ -353,21 +356,40 @@ void ControlFlowGraph::_ReplaceNodeInWorkingSet(ControlFlowNode *parent, Control
 			);
 		if (!nodesToBeRemoved.empty())
 		{
+			bool hasRealExit = false;
 			for (ControlFlowNode* eraseMe : nodesToBeRemoved)
 			{
-				// an outside node had a newNode child as its predecssor... 
+				// an outside node had a newNode child as its predecssor...
 				workingSetNode->ErasePredecessor(eraseMe);
 
-				// Now we need to ensure that we have an exit point. To avoid linking the exit nodes to the outside
-				// (which is a possibility, but then our graph traversal algorithms would need to be exitpoint-aware),
-				// we'll give the exit node an address that it exits to
-				if (!existingSingleExit)
+				if (existingSingleExit && (eraseMe != existingSingleExit) &&
+					(workingSetNode->Type == CFGNodeType::Exit))
 				{
-					newNode->InsertChild(_EnsureExitNode(exitPoints, eraseMe, workingSetNode));
+					// A break out of a node that already has a single exit (a
+					// switch, whose tail is the toss): the escaping edge to the
+					// enclosing structure's exit becomes an exit inside this
+					// node, so the break resolver finds it later. The outside
+					// exit keeps its other predecessors, and this node does not
+					// become its predecessor. The tail's own edge is a real exit.
+					newNode->InsertChild(_EnsureExitNode(innerExits, eraseMe, workingSetNode));
+				}
+				else
+				{
+					// Now we need to ensure that we have an exit point. To avoid linking the exit nodes to the outside
+					// (which is a possibility, but then our graph traversal algorithms would need to be exitpoint-aware),
+					// we'll give the exit node an address that it exits to
+					if (!existingSingleExit)
+					{
+						newNode->InsertChild(_EnsureExitNode(exitPoints, eraseMe, workingSetNode));
+					}
+					hasRealExit = true;
 				}
 			}
 			// and redirect the outside node's predecessor to be the newNode
-			workingSetNode->InsertPredecessor(newNode);
+			if (hasRealExit)
+			{
+				workingSetNode->InsertPredecessor(newNode);
+			}
 		}
 	}
 
@@ -483,18 +505,24 @@ void ControlFlowGraph::_IdentifySwitchCases(ControlFlowNode *switchNodeIn)
 			GetThenAndElseBranches(caseHead, &firstStatementInCase, &elseNode);
 		}
 
+		// A case owns every switch child it dominates (except the toss). A child
+		// that reaches the toss is a normal case exit; a child that leaves the
+		// switch another way (a break or continue out of an enclosing loop) is
+		// collected too, so the break resolver can find it inside the case.
 		NodeSet exitPoints;
-		for (ControlFlowNode *tossPred : toss->Predecessors())
+		for (ControlFlowNode *child : switchNodeIn->Children())
 		{
-			if (dominators.IsADominatedByB(tossPred, firstStatementInCase))
+			if (child == toss)
 			{
-				// Collect the items here
-				NodeSet newChildren = CollectNodesBetween(firstStatementInCase, tossPred, switchNodeIn->Children());
-				for (auto &newChild : newChildren)
+				continue;
+			}
+			if ((child == firstStatementInCase) || dominators.IsADominatedByB(child, firstStatementInCase))
+			{
+				newCaseNode->InsertChild(child);
+				if (toss->Predecessors().contains(child))
 				{
-					newCaseNode->InsertChild(newChild);
+					exitPoints.insert(child);
 				}
-				exitPoints.insert(tossPred);
 			}
 		}
 		if (exitPoints.size() == 1)
@@ -737,7 +765,10 @@ vector<NodeBlock> ControlFlowGraph::_FindSwitchBlocks(DominatorMap &dominators, 
 
 					}
 					ControlFlowNode *switchHead = _GetFirstPredecessorOrNull(pred);
-					switchBlocks.emplace_back(switchHead, maybeToss, true, nullptr);
+					// Gather nodes that lie between the switch head and the toss
+					// by address but are not on the toss-predecessor walk: a case
+					// body that breaks or continues out of an enclosing loop.
+					switchBlocks.emplace_back(switchHead, maybeToss, true, structure);
 					break;
 				}
 				pred = _GetFirstPredecessorOrNull(pred);
@@ -752,6 +783,8 @@ vector<NodeBlock> ControlFlowGraph::_FindSwitchBlocks(DominatorMap &dominators, 
 // and look for nodes that end in unconditional jumps to the loop follow.
 // Then, we'll mark them at "break", and reconnect them to the subsequent node in
 // memory (that is a sibling of the current structure)
+static ControlFlowNode *_FindTrueLatch(ControlFlowNode *structure);
+
 void ControlFlowGraph::_ResolveBreaksOrContinues()
 {
 	bool changes = true;
@@ -769,7 +802,8 @@ void ControlFlowGraph::_ResolveBreaksOrContinues()
 				}
 				if (_allowContinues)
 				{
-					changes = _ResolveBreakOrContinue((*structure)[SemId::Head]->GetStartingAddress(), structure, SemanticTags::LoopContinue, (*structure)[SemId::Latch]);
+					ControlFlowNode *trueLatch = _FindTrueLatch(structure);
+					changes = _ResolveBreakOrContinue((*structure)[SemId::Head]->GetStartingAddress(), structure, SemanticTags::LoopContinue, (*structure)[SemId::Latch], trueLatch);
 					if (changes)
 					{
 						break;
@@ -896,9 +930,40 @@ bool _NodeSuccessorIsCommonLatchNode(ControlFlowNode *node)
 		(*node->Successors().begin())->Type == CFGNodeType::CommonLatch;
 }
 
-bool ControlFlowGraph::_ResolveBreakOrContinue(uint16_t loopFollowOrStartAddress, ControlFlowNode *structure, SemanticTags loopOrContinueTag, ControlFlowNode *latchToAvoid)
+// A loop with a common latch has many jumps to its head. The natural back edge
+// is the last one by address; every earlier one is a continue. Return the
+// natural back edge, or null when the loop has no common latch.
+static ControlFlowNode *_FindTrueLatch(ControlFlowNode *structure)
+{
+	ControlFlowNode *commonLatch = nullptr;
+	for (ControlFlowNode *child : structure->Children())
+	{
+		if (child->Type == CFGNodeType::CommonLatch)
+		{
+			commonLatch = child;
+			break;
+		}
+	}
+	if (!commonLatch)
+	{
+		return nullptr;
+	}
+	ControlFlowNode *trueLatch = nullptr;
+	for (ControlFlowNode *pred : commonLatch->Predecessors())
+	{
+		if ((pred->Type == CFGNodeType::RawCode) && pred->endsWith(Opcode::JMP) &&
+			(!trueLatch || (pred->GetStartingAddress() > trueLatch->GetStartingAddress())))
+		{
+			trueLatch = pred;
+		}
+	}
+	return trueLatch;
+}
+
+bool ControlFlowGraph::_ResolveBreakOrContinue(uint16_t loopFollowOrStartAddress, ControlFlowNode *structure, SemanticTags loopOrContinueTag, ControlFlowNode *latchToAvoid, ControlFlowNode *trueLatch, bool topLevel)
 {
 	bool changes = false;
+	bool isContinue = (loopOrContinueTag == SemanticTags::LoopContinue);
 	// We're looking for nodes that end in an unconditional jump to the loop follow address
 	for (ControlFlowNode *node : structure->Children())
 	{
@@ -906,9 +971,17 @@ bool ControlFlowGraph::_ResolveBreakOrContinue(uint16_t loopFollowOrStartAddress
 		{
 			if (node->endsWith(Opcode::JMP) &&
 				!node->ContainsTag(loopOrContinueTag) &&	// Not already identified
-				node != latchToAvoid &&					 // "continue" would be falsely identified if we don't check against latch.
-				!_NodeSuccessorIsCommonLatchNode(node))	 // A jmp to a common latch node means we're already identifying this as part of a regular loop structure. So no break/continue.
+				node != latchToAvoid)					 // "continue" would be falsely identified if we don't check against latch.
 			{
+				// A jmp to the common latch is normally part of the loop's back
+				// edge, not a break/continue. But a mid-body jump to the head is
+				// a continue: take it, except the natural back edge (the last
+				// one), a switch's toss, and only among the loop's own children.
+				if (_NodeSuccessorIsCommonLatchNode(node) &&
+					(!isContinue || !topLevel || (node == trueLatch) || node->startsWith(Opcode::TOSS)))
+				{
+					continue;
+				}
 				scii inst = node->getLastInstruction();
 				// Conveniently, end provides us with the address of the next instruction.
 				code_pos end = static_cast<RawCodeNode*>(node)->end;
@@ -931,7 +1004,7 @@ bool ControlFlowGraph::_ResolveBreakOrContinue(uint16_t loopFollowOrStartAddress
 		{
 			if ((child != latchToAvoid) && (child->Type != CFGNodeType::Loop))
 			{
-				changes = _ResolveBreakOrContinue(loopFollowOrStartAddress, child, loopOrContinueTag, latchToAvoid);
+				changes = _ResolveBreakOrContinue(loopFollowOrStartAddress, child, loopOrContinueTag, latchToAvoid, trueLatch, false);
 				if (changes)
 				{
 					break;
