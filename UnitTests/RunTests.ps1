@@ -66,6 +66,11 @@ if ($UpdateSnapshots) {
     }
     New-Item -ItemType Directory -Force -Path $committed | Out-Null
     Copy-Item -Path (Join-Path $actuals "*.sc") -Destination $committed -Force
+    # The test reads the copy next to the DLL, which the build refreshes. Update
+    # it too, so the next run passes without a rebuild.
+    $deployed = Join-Path $repoRoot "$Configuration\TestFiles\Decompile\Snapshots\SCI1.1"
+    New-Item -ItemType Directory -Force -Path $deployed | Out-Null
+    Copy-Item -Path (Join-Path $actuals "*.sc") -Destination $deployed -Force
     Write-Host "Updated snapshots in $committed"
     exit 0
 }

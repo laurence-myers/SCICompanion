@@ -603,27 +603,30 @@
 			(+
 				nsLeft
 				(Max
-					(and view (CelWide view loop cel))
-					(and
-						(IsObject bust)
+					(if view (CelWide view loop cel) else 0)
+					(if (IsObject bust)
 						(+
 							(bust nsLeft?)
 							(CelWide (bust view?) (bust loop?) (bust cel?))
 						)
+					else
+						0
 					)
-					(and
-						(IsObject eyes)
+					(if (IsObject eyes)
 						(+
 							(eyes nsLeft?)
 							(CelWide (eyes view?) (eyes loop?) (eyes cel?))
 						)
+					else
+						0
 					)
-					(and
-						(IsObject mouth)
+					(if (IsObject mouth)
 						(+
 							(mouth nsLeft?)
 							(CelWide (mouth view?) (mouth loop?) (mouth cel?))
 						)
+					else
+						0
 					)
 				)
 			)
@@ -632,27 +635,30 @@
 			(+
 				nsTop
 				(Max
-					(and view (CelHigh view loop cel))
-					(and
-						(IsObject bust)
+					(if view (CelHigh view loop cel) else 0)
+					(if (IsObject bust)
 						(+
 							(bust nsTop?)
 							(CelHigh (bust view?) (bust loop?) (bust cel?))
 						)
+					else
+						0
 					)
-					(and
-						(IsObject eyes)
+					(if (IsObject eyes)
 						(+
 							(eyes nsTop?)
 							(CelHigh (eyes view?) (eyes loop?) (eyes cel?))
 						)
+					else
+						0
 					)
-					(and
-						(IsObject mouth)
+					(if (IsObject mouth)
 						(+
 							(mouth nsTop?)
 							(CelHigh (mouth view?) (mouth loop?) (mouth cel?))
 						)
+					else
+						0
 					)
 				)
 			)

@@ -52,7 +52,13 @@ void AddFixtureScript(const std::string &fixtureName);
 bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::string *outError = nullptr);
 
 // Decompiles the compiled script resource to source text plus diagnostics.
-DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks = false);
+// debugControlFlow adds a text dump of the control-flow graph to the warnings
+// when a function's analysis fails.
+DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks = false, bool debugControlFlow = false);
+
+// Decompiles a template script by its title (e.g. "PolygonEdit"), with the
+// control-flow dump on. For diagnosing a failure. Returns false if not found.
+bool DecompileTemplateScriptByTitle(const std::string &title, DecompileOutput &out);
 
 // Compiles the fixture, decompiles it, recompiles the decompiled text, and
 // decompiles again. Asserts the second decompile matches the first, so the
@@ -66,7 +72,7 @@ DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t s
 // to outFailedScripts when it is not null. Writes the count of scripts that
 // loaded to outProcessed when it is not null. Loads lookups once.
 int CountFallbacksAllScripts(std::vector<std::string> *outFailedScripts = nullptr,
-    int *outProcessed = nullptr);
+    int *outProcessed = nullptr, std::vector<std::string> *outWarnings = nullptr);
 
 // Compiles a fixture, decompiles it, and compares the decompiled text with the
 // expected file "<name>.expected.sc" in TestFiles\Decompile\SCI1.1. Asserts no

@@ -102,35 +102,82 @@ namespace UnitTests
                 L"the if at the end of the loop body should reconstruct");
         }
 
-        // Family 3: an and/or value materialised through branches. NOT fixed.
-        // A correct fix needs a new "condition value" structure so the boolean
-        // is not mis-valued; see the plan. This pins the current fallback and
-        // proves the asm round-trips. Flip to a clean-decompile assert when
-        // Family 3 lands.
-        TEST_METHOD(Family3_ValueJoin)
+        // Family 3: a short-circuit and/or value that is joined and then
+        // consumed. Fixed: the structurer builds ifs and ors from the immediate
+        // post-dominators, the chunk stage treats an if as a value, and the
+        // IfThenToAnd pass gives the and/or text. Each fixture is pinned to
+        // its Sierra-shaped expected text.
+        TEST_METHOD(Family3_ValueIfReturn)
         {
             _gameFolder = SetUpGameSCI11();
-            DecompileOutput out = DecompileAndRoundTrip("F3_ValueJoin", 903);
-            LogWarnings("F3", out);
-            Assert::IsTrue(out.fallbacks >= 1, L"expected a fallback (Family 3 not fixed yet)");
-            Assert::IsTrue(out.HasWarningContaining("Exit needs two predecessors"),
-                L"expected the Family 3 control-flow warning");
+            AssertDecompileMatchesExpected("F3_ValueIfReturn", 909);
+        }
+        TEST_METHOD(Family3_OrThreeTerms)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F3_OrThreeTerms", 910);
+        }
+        TEST_METHOD(Family3_OrAndOr)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F3_OrAndOr", 911);
+        }
+        TEST_METHOD(Family3_AndOr)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F3_AndOr", 912);
+        }
+        TEST_METHOD(Family3_IfValueWithElse)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F3_IfValueWithElse", 913);
+        }
+        TEST_METHOD(Family3_AndAsArgument)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F3_AndAsArgument", 914);
+        }
+
+        // A shared-then shape ((or (not X) Y) with a synthesized not) is not
+        // a Sierra compiler output. The structurer must refuse it, not merge
+        // it as an and with the wrong value. The asm fallback round-trips.
+        TEST_METHOD(Unstructured_SharedThenBranch)
+        {
+            _gameFolder = SetUpGameSCI11();
+            DecompileOutput out = DecompileAndRoundTrip("X_SharedThenBranch", 903);
+            LogWarnings("X", out);
+            Assert::IsTrue(out.fallbacks >= 1, L"expected a clean fallback");
+            Assert::IsTrue(out.HasWarningContaining("Unstructured branches"),
+                L"expected the structurer to refuse the shape");
             Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");
         }
 
-        // Family 4: a compound condition whose else edge is the loop exit, next
-        // to a break. NOT fixed. The fix needs delicate surgery on the
-        // break/continue restructuring, which affects every loop; see the plan.
-        // This pins the current fallback and proves the asm round-trips.
+        // Family 4: a "bnt" to the loop exit inside the body. Fixed: it becomes
+        // an if with a synthesized else-break, and the loop cleanup passes
+        // fold the breaks back into the idiomatic shape.
         TEST_METHOD(Family4_BreakElseEdge)
         {
             _gameFolder = SetUpGameSCI11();
-            DecompileOutput out = DecompileAndRoundTrip("F4_BreakElseEdge", 904);
-            LogWarnings("F4", out);
-            Assert::IsTrue(out.fallbacks >= 1, L"expected a fallback (Family 4 not fixed yet)");
-            Assert::IsTrue(out.HasWarningContaining("Exit needs two predecessors"),
-                L"expected the Family 4 control-flow warning");
-            Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");
+            AssertDecompileMatchesExpected("F4_BreakElseEdge", 904);
+        }
+        TEST_METHOD(Family4_WhileAnd)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F4_WhileAnd", 915);
+        }
+        TEST_METHOD(Family4_WhileOr)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F4_WhileOr", 916);
+        }
+
+        // Compound conditions compiled by SCI Companion's own compiler (its
+        // "bt" targets the then block). The decompiled text must equal the
+        // source, which covers the unchain fixup end to end.
+        TEST_METHOD(Plain_CompoundConditions)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("P1_CompoundConditions", 917);
         }
 
         // Family 5: an empty leading while swallows the next loop. Fixed: child
@@ -187,12 +234,17 @@ namespace UnitTests
         {
             _gameFolder = SetUpGameSCI11();
             std::vector<std::string> failed;
+            std::vector<std::string> warnings;
             int processed = 0;
-            int fallbacks = CountFallbacksAllScripts(&failed, &processed);
+            int fallbacks = CountFallbacksAllScripts(&failed, &processed, &warnings);
             std::string msg = fmt::format("Template: {0} scripts, {1} fallbacks in {2}", processed, fallbacks, failed.size());
             for (const std::string &name : failed)
             {
                 msg += "\n  " + name;
+            }
+            for (const std::string &w : warnings)
+            {
+                msg += "\n    " + w;
             }
             Logger::WriteMessage(std::wstring(msg.begin(), msg.end()).c_str());
 
@@ -200,13 +252,13 @@ namespace UnitTests
             // template has more than 80 scripts.
             Assert::IsTrue(processed >= 80, L"too few scripts decompiled; check the template game data");
 
-            const int BASELINE = 5;   // was 7; Family 1 and Family 6 fixes each removed one. Lower again when a fix helps.
+            const int BASELINE = 4;   // was 7; Family 1, Family 6 and the structurer each removed one. Lower again when a fix helps.
             Assert::IsTrue(fallbacks <= BASELINE, L"template fallbacks grew beyond baseline");
 
             // The set of scripts that fall back. A new failure is caught even
             // when a fix removes a different one. Remove entries as fixes land.
             std::set<std::string> allowed = {
-                "ScrollableInventory", "SaveRestoreDialog", "Gauge", "System" };
+                "ScrollableInventory", "SaveRestoreDialog", "Gauge" };
             for (const std::string &name : failed)
             {
                 Assert::IsTrue(allowed.count(name) == 1,
@@ -261,6 +313,44 @@ namespace UnitTests
                 L"a snapshot is missing; run RunTests.ps1 -UpdateSnapshots to create it");
             Assert::IsTrue(r.mismatched.empty(),
                 L"a snapshot changed; review then run RunTests.ps1 -UpdateSnapshots");
+        }
+
+    private:
+        std::string _gameFolder;
+    };
+
+    // Not in the default run. Decompiles named template scripts with the
+    // control-flow dump on and logs every warning, to diagnose a failure:
+    //   RunTests.ps1 -Filter "FullyQualifiedName~DiagnosticDumps"
+    TEST_CLASS(DiagnosticDumps)
+    {
+    public:
+        TEST_METHOD_CLEANUP(CleanUp)
+        {
+            if (!_gameFolder.empty())
+            {
+                CleanUpGame(_gameFolder);
+                _gameFolder.clear();
+            }
+        }
+
+        TEST_METHOD(Dump_FailingTemplateScripts)
+        {
+            _gameFolder = SetUpGameSCI11();
+            const char *titles[] = { "PolygonEdit", "Sync", "FileSelector", "DialogEdit", "FeatureWriter" };
+            for (const char *title : titles)
+            {
+                DecompileOutput out;
+                if (DecompileTemplateScriptByTitle(title, out))
+                {
+                    std::string msg = std::string("##### ") + title + "\n";
+                    for (const std::string &w : out.warnings)
+                    {
+                        msg += w + "\n";
+                    }
+                    Logger::WriteMessage(std::wstring(msg.begin(), msg.end()).c_str());
+                }
+            }
         }
 
     private:

@@ -12,11 +12,15 @@
 (procedure (IsOnScreen param1)
 	(return
 		(not
-			(and
-				(<= 0 (param1 x?))
-				(<= (param1 x?) 319)
-				(<= 0 (- (param1 y?) (param1 z?)))
+			(if
+				(and
+					(<= 0 (param1 x?))
+					(<= (param1 x?) 319)
+					(<= 0 (- (param1 y?) (param1 z?)))
+				)
 				(<= (- (param1 y?) (param1 z?)) 189)
+			else
+				0
 			)
 		)
 	)

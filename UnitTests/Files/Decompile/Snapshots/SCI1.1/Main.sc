@@ -278,7 +278,9 @@
 	(= temp0
 		(GetAngle (param1 x?) (param1 y?) temp1 temp2)
 	)
-	(param1 setHeading: temp0 (and (IsObject temp3) temp3))
+	(param1
+		setHeading: temp0 (if (IsObject temp3) temp3 else 0)
+	)
 )
 
 (procedure (Die theGDeathReason)

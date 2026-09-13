@@ -25,7 +25,7 @@
 	)
 	
 	(method (new param1)
-		((super new:) owner: (and argc param1) yourself:)
+		((super new:) owner: (if argc param1 else 0) yourself:)
 	)
 	
 	(method (init)
@@ -60,7 +60,11 @@
 	
 	(method (pause param1)
 		(if (not argc) (= param1 1))
-		(DoSound 10 (and (self isMemberOf: Sound) self) param1)
+		(DoSound
+			10
+			(if (self isMemberOf: Sound) self else 0)
+			param1
+		)
 	)
 	
 	(method (hold param1)

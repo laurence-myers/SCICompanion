@@ -77,7 +77,7 @@
 	)
 	
 	(method (init param1)
-		(self initialize: (and argc param1))
+		(self initialize: (if argc param1 else 0))
 		(if (self respondsTo: 5)
 			(gCast add: self)
 		else

@@ -651,7 +651,10 @@
 		(if inset (inset dispose:))
 		(if (and argc param1)
 			(param1
-				init: (and (>= argc 2) param2) self (and (>= argc 3) param3)
+				init:
+					(if (>= argc 2) param2 else 0)
+					self
+					(if (>= argc 3) param3 else 0)
 			)
 		)
 	)

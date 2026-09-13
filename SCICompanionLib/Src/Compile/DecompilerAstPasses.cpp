@@ -97,17 +97,6 @@ namespace
 		return nullptr;
 	}
 
-	// A block whose single statement is a plain zero (the _FixupIfs artifact).
-	bool IsZeroBlock(SyntaxNode *block)
-	{
-		vector<SyntaxNode *> stmts = MeaningfulStatements(block);
-		if (stmts.size() != 1)
-		{
-			return false;
-		}
-		PropertyValueBase *pv = AsValue(stmts[0]);
-		return pv && pv->IsZero();
-	}
 
 	// Moves the single meaningful statement out of an if branch and returns it.
 	// Handles a bare (non-block) branch by moving the whole slot.
@@ -134,7 +123,6 @@ namespace
 	class IfThenToAnd : public AstPass
 	{
 	public:
-		explicit IfThenToAnd(bool acceptSyntheticElseZero) : _acceptElseZero(acceptSyntheticElseZero) {}
 		const char *Name() const override { return "IfThenToAnd"; }
 
 		RewriteResult Rewrite(unique_ptr<SyntaxNode> &slot, const AstContext &ctx) override
@@ -193,26 +181,10 @@ namespace
 							return RewriteResult::Replaced;
 						}
 					}
-					// (if A B else 0) -> (and A B), while the chunk stage still
-					// synthesizes that else 0.
-					else if (_acceptElseZero && IsZeroBlock(if_->GetStatement2()))
-					{
-						vector<SyntaxNode *> thenStmts = MeaningfulStatements(if_->GetStatement1());
-						if ((thenStmts.size() == 1) && !IsControlFlow(thenStmts[0]))
-						{
-							unique_ptr<SyntaxNode> cond = move(ConditionSlot(*if_));
-							unique_ptr<SyntaxNode> thenExpr = TakeSingleStatement(if_->GetStatement1Internal());
-							slot = MakeAnd(move(cond), move(thenExpr), if_);
-							return RewriteResult::Replaced;
-						}
-					}
 				}
 			}
 			return RewriteResult::None;
 		}
-
-	private:
-		bool _acceptElseZero;
 	};
 
 	//
@@ -524,7 +496,7 @@ void RunDecompilerAstPasses(FunctionBase &func, const AstPassOptions &options, I
 
 	// Fold nested and value-position ifs into and/or, and collapse double nots.
 	{
-		IfThenToAnd ifThenToAnd(options.acceptSyntheticElseZero);
+		IfThenToAnd ifThenToAnd;
 		DoubleNot doubleNot;
 		vector<AstPass *> condPasses = { &ifThenToAnd, &doubleNot };
 		RunPassesToFixpoint(func, condPasses, options.maxSweeps, results);

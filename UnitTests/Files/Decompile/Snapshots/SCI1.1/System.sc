@@ -48,74 +48,19 @@
 )
 
 (procedure (InRect param1 param2 param3 param4 param5 param6)
-	(asm
-		lsp      param1
-		lsp      argc
-		ldi      6
-		lt?     
-		bnt      code_0267
-		pushi    #x
-		pushi    0
-		lap      param5
-		send     4
-		jmp      code_0269
-code_0267:
-		lap      param5
-code_0269:
-		le?     
-		bnt      code_02b0
-		lsp      argc
-		ldi      6
-		lt?     
-		bnt      code_027b
-		pushi    #x
-		pushi    0
-		lap      param5
-		send     4
-		jmp      code_027d
-code_027b:
-		lap      param5
-code_027d:
-		push    
-		lap      param3
-		le?     
-		bnt      code_02b0
-		lsp      param2
-		lsp      argc
-		ldi      6
-		lt?     
-		bnt      code_0294
-		pushi    #y
-		pushi    0
-		lap      param5
-		send     4
-		jmp      code_0296
-code_0294:
-		lap      param6
-code_0296:
-		le?     
-		bnt      code_02ae
-		lsp      argc
-		ldi      6
-		lt?     
-		bnt      code_02a8
-		pushi    #y
-		pushi    0
-		lap      param5
-		send     4
-		jmp      code_02aa
-code_02a8:
-		lap      param6
-code_02aa:
-		push    
-		lap      param4
-		le?     
-code_02ae:
-		jmp      code_02b2
-code_02b0:
-		ldi      0
-code_02b2:
-		ret     
+	(return
+		(if
+			(and
+				(<= param1 (if (< argc 6) (param5 x?) else param5))
+				(<= (if (< argc 6) (param5 x?) else param5) param3)
+			)
+			(if
+			(<= param2 (if (< argc 6) (param5 y?) else param6))
+				(<= (if (< argc 6) (param5 y?) else param6) param4)
+			)
+		else
+			0
+		)
 	)
 )
 
@@ -342,7 +287,7 @@ code_02b2:
 			(-- param1)
 			(= temp0 (NextNode temp0))
 		)
-		(return (and temp0 (NodeValue temp0)))
+		(return (if temp0 (NodeValue temp0) else 0))
 	)
 	
 	(method (last)

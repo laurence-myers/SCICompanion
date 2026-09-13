@@ -34,11 +34,15 @@
 	
 	(method (doit param1)
 		(return
-			(and
-				(>= (param1 brTop?) top)
-				(>= (param1 brLeft?) left)
-				(<= (param1 brBottom?) bottom)
+			(if
+				(and
+					(>= (param1 brTop?) top)
+					(>= (param1 brLeft?) left)
+					(<= (param1 brBottom?) bottom)
+				)
 				(<= (param1 brRight?) right)
+			else
+				0
 			)
 		)
 	)

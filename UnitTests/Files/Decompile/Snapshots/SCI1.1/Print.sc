@@ -124,7 +124,7 @@
 		(= temp4 (if (== y -1) (dialog nsTop?) else y))
 		(dialog moveTo: temp3 temp4)
 		(= temp1 (GetPort))
-		(dialog open: (and title 4) 15)
+		(dialog open: (if title 4 else 0) 15)
 		(return
 			(if modeless
 				(= gOldPort (GetPort))

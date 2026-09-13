@@ -644,11 +644,11 @@
 	
 	(method (inRect param1 param2 param3 param4)
 		(return
-			(and
-				(<= param1 x)
-				(<= x param3)
-				(<= param2 y)
+			(if
+			(and (<= param1 x) (<= x param3) (<= param2 y))
 				(<= y param4)
+			else
+				0
 			)
 		)
 	)
@@ -780,7 +780,9 @@
 	(method (setHeading theHeading param2)
 		(if argc (= heading theHeading))
 		(if looper
-			(looper doit: self heading (and (>= argc 2) param2))
+			(looper
+				doit: self heading (if (>= argc 2) param2 else 0)
+			)
 		else
 			(DirLoop self heading)
 			(if (and (>= argc 2) (IsObject param2))

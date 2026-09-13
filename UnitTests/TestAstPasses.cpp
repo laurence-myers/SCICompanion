@@ -177,10 +177,12 @@ namespace UnitTests
             Assert::AreEqual(std::string("(self foo: (and a b))"),
                 Body(ApplyAllPasses("(self foo: (if a b))")));
         }
-        TEST_METHOD(IfToAnd_ElseZero)
+        // A real "else 0" is a value the code computes, so it stays an if.
+        TEST_METHOD(IfToAnd_RealElseZeroStaysIf)
         {
-            Assert::AreEqual(std::string("(return (and a b))"),
-                Body(ApplyAllPasses("(return (if a b else 0))")));
+            std::string out = ApplyAllPasses("(return (if a b else 0))");
+            Assert::IsTrue(out.find("(if a") != std::string::npos, L"an if with else 0 stays an if");
+            Assert::IsTrue(out.find("(and") == std::string::npos, L"an if with else 0 is not an and");
         }
         TEST_METHOD(IfToAnd_AssignValueKeptAsIf)
         {

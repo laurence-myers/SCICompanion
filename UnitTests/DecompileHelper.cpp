@@ -162,7 +162,7 @@ bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::
     return success;
 }
 
-DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks)
+DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks, bool debugControlFlow)
 {
     CResourceMap &rm = appState->GetResourceMap();
     const GameFolderHelper &helper = rm.Helper();
@@ -185,7 +185,7 @@ DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks)
     TestDecompilerResults results;
     std::unique_ptr<sci::Script> pScript = DecompileScript(
         config.get(), lookups, helper, scriptNumber, compiled, results,
-        false, debugChunks, nullptr, false, false);
+        debugControlFlow, debugChunks, nullptr, false, false);
 
     std::stringstream ss;
     sci::SourceCodeWriter writer(ss, helper.GetDefaultGameLanguage(), pScript.get());
@@ -195,6 +195,21 @@ DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks)
     out.warnings = results.warnings;
     out.fallbacks = results.fallbacks;
     return out;
+}
+
+bool DecompileTemplateScriptByTitle(const std::string &title, DecompileOutput &out)
+{
+    std::vector<ScriptId> scripts;
+    appState->GetResourceMap().GetAllScripts(scripts);
+    for (ScriptId &scriptId : scripts)
+    {
+        if (scriptId.GetTitle() == title)
+        {
+            out = DecompileToText(scriptId.GetResourceNumber(), false, true);
+            return true;
+        }
+    }
+    return false;
 }
 
 DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t scriptNumber)
@@ -217,7 +232,7 @@ DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t s
     return first;
 }
 
-int CountFallbacksAllScripts(std::vector<std::string> *outFailedScripts, int *outProcessed)
+int CountFallbacksAllScripts(std::vector<std::string> *outFailedScripts, int *outProcessed, std::vector<std::string> *outWarnings)
 {
     CResourceMap &rm = appState->GetResourceMap();
     const GameFolderHelper &helper = rm.Helper();
@@ -258,6 +273,13 @@ int CountFallbacksAllScripts(std::vector<std::string> *outFailedScripts, int *ou
             if (outFailedScripts)
             {
                 outFailedScripts->push_back(scriptId.GetTitle());
+            }
+            if (outWarnings)
+            {
+                for (const std::string &w : results.warnings)
+                {
+                    outWarnings->push_back(scriptId.GetTitle() + ": " + w);
+                }
             }
         }
     }

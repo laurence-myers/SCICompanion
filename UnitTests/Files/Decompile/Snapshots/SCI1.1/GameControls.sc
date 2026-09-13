@@ -97,7 +97,7 @@
 	)
 	
 	(method (select param1 param2)
-		(param1 select: (and (>= argc 2) param2))
+		(param1 select: (if (>= argc 2) param2 else 0))
 	)
 	
 	(method (swapCurIcon)

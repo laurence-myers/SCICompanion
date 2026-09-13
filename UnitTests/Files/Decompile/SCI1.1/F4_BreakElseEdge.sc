@@ -2,9 +2,10 @@
 (script# 904)
 (include sci.sh)
 
-; Family 4: a compound condition whose else edge is the loop exit, next to a
-; break. The break is reconnected, but the compound else edge still points at
-; the dead exit node, so the if gets a follow with one predecessor.
+; Family 4: two "bnt" to the loop exit inside the body, next to a break. Each
+; becomes an if with a synthesized else-break; the loop cleanup passes factor
+; the breaks out. Sierra:
+;   (repeat (if (or temp0 temp1) (if (and temp0 temp1) (= temp2 1)) (break)) (= temp2 0))
 (public
 	f4BreakElseEdge 0
 )

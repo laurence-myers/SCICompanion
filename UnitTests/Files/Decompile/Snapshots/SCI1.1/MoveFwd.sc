@@ -35,7 +35,7 @@
 					param1
 					(+ (param1 x?) (SinMult (param1 heading?) param2))
 					(- (param1 y?) (CosMult (param1 heading?) param2))
-					(and (>= argc 3) param3)
+					(if (>= argc 3) param3 else 0)
 			)
 		else
 			(super init:)

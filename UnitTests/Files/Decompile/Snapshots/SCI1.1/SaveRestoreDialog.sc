@@ -457,12 +457,12 @@ code_062a:
 			lsl      local1
 			lofsa    okI
 			eq?     
-			bt       code_0643
+			bt       code_0640
 			lsl      local1
 			lofsa    editI
 			eq?     
+code_0640:
 			bnt      code_06ef
-code_0643:
 			pushi    1
 			lsp      param1
 			callk    StrLen,  2
@@ -726,12 +726,12 @@ code_0848:
 			lsl      local1
 			ldi      65535
 			eq?     
-			bt       code_0857
+			bt       code_0855
 			lsl      local1
 			lofsa    cancelI
 			eq?     
+code_0855:
 			bnt      code_0860
-code_0857:
 			ldi      65535
 			sat      temp1
 			jmp      code_088c

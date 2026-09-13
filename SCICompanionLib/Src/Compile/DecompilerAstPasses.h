@@ -19,13 +19,8 @@ namespace sci
 }
 class IDecompilerResults;
 
-// Options that vary by rollout phase.
 struct AstPassOptions
 {
-	// While the chunk stage still synthesizes an "else 0" for a value-position
-	// if (the _FixupIfs pass), accept (if A B else 0) as (and A B). Once that
-	// synthesis is gone, a real "else 0" must stay an if, so set this false.
-	bool acceptSyntheticElseZero = true;
 	int maxSweeps = 32;
 };
 

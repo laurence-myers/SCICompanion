@@ -81,8 +81,7 @@
 			)
 			(= temp0 (GetDistance param1 param2 param3 param4))
 			(return
-				(and
-					temp0
+				(if temp0
 					(/
 						(Abs
 							(localproc_0203
@@ -94,6 +93,8 @@
 						)
 						temp0
 					)
+				else
+					0
 				)
 			)
 		else
@@ -707,7 +708,7 @@
 		(= local0 1)
 		(gGame setCursor: 999 1)
 		(self readObstacles:)
-		(self changeState: (and size 1))
+		(self changeState: (if size 1 else 0))
 		(self draw:)
 	)
 	

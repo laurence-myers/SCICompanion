@@ -298,15 +298,19 @@ struct StructuredNode : public ControlFlowNode
 
 enum class ConditionType { And, Or };
 
+// An and/or built from the graph. Each operand is a chain of nodes from
+// SemId::First to firstTail (and SemId::Second to secondTail); a null tail means
+// the operand is the single node. An "and" is a two-way node (the if head, with
+// thenBranch naming its then successor). An "or" is a one-way node whose value
+// flows to its single successor, the join.
 struct CompoundConditionNode : public StructuredNode
 {
-	CompoundConditionNode(ControlFlowNode *head, ConditionType condition) : condition(condition), thenBranch(0xffff), isFirstTermNegated(false), isSecondTermNegated(false), StructuredNode(head, CFGNodeType::CompoundCondition, { SemId::First, SemId::Second }) {}
+	CompoundConditionNode(ControlFlowNode *head, ConditionType condition) : condition(condition), thenBranch(0xffff), firstTail(nullptr), secondTail(nullptr), StructuredNode(head, CFGNodeType::CompoundCondition, { SemId::First, SemId::Second, SemId::Tail }) {}
 	void Accept(ICFGNodeVisitor &visitor) const { visitor.Visit(*this); }
 
 	uint16_t thenBranch;
-	bool isFirstTermNegated;
-	bool isSecondTermNegated;
-	// First term is head, second term is tail.
+	ControlFlowNode *firstTail;
+	ControlFlowNode *secondTail;
 
 	ConditionType condition;
 };
@@ -334,8 +338,13 @@ struct FakeBreakOrContinueNode : public ControlFlowNode
 
 struct IfNode : public StructuredNode
 {
-	IfNode(ControlFlowNode *head) : StructuredNode(head, CFGNodeType::If, { SemId::Then, SemId::Else, SemId::Follow }) {}
+	IfNode(ControlFlowNode *head) : testHead(nullptr), StructuredNode(head, CFGNodeType::If, { SemId::Then, SemId::Else, SemId::Follow }) {}
 	void Accept(ICFGNodeVisitor &visitor) const { visitor.Visit(*this); }
+
+	// The condition is the chain of nodes from testHead to the head (the branch
+	// node). A value node before the branch, such as an or's join, feeds the
+	// branch its accumulator. Null means the head alone.
+	ControlFlowNode *testHead;
 };
 struct LoopNode : public StructuredNode
 {
@@ -405,3 +414,12 @@ public:
 };
 
 ControlFlowNode *GetFirstSuccessorOrNull(ControlFlowNode *node);
+
+// True if node is an exit node that leaves to the given address.
+bool IsExitTo(ControlFlowNode *node, uint16_t address);
+
+// The two-way node that tests a structured loop's condition: the first two-way
+// node reached from the head through one-way value nodes (an or's join feeds
+// it) that branches to the loop exit, else the latch if that branches to the
+// exit. headSide tells which. Null for a loop with no test (repeat).
+ControlFlowNode *GetLoopTestNode(const ControlFlowNode *loop, bool *headSide);

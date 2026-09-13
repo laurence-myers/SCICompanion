@@ -134,7 +134,7 @@ code_0179:
 			lst      temp2
 			ldi      1
 			eq?     
-			bt       code_0208
+			bt       code_0206
 			lst      temp2
 			ldi      4
 			eq?     
@@ -145,20 +145,20 @@ code_0179:
 			bnt      code_01fa
 			ldi      1
 			sat      temp9
-			bt       code_0208
+			bt       code_0206
 code_01fa:
 			lst      temp2
 			ldi      256
 			eq?     
-			bnt      code_0235
+			bnt      code_0206
 			ldi      1
 			sat      temp9
+code_0206:
 			bnt      code_0235
-code_0208:
 			pTos     curIcon
 			pToa     helpIconItem
 			ne?     
-			bt       code_021d
+			bt       code_021b
 			pushi    #signal
 			pushi    0
 			pToa     helpIconItem
@@ -166,8 +166,8 @@ code_0208:
 			push    
 			ldi      16
 			and     
+code_021b:
 			bnt      code_0235
-code_021d:
 			pushi    #type
 			pushi    1
 			pushi    16384
@@ -249,7 +249,7 @@ code_02b3:
 			lst      temp2
 			ldi      1
 			eq?     
-			bt       code_02d1
+			bt       code_02ce
 			lst      temp2
 			ldi      4
 			eq?     
@@ -257,13 +257,13 @@ code_02b3:
 			lst      temp3
 			ldi      13
 			eq?     
-			bt       code_02d1
+			bt       code_02ce
 code_02c8:
 			lst      temp2
 			ldi      256
 			eq?     
+code_02ce:
 			bnt      code_0368
-code_02d1:
 			pushi    1
 			pTos     highlightedIcon
 			callk    IsObject,  2

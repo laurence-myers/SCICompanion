@@ -142,22 +142,6 @@ void GetThenAndElseBranches(ControlFlowNode *node, ControlFlowNode **thenNode, C
 			*elseNode = one;
 			*thenNode = two;
 		}
-
-#ifdef NO_GOOD
-		// This fixes the checkAni problem, but changes the value of some expressions, like that in canBeHere.
-		// So we can't apply this as a general solution.
-		if (((*thenNode)->Type == CFGNodeType::Exit) && ((*elseNode)->Type != CFGNodeType::Exit))
-		{
-			// *Then* is an exit node, but *else* is not. That's a problem for things like while loops. Swap them:
-			std::swap(*thenNode, *elseNode);
-			ccNode->thenBranch = (*thenNode)->GetStartingAddress();
-			// And then invert the condition by changing the operation and negating the terms (DeMorgan's law)
-			ccNode->condition = (ccNode->condition == ConditionType::And) ? ConditionType::Or : ConditionType::And;
-			// And negate the terms
-			ccNode->isFirstTermNegated = !ccNode->isFirstTermNegated;
-			ccNode->isSecondTermNegated = !ccNode->isSecondTermNegated;
-		}
-#endif
 	}
 	else if (node->Type == CFGNodeType::RawCode)
 	{
@@ -170,14 +154,26 @@ void GetThenAndElseBranches(ControlFlowNode *node, ControlFlowNode **thenNode, C
 				*elseNode = one;
 				*thenNode = two;
 			}
-			else
+			else if (target == BranchTargetAddress(two))
 			{
-				if (target != BranchTargetAddress(two))
-				{
-					throw ControlFlowException(node, "Inconsistent then/else branches. Possible \"continue\" statement?");
-				}
 				*elseNode = two;
 				*thenNode = one;
+			}
+			// A synthesized break/continue sits on the branch edge in place of the
+			// loop exit the instruction still names. It has no address of its own.
+			else if (one->Type == CFGNodeType::FakeBreakOrContinue)
+			{
+				*elseNode = one;
+				*thenNode = two;
+			}
+			else if (two->Type == CFGNodeType::FakeBreakOrContinue)
+			{
+				*elseNode = two;
+				*thenNode = one;
+			}
+			else
+			{
+				throw ControlFlowException(node, "Inconsistent then/else branches. Possible \"continue\" statement?");
 			}
 		}
 		else if (lastInstruction.get_opcode() == Opcode::BT)
@@ -188,11 +184,24 @@ void GetThenAndElseBranches(ControlFlowNode *node, ControlFlowNode **thenNode, C
 				*elseNode = two;
 				*thenNode = one;
 			}
-			else
+			else if (target == BranchTargetAddress(two))
 			{
-				assert(target == BranchTargetAddress(two));
 				*elseNode = one;
 				*thenNode = two;
+			}
+			else if (one->Type == CFGNodeType::FakeBreakOrContinue)
+			{
+				*thenNode = one;
+				*elseNode = two;
+			}
+			else if (two->Type == CFGNodeType::FakeBreakOrContinue)
+			{
+				*thenNode = two;
+				*elseNode = one;
+			}
+			else
+			{
+				throw ControlFlowException(node, "Inconsistent then/else branches (bt).");
 			}
 		}
 	}
@@ -218,6 +227,61 @@ void GetThenAndElseBranches(ControlFlowNode *node, ControlFlowNode **thenNode, C
 			*elseNode = two;
 		}
 	}
+}
+
+bool IsExitTo(ControlFlowNode *node, uint16_t address)
+{
+	return node && (node->Type == CFGNodeType::Exit) && (node->GetStartingAddress() == address);
+}
+
+ControlFlowNode *GetLoopTestNode(const ControlFlowNode *loop, bool *headSide)
+{
+	*headSide = true;
+	ControlFlowNode *follow = loop->MaybeGet(SemId::Follow);
+	if (!follow)
+	{
+		return nullptr;
+	}
+	uint16_t exitAddress = follow->GetStartingAddress();
+	ControlFlowNode *latch = loop->MaybeGet(SemId::Latch);
+	ControlFlowNode *node = (*loop)[SemId::Head];
+	for (int guard = 0; node && (guard < 32); guard++)
+	{
+		if (node->Successors().size() == 2)
+		{
+			for (ControlFlowNode *succ : node->Successors())
+			{
+				if (IsExitTo(succ, exitAddress))
+				{
+					return node;
+				}
+			}
+			break;
+		}
+		if ((node->Successors().size() != 1) || (node == latch))
+		{
+			break;
+		}
+		// Only a value node (an or's join, an if used as a value) can precede
+		// the test. Anything else is the start of the body.
+		if ((node->Type != CFGNodeType::CompoundCondition) && (node->Type != CFGNodeType::If))
+		{
+			break;
+		}
+		node = *node->Successors().begin();
+	}
+	if (latch && (latch->Successors().size() == 2))
+	{
+		for (ControlFlowNode *succ : latch->Successors())
+		{
+			if (IsExitTo(succ, exitAddress))
+			{
+				*headSide = false;
+				return latch;
+			}
+		}
+	}
+	return nullptr;
 }
 
 RawCodeNode::RawCodeNode(code_pos start) : ControlFlowNode(nullptr, CFGNodeType::RawCode, {}), start(start)

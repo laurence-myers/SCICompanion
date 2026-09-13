@@ -51,9 +51,7 @@ enum class ChunkType
 	And,
 	Or,
 	First,
-	FirstNegated,
 	Second,
-	SecondNegated,
 	Invert,
 	Switch,
 	Case,
@@ -90,9 +88,7 @@ const char *chunkTypeNames[] =
 	"And",
 	"Or",
 	"First",
-	"First_N",
 	"Second",
-	"Second_N",
 	"Invert",
 	"Switch",
 	"Case",
@@ -596,10 +592,13 @@ public:
 		size_t levelCount = _context.GetLevelCount();
 		_context.ConsumeAccForStructuredNode();
 
-		// Let's detect the loop type
+		// Let's detect the loop type. The test is the first two-way node reached
+		// from the head through value nodes (an or's join), or the latch.
 		ControlFlowNode *latch = loopNode[SemId::Latch];
 		ControlFlowNode *head = loopNode[SemId::Head];
-		if ((latch->Successors().size() == 2) && (head->Successors().size() == 1))
+		bool testAtHead = true;
+		ControlFlowNode *test = GetLoopTestNode(&loopNode, &testAtHead);
+		if (test && !testAtHead)
 		{
 			StructuredFrame structuredFrame(_context, ChunkType::Do, loopNode);
 			// It's a do loop. The condition is the latch.
@@ -627,29 +626,31 @@ public:
 				_FollowForwardChain(head, *latch->Predecessors().begin());
 			}
 		}
-		else if ((latch->Successors().size() == 1) && (head->Successors().size() == 2))
+		else if (test)
 		{
 			StructuredFrame structuredFrame(_context, ChunkType::While, loopNode);
-			// It's a while. The condition is the head.
-			// REVIEW: Do we need to do the same kind of thing we do in the do loop above, wrt inverting?
+			// It's a while. The condition is the chain from the head to the test.
 
 			ControlFlowNode *thenNode, *elseNode;
-			GetThenAndElseBranches(head, &thenNode, &elseNode);
+			GetThenAndElseBranches(test, &thenNode, &elseNode);
 			// Occasionally a compound condition's *then* node is the exit node.
 			// One case is Game::checkAni in QFG3, or Christmas Card 1990 VGA (and probably others)
-			// Condition
-			if ((thenNode->Type == CFGNodeType::Exit) && (elseNode->Type != CFGNodeType::Exit))
+			bool invert = (thenNode->Type == CFGNodeType::Exit) && (elseNode->Type != CFGNodeType::Exit);
+			if (invert)
 			{
 				std::swap(thenNode, elseNode);
-				// And we need to invert the condition.
-				StructuredFrame structuredFrame(_context, ChunkType::Condition, loopNode);
-				InvertNode invert(head);
-				invert.Accept(*this);
 			}
-			else
 			{
 				StructuredFrame structuredFrame(_context, ChunkType::Condition, loopNode);
-				head->Accept(*this);
+				if (invert)
+				{
+					StructuredFrame structuredFrame(_context, ChunkType::Invert, loopNode);
+					_FollowForwardChain(head, test);
+				}
+				else
+				{
+					_FollowForwardChain(head, test);
+				}
 			}
 
 			{
@@ -759,23 +760,22 @@ public:
 		_context.ConsumeAccForStructuredNode();
 
 		ConditionType type = conditionNode.condition;
-		bool isFirstTermNegated = conditionNode.isFirstTermNegated;
-		bool isSecondTermNegated = conditionNode.isSecondTermNegated;
-
 		_context.PushStructured((type == ConditionType::And) ? ChunkType::And : ChunkType::Or, &conditionNode);
 
+		// Each operand is a chain of nodes (head .. tail). The last node of a
+		// chain holds the branch that ends the operand.
 		ControlFlowNode *first = conditionNode[SemId::First];
-		// X
+		ControlFlowNode *firstTail = conditionNode.firstTail ? conditionNode.firstTail : first;
 		{
-			StructuredFrame structuredFrame(_context, isFirstTermNegated ? ChunkType::FirstNegated : ChunkType::First, conditionNode);
-			first->Accept(*this);
+			StructuredFrame structuredFrame(_context, ChunkType::First, conditionNode);
+			_FollowForwardChain(first, firstTail);
 		}
 
 		ControlFlowNode *second = conditionNode[SemId::Second];
-		// Y
+		ControlFlowNode *secondTail = conditionNode.secondTail ? conditionNode.secondTail : second;
 		{
-			StructuredFrame structuredFrame(_context, isSecondTermNegated ? ChunkType::SecondNegated : ChunkType::Second, conditionNode);
-			second->Accept(*this);
+			StructuredFrame structuredFrame(_context, ChunkType::Second, conditionNode);
+			_FollowForwardChain(second, secondTail);
 		}
 
 		_context.PopFrame();
@@ -858,10 +858,12 @@ public:
 			_FollowForwardChain(elseNode);
 		}
 
-		// Condition
+		// Condition: the chain of value nodes that feed the branch, then the
+		// branch node itself.
 		{
 			StructuredFrame structuredFrame(_context, ChunkType::Condition, ifNode);
-			ifCondition->Accept(*this);
+			ControlFlowNode *testHead = ifNode.testHead ? ifNode.testHead : ifCondition;
+			_FollowForwardChain(testHead, ifCondition);
 		}
 
 		_context.PopFrame();
@@ -922,7 +924,6 @@ void _ApplyChildren(ConsumptionNode &node, StatementsNode &statementsNode, Decom
 	}
 }
 
-int g_negated = 0;
 
 std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode2(ConsumptionNode &node, DecompileLookups &lookups)
 {
@@ -961,40 +962,17 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode2(ConsumptionNode &node, Decomp
 		case ChunkType::Or:
 		{
 			unique_ptr<BinaryOp> binaryOp = make_unique<BinaryOp>();
-			if (node.GetChild(ChunkType::FirstNegated))
+			if (node.GetChild(ChunkType::First)->GetChildCount() != 1)
 			{
-				g_negated++;
-				assert(node.GetChild(ChunkType::FirstNegated)->GetChildCount() == 1);
-				unique_ptr<UnaryOp> unaryOp = make_unique<UnaryOp>();
-				unaryOp->Operator = UnaryOperator::LogicalNot;
-				_ApplySyntaxNodeToCodeNode1(*node.GetChild(ChunkType::FirstNegated)->Child(0), *unaryOp, lookups);
-				binaryOp->SetStatement1(move(unaryOp));
+				throw ConsumptionNodeException(node.GetChild(ChunkType::First), "Too many children for condition node.");
 			}
-			else
-			{
-				if (node.GetChild(ChunkType::First)->GetChildCount() != 1)
-				{
-					throw ConsumptionNodeException(node.GetChild(ChunkType::First), "Too many children for condition node.");
-				}
-				_ApplySyntaxNodeToCodeNode1(*node.GetChild(ChunkType::First)->Child(0), *binaryOp, lookups);
-			}
+			_ApplySyntaxNodeToCodeNode1(*node.GetChild(ChunkType::First)->Child(0), *binaryOp, lookups);
 
-			if (node.GetChild(ChunkType::SecondNegated))
+			if (node.GetChild(ChunkType::Second)->GetChildCount() != 1)
 			{
-				assert(node.GetChild(ChunkType::SecondNegated)->GetChildCount() == 1);
-				unique_ptr<UnaryOp> unaryOp = make_unique<UnaryOp>();
-				unaryOp->Operator = UnaryOperator::LogicalNot;
-				_ApplySyntaxNodeToCodeNode1(*node.GetChild(ChunkType::SecondNegated)->Child(0), *unaryOp, lookups);
-				binaryOp->SetStatement2(move(unaryOp));
+				throw ConsumptionNodeException(node.GetChild(ChunkType::Second), "Too many children for condition node.");
 			}
-			else
-			{
-				if (node.GetChild(ChunkType::Second)->GetChildCount() != 1)
-				{
-					throw ConsumptionNodeException(node.GetChild(ChunkType::Second), "Too many children for condition node.");
-				}
-				_ApplySyntaxNodeToCodeNode2(*node.GetChild(ChunkType::Second)->Child(0), *binaryOp, lookups);
-			}
+			_ApplySyntaxNodeToCodeNode2(*node.GetChild(ChunkType::Second)->Child(0), *binaryOp, lookups);
 
 			binaryOp->Operator = ((node._chunkType == ChunkType::And) ? BinaryOperator::LogicalAnd : BinaryOperator::LogicalOr);
 			return unique_ptr<SyntaxNode>(move(binaryOp));
@@ -1262,6 +1240,8 @@ Consumption _GetInstructionConsumption(ConsumptionNode &node, DecompileLookups &
 		{
 			case ChunkType::If:
 			case ChunkType::Switch:
+			case ChunkType::And:
+			case ChunkType::Or:
 			case ChunkType::Nary:	   // Since we explicitly set things up like this...
 				// REVIEW: Add loops?
 				consumption.cAccGenerate = 1;
@@ -2248,7 +2228,6 @@ bool TryToStealOrCloneSomething(ConsumptionNode *originalChild, ConsumptionNode 
 					// else fall through...
 					*/
 				case ChunkType::First:  // But not second
-				case ChunkType::FirstNegated:
 				case ChunkType::And:
 				case ChunkType::Or:
 				case ChunkType::None:
@@ -2403,8 +2382,6 @@ bool _LiftOutFromConditionsWorker(ConsumptionNode *root, ConsumptionNode *chunk,
 		case ChunkType::Condition:
 		case ChunkType::First:
 		case ChunkType::Second:
-		case ChunkType::FirstNegated:
-		case ChunkType::SecondNegated:
 			if (chunk->GetChildCount() > 1)
 			{
 				ConsumptionNode *child = chunk->Child(0);
@@ -3010,41 +2987,6 @@ unique_ptr<ConsumptionNode> _FindAndStealSwitchValue(vector<pair<ConsumptionNode
 	return nullptr;
 }
 
-void _FixupIfs(ConsumptionNode *root, ConsumptionNode *chunk, DecompileLookups &lookups)
-{
-	// If an if is used for consumption (e.g. an only child of an instruction that consumes acc)
-	// then we need to ensure it has an else branch. e.g. SQ5, script 951.
-	for (size_t i = 0; i < chunk->GetChildCount(); i++)
-	{
-		if (chunk->Child(i)->GetType() == ChunkType::If)
-		{
-			Consumption consumptionParent = _GetInstructionConsumption(*chunk, lookups);
-			if (consumptionParent.cAccConsume)
-			{
-				// Ensure the if has an else
-				ConsumptionNode *ifNode = chunk->Child(i);
-				ConsumptionNode *elseNode = ifNode->GetChild(ChunkType::Else);
-				if (elseNode == nullptr)
-				{
-					// We actually don't need to scan backwards. We know that we came here as the result of
-					// a failed bnt operation. Therefore all we want is a FALSE in the accumulator.
-					unique_ptr<ConsumptionNode> newElse = make_unique<ConsumptionNode>();
-					newElse->SetType(ChunkType::Else);
-					unique_ptr<ConsumptionNode> zeroNode = make_unique<ConsumptionNode>();
-					zeroNode->SetType(ChunkType::ZeroNode);
-					newElse->PrependChild(move(zeroNode));
-					ifNode->PrependChild(move(newElse));
-				}
-			}
-		}
-	}
-
-	for (auto &child : chunk->Children())
-	{
-		_FixupIfs(root, child.get(), lookups);
-	}
-}
-
 void _FixupSwitches(ConsumptionNode *root, DecompileLookups &lookups)
 {
 	// Iteratively fixup switches.
@@ -3204,9 +3146,6 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 
 		_RemoveTOSS(mainChunk.get());
 		_FixupSwitches(mainChunk.get(), lookups);
-
-
-		_FixupIfs(mainChunk.get(), mainChunk.get(), lookups);
 
 		_LiftOutFromConditions(mainChunk.get(), mainChunk.get(), lookups);
 #ifdef TRY_LIFT_ASSIGNMENTS

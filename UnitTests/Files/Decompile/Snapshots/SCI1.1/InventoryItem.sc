@@ -62,7 +62,7 @@
 	)
 	
 	(method (onMe param1)
-		(return (and (super onMe: param1) (not (& signal $0004))))
+		(return (if (super onMe: param1) (not (& signal $0004)) else 0))
 	)
 	
 	(method (ownedBy param1)

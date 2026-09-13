@@ -17,6 +17,7 @@
 #include "AppState.h"
 #include "ClassBrowser.h"
 #include "SyntaxParser.h"
+#include <filesystem>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -56,7 +57,13 @@ std::string SetUpGame(const std::string &name)
 
     std::string gameFolder = GetRandomTempFolder();
     Assert::IsFalse(gameFolder.empty());
-    CopyFilesOver(nullptr, srcGameFolder, gameFolder);
+
+    // Copy with std::filesystem, not the shell. The shell copy shows an
+    // Explorer progress dialog, which interrupts the desktop during a test run.
+    std::error_code ec;
+    std::filesystem::copy(srcGameFolder, gameFolder,
+        std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing, ec);
+    Assert::IsFalse(static_cast<bool>(ec), L"copying the template game failed");
 
     appState = new AppState(nullptr);
     // AppState(nullptr) does not run InitInstance, so the grammars are not
@@ -80,25 +87,16 @@ void CleanUpGame(const std::string &gameFolder)
     delete appState;
     appState = nullptr;
 
-    char szPath[MAX_PATH];
-    StringCchCopy(szPath, ARRAYSIZE(szPath), gameFolder.c_str());
-    szPath[gameFolder.length() + 1] = 0;   // double null term
-
-    SHFILEOPSTRUCT fileOp = { 0 };
-    fileOp.hwnd = nullptr;
-    fileOp.wFunc = FO_DELETE;
-    fileOp.pFrom = szPath;
-    fileOp.pTo = nullptr;
-    fileOp.fFlags = FOF_SILENT | FOF_NOCONFIRMATION | FOF_NOERRORUI;
-    SHFileOperation(&fileOp);
+    std::error_code ec;
+    std::filesystem::remove_all(gameFolder, ec);
 }
 
 std::string SetUpGameSCI0()
 {
-    return SetUpGame("\\TemplateGame\\SCI0\\*");
+    return SetUpGame("\\TemplateGame\\SCI0");
 }
 
 std::string SetUpGameSCI11()
 {
-    return SetUpGame("\\TemplateGame\\SCI1.1\\*");
+    return SetUpGame("\\TemplateGame\\SCI1.1");
 }

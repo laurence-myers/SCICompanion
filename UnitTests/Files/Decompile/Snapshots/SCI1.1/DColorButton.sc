@@ -98,7 +98,7 @@
 	)
 	
 	(method (setSize param1 &tmp [temp0 2] temp2 temp3)
-		(TextSize @temp0 text font (and argc param1))
+		(TextSize @temp0 text font (if argc param1 else 0))
 		(+= temp2 2)
 		(+= temp3 2)
 		(= nsBottom (+ nsTop temp2))

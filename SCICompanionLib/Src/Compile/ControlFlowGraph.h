@@ -63,22 +63,32 @@ public:
 private:
 	void _ThrowIfAborted();
 	ControlFlowNode *_EnsureExitNode(NodeSet &existingExitNodes, ControlFlowNode *exitNodePredecessor, ControlFlowNode *exitNodeSuccessor);
-	ControlFlowNode *_ReplaceIfStatementInWorkingSet(ControlFlowNode *structure, ControlFlowNode *ifHeader, ControlFlowNode *ifFollowNode);
+	ControlFlowNode *_ReplaceIfStatementInWorkingSet(ControlFlowNode *structure, ControlFlowNode *ifHeader, ControlFlowNode *ifFollowNode, ControlFlowNode *testHead);
 	void _ReplaceNodeInFollowNodes(ControlFlowNode *newNode);
 	void _ReplaceNodeInWorkingSet(ControlFlowNode *parent, ControlFlowNode *newNode);
 	void _IdentifySwitchCases(ControlFlowNode *switchNodeIn);
-	void _FindAllCompoundConditions();
 	void _ResolveBreaksOrContinues();
+
+	// Loop-exit else edges: a "bnt" to the loop exit inside a loop body becomes
+	// an if whose else is a synthesized break.
+	void _SolveLoopBranches();
+	bool _SynthesizeElseBreak(ControlFlowNode *structure, uint16_t exitAddress, const NodeSet &testChain, ControlFlowNode *latch);
+
+	// Branch structuring: ands, ors and ifs, from the immediate post-dominators.
+	void _StructureAllBranches();
+	void _StructureBranches(ControlFlowNode *structure);
+	ControlFlowNode *_StructureSink(ControlFlowNode *structure);
+	bool _TryAndMerge(ControlFlowNode *structure, ControlFlowNode *first, const NodeSet *testChain);
+	bool _TryOrCollapse(ControlFlowNode *structure, ControlFlowNode *first, const std::map<ControlFlowNode*, ControlFlowNode*> &ipdom, const NodeSet *testChain);
+	bool _TryBuildIf(ControlFlowNode *structure, ControlFlowNode *head, const std::map<ControlFlowNode*, ControlFlowNode*> &ipdom);
 	bool _ResolveBreakOrContinue(uint16_t loopFollowAddress, ControlFlowNode *structure, SemanticTags loopOrContinueTag, ControlFlowNode *latchToAvoid);
 	void _RestructureBreaksAndContinues();
 	bool _RestructureBreakOrContinue(uint16_t loopFollowOrHeadAddress, ControlFlowNode *ignore, ControlFlowNode *structure, bool isBreak);
 	void _ReconnectBreakNodeToSubsequentCode(ControlFlowNode *structure, ControlFlowNode *breakNode, code_pos subsequentcode, SemanticTags loopOrContinueTag);
 	void _DoLoopTransforms();
 	void _DoLoopTransform(ControlFlowNode *loop);
-	void _FindCompoundConditions(ControlFlowNode *structure);
-	void _FindAllIfStatements();
-	void _FindIfStatements(DominatorMap &dominators, ControlFlowNode *structure);
 	ControlFlowNode *_PartitionCode(code_pos start, code_pos end);
+	std::string _DumpStructures();
 	ControlFlowNode *_FindFollowNodeForStructure(ControlFlowNode *structure);
 
 	static ControlFlowNode *_ProcessNaturalLoop(ControlFlowGraph &loopDetection, ControlFlowNode *parent, const NodeBlock &backEdge);

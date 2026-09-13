@@ -76,57 +76,64 @@ mode (the QfG4 golden diff, which ignores names and formatting).
 
 ## Fixtures
 
-Each fixture in `Files\Decompile\SCI1.1` reproduces one QfG4 decompilation
-failure. The fixture uses a hand-written `(asm ...)` block. The asm matches
-Sierra's exact bytecode. SCI Companion's own compiler emits cleaner code that
-decompiles fine, so a fixture must bypass the compiler with asm.
+Each fixture in `Files\Decompile\SCI1.1` reproduces one bytecode shape. Most
+use a hand-written `(asm ...)` block that matches Sierra's exact bytecode,
+because SCI Companion's own compiler emits a different branch dialect. The
+`C1`/`P1` fixtures are plain source compiled by SCI Companion, so they cover
+that dialect. A fixture with a `<name>.expected.sc` file is pinned to that
+text (after whitespace normalization) by `AssertDecompileMatchesExpected`. The
+expected text is the Sierra shape, not whatever the tool emitted. When an
+expected file is missing, the test writes the actual to
+`Kawa\SnapshotActuals\Expected` so it can be reviewed and committed.
 
 | Fixture | Script | Family | Status |
 |---|---|---|---|
 | `D0_Plain` | 901 | (smoke) | decompiles clean |
 | `F1_LoopHeadContinue` | 900 | 1 | fixed; reconstructs the if |
-| `F3_ValueJoin` | 903 | 3 | not fixed; pins the fallback |
-| `F4_BreakElseEdge` | 904 | 4 | not fixed; pins the fallback |
+| `X_SharedThenBranch` | 903 | (none) | non-Sierra shape; must fall back cleanly |
+| `F4_BreakElseEdge` | 904 | 4 | fixed; pinned text |
 | `F5_EmptyLeadingWhile` | 905 | 5 | fixed; reconstructs both loops |
 | `F6_EmptyTrailingFor` | 906 | 6 | fixed; reconstructs the loops |
 | `F7_UnknownClass` | 907 | 7 | class stays as asm; clear message |
-
-A fixed family's test asserts a clean decompile. A not-fixed family's test pins
-the current fallback (the warning plus an asm block) and proves the asm
-round-trips. When a fix lands, flip the pinning block to assert a clean
-decompile.
+| `C1_ValueAndOr` | 908 | (compiler) | value and/or round-trips |
+| `F3_ValueIfReturn` | 909 | 3 | fixed; `(return (and a b))` |
+| `F3_OrThreeTerms` | 910 | 3 | fixed; n-ary or |
+| `F3_OrAndOr` | 911 | 3 | fixed; needs the branch deoptimizer |
+| `F3_AndOr` | 912 | 3 | fixed |
+| `F3_IfValueWithElse` | 913 | 3 | fixed; `(= x (if c 1 else 2))` |
+| `F3_AndAsArgument` | 914 | 3 | fixed; and as a call argument |
+| `F4_WhileAnd` | 915 | 4 | fixed; else-break folded into the test |
+| `F4_WhileOr` | 916 | 4 | fixed; or as the loop test |
+| `P1_CompoundConditions` | 917 | (compiler) | SCI Companion dialect; text equals source |
 
 `TemplateGame_FallbackBaseline` guards against new fallbacks. The template game
 started with 7 known fallbacks. The Family 1 and Family 6 fixes each removed
-one, so the baseline is now 5. Lower `BASELINE` when a fix removes more.
+one, and the branch structurer removed one more (System's `InRect`), so the
+baseline is now 4. Lower `BASELINE` when a fix removes more.
 
-### Families still open (3, 4, 8)
+### How Families 3 and 4 are fixed
 
-Family 2 is fixed but has no isolated fixture. The disabled shape entangles with
-Family 3, so a minimal case fails for the Family 3 reason instead. The baseline
-test guards it.
+The decompiler structures branches from the immediate post-dominators
+(`ControlFlowGraph.cpp`, `_StructureAllBranches`): a `bnt` becomes an if whose
+follow is the post-dominator, a `bt` becomes an or, and an and is only made
+where an outer `bnt` shares an inner if's else. Nothing synthesizes a `not`.
+Two instruction fixups run first: `_UnchainBtToBnt` maps SCI Companion's
+`bt <then>` onto Sierra's `bt <join bnt>`, and `_DeoptimizeBtChains` restores
+the join that Sierra's optimizer bypasses in `(or P (and Q R))`. A `bnt` to the
+loop exit inside a loop body becomes an if with a synthesized else-break
+(`_SolveLoopBranches`). The chunk stage treats an if as a value. AST passes
+(`DecompilerAstPasses.cpp`) then give the idiomatic text: nested and
+value-position ifs become `and`/`or`, loop cleanup folds the breaks, double
+nots collapse in boolean context, and `(= a (+ a b))` becomes `(+= a b)`.
+`TestAstPasses` covers the passes on parsed source, with no game data.
 
-Families 3, 4 and 8 were attempted and verified against the sluicebox golden
-decompilation of the real QfG4 scripts (and its source at
-`E:\Code\Cs\sci-tools\SCI\Decompile`). They share one root cause and need one
-architectural change:
+Family 2 is fixed but has no isolated fixture; the baseline test guards it.
+Family 8 (a statement before an if condition that a `ret` consumes) is still
+open; see the plan.
 
-- Family 3 (and/or value join): re-enabling the disabled negated-compound
-  cases produces `(not (not ...))` and regressed 11 real scripts, confirmed by
-  a full before/after dump diffed against golden. `F3_ValueJoin` pins it.
-- Family 4 (compound else edge is the loop exit): `F4_BreakElseEdge` pins it.
-- Family 8 (a statement before an if condition): the failing chunk is a
-  side-effecting assignment that is a leading child of a condition inside a
-  `ret` node (an if used as a return value). The lift pass cannot move a
-  statement past a value-consumer.
-
-Root cause: SCI Companion detects compound conditions and consumes instructions
-at the CFG level, which entangles statements and values. sluicebox instead
-builds a correct nested-if AST, then transforms it with dedicated AST passes
-(`IfThenToAndConverter`: `(if A (if B C))` -> `(if (and A B) C)`; `CondCreator`;
-`NaryReducer`; `ForContIfFinder`). The correct fix is that AST-transform
-pipeline, run on correct nested-if output. It is a major feature, and a naive
-CFG-level fix produces semantically wrong output, so these stay deferred.
+`DiagnosticDumps::Dump_FailingTemplateScripts` is not in the default filter.
+It decompiles named template scripts with the control-flow dump on, for
+diagnosing a new fallback. Edit its title list, then run it by name.
 
 ## Other tests
 

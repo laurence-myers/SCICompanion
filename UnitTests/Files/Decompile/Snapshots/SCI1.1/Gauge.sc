@@ -165,12 +165,12 @@ code_028d:
 			lst      temp0
 			ldi      0
 			eq?     
-			bt       code_029b
+			bt       code_0299
 			lst      temp0
 			lal      newDButton_5
 			eq?     
+code_0299:
 			bnt      code_02a1
-code_029b:
 			lap      param1
 			sat      temp1
 			jmp      code_02a3

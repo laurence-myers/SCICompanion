@@ -195,7 +195,7 @@ ControlFlowNode *ControlFlowGraph::_EnsureExitNode(NodeSet &existingExitNodes, C
 }
 
 	// This is different from _ReplaceNodeInWorkingSet mainly in that the if node has two exits.
-ControlFlowNode *ControlFlowGraph::_ReplaceIfStatementInWorkingSet(ControlFlowNode *structure, ControlFlowNode *ifHeader, ControlFlowNode *ifFollowNode)
+ControlFlowNode *ControlFlowGraph::_ReplaceIfStatementInWorkingSet(ControlFlowNode *structure, ControlFlowNode *ifHeader, ControlFlowNode *ifFollowNode, ControlFlowNode *testHead)
 {
 	// The if statement is defined by header and followNode
 	// Follow node is not included in the if statement (since it may be used by many if statements)
@@ -206,7 +206,13 @@ ControlFlowNode *ControlFlowGraph::_ReplaceIfStatementInWorkingSet(ControlFlowNo
 	// At this point, we can probably assert that each node we encounter (other than the header) only has a
 	// single successor. There shouldn't be any more branching at this point, other than the if statements
 	// that we are collected. And we go from the most nested to the least.
-	ControlFlowNode *ifNode = MakeStructuredNode<IfNode>(ifHeader);
+	IfNode *ifNode = MakeStructuredNode<IfNode>(ifHeader);
+	ifNode->testHead = testHead;
+	// The value nodes that feed the test come first (testHead .. header).
+	for (ControlFlowNode *feed = testHead; feed != ifHeader; feed = *feed->Successors().begin())
+	{
+		ifNode->InsertChild(feed);
+	}
 	// When the follow node is a common latch, use the loop-head address it
 	// stands for. Its own sort-only token address can collide with a real node
 	// and would never match the branch target (the loop head), which trips the
@@ -261,9 +267,10 @@ ControlFlowNode *ControlFlowGraph::_ReplaceIfStatementInWorkingSet(ControlFlowNo
 	ifNode->InsertChild(exitPoint);
 	structure->NotifyChildrenReplacedBy(ifNode);
 
-	// The header's predecessors become the if's predecessors, and the header has no predeceesor
-	ifNode->AssignPredecessors(ifHeader->Predecessors());
-	ifHeader->ClearPredecessors();
+	// The test chain head's predecessors become the if's predecessors, and the
+	// chain head has no predecessor
+	ifNode->AssignPredecessors(testHead->Predecessors());
+	testHead->ClearPredecessors();
 
 	// The follow node should have the ifNode as its predecessor, and not any of the if node's children
 	NodeSet followNodePreds = ifFollowNode->Predecessors();
@@ -741,23 +748,6 @@ vector<NodeBlock> ControlFlowGraph::_FindSwitchBlocks(DominatorMap &dominators, 
 }
 
 
-void ControlFlowGraph::_FindAllCompoundConditions()
-{
-	// Make a copy, since we'll be modifying it (adding to it)
-	NodeSet controlStructuresCopy = discoveredControlStructures;
-	// The first time we call _FindAllStructuresOf, we'll just have a single discovered structure(the main one)
-	// After that we'll also have whatever structures were discovered in the previous call.
-	// We discover structures from the most inner to the most outer (in this particular call of the function)
-	for (ControlFlowNode *structure : controlStructuresCopy)
-	{
-		_FindCompoundConditions(structure);
-		if (_decompilerResults.IsAborted())
-		{
-			break;
-		}
-	}
-}
-
 // We want to navigate down the hierarchy of loops (stopping at any loop)
 // and look for nodes that end in unconditional jumps to the loop follow.
 // Then, we'll mark them at "break", and reconnect them to the subsequent node in
@@ -1094,155 +1084,569 @@ void ControlFlowGraph::_DoLoopTransform(ControlFlowNode *loop)
 	}
 }
 
-void ControlFlowGraph::_FindCompoundConditions(ControlFlowNode *structure)
+// ---------------------------------------------------------------------------
+// Loop-exit else edges
+// ---------------------------------------------------------------------------
+
+// The raw nodes that make up a loop's head test, before structuring: the chain
+// from the head through the last "bnt" to the loop exit. An or inside the test
+// shows as a "bt" to a node further down the chain, so the walk continues while
+// such a target is pending. Empty for a loop with no head test.
+static NodeSet _LoopTestChain(ControlFlowNode *loop, uint16_t exitAddress)
 {
-	bool changesMade = true;
-	while (changesMade)
+	vector<ControlFlowNode*> walked;
+	size_t lastTestIndex = 0;
+	bool haveTest = false;
+	NodeSet pendingTargets;
+	NodeSet seen;
+	ControlFlowNode *node = (*loop)[SemId::Head];
+	while (node && (node->Type == CFGNodeType::RawCode) && !seen.contains(node) && (walked.size() < 64))
 	{
-		changesMade = false;
-		stack<ControlFlowNode*> toVisit;
-		NodeSet visited;
-		toVisit.push((*structure)[SemId::Head]);
-		visited.insert((*structure)[SemId::Head]);
-		while (!toVisit.empty())
+		seen.insert(node);
+		walked.push_back(node);
+		pendingTargets.erase(node);
+		ControlFlowNode *next = nullptr;
+		if (node->Successors().size() == 2)
 		{
-			ControlFlowNode *possibleStart = pop_ptr(toVisit);
-			// This shouldn't result in an infinite loop, since this should be an acyclic graph at this point.
-			// Hmm nope, because I do this inside of while loops... although perhaps I should have removed the loop
-			// cyckes?
-			for (ControlFlowNode *successor : possibleStart->Successors())
+			ControlFlowNode *thenNode, *elseNode;
+			if (!MaybeGetThenAndElseBranches(node, &thenNode, &elseNode))
 			{
-				if ((successor->Type != CFGNodeType::Exit) && (!visited.contains(successor)))
+				break;
+			}
+			Opcode op = node->getLastInstruction().get_opcode();
+			if (op == Opcode::BNT)
+			{
+				if (IsExitTo(elseNode, exitAddress))
 				{
-					toVisit.push(successor);
-					visited.insert(successor);
+					haveTest = true;
+					lastTestIndex = walked.size() - 1;
+					next = thenNode;
+				}
+				else if (!pendingTargets.empty())
+				{
+					// An and inside an or operand: its false edge goes to the join.
+					next = thenNode;
 				}
 			}
-
-			// Sometimes possibleStart's successors contain itself (e.g. SQ5, script 850), and we would misidentify
-			// this as a compound condition (it would instead be a loop)
-			if ((possibleStart->Successors().size() == 2) && !possibleStart->Successors().contains(possibleStart))
+			else if (op == Opcode::BT)
 			{
-				// Two way node. Check to see if one of these ends in a branch
-				auto it = possibleStart->Successors().begin();
-				auto itNext = it;
-				itNext++;
-				ControlFlowNode *branchNode = nullptr;
-				ControlFlowNode *other = nullptr;
-				if (EndsWithConditionalBranch(*it))
+				if (!IsExitTo(thenNode, exitAddress))
 				{
-					// Does the branch node only have a single successor that is the start node?
-					ControlFlowNode *possibleBranch = *it;
-					if ((possibleBranch->Predecessors().size() == 1) && (*possibleBranch->Predecessors().begin() == possibleStart))
-					{
-						branchNode = possibleBranch;
-						other = *itNext;
-					}
-				}
-
-				if (!branchNode && EndsWithConditionalBranch(*itNext))
-				{
-					// Does the branch node only have a single successor that is the start node?
-					ControlFlowNode *possibleBranch = *itNext;
-					if ((possibleBranch->Predecessors().size() == 1) && (*possibleBranch->Predecessors().begin() == possibleStart))
-					{
-						branchNode = possibleBranch;
-						other = *it;
-					}
-				}
-
-				// REVIEW: FIX: there are two possible branches with conditionals... we only check one, and it might
-				// be the OTHER that has a single entry.... so we'll miss it.
-
-				if (branchNode)
-				{
-					// The only remaining thing to check is that this branch node also branches to "other".
-					if (branchNode->Successors().contains(other))
-					{
-						// We found a compound condition.
-						// MakeNewNode(CFGNodeType::And);
-						// TODO: With the help of those 4 graphs, and GetThenAndElseBranches, we can
-						// make the correct compound condition, then then assign its thenBranch.
-						// Once that's done, we'll write the function to handle ifs.
-						// REVIEW: Will this catch whiles too?
-
-						// From http://www.labri.fr/perso/fleury/download/papers/binary_analysis/cifuentes96structuring.pdf
-						// First case: A || B
-						// Shall we express everything in terms of BT?
-						ControlFlowNode *firstThenNode, *firstElseNode, *secondThenNode, *secondElseNode;
-						GetThenAndElseBranches(possibleStart, &firstThenNode, &firstElseNode);
-						GetThenAndElseBranches(branchNode, &secondThenNode, &secondElseNode);
-						CompoundConditionNode *newConditionNode = nullptr;
-						bool throwException = false;
-						bool goAheadWithIt = false;
-						if (firstElseNode == secondElseNode)
-						{
-							goAheadWithIt = true;
-							throwException = (firstThenNode != branchNode);
-							// This is (X and Y)
-							newConditionNode = MakeStructuredNode<CompoundConditionNode>(possibleStart, ConditionType::And);
-							newConditionNode->isFirstTermNegated = false;
-							newConditionNode->thenBranch = secondThenNode->GetStartingAddress();
-						}
-						else if (firstThenNode == secondThenNode)
-						{
-							goAheadWithIt = true;
-							throwException = (firstElseNode != branchNode);
-							// This is (X or Y)
-							newConditionNode = MakeStructuredNode<CompoundConditionNode>(possibleStart, ConditionType::Or);
-							newConditionNode->isFirstTermNegated = false;
-							newConditionNode->thenBranch = firstThenNode->GetStartingAddress();
-						}
-						else if (firstElseNode == secondThenNode)
-						{
-							// If this value of this condition is used, then it will be wrong.
-							/*
-							throwException = (firstThenNode != branchNode);
-							// This is (!X or Y);
-							newConditionNode = MakeStructuredNode<CompoundConditionNode>(possibleStart, ConditionType::Or);
-							newConditionNode->isFirstTermNegated = true;
-							newConditionNode->thenBranch = secondThenNode->GetStartingAddress();
-*/						
-						}
-						else if (firstThenNode == secondElseNode)
-						{
-							/*
-							throwException = (firstElseNode != branchNode);
-							// This is (!X and Y)
-							newConditionNode = MakeStructuredNode<CompoundConditionNode>(possibleStart, ConditionType::And);
-							newConditionNode->isFirstTermNegated = true;
-							newConditionNode->thenBranch = secondThenNode->GetStartingAddress();
-						*/
-						}
-
-						if (throwException)
-						{
-							throw ControlFlowException(possibleStart, "Unable to resolve compound condition");
-						}
-
-						if (goAheadWithIt)
-						{
-							(*newConditionNode)[SemId::First] = possibleStart;
-							(*newConditionNode)[SemId::Second] = branchNode;
-							newConditionNode->InsertChild(possibleStart);
-							newConditionNode->InsertChild(branchNode);
-
-							// Now we want to remove possibleStart and branchNode from the tree, and replace with newConditionNode
-							_ReplaceNodeInWorkingSet(structure, newConditionNode);
-							_ReplaceNodeInFollowNodes(newConditionNode);
-
-							changesMade = true;
-							// Restart the search only when we built a compound. An
-							// unsupported shape (a disabled negated compound) must not
-							// abort the search, or later compounds go unbuilt and their
-							// leftover two-way node fails if-follow resolution.
-							break;
-						}
-					}
+					pendingTargets.insert(thenNode);
+					next = elseNode;
 				}
 			}
 		}
+		else if ((node->Successors().size() == 1) && !pendingTargets.empty())
+		{
+			next = *node->Successors().begin();
+		}
+		node = next;
 	}
+	NodeSet chain;
+	if (haveTest)
+	{
+		for (size_t i = 0; i <= lastTestIndex; i++)
+		{
+			chain.insert(walked[i]);
+		}
+	}
+	return chain;
+}
+
+// True if node is one of the loop's test nodes, or now contains one.
+static bool _IsTestNode(ControlFlowNode *node, const NodeSet &testChain)
+{
+	if (testChain.contains(node))
+	{
+		return true;
+	}
+	for (ControlFlowNode *test : testChain)
+	{
+		if (node->Children().contains(test))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void ControlFlowGraph::_SolveLoopBranches()
+{
+	vector<ControlFlowNode*> loops;
+	copy_if(discoveredControlStructures.begin(), discoveredControlStructures.end(), back_inserter(loops),
+		[](const ControlFlowNode *node) { return node->Type == CFGNodeType::Loop; });
+	for (ControlFlowNode *loop : loops)
+	{
+		uint16_t exitAddress = (*loop)[SemId::Follow]->GetStartingAddress();
+		NodeSet testChain = _LoopTestChain(loop, exitAddress);
+		ControlFlowNode *latch = (*loop)[SemId::Latch];
+		while (_SynthesizeElseBreak(loop, exitAddress, testChain, latch))
+		{
+			if (_decompilerResults.IsAborted())
+			{
+				break;
+			}
+		}
+	}
+}
+
+// A "bnt" to the loop exit inside the body means: if the test fails, leave the
+// loop. Make that an if with a synthesized break in its else, so it structures
+// like any other if. The break goes on the else edge as a FakeBreakOrContinue
+// node whose successor is the code after everything the branch guards. The
+// instruction keeps naming the exit; GetThenAndElseBranches understands that.
+// Converts one branch (the last by address, so a nested one goes first) and
+// returns true, or false when none is left.
+bool ControlFlowGraph::_SynthesizeElseBreak(ControlFlowNode *structure, uint16_t exitAddress, const NodeSet &testChain, ControlFlowNode *latch)
+{
+	ControlFlowNode *candidate = nullptr;
+	for (ControlFlowNode *child : structure->Children())
+	{
+		if ((child->Type != CFGNodeType::RawCode) || (child->Successors().size() != 2) || (child == latch) ||
+			testChain.contains(child) || !child->endsWith(Opcode::BNT))
+		{
+			continue;
+		}
+		ControlFlowNode *thenNode, *elseNode;
+		if (!MaybeGetThenAndElseBranches(child, &thenNode, &elseNode) || !IsExitTo(elseNode, exitAddress))
+		{
+			continue;
+		}
+		if (!candidate || (child->GetStartingAddress() > candidate->GetStartingAddress()))
+		{
+			candidate = child;
+		}
+	}
+
+	if (candidate)
+	{
+		ControlFlowNode *thenNode, *exitNode;
+		GetThenAndElseBranches(candidate, &thenNode, &exitNode);
+
+		// The if guards everything the branch dominates. The code after the last
+		// of those is where a failed test now goes, through the break.
+		// Edge changes on children do not mark the structure dirty, so recompute.
+		structure->dirty = true;
+		DominatorMap dominators = GenerateDominators(structure, (*structure)[SemId::Head]);
+		ControlFlowNode *last = nullptr;
+		for (ControlFlowNode *child : structure->Children())
+		{
+			if ((child == candidate) || (child->Type == CFGNodeType::Exit) ||
+				(child->Type == CFGNodeType::FakeBreakOrContinue) || (child->Type == CFGNodeType::CommonLatch))
+			{
+				continue;
+			}
+			auto it = dominators.find(child);
+			if ((it != dominators.end()) && it->second.contains(candidate))
+			{
+				if (!last || (child->GetStartingAddress() > last->GetStartingAddress()))
+				{
+					last = child;
+				}
+			}
+		}
+		ControlFlowNode *after = thenNode;
+		if (last)
+		{
+			if (last->Successors().size() != 1)
+			{
+				throw ControlFlowException(candidate, "Loop exit branch: the guarded code has no single exit.");
+			}
+			after = *last->Successors().begin();
+		}
+
+		FakeBreakOrContinueNode *fakeBreak = MakeNode<FakeBreakOrContinueNode>();
+		fakeBreak->Tags.insert(SemanticTags::LoopBreak);
+		structure->InsertChild(fakeBreak);
+		exitNode->ErasePredecessor(candidate);
+		fakeBreak->InsertPredecessor(candidate);
+		after->InsertPredecessor(fakeBreak);
+		if (exitNode->Predecessors().empty())
+		{
+			structure->EraseChild(exitNode);
+		}
+		return true;
+	}
+
+	// Recurse into a switch and its cases, but not into another loop.
+	for (ControlFlowNode *child : structure->Children())
+	{
+		if ((child->Type == CFGNodeType::Switch) || (child->Type == CFGNodeType::Case))
+		{
+			if (_SynthesizeElseBreak(child, exitAddress, testChain, latch))
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+// ---------------------------------------------------------------------------
+// Branch structuring
+// ---------------------------------------------------------------------------
+//
+// Every two-way node is structured from its immediate post-dominator, from the
+// innermost out:
+//  - a bnt whose then leads (through one-way value nodes) to a two-way node
+//    that shares its else is an "and" with that node;
+//  - a bt whose target is its post-dominator is an "or" with the one-way chain
+//    between them;
+//  - otherwise it is an if whose follow is the post-dominator.
+// No negation is ever synthesized. A shape outside these rules is left, and
+// reported as unstructured, so the function falls back to assembly.
+
+vector<ControlFlowNode*> _GetPostOrder(ControlFlowNode *structure);
+
+// A one-way structured node that leaves a value in the accumulator: an or's
+// join, or an if used as a value.
+static bool _IsValueNode(ControlFlowNode *node)
+{
+	return (node->Successors().size() == 1) &&
+		((node->Type == CFGNodeType::CompoundCondition) || (node->Type == CFGNodeType::If));
+}
+
+// True if the node's code consumes the accumulator before it sets it, so the
+// value must come from the node before it.
+static bool _NeedsIncomingAcc(ControlFlowNode *node)
+{
+	if (node->Type != CFGNodeType::RawCode)
+	{
+		return false;
+	}
+	RawCodeNode *raw = static_cast<RawCodeNode*>(node);
+	bool live = false;
+	for (code_pos inst = raw->start; inst != raw->end; ++inst)
+	{
+		Consumption consumption = _GetInstructionConsumption(*inst);
+		if (consumption.cAccConsume && !live)
+		{
+			return true;
+		}
+		if (consumption.cAccGenerate)
+		{
+			live = true;
+		}
+	}
+	return false;
+}
+
+// The value node that feeds a branch node its accumulator, when the branch
+// node needs one and its only predecessor is such a node. Returns that node,
+// else the branch node itself.
+static ControlFlowNode *_TestChainHead(ControlFlowNode *node)
+{
+	if (_NeedsIncomingAcc(node) && (node->Predecessors().size() == 1))
+	{
+		ControlFlowNode *pred = *node->Predecessors().begin();
+		if (_IsValueNode(pred))
+		{
+			return pred;
+		}
+	}
+	return node;
+}
+
+static vector<ControlFlowNode*> _ChainFrom(ControlFlowNode *head, ControlFlowNode *tail)
+{
+	vector<ControlFlowNode*> chain;
+	for (ControlFlowNode *node = head; ; node = *node->Successors().begin())
+	{
+		chain.push_back(node);
+		if ((node == tail) || node->Successors().empty())
+		{
+			break;
+		}
+	}
+	return chain;
+}
+
+ControlFlowNode *ControlFlowGraph::_StructureSink(ControlFlowNode *structure)
+{
+	ControlFlowNode *tail = structure->MaybeGet(SemId::Tail);
+	if (structure->Type == CFGNodeType::Loop)
+	{
+		// The loop exit, while something still branches to it; else the latch.
+		if (tail && structure->Children().contains(tail) && !tail->Predecessors().empty())
+		{
+			return tail;
+		}
+		return (*structure)[SemId::Latch];
+	}
+	if (tail && structure->Children().contains(tail))
+	{
+		return tail;
+	}
+	ControlFlowNode *sink = nullptr;
+	for (ControlFlowNode *child : structure->Children())
+	{
+		if (child->Successors().empty())
+		{
+			if (sink)
+			{
+				return nullptr;
+			}
+			sink = child;
+		}
+	}
+	return sink;
+}
+
+void ControlFlowGraph::_StructureAllBranches()
+{
+	NodeSet structuresCopy = discoveredControlStructures;
+	for (ControlFlowNode *structure : structuresCopy)
+	{
+		if ((structure->Type == CFGNodeType::Main) || (structure->Type == CFGNodeType::Loop) || (structure->Type == CFGNodeType::Case))
+		{
+			_StructureBranches(structure);
+		}
+		if (_decompilerResults.IsAborted())
+		{
+			break;
+		}
+	}
+}
+
+void ControlFlowGraph::_StructureBranches(ControlFlowNode *structure)
+{
+	bool isLoop = (structure->Type == CFGNodeType::Loop);
+	NodeSet testChain;
+	ControlFlowNode *latch = nullptr;
+	if (isLoop)
+	{
+		testChain = _LoopTestChain(structure, (*structure)[SemId::Follow]->GetStartingAddress());
+		latch = (*structure)[SemId::Latch];
+	}
+	const NodeSet *testChainPtr = isLoop ? &testChain : nullptr;
+
+	bool changes = true;
+	int guard = 0;
+	while (changes)
+	{
+		changes = false;
+		if (++guard > 4096)
+		{
+			throw ControlFlowException(structure, "Branch structuring did not converge.");
+		}
+		ControlFlowNode *sink = _StructureSink(structure);
+		if (!sink)
+		{
+			throw ControlFlowException(structure, "Branch structuring: no single exit.");
+		}
+		// Edge changes on children do not mark the structure dirty, so recompute.
+		structure->postDirty = true;
+		DominatorMap postDominators = GeneratePostDominators(structure, sink);
+		map<ControlFlowNode*, ControlFlowNode*> ipdom = CalculateImmediatePostDominators(postDominators);
+		vector<ControlFlowNode*> postOrder = _GetPostOrder(structure);
+		for (ControlFlowNode *node : postOrder)
+		{
+			if ((node->Successors().size() != 2) || (node == latch) || (node->Type == CFGNodeType::Invert))
+			{
+				continue;
+			}
+			bool isTest = isLoop && _IsTestNode(node, testChain);
+			if (_TryAndMerge(structure, node, testChainPtr) ||
+				_TryOrCollapse(structure, node, ipdom, testChainPtr) ||
+				(!isTest && _TryBuildIf(structure, node, ipdom)))
+			{
+				changes = true;
+				break;
+			}
+		}
+	}
+
+	// Anything two-way left, other than the loop test, is unstructured.
+	for (ControlFlowNode *node : structure->Children())
+	{
+		if ((node->Successors().size() == 2) && (node != latch) && (node->Type != CFGNodeType::Invert) &&
+			!(isLoop && _IsTestNode(node, testChain)))
+		{
+			throw ControlFlowException(node, "Unstructured branches.");
+		}
+	}
+}
+
+// first: a bnt (or an and) whose then leads, through one-way value nodes, to a
+// two-way node that shares first's else. The two are one "and", with the
+// shared else as its else and the last node's then as its then.
+bool ControlFlowGraph::_TryAndMerge(ControlFlowNode *structure, ControlFlowNode *first, const NodeSet *testChain)
+{
+	if ((first->Type != CFGNodeType::RawCode) && (first->Type != CFGNodeType::CompoundCondition))
+	{
+		return false;
+	}
+	if ((first->Type == CFGNodeType::RawCode) && !first->endsWith(Opcode::BNT))
+	{
+		return false;
+	}
+	ControlFlowNode *thenNode, *elseNode;
+	if (!MaybeGetThenAndElseBranches(first, &thenNode, &elseNode))
+	{
+		return false;
+	}
+
+	vector<ControlFlowNode*> second;
+	ControlFlowNode *last = thenNode;
+	for (int guard = 0; guard < 16; guard++)
+	{
+		if (last->Predecessors().size() != 1)
+		{
+			return false;
+		}
+		if (last->Successors().size() == 2)
+		{
+			break;
+		}
+		if (!_IsValueNode(last))
+		{
+			return false;
+		}
+		second.push_back(last);
+		last = *last->Successors().begin();
+	}
+	if (last->Successors().size() != 2)
+	{
+		return false;
+	}
+	// The last term ends in a bnt (a plain and), or in a bt when the and is the
+	// first operand of an or: (or (and a b) c) is a; bnt J; b; bt L; J: c.
+	if ((last->Type != CFGNodeType::RawCode) && (last->Type != CFGNodeType::CompoundCondition))
+	{
+		return false;
+	}
+	if ((last->Type == CFGNodeType::RawCode) && !last->endsWith(Opcode::BNT) && !last->endsWith(Opcode::BT))
+	{
+		return false;
+	}
+	ControlFlowNode *lastThen, *lastElse;
+	if (!MaybeGetThenAndElseBranches(last, &lastThen, &lastElse))
+	{
+		return false;
+	}
+	if ((lastElse != elseNode) || (lastThen == elseNode))
+	{
+		return false;
+	}
+	// Never merge across the loop test boundary.
+	if (testChain && (_IsTestNode(first, *testChain) != _IsTestNode(last, *testChain)))
+	{
+		return false;
+	}
+	second.push_back(last);
+
+	vector<ControlFlowNode*> firstChain = _ChainFrom(_TestChainHead(first), first);
+	CompoundConditionNode *cc = MakeStructuredNode<CompoundConditionNode>(firstChain.front(), ConditionType::And);
+	cc->thenBranch = lastThen->GetStartingAddress();
+	(*cc)[SemId::First] = firstChain.front();
+	cc->firstTail = first;
+	(*cc)[SemId::Second] = second.front();
+	cc->secondTail = last;
+	for (ControlFlowNode *node : firstChain)
+	{
+		cc->InsertChild(node);
+	}
+	for (ControlFlowNode *node : second)
+	{
+		cc->InsertChild(node);
+	}
+	_ReplaceNodeInWorkingSet(structure, cc);
+	_ReplaceNodeInFollowNodes(cc);
+	return true;
+}
+
+// first: a bt whose target is its post-dominator (the join), with a one-way
+// chain from its fall-through to the join. That is an "or": first, then the
+// chain. The or is a one-way node whose value flows to the join.
+bool ControlFlowGraph::_TryOrCollapse(ControlFlowNode *structure, ControlFlowNode *first, const map<ControlFlowNode*, ControlFlowNode*> &ipdom, const NodeSet *testChain)
+{
+	// first is a bt, or an and whose last term ended in a bt (the and is the
+	// or's first operand); either way its then is the join.
+	bool isBt = (first->Type == CFGNodeType::RawCode) && first->endsWith(Opcode::BT);
+	bool isAnd = (first->Type == CFGNodeType::CompoundCondition) &&
+		(static_cast<CompoundConditionNode*>(first)->condition == ConditionType::And);
+	if (!isBt && !isAnd)
+	{
+		return false;
+	}
+	ControlFlowNode *join, *operandStart;
+	if (!MaybeGetThenAndElseBranches(first, &join, &operandStart))
+	{
+		return false;
+	}
+	auto it = ipdom.find(first);
+	if ((it == ipdom.end()) || (it->second != join))
+	{
+		return false;
+	}
+
+	vector<ControlFlowNode*> second;
+	ControlFlowNode *node = operandStart;
+	for (int guard = 0; (guard < 256) && (node != join); guard++)
+	{
+		if ((node->Successors().size() != 1) || (node->Predecessors().size() != 1) || (node->Type == CFGNodeType::Exit))
+		{
+			return false;
+		}
+		second.push_back(node);
+		node = *node->Successors().begin();
+	}
+	if ((node != join) || second.empty())
+	{
+		return false;
+	}
+	if (testChain && (_IsTestNode(first, *testChain) != _IsTestNode(second.back(), *testChain)))
+	{
+		return false;
+	}
+
+	vector<ControlFlowNode*> firstChain = _ChainFrom(_TestChainHead(first), first);
+	CompoundConditionNode *cc = MakeStructuredNode<CompoundConditionNode>(firstChain.front(), ConditionType::Or);
+	(*cc)[SemId::First] = firstChain.front();
+	cc->firstTail = first;
+	(*cc)[SemId::Second] = second.front();
+	cc->secondTail = second.back();
+	for (ControlFlowNode *node : firstChain)
+	{
+		cc->InsertChild(node);
+	}
+	for (ControlFlowNode *node : second)
+	{
+		cc->InsertChild(node);
+	}
+	_ReplaceNodeInWorkingSet(structure, cc);
+	_ReplaceNodeInFollowNodes(cc);
+	return true;
+}
+
+// head: a two-way node whose then and else each either go straight to the
+// post-dominator or start a block only head enters. That is an if (or
+// if-else) whose follow is the post-dominator.
+bool ControlFlowGraph::_TryBuildIf(ControlFlowNode *structure, ControlFlowNode *head, const map<ControlFlowNode*, ControlFlowNode*> &ipdom)
+{
+	auto it = ipdom.find(head);
+	if (it == ipdom.end())
+	{
+		return false;
+	}
+	ControlFlowNode *follow = it->second;
+	ControlFlowNode *thenNode, *elseNode;
+	if (!MaybeGetThenAndElseBranches(head, &thenNode, &elseNode))
+	{
+		return false;
+	}
+	auto branchOk = [follow](ControlFlowNode *target) { return (target == follow) || (target->Predecessors().size() == 1); };
+	if (!branchOk(thenNode) || !branchOk(elseNode))
+	{
+		return false;
+	}
+	if ((thenNode == follow) && (elseNode == follow))
+	{
+		return false;
+	}
+	_ReplaceIfStatementInWorkingSet(structure, head, follow, _TestChainHead(head));
+	return true;
 }
 
 vector<NodeBlock> _FindBackEdges(DominatorMap &dominators, DominatorMap &postDominators, ControlFlowNode *structure)
@@ -1376,189 +1780,60 @@ vector<ControlFlowNode*> _GetPostOrder(ControlFlowNode *structure)
 	return ordered;
 }
 
-ControlFlowNode *_FindMaxNodeDominatedByMWithTwoOrMoreInEdges(DominatorMap &dominators, const map<ControlFlowNode*, ControlFlowNode*> &immediateDominators, vector<ControlFlowNode*> &postOrdered, ControlFlowNode *m, ControlFlowNode *dontGoBeyondThis)
+// A forward "bt" whose target follows a "bnt" jumps over that bnt. SCI
+// Companion's own compiler emits this for an (or ...) in a condition; Sierra's
+// does not. Retarget the bt onto the bnt: the accumulator is true there, so the
+// bnt falls through, and the or now ends at one join node the structurer can
+// see (a; bt L; b; L: bnt ...).
+void _UnchainBtToBnt(code_pos start, code_pos end)
 {
-	auto endIt = find(postOrdered.begin(), postOrdered.end(), dontGoBeyondThis);
-	auto it = postOrdered.begin();
-	while (it != endIt)
-	{
-		// Work the graph from the "bottom up" until dontGoBeyondThis
-		ControlFlowNode *possibleFollow = *it;
-		if (possibleFollow->Predecessors().size() >= 2)
-		{
-			NodeSet &dominatorsForNode = dominators.at(possibleFollow);
-			if (dominatorsForNode.contains(m))
-			{
-				if (immediateDominators.at(possibleFollow) == m)
-				{
-					return possibleFollow;
-				}
-			}
-		}
-
-		++it;
-	}
-	return nullptr;
-}
-
-void ControlFlowGraph::_FindAllIfStatements()
-{
-	// Make a copy, since we'll be modifying it (adding to it)
-	NodeSet controlStructuresCopy = discoveredControlStructures;
-	// The first time we call _FindAllStructuresOf, we'll just have a single discovered structure(the main one)
-	// After that we'll also have whatever structures were discovered in the previous call.
-	// We discover structures from the most inner to the most outer (in this particular call of the function)
-	for (ControlFlowNode *structure : controlStructuresCopy)
-	{
-		DominatorMap dominators = GenerateDominators(structure, (*structure)[SemId::Head]);
-		_FindIfStatements(dominators, structure);
-		if (_decompilerResults.IsAborted())
-		{
-			break;
-		}
-	}
-}
-
-// A loop either has a condition in the head or latch. We'll return which ever that is.
-ControlFlowNode *_GetTrueLoopLatchOrHead(ControlFlowNode *loop)
-{
-	// Check the then/else nodes. Whichever (head or latch) has one branch that points
-	// to the loop tail (exit) is the one that is the condition.
-	ControlFlowNode *thenNode, *elseNode;
-	if (MaybeGetThenAndElseBranches((*loop)[SemId::Head], &thenNode, &elseNode))
-	{
-		if ((thenNode == (*loop)[SemId::Tail]) || (elseNode == (*loop)[SemId::Tail]))
-		{
-			return (*loop)[SemId::Head];
-		}
-	}
-
-	if (MaybeGetThenAndElseBranches((*loop)[SemId::Latch], &thenNode, &elseNode))
-	{
-		if ((thenNode == (*loop)[SemId::Tail]) || (elseNode == (*loop)[SemId::Tail]))
-		{
-			return (*loop)[SemId::Latch];
-		}
-	}
-
-	return nullptr;
-}
-
-void ControlFlowGraph::_FindIfStatements(DominatorMap &dominators, ControlFlowNode *structure)
-{
-	if ((structure->Type == CFGNodeType::CompoundCondition) || (structure->Type == CFGNodeType::Switch) || (structure->Type == CFGNodeType::Invert))
-	{
-		// This seems hacky. And it might interfere with ternary operators?
-		return;
-	}
-
-	ControlFlowNode *loopLatchOrHead = nullptr;
-	if (structure->Type == CFGNodeType::Loop)
-	{
-		loopLatchOrHead = _GetTrueLoopLatchOrHead(structure);
-	}
-
-	vector<ControlFlowNode*> postOrdered = _GetPostOrder(structure);
-	vector<NodeBlock> ifBlocks;
-	NodeSet unresolvedNodes;	  // Not sure what the purpose of this is. Perhaps just to track situations where we can't resolve?
-	map<ControlFlowNode*, ControlFlowNode*> followerOf; // header -> follower map
-
-	map<ControlFlowNode*, ControlFlowNode*> immediateDominators = CalculateImmediateDominators(dominators);
-
-	for (ControlFlowNode *node : postOrdered)
-	{
-		// Note: We need to be careful not to identify case conditions as if statements. However, our CaseNodes are structured
-		// so that the branch node only has a single branch. So they wont'be detected here:
-		if ((node->Successors().size() == 2) && (node != loopLatchOrHead))
-		{
-			assert(!node->ContainsTag(SemanticTags::CaseCondition));
-			// Look for furthest node whose immediate dominator is m and who has 2 or more in edges.
-			// i.e. the "follow" node of the if.
-			ControlFlowNode *n = _FindMaxNodeDominatedByMWithTwoOrMoreInEdges(dominators, immediateDominators, postOrdered, node, node);
-			if (n)
-			{
-				followerOf[node] = n;
-				NodeSet nowResolved;
-				for (ControlFlowNode *unresolved : unresolvedNodes)
-				{
-					// Note that the algorithm here just automatically resolves all unresolved guys, and
-					// assigns them a follower of n:
-					// http://www.labri.fr/perso/fleury/download/papers/binary_analysis/cifuentes96structuring.pdf
-					// This doesn't work at all. Instead, I think we need to repeat the test... so we'll do that.
-					ControlFlowNode *nRepeat = _FindMaxNodeDominatedByMWithTwoOrMoreInEdges(dominators, immediateDominators, postOrdered, node, unresolved);
-					if (nRepeat)
-					{
-						assert(nRepeat == n);   // Otherwise we still have bugs...
-						nowResolved.insert(unresolved);
-						followerOf[unresolved] = nRepeat;
-					}
-				}
-				for (ControlFlowNode *resolved : nowResolved)
-				{
-					unresolvedNodes.erase(resolved);
-				}
-			}
-			else
-			{
-				unresolvedNodes.insert(node);
-			}
-		}
-	}
-
-	if (!unresolvedNodes.empty())
-	{
-		throw ControlFlowException(*unresolvedNodes.begin(), "Unable to resolve if branches");
-	}
-	
-	// So now we have a list of branch nodes and their follower. We want to replace this with a
-	// new if node (excluding the follower, however). We need to do this from the most nested to the least
-	// nester. We can do this by using the post-order we have already calculated.
-	for (ControlFlowNode *possibleHead : postOrdered)
-	{
-		auto itPair = followerOf.find(possibleHead);
-		if (itPair != followerOf.end())
-		{
-			ControlFlowNode *headThatWillTurnIntoIf = itPair->first;
-			ControlFlowNode *ifFollowNode = itPair->second;
-			ControlFlowNode *newIfNode = _ReplaceIfStatementInWorkingSet(structure, headThatWillTurnIntoIf, ifFollowNode);
-			// We need to do one special thing here. This is an artifact of us storing child references elsewhere :-(
-			// If any of the follow nodes was equal to the header node of the if we just created, we need to repoint
-			// them to the new if.
-			for (auto &headAndFoloder : followerOf)
-			{
-				if (headAndFoloder.second == headThatWillTurnIntoIf)
-				{
-					headAndFoloder.second = newIfNode;
-				}
-			}
-		}
-	}
-}
-
-void _RepairBranches(code_pos start, code_pos end)
-{
-	// Some scripts have bt instructions that jump right to bnts (or vice versa). This is basically
-	// a no-op, and it messes with our conditional detections
 	code_pos cur = start;
 	++cur;
 	while (cur != end)
 	{
-		if (cur->get_opcode() == Opcode::BNT)
+		if ((cur->get_opcode() == Opcode::BT) && cur->is_forward_branch())
 		{
 			code_pos target = cur->get_branch_target();
-			if (target->get_opcode() == Opcode::BT)
+			if ((target != end) && (target != start))
 			{
-				++target;
-				cur->set_branch_target(target, cur->is_forward_branch());
+				code_pos before = target;
+				--before;
+				if ((before != cur) && (before->get_opcode() == Opcode::BNT))
+				{
+					cur->set_branch_target(before, true);
+				}
 			}
 		}
-		else if (cur->get_opcode() == Opcode::BT)
+		++cur;
+	}
+}
+
+// Sierra's compiler chains a bnt whose target is another bnt straight to the
+// final target. Inside an or operand that hides the operand's join. For each
+// forward bt that targets a forward bnt T, any bnt between them that targets
+// T's target is retargeted onto T (P; bt L; Q; bnt L; R; L: bnt X).
+void _DeoptimizeBtChains(code_pos start, code_pos end)
+{
+	code_pos cur = start;
+	++cur;
+	while (cur != end)
+	{
+		if ((cur->get_opcode() == Opcode::BT) && cur->is_forward_branch())
 		{
-			code_pos target = cur->get_branch_target();
-			if (target->get_opcode() == Opcode::BNT)
+			code_pos tail = cur->get_branch_target();
+			if ((tail != end) && (tail->get_opcode() == Opcode::BNT) && tail->is_forward_branch())
 			{
-				++target;
-				cur->set_branch_target(target, cur->is_forward_branch());
+				code_pos tailTarget = tail->get_branch_target();
+				code_pos i = cur;
+				++i;
+				while ((i != tail) && (i != end))
+				{
+					if ((i->get_opcode() == Opcode::BNT) && (i->get_branch_target() == tailTarget))
+					{
+						i->set_branch_target(tail, true);
+					}
+					++i;
+				}
 			}
 		}
 		++cur;
@@ -1918,7 +2193,8 @@ bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 {
 	try
 	{
-		_RepairBranches(start, end);
+		_UnchainBtToBnt(start, end);
+		_DeoptimizeBtChains(start, end);
 		_FixupConfusingBranches(start, end, _contextName, _decompilerResults);
 		_FixupFoldedLoopExits(start, end, _contextName, _decompilerResults);
 
@@ -1956,10 +2232,6 @@ bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 
 		if (!_decompilerResults.IsAborted())
 		{
-			_FindAllCompoundConditions();
-		}
-		if (!_decompilerResults.IsAborted())
-		{
 			_DoLoopTransforms();
 		}
 		if (!_decompilerResults.IsAborted())
@@ -1978,7 +2250,11 @@ bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 
 		if (!_decompilerResults.IsAborted())
 		{
-			_FindAllIfStatements();
+			_SolveLoopBranches();
+		}
+		if (!_decompilerResults.IsAborted())
+		{
+			_StructureAllBranches();
 		}
 	}
 	catch (ControlFlowException &e)
@@ -1994,7 +2270,59 @@ bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 		{
 			_decompilerResults.AddResult(DecompilerResultType::Warning, e.message);
 		}
+		if (_debug)
+		{
+			_decompilerResults.AddResult(DecompilerResultType::Warning, _DumpStructures());
+		}
 		return false;
 	}
 	return true;
+}
+
+// A compact text dump of every structure and its children, for debugging a
+// failed control-flow analysis without a window.
+std::string ControlFlowGraph::_DumpStructures()
+{
+	static const char *typeNames[] = { "Main", "Raw", "Loop", "Switch", "Case", "Exit", "CC", "If", "Invert", "CommonLatch", "Fake" };
+	auto describe = [&](ControlFlowNode *node)
+	{
+		string text = fmt::format("{:04x}:{}", node->GetStartingAddress(), typeNames[(int)node->Type]);
+		if (node->Type == CFGNodeType::RawCode)
+		{
+			RawCodeNode *raw = static_cast<RawCodeNode*>(node);
+			code_pos last = raw->end;
+			--last;
+			text += fmt::format("({})", OpcodeToName(last->get_opcode(), last->get_first_operand()));
+			if (last->_is_branch_instruction())
+			{
+				text += fmt::format("->{:04x}", last->get_branch_target()->get_final_offset_dontcare());
+			}
+		}
+		if (node->Type == CFGNodeType::CompoundCondition)
+		{
+			text += (static_cast<CompoundConditionNode*>(node)->condition == ConditionType::And) ? "(and)" : "(or)";
+		}
+		if (node->ContainsTag(SemanticTags::LoopBreak)) text += "[break]";
+		if (node->ContainsTag(SemanticTags::LoopContinue)) text += "[continue]";
+		return text;
+	};
+	string out = "\n";
+	for (ControlFlowNode *structure : discoveredControlStructures)
+	{
+		out += fmt::format("== {} head={:04x}", describe(structure), (*structure)[SemId::Head] ? (*structure)[SemId::Head]->GetStartingAddress() : 0);
+		if (structure->MaybeGet(SemId::Latch)) out += fmt::format(" latch={:04x}", structure->MaybeGet(SemId::Latch)->GetStartingAddress());
+		if (structure->MaybeGet(SemId::Follow)) out += fmt::format(" follow={:04x}", structure->MaybeGet(SemId::Follow)->GetStartingAddress());
+		if (structure->MaybeGet(SemId::Tail)) out += fmt::format(" tail={:04x}", structure->MaybeGet(SemId::Tail)->GetStartingAddress());
+		out += "\n";
+		for (ControlFlowNode *child : structure->Children())
+		{
+			out += "   " + describe(child) + " ->";
+			for (ControlFlowNode *succ : child->Successors())
+			{
+				out += " " + describe(succ);
+			}
+			out += "\n";
+		}
+	}
+	return out;
 }

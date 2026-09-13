@@ -155,7 +155,7 @@ class GraphVisualizer
 			case CFGNodeType::CompoundCondition:
 			{
 				const CompoundConditionNode *ccNode = static_cast<const CompoundConditionNode *>(node);
-				ss << (ccNode->isFirstTermNegated ? "!" : "") << "X " << ((ccNode->condition == ConditionType::And) ? "and" : "or") << " Y " << node->ArbitraryDebugIndex;
+				ss << "X " << ((ccNode->condition == ConditionType::And) ? "and" : "or") << " Y " << node->ArbitraryDebugIndex;
 			}
 			break;
 

@@ -119,11 +119,15 @@
 	
 	(method (onMe param1)
 		(return
-			(and
-				(>= (param1 x?) nsLeft)
-				(>= (param1 y?) nsTop)
-				(<= (param1 x?) nsRight)
+			(if
+				(and
+					(>= (param1 x?) nsLeft)
+					(>= (param1 y?) nsTop)
+					(<= (param1 x?) nsRight)
+				)
 				(<= (param1 y?) nsBottom)
+			else
+				0
 			)
 		)
 	)

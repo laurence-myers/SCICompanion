@@ -77,11 +77,15 @@
 	
 	(method (check param1)
 		(return
-			(and
-				(>= (param1 x?) nsLeft)
-				(>= (param1 y?) nsTop)
-				(< (param1 x?) nsRight)
+			(if
+				(and
+					(>= (param1 x?) nsLeft)
+					(>= (param1 y?) nsTop)
+					(< (param1 x?) nsRight)
+				)
 				(< (param1 y?) nsBottom)
+			else
+				0
 			)
 		)
 	)
@@ -202,7 +206,7 @@
 	)
 	
 	(method (setSize param1 &tmp [temp0 2] temp2 temp3)
-		(TextSize @temp0 text font (and argc param1))
+		(TextSize @temp0 text font (if argc param1 else 0))
 		(= nsBottom (+ nsTop temp2))
 		(= nsRight (+ nsLeft temp3))
 	)

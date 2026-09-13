@@ -158,7 +158,13 @@
 				)
 			)
 		)
-		(return (and (param1 claimed?) (& state $0002) self))
+		(return
+			(if (and (param1 claimed?) (& state $0002))
+				self
+			else
+				0
+			)
+		)
 	)
 	
 	(method (setSize &tmp [temp0 2] temp2 temp3)
