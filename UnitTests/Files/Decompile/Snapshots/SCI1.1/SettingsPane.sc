@@ -411,15 +411,15 @@
 	(method (show)
 		(switch gMessageType
 			(1
-				(= gMessager 0)
+				(= global76 0)
 				(DrawCel 995 10 0 188 141 -1)
 			)
 			(2
-				(= gMessager 1)
+				(= global76 1)
 				(DrawCel 995 10 1 188 141 -1)
 			)
 			(3
-				(= gMessager 1)
+				(= global76 1)
 				(DrawCel 995 10 2 188 141 -1)
 			)
 		)

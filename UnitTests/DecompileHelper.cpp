@@ -544,7 +544,7 @@ int RecompileAllDecompiledScripts(std::vector<std::string> *outFailed, int *outP
         {
             if (outFailed)
             {
-                outFailed->push_back(e.title);
+                outFailed->push_back(error.empty() ? e.title : (e.title + ": " + error));
             }
         }
     }

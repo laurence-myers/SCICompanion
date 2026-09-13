@@ -718,6 +718,25 @@ std::string _GenerateClassName(uint16_t scriptNumber, int &index)
 	return fmt::format("Class_{0}_{1}", scriptNumber, index++);
 }
 
+std::string _GenerateInstanceName(uint16_t scriptNumber, int &index)
+{
+	return fmt::format("Instance_{0}_{1}", scriptNumber, index++);
+}
+
+// A name with no letter is not a valid identifier (the parser needs one). An
+// object stripped of its name has such a name, so treat it as unnamed.
+bool _IsBlankObjectName(const std::string &name)
+{
+	for (char c : name)
+	{
+		if (isalpha(static_cast<unsigned char>(c)))
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
 // Very important: scriptStream is passed by value. Heapstream is not.
 bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVersion version, sci::istream scriptStream, sci::istream &heapStream, uint16_t *pwOffset, int classIndex, uint16_t *endOfObjectInScript)
 {
@@ -812,10 +831,12 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 		temp.seekg(wName);
 		temp >> _strName;
 	}
-	else
+	if (_IsBlankObjectName(_strName))
 	{
-		// Create a name for unnamed classes (e.g. Control)
-		_strName = _GenerateClassName(scriptNum, classIndex);
+		// A missing or blank name (e.g. Control, or an object stripped of its
+		// name). Synthesize one so the decompiled text round-trips.
+		_strName = _fInstance ? _GenerateInstanceName(scriptNum, classIndex)
+			: _GenerateClassName(scriptNum, classIndex);
 	}
 
 	*endOfObjectInScript = (uint16_t)scriptStream.tellg();
@@ -943,10 +964,12 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 			// Restore
 			stream.seekg(dwSavePos);
 		}
-		else
+		if (_IsBlankObjectName(_strName))
 		{
-			// Create a name for unnamed classes (e.g. Control)
-			_strName = _GenerateClassName(scriptNum, classIndex);
+			// A missing or blank name (e.g. Control, or an object stripped of
+			// its name). Synthesize one so the decompiled text round-trips.
+			_strName = fClass ? _GenerateClassName(scriptNum, classIndex)
+				: _GenerateInstanceName(scriptNum, classIndex);
 		}
 
 		// The rest of the stuff we don't care about!

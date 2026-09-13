@@ -116,7 +116,12 @@ public:
 			for (CSCOLocalVariable &globalVar : globalVarSCO->GetVariables())
 			{
 				string stdGlobalName = _GetGlobalVariableName(index);
-				if (globalVar.GetName() != stdGlobalName)
+				// Skip empty names (array padding, which would rename a slot to
+				// "" and then to "_2") and standard-form "globalN" labels (a
+				// leftover name for one slot that collides with the natural
+				// name of the slot it points at).
+				if (!globalVar.GetName().empty() && (globalVar.GetName() != stdGlobalName) &&
+					!_IsUndeterminedGlobalScope(globalVar.GetName()))
 				{
 					// It must have been given a name, so use it.
 					SetRenamed(nullptr, stdGlobalName, globalVar.GetName(), false);

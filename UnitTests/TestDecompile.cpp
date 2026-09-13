@@ -284,10 +284,8 @@ namespace UnitTests
 
         // Regression guard: the decompiled text of every template script
         // recompiles. Catches a newly-emitted construct the compiler rejects.
-        // Two scripts have pre-existing round-trip defects unrelated to this
-        // work (Main emits a name the parser rejects; SaveRestoreDialog falls
-        // back to asm that does not re-parse). They are allowlisted; shrink the
-        // list when they are fixed. A script not on the list must recompile.
+        // Every script must recompile; a failure entry carries the compiler
+        // error for diagnosis.
         TEST_METHOD(TemplateGame_Recompiles)
         {
             _gameFolder = SetUpGameSCI11();
@@ -302,12 +300,8 @@ namespace UnitTests
             Logger::WriteMessage(std::wstring(msg.begin(), msg.end()).c_str());
 
             Assert::IsTrue(processed >= 80, L"too few scripts processed; check the template game data");
-            std::set<std::string> allowed = { "Main", "SaveRestoreDialog" };
-            for (const std::string &name : failed)
-            {
-                Assert::IsTrue(allowed.count(name) == 1,
-                    std::wstring(L"decompiled script no longer recompiles: ").append(name.begin(), name.end()).c_str());
-            }
+            Assert::AreEqual((size_t)0, failed.size(),
+                std::wstring(msg.begin(), msg.end()).c_str());
         }
 
         // Regression guard: the decompiled text of every template script matches

@@ -260,14 +260,14 @@ code_01a5:
 				(Message 0 990 30 0 0 1 @temp0)
 			)
 		)
-		(
+		(Instance_990_10
 			text: @temp0
 			setSize: (- (- nsRight nsLeft) 8)
 			moveTo: 4 4
 		)
-		(= local1 (+ ( nsBottom?) 4))
+		(= local1 (+ (Instance_990_10 nsBottom?) 4))
 		(self eachElementDo: 187 0 local1)
-		(self add:  setSize: center: open: 4 -1)
+		(self add: Instance_990_10 setSize: center: open: 4 -1)
 		(return 1)
 	)
 	
@@ -923,149 +923,10 @@ code_088c:
 	)
 )
 
-(instance  of DText
+(instance Instance_990_10 of DText
 	(properties
 		font 0
 	)
-	
-	(procedure (GetDirectory param1 &tmp temp0 [temp1 33] [temp34 100] [temp134 50])
-		(asm
-code_0105:
-			pushi    #font
-			pushi    1
-			pushi    0
-			pushi    205
-			pushi    7
-			pushi    1
-			pushi    0
-			pushi    0
-			pushi    1
-			pushi    0
-			pushi    0
-			pushi    990
-			pushi    207
-			pushi    5
-			pushi    2
-			lea      @temp1
-			push    
-			lsp      param1
-			callk    StrCpy,  4
-			push    
-			pushi    29
-			pushi    0
-			pushi    20
-			lsp      param1
-			pushi    212
-			pushi    8
-			pushi    1
-			pushi    27
-			pushi    0
-			pushi    0
-			pushi    1
-			pushi    0
-			pushi    34
-			pushi    990
-			pushi    212
-			pushi    8
-			pushi    0
-			pushi    38
-			pushi    0
-			pushi    0
-			pushi    1
-			pushi    50
-			pushi    34
-			pushi    990
-			pushi    110
-			pushi    0
-			class    Print
-			send     82
-			sat      temp0
-			not     
-			bnt      code_0174
-			ldi      0
-			ret     
-code_0174:
-			pushi    1
-			lea      @temp1
-			push    
-			callk    StrLen,  2
-			not     
-			bnt      code_0189
-			pushi    1
-			lea      @temp1
-			push    
-			callk    GetCWD,  2
-code_0189:
-			pushi    1
-			lea      @temp1
-			push    
-			callk    ValidPath,  2
-			bnt      code_01a5
-			pushi    2
-			lsp      param1
-			lea      @temp1
-			push    
-			callk    StrCpy,  4
-			ldi      1
-			ret     
-			jmp      code_0105
-code_01a5:
-			pushi    7
-			pushi    0
-			pushi    990
-			pushi    29
-			pushi    0
-			pushi    0
-			pushi    1
-			lea      @temp134
-			push    
-			callk    Message,  14
-			pushi    3
-			lea      @temp34
-			push    
-			lea      @temp134
-			push    
-			lea      @temp1
-			push    
-			callk    Format,  6
-			pushi    #font
-			pushi    1
-			pushi    0
-			pushi    205
-			pushi    1
-			lea      @temp34
-			push    
-			pushi    110
-			pushi    0
-			class    Print
-			send     16
-			jmp      code_0105
-			ret     
-		)
-	)
-	
-	
-	(procedure (localproc_01eb)
-		(return
-			(cond 
-				((== self Restore) 0)
-				((localproc_020a) 1)
-				(local2 2)
-				(else 3)
-			)
-		)
-	)
-	
-	
-	(procedure (localproc_020a)
-		(if (< local2 20) (CheckFreeSpace gSaveDir))
-	)
-	
-	
-	(procedure (localproc_0218)
-		(Print font: 0 addText: 3 0 0 1 0 0 990 init:)
-	)
-	
 	
 	(method (dispose)
 		(super dispose: 1)

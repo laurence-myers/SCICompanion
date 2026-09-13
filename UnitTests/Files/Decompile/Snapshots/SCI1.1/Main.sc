@@ -71,30 +71,30 @@
 	gPicNumber =  -1
 	gDoMotionCue
 	gWindow
-	
-	_2
+	global35
+	global36
 	gOldPort
 	gDebugFilename
-	
-	_2
-	_3
-	_4
-	_5
-	_6
-	_7
-	_8
-	_9
-	_10
-	_11
-	_12
-	_13
-	_14
-	_15
-	_16
-	_17
-	_18
-	_19
-	_20
+	global39
+	global40
+	global41
+	global42
+	global43
+	global44
+	global45
+	global46
+	global47
+	global48
+	global49
+	global50
+	global51
+	global52
+	global53
+	global54
+	global55
+	global56
+	global57
+	global58
 	gGameControls
 	gFeatureInit
 	gDoVerbCode
@@ -112,7 +112,7 @@
 	gUser
 	gSyncBias
 	gTheSync
-	gMessager
+	global76
 	gFastCast
 	gInputFont
 	gTickOffset
@@ -127,7 +127,7 @@
 	gColorDepth
 	gPolyphony
 	gStopGroop
-	gLowlightColor
+	global91
 	gCurrentIcon
 	gGUserCanControl
 	gGUserCanInput
@@ -147,19 +147,19 @@
 	gDefaultEgoView
 	gRegister
 	gFlags
-	_21
-	_22
-	_23
-	_24
-	_25
-	_26
-	_27
-	_28
-	_29
-	_30
-	_31
-	_32
-	_33
+	global111
+	global112
+	global113
+	global114
+	global115
+	global116
+	global117
+	global118
+	global119
+	global120
+	global121
+	global122
+	global123
 	gEdgeDistance =  10
 	gDebugOut
 )
