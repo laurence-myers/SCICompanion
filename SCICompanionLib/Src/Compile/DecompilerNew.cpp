@@ -207,7 +207,7 @@ struct ConsumptionNode
 		os << _indent2(iIndent);
 		if (_hasPos)
 		{
-			os << OpcodeToName(pos->get_opcode(), pos->get_first_operand()) << "  [" << setw(4) << setfill('0') << pos->get_final_offset_dontcare() << "]";
+			os << OpcodeToName(pos->get_opcode(), pos->get_first_operand()) << " " << pos->get_first_operand() << "  [" << setw(4) << setfill('0') << pos->get_final_offset_dontcare() << "]";
 		}
 		else
 		{
@@ -444,6 +444,66 @@ public:
 		return false;
 	}
 
+	// Instructions of a condition block that belong to a frame below it (an
+	// enclosing call whose stack operands were pushed before the if), kept
+	// until that frame is current again. Later code first.
+	std::vector<code_pos> deferred;
+
+	// True when the frame on top is a condition of an if (or an and/or
+	// operand) and, below the ifs and conditions above it, an instruction
+	// frame still needs stack or accumulator. Any then, else, loop or case
+	// body between them ends the search: their code is not the consumer's.
+	bool ShouldDeferToEnclosingConsumer() const
+	{
+		size_t i = frames.size();
+		// The instruction frames of the test that are satisfied (the branch
+		// after its compare) sit above the condition frame; one that still
+		// needs an operand is the consumer of what follows.
+		while ((i > 0) && (frames[i - 1].node == nullptr))
+		{
+			if ((frames[i - 1].cAccConsume > 0) || (frames[i - 1].cStackConsume > 0))
+			{
+				return false;
+			}
+			i--;
+		}
+		if (i == 0)
+		{
+			return false;
+		}
+		ChunkType top = frames[i - 1].Parent->GetType();
+		if ((top != ChunkType::Condition) && (top != ChunkType::First) && (top != ChunkType::Second))
+		{
+			return false;
+		}
+		while ((i > 0) && frames[i - 1].node)
+		{
+			switch (frames[i - 1].Parent->GetType())
+			{
+				case ChunkType::If:
+				case ChunkType::Condition:
+				case ChunkType::And:
+				case ChunkType::Or:
+				case ChunkType::First:
+				case ChunkType::Second:
+				case ChunkType::Invert:
+					break;
+				default:
+					return false;
+			}
+			i--;
+		}
+		while ((i > 0) && !frames[i - 1].node)
+		{
+			if ((frames[i - 1].cAccConsume > 0) || (frames[i - 1].cStackConsume > 0))
+			{
+				return true;
+			}
+			i--;
+		}
+		return false;
+	}
+
 	void AddInstructionToCurrent(code_pos code)
 	{
 		ConsumptionNode *newChild = Current->PrependChild();
@@ -561,8 +621,112 @@ private:
 public:
 	EnumerateCodeChunks(CodeChunkEnumContext &context, DecompileLookups &lookups) : _context(context), _lookups(lookups) {}
 
+	// One instruction of a raw node, offered to the current frame. True when
+	// the instruction was taken (or started a statement); false when a frame
+	// was popped and it must be offered again. deferRest is set when the rest
+	// of the node belongs to an enclosing consumer (see _ProcessDeferred).
+	bool _Step(code_pos cur, bool *deferRest)
+	{
+		*deferRest = false;
+		if ((_context.Frame().cAccConsume == 0) && (_context.Frame().cStackConsume == 0))
+		{
+			if (_context.CanPopBeyond())
+			{
+				_context.PopFrame();
+				return false;
+			}
+			// We can't pop up any more. Time for a new instruction in the current frame.
+			_context.StartInstruction(cur);
+			return true;
+		}
+
+		Consumption consTemp = _GetInstructionConsumption(*cur, &_lookups);
+		if (consTemp.cAccGenerate && _context.Frame().ReusesAccumulator())
+		{
+			// The generator ran before this instruction's stack operands,
+			// so it is an earlier statement, not the operand: the compiler
+			// left its value in the accumulator and skipped the load
+			// ("sat x; pushi #foo; pushi 0; send" is (= x ...) (x foo:)).
+			// Record the need; the frame above takes the generator.
+			_context.AddStructured(ChunkType::NeedsAccumulator);
+			assert(_context.CanPopBeyond());
+			_context.PopFrame();
+			return false;
+		}
+		if (consTemp.cAccGenerate)
+		{
+			if (_context.Frame().cAccConsume)
+			{
+				_context.Frame().cAccConsume -= consTemp.cAccGenerate;
+			}
+
+			// Reach up above to see if anyone else needed an acc.
+			// An example is SQ5, script 32, setSize.
+			_context.NotifyAnyoneAboveThatWeEncounteredAccGenerator();
+		}
+		if (consTemp.cStackGenerate)
+		{
+			if (_context.Frame().cStackConsume)
+			{
+				_context.Frame().cStackConsume -= consTemp.cStackGenerate;
+				_context.Frame().stackOperandSeen = true;
+			}
+			else
+			{
+				// Something put something on the stack and we didn't need it.
+				// We can't do anything useful here. 
+				// So don't process this instruction, and back up a frame. If we are in need
+				// of an accumulator value, take note of that here.
+				assert(_context.Frame().cAccConsume > 0);
+				_context.AddStructured(ChunkType::NeedsAccumulator);
+				assert(_context.CanPopBeyond());
+				_context.PopFrame();
+				// The test of an if that needs an accumulator from before it
+				// (the compiler dropped a load) stops here; what is left of
+				// the block is an enclosing call's operands, or statements
+				// before the if. Hand it to that frame after the if.
+				*deferRest = _context.ShouldDeferToEnclosingConsumer();
+				return false;
+			}
+		}
+
+		if ((cur->get_opcode() == Opcode::REST) && _context.AddRestToEnclosingCall(cur))
+		{
+			return true;
+		}
+		_context.AddInstructionToCurrent(cur);
+		return true;
+	}
+
+	// Offers the deferred instructions (later code first) to the frames now
+	// open, until one is still inside a condition above their consumer.
+	void _ProcessDeferred()
+	{
+		bool taken = false;
+		while (!_context.deferred.empty())
+		{
+			if (_context.ShouldDeferToEnclosingConsumer())
+			{
+				break;
+			}
+			bool deferRest;
+			if (_Step(_context.deferred.front(), &deferRest))
+			{
+				_context.deferred.erase(_context.deferred.begin());
+				taken = true;
+			}
+		}
+		if (taken)
+		{
+			// The frames the deferred code satisfied are done: the node
+			// visited next is a statement before them, not their operand.
+			_context.PopBackUpMax();
+		}
+	}
+
 	void Visit(const RawCodeNode &rawCodeNode) override
 	{
+		_ProcessDeferred();
 		code_pos cur = rawCodeNode.end;
 		--cur;
 		code_pos start = rawCodeNode.start;
@@ -572,82 +736,18 @@ public:
 		}
 		while (cur != start)
 		{
-			if ((_context.Frame().cAccConsume == 0) && (_context.Frame().cStackConsume == 0))
+			bool deferRest;
+			if (_Step(cur, &deferRest))
 			{
-				if (_context.CanPopBeyond())
-				{
-					_context.PopFrame();
-				}
-				else
-				{
-					// We can't pop up any more. Time for a new instruction in the current frame.
-					_context.StartInstruction(cur);
-					--cur;
-				}
-			}
-			else
-			{
-				Consumption consTemp = _GetInstructionConsumption(*cur, &_lookups);
-				if (consTemp.cAccGenerate && _context.Frame().ReusesAccumulator())
-				{
-					// The generator ran before this instruction's stack operands,
-					// so it is an earlier statement, not the operand: the compiler
-					// left its value in the accumulator and skipped the load
-					// ("sat x; pushi #foo; pushi 0; send" is (= x ...) (x foo:)).
-					// Record the need; the frame above takes the generator.
-					_context.AddStructured(ChunkType::NeedsAccumulator);
-					assert(_context.CanPopBeyond());
-					_context.PopFrame();
-					continue;
-				}
-				if (consTemp.cAccGenerate)
-				{
-					if (_context.Frame().cAccConsume)
-					{
-						_context.Frame().cAccConsume -= consTemp.cAccGenerate;
-					}
-
-					// Reach up above to see if anyone else needed an acc.
-					// An example is SQ5, script 32, setSize.
-					_context.NotifyAnyoneAboveThatWeEncounteredAccGenerator();
-
-				}
-				if (consTemp.cStackGenerate)
-				{
-					if (_context.Frame().cStackConsume)
-					{
-						_context.Frame().cStackConsume -= consTemp.cStackGenerate;
-						_context.Frame().stackOperandSeen = true;
-						if (_context.Frame().cAccConsume)
-						{
-							// We need to be careful here. We still need an acc. If the stack generating guy
-							// used up an acc, we need that acc too.
-							// It's almost like we need both an acc and a stack pointer.
-							// Well, what we could do is whenever we encounter an acc, reach up above (until hit structured)
-							// and make note of it.
-						}
-					}
-					else
-					{
-						// Something put something on the stack and we didn't need it.
-						// We can't do anything useful here. 
-						// So don't process this instruction, and back up a frame. If we are in need
-						// of an accumulator value, take note of that here.
-						assert(_context.Frame().cAccConsume > 0);
-						_context.AddStructured(ChunkType::NeedsAccumulator);
-						assert(_context.CanPopBeyond());
-						_context.PopFrame();
-						continue;
-					}
-				}
-
-				if ((cur->get_opcode() == Opcode::REST) && _context.AddRestToEnclosingCall(cur))
-				{
-					--cur;
-					continue;
-				}
-				_context.AddInstructionToCurrent(cur);
 				--cur;
+			}
+			else if (deferRest)
+			{
+				for (code_pos p = cur; p != start; --p)
+				{
+					_context.deferred.push_back(p);
+				}
+				break;
 			}
 		}
 
@@ -656,6 +756,7 @@ public:
 
 	void Visit(const LoopNode &loopNode) override
 	{
+		_ProcessDeferred();
 		size_t levelCount = _context.GetLevelCount();
 		_context.ConsumeAccForStructuredNode();
 
@@ -748,6 +849,7 @@ public:
 
 	void Visit(const SwitchNode &switchNode) override
 	{
+		_ProcessDeferred();
 		ControlFlowNode *switchTail = switchNode[SemId::Tail];
 		switchTail->Accept(*this);
 		// After processing the tail, we MUST have a toss that we just processed.
@@ -823,6 +925,7 @@ public:
 
 	void Visit(const CompoundConditionNode &conditionNode) override
 	{
+		_ProcessDeferred();
 		size_t levelCount = _context.GetLevelCount();
 		_context.ConsumeAccForStructuredNode();
 
@@ -852,6 +955,7 @@ public:
 
 	void Visit(const InvertNode &invert) override
 	{
+		_ProcessDeferred();
 		size_t levelCount = _context.GetLevelCount();
 		_context.ConsumeAccForStructuredNode();
 
@@ -895,10 +999,12 @@ public:
 			}
 			current->Accept(*this);
 		}
+		_ProcessDeferred();
 	}
 
 	void Visit(const IfNode &ifNode) override
 	{
+		_ProcessDeferred();
 		size_t levelCount = _context.GetLevelCount();
 		_context.ConsumeAccForStructuredNode();
 
@@ -948,6 +1054,7 @@ public:
 			node->Accept(*this);
 			node = GetFirstPredecessorOrNull(node);
 		}
+		_ProcessDeferred();
 		_context.PopFrame();
 
 		// For now, print out mainChunk
@@ -1161,6 +1268,34 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode2(ConsumptionNode &node, Decomp
 	return unique_ptr<SyntaxNode>(comment.release());
 }
 
+// True if Sierra's optimizer keeps its "accumulator holds n" fact across
+// this instruction (see the sc optimizer: pushes and dup, a property store,
+// a stack load, rest, toss, selfID push). A branch ends the walk too: the
+// fact is reset at a label.
+static bool _LeavesAccumulatorFact(Opcode op)
+{
+	switch (op)
+	{
+		case Opcode::PUSHI:
+		case Opcode::PUSH0:
+		case Opcode::PUSH1:
+		case Opcode::PUSH2:
+		case Opcode::PUSH:
+		case Opcode::DUP:
+		case Opcode::PUSHSELF:
+		case Opcode::ATOP:
+		case Opcode::PTOS:
+		case Opcode::REST:
+		case Opcode::TOSS:
+			return true;
+	}
+	if ((op >= Opcode::LAG) && (op <= Opcode::LastLoadStore))
+	{
+		return _IsVOPureStack(op) && !_IsVOStoreOperation(op) && !_IsVOIncremented(op) && !_IsVODecremented(op);
+	}
+	return false;
+}
+
 WORD _GetImmediateFromCodeNode(ConsumptionNode &node, ConsumptionNode *pNodePrevious = nullptr, bool assertIfNone = false, bool *foundOut = nullptr)
 {
 	bool found = true;
@@ -1191,6 +1326,48 @@ WORD _GetImmediateFromCodeNode(ConsumptionNode &node, ConsumptionNode *pNodePrev
 				break;
 
 			case Opcode::PUSH:
+				// Sierra's optimizer turns "pushi n" into "push" when the
+				// accumulator already holds n (a selector pushed right after
+				// a stray "ldi n", as at the start of a switch case). The push's
+				// child is then the value it pushes: a clone of that ldi.
+				if (node.GetChildCount() == 1)
+				{
+					bool childFound = false;
+					WORD childValue = _GetImmediateFromCodeNode(*node.Child(0), nullptr, false, &childFound);
+					if (childFound)
+					{
+						w = childValue;
+						break;
+					}
+				}
+
+				// Otherwise the optimizer knew the accumulator held n: walk back
+				// over the instructions that leave its value alone (pushes, a
+				// property store, stack loads, &rest) to the ldi that set it.
+				// A load, a variable store, arithmetic, a call, or a branch
+				// changes what the optimizer knew, and stops the walk.
+				{
+					code_pos back = pos;
+					for (int steps = 0; steps < 64; steps++)
+					{
+						--back;
+						Opcode op = back->get_opcode();
+						if (op == Opcode::LDI)
+						{
+							w = back->get_first_operand();
+							break;
+						}
+						if (!_LeavesAccumulatorFact(op))
+						{
+							break;
+						}
+					}
+					if (w != 0 || (back->get_opcode() == Opcode::LDI))
+					{
+						break;
+					}
+				}
+
 				// REVIEW, hits too often..... ldi jmp ldi push
 				//ASSERT(node.GetChildCount());
 

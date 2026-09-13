@@ -157,6 +157,22 @@ namespace UnitTests
             AssertDecompileMatchesExpected("A1_ReusedAcc", 928);
         }
 
+        // A selector pushed as "push" after an ldi of its number (the
+        // optimizer's reuse), and a literal argument repeated with dup.
+        TEST_METHOD(ReusedSelector)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("A2_ReusedSelector", 930);
+        }
+
+        // A send whose last argument is a value if, with earlier pushes before
+        // the if: the pushes belong to the send across the join.
+        TEST_METHOD(ValueIfArgument)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F13_ValueIfArgument", 931);
+        }
+
         // A bnt right after a bnt to the same target is dead (the accumulator
         // is unchanged). It is deleted before control-flow analysis, so the
         // compare before it is not cloned into a second operand.
@@ -460,6 +476,8 @@ namespace UnitTests
                 CreateDirectoryA(out, nullptr);
                 std::ofstream file(fmt::format("{0}\\_script_{1}.txt", out, number), std::ios::binary);
                 file << report;
+                std::ofstream selectors(fmt::format("{0}\_selectors.txt", out), std::ios::binary);
+                selectors << DumpSelectorTable();
                 Logger::WriteMessage(L"Wrote single-script dump.");
                 return;
             }

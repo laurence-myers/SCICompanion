@@ -90,6 +90,9 @@ int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
 // easy. This tests fidelity, not just round-trip stability.
 void AssertDecompileMatchesExpected(const std::string &fixtureName, uint16_t scriptNumber);
 
+// Every selector number and name of the current game, one per line.
+std::string DumpSelectorTable();
+
 // Result of the template snapshot comparison.
 struct SnapshotResult
 {
