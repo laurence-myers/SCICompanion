@@ -157,6 +157,15 @@ namespace UnitTests
             AssertDecompileMatchesExpected("A1_ReusedAcc", 928);
         }
 
+        // A bnt right after a bnt to the same target is dead (the accumulator
+        // is unchanged). It is deleted before control-flow analysis, so the
+        // compare before it is not cloned into a second operand.
+        TEST_METHOD(DeadBranch)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("B1_DeadBranch", 929);
+        }
+
         // Plain SCI Companion source: nested conds in a loop body. The text is
         // its own oracle, so the compiler's jump dialect round-trips stably.
         TEST_METHOD(Plain_CondInLoop)

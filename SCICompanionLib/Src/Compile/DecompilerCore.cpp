@@ -912,6 +912,68 @@ private:
 	stack<bool> useNeg;
 };
 
+static bool _IsBranch(const scii &inst)
+{
+	Opcode op = inst.get_opcode();
+	return (op == Opcode::BT) || (op == Opcode::BNT) || (op == Opcode::JMP);
+}
+
+// Sierra's compiler emits a bnt right after a bnt to the same target (a
+// nested and in a test comes out as "lt?; bnt L; bnt L"). The accumulator
+// is unchanged and true at the second one, so it is never taken; left in,
+// the chunk stage gives it a clone of the compare and the condition prints
+// the operand twice. Delete it (sluicebox's DeadBranches does the same) and
+// point any branch to it at the first bnt. A no-op jmp to the next
+// instruction between the two is dead too.
+void _RemoveDeadBranches(std::list<scii> &code)
+{
+	for (code_pos cur = code.begin(); cur != code.end(); ++cur)
+	{
+		if (cur->get_opcode() != Opcode::BNT)
+		{
+			continue;
+		}
+		for (;;)
+		{
+			code_pos next = cur;
+			++next;
+			if (next == code.end())
+			{
+				break;
+			}
+			code_pos dead = next;
+			code_pos after = next;
+			++after;
+			std::vector<code_pos> toErase;
+			if ((dead->get_opcode() == Opcode::JMP) && (after != code.end()) && (dead->get_branch_target() == after) &&
+				(after->get_opcode() == Opcode::BNT) && (after->get_branch_target() == cur->get_branch_target()))
+			{
+				toErase.push_back(dead);
+				toErase.push_back(after);
+			}
+			else if ((dead->get_opcode() == Opcode::BNT) && (dead->get_branch_target() == cur->get_branch_target()))
+			{
+				toErase.push_back(dead);
+			}
+			if (toErase.empty())
+			{
+				break;
+			}
+			for (code_pos victim : toErase)
+			{
+				for (scii &inst : code)
+				{
+					if (_IsBranch(inst) && (inst.get_branch_target() == victim))
+					{
+						inst.set_branch_target(cur, inst.is_forward_branch());
+					}
+				}
+				code.erase(victim);
+			}
+		}
+	}
+}
+
 void _DetermineIfFunctionReturnsValue(std::list<scii> code, DecompileLookups &lookups)
 {
 	// Look for return statements and see if they have any statements without side effects before them.
@@ -1084,6 +1146,7 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 		code.insert(code.begin(), scii(lookups.GetVersion(), Opcode::INDETERMINATE, -1));
 
 		// Do some early things
+		_RemoveDeadBranches(code);
 		_DetermineIfFunctionReturnsValue(code, lookups);
 
 		// Construct the function -> for now use procedure, but really should be method or proc

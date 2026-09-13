@@ -116,6 +116,7 @@ expected file is missing, the test writes the actual to
 | `F12_BreakJoin` | 925 | (structurer) | fixed; a break edge into a shared statement moves to the if's follow |
 | `R1_ReturnShapes` | 927 | (returns) | fixed; an if whose branches return is not returned, a value if at the end is, a `++` is not a return value |
 | `A1_ReusedAcc` | 928 | (chunk stage) | fixed; a store whose value a later send reuses stays a statement |
+| `B1_DeadBranch` | 929 | (fixup) | fixed; a `bnt` right after a `bnt` to the same target is deleted (`_RemoveDeadBranches`) |
 
 `TemplateGame_FallbackBaseline` guards against new fallbacks. The template game
 started with 7 known fallbacks. The Family 1 and Family 6 fixes each removed
