@@ -142,11 +142,6 @@ void CNewScriptDialog::DoDataExchange(CDataExchange* pDX)
 void CNewScriptDialog::_PrepareBuffer()
 {
 	sci::Script script(_scriptId);
-	if (appState->GetVersion().SeparateHeapResources)
-	{
-		// e.g. for SCI0, keep SCIStudio compatible. Otherwise, use version 2
-		script.SyntaxVersion = 2;
-	}
 
 	std::stringstream ss;
 	sci::SourceCodeWriter out(ss, script.Language());

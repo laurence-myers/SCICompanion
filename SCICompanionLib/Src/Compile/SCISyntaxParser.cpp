@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include "ScriptOMAll.h"
-#include "StudioSyntaxParser.h"
+#include "ParserPrimitives.h"
 #include "SCISyntaxParser.h"
 #include "ParserActions.h"
 #include "Operators.h"

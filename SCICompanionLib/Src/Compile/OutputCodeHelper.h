@@ -38,7 +38,6 @@ private:
 };
 
 bool IsNonAlphaOperator(const std::string &op);
-void _OutputVariableAndSizeStudio(sci::ISyntaxNodeVisitor &visitor, sci::SourceCodeWriter &out, const std::string &type, const std::string &name, WORD wSize, const sci::SyntaxNodeVector &initValues);
 void _OutputVariableAndSizeSCI(sci::ISyntaxNodeVisitor &visitor, sci::SourceCodeWriter &out, const std::string &type, const std::string &name, WORD wSize, const sci::SyntaxNodeVector &initValues);
 std::string EscapeSpaces(const std::string &src);
 std::string EscapeQuotedString(const std::string &src);

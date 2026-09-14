@@ -13,42 +13,22 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "SyntaxParser.h"
-#include "StudioSyntaxParser.h"
 #include "SCISyntaxParser.h"
 
-// Our parser global variables
-StudioSyntaxParser g_studio;
+// Our parser global variable. There is only one script syntax now (Sierra).
 SCISyntaxParser g_sci;
 
 void InitializeSyntaxParsers()
 {
 	g_sci.Load();
-	g_studio.Load();
 }
 
 bool SyntaxParser_ParseAC(sci::Script &script, CCrystalScriptStream::const_iterator &streamIt, std::unordered_set<std::string> preProcessorDefines, SyntaxContext *pContext)
 {
 	bool fRet = false;
-
-	if (script.Language() == LangSyntaxStudio)
+	if (!script.IsHeader())
 	{
-		if (script.IsHeader())
-		{
-		}
-		else
-		{
-			fRet = g_studio.Parse(script, streamIt, preProcessorDefines, *pContext);
-		}
-	}
-	else if (script.Language() == LangSyntaxSCI)
-	{
-		if (script.IsHeader())
-		{
-		}
-		else
-		{
-			fRet = g_sci.Parse(script, streamIt, preProcessorDefines, *pContext);
-		}
+		fRet = g_sci.Parse(script, streamIt, preProcessorDefines, *pContext);
 	}
 	return fRet;
 }
@@ -56,50 +36,37 @@ bool SyntaxParser_ParseAC(sci::Script &script, CCrystalScriptStream::const_itera
 bool SyntaxParser_Parse(sci::Script &script, CCrystalScriptStream &stream, std::unordered_set<std::string> preProcessorDefines, ICompileLog *pLog, bool fParseComments, SyntaxContext *pContext, bool addCommentsToOM)
 {
 	bool fRet = false;
-	if (script.Language() == LangSyntaxStudio)
+	if (script.IsHeader())
 	{
-		if (script.IsHeader())
-		{
-			fRet = g_studio.ParseHeader(script, stream.begin(), preProcessorDefines, pLog, fParseComments);
-		}
-		else
-		{
-			if (pContext)
-			{
-				// Someone is doing a partial compile (e.g. tooltips) and supply their own context.
-				fRet = g_studio.Parse(script, stream.begin(), preProcessorDefines, *pContext);
-			}
-			else
-			{
-				// Or maybe someone either wants error logs:
-				fRet = g_studio.Parse(script, stream.begin(), preProcessorDefines, pLog, addCommentsToOM, fParseComments);
-			}
-		}
-	}
-	else if (script.Language() == LangSyntaxSCI)
-	{
-		if (script.IsHeader())
-		{
-			fRet = g_sci.ParseHeader(script, stream.begin(), preProcessorDefines, pLog, fParseComments);
-		}
-		else
-		{
-			if (pContext)
-			{
-				// Someone is doing a partial compile (e.g. tooltips) and supply their own context.
-				fRet = g_sci.Parse(script, stream.begin(), preProcessorDefines, *pContext);
-			}
-			else
-			{
-				// Or maybe someone either wants error logs:
-				fRet = g_sci.Parse(script, stream.begin(), preProcessorDefines, pLog, addCommentsToOM, fParseComments);
-			}
-		}
-
+		fRet = g_sci.ParseHeader(script, stream.begin(), preProcessorDefines, pLog, fParseComments);
 	}
 	else
 	{
-		assert(false);
+		if (pContext)
+		{
+			// Someone is doing a partial compile (e.g. tooltips) and supply their own context.
+			fRet = g_sci.Parse(script, stream.begin(), preProcessorDefines, *pContext);
+		}
+		else
+		{
+			// Or maybe someone either wants error logs:
+			fRet = g_sci.Parse(script, stream.begin(), preProcessorDefines, pLog, addCommentsToOM, fParseComments);
+		}
 	}
 	return fRet;
+}
+
+std::unordered_set<std::string> PreProcessorDefinesFromSCIVersion(SCIVersion version)
+{
+	std::unordered_set<std::string> defines;
+	// Only two versions supported for now.
+	if (version.SeparateHeapResources)
+	{
+		defines.insert("SCI_1_1");
+	}
+	else
+	{
+		defines.insert("SCI_0");
+	}
+	return defines;
 }

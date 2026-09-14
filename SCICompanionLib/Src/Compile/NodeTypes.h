@@ -56,7 +56,6 @@ namespace sci
 		NodeTypeFunctionSignature,
 		NodeTypeIf,
 		NodeTypeCast,
-		NodeTypeConditionalExpressionSCIStudio,
 		NodeTypeExport,
 		NodeTypeCond,
 		NodeTypeWeak,

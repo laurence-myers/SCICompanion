@@ -13,7 +13,7 @@
 ***************************************************************************/
 #pragma once
 
-#include "StudioSyntaxParser.h"
+#include "ParserPrimitives.h"
 
 namespace sci
 {

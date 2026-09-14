@@ -1228,7 +1228,6 @@ namespace sci
 		void AddProcedure(std::unique_ptr<ProcedureDefinition> pProc) { _procedures.push_back(std::move(pProc)); }
 		void AddComment(std::unique_ptr<Comment> pComment) { _comments.push_back(std::move(pComment)); }
 
-		int SyntaxVersion;
 
 		void SetScriptId(ScriptId scriptId) { _scriptId = scriptId; }
 		LangSyntax Language() const { return _scriptId.Language(); }

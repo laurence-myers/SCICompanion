@@ -1579,15 +1579,6 @@ CodeResult SendCall::OutputByteCode(CompileContext &context) const
 		wSendPushes = gobcResult.GetByteCount();
 		returnType = gobcResult.GetLastType();
 
-		// Also the rest statement.  This is a hack for the SCIStudio syntax, which allows the following:
-		// (send gEgo:init() rest params)
-		// when it really should be
-		// (send gEgo:init(rest params))
-		if (_fRestHack)
-		{
-			assert(context.GetLanguage() == LangSyntaxStudio);
-			wSendPushes += _rest->OutputByteCode(context).GetBytes();
-		}
 	}
 
 	if (updateOperand && (sendPushInstruction != context.code().get_undetermined()))

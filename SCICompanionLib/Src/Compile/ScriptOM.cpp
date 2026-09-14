@@ -251,14 +251,14 @@ std::string FunctionBase::ToString() const
 	return szDesc;
 }
 
-Script::Script(PCTSTR pszFilePath, PCTSTR pszFileName) : SyntaxVersion(1)
+Script::Script(PCTSTR pszFilePath, PCTSTR pszFileName)
 {
 	_scriptId = ScriptId(pszFileName, pszFilePath);
 }
-Script::Script(ScriptId script) : _scriptId(script), SyntaxVersion(1)
+Script::Script(ScriptId script) : _scriptId(script)
 {
 }
-Script::Script() : SyntaxVersion(1)
+Script::Script()
 {
 }
 Script::~Script() {}
