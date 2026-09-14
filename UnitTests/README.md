@@ -231,6 +231,15 @@ one function compare equal, and a real difference is reported by name.
 `Tools\CompareDecompile.ps1` is now the exact text compare only, for
 reviewing a snapshot change.
 
+## Keyword codegen
+
+`TestKeywordCodegen` proves the merged language extensions (`foreach`, `verbs`,
+`&exists`) are pure sugar over standard Sierra bytecode. Each test compiles a
+small script that uses the keyword and decompiles it; since the decompiler only
+understands standard opcodes, a clean decompile with no assembly fallback and no
+trace of the keyword is the proof. `&exists` additionally asserts byte-for-byte
+equality with its `(> argc N)` expansion. These run in the default filter.
+
 ## Other tests
 
 `TestCompile`, `TestClassBrowser`, `TestResource*`, `TestPolygonLoad`,
