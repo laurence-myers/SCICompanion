@@ -61,6 +61,9 @@ enum class UnaryOperator;
 BinaryOperator GetBinaryOperatorForInstruction(Opcode b);
 UnaryOperator GetUnaryOperatorForInstruction(Opcode b);
 
+// A synthesized name for a class whose defining script is not in the game.
+std::string GetUnknownClassName(uint16_t species);
+
 enum class VarScope : std::uint8_t
 {
 	Global = 0x00,
@@ -149,6 +152,10 @@ public:
 	void TrackUsingScript(uint16_t scriptNumber) { if (_wScript != scriptNumber) _usings.insert(scriptNumber); }
 	std::set<uint16_t> GetValidUsings();
 
+	// A species with no name: its defining script is not in the game.
+	void TrackUnknownSpecies(uint16_t species) { _unknownSpecies.insert(species); }
+	const std::set<uint16_t> &GetUnknownSpecies() const { return _unknownSpecies; }
+
 	FunctionDecompileHints FunctionDecompileHints;
 
 	const sci::ClassDefinition *DecompileLookups::GetClassContext() const;
@@ -210,6 +217,7 @@ private:
 	std::unordered_set<uint16_t> _propertySelectors;
 
 	std::set<uint16_t> _usings;
+	std::set<uint16_t> _unknownSpecies;
 };
 
 void DecompileRaw(sci::FunctionBase &func, DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEnd, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset);

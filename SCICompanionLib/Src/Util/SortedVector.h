@@ -75,7 +75,7 @@ struct sorted_vector {
 	void erase(const T& t)
 	{
 		iterator i = std::lower_bound(begin(), end(), t, cmp);
-		if (i != end())
+		if ((i != end()) && !cmp(t, *i))
 		{
 			V.erase(i);
 		}

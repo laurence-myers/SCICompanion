@@ -19,7 +19,9 @@
 #include "DisassembleHelper.h"
 #include "ControlFlowGraph.h"
 #include "DecompilerNew.h"
+#include "DecompilerAstPasses.h"
 #include "DecompilerFallback.h"
+#include "SCISourceCodeFormatter.h"
 #include "format.h"
 #include "DecompilerConfig.h"
 #include <iterator>
@@ -810,80 +812,6 @@ private:
 	stack<bool> useHex;
 };
 
-class CollapseNots : public IExploreNode
-{
-public:
-	CollapseNots(FunctionBase &func)
-	{
-		func.Traverse(*this);
-	}
-
-	void ExploreNode(SyntaxNode &node, ExploreNodeState state) override
-	{
-		if (state == ExploreNodeState::Pre)
-		{
-			ConditionalExpression *condExp = SafeSyntaxNode<ConditionalExpression>(&node);
-			if (condExp)
-			{
-				_Process(condExp->GetStatements()[0]);
-			}
-		}
-	}
-
-private:
-	unique_ptr<SyntaxNode> _PutInNot(unique_ptr<SyntaxNode> other)
-	{
-		unique_ptr<UnaryOp> unaryOp = make_unique<UnaryOp>();
-		unaryOp->Operator = UnaryOperator::LogicalNot;
-		unaryOp->SetStatement1(move(other));
-		return unique_ptr<SyntaxNode>(move(unaryOp));
-	}
-
-	void _Process(unique_ptr<SyntaxNode> &statement)
-	{
-		// If this is a binary op of and or or, then procede onward with each one
-		// See if we have a binary operation underneath us for an and/or
-		BinaryOp *binOp = SafeSyntaxNode<BinaryOp>(statement.get());
-		if (binOp && ((binOp->Operator == BinaryOperator::LogicalAnd) || (binOp->Operator == BinaryOperator::LogicalOr)))
-		{
-			_Process(binOp->GetStatement1Internal());
-			_Process(binOp->GetStatement2Internal());
-		}
-		else
-		{
-			// If this is a not
-			UnaryOp *unary = SafeSyntaxNode<UnaryOp>(statement.get());
-			if (unary && (unary->Operator == UnaryOperator::LogicalNot))
-			{
-				// Then let's see if it contains a binary op, in which case, we'll apply DeMorgan's theorem.
-				BinaryOp *child = SafeSyntaxNode<BinaryOp>(unary->GetStatement1());
-				if (child && ((child->Operator == BinaryOperator::LogicalAnd) || (child->Operator == BinaryOperator::LogicalOr)))
-				{
-					// Ok. We need to replace the unary op with its child.
-					unique_ptr<SyntaxNode> binaryOpStatement = move(unary->GetStatement1Internal());
-					statement = move(binaryOpStatement);
-					// That should do it.
-					// Now we need to switch the operator
-					if (child->Operator == BinaryOperator::LogicalAnd)
-					{
-						child->Operator = BinaryOperator::LogicalOr;
-					}
-					else
-					{
-						child->Operator = BinaryOperator::LogicalAnd;
-					}
-					
-					// Then we need to go insert unary nots in front of both statements of the binary operator.
-					unique_ptr<SyntaxNode> binOpStatement1 = move(child->GetStatement1Internal());
-					child->SetStatement1(_PutInNot(move(binOpStatement1)));
-					unique_ptr<SyntaxNode> binOpStatement2 = move(child->GetStatement2Internal());
-					child->SetStatement2(_PutInNot(move(binOpStatement2)));
-				}
-			}
-		}
-	}
-};
-
 class ResolveCallSiteParameters : public IExploreNode
 {
 public:
@@ -984,6 +912,68 @@ private:
 	stack<bool> useNeg;
 };
 
+static bool _IsBranch(const scii &inst)
+{
+	Opcode op = inst.get_opcode();
+	return (op == Opcode::BT) || (op == Opcode::BNT) || (op == Opcode::JMP);
+}
+
+// Sierra's compiler emits a bnt right after a bnt to the same target (a
+// nested and in a test comes out as "lt?; bnt L; bnt L"). The accumulator
+// is unchanged and true at the second one, so it is never taken; left in,
+// the chunk stage gives it a clone of the compare and the condition prints
+// the operand twice. Delete it (sluicebox's DeadBranches does the same) and
+// point any branch to it at the first bnt. A no-op jmp to the next
+// instruction between the two is dead too.
+void _RemoveDeadBranches(std::list<scii> &code)
+{
+	for (code_pos cur = code.begin(); cur != code.end(); ++cur)
+	{
+		if (cur->get_opcode() != Opcode::BNT)
+		{
+			continue;
+		}
+		for (;;)
+		{
+			code_pos next = cur;
+			++next;
+			if (next == code.end())
+			{
+				break;
+			}
+			code_pos dead = next;
+			code_pos after = next;
+			++after;
+			std::vector<code_pos> toErase;
+			if ((dead->get_opcode() == Opcode::JMP) && (after != code.end()) && (dead->get_branch_target() == after) &&
+				(after->get_opcode() == Opcode::BNT) && (after->get_branch_target() == cur->get_branch_target()))
+			{
+				toErase.push_back(dead);
+				toErase.push_back(after);
+			}
+			else if ((dead->get_opcode() == Opcode::BNT) && (dead->get_branch_target() == cur->get_branch_target()))
+			{
+				toErase.push_back(dead);
+			}
+			if (toErase.empty())
+			{
+				break;
+			}
+			for (code_pos victim : toErase)
+			{
+				for (scii &inst : code)
+				{
+					if (_IsBranch(inst) && (inst.get_branch_target() == victim))
+					{
+						inst.set_branch_target(cur, inst.is_forward_branch());
+					}
+				}
+				code.erase(victim);
+			}
+		}
+	}
+}
+
 void _DetermineIfFunctionReturnsValue(std::list<scii> code, DecompileLookups &lookups)
 {
 	// Look for return statements and see if they have any statements without side effects before them.
@@ -1034,13 +1024,18 @@ void _DetermineIfFunctionReturnsValue(std::list<scii> code, DecompileLookups &lo
 				case Opcode::ULE:
 				case Opcode::PTOA:
 				case Opcode::LOFSA:
+				case Opcode::CLASS:
+				case Opcode::LEA:
 					lookups.FunctionDecompileHints.ReturnsValue = true;
 					break;
 
 				default:
+					// A plain load. A store or a ++/-- is a statement of its own
+					// (the golden decompilations never return one).
 					if ((opcode >= Opcode::LAG) && (opcode <= Opcode::LastLoadStore))
 					{
-						if (!_IsVOStoreOperation(opcode) && !_IsVOPureStack(opcode))
+						if (!_IsVOStoreOperation(opcode) && !_IsVOIncremented(opcode) &&
+							!_IsVODecremented(opcode) && !_IsVOPureStack(opcode))
 						{
 							lookups.FunctionDecompileHints.ReturnsValue = true;
 						}
@@ -1053,6 +1048,11 @@ void _DetermineIfFunctionReturnsValue(std::list<scii> code, DecompileLookups &lo
 			--cur;
 		}
 	}
+}
+
+std::string GetUnknownClassName(uint16_t species)
+{
+	return fmt::format("Unknown_Class_{0}", species);
 }
 
 void _TrackExternalScriptUsage(std::list<scii> code, DecompileLookups &lookups)
@@ -1079,6 +1079,12 @@ void _TrackExternalScriptUsage(std::list<scii> code, DecompileLookups &lookups)
 				if (lookups.GetSpeciesScriptNumber(classIndex, scriptNumber))
 				{
 					lookups.TrackUsingScript(scriptNumber);
+				}
+				if (lookups.LookupClassName(classIndex).empty())
+				{
+					// The species has no name: its defining script is not in
+					// the game. Record it so a classdef is emitted for it.
+					lookups.TrackUnknownSpecies(classIndex);
 				}
 				break;
 			}
@@ -1122,6 +1128,7 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 
 	// Take the raw data, and turn it into a list of scii instructions, and make sure the branch targets point to code_pos's
 	std::list<scii> code;
+	std::list<scii> originalCode;
 	const BYTE *discoveredEnd = _ConvertToInstructions(lookups, code, pBegin, pScriptResourceEnd, wBaseOffset, true);
 	if (discoveredEnd == nullptr)
 	{
@@ -1139,7 +1146,10 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 		// Insert a no-op at the beginning of code (so we can get an iterator to point to a spot before code)
 		code.insert(code.begin(), scii(lookups.GetVersion(), Opcode::INDETERMINATE, -1));
 
-		// Do some early things
+		// Do some early things. The fallback disassembles the original
+		// instructions, not the ones the dead-branch removal edited.
+		originalCode = code;
+		_RemoveDeadBranches(code);
 		_DetermineIfFunctionReturnsValue(code, lookups);
 
 		// Construct the function -> for now use procedure, but really should be method or proc
@@ -1181,7 +1191,7 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 		lookups.ResetOnFailure();
 
 		lookups.DecompileResults().AddResult(DecompilerResultType::Important, fmt::format("Falling back to disassembly for {0}", func.GetName()));
-		DisassembleFallback(func, code.begin(), code.end(), lookups);
+		DisassembleFallback(func, originalCode.begin(), originalCode.end(), lookups);
 	}
 
 	// Give some statistics.
@@ -1192,7 +1202,26 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 
 	if (!lookups.DecompileResults().IsAborted())
 	{
-		CollapseNots collapseNots(func);
+		if (success)
+		{
+			if (lookups.DebugInstructionConsumption)
+			{
+				// The text as the chunk stage made it, for diagnosing a pass.
+				std::stringstream ss;
+				sci::SourceCodeWriter writer(ss, LangSyntaxSCI);
+				if (auto *method = dynamic_cast<sci::MethodDefinition*>(&func))
+				{
+					OutputSourceCode_SCI(*method, writer);
+				}
+				else if (auto *proc = dynamic_cast<sci::ProcedureDefinition*>(&func))
+				{
+					OutputSourceCode_SCI(*proc, writer);
+				}
+				lookups.DecompileResults().AddResult(DecompilerResultType::Warning, "Before AST passes:\n" + ss.str());
+			}
+			AstPassOptions astOptions;
+			RunDecompilerAstPasses(func, astOptions, &lookups.DecompileResults());
+		}
 		ResolveCallSiteParameters resolveCallSiteParameters(lookups, func);
 		DetermineHexValues determineHexValues(func);
 		DetermineNegativeValues determinedNegValues(func);

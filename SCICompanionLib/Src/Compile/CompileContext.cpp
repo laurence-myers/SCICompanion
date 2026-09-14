@@ -268,7 +268,7 @@ void CompileContext::AddDefine(Define *pDefine)
 	WORD wDummy;
 	bool fDupe = false;
 	const string &defineLabel = pDefine->GetLabel();
-	if (_localDefines.lower_bound(defineLabel) != _localDefines.end())
+	if (_localDefines.find(defineLabel) != _localDefines.end())
 	{
 		fDupe = true;
 	}
@@ -426,7 +426,46 @@ bool CompileContext::LookupSpeciesIndex(const string &str, SpeciesIndex &wSpecie
 			return true;
 		}
 	}
+	// A classdef can name a class whose script is not in the game.
+	auto it = _classDefSpecies.find(str);
+	if (it != _classDefSpecies.end())
+	{
+		wSpeciesIndex = SpeciesIndex(it->second);
+		return true;
+	}
 	return false;
+}
+void CompileContext::AddClassDefSpecies(const string &name, uint16_t species)
+{
+	_classDefSpecies[name] = species;
+}
+bool CompileContext::IsClassDefSpecies(uint16_t species) const
+{
+	for (const auto &p : _classDefSpecies)
+	{
+		if (p.second == species)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+bool CompileContext::IsClassDefOnlySpecies(uint16_t species)
+{
+	if (!IsClassDefSpecies(species))
+	{
+		return false;
+	}
+	WORD wScript, wClassIndexInScript;
+	if (_tables.Species().GetSpeciesLocation(species, wScript, wClassIndexInScript))
+	{
+		_LoadSCOIfNone(wScript);
+		if (!_scos[wScript].GetClassName(wClassIndexInScript).empty())
+		{
+			return false;	// a real class has this species
+		}
+	}
+	return true;
 }
 bool CompileContext::IsDefaultSelector(uint16_t value)
 {
@@ -1245,7 +1284,7 @@ void PrecompiledHeaders::Update(CompileContext &context, Script &script)
 				for (; defineIt != defines.end(); ++defineIt)
 				{
 					const string &defineLabel = (*defineIt)->GetLabel();
-					if (_defines.lower_bound(defineLabel) != _defines.end())
+					if (_defines.find(defineLabel) != _defines.end())
 					{
 						context.ReportWarning((*defineIt).get(), "Duplicate defines: '%s'", defineLabel.c_str());
 					}

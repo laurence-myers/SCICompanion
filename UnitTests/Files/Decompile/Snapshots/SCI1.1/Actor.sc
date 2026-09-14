@@ -1,0 +1,801 @@
+;;; Sierra Script 1.0 - (do not remove this comment)
+(script# 998)
+(include sci.sh)
+(use Main)
+(use Print)
+(use PolyPath)
+(use Feature)
+(use Cycle)
+(use System)
+
+
+(class View of Feature
+	(properties
+		x 0
+		y 0
+		z 0
+		heading 0
+		noun 0
+		_case 0
+		modNum -1
+		nsTop 0
+		nsLeft 0
+		nsBottom 0
+		nsRight 0
+		sightAngle 26505
+		actions 0
+		onMeCheck 26505
+		state 0
+		approachX 0
+		approachY 0
+		approachDist 0
+		_approachVerbs 0
+		yStep 2
+		view -1
+		loop 0
+		cel 0
+		priority 0
+		underBits 0
+		signal 257
+		lsTop 0
+		lsLeft 0
+		lsBottom 0
+		lsRight 0
+		brTop 0
+		brLeft 0
+		brBottom 0
+		brRight 0
+		scaleSignal 0
+		scaleX 128
+		scaleY 128
+		maxScale 128
+	)
+	
+	(method (init &tmp temp0)
+		(= temp0 (if (& signal $0020) gAddToPics else gCast))
+		(&= signal $7fff)
+		(if (not (temp0 contains: self))
+			(= lsRight (= lsBottom (= lsLeft (= lsTop 0))))
+			(&= signal $ff77)
+		)
+		(BaseSetter self)
+		(temp0 add: self)
+		(if (== temp0 gAddToPics)
+			(if (not (& signal $0010)) (= priority (CoordPri y)))
+			(SetNowSeen self)
+			(temp0 doit:)
+		)
+		(self initialize: checkDetail:)
+	)
+	
+	(method (dispose)
+		(self startUpd: hide:)
+		(|= signal $8000)
+	)
+	
+	(method (showSelf)
+		(Print addText: name addIcon: view loop cel init:)
+	)
+	
+	(method (isNotHidden)
+		(return (not (& signal $0088)))
+	)
+	
+	(method (onMe param1 param2 &tmp temp0 temp1)
+		(if (IsObject param1)
+			(= temp0 (param1 x?))
+			(= temp1 (param1 y?))
+		else
+			(= temp0 param1)
+			(= temp1 param2)
+		)
+		(return
+			(cond 
+				((& signal $0080) 0)
+				(
+				(and (not (IsObject onMeCheck)) (& signal $1000))
+					(if
+						(or
+							(not (or nsLeft nsRight nsTop nsBottom))
+							(and
+								(<= nsLeft temp0)
+								(<= temp0 nsRight)
+								(<= nsTop temp1)
+								(<= temp1 nsBottom)
+							)
+						)
+						(not
+							(IsItSkip
+								view
+								loop
+								cel
+								(- temp1 nsTop)
+								(- temp0 nsLeft)
+							)
+						)
+					)
+				)
+				(else (super onMe: temp0 temp1))
+			)
+		)
+	)
+	
+	(method (posn theX theY theZ)
+		(if (>= argc 1)
+			(= x theX)
+			(if (>= argc 2)
+				(= y theY)
+				(if (>= argc 3) (= z theZ))
+			)
+		)
+		(BaseSetter self)
+		(self forceUpd:)
+	)
+	
+	(method (stopUpd)
+		(|= signal $0001)
+		(&= signal $fffd)
+	)
+	
+	(method (forceUpd)
+		(|= signal $0040)
+	)
+	
+	(method (startUpd)
+		(|= signal $0002)
+		(&= signal $fffe)
+	)
+	
+	(method (setPri thePriority)
+		(cond 
+			((== argc 0) (|= signal $0010))
+			((== thePriority -1) (&= signal $ffef))
+			(else (= priority thePriority) (|= signal $0010))
+		)
+		(self forceUpd:)
+	)
+	
+	(method (setLoop theLoop)
+		(cond 
+			((== argc 0) (|= signal $0800))
+			((== theLoop -1) (&= signal $f7ff))
+			(else (= loop theLoop) (|= signal $0800))
+		)
+		(self forceUpd:)
+	)
+	
+	(method (setCel param1)
+		(cond 
+			((== argc 0) 0)
+			((== param1 -1) 0)
+			(else
+				(= cel
+					(if (>= param1 (self lastCel:))
+						(self lastCel:)
+					else
+						param1
+					)
+				)
+			)
+		)
+		(self forceUpd:)
+	)
+	
+	(method (ignoreActors param1)
+		(if (or (== 0 argc) param1)
+			(|= signal $4000)
+		else
+			(&= signal $bfff)
+		)
+	)
+	
+	(method (hide)
+		(|= signal $0008)
+	)
+	
+	(method (show)
+		(&= signal $fff7)
+	)
+	
+	(method (delete)
+		(if (& signal $8000)
+			(&= signal $7fff)
+			(cond 
+				((gAddToPics contains: self) (gAddToPics delete: self) (&= signal $ffdf))
+				((& signal $0020) (gCast delete: self) (gAddToPics add: self) (return))
+				(else (gCast delete: self))
+			)
+			(if underBits (UnLoad 133 underBits) (= underBits 0))
+			(super dispose:)
+			(if (IsObject actions) (actions dispose:))
+			(= actions 0)
+		)
+	)
+	
+	(method (addToPic)
+		(if (gCast contains: self)
+			(|= signal $8021)
+		else
+			(|= signal $0020)
+			(self init:)
+		)
+	)
+	
+	(method (lastCel)
+		(return (- (NumCels self) 1))
+	)
+	
+	(method (motionCue)
+	)
+	
+	(method (checkDetail)
+	)
+	
+	(method (setScale param1 &tmp temp0 temp1 temp2 [temp3 40])
+		(cond 
+			((not argc) (|= scaleSignal $0001) (&= scaleSignal (~ $0002)))
+			((not param1) (&= scaleSignal (~ (| $0001 $0002))))
+			((< param1 (gRoom vanishingY?))
+				(Printf
+					{<%s setScale:> y value less than vanishingY}
+					name
+				)
+			)
+			(else
+				(= temp0 (- param1 (gRoom vanishingY?)))
+				(= temp1 (- 190 param1))
+				(= temp2 (+ (/ (* temp1 100) temp0) 100))
+				(|= scaleSignal (| $0001 $0002))
+				(= maxScale (/ (* temp2 128) 100))
+			)
+		)
+	)
+)
+
+(class Prop of View
+	(properties
+		x 0
+		y 0
+		z 0
+		heading 0
+		noun 0
+		_case 0
+		modNum -1
+		nsTop 0
+		nsLeft 0
+		nsBottom 0
+		nsRight 0
+		sightAngle 26505
+		actions 0
+		onMeCheck 26505
+		state 0
+		approachX 0
+		approachY 0
+		approachDist 0
+		_approachVerbs 0
+		yStep 2
+		view -1
+		loop 0
+		cel 0
+		priority 0
+		underBits 0
+		signal 0
+		lsTop 0
+		lsLeft 0
+		lsBottom 0
+		lsRight 0
+		brTop 0
+		brLeft 0
+		brBottom 0
+		brRight 0
+		scaleSignal 0
+		scaleX 128
+		scaleY 128
+		maxScale 128
+		cycleSpeed 6
+		script 0
+		cycler 0
+		timer 0
+		detailLevel 0
+		scaler 0
+	)
+	
+	(method (doit &tmp temp0)
+		(if (& signal $8000) (return))
+		(if script (script doit:))
+		(if (and (& signal $0004) (not (& signal $0002)))
+			(return)
+		)
+		(if cycler (cycler doit:))
+		(if scaler (scaler doit:))
+	)
+	
+	(method (handleEvent param1)
+		(if script (script handleEvent: param1))
+		(super handleEvent: param1)
+	)
+	
+	(method (delete)
+		(if (& signal $8000)
+			(self setScript: 0 setCycle: 0)
+			(if timer (timer dispose:))
+			(if (IsObject scaler) (scaler dispose:) (= scaler 0))
+			(super delete:)
+		)
+	)
+	
+	(method (motionCue)
+		(if (and cycler (cycler completed?))
+			(cycler motionCue:)
+		)
+	)
+	
+	(method (checkDetail param1)
+		(cond 
+			((not detailLevel))
+			(
+				(<
+					(if argc param1 else (gGame detailLevel:))
+					detailLevel
+				)
+				(self stopUpd:)
+			)
+			(cycler (self startUpd:))
+		)
+	)
+	
+	(method (setScale param1 param2)
+		(if scaler (scaler dispose:) (= scaler 0))
+		(cond 
+			((not argc) (super setScale:))
+			((IsObject param1)
+				(|= scaleSignal $0001)
+				(&= scaleSignal (~ $0002))
+				(= scaler
+					(if (& (param1 -info-?) $8000)
+						(param1 new:)
+					else
+						param1
+					)
+				)
+				(scaler init: self param2 &rest)
+			)
+			((== param1 -1)
+				(if (param2 scaleSignal?)
+					(= scaleSignal (param2 scaleSignal?))
+					(= maxScale (param2 maxScale?))
+					(if (IsObject (param2 scaler?))
+						((= scaler ((param2 scaler?) new:)) client: self)
+					)
+				)
+			)
+			(else (super setScale: param1))
+		)
+	)
+	
+	(method (setCycle param1)
+		(if cycler (cycler dispose:))
+		(if param1
+			(self startUpd:)
+			(= cycler
+				(if (& (param1 -info-?) $8000)
+					(param1 new:)
+				else
+					param1
+				)
+			)
+			(cycler init: self &rest)
+		else
+			(= cycler 0)
+		)
+	)
+	
+	(method (setScript param1)
+		(if (IsObject script) (script dispose:))
+		(if param1 (param1 init: self &rest))
+	)
+	
+	(method (cue)
+		(if script (script cue:))
+	)
+)
+
+(class Actor of Prop
+	(properties
+		x 0
+		y 0
+		z 0
+		heading 0
+		noun 0
+		_case 0
+		modNum -1
+		nsTop 0
+		nsLeft 0
+		nsBottom 0
+		nsRight 0
+		sightAngle 26505
+		actions 0
+		onMeCheck 26505
+		state 0
+		approachX 0
+		approachY 0
+		approachDist 0
+		_approachVerbs 0
+		yStep 2
+		view -1
+		loop 0
+		cel 0
+		priority 0
+		underBits 0
+		signal 0
+		lsTop 0
+		lsLeft 0
+		lsBottom 0
+		lsRight 0
+		brTop 0
+		brLeft 0
+		brBottom 0
+		brRight 0
+		scaleSignal 0
+		scaleX 128
+		scaleY 128
+		maxScale 128
+		cycleSpeed 6
+		script 0
+		cycler 0
+		timer 0
+		detailLevel 0
+		scaler 0
+		illegalBits -32768
+		xLast 0
+		yLast 0
+		xStep 3
+		origStep 770
+		moveSpeed 6
+		blocks 0
+		baseSetter 0
+		mover 0
+		looper 0
+		viewer 0
+		avoider 0
+		code 0
+	)
+	
+	(method (init)
+		(super init: &rest)
+		(= xLast x)
+		(= yLast y)
+	)
+	
+	(method (doit &tmp temp0 theBrLeft theBrRight temp3 temp4 temp5 temp6 temp7)
+		(if (& signal $8000) (return))
+		(if script (script doit:))
+		(if code (code doit: self))
+		(if (and (& signal $0004) (not (& signal $0002)))
+			(return)
+		)
+		(if viewer (viewer doit: self))
+		(if avoider (avoider doit:))
+		(if mover
+			(if
+			(and (& scaleSignal $0001) (not (& scaleSignal $0004)))
+				(= temp5 (>> origStep $0008))
+				(= temp6 (& origStep $00ff))
+				(= temp7 (/ (* temp5 scaleX) 128))
+				(= temp3 (if temp7 else 1))
+				(= temp7 (/ (* temp6 scaleY) 128))
+				(= temp4 (if temp7 else 1))
+				(if (or (!= temp3 xStep) (!= temp4 yStep))
+					(self setStep: temp3 temp4 1)
+				)
+			)
+			(if mover (mover doit:))
+		)
+		(if scaler (scaler doit:))
+		(if cycler
+			(= theBrLeft brLeft)
+			(= theBrRight brRight)
+			(cycler doit:)
+			(if baseSetter
+				(baseSetter doit: self)
+			else
+				(BaseSetter self)
+			)
+		)
+		(= xLast x)
+		(= yLast y)
+	)
+	
+	(method (posn theXLast theYLast)
+		(super posn: theXLast theYLast &rest)
+		(= xLast theXLast)
+		(= yLast theYLast)
+	)
+	
+	(method (setLoop param1 &tmp theLooper)
+		(= theLooper
+			(cond 
+				((== argc 0) (super setLoop:) 0)
+				((not (IsObject param1)) (super setLoop: param1 &rest) 0)
+				((& (param1 -info-?) $8000) (param1 new:))
+				(else param1)
+			)
+		)
+		(if theLooper
+			(if looper (looper dispose:))
+			((= looper theLooper) init: self &rest)
+		)
+	)
+	
+	(method (delete)
+		(if (& signal $8000)
+			(if (!= mover -1) (self setMotion: 0))
+			(self setAvoider: 0)
+			(if baseSetter (baseSetter dispose:) (= baseSetter 0))
+			(if looper (looper dispose:) (= looper 0))
+			(if viewer (viewer dispose:) (= viewer 0))
+			(if blocks (blocks dispose:) (= blocks 0))
+			(if code (code dispose:) (= code 0))
+			(if (IsObject actions)
+				(actions dispose:)
+				(= actions 0)
+			)
+			(super delete:)
+		)
+	)
+	
+	(method (motionCue)
+		(if (and mover (mover completed?)) (mover motionCue:))
+		(super motionCue:)
+	)
+	
+	(method (checkDetail param1)
+		(cond 
+			((not detailLevel))
+			(
+				(<
+					(if argc param1 else (gGame detailLevel:))
+					detailLevel
+				)
+				(self stopUpd:)
+			)
+			((or cycler mover) (self startUpd:))
+		)
+	)
+	
+	(method (setMotion param1)
+		(if (and mover (!= mover -1)) (mover dispose:))
+		(if param1
+			(self startUpd:)
+			(= mover
+				(if (& (param1 -info-?) $8000)
+					(param1 new:)
+				else
+					param1
+				)
+			)
+			(mover init: self &rest)
+		else
+			(= mover 0)
+		)
+	)
+	
+	(method (setAvoider param1)
+		(if avoider (avoider dispose:))
+		(= avoider
+			(if
+			(and (IsObject param1) (& (param1 -info-?) $8000))
+				(param1 new:)
+			else
+				param1
+			)
+		)
+		(if avoider (avoider init: self &rest))
+	)
+	
+	(method (ignoreHorizon param1)
+		(if (or (not argc) param1)
+			(|= signal $2000)
+		else
+			(&= signal $dfff)
+		)
+	)
+	
+	(method (observeControl theIllegalBits &tmp temp0)
+		(= temp0 0)
+		(while (< temp0 argc)
+			(|= illegalBits [theIllegalBits temp0])
+			(++ temp0)
+		)
+	)
+	
+	(method (ignoreControl param1 &tmp temp0)
+		(= temp0 0)
+		(while (< temp0 argc)
+			(&= illegalBits (~ [param1 temp0]))
+			(++ temp0)
+		)
+	)
+	
+	(method (observeBlocks)
+		(if (not blocks) (= blocks (Set new:)))
+		(blocks add: &rest)
+	)
+	
+	(method (ignoreBlocks)
+		(if blocks
+			(blocks delete: &rest)
+			(if (blocks isEmpty:) (blocks dispose:) (= blocks 0))
+		)
+	)
+	
+	(method (isStopped)
+		(if (IsObject mover)
+			(if
+			(and (== x (mover xLast?)) (== y (mover yLast?)))
+				(return 1)
+			)
+			(return 0)
+		)
+		(return 1)
+	)
+	
+	(method (isBlocked)
+		(return (& signal $0400))
+	)
+	
+	(method (inRect param1 param2 param3 param4)
+		(return
+			(if
+			(and (<= param1 x) (<= x param3) (<= param2 y))
+				(<= y param4)
+			else
+				0
+			)
+		)
+	)
+	
+	(method (onControl param1)
+		(if (and argc param1)
+			(OnControl 4 x y)
+		else
+			(OnControl 4 brLeft brTop brRight brBottom)
+		)
+	)
+	
+	(method (distanceTo param1)
+		(GetDistance x y (param1 x?) (param1 y?) gPicAngle)
+	)
+	
+	(method (cantBeHere &tmp temp0)
+		(if baseSetter
+			(baseSetter doit: self)
+		else
+			(BaseSetter self)
+		)
+		(= temp0
+			(cond 
+				((CantBeHere self (gCast elements?)))
+				(
+					(and
+						(not (& signal $2000))
+						(IsObject gRoom)
+						(< y (gRoom horizon?))
+					)
+					-1
+				)
+				((and blocks (not (blocks allTrue: 57 self))) -2)
+			)
+		)
+	)
+	
+	(method (setStep theTheXStep theTheYStep param3 &tmp theXStep theYStep)
+		(= theXStep (>> origStep $0008))
+		(= theYStep (& origStep $00ff))
+		(if (and (>= argc 1) (!= theTheXStep -1))
+			(= theXStep theTheXStep)
+		)
+		(if (and (>= argc 2) (!= theTheYStep -1))
+			(= theYStep theTheYStep)
+		)
+		(if (or (< argc 3) (not param3))
+			(= origStep (+ (<< theXStep $0008) theYStep))
+		)
+		(= xStep theXStep)
+		(= yStep theYStep)
+		(if
+			(and
+				(IsObject mover)
+				(or
+					(mover isMemberOf: MoveTo)
+					(mover isMemberOf: PolyPath)
+				)
+			)
+			(mover init:)
+		)
+	)
+	
+	(method (setDirection param1 &tmp temp0 gRoomVanishingY temp2 temp3 temp4 temp5 temp6 gRoomObstacles)
+		(= gRoomVanishingY (gRoom vanishingY?))
+		(= temp0
+			(if (== gRoomVanishingY -30000)
+				x
+			else
+				(gRoom vanishingX?)
+			)
+		)
+		(if (and (== xStep 0) (== yStep 0)) (return))
+		(= temp5 (/ 32000 (Max xStep yStep)))
+		(switch param1
+			(0 (self setMotion: 0) (return))
+			(1
+				(= temp2 (- temp0 x))
+				(= temp3 (- gRoomVanishingY y))
+			)
+			(5
+				(= temp2 (- x temp0))
+				(= temp3 (- y gRoomVanishingY))
+			)
+			(3 (= temp2 temp5) (= temp3 0))
+			(7
+				(= temp2 (- temp5))
+				(= temp3 0)
+			)
+			(else 
+				(= temp4 (GetAngle x y temp0 gRoomVanishingY))
+				(if (< 180 temp4) (-= temp4 360))
+				(= temp4 (+ (/ (+ temp4 90) 2) (* 45 (- param1 2))))
+				(= temp2 (SinMult temp4 100))
+				(= temp3 (- (CosMult temp4 100)))
+			)
+		)
+		(/= temp5 5)
+		(while
+		(and (< (Abs temp3) temp5) (< (Abs temp2) temp5))
+			(*= temp2 5)
+			(*= temp3 5)
+		)
+		(= gRoomObstacles (gRoom obstacles?))
+		(if (and gRoomObstacles gEgoUseObstacles)
+			(= temp6
+				(AvoidPath
+					x
+					y
+					(+ x temp2)
+					(+ y temp3)
+					(gRoomObstacles elements?)
+					(gRoomObstacles size?)
+					0
+				)
+			)
+			(= temp2 (- (WordAt temp6 2) x))
+			(= temp3 (- (WordAt temp6 3) y))
+			(Memory 3 temp6)
+		)
+		(cond 
+			((or temp2 temp3) (self setMotion: MoveTo (+ x temp2) (+ y temp3)))
+			(param1 (self setMotion: 0 setHeading: (* (- param1 1) 45)))
+			(else (self setMotion: 0))
+		)
+	)
+	
+	(method (setHeading theHeading param2)
+		(if argc (= heading theHeading))
+		(if looper
+			(looper
+				doit: self heading (if (>= argc 2) param2 else 0)
+			)
+		else
+			(DirLoop self heading)
+			(if (and (>= argc 2) (IsObject param2))
+				(param2 cue: &rest)
+			)
+		)
+		(return heading)
+	)
+	
+	(method (setSpeed theCycleSpeed)
+		(if argc (= moveSpeed (= cycleSpeed theCycleSpeed)))
+		(return moveSpeed)
+	)
+)

@@ -2025,10 +2025,6 @@ void PostProcessScript(ICompileLog *pLog, Script &script)
 	{
 		unimplementedWarnings.push_back("global statements(s)");
 	}
-	if (!script.ClassDefs.empty())
-	{
-		unimplementedWarnings.push_back("classdef statements(s)");
-	}
 	if (!script.Selectors.empty())
 	{
 		unimplementedWarnings.push_back("selectors statements(s)");
@@ -2050,7 +2046,7 @@ void PostProcessScript(ICompileLog *pLog, Script &script)
 	{
 		for (auto &warning : unimplementedWarnings)
 		{
-			std::string text = warning + "ignored - not implemented";
+			std::string text = warning + " ignored - not implemented";
 			pLog->ReportResult(CompileResult(text, script.GetScriptId(), 1, 0, CompileResult::CompileResultType::CRT_Warning));
 		}
 	}

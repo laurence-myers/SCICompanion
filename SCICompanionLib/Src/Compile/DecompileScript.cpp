@@ -180,6 +180,23 @@ void InsertHeaders(Script &script)
 	script.AddInclude("sci.sh");
 }
 
+// For each species with no name (its defining script is not in the game),
+// emit a classdef forward declaration. It carries the species number so the
+// synthesized name compiles back to a class opcode, but writes nothing to the
+// game resources.
+void InsertClassDefs(Script &script, DecompileLookups &lookups)
+{
+	for (uint16_t species : lookups.GetUnknownSpecies())
+	{
+		std::unique_ptr<ClassDefDeclaration> classDef = std::make_unique<ClassDefDeclaration>();
+		classDef->SetName(GetUnknownClassName(species));
+		classDef->ClassNumber = species;
+		// ScriptNumber, SuperNumber and File stay unset: they are unknown and
+		// the compiler does not need them for a class reference.
+		script.ClassDefs.push_back(std::move(classDef));
+	}
+}
+
 void DetermineAndInsertUsings(const GameFolderHelper &helper, Script &script, DecompileLookups &lookups)
 {
 	for (uint16_t usingScript : lookups.GetValidUsings())
@@ -539,6 +556,8 @@ Script *Decompile(const GameFolderHelper &helper, const CompiledScript &compiled
 		InsertHeaders(*pScript);
 
 		DetermineAndInsertUsings(helper, *pScript, lookups);
+
+		InsertClassDefs(*pScript, lookups);
 
 		for (auto &pair : exportSlotToName)
 		{

@@ -1743,8 +1743,13 @@ CodeResult SendParam::OutputByteCode(CompileContext &context) const
 				}
 			}
 		}
-		else if ((calleeSpecies != DataTypeAny) && (calleeSpecies != DataTypeNone))
+		else if ((calleeSpecies != DataTypeAny) && (calleeSpecies != DataTypeNone) &&
+			!context.IsClassDefOnlySpecies(calleeSpecies.Type()))
 		{
+			// A classdef-only species (its script is not in the game) has no
+			// known method or property list, so its selectors cannot be checked.
+			// A classdef that names a species of a real class is checked as
+			// that class.
 			// We'll make a decision not to generate an error if the callee is of type 'var'.
 			// We need some way for code to call specific methods on something, so this will be it
 			// (e.g. by casting to var).
@@ -2011,6 +2016,52 @@ BinaryOperator GetBinaryOpFromAssignment(AssignmentOperator assignment)
 	return BinaryOperator::None;
 }
 
+// True when the expression can have a side effect: a call, a send, an
+// assignment, an increment or a decrement, at any depth. A value, a variable
+// or an operator over those has none.
+static bool _CanHaveSideEffect(const SyntaxNode *node)
+{
+	if (!node)
+	{
+		return false;
+	}
+	switch (node->GetNodeType())
+	{
+		case NodeTypeValue:
+			return false;
+		case NodeTypeComplexValue:
+			return _CanHaveSideEffect(static_cast<const ComplexPropertyValue *>(node)->GetIndexer());
+		case NodeTypeBinaryOperation:
+		{
+			const BinaryOp *op = static_cast<const BinaryOp *>(node);
+			return _CanHaveSideEffect(op->GetStatement1()) || _CanHaveSideEffect(op->GetStatement2());
+		}
+		case NodeTypeUnaryOperation:
+		{
+			const UnaryOp *op = static_cast<const UnaryOp *>(node);
+			if ((op->Operator == UnaryOperator::Increment) || (op->Operator == UnaryOperator::Decrement))
+			{
+				return true;
+			}
+			return _CanHaveSideEffect(op->GetStatement1());
+		}
+		case NodeTypeNaryOperation:
+		{
+			const NaryOp *op = static_cast<const NaryOp *>(node);
+			for (const auto &segment : op->GetStatements())
+			{
+				if (_CanHaveSideEffect(segment.get()))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+		default:
+			return true;
+	}
+}
+
 CodeResult Assignment::OutputByteCode(CompileContext &context) const
 {
 	declare_conditional isCondition(context, false);
@@ -2066,7 +2117,32 @@ CodeResult Assignment::OutputByteCode(CompileContext &context) const
 		case ResolvedToken::ScriptVariable:
 		case ResolvedToken::Parameter:
 		case ResolvedToken::TempVariable:
-			if (pIndexer)
+		{
+			bool simpleIndexer = pIndexer &&
+				((pIndexer->GetNodeType() == NodeTypeValue) ||
+				((pIndexer->GetNodeType() == NodeTypeComplexValue) && !static_cast<const ComplexPropertyValue*>(pIndexer)->GetIndexer()));
+			// Sierra evaluated the indexer twice, even a complex one. Emit that
+			// sequence for Sierra syntax so a complex indexer round-trips; keep
+			// the older single-evaluation trick for Studio syntax.
+			if (pIndexer && (simpleIndexer || (context.GetLanguage() == LangSyntaxSCI)))
+			{
+				// Emit Sierra's sequence, which the decompiler reads back:
+				//   index; lsti var; value; op; push; index; sati var
+				// The indexed store pops the value and leaves it in the acc.
+				if (!simpleIndexer && _CanHaveSideEffect(pIndexer))
+				{
+					context.ReportWarning(this, "The indexer of '%s' is evaluated twice (once for the load, once for the store); its side effect happens twice.", strVarName.c_str());
+				}
+				OutputByteCodeToAccumulator(context, *pIndexer);
+				VariableOperand(context, wIndex, TokenTypeToVOType(tokenType) | VO_STACK | VO_LOAD | VO_ACC_AS_INDEX_MOD, GetLineNumber());
+				OutputByteCodeToAccumulator(context, *_statement1);
+				WriteSimple(context, GetInstructionForBinaryOperator(theBinaryOperator), GetLineNumber());
+				WriteSimple(context, Opcode::PUSH, GetLineNumber());
+				OutputByteCodeToAccumulator(context, *pIndexer);
+				VariableOperand(context, wIndex, TokenTypeToVOType(tokenType) | VO_ACC | VO_STORE | VO_ACC_AS_INDEX_MOD, GetLineNumber());
+				ocWhereWePutValue = OC_Accumulator; // It's sitting in the accumulator
+			}
+			else if (pIndexer)
 			{
 				// A little bit more complicated:  a[10] += 5;
 				// Let's evaluate the indexer, and put it on the accumulator
@@ -2108,6 +2184,7 @@ CodeResult Assignment::OutputByteCode(CompileContext &context) const
 				ocWhereWePutValue = OC_Accumulator; // It's sitting in the accumulator
 			}
 			break;
+		}
 		case ResolvedToken::ClassProperty:
 			// Load the property onto the stack
 			LoadProperty(context, wIndex, true, GetLineNumber());
@@ -2397,12 +2474,41 @@ CodeResult BinaryOp::OutputByteCode(CompileContext &context) const
 	{
 		if (Operator == BinaryOperator::LogicalAnd || Operator == BinaryOperator::LogicalOr)
 		{
-			// Handle && and || when not used in a condition.
-			// Basically, we write an "if statement" that evaluates to 1 or 0
+			// A logical and/or used for its value, not as a condition.
+			if (context.GetLanguage() == LangSyntaxSCI)
+			{
+				// Sierra semantics: the value is the last operand evaluated by the
+				// short circuit, not a normalized 1 or 0. Sierra's own scripts rely
+				// on this (e.g. (Log 1 {x} (and i (i name:)))). Evaluate the
+				// expression as a condition, but resolve both the success and
+				// failure exits to the end of the expression, so whichever operand
+				// the short circuit stops on is left in the accumulator.
+				branch_block blockSuccess(context, BranchBlockIndex::Success);
+				branch_block blockFailure(context, BranchBlockIndex::Failure);
+				{
+					declare_conditional isCondition(context, true);
+					if (Operator == BinaryOperator::LogicalAnd)
+					{
+						_OutputByteCodeAnd(context);
+					}
+					else
+					{
+						_OutputByteCodeOr(context);
+					}
+				}
+				// Both exits land here, at the end of the expression.
+				blockFailure.leave();
+				blockSuccess.leave();
+				return CodeResult(PushToStackIfAppropriate(context, GetLineNumber()), DataTypeAny);
+			}
+			// SCI Studio syntax: write an "if statement" that evaluates to 1 or 0.
 			return _WriteFakeIfStatement(context, *this);
 		}
 		else
 		{
+			// The operands are values, also inside an if test: a logical
+			// and/or below a compare must not branch to the if's else.
+			declare_conditional isCondition(context, false);
 			SpeciesIndex wTypeLeft;
 			SpeciesIndex wTypeRight;
 			// pop()  operator  acc
@@ -3062,7 +3168,11 @@ void VariableDecl::PreScan(CompileContext &context)
 	ForwardPreScan2(_segments, context);
 }
 
-void ClassDefDeclaration::PreScan(CompileContext &context) {}
+void ClassDefDeclaration::PreScan(CompileContext &context)
+{
+	// Register the class name so a reference to it resolves to its species.
+	context.AddClassDefSpecies(GetName(), ClassNumber);
+}
 void SelectorDeclaration::PreScan(CompileContext &context) {}
 
 void GlobalDeclaration::PreScan(CompileContext &context)

@@ -1667,12 +1667,15 @@ public:
 			thenBlock &&
 			(thenBlock->GetStatements().size() == 1))
 		{
-			if (SafeSyntaxNode<BreakStatement>(thenBlock->GetStatements()[0].get()))
+			// (break 2) has no breakif form: the level would be lost.
+			const BreakStatement *breakStatement = SafeSyntaxNode<BreakStatement>(thenBlock->GetStatements()[0].get());
+			const ContinueStatement *continueStatement = SafeSyntaxNode<ContinueStatement>(thenBlock->GetStatements()[0].get());
+			if (breakStatement && (breakStatement->Levels == 1))
 			{
 				breakOrContinueIf = "breakif";
 				return true;
 			}
-			else if (SafeSyntaxNode<ContinueStatement>(thenBlock->GetStatements()[0].get()))
+			else if (continueStatement && (continueStatement->Levels == 1))
 			{
 				breakOrContinueIf = "contif";
 				return true;
@@ -1859,17 +1862,28 @@ public:
 		out.out << "(classdef " << classDef.GetName();
 		{
 			INDENT_BLOCK;
-			_MaybeNewLineIndent();
-			out.out << "script# ";
-			_OutputNumber(out.out, classDef.ScriptNumber, false, true);
+			// script#, super# and file# are optional. A synthesized classdef
+			// for a stripped class leaves them unset; print only class#.
+			if (classDef.ScriptNumber != 0xffff)
+			{
+				_MaybeNewLineIndent();
+				out.out << "script# ";
+				_OutputNumber(out.out, classDef.ScriptNumber, false, true);
+			}
 			_MaybeNewLineIndent();
 			out.out << "class# ";
 			_OutputNumber(out.out, classDef.ClassNumber, false, true);
-			_MaybeNewLineIndent();
-			out.out << "super# ";
-			_OutputNumber(out.out, classDef.SuperNumber, false, true);
-			_MaybeNewLineIndent();
-			out.out << "file# " << "\"" << classDef.File << "\"";
+			if (classDef.SuperNumber != 0xffff)
+			{
+				_MaybeNewLineIndent();
+				out.out << "super# ";
+				_OutputNumber(out.out, classDef.SuperNumber, false, true);
+			}
+			if (!classDef.File.empty())
+			{
+				_MaybeNewLineIndent();
+				out.out << "file# " << "\"" << classDef.File << "\"";
+			}
 			_MaybeNewLineIndent();
 			_MaybeNewLineIndent();
 
@@ -2040,6 +2054,12 @@ void OutputSourceCode_SCI(const sci::MethodDefinition &method, sci::SourceCodeWr
 {
 	SCISourceCodeFormatter output(out);
 	output.DoTheThing(method);
+}
+
+void OutputSourceCode_SCI(const sci::ProcedureDefinition &proc, sci::SourceCodeWriter &out)
+{
+	SCISourceCodeFormatter output(out);
+	output.DoTheThing(proc);
 }
 
 void OutputSourceCode_SCI(const sci::ClassProperty &classProp, sci::SourceCodeWriter &out)

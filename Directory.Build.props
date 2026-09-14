@@ -1,34 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Solution-wide build tweaks for building this v140-era code with the v141
-  (VS2017) toolset plus a modern Windows SDK. Delete this file to revert.
--->
+<!-- Solution-wide build settings. -->
 <Project>
 
   <!--
-    std::tr2::sys (old experimental filesystem) is deprecated on v141. Every
-    project here builds with SDLCheck on, so that deprecation (C4996) becomes a
-    build error. This macro acknowledges it. The namespace still works on v141.
+    std::filesystem needs C++17. This code predates C++17, so three MSVC
+    switches keep it compiling unchanged:
+      _HAS_AUTO_PTR_ETC=1
+        Restores adaptors C++17 removed (unary_function, binary_function,
+        bind2nd, mem_fun_ref, ptr_fun).
+      _HAS_STD_BYTE=0
+        Disables std::byte, which is ambiguous with the Windows byte typedef
+        in files that have "using namespace std".
+      _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
+        Accepts C++17 deprecations such as <codecvt> and std::not1. SDLCheck
+        is on, so these would otherwise be errors. The features still work.
   -->
   <ItemDefinitionGroup>
     <ClCompile>
-      <PreprocessorDefinitions>_SILENCE_TR2_SYS_NAMESPACE_DEPRECATION_WARNING;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <PreprocessorDefinitions>_HAS_AUTO_PTR_ETC=1;_HAS_STD_BYTE=0;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
 
   <!--
-    LNK1327 (failure during running mt.exe) when linking the exe inside Visual
-    Studio. With the default settings the linker writes the exe and then calls
-    mt.exe to embed the manifest back into that same exe. Inside the VS build
-    something briefly holds the freshly written exe, so the embed step fails.
-    The command-line build does not hit this. Setting EmbedManifest to false
-    makes the build write a side-by-side SCICompanion.exe.manifest instead, so
-    the exe is never reopened. The Common-Controls v6 theming still works,
-    because Windows reads the .manifest file next to the exe.
-
-    To keep the manifest embedded inside the exe instead, remove this property,
-    add  1 24 "res\SCICompanion.manifest"  to SCICompanion.rc, and set
-    GenerateManifest to false. That avoids mt.exe as well.
+    Do not embed the manifest into the exe. Inside a Visual Studio build the
+    freshly linked exe is briefly held, so the embed step (mt.exe) fails with
+    LNK1327. A side-by-side SCICompanion.exe.manifest avoids that. Windows reads
+    it next to the exe, so Common-Controls v6 theming still works.
   -->
   <PropertyGroup>
     <EmbedManifest>false</EmbedManifest>

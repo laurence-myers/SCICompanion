@@ -155,7 +155,7 @@ class GraphVisualizer
 			case CFGNodeType::CompoundCondition:
 			{
 				const CompoundConditionNode *ccNode = static_cast<const CompoundConditionNode *>(node);
-				ss << (ccNode->isFirstTermNegated ? "!" : "") << "X " << ((ccNode->condition == ConditionType::And) ? "and" : "or") << " Y " << node->ArbitraryDebugIndex;
+				ss << "X " << ((ccNode->condition == ConditionType::And) ? "and" : "or") << " Y " << node->ArbitraryDebugIndex;
 			}
 			break;
 
@@ -194,7 +194,7 @@ class GraphVisualizer
 	}
 
 public:
-	void CFGVisualize(const std::string &name, NodeSet &discoveredControlStructures)
+	std::string CFGVisualize(const std::string &name, NodeSet &discoveredControlStructures)
 	{
 		// Visualize it, until we know it's right
 		std::stringstream ss;
@@ -240,13 +240,15 @@ public:
 			graphIndex++;
 		}
 		ss << "}\n";
-		ShowTextFile(ss.str().c_str(), name + ".txt");
+		return ss.str();
 	}
 };
 
 
-void CFGVisualize(const std::string &name, NodeSet &discoveredControlStructures)
+// Returns the Graphviz text. The caller decides where it goes; nothing is
+// opened on screen.
+std::string CFGVisualize(const std::string &name, NodeSet &discoveredControlStructures)
 {
 	GraphVisualizer viz;
-	viz.CFGVisualize(name, discoveredControlStructures);
+	return viz.CFGVisualize(name, discoveredControlStructures);
 }
