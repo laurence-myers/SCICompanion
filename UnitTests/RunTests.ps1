@@ -2,7 +2,7 @@
     Runs the SCI Companion unit tests with vstest.console.exe.
 
     Build first, for example:
-      MSBuild.exe SCICompanion.sln -m -p:Configuration=Kawa -p:Platform=Win32
+      MSBuild.exe SCICompanion.sln -m -p:Configuration=Release -p:Platform=Win32
     Then:
       .\UnitTests\RunTests.ps1
 
@@ -11,7 +11,7 @@
     so pass -All to run everything.
 #>
 param(
-    [string]$Configuration = "Kawa",
+    [string]$Configuration = "Release",
     [string]$Filter = "FullyQualifiedName~TestDecompile|FullyQualifiedName~TestAstPasses|FullyQualifiedName~TestShippedFiles|FullyQualifiedName~TestPics",
     [switch]$All,
     # After the run, copy the decompiled template snapshots the test wrote into

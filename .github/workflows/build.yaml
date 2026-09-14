@@ -9,7 +9,7 @@ jobs:
 
     strategy:
       matrix:
-        configuration: [Kawa]
+        configuration: [Release]
         platform: [Win32]
 
     steps:
