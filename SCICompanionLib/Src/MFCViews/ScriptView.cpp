@@ -403,7 +403,7 @@ std::vector<std::string> codeLevelKeywordsSCI =
 	_T("if"),
 	_T("mod"),
 	_T("not"),
-	_T("null")
+	_T("null"),
 	_T("of"),
 	_T("or"),
 	_T("repeat"),

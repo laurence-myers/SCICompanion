@@ -95,21 +95,21 @@ vector<string> SCIKeywords =
 	"asm",
 	"break",
 	"breakif",
-	"class#"		// ** In classdef
-	"classdef"	  // **
+	"class#",		// ** In classdef
+	"classdef",	  // **
 	"cond",
 	"continue",
 	"contif",
 	"define",
 	"else",
-	"extern"		// ** For linking public procedures
-	"file#"		 // ** Procedure forward declarations
+	"extern",		// ** For linking public procedures
+	"file#",		 // ** Procedure forward declarations
 	"for",
 	"foreach",
-	"global"		// ** For global var declarations
+	"global",		// ** For global var declarations
 	"if",
 	"method",
-	"methods"	   // ** Method forward declarations (also methods in classdef)
+	"methods",	   // ** Method forward declarations (also methods in classdef)
 	"mod",
 	"not",
 	"of",
@@ -120,8 +120,8 @@ vector<string> SCIKeywords =
 	"repeat",
 	"return",
 	"script#",
-	"selectors"	 // ** For the selector list
-	"super#"		// ** In classdef
+	"selectors",	 // ** For the selector list
+	"super#",		// ** In classdef
 	"super",
 	"switch",
 	"switchto",

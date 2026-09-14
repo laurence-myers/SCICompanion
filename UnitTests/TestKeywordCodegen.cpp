@@ -196,6 +196,41 @@ namespace UnitTests
                 L"verbs should decompile to a doVerb method");
         }
 
+        // Reserved code-level keywords must be rejected as identifiers, so a
+        // script that uses one as a variable name gets a clean compile error
+        // instead of silently mis-parsing. (Before the SCIKeywords comma fix,
+        // cond/for/if/mod/super were missing from the list and were wrongly
+        // accepted as names.)
+        TEST_METHOD(ReservedWords_RejectedAsIdentifiers)
+        {
+            _gameFolder = SetUpGameSCI11();
+
+            auto varProc = [](const std::string &name)
+            {
+                return Header() +
+                    "(public\n\tkTest 0\n)\n"
+                    "(procedure (kTest &tmp " + name + ")\n"
+                    "\t(= " + name + " 1)\n"
+                    "\t(return " + name + ")\n"
+                    ")\n";
+            };
+
+            // Positive control: a non-keyword name compiles, so any failure
+            // below is due to the name being reserved, not the surrounding code.
+            std::string error;
+            Assert::IsTrue(CompileSource(902, "kTest", varProc("notAKeyword"), error),
+                W("control (non-keyword variable) failed to compile: " + error).c_str());
+
+            const char *reserved[] = { "for", "if", "cond", "mod", "super" };
+            for (const char *name : reserved)
+            {
+                error.clear();
+                bool compiled = CompileSource(902, "kTest", varProc(name), error);
+                Assert::IsFalse(compiled,
+                    W(std::string("'") + name + "' was accepted as a variable name but is a reserved keyword").c_str());
+            }
+        }
+
     private:
         std::string _gameFolder;
     };
