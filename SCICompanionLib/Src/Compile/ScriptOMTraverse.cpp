@@ -161,7 +161,6 @@ void WhileLoop::Traverse(IExploreNode &en)
 	_innerCondition->Traverse(en);
 	ForwardTraverse2(_segments, en);
 }
-#if ENABLE_FOREACH
 void ForEachLoop::Traverse(IExploreNode &en)
 {
 	ExploreNodeBlock enb(en, *this);
@@ -171,13 +170,10 @@ void ForEachLoop::Traverse(IExploreNode &en)
 	}
 	ForwardTraverse2(_segments, en);
 }
-#endif
-#if ENABLE_GETPOLY
 void GetPolyStatement::Traverse(IExploreNode &en)
 {
 	ExploreNodeBlock enb(en, *this);
 }
-#endif
 void Script::Traverse(IExploreNode &en)
 {
 	ExploreNodeBlock enb(en, *this);
@@ -220,9 +216,7 @@ void ClassDefinition::Traverse(IExploreNode &en)
 {
 	ExploreNodeBlock enb(en, *this);
 	ForwardTraverse2(_methods, en);
-#ifdef ENABLE_VERBS
 	ForwardTraverse2(_verbHandlers, en);
-#endif
 	ForwardTraverse2(_properties, en);
 }
 void SendParam::Traverse(IExploreNode &en)

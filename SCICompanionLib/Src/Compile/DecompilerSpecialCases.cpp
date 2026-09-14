@@ -166,7 +166,6 @@ void _MassagePrint(ProcedureCall &proc, DecompileLookups &lookups)
 	}
 }
 
-#ifdef ENABLE_DISPLAYMASSAGE
 void _MassageDisplay(ProcedureCall &proc, DecompileLookups &lookups)
 {
 	size_t parameterIndex = 1;
@@ -194,13 +193,11 @@ void _MassageDisplay(ProcedureCall &proc, DecompileLookups &lookups)
 			case 106: pV->SetValue("dsWIDTH", ValueType::Token); parameterIndex += 1; break;
 			case 107: pV->SetValue("dsSAVEPIXELS", ValueType::Token); parameterIndex += 0; break;
 			case 108: pV->SetValue("dsRESTOREPIXELS", ValueType::Token); parameterIndex += 1; break;
-			case 122: pV->SetValue("dsSTROKE", ValueType::Token); parameterIndex += 1; break;
 			default: return;
 		}
 		parameterIndex++;
 	}
 }
-#endif
 
 void _MassageScriptID(ProcedureCall &proc, DecompileLookups &lookups)
 {
@@ -228,12 +225,10 @@ void _MassageProcedureCall(ProcedureCall &proc, DecompileLookups &lookups)
 	{
 		_MassagePrint(proc, lookups);
 	}
-#ifdef ENABLE_DISPLAYMASSAGE
 	else if (proc.GetName() == "Display")
 	{
 		_MassageDisplay(proc, lookups);
 	}
-#endif
 	else if (proc.GetName() == "ScriptID")
 	{
 		_MassageScriptID(proc, lookups);

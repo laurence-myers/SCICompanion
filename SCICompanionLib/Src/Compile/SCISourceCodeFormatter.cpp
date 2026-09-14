@@ -236,21 +236,12 @@ std::string GetPropertyText(const PropertyValueBase &prop)
 		case ValueType::Pointer:
 			mw << "@" << CleanTokenSCI(prop.GetStringValue());
 			break;
-#ifdef ENABLE_FOREACH
 		case ValueType::ArraySize:
 			mw << "&sizeof " << CleanTokenSCI(prop.GetStringValue());
 			break;
-#endif
-#ifdef ENABLE_EXISTS
 		case ValueType::ParameterIndex:
 			mw << "&exists " << CleanTokenSCI(prop.GetStringValue());
 			break;
-#endif
-#ifdef ENABLE_LDMSTM
-		case ValueType::Deref:
-			mw << "*" << CleanTokenSCI(prop.GetStringValue());
-			break;
-#endif
 	}
 	return mw.str();
 }
@@ -1215,12 +1206,6 @@ public:
 		_MaybeNewLineIndent();
 
 		GO_INLINE;
-#ifdef ENABLE_LDMSTM
-		if (lValue.IsDeref)
-		{
-			out.out << "*";
-		}
-#endif
 		if (lValue.HasIndexer())
 		{
 			out.out << "[";
@@ -1938,7 +1923,6 @@ public:
 		out.out << selector.GetName() << " " << selector.Index;
 	}
 
-#ifdef ENABLE_VERBS
 	void Visit(const VerbClauseStatement &vc)
 	{
 		out.out << "VerbClauseStatement";
@@ -1947,21 +1931,16 @@ public:
 	{
 		out.out << "VerbHandlerDefinition";
 	}
-#endif
 
-#ifdef ENABLE_FOREACH
 	void Visit(const ForEachLoop &vc)
 	{
 		_MaybeIndentAcceptChildren(vc.FinalCode);
 	}
-#endif
 
-#ifdef ENABLE_GETPOLY
 	void Visit(const GetPolyStatement &gp) override
 	{
 		_MaybeIndentAcceptChildren(gp.FinalCode);
 	}
-#endif
 
 	// Measure the size of code output in a first pass, so we can better
 

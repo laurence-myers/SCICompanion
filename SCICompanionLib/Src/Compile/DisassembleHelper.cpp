@@ -18,20 +18,6 @@
 #include "Vocab000.h"
 using namespace std;
 
-#ifdef ENABLE_FORCEDGLOBALS
-const char* const kawaGlobalsSCI0[] =
-{
-	"gEgo", "gGame", "gRoom", "gSpeed", "gQuit", "gCast", "gRegions",
-	"gTimers", "gSounds", "gInv", "gAddToPics", "gCurRoomNum", "gPrevRoomNum",
-	"gNewRoomNum", "gDebug", "gScore", "gMaxScore", "gDefaultPicAnim", 0,
-	"gCursor", "gNormalCursor", "gLoadingCursor", "gFont", "gSmallFont",
-	"gLastEvent", "gDialog", "gBigFont", // "gVersion", 0, "gLocales",
-	//"gSaveDir", 0, "gFeatures"
-};
-/*
-std::vector<std::string> kawaGlobals;
-*/
-#endif
 
 string _GetVariableName(const char *format, int index)
 {
@@ -51,18 +37,6 @@ string _GetLocalVariableName(int index, uint16_t scriptNum)
 }
 string _GetGlobalVariableName(int index)
 {
-#ifdef ENABLE_FORCEDGLOBALS
-	if (index < 27 && kawaGlobalsSCI0[index] != 0)
-	{
-		return string(kawaGlobalsSCI0[index]);
-	}
-	/*
-	if (index < kawaGlobals.size())
-	{
-		return string(kawaGlobals[index]);
-	}
-	*/
-#endif
 
 	return _GetVariableName("global%d", index);
 }

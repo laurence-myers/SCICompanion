@@ -6,13 +6,9 @@
 #include "Operators.h"
 #include "OperatorTables.h"
 #include "format.h"
-#ifdef ENABLE_FOREACH
 #include "ScriptMakerHelper.h"
-#endif
-#ifdef ENABLE_GETPOLY
 #include "Polygon.h"
 #include "AppState.h"
-#endif
 
 using namespace sci;
 using namespace std;
@@ -90,12 +86,8 @@ vector<string> SCIStatementKeywords =
 
 vector<string> SCIKeywords =
 {
-#ifdef ENABLE_EXISTS
 	"&exists",
-#endif
-#ifdef ENABLE_GETPOLY
 	"&getpoly",
-#endif
 	"&tmp",
 	"&rest",
 	"&sizeof",
@@ -113,9 +105,7 @@ vector<string> SCIKeywords =
 	"extern"		// ** For linking public procedures
 	"file#"		 // ** Procedure forward declarations
 	"for",
-#ifdef ENABLE_FOREACH
 	"foreach",
-#endif
 	"global"		// ** For global var declarations
 	"if",
 	"method",
@@ -136,9 +126,7 @@ vector<string> SCIKeywords =
 	"switch",
 	"switchto",
 	"text#",
-#ifdef ENABLE_VERBS
 	"verbs",
-#endif
 	"while",
 	// "scriptNumber",  // This is special, because it's a value. So don't count it as a banned keyword.
 	// neg, send, case, do, default, export are also keywords, but for the Studio language.
@@ -383,7 +371,6 @@ void SetCaseA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pCont
 	}
 }
 
-#ifdef ENABLE_EXISTS
 void ExistsA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
 {
 	if (match.Result())
@@ -395,9 +382,7 @@ void ExistsA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pConte
 		pContext->GetSyntaxNode<BinaryOp>()->SetStatement2(make_unique<PropertyValue>(pContext->ScratchString(), ValueType::ParameterIndex));
 	}
 }
-#endif
 
-#ifdef ENABLE_VERBS
 unique_ptr<FunctionSignature> _CreateVerbHandlerSignature()
 {
 	unique_ptr<FunctionSignature> signature = make_unique<FunctionSignature>();
@@ -441,7 +426,6 @@ void VerbClauseVerbA(MatchResult &match, const ParserSCI *pParser, SyntaxContext
 		pContext->GetSyntaxNode<VerbClauseStatement>()->Verbs.push_back(PropertyValue(pContext->ScratchString(), ValueType::Token));
 	}
 }
-#endif
 
 void InitEnumStartA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
 {
@@ -783,7 +767,6 @@ void AddProcedureFwdA(MatchResult &match, const ParserSCI *pParser, SyntaxContex
 	}
 }
 
-#ifdef ENABLE_FOREACH
 void SetIterationVariableA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
 {
 	if (match.Result())
@@ -792,29 +775,7 @@ void SetIterationVariableA(MatchResult &match, const ParserSCI *pParser, SyntaxC
 	}
 }
 
-#ifdef ENABLE_LDMSTM
-void SetIsReferenceA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
-{
-	if (match.Result())
-	{
-		pContext->GetSyntaxNode<ForEachLoop>()->IsReference = true;
-	}
-}
-#endif
-#endif
 
-#ifdef ENABLE_LDMSTM
-void DerefLValueA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
-{
-	if (match.Result())
-	{
-		pContext->CreateSyntaxNode<LValue>(stream);
-		pContext->GetSyntaxNode<LValue>()->IsDeref = true;
-		pContext->GetSyntaxNode<LValue>()->SetPosition(stream.GetPosition());
-		pContext->GetSyntaxNode<LValue>()->SetName(pContext->ScratchString());
-	}
-}
-#endif
 
 SCISyntaxParser::SCISyntaxParser() :
 	oppar(char_p("(")),
@@ -827,10 +788,6 @@ SCISyntaxParser::SCISyntaxParser() :
 	colon(char_p(":")),
 	equalSign(char_p("=")),
 	question(char_p("?")),
-#ifdef ENABLE_LDMSTM
-	period(char_p("*")),
-	ampersand(char_p("&")),
-#endif
 	alphanumAsmLabel_p(AlphanumP),
 	selector_send_p(SelectorP_Term<':'>),
 	propget_p(SelectorP_Term<'?'>),
@@ -906,9 +863,7 @@ void SCISyntaxParser::Load()
 
 	size_of = keyword_p("&sizeof") >> alphanumNK_p[{nullptr, ParseAutoCompleteContext::PureValue}];
 
-#ifdef ENABLE_EXISTS
 	exists_statement = keyword_p("&exists")[SetStatementA<BinaryOp>] >> alphanumNK_p[{ExistsA, ParseAutoCompleteContext::PureValue}];
-#endif
 
 	pointer = atsign;
 
@@ -930,9 +885,6 @@ void SCISyntaxParser::Load()
 		| squotedstring_p[{ComplexValueStringA<ValueType::Said>, ParseAutoCompleteContext::Block}]
 		| bracestring_p[{ComplexValueStringA<ValueType::String>, ParseAutoCompleteContext::Block}]
 		| (-pointer[ComplexValuePointerA] >> rvalue_variable)
-#ifdef ENABLE_LDMSTM
-		| (period >> general_token[ComplexValueStringA<ValueType::Deref>])
-#endif
 		| selector_literal[ComplexValueStringA<ValueType::Selector>]
 		| size_of[ComplexValueStringA<ValueType::ArraySize>]);
 
@@ -991,21 +943,14 @@ void SCISyntaxParser::Load()
 		>> wrapped_code_block[AddLooperCodeBlockA]
 		>> *statement[AddStatementA<ForLoop>];
 
-#ifdef ENABLE_FOREACH
 	foreach_loop =
 		keyword_p("foreach")[SetStatementA<ForEachLoop>]
-#ifdef ENABLE_LDMSTM
-		>> -ampersand[SetIsReferenceA]
-#endif
 		>> general_token[SetIterationVariableA]
 		>> statement[StatementBindTo1stA<ForEachLoop, errCollectionArg>]
 		>> *statement[AddStatementA<ForEachLoop>];
-#endif
-#ifdef ENABLE_GETPOLY
 	getpoly_statement =
 		keyword_p("&getpoly")[SetStatementA<GetPolyStatement>]
 		>> statement[StatementBindTo1stA<GetPolyStatement, nullptr>];
-#endif
 
 	case_statement =
 		alwaysmatch_p[StartStatementA]
@@ -1077,9 +1022,6 @@ void SCISyntaxParser::Load()
 	// blarg	or   [blarg statement]
 	lvalue = (opbracket >> general_token[{SetStatementNameA<LValue>, ParseAutoCompleteContext::LValue}] >> statement[LValueIndexerA] >> clbracket) |
 		keyword_p("argc")[SetStatementNameToParamTotalA<LValue>] |
-#ifdef ENABLE_LDMSTM
-		(period >> general_token[{DerefLValueA, ParseAutoCompleteContext::LValue}]) |
-#endif
 		general_token[{SetStatementNameA<LValue>, ParseAutoCompleteContext::LValue}];
 
 	rest_statement =
@@ -1151,18 +1093,12 @@ void SCISyntaxParser::Load()
 		naryassoc_operation |
 		narycompare_operation |
 		return_statement |
-#ifdef ENABLE_EXISTS
 		exists_statement |
-#endif
 		if_statement |
 		while_loop |
 		for_loop |
-#ifdef ENABLE_FOREACH
 		foreach_loop |
-#endif
-#ifdef ENABLE_GETPOLY
 		getpoly_statement |
-#endif
 		cond_statement |
 		switchto_statement |
 		switch_statement |
@@ -1226,7 +1162,6 @@ void SCISyntaxParser::Load()
 
 	method_decl = keyword_p("method")[{CreateMethodA, ParseAutoCompleteContext::ClassLevelKeyword}] >> method_base[FunctionCloseA];
 
-#ifdef ENABLE_VERBS
 	verb_clause =
 		alwaysmatch_p[StartStatementA]
 		>> (oppar[SetStatementA<VerbClauseStatement>]
@@ -1237,7 +1172,6 @@ void SCISyntaxParser::Load()
 	verb_handler_decl = keyword_p("verbs")[{CreateVerbHandlerA, ParseAutoCompleteContext::ClassLevelKeyword}]
 		// >> // Todo, allow for temp vars I guess. Not sure how though.
 		>> *verb_clause[FunctionStatementA]; 
-#endif
 
 	// The properties thing in a class or instance
 	properties_decl = oppar >> keyword_p("properties")[{nullptr, ParseAutoCompleteContext::ClassLevelKeyword}] >> *property_decl >> clpar;
@@ -1251,9 +1185,7 @@ void SCISyntaxParser::Load()
 			(
 			methods_fwd |
 			method_decl[FinishClassMethodA] |
-#ifdef ENABLE_VERBS
 			verb_handler_decl[FinishVerbHandlerA] | 
-#endif
 			procedure_decl[FinishClassProcedureA]) >> clpar);
 
 	instance_decl = keyword_p("instance")[CreateClassA<true>] >> classbase_decl[ClassCloseA];
@@ -1356,7 +1288,6 @@ void SCISyntaxParser::Load()
 
 }
 
-#ifdef ENABLE_VERBS
 unique_ptr<CaseStatement> _MakeVerbHandlerElse()
 {
 	unique_ptr<CaseStatement> theCase = make_unique<CaseStatement>();
@@ -1424,9 +1355,7 @@ void _ProcessClassForVerbHandlers(Script &script, ClassDefinition &theClass)
 		pSwitchWeak->AddCase(_MakeVerbHandlerElse());
 	}
 }
-#endif
 
-#ifdef ENABLE_FOREACH
 bool _IsItADeclaredVariable(const VariableDeclVector &varDecls, const string &name)
 {
 	return find_if(varDecls.begin(), varDecls.end(), [&name](const auto &varDecl) { return varDecl->GetName() == name; }) != varDecls.end();
@@ -1496,10 +1425,6 @@ void _ProcessForEach(ICompileLog &log, Script &script, FunctionBase &func, ForEa
 	string iterationVariableOrig = theForEach.IterationVariable;
 
 	string newIterationVariable;
-#ifdef ENABLE_LDMSTM
-	bool isReference = theForEach.IsReference;
-	if (!isReference)
-#endif
 	{
 		// If the foreach doesn't use a reference iteration variable, we're going to have an actual variable with this name. To reduce the possibility of conflicts,
 		// let's muck up the name. This lets us have multiple foreachs using the same iteration variable name in a function.
@@ -1562,67 +1487,11 @@ void _ProcessForEach(ICompileLog &log, Script &script, FunctionBase &func, ForEa
 		thePlusPlus->SetStatement1(_MakeTokenStatement(loopIndexName));
 		forLoop->SetLooper(_WrapInCodeBlock(move(thePlusPlus)));
 
-#ifdef ENABLE_LDMSTM
-		if (!isReference)
-		{
-#endif
 			_ReplaceIterationVariable(log, script, theForEach, iterationVariableOrig, newIterationVariable);
-#ifdef ENABLE_LDMSTM
-		}
-		else
-		{
-			// Replace the iteration variable with [bufferName loopIndexVariable]
-			EnumScriptElements<LValue>(theForEach,
-				[&log, &script, &iterationVariableOrig, &bufferName, &loopIndexName](LValue &lValue)
-			{
-				if (lValue.GetName() == iterationVariableOrig)
-				{
-					// This is us
-					if (lValue.HasIndexer())
-					{
-						log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), lValue.GetPosition().Line()));
-					}
-					lValue.SetName(bufferName);
-					lValue.SetIndexer(_MakeTokenStatement(loopIndexName));
-				}
-			});
-			EnumScriptElements<ComplexPropertyValue>(theForEach,
-				[&log, &script, &iterationVariableOrig, &bufferName, &loopIndexName](ComplexPropertyValue &propValue)
-			{
-				if ((propValue.GetType() == ValueType::Token) && (propValue.GetStringValue() == iterationVariableOrig))
-				{
-					// This is us
-					if (propValue.GetIndexer())
-					{
-						log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), propValue.GetPosition().Line()));
-					}
-					propValue.SetValue(bufferName, ValueType::Token);
-					propValue.SetIndexer(_MakeTokenStatement(loopIndexName));
-				}
-			});
-			EnumScriptElements<SendCall>(theForEach,
-				[&log, &script, &iterationVariableOrig, &bufferName, &loopIndexName](SendCall &theSend)
-			{
-				if (theSend.GetTargetName() == iterationVariableOrig)
-				{
-					// This is us - if we have a tempvar we can just set a name, but
-					// theSend.SetName()
-					// Otherwise, we need to mess with the sendcall to change the target to [bufferName loopIndexName]
-					unique_ptr<LValue> lValue = make_unique<LValue>(bufferName);
-					lValue->SetIndexer(_MakeTokenStatement(loopIndexName));
-					theSend.SetLValue(move(lValue));
-					theSend.SetName(""); // So we use the LValue
-				}
-			});
-		}
-#endif
 
 		// Transfer code to forloop
 		swap(forLoop->GetStatements(), theForEach.GetStatements());
 
-#ifdef ENABLE_LDMSTM
-		if (!isReference)
-#endif
 		{
 			// Put in one of these at the beginning of the forloop body: (= newIterationVariable [buffer loopIndexName])
 			unique_ptr<Assignment> loopAssignment = make_unique<Assignment>();
@@ -1677,68 +1546,12 @@ void _ProcessForEach(ICompileLog &log, Script &script, FunctionBase &func, ForEa
 		whileLoop->SetCondition(move(condition));
 
 		// Now the meat of the loop
-#ifdef ENABLE_LDMSTM
-		if (!isReference)
-		{
-#endif
 			// This is the same as in a buffer-based foreach
 			_ReplaceIterationVariable(log, script, theForEach, iterationVariableOrig, newIterationVariable);
-#ifdef ENABLE_LDMSTM
-		}
-		else
-		{
-			// Replace the iteration variable with *newIterationVariable
-			EnumScriptElements<LValue>(theForEach,
-				[&log, &script, &iterationVariableOrig, &curPtrName](LValue &lValue)
-			{
-				if (lValue.GetName() == iterationVariableOrig)
-				{
-					// This is us
-					if (lValue.HasIndexer())
-					{
-						log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), lValue.GetPosition().Line()));
-					}
-					lValue.SetName(curPtrName);
-					lValue.IsDeref = true;
-				}
-			});
-			EnumScriptElements<ComplexPropertyValue>(theForEach,
-				[&log, &script, &iterationVariableOrig, &curPtrName](ComplexPropertyValue &propValue)
-			{
-				if ((propValue.GetType() == ValueType::Token) && (propValue.GetStringValue() == iterationVariableOrig))
-				{
-					// This is us
-					if (propValue.GetIndexer())
-					{
-						log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), propValue.GetPosition().Line()));
-					}
-					propValue.SetValue(curPtrName, ValueType::Deref);
-				}
-			});
-			EnumScriptElements<SendCall>(theForEach,
-				[&log, &script, &iterationVariableOrig, &curPtrName](SendCall &theSend)
-			{
-				if (theSend.GetTargetName() == iterationVariableOrig)
-				{
-					// This is us - if we have a tempvar we can just set a name, but
-					// theSend.SetName()
-					// Otherwise, we need to mess with the sendcall to change the target to *newIterationVariable
-					// I don't even think this would compile without foreach! Can't have (*ptr poop:) -> we'd mistake it for multiplcation.
-					unique_ptr<LValue> lValue = make_unique<LValue>(curPtrName);
-					lValue->IsDeref = true;
-					theSend.SetLValue(move(lValue));
-					theSend.SetName(""); // So we use the LValue
-				}
-			});
-		}
-#endif
 
 		// Transfer code to whileLoop
 		swap(whileLoop->GetStatements(), theForEach.GetStatements());
 
-#ifdef ENABLE_LDMSTM
-		if (!isReference)
-#endif
 		{
 			//KAWA: We don't want this. We want (= nextNode (NextNode curNode))
 			unique_ptr<ProcedureCall> nextNodeCall = make_unique<ProcedureCall>("NextNode");
@@ -1789,9 +1602,7 @@ void _ProcessForEaches(ICompileLog &log, Script &script)
 		});
 	});
 }
-#endif
 
-#ifdef ENABLE_GETPOLY
 void _ProcessGetPoly(ICompileLog &log, Script &script, FunctionBase &func, GetPolyStatement &theGetPoly)
 {
 	if (theGetPoly.GetStatement1()->GetNodeType() == sci::NodeType::NodeTypeComplexValue)
@@ -1887,7 +1698,6 @@ void _ProcessGetPolys(ICompileLog &log, Script &script)
 		});
 	});
 }
-#endif
 
 //
 // Fix up scripts so that they conform to standards. Differences in the SCI syntax make
@@ -1912,26 +1722,20 @@ void PostProcessScript(ICompileLog *pLog, Script &script)
 	{
 		// This could be a class too (not just instance). The main game class is public.
 		instance.SetPublic(script.IsExport(instance.GetName()));
-#ifdef ENABLE_VERBS
 		_ProcessClassForVerbHandlers(script, instance);
-#endif
 	}
 		);
 
-#ifdef ENABLE_FOREACH
 	// Re-work foreach's into for loops (only for compiles where there is a log, e.g. actual compiles)
 	if (pLog)
 	{
 		_ProcessForEaches(*pLog, script);
 	}
-#endif
 
-#ifdef ENABLE_GETPOLY
 	if (pLog)
 	{
 		_ProcessGetPolys(*pLog, script);
 	}
-#endif
 
 	// Re-work conds into if-elses.
 	EnumScriptElements<CondStatement>(script,

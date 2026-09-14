@@ -41,11 +41,6 @@ namespace sci
 		None = 0x00000006,
 		ResourceString = 0x00000007,	// Not available in SCIStudio syntax
 		ArraySize = 0x00000008,		 // e.g. &sizeof MyArray - should get converted in prescan
-#ifdef ENABLE_EXISTS
 		ParameterIndex = 0x00000010,	// the 0-based numerical index of the parameter
-#endif
-#ifdef ENABLE_LDMSTM
-		Deref = 0x00000020,
-#endif
 	};
 }

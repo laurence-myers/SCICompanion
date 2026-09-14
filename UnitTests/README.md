@@ -8,7 +8,7 @@ test DLL (`UnitTests.dll`) that `vstest.console.exe` runs.
 Build the solution, then run the tests:
 
 ```
-MSBuild.exe SCICompanion.sln -m -p:Configuration=Kawa -p:Platform=Win32
+MSBuild.exe SCICompanion.sln -m -p:Configuration=Release -p:Platform=Win32
 .\UnitTests\RunTests.ps1
 ```
 
@@ -18,11 +18,10 @@ writes `TestResults\UnitTests.trx`. By default it runs the decompiler suites
 Pass `-All` to run every test. Pass `-UpdateSnapshots` to accept a deliberate
 change in decompiler output (see Snapshots below).
 
-Only the **Kawa** solution configuration builds the test project. The test DLL
-and its data land in the `Kawa` output folder next to `SCICompanion.exe`. The
-app post-build copies the template game, the include headers, and the
-decompiler config there. The test post-build copies the fixtures to
-`Kawa\TestFiles`.
+The test DLL and its data land in the build's output folder (`Release`, or
+`Debug`) next to `SCICompanion.exe`. The app post-build copies the template
+game, the include headers, and the decompiler config there. The test
+post-build copies the fixtures to `Release\TestFiles`.
 
 GitHub Actions builds the solution and runs `RunTests.ps1` in `build.yaml`.
 
@@ -68,7 +67,7 @@ intended change, review it, then run:
 .\UnitTests\RunTests.ps1 -UpdateSnapshots
 ```
 
-which reruns the snapshot test (it writes actuals to `Kawa\SnapshotActuals`) and
+which reruns the snapshot test (it writes actuals to `Release\SnapshotActuals`) and
 copies them into the committed folder. Commit the snapshot change with the code
 change so the review shows exactly what moved. `Tools\CompareDecompile.ps1`
 diffs two folders of `.sc` files, in exact mode (snapshot review) or structural
@@ -84,7 +83,7 @@ that dialect. A fixture with a `<name>.expected.sc` file is pinned to that
 text (after whitespace normalization) by `AssertDecompileMatchesExpected`. The
 expected text is the Sierra shape, not whatever the tool emitted. When an
 expected file is missing, the test writes the actual to
-`Kawa\SnapshotActuals\Expected` so it can be reviewed and committed.
+`Release\SnapshotActuals\Expected` so it can be reviewed and committed.
 
 | Fixture | Script | Family | Status |
 |---|---|---|---|
@@ -204,11 +203,11 @@ driven by environment variables, so no local path lives in the source:
 $env:SCICOMP_DUMP_GAME  = 'F:\Games\GOG\Quest for Glory 4 - dev'
 $env:SCICOMP_DUMP_OUT   = 'C:\dump\qfg4'
 $env:SCICOMP_DUMP_NAMES = 'E:\Code\Esoteric\sci-scripts\qfg4-cd-dos-1.0\src'
-vstest.console.exe Kawa\UnitTests.dll /Platform:x86 /TestCaseFilter:"FullyQualifiedName~Dump_ExistingGame"
+vstest.console.exe Release\UnitTests.dll /Platform:x86 /TestCaseFilter:"FullyQualifiedName~Dump_ExistingGame"
 $env:SCICOMP_COMPARE_EXPECTED = $env:SCICOMP_DUMP_NAMES
 $env:SCICOMP_COMPARE_ACTUAL   = $env:SCICOMP_DUMP_OUT
 $env:SCICOMP_COMPARE_OUT      = 'C:\dump\qfg4-compare'
-vstest.console.exe Kawa\UnitTests.dll /Platform:x86 /TestCaseFilter:"FullyQualifiedName~Compare_Structural"
+vstest.console.exe Release\UnitTests.dll /Platform:x86 /TestCaseFilter:"FullyQualifiedName~Compare_Structural"
 ```
 
 Keep `SCICOMP_DUMP_OUT` short: the test creates it with `CreateDirectoryA`,
@@ -231,6 +230,15 @@ unit tests in `TestAstPasses` pin it: golden style and SCI Companion style of
 one function compare equal, and a real difference is reported by name.
 `Tools\CompareDecompile.ps1` is now the exact text compare only, for
 reviewing a snapshot change.
+
+## Keyword codegen
+
+`TestKeywordCodegen` proves the merged language extensions (`foreach`, `verbs`,
+`&exists`) are pure sugar over standard Sierra bytecode. Each test compiles a
+small script that uses the keyword and decompiles it; since the decompiler only
+understands standard opcodes, a clean decompile with no assembly fallback and no
+trace of the keyword is the proof. `&exists` additionally asserts byte-for-byte
+equality with its `(> argc N)` expansion. These run in the default filter.
 
 ## Other tests
 

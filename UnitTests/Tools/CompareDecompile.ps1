@@ -10,7 +10,7 @@
 
     Example:
       .\CompareDecompile.ps1 -Expected ..\Files\Decompile\Snapshots\SCI1.1 `
-                             -Actual ..\..\Kawa\SnapshotActuals\SCI1.1
+                             -Actual ..\..\Release\SnapshotActuals\SCI1.1
 #>
 param(
     [Parameter(Mandatory = $true)][string]$Expected,

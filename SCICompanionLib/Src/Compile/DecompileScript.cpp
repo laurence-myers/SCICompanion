@@ -459,15 +459,6 @@ Script *Decompile(const GameFolderHelper &helper, const CompiledScript &compiled
 	// First, the objects (instances, classes)
 	for (auto &object : compiledScript._objects)
 	{
-#ifdef FORCE_FILE993TOFILE
-		//Force script 993 class 0 to be "File"
-		if (compiledScript.GetScriptNumber() == 993)
-		{
-			string objName = (*object).GetName();
-			if (objName == "Class_993_0" || objName == "gamefile.sh")
-				(*object).AdjustName("File");
-		}
-#endif
 
 		DecompileObject(*object, *pScript, lookups, compiledScript.GetRawBytes(), compiledScript._codeSections, codePointersTO);
 		if (lookups.DecompileResults().IsAborted())

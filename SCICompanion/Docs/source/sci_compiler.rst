@@ -64,5 +64,6 @@ The topics below describe all the various language features and syntax.
    Compiler/getpoly
    Compiler/exists
    Compiler/verbs
+   Compiler/foreach
    Compiler/objectfiles
    Compiler/classheader

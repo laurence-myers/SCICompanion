@@ -529,9 +529,7 @@ void SCICompanionApp::_LoadSettings(BOOL fReset)
 	appState->_onionRightOnTop = GetProfileInt(pszRegName, TEXT("OnionRightOnTop"), FALSE);
 	appState->_onionWrap = GetProfileInt(pszRegName, TEXT("OnionWrap"), TRUE);
 
-//#ifdef ENABLE_UNUSEDINSTANCEWARNINGS
 	appState->_fWarnOnUnusedInstances = GetProfileInt(pszRegName, TEXT("WarnOnUnusedInstances"), TRUE);
-//#endif
 }
 
 void SCICompanionApp::_SaveSettings()
@@ -581,9 +579,7 @@ void SCICompanionApp::_SaveSettings()
 	WriteProfileInt(m_pszAppName, TEXT("OnionRightOnTop"), appState->_onionRightOnTop);
 	WriteProfileInt(m_pszAppName, TEXT("OnionWrap"), appState->_onionWrap);
 
-	//#ifdef ENABLE_UNUSEDINSTANCEWARNINGS
 	WriteProfileInt(m_pszAppName, TEXT("WarnOnUnusedInstances"), appState->_fWarnOnUnusedInstances);
-	//#endif
 }
 
 // CAboutDlg dialog used for App About

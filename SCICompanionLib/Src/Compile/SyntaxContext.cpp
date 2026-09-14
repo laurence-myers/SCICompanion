@@ -34,9 +34,7 @@ extern char const errVarName[] = "Expected variable name.";
 extern char const errFileNameString[] = "Expected file name string.";
 extern char const errElse[] = "Expected else clause.";
 extern char const errNoKeywordOrSelector[] = "No keyword or selector permitted here.";
-#ifdef ENABLE_FOREACH
 extern char const errCollectionArg[] = "Expected collection.";
-#endif
 
 //
 // Our syntax context implementations

@@ -1246,7 +1246,6 @@ bool GenerateScriptResource_SCI0(Script &script, PrecompiledHeaders &headers, Co
 
 	context.FixupSinksAndSources(output, output);
 
-#ifdef ENABLE_UNUSEDINSTANCEWARNINGS
 	// Some validation
 	for (const auto &instance : script.GetClasses())
 	{
@@ -1262,7 +1261,6 @@ bool GenerateScriptResource_SCI0(Script &script, PrecompiledHeaders &headers, Co
 			}
 		}
 	}
-#endif
 
 	return !context.HasErrors();
 }
@@ -1514,7 +1512,6 @@ bool GenerateScriptResource_SCI11(Script &script, PrecompiledHeaders &headers, C
 		}
 	}
 
-#ifdef ENABLE_UNUSEDINSTANCEWARNINGS
 	if (appState->_fWarnOnUnusedInstances)
 	{
 		// Some validation
@@ -1533,7 +1530,6 @@ bool GenerateScriptResource_SCI11(Script &script, PrecompiledHeaders &headers, C
 			}
 		}
 	}
-#endif
 
 	return !context.HasErrors();
 }

@@ -108,22 +108,14 @@ private:
 	ParserSCI cond_statement;
 	ParserSCI size_of;
 
-#ifdef ENABLE_VERBS
 	ParserSCI verb_clause;
 	ParserSCI verb_handler_decl;
 	ParserSCI verb_clause_verbs;
 	ParserSCI verb_clause_nouns; 
-#endif
-#ifdef ENABLE_EXISTS
 	ParserSCI exists_statement; 
-#endif
 	ParserSCI entire_header;
-#ifdef ENABLE_FOREACH
 	ParserSCI foreach_loop;
-#endif
-#ifdef ENABLE_GETPOLY
 	ParserSCI getpoly_statement;
-#endif
 
 	// Non-code parsers:
 	ParserSCI classdef_file;
@@ -173,8 +165,4 @@ private:
 	ParserSCI colon;
 	ParserSCI equalSign;
 	ParserSCI question;
-#ifdef ENABLE_LDMSTM
-	ParserSCI period;
-	ParserSCI ampersand;
-#endif
 };

@@ -1501,7 +1501,6 @@ std::vector<std::string> CompileContext::GetStringsThatWereWritten()
 	return strings;
 }
 
-#ifdef ENABLE_UNUSEDINSTANCEWARNINGS
 bool CompileContext::WasInstanceReferenceWritten(const std::string &instanceName) const
 {
 	bool result = false;
@@ -1515,7 +1514,6 @@ bool CompileContext::WasInstanceReferenceWritten(const std::string &instanceName
 	}
 	return result;
 }
-#endif
 
 std::vector<std::string> CompileContext::GetSaids()
 {

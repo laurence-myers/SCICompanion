@@ -56,9 +56,6 @@ int scii::is_stackpop_op()
 	case Opcode::ULT:
 	case Opcode::ULE:
 	case Opcode::TOSS:
-#ifdef ENABLE_LDMSTM
-	case Opcode::STM:
-#endif
 		return 1;
 	default:
 		return false;

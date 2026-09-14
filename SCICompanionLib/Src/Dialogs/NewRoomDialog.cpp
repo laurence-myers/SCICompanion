@@ -285,13 +285,6 @@ void CNewRoomDialog::_PrepareBuffer()
 		script.AddInclude(messagefileInclude);
 	}
 
-#ifndef ENABLE_GETPOLY
-	if (includePolys)
-	{
-		string polyfileInclude = fmt::format("{0}.shp", _nPicScript);
-		script.AddInclude(polyfileInclude);
-	}
-#endif
 
 	// Now the uses.
 	for (size_t i = 0; i < _usedNames.size(); ++i)
@@ -351,13 +344,9 @@ void CNewRoomDialog::_PrepareBuffer()
 				
 			if (includePolys)
 			{
-#ifdef ENABLE_GETPOLY
 				//_AddStatement(*pInit, GetSetUpPolyProcedureCall());
 				_AddComment(*pInit, "Uncomment this line once one or more polygons have been defined in the picture editor.", sci::CommentType::LeftJustified);
 				_AddComment(*pInit, "(gRoom addObstacle: (&getpoly \"\"))", sci::CommentType::Indented);
-#else
-				_AddStatement(*pInit, GetSetUpPolyProcedureCall(_nPicScript));
-#endif
 			}
 
 			_AddSendCall(*pInit, "super", "init", "");
