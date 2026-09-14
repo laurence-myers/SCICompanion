@@ -66,3 +66,15 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+
+###############################################################################
+# Decompiler snapshot regression data (generated golden output)
+#
+# These files are the decompiled text of every template script. The test
+# suite produces them and commits them as golden masters for the
+# TemplateGame_Snapshot test. They are generated data, not hand-written
+# source. Mark them so GitHub collapses them in diffs and drops them from the
+# language statistics.
+###############################################################################
+UnitTests/Files/Decompile/Snapshots/** linguist-generated=true
+UnitTests/Files/Decompile/Snapshots/** -diff
