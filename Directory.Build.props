@@ -14,11 +14,17 @@
       _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
         Accepts C++17 deprecations such as <codecvt> and std::not1. SDLCheck
         is on, so these would otherwise be errors. The features still work.
+      _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING
+        The bundled cppformat (Src\CppFormat\format.h) uses
+        stdext::checked_array_iterator, a non-Standard MSVC extension the
+        current toolset deprecates (STL4043). Only the Debug config compiles
+        that path (its checked iterators are on), so without this the Debug
+        build fails under SDLCheck while Release is fine. The extension works.
   -->
   <ItemDefinitionGroup>
     <ClCompile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <PreprocessorDefinitions>_HAS_AUTO_PTR_ETC=1;_HAS_STD_BYTE=0;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_HAS_AUTO_PTR_ETC=1;_HAS_STD_BYTE=0;_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS;_SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
 
