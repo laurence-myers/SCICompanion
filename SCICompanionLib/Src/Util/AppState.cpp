@@ -869,33 +869,12 @@ char* AppState::GetAboutText()
 		"\x95 Escape unprintable range\r\n"
 		"\x95 More word guess preferences\r\n"
 		"\x95 Display argument massaging\r\n"
-#ifdef FORCE_FILE993TOFILE
-		"\x95 Class 993 is always File\r\n"
-#endif
-#ifdef DISABLE_FONTLIMIT
-		"\x95 Font limit break\r\n"
-#endif
 		"\x95 '&getpoly' command\r\n"
-#ifdef ENABLE_FORCEDGLOBALS
-		"\x95 Forced global names\r\n"
-#endif
 		"\x95 Hex numbers in font grid\r\n"
-#ifdef DISABLE_DEBUGSTUFF
-		"\x95 No debug stuff in decompiler\r\n"
-#endif
-#ifdef DISABLE_TRANSPARENCYNAG
-		"\x95 No transparency nagging\r\n"
-#endif
 		"\x95 More vocab previews\r\n"
 		"\x95 '&exists' support\r\n"
-#ifdef ENABLE_LDMSTM
-		"\x95 Pointer deref support\r\n"
-#endif
 		"\x95 'foreach' support\r\n"
 		"\x95 'verbs' block support\r\n"
-#ifdef ENABLE_FORCEDSCRIPTNAMES
-		"\x95 Forced script names\r\n"
-#endif
 		"\x95 Warnings for unused instances\r\n"
 		;
 }

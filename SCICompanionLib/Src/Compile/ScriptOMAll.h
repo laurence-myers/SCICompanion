@@ -69,13 +69,8 @@ namespace sci
 	{
 		DECLARE_NODE_TYPE(NodeTypeLValue)
 	public:
-#ifdef ENABLE_LDMSTM
-		LValue() : NamedNode(), IsDeref(false) { }
-		LValue(const std::string &name) : NamedNode(name), IsDeref(false) { }
-#else
 		LValue() : NamedNode() { }
 		LValue(const std::string &name) : NamedNode(name){ }
-#endif
 
 		LValue(LValue &src) = delete;
 		LValue& operator=(const LValue& src) = delete;
@@ -92,9 +87,6 @@ namespace sci
 		
 		void Accept(ISyntaxNodeVisitor &visitor) const override;
 
-#ifdef ENABLE_LDMSTM
-		bool IsDeref;
-#endif
 	private:
 		std::unique_ptr<SyntaxNode> _indexer;
 	};
@@ -428,11 +420,7 @@ namespace sci
 	{
 		DECLARE_NODE_TYPE(NodeTypeForEach)
 	public:
-#ifdef ENABLE_LDMSTM
-		ForEachLoop() : IsReference(false) {}
-#else
 		ForEachLoop() {}
-#endif
 		ForEachLoop(ForEachLoop &src) = delete;
 		ForEachLoop& operator=(ForEachLoop& src) = delete;
 		void Accept(ISyntaxNodeVisitor &visitor) const override;
@@ -442,9 +430,6 @@ namespace sci
 		void Traverse(IExploreNode &en);
 		// The collection is in _statement1, and the inner code is in _segments.
 		std::string IterationVariable;
-#ifdef ENABLE_LDMSTM
-		bool IsReference;
-#endif
 
 		// Until the syntax parser processes it all into this:
 		SyntaxNodeVector FinalCode;

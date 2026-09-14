@@ -59,11 +59,7 @@ unique_ptr<SyntaxNode> _MakeStringStatement(const string &token, ValueType value
 	return unique_ptr<SyntaxNode>(move(pValue));
 }
 
-#ifdef ENABLE_LDMSTM
-void _AddAssignment(StatementsNode &method, const string &lvalueName, const string &assigned)
-#else
 void _AddAssignment(MethodDefinition &method, const string &lvalueName, const string &assigned)
-#endif
 {
 	unique_ptr<Assignment> pEquals = std::make_unique<Assignment>();
 	pEquals->Operator = AssignmentOperator::Assign;

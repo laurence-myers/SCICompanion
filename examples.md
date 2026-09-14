@@ -29,21 +29,6 @@
 )
 ```
 
-## `LDM`/`STM` opcodes
-Why write cumbersome `Memory` kernel calls when you can use `*` and get proper pointers?
-```clojure
-; Given a local array...
-(procedure (DerefTest &tmp ptr)
-	(= ptr @numbers) ; Take the address of the numbers array.
-	(Printf "*ptr is %d" *ptr) ; Print the value for what is effectively [numbers 0]
-	(= *ptr 6) ; Same as (= [numbers 0] 6) but faster
-	(Printf "*ptr is %d" *ptr)
-	(= ptr (+ ptr 2)) ; All values are 16 bits.
-	(= *ptr 7) ; Same as (= [numbers 1] 7)
-	(Printf "*ptr is %d" *ptr)
-)
-```
-
 ## `foreach`
 ```clojure
 ; No need to predeclare n, a &tmp variable is made for you.
@@ -54,11 +39,6 @@ Why write cumbersome `Memory` kernel calls when you can use `*` and get proper p
 ; Works on anything based on the List kernel calls.
 (foreach item aCollection
 	; (do something with item)
-)
-
-; With LDM/STM enabled and a predefined iterator
-(foreach &n anArray
-	; (do something with n)
 )
 ```
 

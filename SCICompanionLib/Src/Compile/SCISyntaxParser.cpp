@@ -775,28 +775,7 @@ void SetIterationVariableA(MatchResult &match, const ParserSCI *pParser, SyntaxC
 	}
 }
 
-#ifdef ENABLE_LDMSTM
-void SetIsReferenceA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
-{
-	if (match.Result())
-	{
-		pContext->GetSyntaxNode<ForEachLoop>()->IsReference = true;
-	}
-}
-#endif
 
-#ifdef ENABLE_LDMSTM
-void DerefLValueA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
-{
-	if (match.Result())
-	{
-		pContext->CreateSyntaxNode<LValue>(stream);
-		pContext->GetSyntaxNode<LValue>()->IsDeref = true;
-		pContext->GetSyntaxNode<LValue>()->SetPosition(stream.GetPosition());
-		pContext->GetSyntaxNode<LValue>()->SetName(pContext->ScratchString());
-	}
-}
-#endif
 
 SCISyntaxParser::SCISyntaxParser() :
 	oppar(char_p("(")),
@@ -809,10 +788,6 @@ SCISyntaxParser::SCISyntaxParser() :
 	colon(char_p(":")),
 	equalSign(char_p("=")),
 	question(char_p("?")),
-#ifdef ENABLE_LDMSTM
-	period(char_p("*")),
-	ampersand(char_p("&")),
-#endif
 	alphanumAsmLabel_p(AlphanumP),
 	selector_send_p(SelectorP_Term<':'>),
 	propget_p(SelectorP_Term<'?'>),
@@ -910,9 +885,6 @@ void SCISyntaxParser::Load()
 		| squotedstring_p[{ComplexValueStringA<ValueType::Said>, ParseAutoCompleteContext::Block}]
 		| bracestring_p[{ComplexValueStringA<ValueType::String>, ParseAutoCompleteContext::Block}]
 		| (-pointer[ComplexValuePointerA] >> rvalue_variable)
-#ifdef ENABLE_LDMSTM
-		| (period >> general_token[ComplexValueStringA<ValueType::Deref>])
-#endif
 		| selector_literal[ComplexValueStringA<ValueType::Selector>]
 		| size_of[ComplexValueStringA<ValueType::ArraySize>]);
 
@@ -973,9 +945,6 @@ void SCISyntaxParser::Load()
 
 	foreach_loop =
 		keyword_p("foreach")[SetStatementA<ForEachLoop>]
-#ifdef ENABLE_LDMSTM
-		>> -ampersand[SetIsReferenceA]
-#endif
 		>> general_token[SetIterationVariableA]
 		>> statement[StatementBindTo1stA<ForEachLoop, errCollectionArg>]
 		>> *statement[AddStatementA<ForEachLoop>];
@@ -1053,9 +1022,6 @@ void SCISyntaxParser::Load()
 	// blarg	or   [blarg statement]
 	lvalue = (opbracket >> general_token[{SetStatementNameA<LValue>, ParseAutoCompleteContext::LValue}] >> statement[LValueIndexerA] >> clbracket) |
 		keyword_p("argc")[SetStatementNameToParamTotalA<LValue>] |
-#ifdef ENABLE_LDMSTM
-		(period >> general_token[{DerefLValueA, ParseAutoCompleteContext::LValue}]) |
-#endif
 		general_token[{SetStatementNameA<LValue>, ParseAutoCompleteContext::LValue}];
 
 	rest_statement =
@@ -1459,10 +1425,6 @@ void _ProcessForEach(ICompileLog &log, Script &script, FunctionBase &func, ForEa
 	string iterationVariableOrig = theForEach.IterationVariable;
 
 	string newIterationVariable;
-#ifdef ENABLE_LDMSTM
-	bool isReference = theForEach.IsReference;
-	if (!isReference)
-#endif
 	{
 		// If the foreach doesn't use a reference iteration variable, we're going to have an actual variable with this name. To reduce the possibility of conflicts,
 		// let's muck up the name. This lets us have multiple foreachs using the same iteration variable name in a function.
@@ -1525,67 +1487,11 @@ void _ProcessForEach(ICompileLog &log, Script &script, FunctionBase &func, ForEa
 		thePlusPlus->SetStatement1(_MakeTokenStatement(loopIndexName));
 		forLoop->SetLooper(_WrapInCodeBlock(move(thePlusPlus)));
 
-#ifdef ENABLE_LDMSTM
-		if (!isReference)
-		{
-#endif
 			_ReplaceIterationVariable(log, script, theForEach, iterationVariableOrig, newIterationVariable);
-#ifdef ENABLE_LDMSTM
-		}
-		else
-		{
-			// Replace the iteration variable with [bufferName loopIndexVariable]
-			EnumScriptElements<LValue>(theForEach,
-				[&log, &script, &iterationVariableOrig, &bufferName, &loopIndexName](LValue &lValue)
-			{
-				if (lValue.GetName() == iterationVariableOrig)
-				{
-					// This is us
-					if (lValue.HasIndexer())
-					{
-						log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), lValue.GetPosition().Line()));
-					}
-					lValue.SetName(bufferName);
-					lValue.SetIndexer(_MakeTokenStatement(loopIndexName));
-				}
-			});
-			EnumScriptElements<ComplexPropertyValue>(theForEach,
-				[&log, &script, &iterationVariableOrig, &bufferName, &loopIndexName](ComplexPropertyValue &propValue)
-			{
-				if ((propValue.GetType() == ValueType::Token) && (propValue.GetStringValue() == iterationVariableOrig))
-				{
-					// This is us
-					if (propValue.GetIndexer())
-					{
-						log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), propValue.GetPosition().Line()));
-					}
-					propValue.SetValue(bufferName, ValueType::Token);
-					propValue.SetIndexer(_MakeTokenStatement(loopIndexName));
-				}
-			});
-			EnumScriptElements<SendCall>(theForEach,
-				[&log, &script, &iterationVariableOrig, &bufferName, &loopIndexName](SendCall &theSend)
-			{
-				if (theSend.GetTargetName() == iterationVariableOrig)
-				{
-					// This is us - if we have a tempvar we can just set a name, but
-					// theSend.SetName()
-					// Otherwise, we need to mess with the sendcall to change the target to [bufferName loopIndexName]
-					unique_ptr<LValue> lValue = make_unique<LValue>(bufferName);
-					lValue->SetIndexer(_MakeTokenStatement(loopIndexName));
-					theSend.SetLValue(move(lValue));
-					theSend.SetName(""); // So we use the LValue
-				}
-			});
-		}
-#endif
 
 		// Transfer code to forloop
 		swap(forLoop->GetStatements(), theForEach.GetStatements());
 
-#ifdef ENABLE_LDMSTM
-		if (!isReference)
-#endif
 		{
 			// Put in one of these at the beginning of the forloop body: (= newIterationVariable [buffer loopIndexName])
 			unique_ptr<Assignment> loopAssignment = make_unique<Assignment>();
@@ -1640,68 +1546,12 @@ void _ProcessForEach(ICompileLog &log, Script &script, FunctionBase &func, ForEa
 		whileLoop->SetCondition(move(condition));
 
 		// Now the meat of the loop
-#ifdef ENABLE_LDMSTM
-		if (!isReference)
-		{
-#endif
 			// This is the same as in a buffer-based foreach
 			_ReplaceIterationVariable(log, script, theForEach, iterationVariableOrig, newIterationVariable);
-#ifdef ENABLE_LDMSTM
-		}
-		else
-		{
-			// Replace the iteration variable with *newIterationVariable
-			EnumScriptElements<LValue>(theForEach,
-				[&log, &script, &iterationVariableOrig, &curPtrName](LValue &lValue)
-			{
-				if (lValue.GetName() == iterationVariableOrig)
-				{
-					// This is us
-					if (lValue.HasIndexer())
-					{
-						log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), lValue.GetPosition().Line()));
-					}
-					lValue.SetName(curPtrName);
-					lValue.IsDeref = true;
-				}
-			});
-			EnumScriptElements<ComplexPropertyValue>(theForEach,
-				[&log, &script, &iterationVariableOrig, &curPtrName](ComplexPropertyValue &propValue)
-			{
-				if ((propValue.GetType() == ValueType::Token) && (propValue.GetStringValue() == iterationVariableOrig))
-				{
-					// This is us
-					if (propValue.GetIndexer())
-					{
-						log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), propValue.GetPosition().Line()));
-					}
-					propValue.SetValue(curPtrName, ValueType::Deref);
-				}
-			});
-			EnumScriptElements<SendCall>(theForEach,
-				[&log, &script, &iterationVariableOrig, &curPtrName](SendCall &theSend)
-			{
-				if (theSend.GetTargetName() == iterationVariableOrig)
-				{
-					// This is us - if we have a tempvar we can just set a name, but
-					// theSend.SetName()
-					// Otherwise, we need to mess with the sendcall to change the target to *newIterationVariable
-					// I don't even think this would compile without foreach! Can't have (*ptr poop:) -> we'd mistake it for multiplcation.
-					unique_ptr<LValue> lValue = make_unique<LValue>(curPtrName);
-					lValue->IsDeref = true;
-					theSend.SetLValue(move(lValue));
-					theSend.SetName(""); // So we use the LValue
-				}
-			});
-		}
-#endif
 
 		// Transfer code to whileLoop
 		swap(whileLoop->GetStatements(), theForEach.GetStatements());
 
-#ifdef ENABLE_LDMSTM
-		if (!isReference)
-#endif
 		{
 			//KAWA: We don't want this. We want (= nextNode (NextNode curNode))
 			unique_ptr<ProcedureCall> nextNodeCall = make_unique<ProcedureCall>("NextNode");

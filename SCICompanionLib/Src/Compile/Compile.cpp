@@ -1158,41 +1158,6 @@ CodeResult PropertyValueBase::OutputByteCode(CompileContext &context) const
 		wType = DataTypePointer;
 		break;
 
-#ifdef ENABLE_LDMSTM
-	case ValueType::Deref:
-	{
-		WORD wInstanceScript;
-		ResolvedToken tokenType = context.LookupToken(this, _stringValue, wNumber, wType, &wInstanceScript);
-		switch (tokenType)
-		{
-		case ResolvedToken::GlobalVariable:
-		case ResolvedToken::ScriptVariable:
-		case ResolvedToken::Parameter:
-		case ResolvedToken::TempVariable:
-		{
-			fVarModifierError = false;
-			uint8_t tempOpcodeMod = VO_LOAD | VO_ACC;
-			tempOpcodeMod |= GetVarOpcodeModifier(context.GetVariableModifier());
-			// Set the modifier (-- or ++) to none now, since we just used it, and we don't want it applying to the indexer.
-			// This properly handles codes like this:
-			// (-- *ptr) ; decrement "thing pointed to by ptr by 1"
-			// REVIEW : I don't htink this works.
-			context.SetVariableModifier(VM_None);
-			{
-				COutputContext accContext(context, OC_Accumulator);
-				VariableOperand(context, wNumber, TokenTypeToVOType(tokenType) | tempOpcodeMod, GetLineNumber(), GetIndexer());
-				// This should be in the acc now.
-			}
-			WriteSimple(context, Opcode::LDM, GetLineNumber());
-			PushToStackIfAppropriate(context, GetLineNumber());
-		}
-		break;
-		default:
-			context.ReportError(this, "'%s' can not be dereferenced.", _stringValue.c_str());
-		}
-	}
-	break;
-#endif
 
 	case ValueType::Token:
 		{
@@ -1455,9 +1420,7 @@ CodeResult SendCall::OutputByteCode(CompileContext &context) const
 				// "send" though.  So it's possible the indexer is not there.
 				const SyntaxNode *pIndexer = _object3->GetIndexer();
 
-#ifndef ENABLE_LDMSTM
 				BYTE bOpcodeMod = VO_LOAD | VO_ACC;
-#endif
 				WORD wNumber;
 				ResolvedToken tokenType = context.LookupToken(this, _object3->GetName(), wNumber, wObjectSpecies);
 				switch (tokenType)
@@ -1466,27 +1429,11 @@ CodeResult SendCall::OutputByteCode(CompileContext &context) const
 				case ResolvedToken::ScriptVariable:
 				case ResolvedToken::Parameter:
 				case ResolvedToken::TempVariable:
-#ifdef ENABLE_LDMSTM
-					VariableOperand(context, wNumber, TokenTypeToVOType(tokenType) | VO_LOAD | VO_ACC, GetLineNumber(), pIndexer);
-					if (_object3->IsDeref)
-					{
-						// Value at address in acc will now be put in acc:
-						WriteSimple(context, Opcode::LDM, GetLineNumber());
-					}
-#else
 					VariableOperand(context, wNumber, TokenTypeToVOType(tokenType) | bOpcodeMod, GetLineNumber(), pIndexer);
-#endif
 					break;
 				case ResolvedToken::ClassProperty:
 					// Load the property into the accumulator
 					LoadProperty(context, wNumber, false, GetLineNumber());
-#ifdef ENABLE_LDMSTM
-					if (_object3->IsDeref)
-					{
-						// Value at address in acc will now be put in acc:
-						WriteSimple(context, Opcode::LDM, GetLineNumber());
-					}
-#endif
 					if (pIndexer)
 					{
 						context.ReportError(this, "Properties cannot be indexed: %s.", _object3->GetName().c_str());
@@ -2089,12 +2036,6 @@ CodeResult Assignment::OutputByteCode(CompileContext &context) const
 	BinaryOperator theBinaryOperator = GetBinaryOpFromAssignment(Operator);
 	if (theBinaryOperator != BinaryOperator::None)
 	{
-#ifdef ENABLE_LDMSTM
-		if (_variable->IsDeref)
-		{
-			context.ReportError(_variable.get(), "Only standard assignment operations are permitted on pointer dereferneces.");
-		}
-#endif
 		// This is something like +=, *=, etc...
 
 		BYTE bOpcodeMod = VO_LOAD | VO_STACK; // ????
@@ -2212,51 +2153,16 @@ CodeResult Assignment::OutputByteCode(CompileContext &context) const
 		case ResolvedToken::Parameter:
 		case ResolvedToken::TempVariable:
 		{
-#ifdef ENABLE_LDMSTM
-			if (_variable->IsDeref)
-			{
-				VariableOperand(context, wIndex, TokenTypeToVOType(tokenType) | VO_LOAD | VO_STACK, GetLineNumber(), pIndexer);
-				// Now the address is on the stack
-				// Let's output the stm instruction which will pop the address from the stack and store the
-				// value in the acc at the address.
-				WriteSimple(context, Opcode::STM, GetLineNumber());
-				// The value in the acc remains the same.
-			}
-			else
-			{
-				// We always use the accumulator version of the store opcodes. The value being stored is still
-				// put on the stack in the increment case, even if VO_ACC is used. The difference is that in the indexed
-				// case, we want the value put on the accumulator after the accumulator is used for indexing. The
-				// stack versions of the store opcodes don't do that.
-				VariableOperand(context, wIndex, TokenTypeToVOType(tokenType) | VO_STORE | VO_ACC, GetLineNumber(), pIndexer);
-			}
-#else
 			// We always use the accumulator version of the store opcodes. The value being stored is still
 			// put on the stack in the increment case, even if VO_ACC is used. The difference is that in the indexed
 			// case, we want the value put on the accumulator after the accumulator is used for indexing. The
 			// stack versions of the store opcodes don't do that.
 			VariableOperand(context, wIndex, TokenTypeToVOType(tokenType) | VO_STORE | VO_ACC, GetLineNumber(), pIndexer);
-#endif
 		}
 			break;
 		case ResolvedToken::ClassProperty:
 			assert(pIndexer == nullptr || context.HasErrors());
-#ifdef ENABLE_LDMSTM
-			if (_variable->IsDeref)
-			{
-				// Prop value gets pushed onto stack
-				LoadProperty(context, wIndex, true, GetLineNumber());
-				// Let's output the stm instruction which will pop the address from the stack and store the
-				// value in the acc at the address.
-				WriteSimple(context, Opcode::STM, GetLineNumber());
-			}
-			else
-			{
-				StoreProperty(context, wIndex, false, GetLineNumber());  // false -> accumulator
-			}
-#else
 			StoreProperty(context, wIndex, false, GetLineNumber());  // false -> accumulator
-#endif
 			break;
 		}
 

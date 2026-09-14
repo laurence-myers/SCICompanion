@@ -161,24 +161,6 @@ public:
 		_ResolveValuesHelper(binaryOp.GetStatement2(), { binaryOp.GetStatement1() });
 	}
 
-#ifdef ENABLE_FORCEDSCRIPTNAMES
-	bool ResolveForcedScriptName(int index, std::string &scriptName) const
-	{
-		if (_table->contains_qualified("kawaForcedScriptNames"))
-		{
-			for (auto keyValuePairs : *_table->get("kawaForcedScriptNames")->as_table())
-			{
-				int thisIndex = atoi(keyValuePairs.first.c_str());
-				if (thisIndex == index)
-				{
-					scriptName = keyValuePairs.second->as<string>()->get();
-					return true;
-				}
-			}
-		}
-		return false;
-	}
-#endif
 
 private:
 
@@ -383,24 +365,6 @@ private:
 		}
 	}
 
-#ifdef ENABLE_FORCEDGLOBALS
-	/*
-	void _CacheGlobals()
-	{
-		if (_table->contains_qualified("kawaMisc.globals"))
-		{
-			for (const auto &paramName : _table->get("kawaMisc.globals")->as_array()->get())
-			{
-				auto name = paramName->as<std::string>();
-				if (name)
-				{
-					kawaGlobals.push_back(name->get());
-				}
-			}
-		}
-	}
-	*/
-#endif
 
 	typedef std::unordered_map<uint16_t, string> enumList_t;
 	std::unordered_map<string, enumList_t> _enumLists;

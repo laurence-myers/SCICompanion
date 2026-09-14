@@ -609,11 +609,7 @@ void FontPreviewer::SetResource(const ResourceBlob &blob)
 	// Show a preview of entire font.
 	std::stringstream ss;
 	RasterComponent &rasterComponent = _pFont->GetComponent<RasterComponent>();
-#ifndef DISABLE_FONTLIMIT
 	for (size_t i = 0; i < rasterComponent.Loops[0].Cels.size(); i++)
-#else
-	for (size_t i = 0; i < min(rasterComponent.Loops[0].Cels.size(), 255); i++)
-#endif
 	{
 		ss << (char)i;
 	}

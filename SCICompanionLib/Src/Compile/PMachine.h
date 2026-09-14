@@ -199,16 +199,8 @@ enum class Opcode : uint8_t
 	Filename = 128,
 	LineNumber = 129,
 
-#ifdef ENABLE_LDMSTM
-	// My extensions that don't fit into short/wide variations.
-	LDM = 130,
-	STM = 131,
-	LastOne = 131,
-	INDETERMINATE = 132,
-#else
 	LastOne = 129,
 	INDETERMINATE = 130,
-#endif
 };
 
 Opcode RawToOpcode(const SCIVersion &version, uint8_t rawOpcode);

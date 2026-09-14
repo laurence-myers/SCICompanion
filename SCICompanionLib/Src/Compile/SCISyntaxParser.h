@@ -165,8 +165,4 @@ private:
 	ParserSCI colon;
 	ParserSCI equalSign;
 	ParserSCI question;
-#ifdef ENABLE_LDMSTM
-	ParserSCI period;
-	ParserSCI ampersand;
-#endif
 };

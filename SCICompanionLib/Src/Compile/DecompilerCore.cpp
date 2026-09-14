@@ -484,16 +484,6 @@ Consumption _GetInstructionConsumption(scii &inst, DecompileLookups *lookups)
 		fPutsOnStack = true;
 		break;
 
-#ifdef ENABLE_LDMSTM
-	case Opcode::LDM:
-		fChangesAcc = true;
-		fEatsAcc = true;
-		break;
-	case Opcode::STM:
-		fEatsAcc = true;
-		cEatStack = 1;
-		break;
-#endif
 
 	case Opcode::TOSS:
 		//fChangesAcc = true; // doesn't touch the acc, by definition (toss)

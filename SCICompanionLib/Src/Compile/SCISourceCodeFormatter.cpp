@@ -242,11 +242,6 @@ std::string GetPropertyText(const PropertyValueBase &prop)
 		case ValueType::ParameterIndex:
 			mw << "&exists " << CleanTokenSCI(prop.GetStringValue());
 			break;
-#ifdef ENABLE_LDMSTM
-		case ValueType::Deref:
-			mw << "*" << CleanTokenSCI(prop.GetStringValue());
-			break;
-#endif
 	}
 	return mw.str();
 }
@@ -1211,12 +1206,6 @@ public:
 		_MaybeNewLineIndent();
 
 		GO_INLINE;
-#ifdef ENABLE_LDMSTM
-		if (lValue.IsDeref)
-		{
-			out.out << "*";
-		}
-#endif
 		if (lValue.HasIndexer())
 		{
 			out.out << "[";

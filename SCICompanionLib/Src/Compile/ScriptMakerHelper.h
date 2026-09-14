@@ -19,11 +19,7 @@ void _AddStatement(_T &method, std::unique_ptr<sci::SyntaxNode> pNode)
 	method.AddStatement(std::move(pNode));
 }
 
-#ifdef ENABLE_LDMSTM
-void _AddAssignment(sci::StatementsNode &method, const std::string &lvalueName, const std::string &assigned);
-#else
 void _AddAssignment(sci::MethodDefinition &method, const std::string &lvalueName, const std::string &assigned);
-#endif
 std::unique_ptr<sci::SyntaxNode> _MakeTokenStatement(const std::string &token);
 
 template<typename _T>
