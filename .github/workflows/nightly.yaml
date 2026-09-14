@@ -1,8 +1,10 @@
 name: Nightly Build
 
 on:
-  schedule:
-    - cron: '15 7 * * *'
+  # Disabled while I tweak things
+  # schedule:
+  #   - cron: '15 7 * * *'
+  workflow_dispatch: # manual trigger
 
 jobs:
   # Only execute if the current commit does _not_ have a tag that starts with "nightly/".
