@@ -6,13 +6,13 @@
     Then:
       .\UnitTests\RunTests.ps1
 
-    Defaults to the decompiler suite. The wider suite has pre-existing failures
-    (SCI0 compile, pic pixel diffs) that are unrelated to the decompiler, so
-    pass -All to run everything.
+    Defaults to the decompiler suite plus the pic-draw tests. The wider suite
+    still has a pre-existing SCI0 compile failure unrelated to the decompiler,
+    so pass -All to run everything.
 #>
 param(
     [string]$Configuration = "Kawa",
-    [string]$Filter = "FullyQualifiedName~TestDecompile|FullyQualifiedName~TestAstPasses|FullyQualifiedName~TestShippedFiles",
+    [string]$Filter = "FullyQualifiedName~TestDecompile|FullyQualifiedName~TestAstPasses|FullyQualifiedName~TestShippedFiles|FullyQualifiedName~TestPics",
     [switch]$All,
     # After the run, copy the decompiled template snapshots the test wrote into
     # the source tree, so an intended output change is committed with the code.

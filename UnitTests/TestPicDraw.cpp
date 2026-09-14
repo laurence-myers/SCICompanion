@@ -94,7 +94,7 @@ void VerifyPic(PicDrawManager &pdm, PicScreen screen, const std::string &fileNam
         bool result = CompareCels(*celCreated, *celBitmap, offset, found, expected);
         if (!result)
         {
-            std::wstring message = fmt::format(L"Difference in offset {0} ({2},{3}) of pic {1}.\nExpected {4:02x} and got {5:02x}", offset, fileName, offset % celCreated->size.cx, offset / celCreated->size.cy, (int)expected, (int)found);
+            std::wstring message = fmt::format(L"Difference in offset {0} ({2},{3}) of pic {1}.\nExpected {4:02x} and got {5:02x}", offset, fileName, offset % celCreated->size.cx, offset / celCreated->size.cx, (int)expected, (int)found);
             Logger::WriteMessage(message.c_str());
         }
         Assert::IsTrue(result);

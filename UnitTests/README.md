@@ -14,9 +14,9 @@ MSBuild.exe SCICompanion.sln -m -p:Configuration=Kawa -p:Platform=Win32
 
 `RunTests.ps1` finds `vstest.console.exe` with `vswhere`, runs the DLL, and
 writes `TestResults\UnitTests.trx`. By default it runs the decompiler suites
-(`TestDecompile` and `TestAstPasses`). Pass `-All` to run every test. Pass
-`-UpdateSnapshots` to accept a deliberate change in decompiler output (see
-Snapshots below).
+(`TestDecompile` and `TestAstPasses`) plus the pic-draw tests (`TestPics`).
+Pass `-All` to run every test. Pass `-UpdateSnapshots` to accept a deliberate
+change in decompiler output (see Snapshots below).
 
 Only the **Kawa** solution configuration builds the test project. The test DLL
 and its data land in the `Kawa` output folder next to `SCICompanion.exe`. The
@@ -235,6 +235,8 @@ reviewing a snapshot change.
 ## Other tests
 
 `TestCompile`, `TestClassBrowser`, `TestResource*`, `TestPolygonLoad`,
-`TestPicDraw`, and `TestAllGamesLoad` predate this work. Some fail for reasons
-unrelated to the decompiler (an SCI0 compile exception and pic pixel diffs
-against stored bitmaps), so the default `RunTests.ps1` run skips them.
+`TestPicDraw`, and `TestAllGamesLoad` predate this work. The pic-draw tests
+(`TestPics`, `TestPicsSaveReload`) now run by default. The others are still
+skipped by the default `RunTests.ps1` run because some fail for reasons
+unrelated to the decompiler (an SCI0 compile exception); pass `-All` to
+include them.
