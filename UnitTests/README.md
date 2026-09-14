@@ -96,7 +96,9 @@ expected file is missing, the test writes the actual to
 | `F6_EmptyTrailingFor` | 906 | 6 | fixed; reconstructs the loops |
 | `F7_UnknownClass` | 907 | 7 | class stays as asm; clear message |
 | `C1_ValueAndOr` | 908 | (compiler) | value and/or round-trips |
-| `C2_IndexedMathAssign` | 920 | (compiler) | indexed `+=` compiles to Sierra's sequence |
+| `C2_IndexedMathAssign` | 920 | (compiler) | indexed `+=` compiles to Sierra's sequence; used as a value it gives the new value |
+| `C4_ClassDefRealClass` | 934 | (compiler) | a classdef with a real class's species keeps the selector check (must not compile) |
+| `C5_IndexerSideEffect` | 935 | (compiler) | an indexer with a side effect in an indexed `+=` gets a warning |
 | `C3_SierraIndexedMathAssign` | 932 | (chunk stage) | Sierra's own `lati; push` sequence for an indexed `+=` folds back |
 | `F3_ValueIfReturn` | 909 | 3 | fixed; `(return (and a b))` |
 | `F3_OrThreeTerms` | 910 | 3 | fixed; n-ary or |

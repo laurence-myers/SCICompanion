@@ -249,6 +249,8 @@ public:
 	// True for a species declared only by classdef: its methods and properties
 	// are unknown, so a send to it cannot be selector-checked.
 	bool IsClassDefSpecies(uint16_t species) const;
+	// A species a classdef declares and no class in the game has.
+	bool IsClassDefOnlySpecies(uint16_t species);
 	bool IsDefaultSelector(uint16_t value);
 	SpeciesIndex LookupTypeSpeciesIndex(const std::string &str, const ISourceCodePosition *pPos);
 	bool LookupTypeSpeciesIndex(const std::string &str, SpeciesIndex &wSpeciesIndex);

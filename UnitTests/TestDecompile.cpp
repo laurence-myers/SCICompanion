@@ -96,11 +96,47 @@ namespace UnitTests
         }
 
         // Compiler: a compound assignment to an indexed variable with a simple
-        // indexer compiles to Sierra's sequence, so the text round-trips.
+        // indexer compiles to Sierra's sequence, so the text round-trips. Used
+        // as a value, it gives the new value.
         TEST_METHOD(Compiler_IndexedMathAssign)
         {
             _gameFolder = SetUpGameSCI11();
             AssertDecompileMatchesExpected("C2_IndexedMathAssign", 920);
+        }
+
+        // Compiler: a classdef that names the species of a real class does
+        // not turn the selector check off for that class.
+        TEST_METHOD(Compiler_ClassDefRealClassIsChecked)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AddFixtureScript("C4_ClassDefRealClass");
+            std::string error;
+            bool ok = CompileFixture(934, "C4_ClassDefRealClass", &error);
+            Assert::IsFalse(ok, L"a bogus selector on a real class must not compile");
+            Assert::IsTrue(error.find("c4BogusSelector") != std::string::npos,
+                std::wstring(error.begin(), error.end()).c_str());
+        }
+
+        // Compiler: an indexer with a side effect in an indexed compound
+        // assignment runs twice, and the compiler says so; a plain expression
+        // gets no warning.
+        TEST_METHOD(Compiler_IndexerSideEffectWarns)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AddFixtureScript("C5_IndexerSideEffect");
+            std::string error;
+            std::vector<std::string> warnings;
+            bool ok = CompileFixture(935, "C5_IndexerSideEffect", &error, &warnings);
+            Assert::IsTrue(ok, std::wstring(error.begin(), error.end()).c_str());
+            int twice = 0;
+            for (const std::string &w : warnings)
+            {
+                if (w.find("evaluated twice") != std::string::npos)
+                {
+                    twice++;
+                }
+            }
+            Assert::AreEqual(1, twice, L"exactly one indexer has a side effect");
         }
 
         // A break out of a loop from inside a switch case. The structurer

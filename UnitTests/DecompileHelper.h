@@ -49,7 +49,7 @@ void AddFixtureScript(const std::string &fixtureName);
 // Compiles the script "<name>" (already in the game src folder) as resource
 // number scriptNumber. Returns true if the compile reports no errors. On
 // failure, writes the first error message to outError when it is not null.
-bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::string *outError = nullptr);
+bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::string *outError = nullptr, std::vector<std::string> *outWarnings = nullptr);
 
 // Decompiles the compiled script resource to source text plus diagnostics.
 // debugControlFlow adds a text dump of the control-flow graph to the warnings

@@ -450,6 +450,23 @@ bool CompileContext::IsClassDefSpecies(uint16_t species) const
 	}
 	return false;
 }
+bool CompileContext::IsClassDefOnlySpecies(uint16_t species)
+{
+	if (!IsClassDefSpecies(species))
+	{
+		return false;
+	}
+	WORD wScript, wClassIndexInScript;
+	if (_tables.Species().GetSpeciesLocation(species, wScript, wClassIndexInScript))
+	{
+		_LoadSCOIfNone(wScript);
+		if (!_scos[wScript].GetClassName(wClassIndexInScript).empty())
+		{
+			return false;	// a real class has this species
+		}
+	}
+	return true;
+}
 bool CompileContext::IsDefaultSelector(uint16_t value)
 {
 	return _tables.Selectors().IsDefaultSelector(value);

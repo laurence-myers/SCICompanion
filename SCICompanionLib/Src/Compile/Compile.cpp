@@ -1744,10 +1744,12 @@ CodeResult SendParam::OutputByteCode(CompileContext &context) const
 			}
 		}
 		else if ((calleeSpecies != DataTypeAny) && (calleeSpecies != DataTypeNone) &&
-			!context.IsClassDefSpecies(calleeSpecies.Type()))
+			!context.IsClassDefOnlySpecies(calleeSpecies.Type()))
 		{
 			// A classdef-only species (its script is not in the game) has no
 			// known method or property list, so its selectors cannot be checked.
+			// A classdef that names a species of a real class is checked as
+			// that class.
 			// We'll make a decision not to generate an error if the callee is of type 'var'.
 			// We need some way for code to call specific methods on something, so this will be it
 			// (e.g. by casting to var).
@@ -2014,6 +2016,52 @@ BinaryOperator GetBinaryOpFromAssignment(AssignmentOperator assignment)
 	return BinaryOperator::None;
 }
 
+// True when the expression can have a side effect: a call, a send, an
+// assignment, an increment or a decrement, at any depth. A value, a variable
+// or an operator over those has none.
+static bool _CanHaveSideEffect(const SyntaxNode *node)
+{
+	if (!node)
+	{
+		return false;
+	}
+	switch (node->GetNodeType())
+	{
+		case NodeTypeValue:
+			return false;
+		case NodeTypeComplexValue:
+			return _CanHaveSideEffect(static_cast<const ComplexPropertyValue *>(node)->GetIndexer());
+		case NodeTypeBinaryOperation:
+		{
+			const BinaryOp *op = static_cast<const BinaryOp *>(node);
+			return _CanHaveSideEffect(op->GetStatement1()) || _CanHaveSideEffect(op->GetStatement2());
+		}
+		case NodeTypeUnaryOperation:
+		{
+			const UnaryOp *op = static_cast<const UnaryOp *>(node);
+			if ((op->Operator == UnaryOperator::Increment) || (op->Operator == UnaryOperator::Decrement))
+			{
+				return true;
+			}
+			return _CanHaveSideEffect(op->GetStatement1());
+		}
+		case NodeTypeNaryOperation:
+		{
+			const NaryOp *op = static_cast<const NaryOp *>(node);
+			for (const auto &segment : op->GetStatements())
+			{
+				if (_CanHaveSideEffect(segment.get()))
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+		default:
+			return true;
+	}
+}
+
 CodeResult Assignment::OutputByteCode(CompileContext &context) const
 {
 	declare_conditional isCondition(context, false);
@@ -2081,6 +2129,10 @@ CodeResult Assignment::OutputByteCode(CompileContext &context) const
 				// Emit Sierra's sequence, which the decompiler reads back:
 				//   index; lsti var; value; op; push; index; sati var
 				// The indexed store pops the value and leaves it in the acc.
+				if (!simpleIndexer && _CanHaveSideEffect(pIndexer))
+				{
+					context.ReportWarning(this, "The indexer of '%s' is evaluated twice (once for the load, once for the store); its side effect happens twice.", strVarName.c_str());
+				}
 				OutputByteCodeToAccumulator(context, *pIndexer);
 				VariableOperand(context, wIndex, TokenTypeToVOType(tokenType) | VO_STACK | VO_LOAD | VO_ACC_AS_INDEX_MOD, GetLineNumber());
 				OutputByteCodeToAccumulator(context, *_statement1);

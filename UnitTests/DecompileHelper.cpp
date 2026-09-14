@@ -129,7 +129,7 @@ void AddFixtureScript(const std::string &fixtureName)
         ToWString("Could not copy fixture: " + src).c_str());
 }
 
-bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::string *outError)
+bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::string *outError, std::vector<std::string> *outWarnings)
 {
     CResourceMap &rm = appState->GetResourceMap();
     rm.AssignName(ResourceType::Script, scriptNumber, NoBase36, fixtureName.c_str());
@@ -152,6 +152,16 @@ bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::
     // compile, or a later decompile reads a stale resource.
     HRESULT hr = defer.Commit();
     bool success = ok && !log.HasErrors() && SUCCEEDED(hr);
+    if (outWarnings)
+    {
+        for (const CompileResult &r : log.Results())
+        {
+            if (r.IsWarning())
+            {
+                outWarnings->push_back(r.GetMessage());
+            }
+        }
+    }
     if (!success && outError)
     {
         // The first error. When no result is an error, the status and every
