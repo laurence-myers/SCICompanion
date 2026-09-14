@@ -106,6 +106,7 @@
     <ClCompile Include="TestClassBrowser.cpp" />
     <ClCompile Include="TestCompile.cpp" />
     <ClCompile Include="TestDecompile.cpp" />
+    <ClCompile Include="TestKeywordCodegen.cpp" />
     <ClCompile Include="TestAstPasses.cpp" />
     <ClCompile Include="TestPicDraw.cpp" />
     <ClCompile Include="TestPolygonLoad.cpp" />

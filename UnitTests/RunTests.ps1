@@ -12,7 +12,7 @@
 #>
 param(
     [string]$Configuration = "Release",
-    [string]$Filter = "FullyQualifiedName~TestDecompile|FullyQualifiedName~TestAstPasses|FullyQualifiedName~TestShippedFiles|FullyQualifiedName~TestPics",
+    [string]$Filter = "FullyQualifiedName~TestDecompile|FullyQualifiedName~TestAstPasses|FullyQualifiedName~TestShippedFiles|FullyQualifiedName~TestPics|FullyQualifiedName~TestKeywordCodegen",
     [switch]$All,
     # After the run, copy the decompiled template snapshots the test wrote into
     # the source tree, so an intended output change is committed with the code.
