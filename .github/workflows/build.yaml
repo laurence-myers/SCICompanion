@@ -62,9 +62,9 @@ jobs:
             Copy-Item -Path $_.FullName -Destination "artifacts" -recurse
         }
 
-    # Run the decompiler unit tests. The wider suite has pre-existing failures
-    # (SCI0 compile, pic pixel diffs) unrelated to this work, so RunTests.ps1
-    # defaults to the decompiler suite.
+    # Run the decompiler and pic-draw unit tests. The wider suite still has a
+    # pre-existing SCI0 compile failure unrelated to this work, so RunTests.ps1
+    # defaults to the decompiler suite plus the pic tests.
     - name: Test
       shell: pwsh
       run: .\UnitTests\RunTests.ps1 -Configuration ${{ matrix.configuration }}
