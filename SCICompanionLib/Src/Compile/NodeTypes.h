@@ -65,15 +65,9 @@ namespace sci
 		NodeTypeExtern,
 		NodeTypeSelector,
 
-#ifdef ENABLE_VERBS
 		NodeTypeVerbClause,
 		NodeTypeVerbHandler,
-#endif
-#ifdef ENABLE_FOREACH
 		NodeTypeForEach,
-#endif
-#ifdef ENABLE_GETPOLY
 		NodeTypeGetPoly,
-#endif
 	};
 }

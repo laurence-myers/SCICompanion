@@ -961,7 +961,6 @@ void PropertyValueBase::PreScan(CompileContext &context)
 		} // I guess we can have instances and stuff here too, so we'll delay..
 		break;
 
-#ifdef ENABLE_EXISTS
 	case ValueType::ParameterIndex:
 	{
 		bool found = false;
@@ -993,7 +992,6 @@ void PropertyValueBase::PreScan(CompileContext &context)
 		}
 	}
 	break;
-#endif
 
 	case ValueType::ArraySize:
 		{
@@ -1779,7 +1777,6 @@ CodeResult CodeBlock::OutputByteCode(CompileContext &context) const
 	return CodeResult(wBytes, result.GetType());
 }
 
-#ifdef ENABLE_FOREACH
 CodeResult ForEachLoop::OutputByteCode(CompileContext &context) const
 {
 	WORD wBytes = 0;
@@ -1798,7 +1795,6 @@ CodeResult ForEachLoop::OutputByteCode(CompileContext &context) const
 	CodeResult result = SingleStatementVectorOutputHelper(FinalCode, context, &wBytes);
 	return CodeResult(wBytes, result.GetType());
 }
-#endif
 
 CodeResult ProcedureCall::OutputByteCode(CompileContext &context) const
 {
@@ -3238,13 +3234,11 @@ CodeResult ContinueStatement::OutputByteCode(CompileContext &context) const
 	return 0; // void
 }
 
-#ifdef ENABLE_VERBS
 CodeResult VerbClauseStatement::OutputByteCode(CompileContext &context) const
 {
 	// Should never be called.
 	return CodeResult(0, DataTypeAny);
 }
-#endif
 
 CodeResult AsmBlock::OutputByteCode(CompileContext &context) const
 {
@@ -3824,7 +3818,6 @@ void WhileLoop::PreScan(CompileContext &context)
 	ForwardPreScan2(_segments, context);
 }
 
-#ifdef ENABLE_FOREACH
 void ForEachLoop::PreScan(CompileContext &context)
 {
 	// These things should have been cleared out:
@@ -3832,9 +3825,7 @@ void ForEachLoop::PreScan(CompileContext &context)
 	assert(_segments.size() == 0);
 	ForwardPreScan2(FinalCode, context);
 }
-#endif
 
-#ifdef ENABLE_GETPOLY
 void GetPolyStatement::PreScan(CompileContext &context) {}
 CodeResult GetPolyStatement::OutputByteCode(CompileContext &context) const
 {
@@ -3843,7 +3834,6 @@ CodeResult GetPolyStatement::OutputByteCode(CompileContext &context) const
 	return CodeResult(wBytes, result.GetType());
 	//return 0;
 }
-#endif
 
 void ExportEntry::PreScan(CompileContext &context) {}
 

@@ -430,12 +430,8 @@ void VocabPreviewer::_Populate(const std::vector<std::string> &names, const bool
 	{
 		if (prependNumber)
 		{
-#ifdef ENABLE_MOREVOCABPREVIEWS
 			// Match selector list format
 			text << index << " (0x" << std::hex << (index) << std::dec << "): ";
-#else
-			text << index << ": ";
-#endif
 		}
 
 		const std::string &line = (*it);
@@ -491,7 +487,6 @@ void VocabPreviewer::SetResource(const ResourceBlob &blob)
 	{
 		switch (iNumber)
 		{
-#ifdef ENABLE_MOREVOCABPREVIEWS
 		case 994: //KAWA - object offsets
 		{
 			//SV: OBJECT | OFFSET
@@ -519,7 +514,6 @@ void VocabPreviewer::SetResource(const ResourceBlob &blob)
 			fSuccess = true;
 		}
 		break;
-#endif
 		case 995: // debug info
 		{
 			CVocabWithNames vocab;
@@ -550,7 +544,6 @@ void VocabPreviewer::SetResource(const ResourceBlob &blob)
 			}
 		}
 		break;
-#ifdef ENABLE_MOREVOCABPREVIEWS
 		/* case 998: //KAWA - opcodes
 		{
 			//SV: OPCODE / 2 | INSTRUCTION | FLAGS
@@ -570,7 +563,6 @@ void VocabPreviewer::SetResource(const ResourceBlob &blob)
 			//  opcode name
 		}
 		break; */
-#endif
 		case 999: // kernel functions
 		{
 			KernelTable kernels;

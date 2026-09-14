@@ -27,14 +27,12 @@ void _SetSendVariableTarget(SendCall &send, const std::string &target)
 	send.SetLValue(move(lValue));
 }
 
-#ifdef ENABLE_FOREACH
 unique_ptr<sci::CodeBlock> _WrapInCodeBlock(unique_ptr<sci::SyntaxNode> pNode)
 {
 	unique_ptr<CodeBlock> codeBlock = make_unique<CodeBlock>();
 	codeBlock->AddStatement(move(pNode));
 	return codeBlock;
 }
-#endif
 
 unique_ptr<SyntaxNode> _MakeNumberStatement(int16_t w)
 {
@@ -54,14 +52,12 @@ unique_ptr<SyntaxNode> _MakeTokenStatement(const string &token)
 	return unique_ptr<SyntaxNode>(move(pValue));
 }
 
-#ifdef ENABLE_FOREACH
 unique_ptr<SyntaxNode> _MakeStringStatement(const string &token, ValueType valuetype)
 {
 	unique_ptr<ComplexPropertyValue> pValue = std::make_unique<ComplexPropertyValue>();
 	pValue->SetValue(token, valuetype);
 	return unique_ptr<SyntaxNode>(move(pValue));
 }
-#endif
 
 #ifdef ENABLE_LDMSTM
 void _AddAssignment(StatementsNode &method, const string &lvalueName, const string &assigned)
@@ -78,7 +74,6 @@ void _AddAssignment(MethodDefinition &method, const string &lvalueName, const st
 	_AddStatement(method, std::move(pEquals));
 }
 
-#ifdef ENABLE_FOREACH
 unique_ptr<sci::SyntaxNode> _MakeBinaryOp(BinaryOperator op, std::unique_ptr<sci::SyntaxNode> one, std::unique_ptr<sci::SyntaxNode> two)
 {
 	unique_ptr<BinaryOp> binop = make_unique<BinaryOp>();
@@ -87,7 +82,6 @@ unique_ptr<sci::SyntaxNode> _MakeBinaryOp(BinaryOperator op, std::unique_ptr<sci
 	binop->SetStatement2(move(two));
 	return unique_ptr<SyntaxNode>(move(binop));
 }
-#endif
 
 void _AddBasicSwitch(MethodDefinition &method, const string &switchValue, const string &case0Comments)
 {
@@ -107,7 +101,6 @@ void _AddBasicSwitch(MethodDefinition &method, const string &switchValue, const 
 	_AddStatement(method, std::move(pSwitch));
 }
 
-#ifdef ENABLE_FOREACH
 unique_ptr<SyntaxNode> _MakeSimpleSend(const string &objectName, const string &propName)
 {
 	unique_ptr<SendCall> pSend = std::make_unique<SendCall>();
@@ -119,7 +112,6 @@ unique_ptr<SyntaxNode> _MakeSimpleSend(const string &objectName, const string &p
 	pSend->AddSendParam(move(pParam));
 	return unique_ptr<SyntaxNode>(move(pSend));
 }
-#endif
 
 
 // parameter may be empty.

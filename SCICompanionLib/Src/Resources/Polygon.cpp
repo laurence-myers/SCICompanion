@@ -57,7 +57,6 @@ void FixupPolygon(SCIPolygon &polygon)
 }
 
 const char c_szDefaultPolyName[] = "P_Default";				 // P_Default[nnn] where [nnn] is the pic number.
-const char c_szAddPolysToRoomFunction[] = "AddPolygonsToRoom";  // The export in main for SCI1.1 template game.
 
 const string AccessType[] =
 {
@@ -67,7 +66,6 @@ const string AccessType[] =
 	"PContainedAccess",
 };
 
-#ifdef ENABLE_GETPOLY
 unique_ptr<SendCall> GetSetUpPolyProcedureCall()
 {
 	auto gRoom = make_unique<SendCall>();
@@ -82,14 +80,6 @@ unique_ptr<SendCall> GetSetUpPolyProcedureCall()
 	gRoom->AddSendParam(move(addObstacle));
 	return gRoom;
 }
-#else
-unique_ptr<ProcedureCall> GetSetUpPolyProcedureCall(int picResource)
-{
-	unique_ptr<ProcedureCall> procCall = make_unique<ProcedureCall>(c_szAddPolysToRoomFunction);
-	_AddStatement(*procCall, make_unique<PropertyValue>(fmt::format("{0}{1}", c_szDefaultPolyName, picResource), ValueType::Pointer));
-	return procCall;
-}
-#endif
 
 const PropertyValueBase *_GetPropertyValue(const SyntaxNode *node)
 {

@@ -147,16 +147,10 @@ namespace sci
 	class GlobalDeclaration;
 	class ExternDeclaration;
 
-#ifdef ENABLE_VERBS
 	class VerbHandlerDefinition;
 	class VerbClauseStatement;
-#endif
-#ifdef ENABLE_FOREACH
 	class ForEachLoop; 
-#endif
-#ifdef ENABLE_GETPOLY
 	class GetPolyStatement;
-#endif
 
 	class ISyntaxNodeVisitor
 	{
@@ -204,16 +198,10 @@ namespace sci
 		virtual void Visit(const SelectorDeclaration &selectorDef) = 0;
 		virtual void Visit(const GlobalDeclaration &globalDecl) = 0;
 		virtual void Visit(const ExternDeclaration &externDecl) = 0;
-#ifdef ENABLE_VERBS
 		virtual void Visit(const VerbHandlerDefinition &globalDecl) = 0;
 		virtual void Visit(const VerbClauseStatement &externDecl) = 0;
-#endif
-#ifdef ENABLE_FOREACH
 		virtual void Visit(const ForEachLoop &forEachLoop) = 0; 
-#endif
-#ifdef ENABLE_GETPOLY
 		virtual void Visit(const GetPolyStatement &getPolyStatement) = 0;
-#endif
 
 		virtual void Enter(const SyntaxNode &node) = 0;
 		virtual void Leave(const SyntaxNode &node) = 0;
@@ -394,11 +382,7 @@ namespace sci
 	class EnumAll : public IExploreNode
 	{
 	public:
-#ifdef ENABLE_FOREACH
 		EnumAll(sci::SyntaxNode &script, _TFunc func) : _func(func) { script.Traverse(*this); }
-#else
-		EnumAll(sci::Script &script, _TFunc func) : _func(func) { script.Traverse(*this); }
-#endif
 
 		void ExploreNode(SyntaxNode &node, ExploreNodeState state) override
 		{
@@ -412,11 +396,7 @@ namespace sci
 	};
 
 	template<typename _T, typename _TFunc>
-#ifdef ENABLE_FOREACH
 	void EnumScriptElements(SyntaxNode &script, _TFunc func)
-#else
-	void EnumScriptElements(Script &script, _TFunc func)
-#endif
 	{
 		EnumAll<_T, _TFunc> enumIt(script, func);
 	}
@@ -750,9 +730,7 @@ namespace sci
 		DECLARE_NODE_TYPE(NodeTypeVariableDeclaration)
 	public:
 		VariableDecl();
-#if defined(ENABLE_LDMSTM) || defined(ENABLE_FOREACH)
 		VariableDecl(const std::string &name); 
-#endif
 		VariableDecl(const VariableDecl &src) = delete;
 		VariableDecl& operator=(const VariableDecl& src) = delete;
 
@@ -858,9 +836,7 @@ namespace sci
 		void AddVariable(std::unique_ptr<VariableDecl> pVar) { _tempVars.push_back(std::move(pVar)); }
 		std::string ToString() const;
 		const VariableDeclVector &GetVariables() const { return _tempVars; }
-#ifdef ENABLE_FOREACH
 		VariableDeclVector &GetVariablesNC() { return _tempVars; }
-#endif
 		const ClassDefinition *GetOwnerClass() const { return _pOwnerClass; }
 		void SetOwnerClass(const ClassDefinition *pOwnerClass) { _pOwnerClass = pOwnerClass; }
 		const SyntaxNodeVector &GetCodeSegments() const { return _segments; }
@@ -966,9 +942,7 @@ namespace sci
 		ClassPropertyVector &GetPropertiesNC() { return _properties; }
 		const MethodVector &GetMethods() const { return _methods; }
 		MethodVector &GetMethodsNC() { return _methods; }
-#ifdef ENABLE_VERBS
 		std::vector<std::unique_ptr<VerbHandlerDefinition>> &GetVerbHandlers() { return _verbHandlers; }
-#endif
 		bool GetPropertyConst(PCTSTR pszName, PropertyValue &value) const;
 
 		// ISCIPropertyBag
@@ -986,9 +960,7 @@ namespace sci
 		void AddProperty(std::unique_ptr<ClassProperty> classProp) { _properties.push_back(move(classProp)); }
 		void AddProperty(const std::string &name, uint16_t value);
 		void AddMethod(std::unique_ptr<MethodDefinition> method) { _methods.push_back(std::move(method)); }
-#ifdef ENABLE_VERBS
 		void AddVerbHandler(std::unique_ptr<VerbHandlerDefinition> verbHandler);
-#endif
 
 		// IOutputByteCode
 		CodeResult OutputByteCode(CompileContext &context) const;
@@ -1011,9 +983,7 @@ namespace sci
 		bool _fInstance; // Instance or class.
 		ClassPropertyVector _properties;
 		MethodVector _methods;
-#ifdef ENABLE_VERBS
 		std::vector<std::unique_ptr<VerbHandlerDefinition>> _verbHandlers;
-#endif
 	};
 
 	typedef ClassDefinition* ClassPtr;

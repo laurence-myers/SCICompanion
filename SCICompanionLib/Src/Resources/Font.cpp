@@ -196,19 +196,11 @@ void GetCharacterLabel(PTSTR  pszLabel, size_t cch, int nCel)
 {
 	if (nCel < 32)
 	{
-#ifdef ENABLE_FONTNUMSINHEX
 		StringCchPrintf(pszLabel, cch, TEXT("(%X)"), nCel);
 	}
 	else
 	{
 		StringCchPrintf(pszLabel, cch, TEXT("%c (%X)"), nCel, nCel);
-#else
-		StringCchPrintf(pszLabel, cch, TEXT("(%d)"), nCel);
-	}
-	else
-	{
-		StringCchPrintf(pszLabel, cch, TEXT("%c (%d)"), nCel, nCel);
-#endif
 	}
 }
 

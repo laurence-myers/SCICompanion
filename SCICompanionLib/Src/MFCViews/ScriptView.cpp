@@ -382,12 +382,8 @@ const std::vector<std::string> &GetTopLevelKeywords()
 std::vector<std::string> codeLevelKeywordsSCI =
 {
 	// Sorted
-#ifdef ENABLE_EXISTS
 	_T("&exists"),
-#endif
-#ifdef ENABLE_GETPOLY
 	_T("&getpoly"),
-#endif
 	_T("&rest"),
 	_T("&sizeof"),
 	// _T("&tmp"),   // This is special
@@ -403,9 +399,7 @@ std::vector<std::string> codeLevelKeywordsSCI =
 	_T("enum"),
 	_T("false"),
 	_T("for"),
-#ifdef ENABLE_FOREACH
 	_T("foreach"),
-#endif
 	_T("if"),
 	_T("mod"),
 	_T("not"),
@@ -456,11 +450,7 @@ bool IsValueKeyword(const std::string &word)
 	return binary_search(list.begin(), list.end(), word);
 }
 
-#ifdef ENABLE_VERBS
 std::vector<std::string> classLevelKeywordsSCI = { "method", "properties", "procedure", "verbs" };
-#else
-std::vector<std::string> classLevelKeywordsSCI = { "method", "properties", "procedure" };
-#endif
 bool IsClassLevelKeyword(const std::string &word)
 {
 	auto &list = GetClassLevelKeywords();

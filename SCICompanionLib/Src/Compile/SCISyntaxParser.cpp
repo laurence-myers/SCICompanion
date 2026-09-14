@@ -6,13 +6,9 @@
 #include "Operators.h"
 #include "OperatorTables.h"
 #include "format.h"
-#ifdef ENABLE_FOREACH
 #include "ScriptMakerHelper.h"
-#endif
-#ifdef ENABLE_GETPOLY
 #include "Polygon.h"
 #include "AppState.h"
-#endif
 
 using namespace sci;
 using namespace std;
@@ -90,12 +86,8 @@ vector<string> SCIStatementKeywords =
 
 vector<string> SCIKeywords =
 {
-#ifdef ENABLE_EXISTS
 	"&exists",
-#endif
-#ifdef ENABLE_GETPOLY
 	"&getpoly",
-#endif
 	"&tmp",
 	"&rest",
 	"&sizeof",
@@ -113,9 +105,7 @@ vector<string> SCIKeywords =
 	"extern"		// ** For linking public procedures
 	"file#"		 // ** Procedure forward declarations
 	"for",
-#ifdef ENABLE_FOREACH
 	"foreach",
-#endif
 	"global"		// ** For global var declarations
 	"if",
 	"method",
@@ -136,9 +126,7 @@ vector<string> SCIKeywords =
 	"switch",
 	"switchto",
 	"text#",
-#ifdef ENABLE_VERBS
 	"verbs",
-#endif
 	"while",
 	// "scriptNumber",  // This is special, because it's a value. So don't count it as a banned keyword.
 	// neg, send, case, do, default, export are also keywords, but for the Studio language.
@@ -383,7 +371,6 @@ void SetCaseA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pCont
 	}
 }
 
-#ifdef ENABLE_EXISTS
 void ExistsA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
 {
 	if (match.Result())
@@ -395,9 +382,7 @@ void ExistsA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pConte
 		pContext->GetSyntaxNode<BinaryOp>()->SetStatement2(make_unique<PropertyValue>(pContext->ScratchString(), ValueType::ParameterIndex));
 	}
 }
-#endif
 
-#ifdef ENABLE_VERBS
 unique_ptr<FunctionSignature> _CreateVerbHandlerSignature()
 {
 	unique_ptr<FunctionSignature> signature = make_unique<FunctionSignature>();
@@ -441,7 +426,6 @@ void VerbClauseVerbA(MatchResult &match, const ParserSCI *pParser, SyntaxContext
 		pContext->GetSyntaxNode<VerbClauseStatement>()->Verbs.push_back(PropertyValue(pContext->ScratchString(), ValueType::Token));
 	}
 }
-#endif
 
 void InitEnumStartA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
 {
@@ -783,7 +767,6 @@ void AddProcedureFwdA(MatchResult &match, const ParserSCI *pParser, SyntaxContex
 	}
 }
 
-#ifdef ENABLE_FOREACH
 void SetIterationVariableA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
 {
 	if (match.Result())
@@ -800,7 +783,6 @@ void SetIsReferenceA(MatchResult &match, const ParserSCI *pParser, SyntaxContext
 		pContext->GetSyntaxNode<ForEachLoop>()->IsReference = true;
 	}
 }
-#endif
 #endif
 
 #ifdef ENABLE_LDMSTM
@@ -906,9 +888,7 @@ void SCISyntaxParser::Load()
 
 	size_of = keyword_p("&sizeof") >> alphanumNK_p[{nullptr, ParseAutoCompleteContext::PureValue}];
 
-#ifdef ENABLE_EXISTS
 	exists_statement = keyword_p("&exists")[SetStatementA<BinaryOp>] >> alphanumNK_p[{ExistsA, ParseAutoCompleteContext::PureValue}];
-#endif
 
 	pointer = atsign;
 
@@ -991,7 +971,6 @@ void SCISyntaxParser::Load()
 		>> wrapped_code_block[AddLooperCodeBlockA]
 		>> *statement[AddStatementA<ForLoop>];
 
-#ifdef ENABLE_FOREACH
 	foreach_loop =
 		keyword_p("foreach")[SetStatementA<ForEachLoop>]
 #ifdef ENABLE_LDMSTM
@@ -1000,12 +979,9 @@ void SCISyntaxParser::Load()
 		>> general_token[SetIterationVariableA]
 		>> statement[StatementBindTo1stA<ForEachLoop, errCollectionArg>]
 		>> *statement[AddStatementA<ForEachLoop>];
-#endif
-#ifdef ENABLE_GETPOLY
 	getpoly_statement =
 		keyword_p("&getpoly")[SetStatementA<GetPolyStatement>]
 		>> statement[StatementBindTo1stA<GetPolyStatement, nullptr>];
-#endif
 
 	case_statement =
 		alwaysmatch_p[StartStatementA]
@@ -1151,18 +1127,12 @@ void SCISyntaxParser::Load()
 		naryassoc_operation |
 		narycompare_operation |
 		return_statement |
-#ifdef ENABLE_EXISTS
 		exists_statement |
-#endif
 		if_statement |
 		while_loop |
 		for_loop |
-#ifdef ENABLE_FOREACH
 		foreach_loop |
-#endif
-#ifdef ENABLE_GETPOLY
 		getpoly_statement |
-#endif
 		cond_statement |
 		switchto_statement |
 		switch_statement |
@@ -1226,7 +1196,6 @@ void SCISyntaxParser::Load()
 
 	method_decl = keyword_p("method")[{CreateMethodA, ParseAutoCompleteContext::ClassLevelKeyword}] >> method_base[FunctionCloseA];
 
-#ifdef ENABLE_VERBS
 	verb_clause =
 		alwaysmatch_p[StartStatementA]
 		>> (oppar[SetStatementA<VerbClauseStatement>]
@@ -1237,7 +1206,6 @@ void SCISyntaxParser::Load()
 	verb_handler_decl = keyword_p("verbs")[{CreateVerbHandlerA, ParseAutoCompleteContext::ClassLevelKeyword}]
 		// >> // Todo, allow for temp vars I guess. Not sure how though.
 		>> *verb_clause[FunctionStatementA]; 
-#endif
 
 	// The properties thing in a class or instance
 	properties_decl = oppar >> keyword_p("properties")[{nullptr, ParseAutoCompleteContext::ClassLevelKeyword}] >> *property_decl >> clpar;
@@ -1251,9 +1219,7 @@ void SCISyntaxParser::Load()
 			(
 			methods_fwd |
 			method_decl[FinishClassMethodA] |
-#ifdef ENABLE_VERBS
 			verb_handler_decl[FinishVerbHandlerA] | 
-#endif
 			procedure_decl[FinishClassProcedureA]) >> clpar);
 
 	instance_decl = keyword_p("instance")[CreateClassA<true>] >> classbase_decl[ClassCloseA];
@@ -1356,7 +1322,6 @@ void SCISyntaxParser::Load()
 
 }
 
-#ifdef ENABLE_VERBS
 unique_ptr<CaseStatement> _MakeVerbHandlerElse()
 {
 	unique_ptr<CaseStatement> theCase = make_unique<CaseStatement>();
@@ -1424,9 +1389,7 @@ void _ProcessClassForVerbHandlers(Script &script, ClassDefinition &theClass)
 		pSwitchWeak->AddCase(_MakeVerbHandlerElse());
 	}
 }
-#endif
 
-#ifdef ENABLE_FOREACH
 bool _IsItADeclaredVariable(const VariableDeclVector &varDecls, const string &name)
 {
 	return find_if(varDecls.begin(), varDecls.end(), [&name](const auto &varDecl) { return varDecl->GetName() == name; }) != varDecls.end();
@@ -1789,9 +1752,7 @@ void _ProcessForEaches(ICompileLog &log, Script &script)
 		});
 	});
 }
-#endif
 
-#ifdef ENABLE_GETPOLY
 void _ProcessGetPoly(ICompileLog &log, Script &script, FunctionBase &func, GetPolyStatement &theGetPoly)
 {
 	if (theGetPoly.GetStatement1()->GetNodeType() == sci::NodeType::NodeTypeComplexValue)
@@ -1887,7 +1848,6 @@ void _ProcessGetPolys(ICompileLog &log, Script &script)
 		});
 	});
 }
-#endif
 
 //
 // Fix up scripts so that they conform to standards. Differences in the SCI syntax make
@@ -1912,26 +1872,20 @@ void PostProcessScript(ICompileLog *pLog, Script &script)
 	{
 		// This could be a class too (not just instance). The main game class is public.
 		instance.SetPublic(script.IsExport(instance.GetName()));
-#ifdef ENABLE_VERBS
 		_ProcessClassForVerbHandlers(script, instance);
-#endif
 	}
 		);
 
-#ifdef ENABLE_FOREACH
 	// Re-work foreach's into for loops (only for compiles where there is a log, e.g. actual compiles)
 	if (pLog)
 	{
 		_ProcessForEaches(*pLog, script);
 	}
-#endif
 
-#ifdef ENABLE_GETPOLY
 	if (pLog)
 	{
 		_ProcessGetPolys(*pLog, script);
 	}
-#endif
 
 	// Re-work conds into if-elses.
 	EnumScriptElements<CondStatement>(script,

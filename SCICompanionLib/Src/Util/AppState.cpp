@@ -112,9 +112,7 @@ AppState::AppState(CWinApp *pApp) : _resourceMap(this, &_resourceRecency)
 	_onionLeftOnTop = FALSE;
 	_onionRightOnTop = FALSE;
 	_onionWrap = TRUE;
-//#ifdef ENABLE_UNUSEDINSTANCEWARNINGS
 	_fWarnOnUnusedInstances = TRUE;
-//#endif
 
 	_pVocabTemplate = nullptr;
 
@@ -870,50 +868,34 @@ char* AppState::GetAboutText()
 		"\x95 Improved visuals for sound editor\r\n"
 		"\x95 Escape unprintable range\r\n"
 		"\x95 More word guess preferences\r\n"
-#ifdef ENABLE_DISPLAYMASSAGE
 		"\x95 Display argument massaging\r\n"
-#endif
 #ifdef FORCE_FILE993TOFILE
 		"\x95 Class 993 is always File\r\n"
 #endif
 #ifdef DISABLE_FONTLIMIT
 		"\x95 Font limit break\r\n"
 #endif
-#ifdef ENABLE_GETPOLY
 		"\x95 '&getpoly' command\r\n"
-#endif
 #ifdef ENABLE_FORCEDGLOBALS
 		"\x95 Forced global names\r\n"
 #endif
-#ifdef ENABLE_FONTNUMSINHEX
 		"\x95 Hex numbers in font grid\r\n"
-#endif
 #ifdef DISABLE_DEBUGSTUFF
 		"\x95 No debug stuff in decompiler\r\n"
 #endif
 #ifdef DISABLE_TRANSPARENCYNAG
 		"\x95 No transparency nagging\r\n"
 #endif
-#ifdef ENABLE_MOREVOCABPREVIEWS
 		"\x95 More vocab previews\r\n"
-#endif
-#ifdef ENABLE_EXISTS
 		"\x95 '&exists' support\r\n"
-#endif
 #ifdef ENABLE_LDMSTM
 		"\x95 Pointer deref support\r\n"
 #endif
-#ifdef ENABLE_FOREACH
 		"\x95 'foreach' support\r\n"
-#endif
-#ifdef ENABLE_VERBS
 		"\x95 'verbs' block support\r\n"
-#endif
 #ifdef ENABLE_FORCEDSCRIPTNAMES
 		"\x95 Forced script names\r\n"
 #endif
-#ifdef ENABLE_UNUSEDINSTANCEWARNINGS
 		"\x95 Warnings for unused instances\r\n"
-#endif
 		;
 }

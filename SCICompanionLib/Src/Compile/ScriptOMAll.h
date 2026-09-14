@@ -396,7 +396,6 @@ namespace sci
 		CondStatement& operator=(const CondStatement& src) = delete;
 	};
 
-#ifdef ENABLE_VERBS
 	class VerbClauseStatement : public SyntaxNode, public StatementsNode
 	{
 		DECLARE_NODE_TYPE(NodeTypeVerbClause)
@@ -424,9 +423,7 @@ namespace sci
 		void Accept(ISyntaxNodeVisitor &visitor) const override;
 		void OutputSourceCode(SourceCodeWriter &out) const {}
 	};
-#endif
 
-#ifdef ENABLE_FOREACH
 	class ForEachLoop : public SyntaxNode, public StatementsNode, public OneStatementNode
 	{
 		DECLARE_NODE_TYPE(NodeTypeForEach)
@@ -452,9 +449,7 @@ namespace sci
 		// Until the syntax parser processes it all into this:
 		SyntaxNodeVector FinalCode;
 	};
-#endif
 
-#ifdef ENABLE_GETPOLY
 	class GetPolyStatement : public SyntaxNode, public OneStatementNode
 	{
 		DECLARE_NODE_TYPE(NodeTypeGetPoly)
@@ -468,7 +463,6 @@ namespace sci
 		void Traverse(IExploreNode &en);
 		SyntaxNodeVector FinalCode;
 	};
-#endif
 
 	//
 	// Assignment statement (e.g. += foo 1)
