@@ -245,13 +245,6 @@ void NewGameDialog::OnBnClickedOk()
 		// Open the new game, and then open the script editor to rm001 of the template game
 		appState->OpenDocumentFile(szPath);
 
-		// If the game is not in Studio syntax, convert it now (the template games are in Studio syntax)
-		if (lang == LangSyntaxSCI)
-		{
-			CompileLog log;
-			ConvertGame(appState->GetResourceMap(), lang, log);
-		}
-
 		appState->OpenScript(openToRoom);
 		OnOK();
 	}

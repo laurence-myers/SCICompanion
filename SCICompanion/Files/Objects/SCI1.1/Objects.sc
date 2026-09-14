@@ -1,8 +1,6 @@
-(version 2)
+;;; Sierra Script 1.0 - (do not remove this comment)
 
-
-
-(instance {name} of Feature
+(instance templateFeature of Feature
 	(properties
 		x 150
 		y 100
@@ -19,24 +17,23 @@
 	)
 
 	(method (init_ params)
-		(super:init(rest params))
+		(super init: &rest)
 	)
 
 	(method (doVerb_ theVerb params)
-		(switch (theVerb)
-			(default
-				(super:doVerb(theVerb rest params))
+		(switch theVerb
+			(else
+				(super doVerb: theVerb &rest)
 			)
 		)
 	)
 
 	(method (handleEvent_ pEvent)
-		(super:handleEvent(pEvent))
+		(super handleEvent: pEvent)
 	)
 )
 
-
-(instance {name} of View
+(instance templateView of View
 	(properties
 		view 0
 		x 150
@@ -56,25 +53,25 @@
 		approachDist_ 10
 		priority 0
 	)
-	
+
 	(method (init_ params)
-		(super:init(rest params))
+		(super init: &rest)
 	)
-	
+
 	(method (doVerb_ theVerb params)
-		(switch (theVerb)
-			(default
-				(super:doVerb(theVerb rest params))
+		(switch theVerb
+			(else
+				(super doVerb: theVerb &rest)
 			)
 		)
 	)
 
 	(method (handleEvent_ pEvent)
-		(super:handleEvent(pEvent))
+		(super handleEvent: pEvent)
 	)
 )
 
-(instance {name} of Prop
+(instance templateProp of Prop
 	(properties
 		view 0
 		x 150
@@ -95,27 +92,25 @@
 		priority 0
 		cycleSpeed_ 3
 	)
-	
+
 	(method (init_ params)
-		(super:init(rest params))
+		(super init: &rest)
 	)
-	
+
 	(method (doVerb_ theVerb params)
-		(switch (theVerb)
-			(default
-				(super:doVerb(theVerb rest params))
+		(switch theVerb
+			(else
+				(super doVerb: theVerb &rest)
 			)
 		)
 	)
 
 	(method (handleEvent_ pEvent)
-		(super:handleEvent(pEvent))
+		(super handleEvent: pEvent)
 	)
 )
 
-
-
-(instance {name} of Actor
+(instance templateActor of Actor
 	(properties
 		view 0
 		x 150
@@ -136,81 +131,81 @@
 		priority_ 0
 		cycleSpeed_ 3
 	)
-	
+
 	(method (init_ params)
-		(super:init(rest params))
+		(super init: &rest)
 	)
-	
+
 	(method (doVerb_ theVerb params)
-		(switch (theVerb)
-			(default
-				(super:doVerb(theVerb rest params))
+		(switch theVerb
+			(else
+				(super doVerb: theVerb &rest)
 			)
 		)
 	)
 
 	(method (handleEvent_ pEvent)
-		(super:handleEvent(pEvent))
+		(super handleEvent: pEvent)
 	)
 )
 
-(instance {name} of Script
+(instance templateScript of Script
 	(properties)
 
 	(method (doit_)
-		// This code gets called on every update.
-		(super:doit())
+		; This code gets called on every update.
+		(super doit:)
 	)
 
 	(method (changeState newState)
 		(= state newState)
-		(switch (state)
-			(case 0
+		(switch state
+			(0
 			)
 		)
 	)
 
 	(method (handleEvent_ pEvent)
-		(super:handleEvent(pEvent))
+		(super handleEvent: pEvent)
 	)
 )
 
-(instance public {name} of Talker
-    (properties
-        x 150
-        y 100
-        view 100
-        loop 0
-        talkWidth 150
-        back 5
-        textX 120
-        textY 10
-    )
+(instance templateTalker of Talker
+	(properties
+		x 150
+		y 100
+		view 100
+		loop 0
+		talkWidth 150
+		back 5
+		textX 120
+		textY 10
+	)
 
-    (method (init params)
-        = font gFont
-        (super:init(theBustProp theEyesProp theMouthProp rest params))
-    )
+	(method (init params)
+		(= font gFont)
+		(super init: theBustProp theEyesProp theMouthProp &rest)
+	)
 )
 
-(instance public {name} of Narrator
-    (properties
-        talkWidth 120
-    )
+(instance templateNarrator of Narrator
+	(properties
+		talkWidth 120
+	)
 
-    (method (init params)
-        = font gFont
-        = gWindow SpeakWindow
-        (send gWindow:
-            tailX(85)
-            tailY(135)
-            xOffset(15)
-        )
-        (super:init(rest params))
-    )
+	(method (init params)
+		(= font gFont)
+		(= gWindow SpeakWindow)
+		(gWindow
+			tailX: 85
+			tailY: 135
+			xOffset: 15
+		)
+		(super init: &rest)
+	)
 
-    (method (dispose param1)
-        = gWindow gWindow2
-        (super:dispose(rest param1))
-    )
+	(method (dispose param1)
+		(= gWindow gWindow2)
+		(super dispose: &rest)
+	)
 )

@@ -151,6 +151,7 @@
     <ClCompile Include="TestResource.cpp" />
     <ClCompile Include="TestResourceDelete.cpp" />
     <ClCompile Include="TestResourceLoad.cpp" />
+    <ClCompile Include="TestShippedFiles.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Prof-UIS.2.92\ProfUISLIB\ProfUISLIB_1000.vcxproj">

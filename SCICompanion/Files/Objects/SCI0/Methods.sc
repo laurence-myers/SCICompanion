@@ -1,28 +1,25 @@
-(version 2)
-
+;;; Sierra Script 1.0 - (do not remove this comment)
 
 (class AllTheMethods of Obj
-	(properties
-	)
+	(properties)
 
 	(method (init params)
-		(super:init(rest params))
+		(super init: &rest)
 	)
 
 	(method (handleEvent pEvent)
-		(super:handleEvent(pEvent))
+		(super handleEvent: pEvent)
 	)
 
 	(method (changeState newState)
 		(= state newState)
-		(switch (state)
-			(case 0
+		(switch state
+			(0
 			)
 		)
 	)
 
-    (method (doit)
-        (super:doit())
-    )
+	(method (doit)
+		(super doit:)
+	)
 )
-
