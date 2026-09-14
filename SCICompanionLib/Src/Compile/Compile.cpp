@@ -781,7 +781,7 @@ void WriteScriptID(CompileContext &context, WORD wInstanceScript, WORD wIndex)
 
 void ValidateVariableDeclaration(CompileContext &context, const ISourceCodePosition *pPos, std::string &name)
 {
-	if (IsSCIKeyword(context.GetLanguage(), name))
+	if (IsSCIKeyword(name))
 	{
 		context.ReportError(pPos, "'%s' is a keyword and cannot be used as a variable name.", name.c_str());
 	}
@@ -889,7 +889,7 @@ bool _PreScanPropertyTokenToNumber(CompileContext &context, SyntaxNode *pNode, c
 		fRet = false;
 	}
 	// Finally, process any errors.
-	else if (IsCodeLevelKeyword(context.GetLanguage(), token))
+	else if (IsCodeLevelKeyword(token))
 	{
 		fRet = false;
 		// Can't use code-level keywords as values.
@@ -1269,7 +1269,7 @@ CodeResult PropertyValueBase::OutputByteCode(CompileContext &context) const
 					}
 					break;
 				case ResolvedToken::Unknown:
-					if (IsSCIKeyword(context.GetLanguage(), _stringValue))
+					if (IsSCIKeyword(_stringValue))
 					{
 						context.ReportError(this, "'%s' cannot be used here.", _stringValue.c_str());
 					}
@@ -1296,7 +1296,7 @@ CodeResult PropertyValueBase::OutputByteCode(CompileContext &context) const
 						{
 							// "Normal" case
 							// Also check if this is a keyword, and provide a better error.
-							if (IsSCIKeyword(context.GetLanguage(), _stringValue))
+							if (IsSCIKeyword(_stringValue))
 							{
 								context.ReportError(this, "'%s' cannot be used here.", _stringValue.c_str());
 							}
@@ -1420,7 +1420,7 @@ CodeResult SendCall::OutputByteCode(CompileContext &context) const
 					break;
 				default:
 					// Studio requires a "send" keyword for these things, so it won't hit this path.
-					if (context.GetLanguage() != LangSyntaxStudio)
+					if (true)
 					{
 						BYTE bOpcodeMod = VO_LOAD | VO_ACC;
 						switch (tokenType)
@@ -1877,7 +1877,7 @@ CodeResult ProcedureCall::OutputByteCode(CompileContext &context) const
 		{
 			std::string message = "Unknown procedure";
 			bool checkUse = true;
-			if (context.GetLanguage() == LangSyntaxSCI)
+			if (true)
 			{
 				// It could have been accidentally enclosed in parentheses.
 				uint16_t index;
@@ -2115,7 +2115,7 @@ CodeResult Assignment::OutputByteCode(CompileContext &context) const
 			// Sierra evaluated the indexer twice, even a complex one. Emit that
 			// sequence for Sierra syntax so a complex indexer round-trips; keep
 			// the older single-evaluation trick for Studio syntax.
-			if (pIndexer && (simpleIndexer || (context.GetLanguage() == LangSyntaxSCI)))
+			if (pIndexer && (simpleIndexer || (true)))
 			{
 				// Emit Sierra's sequence, which the decompiler reads back:
 				//   index; lsti var; value; op; push; index; sati var
@@ -2466,7 +2466,7 @@ CodeResult BinaryOp::OutputByteCode(CompileContext &context) const
 		if (Operator == BinaryOperator::LogicalAnd || Operator == BinaryOperator::LogicalOr)
 		{
 			// A logical and/or used for its value, not as a condition.
-			if (context.GetLanguage() == LangSyntaxSCI)
+			if (true)
 			{
 				// Sierra semantics: the value is the last operand evaluated by the
 				// short circuit, not a normalized 1 or 0. Sierra's own scripts rely
@@ -3603,7 +3603,7 @@ CodeResult RestStatement::OutputByteCode(CompileContext &context) const
 
 void ClassDefinition::PreScan(CompileContext &context) 
 {
-	if (IsSCIKeyword(context.GetLanguage(), _innerName))
+	if (IsSCIKeyword(_innerName))
 	{
 		// Can't use keywords as class names.
 		ReportKeywordError(context, this, _innerName, "procedure name");
@@ -3725,7 +3725,7 @@ std::vector<std::string> keywordException =
 
 void FunctionBase::PreScan(CompileContext &context)
 {
-	if (IsSCIKeyword(context.GetLanguage(), GetName()) && (std::find(keywordException.begin(), keywordException.end(), GetName()) == keywordException.end()))
+	if (IsSCIKeyword(GetName()) && (std::find(keywordException.begin(), keywordException.end(), GetName()) == keywordException.end()))
 	{
 		// Can't use keywords as procedure names. Top level names are ok.
 		ReportKeywordError(context, this, GetName(), "function name");
@@ -3795,7 +3795,7 @@ void SendCall::PreScan(CompileContext &context)
 }
 void ProcedureCall::PreScan(CompileContext &context)
 {
-	if (IsSCIKeyword(context.GetLanguage(), _innerName))
+	if (IsSCIKeyword(_innerName))
 	{
 		// Can't use keywords as procedure calls.
 		ReportKeywordError(context, this, _innerName, "procedure call");

@@ -201,13 +201,6 @@ void NewGameDialog::OnBnClickedOk()
 
 	// Language
 	// Set the game language.
-	//int curSel = m_wndComboLanguage.GetCurSel();
-	LangSyntax lang = LangSyntaxSCI; //LangSyntaxUnknown;
-	//if (curSel != CB_ERR)
-	//{
-	//   lang = (LangSyntax)curSel;
-	//}
-
 	if (fContinue)
 	{
 		// 3) Set the name in the ini file
@@ -219,11 +212,8 @@ void NewGameDialog::OnBnClickedOk()
 		fContinue = (0 != WritePrivateProfileString("Game", "Name", szName, szGameIni));
 		if (fContinue)
 		{
-			// Set the game language.
 			GameFolderHelper helper;
 			helper.GameFolder = szPath;
-			helper.SetIniString(GameSection, LanguageKey, (lang == LangSyntaxSCI) ? LanguageValueSCI : LanguageValueStudio);
-
 			helper.SetIniString(GameSection, CodepageKey, (m_wndComboLanguage.GetCurSel() == 1) ? "1252" : "437");
 		}
 		if (!fContinue)

@@ -73,8 +73,6 @@ namespace UnitTests
         {
             _DoItHelper(777);
 
-            appState->GetResourceMap().SetGameLanguage(LangSyntax::LangSyntaxSCI);
-
             _DoItHelper(778); // Different number, since we want a fresh file.
         }
 

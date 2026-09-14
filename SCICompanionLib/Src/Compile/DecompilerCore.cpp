@@ -1122,7 +1122,7 @@ void _TrackExternalScriptUsage(std::list<scii> code, DecompileLookups &lookups)
 // pEnd can be the end of script data. I have added autodetection support.
 void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset)
 {
-	bool allowContinues = func.GetOwnerScript()->GetScriptId().Language() == LangSyntaxSCI;
+	bool allowContinues = true;
 
 	lookups.EndowWithFunction(&func);
 
@@ -1208,7 +1208,7 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 			{
 				// The text as the chunk stage made it, for diagnosing a pass.
 				std::stringstream ss;
-				sci::SourceCodeWriter writer(ss, LangSyntaxSCI);
+				sci::SourceCodeWriter writer(ss);
 				if (auto *method = dynamic_cast<sci::MethodDefinition*>(&func))
 				{
 					OutputSourceCode_SCI(*method, writer);

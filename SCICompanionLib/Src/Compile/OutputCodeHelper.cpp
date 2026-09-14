@@ -18,14 +18,6 @@
 using namespace sci;
 using namespace std;
 
-void PrepForLanguage(LangSyntax langSyntax, sci::Script &script, GlobalCompiledScriptLookups *lookups)
-{
-	if (langSyntax == LangSyntaxSCI)
-	{
-		ConvertToSCISyntaxHelper(script, lookups);
-	}
-}
-
 template<char Q1, char Q2>
 std::string EscapeString(const std::string &src)
 {

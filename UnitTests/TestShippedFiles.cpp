@@ -155,7 +155,7 @@ namespace UnitTests
             // A converted Insert-Object template must round-trip: re-emitting it
             // in Sierra syntax (what InsertObject does) and re-parsing must work.
             std::stringstream ss;
-            SourceCodeWriter writer(ss, LangSyntaxSCI, objects.get());
+            SourceCodeWriter writer(ss, objects.get());
             objects->OutputSourceCode(writer);
             std::string roundTripPath = appState->GetResourceMap().Helper().GetScriptFileName("ShippedRoundTrip");
             {

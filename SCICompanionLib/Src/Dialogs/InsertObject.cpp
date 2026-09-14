@@ -64,7 +64,7 @@ class DummyLog : public ICompileLog
 	void ReportResult(const CompileResult &result) override {}
 };
 
-AvailableMethods::AvailableMethods(LangSyntax language) : _targetLanguage(language)
+AvailableMethods::AvailableMethods()
 {
 	string fullPath = appState->GetResourceMap().GetObjectsFolder() + "\\Methods.sc";
 	DummyLog log;
@@ -90,12 +90,12 @@ AvailableMethods::AvailableMethods(LangSyntax language) : _targetLanguage(langua
 
 void AvailableMethods::PrepareBuffer(const sci::MethodDefinition *methodDef, CString &buffer)
 {
-	PrepForLanguage(_targetLanguage, *_script);
+	ConvertToSCISyntaxHelper(*_script);
 	std::stringstream ss;
-	//sci::SourceCodeWriter out(ss, _targetLanguage, _objectToScript[theClass]);
+	//sci::SourceCodeWriter out(ss, _objectToScript[theClass]);
 	// Providing the script lets us sync comments, but it is not working properly. They merge with newlines, and comments in
 	// unused functions are included. Really, we need an option to parse comments inline.
-	sci::SourceCodeWriter out(ss, _targetLanguage, nullptr);
+	sci::SourceCodeWriter out(ss, nullptr);
 	DebugIndent indent(out);
 	out.pszNewLine = "\r\n";
 	out.fAlwaysExpandCodeBlocks = true;
@@ -104,7 +104,7 @@ void AvailableMethods::PrepareBuffer(const sci::MethodDefinition *methodDef, CSt
 	buffer = ss.str().c_str();
 }
 
-AvailableObjects::AvailableObjects(LangSyntax language) : _targetLanguage(language)
+AvailableObjects::AvailableObjects()
 {
 	vector<string> filenames;
 
@@ -161,7 +161,7 @@ void AvailableObjects::PrepareBuffer(sci::ClassDefinition *theClass, CString &bu
 {
 	for (auto &script : _scripts)
 	{
-		PrepForLanguage(_targetLanguage, *script);
+		ConvertToSCISyntaxHelper(*script);
 	}
 
 	// Grab any properties from the "fake ego"
@@ -251,10 +251,10 @@ void AvailableObjects::PrepareBuffer(sci::ClassDefinition *theClass, CString &bu
 	}
 
 	std::stringstream ss;
-	//sci::SourceCodeWriter out(ss, _targetLanguage, _objectToScript[theClass]);
+	//sci::SourceCodeWriter out(ss, _objectToScript[theClass]);
 	// Providing the script lets us sync comments, but it is not working properly. They merge with newlines, and comments in
 	// unused functions are included. Really, we need an option to parse comments inline.
-	sci::SourceCodeWriter out(ss, _targetLanguage, nullptr);
+	sci::SourceCodeWriter out(ss, nullptr);
 	out.pszNewLine = "\r\n";
 	out.fAlwaysExpandCodeBlocks = true;
 	ss << out.pszNewLine;
@@ -263,8 +263,8 @@ void AvailableObjects::PrepareBuffer(sci::ClassDefinition *theClass, CString &bu
 }
 
 // CInsertObject dialog
-CInsertObject::CInsertObject(LangSyntax lang, CWnd* pParent /*=NULL*/)
-	: CExtResizableDialog(CInsertObject::IDD, pParent), _availableObjects(lang)
+CInsertObject::CInsertObject(CWnd* pParent /*=NULL*/)
+	: CExtResizableDialog(CInsertObject::IDD, pParent), _availableObjects()
 {
 }
 

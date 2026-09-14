@@ -26,9 +26,6 @@ class ResourceRecency;
 class ResourceBlob;
 
 extern const std::string GameSection;
-extern const std::string LanguageKey;
-extern const std::string LanguageValueStudio;
-extern const std::string LanguageValueSCI;
 extern const std::string CodepageKey;
 
 enum class ResourceSaveLocation : uint16_t
@@ -64,7 +61,6 @@ public:
 	static std::string GetIncludeFolder();
 	static std::string GetHelpFolder();
 	void SetIniString(const std::string &sectionName, const std::string &keyName, const std::string &value) const;
-	LangSyntax GetDefaultGameLanguage() const { return Language; }
 	ScriptId GetScriptId(const std::string &name) const;
 	std::string FigureOutName(ResourceType type, int iResourceNum, uint32_t base36Number) const;
 	std::unique_ptr<ResourceContainer> Resources(ResourceTypeFlags types, ResourceEnumFlags enumFlags, ResourceRecency *pRecency = nullptr, int mapContext = -1) const;
@@ -92,7 +88,6 @@ public:
 	// Members
 	SCIVersion Version;
 	std::string GameFolder;
-	LangSyntax Language;
 
 private:
 	std::string _GetSubfolder(const char *key, const std::string *prefix = nullptr) const;

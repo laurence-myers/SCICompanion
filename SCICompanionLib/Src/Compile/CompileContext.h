@@ -226,7 +226,6 @@ private:
 
 public:
 	std::string GetScriptStringFromToken(const std::string &stringToken);
-	LangSyntax GetLanguage();
 	OutputContext GetOutputContext();
 	WORD GetScriptNumber();
 	WORD AddStringResourceTuple(const std::string &str);

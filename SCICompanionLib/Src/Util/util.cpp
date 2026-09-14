@@ -759,21 +759,20 @@ void ScriptId::_Init(PCTSTR pszFullFileName, WORD wScriptNum)
 
 		_strFileNameOrig = _strFileName;
 		_MakeLower();
-		_DetermineLanguage();
 	}
 }
 
-ScriptId::ScriptId() : _language(LangSyntaxUnknown) { _wScriptNum = InvalidResourceNumber; };
+ScriptId::ScriptId() { _wScriptNum = InvalidResourceNumber; };
 
-ScriptId::ScriptId(const std::string &fullPath) : _language(LangSyntaxUnknown)
+ScriptId::ScriptId(const std::string &fullPath)
 {
 	_Init(fullPath.c_str());
 }
-ScriptId::ScriptId(PCTSTR pszFullFileName) : _language(LangSyntaxUnknown)
+ScriptId::ScriptId(PCTSTR pszFullFileName)
 {
 	_Init(pszFullFileName);
 }
-ScriptId::ScriptId(PCTSTR pszFileName, PCTSTR pszFolder) : _language(LangSyntaxUnknown)
+ScriptId::ScriptId(PCTSTR pszFileName, PCTSTR pszFolder)
 {
 	assert(StrChr(pszFileName, '\\') == nullptr); // Ensure file and path are not mixed up.
 	_strFileName = pszFileName;
@@ -789,7 +788,6 @@ ScriptId::ScriptId(const ScriptId &src)
 	_strFileNameOrig = src._strFileNameOrig;
 	_MakeLower();
 	_wScriptNum = src.GetResourceNumber();
-	_language = src._language;
 }
 
 ScriptId& ScriptId::operator=(const ScriptId& src)
@@ -799,7 +797,6 @@ ScriptId& ScriptId::operator=(const ScriptId& src)
 	_strFileNameOrig = src._strFileNameOrig;
 	_MakeLower();
 	_wScriptNum = src.GetResourceNumber();
-	_language = src._language;
 	return(*this);
 }
 
@@ -808,9 +805,6 @@ void ScriptId::SetFullPath(const std::string &fullPath)
 {
 	_Init(fullPath.c_str(), GetResourceNumber());
 }
-
-
-void ScriptId::SetLanguage(LangSyntax lang) { _language = lang; }
 
 BOOL ScriptId::IsNone() const { return _strFileName.empty(); }
 const std::string &ScriptId::GetFileName() const { return _strFileName; }
@@ -838,48 +832,6 @@ bool IsCodeFile(const std::string &text)
 }
 
 const std::string SCILanguageMarker = "Sierra Script";
-
-LangSyntax _DetermineLanguage(const std::string &firstLine)
-{
-	LangSyntax langSniff = LangSyntaxStudio;
-	size_t pos = firstLine.find(';');
-	if (pos != std::string::npos)
-	{
-		if (firstLine.find(SCILanguageMarker) != std::string::npos)
-		{
-			langSniff = LangSyntaxSCI;
-		}
-	}
-	return langSniff;
-}
-
-void ScriptId::_DetermineLanguage()
-{
-	if (_language == LangSyntaxUnknown)
-	{
-		// Sniff the file
-		LangSyntax langSniff = LangSyntaxUnknown;
-		std::ifstream file(GetFullPath());
-		std::string line;
-		if (std::getline(file, line))
-		{
-			langSniff = ::_DetermineLanguage(line);
-		}
-		else
-		{
-			// This can happen if the file doesn't exist.
-			langSniff = LangSyntaxSCI;
-		}
-		_language = langSniff;
-	}
-}
-
-LangSyntax ScriptId::Language() const
-{
-	// It's ok if language is unknown if the filename is empty.
-	assert(_language != LangSyntaxUnknown || _strFileNameOrig.empty());
-	return _language;
-}
 
 void ScriptId::_MakeLower()
 {

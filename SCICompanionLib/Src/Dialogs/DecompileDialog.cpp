@@ -41,15 +41,6 @@ using namespace std;
 DecompileDialog::DecompileDialog(CWnd* pParent /*=NULL*/)
 	: CExtResizableDialog(DecompileDialog::IDD, pParent), previousSelection(-1), _inScriptListLabelEdit(false), _inSCOLabelEdit(false), initialized(false), _helper(appState->GetResourceMap().Helper()), _syncSelection(false)
 {
-	// If we already have a game.ini, great, we'll honor that.
-	string gameIniFile = appState->GetResourceMap().Helper().GetGameIniFileName();
-
-	if (!PathFileExists(gameIniFile.c_str()))
-	{
-		// But if not, set the default language to Sierra syntax.
-		appState->GetResourceMap().SetGameLanguage(LangSyntaxSCI);
-	}
-	_helper.Language = appState->GetResourceMap().Helper().Language;
 }
 
 BOOL DecompileDialog::OnInitDialog()
@@ -821,7 +812,7 @@ void DecompileDialog::s_DecompileThreadWorker(DecompileDialog *pThis)
 						// Dump it to the .sc file
 						// TODO: If it already exists, we might want to ask for confirmation.
 						std::stringstream ss;
-						sci::SourceCodeWriter out(ss, helper.GetDefaultGameLanguage(), pScript.get());
+						sci::SourceCodeWriter out(ss, pScript.get());
 						pScript->OutputSourceCode(out);
 						string sourceFilename = helper.GetScriptFileName(scriptNum);
 						MakeTextFile(ss.str().c_str(), sourceFilename);

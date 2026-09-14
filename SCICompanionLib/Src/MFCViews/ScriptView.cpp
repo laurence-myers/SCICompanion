@@ -370,40 +370,15 @@ std::vector<std::string> topLevelKeywordsSCI =
 	_T("use"),
 };
 
-std::vector<std::string> topLevelKeywordsStudio =
+bool IsTopLevelKeyword(const std::string &word)
 {
-	// Keep this alphabetically sorted.
-	_T("class"),
-	_T("define"),
-	_T("exports"),
-	_T("include"),
-	_T("instance"),
-	_T("local"),
-	_T("procedure"),
-	_T("public"),
-	_T("script"),
-	_T("string"),
-	_T("synonyms"),
-	_T("use"),
-	_T("version"),
-};
-
-bool IsTopLevelKeyword(LangSyntax lang, const std::string &word)
-{
-	auto &list = GetTopLevelKeywords(lang);
+	auto &list = GetTopLevelKeywords();
 	return binary_search(list.begin(), list.end(), word);
 }
 
-const std::vector<std::string> &GetTopLevelKeywords(LangSyntax lang)
+const std::vector<std::string> &GetTopLevelKeywords()
 {
-	switch (lang)
-	{
-		case LangSyntaxSCI:
-			return topLevelKeywordsSCI;
-		case LangSyntaxStudio:
-			return topLevelKeywordsStudio;
-	}
-	return emptyList;
+	return topLevelKeywordsSCI;
 }
 
 std::vector<std::string> codeLevelKeywordsSCI =
@@ -451,37 +426,9 @@ std::vector<std::string> codeLevelKeywordsSCI =
 };
 
 
-std::vector<std::string> codeLevelKeywordsStudio =
-{ 
-	// Sorted
-	_T("and"),
-	_T("asm"),
-	_T("break"),
-	_T("case"),
-	_T("default"),
-	_T("do"),
-	_T("else"),
-	_T("for"),
-	_T("if"),
-	_T("neg"),
-	_T("not"),
-	_T("of"),
-	_T("or"),
-	_T("rest"),
-	_T("return"),
-	_T("scriptNumber"),
-	_T("self"),
-	_T("send"),
-	_T("super"),
-	_T("switch"),
-	_T("var"),
-	_T("while"),
-	_T("paramTotal")
-};
-
-bool IsCodeLevelKeyword(LangSyntax lang, const std::string &word)
+bool IsCodeLevelKeyword(const std::string &word)
 {
-	auto &list = GetCodeLevelKeywords(lang);
+	auto &list = GetCodeLevelKeywords();
 	return binary_search(list.begin(), list.end(), word);
 }
 
@@ -505,29 +452,20 @@ std::vector<std::string> valueKeywordsSCI =
 	"true",
 };
 
-// Keep in alphabetical order
-std::vector<std::string> valueKeywordsStudio =
+bool IsValueKeyword(const std::string &word)
 {
-	"paramTotal",
-	"scriptNumber",
-	"self",
-};
-
-bool IsValueKeyword(LangSyntax lang, const std::string &word)
-{
-	auto &list = GetValueKeywords(lang);
+	auto &list = GetValueKeywords();
 	return binary_search(list.begin(), list.end(), word);
 }
 
-std::vector<std::string> classLevelKeywordsStudio = {  "method", "properties" };
 #ifdef ENABLE_VERBS
 std::vector<std::string> classLevelKeywordsSCI = { "method", "properties", "procedure", "verbs" };
 #else
 std::vector<std::string> classLevelKeywordsSCI = { "method", "properties", "procedure" };
 #endif
-bool IsClassLevelKeyword(LangSyntax lang, const std::string &word)
+bool IsClassLevelKeyword(const std::string &word)
 {
-	auto &list = GetClassLevelKeywords(lang);
+	auto &list = GetClassLevelKeywords();
 	return binary_search(list.begin(), list.end(), word);
 }
 
@@ -544,58 +482,30 @@ std::vector<std::string> unimplementedKeywordsSCI =
 	"super#",
 };
 
-bool IsUnimplementedKeyword(LangSyntax lang, const std::string &word)
+bool IsUnimplementedKeyword(const std::string &word)
 {
-	if (lang == LangSyntaxSCI)
-	{
-		return binary_search(unimplementedKeywordsSCI.begin(), unimplementedKeywordsSCI.end(), word);
-	}
-	return false;
+	return binary_search(unimplementedKeywordsSCI.begin(), unimplementedKeywordsSCI.end(), word);
 }
 
-bool IsSCIKeyword(LangSyntax lang, const std::string &word)
+bool IsSCIKeyword(const std::string &word)
 {
-	return (IsValueKeyword(lang, word) || IsCodeLevelKeyword(lang, word) || IsTopLevelKeyword(lang, word) || IsClassLevelKeyword(lang, word) ||
-		IsUnimplementedKeyword(lang, word) ||
-		((lang == LangSyntaxSCI) && (word == "&tmp")));
-
-
+	return (IsValueKeyword(word) || IsCodeLevelKeyword(word) || IsTopLevelKeyword(word) || IsClassLevelKeyword(word) ||
+		IsUnimplementedKeyword(word) || (word == "&tmp"));
 }
 
-const std::vector<std::string> &GetValueKeywords(LangSyntax lang)
+const std::vector<std::string> &GetValueKeywords()
 {
-	switch (lang)
-	{
-		case LangSyntaxSCI:
-			return valueKeywordsSCI;
-		case LangSyntaxStudio:
-			return valueKeywordsStudio;
-	}
-	return emptyList;
+	return valueKeywordsSCI;
 }
 
-const std::vector<std::string> &GetCodeLevelKeywords(LangSyntax lang)
+const std::vector<std::string> &GetCodeLevelKeywords()
 {
-	switch (lang)
-	{
-		case LangSyntaxSCI:
-			return codeLevelKeywordsSCI;
-		case LangSyntaxStudio:
-			return codeLevelKeywordsStudio;
-	}
-	return emptyList;
+	return codeLevelKeywordsSCI;
 }
 
-const std::vector<std::string> &GetClassLevelKeywords(LangSyntax lang)
+const std::vector<std::string> &GetClassLevelKeywords()
 {
-	switch (lang)
-	{
-		case LangSyntaxSCI:
-			return classLevelKeywordsSCI;
-		case LangSyntaxStudio:
-			return classLevelKeywordsStudio;
-	}
-	return emptyList;
+	return classLevelKeywordsSCI;
 }
 
 static BOOL IsSCISelectorLiteral(LPCTSTR pszChars, int nLength)
@@ -616,12 +526,12 @@ static BOOL IsSCISelectorLiteral(LPCTSTR pszChars, int nLength)
 	return bRet;
 }
 
-static BOOL IsSCIKeyword(LangSyntax lang, LPCTSTR pszChars, int nLength)
+static BOOL IsSCIKeyword(LPCTSTR pszChars, int nLength)
 {
-	return IsSCIKeyword(lang, std::string(pszChars, nLength));
+	return IsSCIKeyword(std::string(pszChars, nLength));
 }
 
-BOOL IsStudioNumber(LPCTSTR pszChars, int nLength)
+BOOL IsDecimalOrHexNumber(LPCTSTR pszChars, int nLength)
 {
 	// Hex
 	if (nLength > 1 && pszChars[0] == '$')
@@ -679,7 +589,7 @@ BOOL IsSCINumber(LPCTSTR pszChars, int nLength)
 			return (lengthRequired == nLength);
 		}
 	}
-	return IsStudioNumber(pszChars, nLength);
+	return IsDecimalOrHexNumber(pszChars, nLength);
 }
 
 BOOL IsStringCharEscaped(LPCTSTR pszChars, int indexOfChar)
@@ -738,7 +648,7 @@ void  CScriptView::_ParseLineSCIHelper(TEXTBLOCK *pBuf, int &nActualItems, PCSTR
 	{
 		DEFINE_BLOCK(nIdentBegin, COLORINDEX_SELECTORCALL);
 	}
-	else if (IsSCIKeyword(LangSyntaxSCI, pszChars + nIdentBegin, I - nIdentBegin))
+	else if (IsSCIKeyword(pszChars + nIdentBegin, I - nIdentBegin))
 	{
 		DEFINE_BLOCK(nIdentBegin, COLORINDEX_KEYWORD);
 	}
@@ -1028,217 +938,8 @@ DWORD CScriptView::_ParseLineSCI(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf
 
 DWORD CScriptView::ParseLine(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &nActualItems)
 {
-	LangSyntax lang = GetDocument()->GetScriptId().Language();
-	switch (lang)
-	{
-		case LangSyntaxSCI:
-			return _ParseLineSCI(dwCookie, nLineIndex, pBuf, nActualItems);
-		case LangSyntaxStudio:
-			return _ParseLineStudio(dwCookie, nLineIndex, pBuf, nActualItems);
-	}
-	return 0;
+	return _ParseLineSCI(dwCookie, nLineIndex, pBuf, nActualItems);
 }
-
-//
-// SCI syntax highlighting
-//
-DWORD CScriptView::_ParseLineStudio(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &nActualItems)
-{
-	int nLength = GetLineLength(nLineIndex);
-	if (nLength <= 0)
-		return dwCookie & COOKIE_EXT_COMMENT;
-
-	LPCTSTR pszChars	= GetLineChars(nLineIndex);
-	BOOL bFirstChar	 = (dwCookie & ~COOKIE_EXT_COMMENT) == 0;
-	BOOL bRedefineBlock = TRUE;
-	BOOL bDecIndex  = FALSE;
-	int nIdentBegin = -1;
-	int I = 0;
-	for (; ; I++)
-	{
-		if (bRedefineBlock)
-		{
-			int nPos = I;
-			if (bDecIndex)
-				nPos--;
-			if (dwCookie & (COOKIE_COMMENT | COOKIE_EXT_COMMENT))
-			{
-				DEFINE_BLOCK(nPos, COLORINDEX_COMMENT);
-			}
-			else
-			if (dwCookie & (COOKIE_STRING))
-			{
-				DEFINE_BLOCK(nPos, COLORINDEX_STRING);
-			}
-			else
-			if (dwCookie & (COOKIE_CHAR))
-			{
-				DEFINE_BLOCK(nPos, COLORINDEX_SAID);
-			}
-			else
-			if (dwCookie & COOKIE_SELECTOR)
-			{
-				DEFINE_BLOCK(nPos, COLORINDEX_SELECTORLITERAL);
-			}
-			else
-			if (dwCookie & COOKIE_INTERNALSTRING)
-			{
-				DEFINE_BLOCK(nPos, COLORINDEX_INTERNALSTRING);
-			}
-			else
-			{
-				DEFINE_BLOCK(nPos, COLORINDEX_NORMALTEXT);
-			}
-			bRedefineBlock = FALSE;
-			bDecIndex	  = FALSE;
-		}
-
-		if (I == nLength)
-			break;
-
-		if (dwCookie & COOKIE_COMMENT)
-		{
-			DEFINE_BLOCK(I, COLORINDEX_COMMENT);
-			dwCookie |= COOKIE_COMMENT;
-			break;
-		}
-
-		//	String constant "...."
-		if (dwCookie & COOKIE_STRING)
-		{
-			if (pszChars[I] == '"' && (I == 0 || pszChars[I - 1] != '\\'))
-			{
-				dwCookie &= ~COOKIE_STRING;
-				bRedefineBlock = TRUE;
-			}
-			continue;
-		}
-
-		// Internal string {....}
-		if (appState->_fAllowBraceSyntax)
-		{
-			if (dwCookie & COOKIE_INTERNALSTRING)
-			{
-				if (pszChars[I] == '}' && (I == 0 || pszChars[I - 1] != '\\'))
-				{
-					dwCookie &= ~COOKIE_INTERNALSTRING;
-					bRedefineBlock = TRUE;
-				}
-				continue;
-			}
-		}
-
-		//	Said spec '..'
-		if (dwCookie & COOKIE_CHAR)
-		{
-			if (pszChars[I] == '\'' && (I == 0 || pszChars[I - 1] != '\\'))
-			{
-				dwCookie &= ~COOKIE_CHAR;
-				bRedefineBlock = TRUE;
-			}
-			continue;
-		}
-
-		//	Extended comment /*....*/
-		if (dwCookie & COOKIE_EXT_COMMENT)
-		{
-			if (I > 0 && pszChars[I] == '/' && pszChars[I - 1] == '*')
-			{
-				dwCookie &= ~COOKIE_EXT_COMMENT;
-				bRedefineBlock = TRUE;
-			}
-			continue;
-		}
-
-		if (I > 0 && pszChars[I] == '/' && pszChars[I - 1] == '/')
-		{
-			DEFINE_BLOCK(I - 1, COLORINDEX_COMMENT);
-			dwCookie |= COOKIE_COMMENT;
-			break;
-		}
-
-		//	Normal text
-		if (pszChars[I] == '"')
-		{
-			DEFINE_BLOCK(I, COLORINDEX_STRING);
-			dwCookie |= COOKIE_STRING;
-			continue;
-		}
-		if (appState->_fAllowBraceSyntax && pszChars[I] == '{')
-		{
-			DEFINE_BLOCK(I, COLORINDEX_INTERNALSTRING);
-			dwCookie |= COOKIE_INTERNALSTRING;
-			continue;
-		}
-		if (pszChars[I] == '\'')
-		{
-			DEFINE_BLOCK(I, COLORINDEX_SAID);
-			dwCookie |= COOKIE_CHAR;
-			continue;
-		}
-		if (I > 0 && pszChars[I] == '*' && pszChars[I - 1] == '/')
-		{
-			DEFINE_BLOCK(I - 1, COLORINDEX_COMMENT);
-			dwCookie |= COOKIE_EXT_COMMENT;
-			continue;
-		}
-
-		if (bFirstChar)
-		{
-			if (! isspace(pszChars[I]))
-				bFirstChar = FALSE;
-		}
-
-		if (pBuf == nullptr)
-			continue;	//	We don't need to extract keywords,
-						//	for faster parsing skip the rest of loop
-
-		if (isalnum(pszChars[I]) || pszChars[I] == '_' || pszChars[I] == '$' || pszChars[I] == '#')
-		{
-			if (nIdentBegin == -1)
-				nIdentBegin = I;
-		}
-		else
-		{
-			if (nIdentBegin >= 0)
-			{
-				if (IsSCIKeyword(LangSyntaxStudio,  pszChars + nIdentBegin, I - nIdentBegin))
-				{
-					DEFINE_BLOCK(nIdentBegin, COLORINDEX_KEYWORD);
-				}
-				else if (IsStudioNumber(pszChars + nIdentBegin, I - nIdentBegin))
-				{
-					DEFINE_BLOCK(nIdentBegin, COLORINDEX_NUMBER);
-				}
-				else if (IsSCISelectorLiteral(pszChars + nIdentBegin, I - nIdentBegin))
-				{
-					DEFINE_BLOCK(nIdentBegin, COLORINDEX_SELECTORLITERAL);
-				}
-				bRedefineBlock = TRUE;
-				bDecIndex = TRUE;
-				nIdentBegin = -1;
-			}
-		}
-	}
-
-	if (nIdentBegin >= 0)
-	{
-		if (IsSCIKeyword(LangSyntaxStudio, pszChars + nIdentBegin, I - nIdentBegin))
-		{
-			DEFINE_BLOCK(nIdentBegin, COLORINDEX_KEYWORD);
-		}
-		else
-		if (IsStudioNumber(pszChars + nIdentBegin, I - nIdentBegin))
-		{
-			DEFINE_BLOCK(nIdentBegin, COLORINDEX_NUMBER);
-		}
-	}
-
-	if (pszChars[nLength - 1] != '\\')
-		dwCookie &= COOKIE_EXT_COMMENT;
-	return dwCookie;
-}
-
 
 void CScriptView::OnCompile()
 {
@@ -1428,7 +1129,7 @@ void CScriptView::OnContextMenu(CWnd *pWnd, CPoint point)
 			CMenu *subMenu = pTracker->GetSubMenu(insertObjectIndex);
 			if (subMenu)
 			{
-				_availableObjects = make_unique<AvailableObjects>(GetDocument()->GetScriptId().Language());
+				_availableObjects = make_unique<AvailableObjects>();
 				for (size_t i = 0; i < _availableObjects->GetObjects().size(); i++)
 				{
 					int iIndex = 0;
@@ -1451,7 +1152,7 @@ void CScriptView::OnContextMenu(CWnd *pWnd, CPoint point)
 			if (subMenu)
 			{
 				subMenu->RemoveMenu(0, MF_BYPOSITION);
-				_availableMethods = make_unique<AvailableMethods>(GetDocument()->GetScriptId().Language());
+				_availableMethods = make_unique<AvailableMethods>();
 				for (size_t i = 0; i < _availableMethods->GetMethods().size(); i++)
 				{
 					int iIndex = 0;
@@ -1507,7 +1208,7 @@ void CScriptView::OnSetFocus(CWnd *pNewWnd)
 	appState->GiveMeAutoComplete(this);
 	if (_pACThread)
 	{
-		_pACThread->InitializeForScript(LocateTextBuffer(), GetDocument()->GetScriptId().Language());
+		_pACThread->InitializeForScript(LocateTextBuffer());
 	}
 
 	if (_pAutoComp && _pAutoComp->IsWindowVisible())
@@ -1635,7 +1336,7 @@ void CScriptView::_OnInsertObject(bool currentPosition)
 	CScriptDocument *pDoc = GetDocument();
 	if (pDoc)
 	{
-		CInsertObject dialog(pDoc->GetScriptId().Language());
+		CInsertObject dialog;
 		if (IDOK == dialog.DoModal())
 		{
 			CString strBuffer = dialog.GetBuffer();
@@ -1823,7 +1524,7 @@ void CScriptView::OnAddAsSynonymOf()
 
 void CScriptView::OnUpdateIsSCI(CCmdUI *pCmdUI)
 {
-	pCmdUI->Enable(GetDocument() && (GetDocument()->GetScriptId().Language() == LangSyntaxSCI));
+	pCmdUI->Enable(GetDocument() != nullptr);
 }
 
 void CScriptView::OnUpdateAddAs(CCmdUI *pCmdUI)
@@ -1881,7 +1582,7 @@ void CScriptView::OnInitialUpdate()
 
 	if (_pACThread)
 	{
-		_pACThread->InitializeForScript(LocateTextBuffer(), GetDocument()->GetScriptId().Language());
+		_pACThread->InitializeForScript(LocateTextBuffer());
 	}
 }
 
@@ -2051,7 +1752,7 @@ BOOL CScriptView::OnACDoubleClick()
 
 void CScriptView::OnToggleComment()
 {
-	if (GetDocument() && GetDocument()->GetScriptId().Language() == LangSyntaxSCI)
+	if (GetDocument())
 	{
 		// This is for SCI Script only. There are no multiline comments, so this helps with that.
 		// Get the current block of code. See if the lines predominatly have comments or not.

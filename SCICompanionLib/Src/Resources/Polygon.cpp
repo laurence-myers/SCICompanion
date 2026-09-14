@@ -316,12 +316,9 @@ void PolygonComponent::Commit(int picNumber)
 		// Construct the script om
 		Script script(ScriptId(polyFile.c_str()));
 
-		// Output in the current game language, regardless of the previous version of the file.
-		LangSyntax lang = appState->GetResourceMap().Helper().GetDefaultGameLanguage();
-
 		PCSTR pszFilename = PathFindFileName(polyFile.c_str());
 
-		std::string text = fmt::format("{1} {0} -- Produced by SCI Companion\n{1} This file should only be edited with the SCI Companion polygon editor", pszFilename, (lang == LangSyntaxSCI) ? ";;;" : "//");
+		std::string text = fmt::format("{1} {0} -- Produced by SCI Companion\n{1} This file should only be edited with the SCI Companion polygon editor", pszFilename, ";;;");
 		auto comment = std::make_unique<Comment>(text, CommentType::LeftJustified);
 		comment->SetPosition(LineCol(0, 0));
 		script.AddComment(move(comment));
@@ -329,7 +326,7 @@ void PolygonComponent::Commit(int picNumber)
 		_ApplyPolygonsToScript(picNumber, script, _polygons);
 
 		std::stringstream ss;
-		SourceCodeWriter out(ss, lang, &script);
+		SourceCodeWriter out(ss, &script);
 		out.pszNewLine = "\n";
 
 		// Now the meat of the script

@@ -241,4 +241,3 @@ void EndStatement(sci::SourceCodeWriter &out);
 
 void ConvertToSCISyntaxHelper(sci::Script &script, GlobalCompiledScriptLookups *lookups = nullptr);
 
-void PrepForLanguage(LangSyntax langSyntax, sci::Script &script, GlobalCompiledScriptLookups *lookups = nullptr);

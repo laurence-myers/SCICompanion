@@ -386,22 +386,14 @@ struct GlobalLockGuard
 
 WORD _HexToWord(PCTSTR psz);
 
-enum LangSyntax
-{
-	// Don't change these values, they are used to index into comboboxes.
-	LangSyntaxUnknown = 2,
-	LangSyntaxStudio = 1,
-	LangSyntaxSCI = 0,
-};
-
-bool IsSCIKeyword(LangSyntax lang, const std::string &word);
-bool IsTopLevelKeyword(LangSyntax lang, const std::string &word);
-const std::vector<std::string> &GetTopLevelKeywords(LangSyntax lang);
-bool IsCodeLevelKeyword(LangSyntax lang, const std::string &word);
-bool IsClassLevelKeyword(LangSyntax lang, const std::string &word);
-const std::vector<std::string> &GetCodeLevelKeywords(LangSyntax lang);
-const std::vector<std::string> &GetClassLevelKeywords(LangSyntax lang);
-const std::vector<std::string> &GetValueKeywords(LangSyntax lang);
+bool IsSCIKeyword(const std::string &word);
+bool IsTopLevelKeyword(const std::string &word);
+const std::vector<std::string> &GetTopLevelKeywords();
+bool IsCodeLevelKeyword(const std::string &word);
+bool IsClassLevelKeyword(const std::string &word);
+const std::vector<std::string> &GetCodeLevelKeywords();
+const std::vector<std::string> &GetClassLevelKeywords();
+const std::vector<std::string> &GetValueKeywords();
 bool IsValueKeyword(const std::string &word);
 int string_to_int(const std::string &word);
 static const WORD InvalidResourceNumber = 0xffff;
@@ -421,8 +413,6 @@ public:
 	ScriptId(PCTSTR pszFileName, PCTSTR pszFolder);
 	ScriptId(const ScriptId &src);
 	ScriptId& operator=(const ScriptId& src);
-
-	void SetLanguage(LangSyntax lang);
 
 	BOOL IsNone() const;
 	const std::string &GetFileName() const;
@@ -446,23 +436,18 @@ public:
 
 	// Is this a header, or a script file?
 	bool IsHeader() const;
-	LangSyntax Language() const;
 
 	friend bool operator<(const ScriptId& script1, const ScriptId& script2);
 
 private:
 	void _MakeLower();
 	void _Init(PCTSTR pszFullFileName, WORD wScriptNum = InvalidResourceNumber);
-	void _DetermineLanguage();
 
 	std::string _strFolder;
 	std::string _strFileName;
 	std::string _strFileNameOrig;   // Not lower-cased
 	WORD _wScriptNum;
-	LangSyntax _language;
 };
-
-LangSyntax _DetermineLanguage(const std::string &firstLine);
 
 extern const std::string SCILanguageMarker;
 

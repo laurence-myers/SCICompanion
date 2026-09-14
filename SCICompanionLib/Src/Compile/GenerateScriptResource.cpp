@@ -1148,7 +1148,7 @@ void CommonScriptPrep(Script &script, CompileContext &context, CompileResults &r
 	for (auto &theDefine : script.GetDefines())
 	{
 		const string &defineName = theDefine->GetName();
-		if (IsSCIKeyword(context.GetLanguage(), defineName))
+		if (IsSCIKeyword(defineName))
 		{
 			ReportKeywordError(context, theDefine.get(), defineName, "define");
 		}

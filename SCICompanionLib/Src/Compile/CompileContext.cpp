@@ -196,10 +196,6 @@ CompileContext::CompileContext(SCIVersion version, Script &script, PrecompiledHe
 }
 
 // CompileContext
-LangSyntax CompileContext::GetLanguage()
-{
-	return _pErrorScript->Language();
-}
 OutputContext CompileContext::GetOutputContext()
 {
 	return _oc.top();

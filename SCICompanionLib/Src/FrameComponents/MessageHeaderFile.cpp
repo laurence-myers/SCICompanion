@@ -34,7 +34,6 @@ MessageHeaderFile::MessageHeaderFile(const std::string &folderPath, int resource
 	_Load(sourcesOptional);
 }
 
-const char c_szCommentStudio[] = "//";
 const char c_szCommentSCI[] = ";;;";
 const char c_szDefine[] = "(define";
 
@@ -80,15 +79,10 @@ void MessageHeaderFile::_Load(const std::vector<std::string> &sourcesOptional)
 	ifstream file;
 	file.open(_filePath);
 	string line;
-	LangSyntax lang = LangSyntaxUnknown;
 	while (std::getline(file, line))
 	{
-		if (lang == LangSyntaxUnknown)
-		{
-			lang = _DetermineLanguage(line);
-		}
-		char commentChar = lang == LangSyntaxSCI ? ';' : '/';
-		int minChars = lang == LangSyntaxSCI ? 1 : 2;
+		char commentChar = ';';
+		int minChars = 1;
 		size_t offset = 0;
 		AdvancePastWhitespace(line, offset);
 		bool wasComment = false;
@@ -191,18 +185,14 @@ void MessageHeaderFile::Commit(int resourceNumber)
 	// Ensure _folderPath exists.
 	EnsureFolderExists(_folderPath, false);
 
-	LangSyntax lang = appState->GetResourceMap().Helper().GetDefaultGameLanguage();
-	PCSTR commentText = (lang == LangSyntaxSCI) ? c_szCommentSCI : c_szCommentStudio;
+	PCSTR commentText = c_szCommentSCI;
 
 	ofstream file;
 	string bakFile = _filePath + ".bak";
 	file.open(bakFile, ios_base::out | ios_base::trunc);
 	if (file.is_open())
 	{
-		if (lang == LangSyntaxSCI)
-		{
-			file << commentText << " " << SCILanguageMarker << "\n";
-		}
+		file << commentText << " " << SCILanguageMarker << "\n";
 
 		file << commentText << " " << _title << " -- Produced by SCI Companion\n";
 		file << commentText << " This file should only be edited with the SCI Companion message editor\n";

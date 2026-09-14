@@ -117,7 +117,6 @@ public:
 	std::unique_ptr<ResourceEntity> CreateResourceFromNumber(ResourceType type, int wNumber, uint32_t base36Number = NoBase36, int mapContext = -1);
 	void GetAllScripts(std::vector<ScriptId> &scripts);
 	void GetNumberToNameMap(std::unordered_map<WORD, std::string> &scos);
-	void SetGameLanguage(LangSyntax language);
 	void SetIncludeFolderForTest(const std::string &folder) { _includeFolderOverride = folder; }
 	bool CanSaveResourcesToMap();
 	void SkipNextVersionSniff() { _skipVersionSniffOnce = true; }
@@ -137,7 +136,6 @@ public:
 	void RepackageAudio(bool force = false);
 
 private:
-	void _SniffGameLanguage();
 	void _SniffSCIVersion();
 
 	void BeginDeferAppend();

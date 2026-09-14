@@ -113,9 +113,8 @@ bool CommentTracker::Sync(const sci::SyntaxNode *pNode, SourceCodeWriter &out, i
 	return outputComment;
 }
 
-SourceCodeWriter::SourceCodeWriter(std::stringstream &ss, LangSyntax syntax, Script *pScript) :
+SourceCodeWriter::SourceCodeWriter(std::stringstream &ss, Script *pScript) :
 	out(ss),
-	lang(syntax),
 	iIndent(0),
 	fInline(false),
 	fLast(false),

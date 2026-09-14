@@ -211,7 +211,6 @@ CResourceMap::CResourceMap(ISCIAppServices *appServices, ResourceRecency *resour
 	_skipVersionSniffOnce = false;
 	_pVocab000 = nullptr;
 	_cDeferAppend = 0;
-	_gameFolderHelper.Language = LangSyntaxUnknown;
 	_gameFolderHelper.Version = sciVersion0;	// By default
 	_deferredResources.reserve(300);			// So we don't need to resize much it when adding
 	_emptyPalette = std::make_unique<PaletteComponent>();
@@ -756,45 +755,6 @@ std::string CResourceMap::GetGameFolder() const
 	return _gameFolderHelper.GameFolder;
 }
 
-void CResourceMap::_SniffGameLanguage()
-{
-	if (_gameFolderHelper.Language == LangSyntaxUnknown)
-	{
-		std::string languageValue = _gameFolderHelper.GetIniString(GameSection, LanguageKey);
-		if (languageValue == "scp")
-		{
-			// We have left this turd in from old game.inis. We don't support cpp as a default game language,
-			// so let's just convert it to Studio.
-			_gameFolderHelper.Language = LangSyntaxStudio;
-		}
-		else if (languageValue == LanguageValueSCI)
-		{
-			_gameFolderHelper.Language = LangSyntaxSCI;
-		}
-		else if (languageValue == LanguageValueStudio)
-		{
-			_gameFolderHelper.Language = LangSyntaxStudio;
-		}
-		else
-		{
-			// Nothing specified. This could be an old fan game from Studio, or the first time someone
-			// has opened this game in Companion. Let's look for a script to see if there is one with
-			// Studio language. If so, we'll use that. Otherwise, we'll use SCI.
-			// We'll explicitly set the language, so this doesn't happen again.
-			std::string scriptZeroFilename = _gameFolderHelper.GetScriptFileName(0);
-			ScriptId testScript(scriptZeroFilename);
-			if (testScript.Language() == LangSyntaxStudio)
-			{
-				SetGameLanguage(LangSyntaxStudio);
-			}
-			else if (testScript.Language() == LangSyntaxSCI)
-			{
-				SetGameLanguage(LangSyntaxSCI);
-			}
-		}
-	}
-}
-
 //
 // Gets the include folder that has read-only headers
 //
@@ -1265,15 +1225,12 @@ void CResourceMap::SetGameFolder(const string &gameFolder)
 	ClearVocab000();
 	_pPalette999.reset(nullptr);					// REVIEW: also do this if global palette is edited.
 	_globalCompiledScriptLookups.reset(nullptr);
-	_gameFolderHelper.Language = LangSyntaxUnknown;
 	_talkersHeaderFile.reset(nullptr);
 	_verbsHeaderFile.reset(nullptr);
 	if (!gameFolder.empty())
 	{
 		try
 		{
-			_SniffGameLanguage();
-
 			// We get here when we close documents.
 			_SniffSCIVersion();
 
@@ -1384,11 +1341,4 @@ std::unique_ptr<ResourceEntity> CreateResourceFromResourceData(const ResourceBlo
 		break;
 	}
 	return nullptr;
-}
-
-void CResourceMap::SetGameLanguage(LangSyntax lang)
-{
-	Helper().SetIniString(GameSection, LanguageKey, (lang == LangSyntaxSCI) ? LanguageValueSCI : LanguageValueStudio);
-	_gameFolderHelper.Language = lang;
-	_SniffGameLanguage();
 }

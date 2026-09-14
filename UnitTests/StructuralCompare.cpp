@@ -367,7 +367,7 @@ namespace
     string FunctionBodyText(Script &script, FunctionBase &func, bool isMethod)
     {
         stringstream ss;
-        SourceCodeWriter writer(ss, LangSyntaxSCI, &script);
+        SourceCodeWriter writer(ss, &script);
         if (isMethod)
         {
             OutputSourceCode_SCI(static_cast<const MethodDefinition &>(func), writer);

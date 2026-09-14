@@ -26,9 +26,6 @@
 using namespace std;
 
 const std::string GameSection = "Game";
-const std::string LanguageKey = "Language";
-const std::string LanguageValueStudio = "sc";
-const std::string LanguageValueSCI = "sci";
 const std::string AspectRatioKey = "UseSierraAspectRatio";
 const std::string UnditherKey = "UnditherEGA";
 const std::string PatchFileKey = "SaveToPatchFiles";
