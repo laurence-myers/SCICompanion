@@ -403,7 +403,7 @@ std::vector<std::string> codeLevelKeywordsSCI =
 	_T("if"),
 	_T("mod"),
 	_T("not"),
-	_T("null")
+	_T("null"),
 	_T("of"),
 	_T("or"),
 	_T("repeat"),
@@ -450,7 +450,8 @@ bool IsValueKeyword(const std::string &word)
 	return binary_search(list.begin(), list.end(), word);
 }
 
-std::vector<std::string> classLevelKeywordsSCI = { "method", "properties", "procedure", "verbs" };
+// Kept in alphabetical order: IsClassLevelKeyword searches it with binary_search.
+std::vector<std::string> classLevelKeywordsSCI = { "method", "procedure", "properties", "verbs" };
 bool IsClassLevelKeyword(const std::string &word)
 {
 	auto &list = GetClassLevelKeywords();
