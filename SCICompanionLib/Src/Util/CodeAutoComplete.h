@@ -80,7 +80,7 @@ public:
 	AutoCompleteThread2();
 	~AutoCompleteThread2();
 
-	void InitializeForScript(CCrystalTextBuffer *buffer, LangSyntax lang);
+	void InitializeForScript(CCrystalTextBuffer *buffer);
 	void StartAutoComplete(CPoint pt, HWND hwnd, UINT message, uint16_t scriptNumber);
 	std::unique_ptr<AutoCompleteResult> GetResult(int id);
 	CPoint GetCompletedPosition();
@@ -141,7 +141,6 @@ private:
 	HWND _lastHWND;
 	CPoint _lastPoint;
 	CCrystalTextBuffer *_bufferUI;
-	LangSyntax _lang;
 
 	// background
 };

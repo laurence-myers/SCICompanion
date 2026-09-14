@@ -59,58 +59,6 @@ bool AllowMultiple(BinaryOperator op)
 	return find(allowMultiple.begin(), allowMultiple.end(), op) != allowMultiple.end();
 }
 
-// SCI Studio syntax operators
-vector<pair<string, BinaryOperator>> studioNameToBinaryOp =
-{
-	{ "==", BinaryOperator::Equal },
-	{ "<>", BinaryOperator::NotEqual },
-	{ ">=u", BinaryOperator::UnsignedGreaterEqual },
-	{ ">=", BinaryOperator::GreaterEqual },
-	{ ">u", BinaryOperator::UnsignedGreaterThan },
-	{ ">>", BinaryOperator::ShiftRight },
-	{ ">", BinaryOperator::GreaterThan },
-	{ "<=u", BinaryOperator::UnsignedLessEqual },
-	{ "<=", BinaryOperator::LessEqual },
-	{ "<u", BinaryOperator::UnsignedLessThan },
-	{ "<<", BinaryOperator::ShiftLeft },
-	{ "<", BinaryOperator::LessThan },
-	{ "+", BinaryOperator::Add },
-	{ "-", BinaryOperator::Subtract },
-	{ "*", BinaryOperator::Multiply },
-	{ "/", BinaryOperator::Divide },
-	{ "%", BinaryOperator::Mod },
-	{ "&", BinaryOperator::BinaryAnd },
-	{ "|", BinaryOperator::BinaryOr },
-	{ "^", BinaryOperator::ExclusiveOr },
-	{ "and", BinaryOperator::LogicalAnd },
-	{ "or", BinaryOperator::LogicalOr },
-};
-
-vector<pair<string, AssignmentOperator>> studioNameToAssignmentOp =
-{
-	{ "=", AssignmentOperator::Assign },
-	{ "+=", AssignmentOperator::Add },
-	{ "-=", AssignmentOperator::Subtract },
-	{ "*=", AssignmentOperator::Multiply },
-	{ "/=", AssignmentOperator::Divide },
-	{ "%=", AssignmentOperator::Mod },
-	{ "&=", AssignmentOperator::BinaryAnd },
-	{ "|=", AssignmentOperator::BinaryOr },
-	{ "^=", AssignmentOperator::ExclusiveOr },
-	{ ">>=", AssignmentOperator::ShiftRight },
-	{ "<<=", AssignmentOperator::ShiftLeft },
-};
-
-vector<pair<string, UnaryOperator>> studioNameToUnaryOp =
-{
-	{ "not", UnaryOperator::LogicalNot },
-	{ "bnot", UnaryOperator::BinaryNot },
-	{ "++", UnaryOperator::Increment },
-	{ "--", UnaryOperator::Decrement },
-	{ "neg", UnaryOperator::Negate },
-};
-
-
 // Sierra Script syntax operators
 vector<pair<string, BinaryOperator>> sciNameToBinaryOp =
 {

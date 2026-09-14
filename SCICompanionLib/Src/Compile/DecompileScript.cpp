@@ -393,9 +393,7 @@ private:
 Script *Decompile(const GameFolderHelper &helper, const CompiledScript &compiledScript, DecompileLookups &lookups, const Vocab000 *pWords)
 {
 	unique_ptr<Script> pScript = std::make_unique<Script>();
-	pScript->SyntaxVersion = 2;
 	ScriptId scriptId;
-	scriptId.SetLanguage(helper.Language);
 	scriptId.SetResourceNumber(compiledScript.GetScriptNumber());
 	pScript->SetScriptId(scriptId);
 

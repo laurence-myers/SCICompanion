@@ -296,7 +296,7 @@ namespace sci
 	//
 	struct SourceCodeWriter
 	{
-		SourceCodeWriter(std::stringstream &ss, LangSyntax syntax, Script *pScript = nullptr);
+		SourceCodeWriter(std::stringstream &ss, Script *pScript = nullptr);
 
 		void SyncComments(const sci::SyntaxNode *pNode)
 		{
@@ -344,7 +344,6 @@ namespace sci
 		void IndentToCommentColumn();
 
 		std::stringstream::pos_type lastNewLineLength;
-		LangSyntax lang;
 		std::stringstream &out;
 		char indentChar;
 		int indentAmount;
@@ -1228,10 +1227,8 @@ namespace sci
 		void AddProcedure(std::unique_ptr<ProcedureDefinition> pProc) { _procedures.push_back(std::move(pProc)); }
 		void AddComment(std::unique_ptr<Comment> pComment) { _comments.push_back(std::move(pComment)); }
 
-		int SyntaxVersion;
 
 		void SetScriptId(ScriptId scriptId) { _scriptId = scriptId; }
-		LangSyntax Language() const { return _scriptId.Language(); }
 		bool IsHeader() const { return _scriptId.IsHeader(); }
 
 		void OutputSourceCode(SourceCodeWriter &out) const;
@@ -1277,7 +1274,6 @@ namespace sci
 
 		// These are not serialized:
 		ScriptId _scriptId;
-		LangSyntax _language;
 	};
 
 }; // namespace sci	

@@ -21,7 +21,6 @@
 #include "atlimage.h"
 #include "GameFolderHelper.h"
 
-#include "ScriptConvert.h"
 #include "CompileContext.h"
 
 // NewGameDialog dialog
@@ -126,9 +125,6 @@ void NewGameDialog::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_STATIC4, m_wndStatic4);
 	DDX_Control(pDX, IDC_COMBOLANGUAGE, m_wndComboLanguage);
 	m_wndComboLanguage.SetCurSel(1); //assume Win-1252 for new games
-//#ifdef DISABLE_STUDIO
-//	m_wndComboLanguage.EnableWindow(FALSE);
-//#endif
 
 	DDX_Control(pDX, IDC_COMBOTEMPLATE, m_wndComboTemplate);
 	_PopulateTemplates();
@@ -205,13 +201,6 @@ void NewGameDialog::OnBnClickedOk()
 
 	// Language
 	// Set the game language.
-	//int curSel = m_wndComboLanguage.GetCurSel();
-	LangSyntax lang = LangSyntaxSCI; //LangSyntaxUnknown;
-	//if (curSel != CB_ERR)
-	//{
-	//   lang = (LangSyntax)curSel;
-	//}
-
 	if (fContinue)
 	{
 		// 3) Set the name in the ini file
@@ -223,11 +212,8 @@ void NewGameDialog::OnBnClickedOk()
 		fContinue = (0 != WritePrivateProfileString("Game", "Name", szName, szGameIni));
 		if (fContinue)
 		{
-			// Set the game language.
 			GameFolderHelper helper;
 			helper.GameFolder = szPath;
-			helper.SetIniString(GameSection, LanguageKey, (lang == LangSyntaxSCI) ? LanguageValueSCI : LanguageValueStudio);
-
 			helper.SetIniString(GameSection, CodepageKey, (m_wndComboLanguage.GetCurSel() == 1) ? "1252" : "437");
 		}
 		if (!fContinue)
@@ -244,13 +230,6 @@ void NewGameDialog::OnBnClickedOk()
 	{
 		// Open the new game, and then open the script editor to rm001 of the template game
 		appState->OpenDocumentFile(szPath);
-
-		// If the game is not in Studio syntax, convert it now (the template games are in Studio syntax)
-		if (lang == LangSyntaxSCI)
-		{
-			CompileLog log;
-			ConvertGame(appState->GetResourceMap(), lang, log);
-		}
 
 		appState->OpenScript(openToRoom);
 		OnOK();

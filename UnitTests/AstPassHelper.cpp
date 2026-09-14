@@ -105,7 +105,7 @@ std::unique_ptr<sci::Script> ParseSierraScript(const std::string &text)
 std::string ScriptToText(const sci::Script &script)
 {
     std::stringstream ss;
-    sci::SourceCodeWriter writer(ss, LangSyntaxSCI, const_cast<sci::Script *>(&script));
+    sci::SourceCodeWriter writer(ss, const_cast<sci::Script *>(&script));
     script.OutputSourceCode(writer);
     return ss.str();
 }

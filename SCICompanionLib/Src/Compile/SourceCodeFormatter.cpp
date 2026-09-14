@@ -15,7 +15,6 @@
 #include "ScriptOMAll.h"
 #include "AppState.h"
 #include "OutputCodeHelper.h"
-#include "StudioSourceCodeFormatter.h"
 #include "SCISourceCodeFormatter.h"
 #include "StringUtil.h"
 #include "OperatorTables.h"
@@ -34,14 +33,12 @@ std::string OperatorToString(const std::string &op)
 
 std::string BinaryOp::ToString() const
 {
-	// REVIEW: This is really language specific, but we're using the SCIStudio names.
-	return OperatorToString(OperatorToName(Operator, studioNameToBinaryOp));
+	return OperatorToString(OperatorToName(Operator, sciNameToBinaryOp));
 }
 
 std::string UnaryOp::ToString() const
 {
-	// REVIEW: This is really language specific, but we're using the SCIStudio names.
-	return OperatorToString(OperatorToName(Operator, studioNameToUnaryOp));
+	return OperatorToString(OperatorToName(Operator, sciNameToUnaryOp));
 }
 
 
@@ -116,9 +113,8 @@ bool CommentTracker::Sync(const sci::SyntaxNode *pNode, SourceCodeWriter &out, i
 	return outputComment;
 }
 
-SourceCodeWriter::SourceCodeWriter(std::stringstream &ss, LangSyntax syntax, Script *pScript) :
+SourceCodeWriter::SourceCodeWriter(std::stringstream &ss, Script *pScript) :
 	out(ss),
-	lang(syntax),
 	iIndent(0),
 	fInline(false),
 	fLast(false),
@@ -141,58 +137,22 @@ SourceCodeWriter::SourceCodeWriter(std::stringstream &ss, LangSyntax syntax, Scr
 
 void Script::OutputSourceCode(SourceCodeWriter &out) const
 {
-#ifndef DISABLE_STUDIO
-	if (out.lang == LangSyntaxStudio)
-	{
-		OutputSourceCode_SCIStudio(*this, out);
-	}
-	else if (out.lang == LangSyntaxSCI)
-#endif
-	{
-		OutputSourceCode_SCI(*this, out);
-	}
+	OutputSourceCode_SCI(*this, out);
 }
 
 void ClassDefinition::OutputSourceCode(SourceCodeWriter &out) const
 {
-#ifndef DISABLE_STUDIO
-	if (out.lang == LangSyntaxStudio)
-	{
-		OutputSourceCode_SCIStudio(*this, out);
-	}
-	else if (out.lang == LangSyntaxSCI)
-#endif
-	{
-		OutputSourceCode_SCI(*this, out);
-	}
+	OutputSourceCode_SCI(*this, out);
 }
 
 void MethodDefinition::OutputSourceCode(SourceCodeWriter &out) const
 {
-#ifndef DISABLE_STUDIO
-	if (out.lang == LangSyntaxStudio)
-	{
-		OutputSourceCode_SCIStudio(*this, out);
-	}
-	else if (out.lang == LangSyntaxSCI)
-#endif
-	{
-		OutputSourceCode_SCI(*this, out);
-	}
+	OutputSourceCode_SCI(*this, out);
 }
 
 void ClassProperty::OutputSourceCode(SourceCodeWriter &out) const
 {
-#ifndef DISABLE_STUDIO
-	if (out.lang == LangSyntaxStudio)
-	{
-		OutputSourceCode_SCIStudio(*this, out);
-	}
-	else if (out.lang == LangSyntaxSCI)
-#endif
-	{
-		OutputSourceCode_SCI(*this, out);
-	}
+	OutputSourceCode_SCI(*this, out);
 }
 
 void SourceCodeFormatter::Visit(const sci::WeakSyntaxNode &weakNode)

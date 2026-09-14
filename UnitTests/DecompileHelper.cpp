@@ -212,7 +212,7 @@ DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks, bool de
         debugControlFlow, debugChunks, nullptr, false, false);
 
     std::stringstream ss;
-    sci::SourceCodeWriter writer(ss, helper.GetDefaultGameLanguage(), pScript.get());
+    sci::SourceCodeWriter writer(ss, pScript.get());
     pScript->OutputSourceCode(writer);
 
     out.text = ss.str();
@@ -296,7 +296,7 @@ int CountFallbacksAllScripts(std::vector<std::string> *outFailedScripts, int *ou
             config.get(), lookups, helper, number, compiled, results,
             false, false, nullptr, false, false);
         std::stringstream ss;
-        sci::SourceCodeWriter writer(ss, helper.GetDefaultGameLanguage(), pScript.get());
+        sci::SourceCodeWriter writer(ss, pScript.get());
         pScript->OutputSourceCode(writer);
         // A CorruptFunction token is a failure that does not raise the fallback
         // stat, so count it too.
@@ -387,7 +387,7 @@ int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
             config.get(), lookups, helper, static_cast<uint16_t>(number), compiled, results,
             false, false, nullptr, false, false);
         std::stringstream ss;
-        sci::SourceCodeWriter writer(ss, helper.GetDefaultGameLanguage(), pScript.get());
+        sci::SourceCodeWriter writer(ss, pScript.get());
         pScript->OutputSourceCode(writer);
 
         auto it = names.find(number);
@@ -510,7 +510,7 @@ SnapshotResult CompareTemplateSnapshots()
             config.get(), lookups, helper, number, compiled, results,
             false, false, nullptr, false, false);
         std::stringstream ss;
-        sci::SourceCodeWriter writer(ss, helper.GetDefaultGameLanguage(), pScript.get());
+        sci::SourceCodeWriter writer(ss, pScript.get());
         pScript->OutputSourceCode(writer);
         std::string actual = Normalize(ss.str());
 

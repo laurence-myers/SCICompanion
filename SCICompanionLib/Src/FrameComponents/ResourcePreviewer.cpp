@@ -296,16 +296,6 @@ void ScriptPreviewer::SetResource(const ResourceBlob &blob)
 	if (scriptFile.is_open())
 	{
 		ScriptId scriptId(scriptFileName);
-		/*
-		if (scriptId.Language() == LangSyntaxStudio)
-		{
-			m_wndHeader.SetWindowText("Language: SCI Studio");
-		}
-		else
-		{
-			m_wndHeader.SetWindowText("Language: Sierra");
-		}
-		*/
 		std::string scriptText;
 		std::string line;
 		while (std::getline(scriptFile, line))

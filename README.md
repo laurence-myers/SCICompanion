@@ -16,7 +16,6 @@ The following defines are available:
 * `ENABLE_LDMSTM` - Enables variable dereferencing (`*var`) as an alternative to `(Memory memPEEK)` and `(Memory memPOKE)`. Requires a special build of the SCI interpreter with two new opcodes, such as SCI11+.
 * `ENABLE_FOREACH` - Enables the use of the `foreach` keyword. `(foreach val anArray ...)` or `(foreach val aCollection)` (where `aCollection` is anything that uses the Node kernel calls and exposes `elements`) will expand into loops where `val` is each value in the set, in order. `val` needs not be defined beforehand. With `ENABLE_LDMSTM` enabled you can also use `&val` as a reference to a `val` you *did* define beforehand.
 * `ENABLE_VERBS` - Enables the use of the `verbs` keyword.
-* `DISABLE_STUDIO` - Disables selecting anything other than the Sierra-style script language.
 * `DISABLE_DEBUGSTUFF` - Hides some in-depth decompiler stuff that's not officially supported.
 * `DISABLE_TRANSPARENCYNAG` - Disables the confirmation dialog when pasting an image that contains the transparent color. Annoying!
 * `ENABLE_FONTNUMSINHEX` - Makes the font editor's character picker labels display in hexadecimal, to match Windows Character Map.

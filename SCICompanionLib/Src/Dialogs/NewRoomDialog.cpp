@@ -293,12 +293,6 @@ void CNewRoomDialog::_PrepareBuffer()
 	}
 #endif
 
-	if (profile == NewRoomProfile::SCI11)
-	{
-		// e.g. for SCI0, keep SCIStudio compatible. Otherwise, use version 2
-		script.SyntaxVersion = 2;
-	}
-
 	// Now the uses.
 	for (size_t i = 0; i < _usedNames.size(); ++i)
 	{
@@ -319,8 +313,7 @@ void CNewRoomDialog::_PrepareBuffer()
 		// Make sure to add an export for it
 		//script.GetExports().push_back(std::make_unique<ExportEntry>(0, pClass->GetName()));
 
-		// Export it, if we're using syntax version 2
-		if (script.SyntaxVersion >= 2)
+		// Export the room.
 		{
 			std::unique_ptr<ExportEntry> roomExport = make_unique<ExportEntry>();
 			roomExport->Slot = 0;
@@ -454,7 +447,7 @@ void CNewRoomDialog::_PrepareBuffer()
 	}
 
 	std::stringstream ss;
-	SourceCodeWriter out(ss, script.Language());
+	SourceCodeWriter out(ss);
 	out.pszNewLine = "\r\n";
 	script.OutputSourceCode(out);
 	_strBuffer = ss.str();

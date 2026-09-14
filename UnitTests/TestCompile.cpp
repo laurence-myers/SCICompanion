@@ -18,7 +18,6 @@
 #include "ScriptOM.h"
 #include "CompileContext.h"
 #include "Helper.h"
-#include "ScriptConvert.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -71,12 +70,6 @@ namespace UnitTests
 
         void _DoIt()
         {
-            _DoItHelper();
-
-            // BONUS: Now convert these to Sierra syntax and compile again
-            CompileLog log;
-            ConvertGame(appState->GetResourceMap(), LangSyntaxSCI, log);
-            Assert::IsFalse(log.HasErrors());
             _DoItHelper();
         }
 

@@ -113,10 +113,6 @@ std::unique_ptr<AutoCompleteResult> GetAutoCompleteResult(const std::string &pre
 					sourceTypes |= AutoCompleteSourceType::Kernel | AutoCompleteSourceType::Procedure;
 					break;
 
-				case ParseAutoCompleteContext::StudioValue:
-					sourceTypes |= AutoCompleteSourceType::ClassName | AutoCompleteSourceType::Variable | AutoCompleteSourceType::Define | AutoCompleteSourceType::Kernel | AutoCompleteSourceType::Procedure | AutoCompleteSourceType::ClassSelector | AutoCompleteSourceType::Instance;
-					break;
-
 				case ParseAutoCompleteContext::LValue:
 					sourceTypes |= AutoCompleteSourceType::Variable | AutoCompleteSourceType::ClassSelector;
 					break;
@@ -347,26 +343,21 @@ std::unique_ptr<AutoCompleteResult> GetAutoCompleteResult(const std::string &pre
 			MergeResults(result->choices, prefix, AutoCompleteIconIndex::Keyword, { "scriptNumber" });
 		}
 
-		LangSyntax lang = context.Script().Language();
 		if (containsV(acContexts, ParseAutoCompleteContext::TopLevelKeyword))
 		{
-			MergeResults(result->choices, prefix, AutoCompleteIconIndex::Keyword, GetTopLevelKeywords(lang));
+			MergeResults(result->choices, prefix, AutoCompleteIconIndex::Keyword, GetTopLevelKeywords());
 		}
 		if (containsV(acContexts, ParseAutoCompleteContext::ClassLevelKeyword))
 		{
-			MergeResults(result->choices, prefix, AutoCompleteIconIndex::Keyword, GetClassLevelKeywords(lang));
-		}
-		if (containsV(acContexts, ParseAutoCompleteContext::StudioValue))
-		{
-			MergeResults(result->choices, prefix, AutoCompleteIconIndex::Keyword, GetCodeLevelKeywords(lang));
+			MergeResults(result->choices, prefix, AutoCompleteIconIndex::Keyword, GetClassLevelKeywords());
 		}
 		if (containsV(acContexts, ParseAutoCompleteContext::StartStatementExtras))
 		{
-			MergeResults(result->choices, prefix, AutoCompleteIconIndex::Keyword, GetCodeLevelKeywords(lang));
+			MergeResults(result->choices, prefix, AutoCompleteIconIndex::Keyword, GetCodeLevelKeywords());
 		}
 		if (containsV(acContexts, ParseAutoCompleteContext::PureValue))
 		{
-			MergeResults(result->choices, prefix, AutoCompleteIconIndex::Keyword, GetValueKeywords(lang));
+			MergeResults(result->choices, prefix, AutoCompleteIconIndex::Keyword, GetValueKeywords());
 		}
 
 		// Possible de-dupe
@@ -376,7 +367,7 @@ std::unique_ptr<AutoCompleteResult> GetAutoCompleteResult(const std::string &pre
 	}
 	return result;
 }
-AutoCompleteThread2::AutoCompleteThread2() : _nextId(0), _instruction(AutoCompleteInstruction::None), _bgStatus(AutoCompleteStatus::Pending), _lang(LangSyntaxUnknown), _bufferUI(nullptr)
+AutoCompleteThread2::AutoCompleteThread2() : _nextId(0), _instruction(AutoCompleteInstruction::None), _bgStatus(AutoCompleteStatus::Pending), _bufferUI(nullptr)
 {
 	_thread = std::thread(s_ThreadWorker, this);
 }
@@ -391,10 +382,9 @@ AutoCompleteThread2::~AutoCompleteThread2()
 	_thread.join();
 }
 
-void AutoCompleteThread2::InitializeForScript(CCrystalTextBuffer *buffer, LangSyntax lang)
+void AutoCompleteThread2::InitializeForScript(CCrystalTextBuffer *buffer)
 {
 	_bufferUI = buffer;
-	_lang = lang;
 
 	// TODO: Cancel any parsing? Or I guess it really doesn't matter. Except that if a script is closed, we want to know, so we don't send message to non-existent hwnd.
 }
@@ -602,7 +592,6 @@ void AutoCompleteThread2::_DoWork()
 				};
 
 				ScriptId scriptId;
-				scriptId.SetLanguage(_lang);
 				sci::Script script(scriptId);
 				// Needed to get the language right.
 				CCrystalScriptStream::const_iterator it(limiter.get());

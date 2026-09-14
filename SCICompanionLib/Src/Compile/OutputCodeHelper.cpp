@@ -18,49 +18,6 @@
 using namespace sci;
 using namespace std;
 
-void PrepForLanguage(LangSyntax langSyntax, sci::Script &script, GlobalCompiledScriptLookups *lookups)
-{
-	if (langSyntax == LangSyntaxSCI)
-	{
-		ConvertToSCISyntaxHelper(script, lookups);
-	}
-}
-
-void _OutputVariableAndSizeStudio(sci::ISyntaxNodeVisitor &visitor, sci::SourceCodeWriter &out, const std::string &type, const std::string &name, WORD wSize, const sci::SyntaxNodeVector &initValues)
-{
-	out.out << name;
-	if (wSize > 1)
-	{
-		out.out << "[" << wSize << "]"; // array
-	}
-
-	if (!initValues.empty())
-	{
-		if (wSize > 1)
-		{
-			out.out << " = (";
-			bool first = true;
-			for (auto &initValue : initValues)
-			{
-				if (!first)
-				{
-					out.out << " ";
-				}
-				Inline inln(out, true);
-				initValue->Accept(visitor);
-				first = false;
-			}
-			out.out << ")";
-		}
-		else
-		{
-			out.out << " = ";
-			initValues[0]->Accept(visitor);
-
-		}
-	}
-}
-
 template<char Q1, char Q2>
 std::string EscapeString(const std::string &src)
 {
@@ -196,34 +153,6 @@ void EndStatement(sci::SourceCodeWriter &out)
 	else
 	{
 		out.out << ";";
-	}
-}
-
-// Scripts compiled with v1 of the SCI Studio syntax don't support explicit export lists.
-// When outputting source code, we need to list these.
-// We should follow the same order as GetExportTableOrder
-void EnsurePublicsInExports(sci::Script &script)
-{
-	if (script.GetExports().empty())
-	{
-		int exportSlot = 0;
-		// public instances, followed by procedures
-		for (auto &classDef : script.GetClassesNC())
-		{
-			if (classDef->IsPublic())
-			{
-				script.GetExports().push_back(std::make_unique<ExportEntry>(exportSlot, classDef->GetName()));
-				exportSlot++;
-			}
-		}
-		for (auto &proc : script.GetProcedures())
-		{
-			if (proc->IsPublic())
-			{
-				script.GetExports().push_back(std::make_unique<ExportEntry>(exportSlot, proc->GetName()));
-				exportSlot++;
-			}
-		}
 	}
 }
 

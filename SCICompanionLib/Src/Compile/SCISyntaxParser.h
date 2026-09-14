@@ -4,7 +4,7 @@
 #include "CrystalScriptStream.h"
 #include "ParserCommon.h"
 #include "AutoCompleteSourceTypes.h"
-#include "StudioSyntaxParser.h"
+#include "ParserPrimitives.h"
 #include <stack>
 #include <deque>
 

@@ -590,7 +590,7 @@ void QuickScriptsSidePane::SetDocument(CDocument *pDoc)
 void QuickScriptsSidePane::UpdateNonView(CObject *pObject)
 {
 	ScriptChangeHint hint = GetHint<ScriptChangeHint>(pObject);
-	if (IsFlagSet(hint, ScriptChangeHint::Saved | ScriptChangeHint::Converted))
+	if (IsFlagSet(hint, ScriptChangeHint::Saved))
 	{
 		// Go update ourselves again (might not be our script, but oh well)
 		_needInfoFromThisScript = true;

@@ -1295,11 +1295,6 @@ public:
 			else
 			{
 				_MaybeIndentAcceptChildren(sendCall.GetParams());
-				if (sendCall._rest)
-				{
-					MAYBE_INDENT_BLOCK;
-					_IndentAccept(*sendCall._rest);
-				}
 			}
 		}
 

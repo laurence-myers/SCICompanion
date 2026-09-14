@@ -18,7 +18,6 @@ GNU General Public License for more details.
 #include "ScriptOM.h"
 #include "CompileContext.h"
 #include "Helper.h"
-#include "ScriptConvert.h"
 #include "ResourceContainer.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;

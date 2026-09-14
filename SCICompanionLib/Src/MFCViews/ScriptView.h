@@ -104,7 +104,6 @@ public:
 
 protected:
 	virtual DWORD ParseLine(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &nActualItems);
-	DWORD _ParseLineStudio(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &nActualItems);
 	DWORD _ParseLineSCI(DWORD dwCookie, int nLineIndex, TEXTBLOCK *pBuf, int &nActualItems);
 	void _ParseLineSCIHelper(TEXTBLOCK *pBuf, int &nActualItems, PCSTR pszChars, int nIdentBegin, int I, int nLength);
 	virtual void UpdateCaret();

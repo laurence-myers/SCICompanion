@@ -196,10 +196,6 @@ CompileContext::CompileContext(SCIVersion version, Script &script, PrecompiledHe
 }
 
 // CompileContext
-LangSyntax CompileContext::GetLanguage()
-{
-	return _pErrorScript->Language();
-}
 OutputContext CompileContext::GetOutputContext()
 {
 	return _oc.top();
@@ -1164,12 +1160,11 @@ vector<uint16_t> CompileContext::GetRelocations()
 
 PrecompiledHeaders::PrecompiledHeaders(CResourceMap &resourceMap) : _resourceMap(resourceMap), _fValid(false), _versionCompiled(resourceMap.Helper().Version) {}
 
-std::vector<std::string> g_defaultCPPHeaders;
-std::vector<std::string> g_defaultSCIStudioHeaders;
+std::vector<std::string> g_defaultHeaders;
 std::vector<std::string> &GetDefaultHeaders(Script &script)
 {
-	// No default headers for SCI Studio syntax, sorry!
-	return g_defaultSCIStudioHeaders; // empty
+	// No default headers.
+	return g_defaultHeaders; // empty
 }
 
 PrecompiledHeaders::~PrecompiledHeaders() {}

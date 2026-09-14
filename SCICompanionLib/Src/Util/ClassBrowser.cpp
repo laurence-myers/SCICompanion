@@ -562,7 +562,6 @@ void SCIClassBrowser::ReLoadFromCompiled(ITaskStatus &task)
 		TCHAR szScriptNum[20];
 		StringCchPrintf(szScriptNum, ARRAYSIZE(szScriptNum), TEXT("script %03d"), compiledScript.first);
 		ScriptId scriptId(szScriptNum);
-		scriptId.SetLanguage(LangSyntaxSCI); // A good default
 		std::unique_ptr<sci::Script> pScript = std::make_unique<sci::Script>(scriptId);
 		LoadScriptFromCompiled(pScript.get(), compiledScript.second.get(), &_selectorNames, speciesToName);
 		_AddToClassTree(*pScript);

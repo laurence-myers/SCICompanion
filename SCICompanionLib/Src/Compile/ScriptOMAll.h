@@ -144,7 +144,7 @@ namespace sci
 	{
 		DECLARE_NODE_TYPE(NodeTypeSendCall)
 	public:
-		SendCall() : OneStatementNode(), NamedNode(), _fRestHack(false) {};
+		SendCall() : OneStatementNode(), NamedNode() {};
 		SendCall(const SendCall &src) = delete;
 		SendCall& operator=(const SendCall& src) = delete;
 
@@ -164,19 +164,15 @@ namespace sci
 
 		void SetLValue(std::unique_ptr<LValue> var) { _object3 = std::move(var); }
 		void AddSendParam(std::unique_ptr<SendParam> pParam) { _params.push_back(std::move(pParam)); }
-		void SetSendRestHack(std::unique_ptr<RestStatement> sendRest) { _rest = std::move(sendRest); _fRestHack = true; }
-		
+
 		const std::string &GetTargetName() const { return _innerName; }
 
 		void Accept(ISyntaxNodeVisitor &visitor) const override;
 
 		std::unique_ptr<LValue> _object3;			// (send theFlakes[i]:x)
-		std::unique_ptr<RestStatement> _rest;
 
 	private:
 		std::vector<std::unique_ptr<SendParam>> _params; // The actual send params (selectors)
-		// Hack for SCIStudio template game: (???)
-		bool _fRestHack;
 	};
 
 	//

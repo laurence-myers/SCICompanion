@@ -80,6 +80,9 @@
     <ClCompile Include="TestAstPasses.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestShippedFiles.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="UnitTests.licenseheader" />

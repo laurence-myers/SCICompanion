@@ -123,7 +123,6 @@ IDI_IMAGESEQUENCE       ICON                    "res\\image_sequence.ico"
 IDI_IMAGE               ICON                    "res\\image.ico"
 //IDI_VIEWDETAILS         ICON                    "res\\view_details.ico"
 //IDI_VIEWICONS           ICON                    "res\\view_icons.ico"
-IDI_SCRIPT_CONVERT      ICON                    "res\\script_convert.ico"
 IDI_SCRIPT_INSERT_OBJECT ICON                    "res\\script_insert_object.ico"
 IDI_NEWROOM             ICON                    "res\\newroom.ico"
 IDI_NEWWORD             ICON                    "res\\newword.ico"
@@ -313,7 +312,6 @@ BEGIN
     BUTTON      ID_INSERTOBJECT
     SEPARATOR
     BUTTON      ID_DEBUGROOM
-    BUTTON      ID_CONVERTSCRIPT
 END
 
 IDR_TOOLBARDRAWVIEW TOOLBAR 24, 24
@@ -3114,8 +3112,6 @@ IDD_NEWGAMEDIALOG DLGINIT
 BEGIN
     IDC_COMBOLANGUAGE, 0x403, 8, 0, "DOS 437\0",
     IDC_COMBOLANGUAGE, 0x403, 13, 0, "Windows 1252\0",
-//    IDC_COMBOLANGUAGE, 0x403, 14, 0, "Sierra Script\0",
-//    IDC_COMBOLANGUAGE, 0x403, 11, 0, "SCI Studio\0"
     0
 END
 
@@ -3123,8 +3119,6 @@ IDD_GAMEPROPERTIESDIALOG DLGINIT
 BEGIN
     IDC_COMBOLANGUAGE, 0x403, 8, 0, "DOS 437\0",
     IDC_COMBOLANGUAGE, 0x403, 13, 0, "Windows 1252\0",
-//    IDC_COMBOLANGUAGE, 0x403, 14, 0, "Sierra Script\0",
-//    IDC_COMBOLANGUAGE, 0x403, 11, 0, "SCI Studio\0"
     0
 END
 
@@ -3471,7 +3465,6 @@ END
 STRINGTABLE
 BEGIN
     ID_FILE_NEWGAME         "Create a new game"
-    ID_CONVERTSCRIPT        "Convert this script to the game's language\nConvert script"
 END
 
 STRINGTABLE

@@ -22,7 +22,6 @@ GNU General Public License for more details.
 #include "Helper.h"
 #include "format.h"
 #include "CompileContext.h"
-#include "ScriptConvert.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -73,8 +72,6 @@ namespace UnitTests
         void _DoIt()
         {
             _DoItHelper(777);
-
-            appState->GetResourceMap().SetGameLanguage(LangSyntax::LangSyntaxSCI);
 
             _DoItHelper(778); // Different number, since we want a fresh file.
         }

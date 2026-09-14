@@ -192,7 +192,6 @@ void _AddToTable(vector<ExportTableInfo> &table, const ExportTableInfo &entry, c
 	}
 }
 
-// See EnsurePublicsInExports 
 vector<ExportTableInfo> GetExportTableOrder(CompileContext *contextOptional, const Script &script)
 {
 	// There are two types of exports:
@@ -775,56 +774,6 @@ void _Section8_RelocationTable(CompileContext &context, vector<BYTE> &output)
 	for_each(relocations.begin(), relocations.end(), WordToByteThingy(output));
 }
 
-class FixCaseStatements : public IExploreNode
-{
-public:
-	FixCaseStatements(CompileContext &context) : _context(context) {}
-
-private:
-	//
-	// Problems with parsing the SCIStudio syntax means we may need to make some adjustments in the
-	// syntax tree.
-	//
-	void ExploreNode(SyntaxNode &node, ExploreNodeState state)
-	{
-		if (state == ExploreNodeState::Pre)
-		{
-			// 1)
-			// Look for case statements of the form
-			// (case foo(stuff))	// foo is a procedure call, and stuff is parameters
-			// and turn them into
-			// (case foo (stuff))   // foo is a value, and stuff is code
-			if (node.GetNodeType() == NodeTypeCase)
-			{
-				CaseStatement &caseStatement = static_cast<CaseStatement&>(node);
-				SyntaxNode *caseValue = caseStatement.GetCaseValue();
-				ProcedureCall *maybeProcedureCall = SafeSyntaxNode<ProcedureCall>(caseValue);
-				if (caseValue && (caseValue->GetNodeType() == NodeTypeProcedureCall))
-				{
-					if (ProcedureUnknown == _context.LookupProc(maybeProcedureCall->GetName()))
-					{
-						// This isn't a procedure call.  "Undo it"
-						// The name becomes a simple token value - let's construct that.
-						unique_ptr<ComplexPropertyValue> pTokenValue = std::make_unique<ComplexPropertyValue>();
-						pTokenValue->SetValue(maybeProcedureCall->GetName(), ValueType::Token);
-						// ...and the parameters become the code statements. So steal the procedures parameters.
-						SyntaxNodeVector formerParams;
-						maybeProcedureCall->StealParams(formerParams);
-						// Replace the casevalue's procedure, with our "simple token value"
-						// whose parameters we have now stolen.
-						caseStatement.SetCaseValue(std::move(pTokenValue));
-						// Finally, add back the statements.  In case there is already some code in the
-						// case statement, we'll make sure to insert ours at the beginning.
-						SyntaxNodeVector &existingCode = caseStatement.GetCodeSegments();
-						existingCode.insert(existingCode.begin(), std::make_move_iterator(formerParams.begin()), std::make_move_iterator(formerParams.end()));
-					}
-				}
-			}
-		}
-	}
-
-	CompileContext &_context;
-};
 
 //
 // Adds the script's public instances and procedures to the sco file being compiled by the context
@@ -1199,7 +1148,7 @@ void CommonScriptPrep(Script &script, CompileContext &context, CompileResults &r
 	for (auto &theDefine : script.GetDefines())
 	{
 		const string &defineName = theDefine->GetName();
-		if (IsSCIKeyword(context.GetLanguage(), defineName))
+		if (IsSCIKeyword(defineName))
 		{
 			ReportKeywordError(context, theDefine.get(), defineName, "define");
 		}
@@ -1220,12 +1169,6 @@ void CommonScriptPrep(Script &script, CompileContext &context, CompileResults &r
 
 	EvaluateConstantExpressions(context, script);
 	// Ok, now we should have been told about all the saids and strings.
-	if (script.Language() == LangSyntaxStudio)
-	{
-		// Fix up case statements we may have mis-interpreted.
-		FixCaseStatements hack(context);
-		script.Traverse(hack);
-	}
 }
 
 bool GenerateScriptResource_SCI0(Script &script, PrecompiledHeaders &headers, CompileTables &tables, CompileResults &results, bool generateDebugInfo)

@@ -891,9 +891,6 @@ char* AppState::GetAboutText()
 #ifdef DISABLE_DEBUGSTUFF
 		"\x95 No debug stuff in decompiler\r\n"
 #endif
-#ifdef DISABLE_STUDIO
-		"\x95 No SCI Studio stuff\r\n"
-#endif
 #ifdef DISABLE_TRANSPARENCYNAG
 		"\x95 No transparency nagging\r\n"
 #endif

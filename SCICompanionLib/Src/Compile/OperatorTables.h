@@ -15,11 +15,8 @@
 
 #include "Operators.h"
 
-extern std::vector<std::pair<std::string, BinaryOperator>> studioNameToBinaryOp;
 extern std::vector<std::pair<std::string, BinaryOperator>> sciNameToBinaryOp;
 
-extern std::vector<std::pair<std::string, AssignmentOperator>> studioNameToAssignmentOp;
 extern std::vector<std::pair<std::string, AssignmentOperator>> sciNameToAssignmentOp;
 
-extern std::vector<std::pair<std::string, UnaryOperator>> studioNameToUnaryOp;
 extern std::vector<std::pair<std::string, UnaryOperator>> sciNameToUnaryOp;
