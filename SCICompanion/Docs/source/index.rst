@@ -34,7 +34,6 @@ Topics:
    legacy
    classlibrary
    sci_kernels
-   studio_compiler
    sci_compiler
    texts
    messages

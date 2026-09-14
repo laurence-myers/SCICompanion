@@ -19,7 +19,6 @@ enum class ParseAutoCompleteContext : uint8_t
 	None = 0,
 	Selector,
 	ClassSelector,	  // Selectors for current class
-	StudioValue,		// Any value, code keyword, procedure name, etc...
 	TopLevelKeyword,
 	ClassLevelKeyword,
 	SuperClass,

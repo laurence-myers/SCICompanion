@@ -12,9 +12,8 @@
     GNU General Public License for more details.
 ***************************************************************************/
 //
-// Non-template SyntaxContext members. These used to live in
-// StudioSyntaxParser.cpp; they are language-agnostic and are shared by the
-// (only remaining) Sierra parser.
+// Non-template SyntaxContext members and the shared parser error messages.
+// These are language-agnostic support for the Sierra parser.
 //
 #include "stdafx.h"
 #include "ScriptOMAll.h"

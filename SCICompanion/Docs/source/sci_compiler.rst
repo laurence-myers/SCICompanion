@@ -28,7 +28,6 @@ The topics below describe all the various language features and syntax.
 .. toctree::
    :maxdepth: 2
 
-   Compiler/differences
    Compiler/classes
    Compiler/properties
    Compiler/procedures

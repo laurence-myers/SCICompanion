@@ -296,7 +296,7 @@ private:
 // Optimized delimiter reader
 //
 template<typename _TContext, typename _CommentPolicy, typename _It, char Q1, char Q2>
-bool _ReadStringStudio(_TContext *pContext, _It &stream, std::string &str)
+bool _ReadDelimitedString(_TContext *pContext, _It &stream, std::string &str)
 {
 	IndicateStringType<_TContext> indicateStringType(pContext, Q1);
 	str.clear();
@@ -644,9 +644,9 @@ public:
 	}
 
 	template<typename _TContext, typename _It, char Q1, char Q2>
-	bool ReadStringStudio(_TContext *pContext, _It &stream, std::string &str) const
+	bool ReadDelimitedString(_TContext *pContext, _It &stream, std::string &str) const
 	{
-		return _ReadStringStudio<_TContext, _CommentPolicy, _It, Q1, Q2>(pContext, stream, str);
+		return _ReadDelimitedString<_TContext, _CommentPolicy, _It, Q1, Q2>(pContext, stream, str);
 	}
 
 	std::unique_ptr<ParserBase> _pa;

@@ -113,10 +113,6 @@ std::unique_ptr<AutoCompleteResult> GetAutoCompleteResult(const std::string &pre
 					sourceTypes |= AutoCompleteSourceType::Kernel | AutoCompleteSourceType::Procedure;
 					break;
 
-				case ParseAutoCompleteContext::StudioValue:
-					sourceTypes |= AutoCompleteSourceType::ClassName | AutoCompleteSourceType::Variable | AutoCompleteSourceType::Define | AutoCompleteSourceType::Kernel | AutoCompleteSourceType::Procedure | AutoCompleteSourceType::ClassSelector | AutoCompleteSourceType::Instance;
-					break;
-
 				case ParseAutoCompleteContext::LValue:
 					sourceTypes |= AutoCompleteSourceType::Variable | AutoCompleteSourceType::ClassSelector;
 					break;
@@ -354,10 +350,6 @@ std::unique_ptr<AutoCompleteResult> GetAutoCompleteResult(const std::string &pre
 		if (containsV(acContexts, ParseAutoCompleteContext::ClassLevelKeyword))
 		{
 			MergeResults(result->choices, prefix, AutoCompleteIconIndex::Keyword, GetClassLevelKeywords());
-		}
-		if (containsV(acContexts, ParseAutoCompleteContext::StudioValue))
-		{
-			MergeResults(result->choices, prefix, AutoCompleteIconIndex::Keyword, GetCodeLevelKeywords());
 		}
 		if (containsV(acContexts, ParseAutoCompleteContext::StartStatementExtras))
 		{

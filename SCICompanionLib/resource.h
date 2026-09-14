@@ -475,7 +475,6 @@
 #define IDC_SYNTAX_SCI                  1144
 #define IDC_SYNTAX_CPP                  1145
 #define IDC_RADIOCPP                    1146
-#define IDC_RADIOSCISTUDIO              1147
 #define IDC_STATICSCRIPTLANG            1148
 #define IDC_STATICGENERAL               1149
 #define IDC_STATICGAMENAME              1150

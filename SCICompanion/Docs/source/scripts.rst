@@ -37,17 +37,10 @@ Sierra Script
 ===============
 
 For scripts, |scicomp| uses a syntax very similar to that used by Sierra, which is sort of a cross between LISP and SmallTalk.
-It also supports the syntax that was used in SCI Studio, which was developed prior to more detailed knowledge about Sierra's original syntax
-came into light.
 
-For more information on the syntax, see :doc:`sci_compiler`. For information on the SCI Studio-compatible syntax, see :doc:`studio_compiler`.
+For more information on the syntax, see :doc:`sci_compiler`.
 
-The syntax used for new scripts in a game is determined by the default language specifed when you create a game. This can also be changed by
-invoking the Game Properties dialog.
-
-A game can actually use a mix of the two syntaxes - however, this is not recommended, and would normally only happen if you were converting
-an old game to the new Sierra Script syntax script-by-script. |scicomp| uses a comment marker at the beginning of the file to determine the
-language used for a particular script. Don't remove that comment.
+|scicomp| expects a comment marker at the beginning of each script file. Don't remove that comment.
 
 Compiling a script
 ====================
