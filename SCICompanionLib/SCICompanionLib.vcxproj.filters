@@ -2274,9 +2274,6 @@
     <Image Include="res\script_compileall.ico">
       <Filter>Resource Files\Toolbar icons</Filter>
     </Image>
-    <Image Include="res\script_convert.ico">
-      <Filter>Resource Files\Toolbar icons</Filter>
-    </Image>
     <Image Include="res\script_insert_object.ico">
       <Filter>Resource Files\Toolbar icons</Filter>
     </Image>

@@ -82,7 +82,6 @@ void MessageHeaderFile::_Load(const std::vector<std::string> &sourcesOptional)
 	while (std::getline(file, line))
 	{
 		char commentChar = ';';
-		int minChars = 1;
 		size_t offset = 0;
 		AdvancePastWhitespace(line, offset);
 		bool wasComment = false;

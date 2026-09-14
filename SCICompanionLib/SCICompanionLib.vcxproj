@@ -984,7 +984,6 @@
     <Image Include="res\ScriptTools.bmp" />
     <Image Include="res\script_compile.ico" />
     <Image Include="res\script_compileall.ico" />
-    <Image Include="res\script_convert.ico" />
     <Image Include="res\script_insert_object.ico" />
     <Image Include="res\select.ico" />
     <Image Include="res\showtrace.ico" />

@@ -349,8 +349,6 @@ bool _IsKeyword(const std::string &word, std::vector<std::string> &sortedVector,
 	return binary_search(sortedVector.begin(), sortedVector.end(), word);
 }
 
-std::vector<std::string> emptyList;
-
 std::vector<std::string> topLevelKeywordsSCI =
 {
 	// Keep this alphabetically sorted.

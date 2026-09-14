@@ -898,13 +898,7 @@
     <None Include="Docs\source\Compiler\arithmetic.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\StudioCompiler\arithmetic.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Kernels\ATan.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\asm.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Compiler\asm.rst">
@@ -914,9 +908,6 @@
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Kernels\AssertPalette.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\assignment.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Compiler\assignment.rst">
@@ -941,9 +932,6 @@
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Classes\BegLoop.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\bitwise.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Compiler\bitwise.rst">
@@ -1039,9 +1027,6 @@
     <None Include="Docs\source\Compiler\break.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\StudioCompiler\break.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Procedures\Bset.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
@@ -1087,13 +1072,7 @@
     <None Include="Docs\source\Classes\ChoiceTalker.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\StudioCompiler\classes.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Compiler\classes.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\classheader.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Compiler\classheader.rst">
@@ -1106,9 +1085,6 @@
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Classes\Code.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\codeblock.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Classes\Collection.rst">
@@ -1145,12 +1121,6 @@
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Compiler\conditionalexpressions.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\conditionalexpressions.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\comment.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Classes\ControlIcon.rst">
@@ -1321,9 +1291,6 @@
     <None Include="Docs\source\Classes\DEdit.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\StudioCompiler\define.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Compiler\define.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
@@ -1357,9 +1324,6 @@
     <None Include="Docs\source\Procedures\Die.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\Compiler\differences.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Kernels\DirLoop.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
@@ -1376,9 +1340,6 @@
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Kernels\DisposeWindow.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\do.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Kernels\DoAudio.rst">
@@ -1639,9 +1600,6 @@
     <None Include="Docs\source\Compiler\for.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\StudioCompiler\for.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Kernels\Format.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
@@ -1876,16 +1834,10 @@
     <None Include="Docs\source\Scripts\IconItem.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\StudioCompiler\if.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Compiler\if.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Kernels\InitBresen.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\include.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Compiler\include.rst">
@@ -2176,9 +2128,6 @@
     <None Include="Docs\source\Compiler\objectfiles.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\StudioCompiler\objectfiles.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Classes\Object.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
@@ -2201,9 +2150,6 @@
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Compiler\otheroperators.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\otheroperators.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\outputpane.rst">
@@ -2248,9 +2194,6 @@
     <None Include="Docs\source\Compiler\while.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\StudioCompiler\while.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Classes\Wander.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
@@ -2275,12 +2218,6 @@
     <None Include="Docs\source\Compiler\variabletypes.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\StudioCompiler\variabletypes.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\variables.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Compiler\variables.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
@@ -2294,9 +2231,6 @@
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Tutorial\UseInventory.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\use.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Compiler\use.rst">
@@ -2368,9 +2302,6 @@
     <None Include="Docs\source\Compiler\synonyms.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\StudioCompiler\synonyms.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Classes\Sync.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
@@ -2383,19 +2314,10 @@
     <None Include="Docs\source\Compiler\switch.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\StudioCompiler\switch.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\studio_compiler.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Kernels\StrSplit.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Kernels\StrLen.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\strings.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Compiler\strings.rst">
@@ -2539,16 +2461,10 @@
     <None Include="Docs\source\Classes\Set.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\StudioCompiler\sendselfsuper.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Compiler\selfsuper.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Compiler\selectors.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\selectors.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\selectionandresize.rst">
@@ -2599,9 +2515,6 @@
     <None Include="Docs\source\Compiler\saids.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\StudioCompiler\saids.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Kernels\Said.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
@@ -2618,9 +2531,6 @@
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Scripts\Reverse.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\return.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Compiler\return.rst">
@@ -2641,9 +2551,6 @@
     <None Include="Docs\source\Compiler\rest.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\StudioCompiler\rest.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Kernels\RespondsTo.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
@@ -2657,9 +2564,6 @@
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Classes\RelDPath.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\relationaloperators.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Compiler\relationaloperators.rst">
@@ -2707,9 +2611,6 @@
     <None Include="Docs\source\Classes\PseudoMouse.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
-    <None Include="Docs\source\StudioCompiler\properties.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
     <None Include="Docs\source\Compiler\properties.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
@@ -2717,9 +2618,6 @@
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Kernels\Profiler.rst">
-      <Filter>Resource Files\Help sources</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\procedures.rst">
       <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Docs\source\Compiler\procedures.rst">
@@ -3193,9 +3091,6 @@
     </None>
     <None Include="Files\TemplateGame\SCI0\src\user.sco">
       <Filter>Resource Files\SCI 0 template</Filter>
-    </None>
-    <None Include="Docs\source\StudioCompiler\version.rst">
-      <Filter>Resource Files\Help sources</Filter>
     </None>
     <None Include="Files\TemplateGame\SCI1.1\src\Wander.sco">
       <Filter>Resource Files\SCI 1 template</Filter>
