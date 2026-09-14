@@ -44,7 +44,6 @@ std::string EscapeQuotedString(const std::string &src);
 std::string EscapeBraceString(const std::string &src);
 void CleanVariableNames(sci::Script &script, const std::vector<std::pair<std::string, std::string>> &fromToMapping);
 std::string CleanToken(const std::string &src, std::unordered_set<std::string> *disallowedList = nullptr);
-void EnsurePublicsInExports(sci::Script &script);
 
 class BracketScope
 {

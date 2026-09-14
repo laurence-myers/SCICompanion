@@ -196,7 +196,6 @@
 #define IDI_IMAGESEQUENCE               312
 #define IDI_VIEWDETAILS                 313
 #define IDI_VIEWICONS                   314
-#define IDI_SCRIPT_CONVERT              315
 #define IDI_SCRIPT_INSERT_OBJECT        316
 #define IDI_NEWROOM                     317
 #define IDI_NEWWORD                     318
@@ -967,7 +966,6 @@
 #define ID_SCRIPT_VIEWSCRIPTRESOURCE    33049
 #define ID_SCRIPT_VIEWSYNTAXTREE        33052
 #define ID_FILE_NEWGAME                 33054
-#define ID_CONVERTSCRIPT                33055
 #define ID_CIRCLE                       33056
 #define ID_SCREENS                      33057
 #define ID_PALETTES                     33058

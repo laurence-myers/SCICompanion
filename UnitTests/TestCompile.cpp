@@ -18,7 +18,6 @@
 #include "ScriptOM.h"
 #include "CompileContext.h"
 #include "Helper.h"
-#include "ScriptConvert.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 

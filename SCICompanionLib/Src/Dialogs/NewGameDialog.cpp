@@ -21,7 +21,6 @@
 #include "atlimage.h"
 #include "GameFolderHelper.h"
 
-#include "ScriptConvert.h"
 #include "CompileContext.h"
 
 // NewGameDialog dialog
@@ -126,9 +125,6 @@ void NewGameDialog::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_STATIC4, m_wndStatic4);
 	DDX_Control(pDX, IDC_COMBOLANGUAGE, m_wndComboLanguage);
 	m_wndComboLanguage.SetCurSel(1); //assume Win-1252 for new games
-//#ifdef DISABLE_STUDIO
-//	m_wndComboLanguage.EnableWindow(FALSE);
-//#endif
 
 	DDX_Control(pDX, IDC_COMBOTEMPLATE, m_wndComboTemplate);
 	_PopulateTemplates();

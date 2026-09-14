@@ -831,9 +831,6 @@
     <ClCompile Include="Src\Resources\Vocab000.cpp">
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
-    <ClCompile Include="Src\Util\ScriptConvert.cpp">
-      <Filter>Source Files\Util</Filter>
-    </ClCompile>
     <ClCompile Include="Src\Util\SoundUtil.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
@@ -1855,9 +1852,6 @@
     </None>
     <None Include="Src\CrystalEdit\CCrystalTextBuffer.inl">
       <Filter>Header Files\CrystalEdit</Filter>
-    </None>
-    <None Include="Src\Util\ScriptConvert.h">
-      <Filter>Header Files\Util</Filter>
     </None>
     <None Include="Src\r8brain\README.md">
       <Filter>Header Files\r8brain</Filter>

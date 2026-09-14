@@ -22,7 +22,6 @@ GNU General Public License for more details.
 #include "Helper.h"
 #include "format.h"
 #include "CompileContext.h"
-#include "ScriptConvert.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 

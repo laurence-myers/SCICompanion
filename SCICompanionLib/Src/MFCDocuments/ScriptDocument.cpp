@@ -42,7 +42,6 @@
 #include "ResourceBlob.h"
 #include "DependencyTracker.h"
 #include "OutputCodeHelper.h"
-#include "ScriptConvert.h"
 #include <filesystem>
 
 using namespace std;
@@ -99,14 +98,12 @@ BEGIN_MESSAGE_MAP(CScriptDocument, CDocument)
 	ON_COMMAND(ID_SCRIPT_VIEWOBJECTFILE, OnViewObjectFile)
 	ON_COMMAND(ID_SCRIPT_VIEWSCRIPTRESOURCE, OnViewScriptResource)
 	ON_COMMAND(ID_SCRIPT_VIEWSYNTAXTREE, OnViewSyntaxTree)
-	ON_COMMAND(ID_CONVERTSCRIPT, OnConvertScript)
 	ON_COMMAND(ID_DEBUGROOM, OnDebugRoom)
 	ON_UPDATE_COMMAND_UI(ID_COMPILE, OnUpdateIsScript)
 	ON_UPDATE_COMMAND_UI(ID_SCRIPT_DISASSEMBLE, OnUpdateIsScript)
 	ON_UPDATE_COMMAND_UI(ID_SCRIPT_VIEWOBJECTFILE, OnUpdateIsScript)
 	ON_UPDATE_COMMAND_UI(ID_SCRIPT_VIEWSCRIPTRESOURCE, OnUpdateIsScript)
 	ON_UPDATE_COMMAND_UI(ID_DEBUGROOM, OnUpdateIsScript)
-	ON_UPDATE_COMMAND_UI(ID_CONVERTSCRIPT, OnUpdateConvertScript)
 	ON_UPDATE_COMMAND_UI(ID_INDICATOR_LINECOUNT, OnUpdateLineCount)
 END_MESSAGE_MAP()
 
@@ -543,40 +540,6 @@ void CScriptDocument::OnDebugRoom()
 	{
 		appState->RunGame(true, resourceNumber);
 	}
-}
-
-// Converts to the default game language.
-void CScriptDocument::OnConvertScript()
-{
-	CompileLog log;
-
-	if (ConvertScript(appState->GetVersion(), appState->GetResourceMap().Helper().GetDefaultGameLanguage(), _scriptId, log, true))
-	{
-		_buffer.FreeAll();
-		_buffer.LoadFromFile(_scriptId.GetFullPath().c_str());
-
-		// Play a sound and rejoice!
-		// Nah, don't.
-		// PlaySound((LPCSTR)SND_ALIAS_SYSTEMHAND, NULL, SND_ALIAS_ID | SND_ASYNC);
-
-		// Tell the view.
-		UpdateAllViewsAndNonViews(nullptr, 0, &WrapObject(ScriptChangeHint::Converted | ScriptChangeHint::Pos, this));
-
-		// Update our title
-		_OnUpdateTitle();
-	}
-	else
-	{
-		log.SummarizeAndReportErrors();
-		AfxMessageBox("The original script has compile errors. They must be fixed before conversion can take place.", MB_ERRORFLAGS);
-	}
-	appState->OutputResults(OutputPaneType::Compile, log.Results());
-}
-
-void CScriptDocument::OnUpdateConvertScript(CCmdUI *pCmdUI)
-{
-	// Enable conversion if this script's language is different than the game's language.
-	pCmdUI->Enable(appState->GetResourceMap().Helper().GetDefaultGameLanguage() != _scriptId.Language());
 }
 
 void CScriptDocument::OnUpdateLineCount(CCmdUI *pCmdUI)

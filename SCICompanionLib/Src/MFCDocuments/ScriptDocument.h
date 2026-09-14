@@ -30,8 +30,6 @@ enum class ScriptChangeHint
 	Saved = 0x00000001,
 	// The cursor position in the script changed.
 	Pos = 0x00000002,
-	// The script was converted!
-	Converted = 0x00000004,
 };
 
 DEFINE_ENUM_FLAGS(ScriptChangeHint, uint32_t)
@@ -98,9 +96,7 @@ private:
 	afx_msg void OnViewObjectFile();
 	afx_msg void OnViewScriptResource();
 	afx_msg void OnViewSyntaxTree();
-	afx_msg void OnConvertScript();
 	afx_msg void OnUpdateIsScript(CCmdUI *pCmdUI);
-	afx_msg void OnUpdateConvertScript(CCmdUI *pCmdUI);
 	afx_msg void OnUpdateLineCount(CCmdUI *pCmdUI);
 
 	// Other...

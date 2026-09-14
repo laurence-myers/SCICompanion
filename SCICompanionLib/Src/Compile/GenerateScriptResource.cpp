@@ -192,7 +192,6 @@ void _AddToTable(vector<ExportTableInfo> &table, const ExportTableInfo &entry, c
 	}
 }
 
-// See EnsurePublicsInExports 
 vector<ExportTableInfo> GetExportTableOrder(CompileContext *contextOptional, const Script &script)
 {
 	// There are two types of exports:

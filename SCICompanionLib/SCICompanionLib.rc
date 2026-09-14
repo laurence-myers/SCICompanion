@@ -123,7 +123,6 @@ IDI_IMAGESEQUENCE       ICON                    "res\\image_sequence.ico"
 IDI_IMAGE               ICON                    "res\\image.ico"
 //IDI_VIEWDETAILS         ICON                    "res\\view_details.ico"
 //IDI_VIEWICONS           ICON                    "res\\view_icons.ico"
-IDI_SCRIPT_CONVERT      ICON                    "res\\script_convert.ico"
 IDI_SCRIPT_INSERT_OBJECT ICON                    "res\\script_insert_object.ico"
 IDI_NEWROOM             ICON                    "res\\newroom.ico"
 IDI_NEWWORD             ICON                    "res\\newword.ico"
@@ -313,7 +312,6 @@ BEGIN
     BUTTON      ID_INSERTOBJECT
     SEPARATOR
     BUTTON      ID_DEBUGROOM
-    BUTTON      ID_CONVERTSCRIPT
 END
 
 IDR_TOOLBARDRAWVIEW TOOLBAR 24, 24
@@ -3471,7 +3469,6 @@ END
 STRINGTABLE
 BEGIN
     ID_FILE_NEWGAME         "Create a new game"
-    ID_CONVERTSCRIPT        "Convert this script to the game's language\nConvert script"
 END
 
 STRINGTABLE

@@ -17,7 +17,6 @@
 #include "stdafx.h"
 #include "AppState.h"
 #include "GamePropertiesDialog.h"
-#include "ScriptConvert.h"
 #include "CompileContext.h"
 #include "ExtractAll.h"
 #include "ResourceContainer.h"
@@ -56,11 +55,6 @@ void CGamePropertiesDialog::DoDataExchange(CDataExchange* pDX)
 
 	DDX_Control(pDX, IDC_STATIC4, m_wndStatic4);
 	DDX_Control(pDX, IDC_COMBOLANGUAGE, m_wndComboLanguage);
-//	LangSyntax lang = appState->GetResourceMap().Helper().GetDefaultGameLanguage();
-//	m_wndComboLanguage.SetCurSel((int)lang);
-//#ifdef DISABLE_STUDIO
-//	m_wndComboLanguage.EnableWindow(FALSE);
-//#endif
 	m_wndComboLanguage.SetCurSel(appState->GetResourceMap().Helper().GetCodepage() == 1252 ? 1 : 0);
 
 	DDX_Control(pDX, IDC_STATICPROFILE, m_wndStaticProfile);
@@ -179,32 +173,6 @@ void CGamePropertiesDialog::OnOK()
 		appState->NotifyChangeAspectRatio();
 	}
 
-	/*
-	LangSyntax lang = appState->GetResourceMap().Helper().GetDefaultGameLanguage();
-#ifndef DISABLE_STUDIO
-	int curSel = 0;
-#else
-	int curSel = m_wndComboLanguage.GetCurSel();
-#endif
-	if ((curSel != CB_ERR) && (curSel != (int)lang))
-	{
-		appState->GetResourceMap().SetGameLanguage((LangSyntax)curSel);
-
-		if (IDYES == AfxMessageBox("You've changed the default script language of the game. You can convert scripts one-by-one, or all at once right now. Do you want to try to convert all the scripts and headers now?", MB_YESNO | MB_ICONINFORMATION))
-		{
-			if (IDYES == AfxMessageBox("SCI Companion will convert all .sh and .sc files in the src directory, and all .shp and .shm files in the poly and msg directories. This may take several minutes.\nThe old code will be backed up to the convert-bak directory. Go ahead with this?", MB_YESNO | MB_ICONWARNING))
-			{
-				// Mainly intended to convert to Sierra syntax, so warn one more time if we're converting to Studio syntax.
-				if ((lang != LangSyntaxSCI) || (IDYES == AfxMessageBox("Converting back to SCI Studio syntax is not a well-tested scenario. Continue anyway?", MB_YESNO | MB_ICONWARNING)))
-				{
-					CompileLog log;
-					ConvertGame(appState->GetResourceMap(), (LangSyntax)curSel, log);
-					appState->OutputResults(OutputPaneType::Compile, log.Results());
-				}
-			}
-		}
-	}
-	*/
 	appState->GetResourceMap().Helper().SetCodepage(m_wndComboLanguage.GetCurSel() == 1 ? 1252 : 437);
 
 	bool unditherEGA = m_wndCheckUnditherEGA.GetCheck() == BST_CHECKED;
