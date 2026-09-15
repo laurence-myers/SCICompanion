@@ -101,6 +101,7 @@
     <ClCompile Include="TestIntegrationHarness.cpp" />
     <ClCompile Include="TestPostBuildThreadIntegration.cpp" />
     <ClCompile Include="TestPMachine.cpp" />
+    <ClCompile Include="TestBackgroundSchedulerIntegration.cpp" />
     <ClCompile Include="DecompileHelper.cpp" />
     <ClCompile Include="OracleHelper.cpp" />
     <ClCompile Include="AstPassHelper.cpp" />

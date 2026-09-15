@@ -13,6 +13,7 @@
 ***************************************************************************/
 #pragma once
 
+#include <atomic>
 #include <deque>
 
 class ITaskStatus
@@ -139,34 +140,44 @@ private:
 				std::function<std::unique_ptr<_TResponse>(ITaskStatus&, _TPayload&)> func = _queue.front().func;
 				int id = _queue.front().id;
 				_queue.pop_front();
-				// But we'll unlock it while we do our heavy work.
-				_mutex.unlock();
+				// But we'll unlock it while we do our heavy work. Unlock through the
+				// unique_lock so its ownership state stays consistent.
+				lock.unlock();
 
 				if (payload)
 				{
-					std::unique_ptr<_TResponse> response = func(*this, *payload);
-					// If the owner wanted a response, send it now.
-					if (response)
+					try
 					{
-						HWND hwnd;
-						UINT msg;
+						std::unique_ptr<_TResponse> response = func(*this, *payload);
+						// If the owner wanted a response, send it now.
+						if (response)
 						{
-							std::lock_guard<std::mutex> lock(_mutexResponse);
-							hwnd = _hwndResponse;
-							msg = _msgResponse;
-							if (_hwndResponse)
+							HWND hwnd;
+							UINT msg;
 							{
-								_responseQueue.emplace_back(id, std::move(response));
+								std::lock_guard<std::mutex> lock(_mutexResponse);
+								hwnd = _hwndResponse;
+								msg = _msgResponse;
+								if (_hwndResponse)
+								{
+									_responseQueue.emplace_back(id, std::move(response));
+								}
+							}
+							if (hwnd)
+							{
+								PostMessage(hwnd, msg, 0, 0);
 							}
 						}
-						if (hwnd)
-						{
-							PostMessage(hwnd, msg, 0, 0);
-						}
+					}
+					catch (...)
+					{
+						// A task -- or handling its response -- must not take down the
+						// worker thread: an exception escaping here would propagate out
+						// of the thread function, an unconditional std::terminate.
 					}
 				}
-				// Now lock it again before we loop
-				_mutex.lock();
+				// No re-lock needed: the lock is already released, and the next
+				// iteration's unique_lock reacquires _mutex fresh.
 			}
 		}
 	}
@@ -176,7 +187,10 @@ private:
 	// REVIEW: these were auto reset...
 	std::condition_variable _conditionWakeUp;
 
-	bool _exit;
+	// Atomic so the worker loop can test it without holding _mutex (the loop
+	// condition below reads it outside the lock). It is still written under
+	// _mutex in Exit(), so the check-then-set there stays a unit.
+	std::atomic<bool> _exit;
 
 	struct TaskInfo
 	{
