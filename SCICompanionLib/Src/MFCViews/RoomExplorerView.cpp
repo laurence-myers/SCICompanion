@@ -274,6 +274,11 @@ CRoomExplorerWorkResult *CRoomExplorerWorkResult::CreateFromWorkItem(CRoomExplor
 	if (pWorkItem->blob.GetType() == ResourceType::Pic)
 	{
 		unique_ptr<ResourceEntity> picEntity = CreateResourceFromResourceData(pWorkItem->blob);
+		if (!picEntity)
+		{
+			// A corrupt pic resource fails to parse; do not dereference null.
+			return nullptr;
+		}
 		PicComponent &pic = picEntity->GetComponent<PicComponent>();
 		PaletteComponent *palette = picEntity->TryGetComponent<PaletteComponent>();
 		PicDrawManager pdm(&pic, palette);
