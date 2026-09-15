@@ -20,8 +20,13 @@
 #include "ResourceContainer.h"
 #include "RasterOperations.h"
 #include "Vocab000.h"
+#include "Audio.h"
+#include "PaletteOperations.h"
 #include "Stream.h"
+#include "sci.h"
 #include "format.h"
+#include <fstream>
+#include <filesystem>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -149,6 +154,55 @@ namespace UnitTests
             }
             Assert::AreEqual((size_t)(MAX_PATH - 1), words[0].length(),
                 L"the overlong first word must be truncated to the buffer size");
+        }
+
+        // A DPCM audio resource whose declared size is far larger than the bytes
+        // present. Before the fix the loader doubled the declared size and decoded
+        // to it, allocating and filling megabytes from a few input bytes. The
+        // decoded size must be bounded by the input actually present.
+        TEST_METHOD(AudioDpcmSizeBoundedToInput)
+        {
+            AudioHeader hdr = {};
+            hdr.resourceType = 0;
+            hdr.headerSize = (uint8_t)(sizeof(AudioHeader) - 2); // seekg lands right after the header
+            hdr.audioType = 0;
+            hdr.sampleRate = 11025;
+            hdr.flags = AudioFlags::DPCM;         // 8-bit DPCM path
+            hdr.sizeExcludingHeader = 0x00100000; // 1 MB, far larger than the payload below
+            std::vector<uint8_t> buf(sizeof(AudioHeader) + 4, 0); // only 4 payload bytes
+            memcpy(buf.data(), &hdr, sizeof(AudioHeader));
+
+            std::unique_ptr<ResourceEntity> res(CreateAudioResource(sciVersion1_1));
+            sci::istream stream(buf.data(), (uint32_t)buf.size());
+            res->ReadFrom(stream, {});
+
+            AudioComponent &audio = res->GetComponent<AudioComponent>();
+            Assert::IsTrue(audio.DigitalSamplePCM.size() <= (size_t)(2 * 4),
+                L"DPCM output must be bounded by the bytes actually present, not the declared size");
+        }
+
+        // A JASC .pal declaring far more colors than the 256-entry palette. Before
+        // the fix the loader wrote every declared color, running past Colors[256].
+        // The count must be bounded to the palette size.
+        TEST_METHOD(LoadPalJascHugeCountBounded)
+        {
+            std::string dir = GetRandomTempFolder();
+            std::error_code ec;
+            std::filesystem::create_directories(dir, ec);
+            std::string path = dir + "\\huge.pal";
+            {
+                std::ofstream f(path.c_str(), std::ios::binary | std::ios::trunc);
+                f << "JASC-PAL\n0100\n99999\n0 0 0\n";
+            }
+
+            PaletteComponent palette;
+            LoadPALFile(path, palette, 0); // before the fix this wrote ~99999 entries past Colors[256]
+
+            std::error_code ec2;
+            std::filesystem::remove(path, ec2);
+
+            // Reaching here without corruption means the count was bounded.
+            Assert::AreEqual((uint8_t)0, palette.Colors[0].rgbRed);
         }
 
         TEST_METHOD(TestViewMirror)

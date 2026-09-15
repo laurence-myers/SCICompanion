@@ -1043,15 +1043,25 @@ std::vector<uint16_t> GlobalClassTable::GetSubclassesOf(uint16_t baseClass)
 		potentialChildChain.reserve(15);
 		CompiledObject *object = speciesObjectPair.second;
 		potentialChildChain.push_back(object->GetSpecies());
-		// Follow the chain up 
-		while (object->GetSuperClass() != 0xffff)
+		// Follow the chain up. Cap the walk at the number of known classes so a
+		// cyclic superclass chain can't loop forever.
+		size_t remainingSteps = _speciesToCompiledObjectWeak.size();
+		while ((object->GetSuperClass() != 0xffff) && (remainingSteps-- > 0))
 		{
 			if (object->GetSuperClass() == baseClass)
 			{
 				copy(potentialChildChain.begin(), potentialChildChain.end(), back_inserter(subclasses));
 				break;
 			}
-			object = _speciesToCompiledObjectWeak[object->GetSuperClass()];
+			// Don't use operator[]: for an unknown superclass species it would
+			// insert a null entry into the map we're iterating (then dereference
+			// it). Look it up, and stop the walk if the superclass isn't present.
+			auto itSuper = _speciesToCompiledObjectWeak.find(object->GetSuperClass());
+			if ((itSuper == _speciesToCompiledObjectWeak.end()) || (itSuper->second == nullptr))
+			{
+				break;
+			}
+			object = itSuper->second;
 			potentialChildChain.push_back(object->GetSpecies());
 		}
 	}
