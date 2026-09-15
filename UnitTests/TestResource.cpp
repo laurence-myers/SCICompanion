@@ -19,6 +19,8 @@
 #include "AppState.h"
 #include "ResourceContainer.h"
 #include "RasterOperations.h"
+#include "Vocab000.h"
+#include "Stream.h"
 #include "format.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -80,6 +82,73 @@ namespace UnitTests
             std::map<BlobKey, uint32_t> propertyBag;
             resource->WriteTo(blob, true, 0, propertyBag);
             Assert::IsTrue(blob.GetDataSize() > 0, L"VGA2 view failed to serialize");
+        }
+
+        // A vocab.900 word whose first byte is >= 0x80. The writer indexed the
+        // offset table with a signed char, so 0xE9 became a negative index and
+        // wrote before the stream buffer. Reading a crafted vocab.900, writing it
+        // back, and reading again must round-trip the word, and the offset slot
+        // for 0xE9 must point at the word data.
+        TEST_METHOD(Vocab900_HighByteWord_RoundTrip)
+        {
+            std::vector<uint8_t> buf(255 * 2, 0); // 510-byte offset table (255 slots x 2 bytes)
+            buf.push_back(0x00);                                         // copyCount
+            buf.push_back(0xE9); buf.push_back(0x62); buf.push_back(0x63); // the word bytes
+            buf.push_back(0x00);                                         // NUL terminator (is900)
+            buf.push_back(0x00); buf.push_back(0x00); buf.push_back(0x01); // group/class info -> group 1
+
+            SCIVersion v900 = sciVersion0;
+            v900.MainVocabResource = 900;
+            std::unique_ptr<ResourceEntity> p(CreateVocabResource(v900));
+            sci::istream in(buf.data(), (uint32_t)buf.size());
+            p->ReadFrom(in, {});
+
+            std::vector<std::string> &words = p->GetComponent<Vocab000>().GetWords();
+            Assert::AreEqual((size_t)1, words.size(), L"expected exactly one word");
+            char expected[] = { (char)0xE9, 'b', 'c', 0 };
+            Assert::AreEqual(std::string(expected), words[0], L"the 0xE9-initial word must be read");
+
+            sci::ostream out;
+            p->WriteToTest(out, false, 0); // before the fix, the offset patch wrote at a negative index
+            Assert::IsTrue(out.GetDataSize() >= 510, L"vocab.900 did not serialize");
+            const uint16_t *offs = (const uint16_t *)out.GetInternalPointer();
+            Assert::AreEqual((uint16_t)510, offs[0xE9],
+                L"the offset slot for a 0xE9-initial word must point at the word data");
+
+            sci::istream in2(out.GetInternalPointer(), out.GetDataSize());
+            std::unique_ptr<ResourceEntity> p2(CreateVocabResource(v900));
+            p2->ReadFrom(in2, {});
+            Assert::AreEqual(std::string(expected), p2->GetComponent<Vocab000>().GetWords()[0],
+                L"the 0xE9-initial word must survive a write/read round trip");
+        }
+
+        // An overlong/unterminated vocab.000 word. The reader used an
+        // uninitialised buffer and could exit the copy loop with no terminator,
+        // then build a std::string that reads past the buffer. The read must be
+        // bounded and terminated.
+        TEST_METHOD(Vocab000_OverlongWord_Bounded)
+        {
+            std::vector<uint8_t> buf(26 * 2, 0); // 52-byte offset table (26 letters x 2 bytes)
+            buf.push_back(0x00);                                     // copyCount for the first word
+            for (int i = 0; i < 600; i++)
+            {
+                buf.push_back((uint8_t)'a'); // no byte has 0x80 set, so the word never terminates
+            }
+
+            SCIVersion v000 = sciVersion0;
+            v000.MainVocabResource = 0;
+            std::unique_ptr<ResourceEntity> p(CreateVocabResource(v000));
+            sci::istream in(buf.data(), (uint32_t)buf.size());
+            p->ReadFrom(in, {}); // before the fix: uninitialised buffer + missing terminator -> over-read
+
+            std::vector<std::string> &words = p->GetComponent<Vocab000>().GetWords();
+            Assert::IsTrue(!words.empty(), L"expected at least one word");
+            for (const std::string &w : words)
+            {
+                Assert::IsTrue(w.length() < (size_t)MAX_PATH, L"a word overran the buffer");
+            }
+            Assert::AreEqual((size_t)(MAX_PATH - 1), words[0].length(),
+                L"the overlong first word must be truncated to the buffer size");
         }
 
         TEST_METHOD(TestViewMirror)
