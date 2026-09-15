@@ -34,3 +34,26 @@ private:
 };
 
 std::shared_ptr<PostBuildThread> CreatePostBuildThread(const std::string &gameFolder);
+
+struct PostBuildRunResult
+{
+	bool launched = false;
+	bool aborted = false;
+};
+
+// Runs a child process and streams its stdout/stderr to a sink. applicationName
+// and commandLine map to CreateProcess's lpApplicationName / lpCommandLine; an
+// empty string means nullptr. The parent copy of the pipe write end is closed
+// before the read loop -- without that close the final ReadFile never sees EOF
+// and the worker thread hangs forever (issue #48). onStart runs once after the
+// child launches; onOutput runs for each chunk of output read. hAbort may be
+// null; if it is signalled, the result reports aborted. Extracted from
+// PostBuildThread::_Main so the pipe/process plumbing can be driven by a test
+// with a benign child, away from the MFC UI.
+PostBuildRunResult RunPostBuildProcess(
+	const std::string &applicationName,
+	const std::string &commandLine,
+	const std::string &workingDir,
+	HANDLE hAbort,
+	const std::function<void()> &onStart,
+	const std::function<void(const std::string &)> &onOutput);

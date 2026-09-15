@@ -63,26 +63,147 @@ void PostBuildThread::_Start(std::shared_ptr<PostBuildThread> myself)
 		catch (std::system_error)
 		{
 			_hwndUI = nullptr;
-			CloseHandle(_hAbort.hFile);
+			// Close() invalidates the handle, so the ScopedHandle destructor does
+			// not close it a second time. A bare CloseHandle(_hAbort.hFile) here
+			// would leave the stale value for the destructor to re-close.
+			_hAbort.Close();
 			_myself = nullptr;
 		}
 	}
 }
 
 
-void _GetStuff(HANDLE handle, HWND hwndUI)
+static void _DrainPipeChunk(HANDLE handle, const std::function<void(const std::string &)> &onOutput)
 {
 	DWORD cbRead;
 	char buffer[1024];
 
-	// REVIEW: I'm pretty sure thing just hangs if no data.
-	if (ReadFile(handle, buffer, sizeof(buffer) - 1, &cbRead, nullptr) && (cbRead != 0))
+	// A blocking read on the pipe. It returns the next chunk, or zero bytes at
+	// end-of-file once every write handle is closed -- including the parent copy
+	// of the write end, which RunPostBuildProcess closes before this loop runs.
+	if (ReadFile(handle, buffer, sizeof(buffer), &cbRead, nullptr) && (cbRead != 0))
 	{
-		// Got something
-		buffer[cbRead] = 0; // Ensure null terminated.
+		if (onOutput)
+		{
+			onOutput(std::string(buffer, cbRead));
+		}
+	}
+}
+
+PostBuildRunResult RunPostBuildProcess(
+	const std::string &applicationName,
+	const std::string &commandLine,
+	const std::string &workingDir,
+	HANDLE hAbort,
+	const std::function<void()> &onStart,
+	const std::function<void(const std::string &)> &onOutput)
+{
+	PostBuildRunResult result;
+
+	SECURITY_ATTRIBUTES saAttr = {};
+	saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
+	saAttr.bInheritHandle = TRUE;   // the child inherits the write end
+	saAttr.lpSecurityDescriptor = nullptr;
+
+	ScopedHandle childOutRead;
+	ScopedHandle childOutWrite;
+	if (!CreatePipe(&childOutRead.hFile, &childOutWrite.hFile, &saAttr, 0))
+	{
+		return result;
+	}
+
+	// The parent read end must not be inherited by the child.
+	SetHandleInformation(childOutRead.hFile, HANDLE_FLAG_INHERIT, 0);
+
+	PROCESS_INFORMATION procInfo = {};
+	STARTUPINFO startInfo = {};
+	startInfo.cb = sizeof(startInfo);
+	startInfo.hStdError = childOutWrite.hFile;
+	startInfo.hStdOutput = childOutWrite.hFile;
+	startInfo.hStdInput = nullptr;
+	startInfo.dwFlags |= STARTF_USESTDHANDLES;
+	startInfo.wShowWindow = SW_HIDE;
+	startInfo.dwFlags |= STARTF_USESHOWWINDOW;
+
+	// CreateProcess may write to the lpCommandLine buffer, so give it a mutable one.
+	std::string mutableCmd = commandLine;
+	if (CreateProcess(
+		applicationName.empty() ? nullptr : applicationName.c_str(),
+		mutableCmd.empty() ? nullptr : &mutableCmd[0],
+		nullptr,	// process security attributes
+		nullptr,	// primary thread security attributes
+		TRUE,	   // inherit handles
+		0,		  // creation flags
+		nullptr,	// use the parent's environment
+		workingDir.empty() ? nullptr : workingDir.c_str(),
+		&startInfo,
+		&procInfo))
+	{
+		result.launched = true;
+
+		// Own the process and thread handles here so any throw from a sink
+		// callback below cannot leak them or orphan the child.
+		ScopedHandle hProcess;
+		ScopedHandle hThread;
+		hProcess.hFile = procInfo.hProcess;
+		hThread.hFile = procInfo.hThread;
+
+		// Close the parent copy of the write end BEFORE the read loop. A blocking
+		// ReadFile reports EOF only when every write handle is closed. The child
+		// closes its inherited copy when it exits, but while the parent keeps this
+		// copy open the final ReadFile never sees EOF and the worker hangs. This
+		// close is the fix for issue #48.
+		childOutWrite.Close();
+
+		if (onStart)
+		{
+			onStart();
+		}
+
+		DWORD waitResult;
+		HANDLE waitHandles[2] = { hProcess.hFile, hAbort };
+		DWORD handleCount = (hAbort != nullptr) ? 2 : 1;
+		// Loop, reading child output and checking for process exit or abort.
+		do
+		{
+			_DrainPipeChunk(childOutRead.hFile, onOutput);
+			waitResult = WaitForMultipleObjects(handleCount, waitHandles, FALSE, 0);
+		} while (waitResult == WAIT_TIMEOUT);
+		// Drain any final output now that the child has exited.
+		_DrainPipeChunk(childOutRead.hFile, onOutput);
+
+		result.aborted = (hAbort != nullptr) && (waitResult == (WAIT_OBJECT_0 + 1));
+	}
+
+	return result;
+}
+
+void PostBuildThread::_Main()
+{
+	// Own a reference to ourselves during the lifetime of this method.
+	shared_ptr<PostBuildThread> myself = _myself;
+	_myself.reset();
+
+	const HWND hwndUI = _hwndUI;
+	const std::string cmdPath = GetPostBuildFilename(_gameFolder);
+
+	// Report the start once the child launches.
+	auto onStart = [hwndUI, cmdPath]()
+	{
 		if (hwndUI)
 		{
-			std::vector<std::string> lines = split(buffer, '\n');
+			unique_ptr<vector<CompileResult>> results = make_unique<vector<CompileResult>>();
+			results->push_back(CompileResult("Running " + cmdPath));
+			SendMessage(hwndUI, UWM_RESULTS, (WPARAM)OutputPaneType::Compile, reinterpret_cast<LPARAM>(results.release()));
+		}
+	};
+
+	// Forward each chunk of child output to the compile pane, one line per entry.
+	auto onOutput = [hwndUI](const std::string &chunk)
+	{
+		if (hwndUI)
+		{
+			std::vector<std::string> lines = split(chunk, '\n');
 			unique_ptr<vector<CompileResult>> results = make_unique<vector<CompileResult>>();
 			for (const std::string &line : lines)
 			{
@@ -90,80 +211,14 @@ void _GetStuff(HANDLE handle, HWND hwndUI)
 			}
 			SendMessage(hwndUI, UWM_RESULTS, (WPARAM)OutputPaneType::Compile, reinterpret_cast<LPARAM>(results.release()));
 		}
-	}
-}
+	};
 
-void PostBuildThread::_Main()
-{
-	// Own a reference to ourselves during the lifetime of this method
-	shared_ptr<PostBuildThread> myself = _myself;
-	_myself.reset();
+	PostBuildRunResult result = RunPostBuildProcess(cmdPath, "", _gameFolder, _hAbort.hFile, onStart, onOutput);
 
-	SECURITY_ATTRIBUTES saAttr = {};
-	saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
-	saAttr.bInheritHandle = TRUE;   // Inherit handles
-	saAttr.lpSecurityDescriptor = nullptr;
-
-	ScopedHandle childOutRead;
-	ScopedHandle childOutWrite;
-	if (CreatePipe(&childOutRead.hFile, &childOutWrite.hFile, &saAttr, 0))
+	if (hwndUI && result.launched)
 	{
-		// Each this is not inherited:
-		SetHandleInformation(childOutRead.hFile, HANDLE_FLAG_INHERIT, 0);
-
-		PROCESS_INFORMATION procInfo = {};
-		STARTUPINFO startInfo = {};
-
-		startInfo.cb = sizeof(startInfo);
-		startInfo.hStdError = childOutWrite.hFile;
-		startInfo.hStdOutput = childOutWrite.hFile;
-		startInfo.hStdInput = nullptr; // Is it ok that we're not writing this? We don't care about stdin.
-		startInfo.dwFlags |= STARTF_USESTDHANDLES;
-
-		startInfo.wShowWindow = SW_HIDE;
-		startInfo.dwFlags |= STARTF_USESHOWWINDOW;
-
-		if (CreateProcess(
-			GetPostBuildFilename(_gameFolder).c_str(),
-			nullptr,	// cmd line
-			nullptr,	// process sec attributes,
-			nullptr,	// primary thread security attributes,
-			TRUE,	   // inherit handles
-			0,		  // creation flags,
-			nullptr,	// use parent's environment
-			_gameFolder.c_str(),	// current directory (not set on bg thread, so need to specify?)
-			&startInfo,
-			&procInfo)
-			)
-		{
-			if (_hwndUI)
-			{
-				unique_ptr<vector<CompileResult>> results = make_unique<vector<CompileResult>>();
-				results->push_back(CompileResult("Running " + GetPostBuildFilename(_gameFolder)));
-				SendMessage(_hwndUI, UWM_RESULTS, (WPARAM)OutputPaneType::Compile, reinterpret_cast<LPARAM>(results.release()));
-			}
-			DWORD waitResult;
-			HANDLE waitHandles[2] = { procInfo.hProcess, _hAbort.hFile };
-			// Go into a loop, checking for termination of the process or "abort", and reading from its standard out.
-			do
-			{
-				_GetStuff(childOutRead.hFile, _hwndUI);
-				waitResult = WaitForMultipleObjects(ARRAYSIZE(waitHandles), waitHandles, FALSE, 0);
-			} while (waitResult == WAIT_TIMEOUT);
-			// Any final stuff...
-			_GetStuff(childOutRead.hFile, _hwndUI);
-
-			bool wasAborted = (waitResult == (WAIT_OBJECT_0 + 1));
-
-			if (_hwndUI)
-			{
-				unique_ptr<vector<CompileResult>> results = make_unique<vector<CompileResult>>();
-				results->push_back(CompileResult(wasAborted ? "Aborted" : "Completed " + GetPostBuildFilename(_gameFolder)));
-				SendMessage(_hwndUI, UWM_RESULTS, (WPARAM)OutputPaneType::Compile, reinterpret_cast<LPARAM>(results.release()));
-			}
-
-			CloseHandle(procInfo.hProcess);
-			CloseHandle(procInfo.hThread);
-		}
+		unique_ptr<vector<CompileResult>> results = make_unique<vector<CompileResult>>();
+		results->push_back(CompileResult(result.aborted ? "Aborted" : "Completed " + cmdPath));
+		SendMessage(hwndUI, UWM_RESULTS, (WPARAM)OutputPaneType::Compile, reinterpret_cast<LPARAM>(results.release()));
 	}
 }
