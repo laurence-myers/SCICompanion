@@ -151,13 +151,20 @@ jobs:
       run: |
         # An ASan-instrumented DLL needs the dynamic ASan runtime
         # (clang_rt.asan_dynamic-i386.dll) at load time -- a DLL target uses the
-        # dynamic runtime even with /MT. Put the toolset bin that ships it on PATH
-        # so the test host can load UnitTests.dll.
+        # dynamic runtime even with /MT. The vstest test host does not reliably
+        # search PATH for a native dependency, so copy the runtime next to
+        # UnitTests.dll (a test DLL's own directory is searched for its
+        # dependencies). Keep it on PATH too, and best-effort copy it to System32
+        # (which is always searched) as a fallback.
         $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
         $vc = & $vswhere -latest -products '*' -property installationPath
-        $asan = Get-ChildItem "$vc\VC\Tools\MSVC\*\bin\Hostx86\x86\clang_rt.asan_dynamic-i386.dll" | Select-Object -First 1
+        $asan = Get-ChildItem "$vc\VC\Tools\MSVC\*\bin\Host*\x86\clang_rt.asan_dynamic-i386.dll" | Select-Object -First 1
         if (-not $asan) { throw "ASan runtime DLL not found." }
+        Write-Host "ASan runtime: $($asan.FullName)"
+        Copy-Item $asan.FullName "Release" -Force
         $env:PATH = "$($asan.Directory.FullName);$env:PATH"
+        try { Copy-Item $asan.FullName "$env:SystemRoot\System32" -Force -ErrorAction Stop }
+        catch { Write-Host "Could not copy ASan runtime to System32 (continuing): $_" }
         .\UnitTests\RunTests.ps1 -Configuration Release
 
     - name: Upload ASan Test Results
