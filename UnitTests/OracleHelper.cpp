@@ -203,6 +203,24 @@ OracleResult RunIdempotenceOracle()
     return result;
 }
 
+// Remove carriage returns so the comparison is line-ending agnostic. The
+// committed goldens are stored as LF but git (core.autocrlf) checks them out as
+// CRLF on Windows, while the actuals are written as LF; without this every file
+// would appear to differ. (The text snapshot test dodges this via Normalize.)
+static std::string StripCR(const std::string &s)
+{
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s)
+    {
+        if (c != '\r')
+        {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
 static void CompareOneSnapshot(const std::string &name, const std::string &actual,
     const std::string &expectedDir, const std::string &actualDir, BytecodeSnapshotResult &result)
 {
@@ -212,7 +230,7 @@ static void CompareOneSnapshot(const std::string &name, const std::string &actua
     {
         result.missingExpected.push_back(name);
     }
-    else if (expected != actual)
+    else if (StripCR(expected) != StripCR(actual))
     {
         result.mismatched.push_back(name);
     }
