@@ -180,6 +180,50 @@ namespace UnitTests
             }
         }
 
+        // A foreach nested inside another foreach must lower BOTH loops. The
+        // regression: the outer loop's lowering moved its body (with the inner
+        // foreach) into FinalCode, which the lowering traversal never visited,
+        // so the inner loop was dropped and emitted nothing.
+        TEST_METHOD(NestedForEach_LowersBothLoops)
+        {
+            _gameFolder = SetUpGameSCI11();
+
+            std::string source = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(local\n\t[arr1 5]\n\t[arr2 3]\n\tsum\n)\n"
+                "(procedure (kTest)\n"
+                "\t(= sum 0)\n"
+                "\t(foreach a arr1\n"
+                "\t\t(foreach b arr2\n"
+                "\t\t\t(= sum (+ sum b))\n"
+                "\t\t)\n"
+                "\t)\n"
+                "\t(return sum)\n"
+                ")\n";
+
+            std::string error;
+            Assert::IsTrue(CompileSource(902, "kTest", source, error),
+                W("nested foreach did not compile: " + error).c_str());
+
+            DecompileOutput decompiled = DecompileToText(902);
+            Assert::AreEqual(0, decompiled.fallbacks, L"nested foreach fell back to assembly");
+            Assert::IsFalse(decompiled.ContainsAsm(), L"nested foreach produced an assembly block");
+            Assert::IsTrue(decompiled.text.find("foreach") == npos,
+                L"foreach survived into the decompiled output (it is not a real opcode)");
+
+            // Both foreachs must lower to a loop. The decompiler renders these
+            // array-bounded loops as (while ...). Before the fix the inner loop
+            // is dropped and only the outer loop is emitted (one while).
+            size_t loops = 0;
+            for (size_t p = decompiled.text.find("(while"); p != npos; p = decompiled.text.find("(while", p + 1))
+            {
+                loops++;
+            }
+            Assert::IsTrue(loops >= 2,
+                W(fmt::format("expected two nested loops, found {0} (while) construct(s):\n{1}",
+                    loops, decompiled.text)).c_str());
+        }
+
         // foreach over an array must compile to an ordinary loop over standard
         // opcodes, with no assembly fallback and no trace of the keyword.
         TEST_METHOD(ForEach_LowersToStandardLoop)
