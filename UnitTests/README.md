@@ -13,10 +13,11 @@ MSBuild.exe SCICompanion.sln -m -p:Configuration=Release -p:Platform=Win32
 ```
 
 `RunTests.ps1` finds `vstest.console.exe` with `vswhere`, runs the DLL, and
-writes `TestResults\UnitTests.trx`. By default it runs the decompiler suites
-(`TestDecompile` and `TestAstPasses`) plus the pic-draw tests (`TestPics`).
-Pass `-All` to run every test. Pass `-UpdateSnapshots` to accept a deliberate
-change in decompiler output (see Snapshots below).
+writes `TestResults\UnitTests.trx`. By default it runs the whole suite, so CI
+cannot silently skip a test. Pass `-Filter "FullyQualifiedName~..."` to run a
+subset locally; `-All` is kept as an explicit "everything" override. Pass
+`-UpdateSnapshots` to accept a deliberate change in decompiler output (see
+Snapshots below).
 
 The test DLL and its data land in the build's output folder (`Release`, or
 `Debug`) next to `SCICompanion.exe`. The app post-build copies the template
@@ -243,8 +244,7 @@ equality with its `(> argc N)` expansion. These run in the default filter.
 ## Other tests
 
 `TestCompile`, `TestClassBrowser`, `TestResource*`, `TestPolygonLoad`,
-`TestPicDraw`, and `TestAllGamesLoad` predate this work. The pic-draw tests
-(`TestPics`, `TestPicsSaveReload`) now run by default. The others are still
-skipped by the default `RunTests.ps1` run because some fail for reasons
-unrelated to the decompiler (an SCI0 compile exception); pass `-All` to
-include them.
+`TestPicDraw`, and `TestAllGamesLoad` predate this work. All of them now run by
+default; the earlier SCI0 compile exception no longer reproduces (the full
+suite is green). `TestAllGamesLoad` still needs a local game library and passes
+vacuously ("Found no games") when it is absent.
