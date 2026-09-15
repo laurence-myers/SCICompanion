@@ -62,6 +62,9 @@
     <ClCompile Include="TestBackgroundSchedulerIntegration.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestQueueItemsIntegration.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestCodec.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
