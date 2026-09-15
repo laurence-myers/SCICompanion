@@ -555,6 +555,11 @@ void WriteLoopTo(const ResourceEntity &resource, sci::ostream &byteStream, const
 		// We need to recalc this each time (Based on iIndex), since the pData
 		// in the serializer can change (be re-alloced).
 		uint16_t *pOffsets = (uint16_t*)(byteStream.GetInternalPointer() + wOffsets);
+		// Cel offsets are stored 16-bit; reject rather than silently truncate.
+		if (byteStream.tellp() > 0xffff)
+		{
+			throw std::exception("View resource is too large");
+		}
 		pOffsets[i] = ((uint16_t)(byteStream.tellp()));
 		WriteCelTo(resource, byteStream, loop.Cels[i], isVGA);
 	}
@@ -755,7 +760,15 @@ void ReadCelFromVGA11(sci::istream &byteStream, Cel &cel, bool isPic)
 		FlipImageData(&cel.Data[0], celHeader.size.cx, celHeader.size.cy, celHeader.size.cx);
 */
 		sci::istream stream(byteStream, celHeader.offsetLiteral);
-		cel.Data.allocate(max(1, CX_ACTUAL(celHeader.size.cx) * celHeader.size.cy));
+		// The raw (magnifier) path trusts two 16-bit dimensions. Compute the size
+		// in size_t and reject unreasonable ones; otherwise CX_ACTUAL(cx)*cy
+		// overflows int to a tiny buffer that the row loop below then overruns.
+		size_t rawDataSize = (size_t)CX_ACTUAL(celHeader.size.cx) * (size_t)celHeader.size.cy;
+		if (rawDataSize > ReasonableLimit)
+		{
+			throw std::exception("Corrupt raster resource.");
+		}
+		cel.Data.allocate(max(1, rawDataSize));
 		for (int y = cel.size.cy - 1; y >= 0; y--)
 		{
 			int pos = y * CX_ACTUAL(cel.size.cx);
@@ -1139,6 +1152,11 @@ void ViewWriteTo(const ResourceEntity &resource, sci::ostream &byteStream, bool 
 			// Set the offset:
 			// (Recalc this each time, since byteStream.pData can change)
 			uint16_t *pOffsets = (uint16_t*)(byteStream.GetInternalPointer() + wOffsets);
+			// Loop offsets are stored 16-bit; reject rather than silently truncate.
+			if (byteStream.tellp() > 0xffff)
+			{
+				throw std::exception("View resource is too large");
+			}
 			pOffsets[i] = ((uint16_t)(byteStream.tellp()));
 
 			// Check if this is a mirrored loop, and if so, ignore it (write the same offset as

@@ -925,7 +925,15 @@ void ReadPicCelFromVGA2(sci::istream &byteStream, Cel &cel, int16_t &priority, b
 	byteStream.seekg(celHeader.controlOffset);
 	if ((celHeader.colorOffset == 0) || (celHeader.compressed == 0))
 	{
-		size_t dataSize = celHeader.size.cx * celHeader.size.cy; // Not sure if padding happens?
+		// Compute in size_t (the 16-bit dimensions overflow the int multiply) and
+		// reject an unreasonable size with a typed error instead of letting a huge
+		// allocation reach new[] as an uncontrolled bad_alloc. The bound is generous
+		// so real cels (including wide SCI2 pics) are unaffected.
+		size_t dataSize = (size_t)celHeader.size.cx * (size_t)celHeader.size.cy;
+		if (dataSize > (size_t)16 * 1024 * 1024)
+		{
+			throw std::exception("Corrupt raster resource.");
+		}
 		cel.Data.allocate(max(1, dataSize));
 		byteStream.read_data(&cel.Data[0], dataSize);
 		FlipImageData(&cel.Data[0], celHeader.size.cx, celHeader.size.cy, celHeader.size.cx);
