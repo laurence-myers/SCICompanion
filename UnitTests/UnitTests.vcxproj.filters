@@ -27,6 +27,9 @@
     <ClInclude Include="DecompileHelper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="OracleHelper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="AstPassHelper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -68,7 +71,13 @@
     <ClCompile Include="DecompileHelper.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="OracleHelper.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestDecompile.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestBytecodeOracle.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="AstPassHelper.cpp">

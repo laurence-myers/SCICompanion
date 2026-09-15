@@ -9,6 +9,14 @@
     Runs the whole suite by default, so CI (which invokes this script with no
     arguments) cannot silently skip a test. Pass -Filter "FullyQualifiedName~..."
     to run a subset locally; -All is kept as an explicit "everything" override.
+
+    Bytecode oracle env vars (read by TestBytecodeOracle.Oracle_ExistingGame,
+    which is skipped and green unless SCICOMP_ORACLE_GAME is set):
+      SCICOMP_ORACLE_GAME  absolute path to a game's resource.map folder (not a
+                           variant parent). The game is copied to a temp folder
+                           first, so the original is never modified. SCI0..SCI1.1
+                           games run the full round-trip oracle; SCI2+ games are
+                           checked for load/parse only.
 #>
 param(
     [string]$Configuration = "Release",
@@ -58,8 +66,10 @@ if ($Filter -and -not $All) {
 # the test DLL. Clear the last run's output first, so -UpdateSnapshots cannot
 # copy stale files from an earlier build.
 $actuals = Join-Path $repoRoot "$Configuration\SnapshotActuals\SCI1.1"
-if ($UpdateSnapshots -and (Test-Path $actuals)) {
-    Remove-Item -Recurse -Force $actuals
+$bytecodeActuals = Join-Path $repoRoot "$Configuration\SnapshotActuals\Bytecode\SCI1.1"
+if ($UpdateSnapshots) {
+    if (Test-Path $actuals) { Remove-Item -Recurse -Force $actuals }
+    if (Test-Path $bytecodeActuals) { Remove-Item -Recurse -Force $bytecodeActuals }
 }
 
 Write-Host "Running: $vstest $($vstestArgs -join ' ')"
@@ -84,6 +94,18 @@ if ($UpdateSnapshots) {
     New-Item -ItemType Directory -Force -Path $deployed | Out-Null
     Copy-Item -Path (Join-Path $actuals "*.sc") -Destination $deployed -Force
     Write-Host "Updated snapshots in $committed"
+
+    # The bytecode-snapshot test (emitted .scr/.hep hex). Only present when that
+    # test ran, so guard on the actuals existing.
+    if (Test-Path $bytecodeActuals) {
+        $committedBytecode = Join-Path $PSScriptRoot "Files\Decompile\Snapshots\Bytecode\SCI1.1"
+        New-Item -ItemType Directory -Force -Path $committedBytecode | Out-Null
+        Copy-Item -Path (Join-Path $bytecodeActuals "*.hex") -Destination $committedBytecode -Force
+        $deployedBytecode = Join-Path $repoRoot "$Configuration\TestFiles\Decompile\Snapshots\Bytecode\SCI1.1"
+        New-Item -ItemType Directory -Force -Path $deployedBytecode | Out-Null
+        Copy-Item -Path (Join-Path $bytecodeActuals "*.hex") -Destination $deployedBytecode -Force
+        Write-Host "Updated bytecode snapshots in $committedBytecode"
+    }
     exit 0
 }
 

@@ -69,6 +69,20 @@ std::string SetUpGame(const std::string &name)
     return gameFolder;
 }
 
+std::string SetUpExistingGameCopy(const std::string &absoluteGameFolder)
+{
+    std::string gameFolder = GetRandomTempFolder();
+    Assert::IsFalse(gameFolder.empty());
+
+    std::error_code ec;
+    std::filesystem::copy(absoluteGameFolder, gameFolder,
+        std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing, ec);
+    Assert::IsFalse(static_cast<bool>(ec), L"copying the game failed");
+
+    SetUpExistingGame(gameFolder);
+    return gameFolder;
+}
+
 void SetUpExistingGame(const std::string &gameFolder)
 {
     appState = new AppState(nullptr);
