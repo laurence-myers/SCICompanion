@@ -320,11 +320,7 @@ private:
 				lookupPointers.push_back(preEntry);
 			}
 			//assert(state.lookupTableIndex == 0);
-			// The loop stops either at the 0xff terminator or at ReasonableLimit. If we
-			// stopped without reading a terminator, the table is corrupt or truncated.
-			// (The old check "size() > ReasonableLimit" could never fire, because the
-			// loop condition already caps the size at ReasonableLimit.)
-			if (lookupPointers.empty() || (lookupPointers.back().bType != 0xff))
+			if (lookupPointers.size() > ReasonableLimit)
 			{
 				throw std::exception("Corrupt map lookup tables.");
 			}
