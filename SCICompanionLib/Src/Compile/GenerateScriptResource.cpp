@@ -226,14 +226,34 @@ vector<ExportTableInfo> GetExportTableOrder(CompileContext *contextOptional, con
 	vector<ExportTableInfo> table;
 	table.assign(maxSlot + 1, ExportTableInfo());
 
+	// In SCI0 the public objects' offsets are recorded classes-first, then
+	// instances (see _Section1And6_ClassesAndInstances / TrackPublicInstance),
+	// and _Section7_Exports_Part2 indexes that offset list by ReferenceIndex.
+	// So an object's ReferenceIndex must follow the same classes-then-instances
+	// order, not the interleaved source order in which classes and instances are
+	// declared -- otherwise a public instance declared before a public class
+	// ends up with the class's offset (and vice versa). (SCI1.1 resolves object
+	// exports by name in _Exports_SCI11 and overwrites this slot, so the object
+	// ReferenceIndex is not used to place the offset and this ordering does not
+	// matter there.)
+	int publicClassCount = 0;
+	for (const auto &theClass : script.GetClasses())
+	{
+		if (theClass->IsPublic() && !theClass->IsInstance())
+		{
+			publicClassCount++;
+		}
+	}
+
 	int classRefIndex = 0;
+	int instanceRefIndex = 0;
 	for (const auto &theClass : script.GetClasses())
 	{
 		if (theClass->IsPublic())
 		{
-			ExportTableInfo entry(ExportType::Object, classRefIndex, theClass.get(), theClass->GetName());
+			int referenceIndex = theClass->IsInstance() ? (publicClassCount + instanceRefIndex++) : classRefIndex++;
+			ExportTableInfo entry(ExportType::Object, referenceIndex, theClass.get(), theClass->GetName());
 			_AddToTable(table, entry, theClass->GetName(), nameToSlots, freeSlots);
-			classRefIndex++;
 		}
 	}
 

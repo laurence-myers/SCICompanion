@@ -19,6 +19,8 @@
 #include "CompileContext.h"
 #include "Helper.h"
 #include "AstPassHelper.h"
+#include "DecompileHelper.h"
+#include "CompiledScript.h"
 #include <fstream>
 #include <filesystem>
 
@@ -134,6 +136,64 @@ namespace UnitTests
                 L"The (define) from the non-header .sc include was dropped by MergeScripts.");
             Assert::IsFalse(hasErrors,
                 std::wstring(L"A script including a non-header .sc failed to compile:\n").append(errorText.begin(), errorText.end()).c_str());
+        }
+
+        // A public instance declared before a public class. The SCI0 compiler
+        // numbered public objects in source order but recorded their offsets
+        // classes-first-then-instances, so the export offsets came out swapped
+        // (export 0 resolved to PubClass instead of pubInst). After the fix each
+        // export resolves to its own object.
+        TEST_METHOD(SCI0_PublicInstanceBeforePublicClass_ExportOrder)
+        {
+            _gameFolder = SetUpGameSCI0();
+
+            const uint16_t scriptNumber = 700;
+            const std::string name = "PubOrder";
+            const char *src =
+                "(script# 700)\n"
+                "(include sci.sh)\n"
+                "(include game.sh)\n"
+                "(use main)\n"
+                "(use obj)\n"
+                "(public\n"
+                "    pubInst 0\n"
+                "    PubClass 1\n"
+                ")\n"
+                "(instance pubInst of Obj\n"
+                "    (properties)\n"
+                ")\n"
+                "(class PubClass of Obj\n"
+                "    (properties)\n"
+                ")\n";
+
+            CResourceMap &rm = appState->GetResourceMap();
+            std::string path = rm.Helper().GetScriptFileName(name);
+            {
+                std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
+                file << src;
+            }
+
+            std::string error;
+            bool compiledOk = CompileFixture(scriptNumber, name, &error);
+            Assert::IsTrue(compiledOk, std::wstring(error.begin(), error.end()).c_str());
+
+            CompiledScript compiledScript(scriptNumber);
+            Assert::IsTrue(compiledScript.Load(rm.Helper(), rm.Helper().Version, scriptNumber),
+                L"compiled script failed to load");
+
+            std::vector<uint16_t> exports = compiledScript.GetExports();
+            Assert::IsTrue(exports.size() >= 2, L"expected at least two exports");
+
+            CompiledObject *export0 = compiledScript.GetObjectForExport(exports[0]);
+            CompiledObject *export1 = compiledScript.GetObjectForExport(exports[1]);
+            Assert::IsNotNull(export0, L"export 0 did not resolve to an object");
+            Assert::IsNotNull(export1, L"export 1 did not resolve to an object");
+
+            // Core assertion: export 0 must be pubInst, not the class.
+            Assert::AreEqual(std::string("pubInst"), export0->GetName(), L"export 0 must resolve to pubInst");
+            Assert::IsTrue(export0->IsInstance(), L"export 0 must be the instance");
+            Assert::AreEqual(std::string("PubClass"), export1->GetName(), L"export 1 must resolve to PubClass");
+            Assert::IsFalse(export1->IsInstance(), L"export 1 must be the class");
         }
 
         void _DoItHelper()
