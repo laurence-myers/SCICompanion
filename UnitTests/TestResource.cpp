@@ -18,6 +18,8 @@
 #include "ResourceMap.h"
 #include "AppState.h"
 #include "ResourceContainer.h"
+#include "ResourceBlob.h"
+#include "GameFolderHelper.h"
 #include "RasterOperations.h"
 #include "Vocab000.h"
 #include "Audio.h"
@@ -203,6 +205,164 @@ namespace UnitTests
 
             // Reaching here without corruption means the count was bounded.
             Assert::AreEqual((uint8_t)0, palette.Colors[0].rgbRed);
+        }
+
+        // A stand-alone patch file that is too short to hold the header gap plus
+        // the leading type word. Before the fix, CreateFromHandle subtracted the
+        // gap (and the word) from the file size with unsigned arithmetic, wrapped
+        // around, and stored a ~4 GB cbDecompressed. That size then drove a huge
+        // allocation / decode (a bad_alloc, not a typed error). The load must fail
+        // cleanly instead.
+        TEST_METHOD(PatchFileTooShort_GivesTypedErrorNotBadAlloc)
+        {
+            std::string dir = GetRandomTempFolder();
+            std::error_code ec;
+            std::filesystem::create_directories(dir, ec);
+            std::string path = dir + "\\view.v56";
+            {
+                // Two bytes only: low byte 0x81 (0x80 | type), high byte 0x28 (40),
+                // so GetResourceOffsetInFile reports a 40-byte gap that the 2-byte
+                // file cannot possibly contain.
+                std::ofstream f(path.c_str(), std::ios::binary | std::ios::trunc);
+                uint8_t bytes[2] = { 0x81, 0x28 };
+                f.write(reinterpret_cast<const char *>(bytes), sizeof(bytes));
+            }
+
+            HRESULT hr = E_UNEXPECTED;
+            try
+            {
+                ResourceBlob blob;
+                hr = blob.CreateFromFile(nullptr, path, sciVersion1_1, ResourceSaveLocation::Package, -1, -1);
+            }
+            catch (const std::bad_alloc &)
+            {
+                std::error_code ec3;
+                std::filesystem::remove(path, ec3);
+                Assert::Fail(L"a truncated patch file caused a huge allocation instead of a typed failure");
+            }
+
+            std::error_code ec2;
+            std::filesystem::remove(path, ec2);
+            Assert::IsTrue(FAILED(hr),
+                L"a truncated patch file must fail cleanly rather than parse a bogus huge size");
+        }
+
+        // Narrowing a resource header from the agnostic form must reject a
+        // compressed size that overflows the on-disk field. Before the fix the
+        // overflow check tested the (still-zero) destination member instead of the
+        // computed value, so the check never fired and the size was silently
+        // truncated. With the fix the oversize value throws.
+        TEST_METHOD(FromAgnostic_CompressedSizeOverflow_Throws)
+        {
+            ResourceHeaderAgnostic agnostic;
+            agnostic.Type = ResourceType::View;
+            agnostic.Number = 0;
+            agnostic.PackageHint = 0;
+            agnostic.CompressionMethod = 0;
+            agnostic.SourceFlags = ResourceSourceFlags::ResourceMap;
+            agnostic.Version = sciVersion1_1;
+            agnostic.cbDecompressed = 16;         // small: passes the decompressed check
+            agnostic.cbCompressed = 0x10000;      // 65536: cannot fit the 16-bit SCI1 field
+
+            RESOURCEHEADER_SCI1 header = {};      // 16-bit size fields
+            Assert::ExpectException<std::exception>([&]()
+            {
+                header.FromAgnostic(agnostic);
+            }, L"an oversize compressed size must be rejected, not silently truncated");
+        }
+
+        // A corrupt SCI1 resource map carrying a resource-type byte outside the
+        // known range. ResourceTypeToFlag shifted 1 by that value, which is
+        // undefined for large shifts and can alias a real type's flag. It must map
+        // an out-of-range type to no flag, so the map walker skips the bad group.
+        TEST_METHOD(Sci1MapEntry_OutOfRangeType_IsRejected)
+        {
+            // The direct fix: an out-of-range type maps to no flag.
+            Assert::AreEqual((uint32_t)ResourceTypeFlags::None,
+                (uint32_t)ResourceTypeToFlag((ResourceType)0x30),
+                L"an out-of-range resource type must map to ResourceTypeFlags::None");
+
+            // And through the SCI1 map walker: a lookup group whose type is out of
+            // range is skipped, so no bogus entry is produced. The buffer is built
+            // from real struct instances so its layout matches what the reader
+            // extracts, independent of struct padding.
+            auto appendStruct = [](std::vector<uint8_t> &out, const void *p, size_t n)
+            {
+                const uint8_t *b = reinterpret_cast<const uint8_t *>(p);
+                out.insert(out.end(), b, b + n);
+            };
+
+            const uint32_t tableSize = 2 * (uint32_t)sizeof(RESOURCEMAPPREENTRY_SCI1);
+            RESOURCEMAPPREENTRY_SCI1 group = {};
+            group.bType = (uint8_t)(0x80 | 0x30);            // adorned, out-of-range type
+            group.wOffset = (uint16_t)tableSize;             // its entries start after the table
+            RESOURCEMAPPREENTRY_SCI1 terminator = {};
+            terminator.bType = 0xff;
+            terminator.wOffset = (uint16_t)(tableSize + sizeof(RESOURCEMAPENTRY_SCI1));
+
+            std::vector<uint8_t> buf;
+            appendStruct(buf, &group, sizeof(group));
+            appendStruct(buf, &terminator, sizeof(terminator));
+            RESOURCEMAPENTRY_SCI1 entry = {};                // placeholder entry data
+            entry.wNumber = 7;
+            appendStruct(buf, &entry, sizeof(entry));
+            buf.resize(buf.size() + sizeof(RESOURCEMAPENTRY_SCI1), 0);
+
+            sci::istream mapStream(buf.data(), (uint32_t)buf.size());
+            SCI1MapNavigator<RESOURCEMAPENTRY_SCI1> nav;
+            IteratorState state;
+            ResourceMapEntryAgnostic entryOut = {};
+            bool got = nav.NavAndReadNextEntry(ResourceTypeFlags::All, mapStream, state, entryOut);
+            Assert::IsFalse(got,
+                L"an out-of-range type group must be skipped, not read as a resource");
+        }
+
+        // A SCI1 resource map whose lookup table has no 0xff terminator. Before the
+        // fix the terminator check used ">" against the cap, which could never fire
+        // because the read loop already stopped at the cap, so a corrupt table was
+        // accepted and drove the walk with garbage offsets. The read must reject it.
+        TEST_METHOD(Sci1LookupTable_NoTerminator_IsRejected)
+        {
+            auto appendStruct = [](std::vector<uint8_t> &out, const void *p, size_t n)
+            {
+                const uint8_t *b = reinterpret_cast<const uint8_t *>(p);
+                out.insert(out.end(), b, b + n);
+            };
+
+            // A well-terminated table must load and keep the terminator as its last entry.
+            {
+                std::vector<uint8_t> good;
+                RESOURCEMAPPREENTRY_SCI1 g0 = {}; g0.bType = (uint8_t)(0x80 | 1); g0.wOffset = 32;
+                RESOURCEMAPPREENTRY_SCI1 term = {}; term.bType = 0xff; term.wOffset = 64;
+                appendStruct(good, &g0, sizeof(g0));
+                appendStruct(good, &term, sizeof(term));
+                good.resize(128, 0);
+
+                sci::istream okStream(good.data(), (uint32_t)good.size());
+                SCI1MapNavigator<RESOURCEMAPENTRY_SCI1> okNav;
+                const std::vector<RESOURCEMAPPREENTRY_SCI1> &lp = okNav.GetLookupPointers(okStream);
+                Assert::AreEqual((size_t)2, lp.size(), L"expected the group plus the terminator");
+                Assert::AreEqual((uint8_t)0xff, lp.back().bType, L"the last entry must be the terminator");
+            }
+
+            // A table with no terminator (more entries than the cap) must be rejected.
+            {
+                std::vector<uint8_t> bad;
+                for (int i = 0; i < 40; i++) // well past ReasonableLimit, never 0xff
+                {
+                    RESOURCEMAPPREENTRY_SCI1 pre = {};
+                    pre.bType = (uint8_t)(0x80 | 1);
+                    pre.wOffset = (uint16_t)(i * 4);
+                    appendStruct(bad, &pre, sizeof(pre));
+                }
+
+                sci::istream badStream(bad.data(), (uint32_t)bad.size());
+                SCI1MapNavigator<RESOURCEMAPENTRY_SCI1> badNav;
+                Assert::ExpectException<std::exception>([&]()
+                {
+                    badNav.GetLookupPointers(badStream);
+                }, L"a lookup table with no terminator must be rejected as corrupt");
+            }
         }
 
         TEST_METHOD(TestViewMirror)

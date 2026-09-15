@@ -473,14 +473,25 @@ HRESULT ResourceBlob::CreateFromHandle(PCTSTR pszName, HANDLE hFile, int iPackag
 			if (dwSize != INVALID_FILE_SIZE)
 			{
 				DWORD gapUntilData = GetResourceOffsetInFile((uint8_t)(w >> 8));
-				SetFilePointer(hFile, gapUntilData, nullptr, FILE_CURRENT);
-				dwSize -= gapUntilData;
+				if (dwSize < (gapUntilData + sizeof(w)))
+				{
+					// The file is too short to hold the header gap plus the type word.
+					// Without this guard the unsigned subtractions below wrap around and
+					// produce a huge cbDecompressed, which later drives a bad_alloc.
+					fRead = FALSE;
+					SetLastError(ERROR_INVALID_DATA);
+				}
+				else
+				{
+					SetFilePointer(hFile, gapUntilData, nullptr, FILE_CURRENT);
+					dwSize -= gapUntilData;
 
-				header.cbDecompressed = dwSize - sizeof(w);
-				// Fake this value up for consistency:
-				header.cbCompressed = header.cbDecompressed;
-				// No compression:
-				header.CompressionMethod = 0;
+					header.cbDecompressed = dwSize - sizeof(w);
+					// Fake this value up for consistency:
+					header.cbCompressed = header.cbDecompressed;
+					// No compression:
+					header.CompressionMethod = 0;
+				}
 			}
 			else
 			{

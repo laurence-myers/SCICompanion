@@ -147,6 +147,13 @@ bool IsValidPackageNumber(int iPackageNumber)
 
 ResourceTypeFlags ResourceTypeToFlag(ResourceType dwType)
 {
+	if (((int)dwType < 0) || ((int)dwType >= NumResourceTypes))
+	{
+		// A corrupt map can carry a type byte outside the known range. Shifting by
+		// that amount is undefined behaviour and can alias a real type's flag, so
+		// map it to None. Callers that filter on the result then skip the entry.
+		return ResourceTypeFlags::None;
+	}
 	return (ResourceTypeFlags)(1 << (int)dwType);
 }
 
