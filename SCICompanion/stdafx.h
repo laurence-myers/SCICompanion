@@ -88,27 +88,7 @@ struct delete_map_value
 
 
 
-#define BEGIN_TEMPLATE_MESSAGE_MAP_2(theClass, type_name1, type_name2, baseClass)			\
-	PTM_WARNING_DISABLE														\
-	template < typename type_name1, typename type_name2 >											\
-	const AFX_MSGMAP* theClass< type_name1, type_name2 >::GetMessageMap() const			\
-		{ return GetThisMessageMap(); }										\
-	template < typename type_name1, typename type_name2 >											\
-	const AFX_MSGMAP* PASCAL theClass< type_name1, type_name2 >::GetThisMessageMap()		\
-	{																		\
-		typedef theClass< type_name1, type_name2 > ThisClass;							\
-		typedef baseClass TheBaseClass;										\
-		static const AFX_MSGMAP_ENTRY _messageEntries[] =					\
-		{
-
-
-// Additional defines so we can use multi-value templates with BEGIN_TEMPLATE_MESSAGE_MAP
-#define TEMPLATE_1(t1)                   t1
-#define TEMPLATE_2(t1, t2)               t1, t2
-#define TEMPLATE_3(t1 ,t2 ,t3)           t1, t2, t3
-#define TCLASS_1(theClass, t1)           theClass<t1>
-#define TCLASS_2(theClass, t1, t2)       theClass<t1, t2>
-#define TCLASS_3(theClass, t1, t2, t3)   theClass<t1, t2, t3>
+#include "TemplateMessageMap.h"
 
 
 #include <Prof-UIS.h>

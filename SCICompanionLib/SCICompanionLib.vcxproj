@@ -550,6 +550,7 @@
     <ClInclude Include="Src\Util\sciwin.h" />
     <ClInclude Include="Src\Util\SortedVector.h" />
     <ClInclude Include="Src\Util\SoundUtil.h" />
+    <ClInclude Include="Src\Util\TemplateMessageMap.h" />
     <ClInclude Include="Src\Compile\CompileContext.h" />
     <ClInclude Include="Src\Compile\CompiledScript.h" />
     <ClInclude Include="Src\Compile\CompileInterfaces.h" />
