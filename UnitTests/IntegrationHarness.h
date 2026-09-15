@@ -58,11 +58,18 @@ namespace IntegrationHarness
 
         bool Run(unsigned timeoutMs, std::function<void()> body);
         bool Finished() const { return _done && _done->load(); }
+        // True if the last body threw. Run() catches any exception the body throws
+        // and records it here instead of letting it escape the worker thread, which
+        // would be an unconditional std::terminate. The flag is heap-owned, so a
+        // detached worker that throws after a timeout still records it safely. A
+        // test that must know its body did not throw can assert !ThrewException().
+        bool ThrewException() const { return _threw && _threw->load(); }
         void Join();
 
     private:
         std::thread _thread;
         std::shared_ptr<std::atomic<bool>> _done;
+        std::shared_ptr<std::atomic<bool>> _threw;
     };
 
     //
