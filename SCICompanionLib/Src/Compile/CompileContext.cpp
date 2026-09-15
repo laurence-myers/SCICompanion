@@ -1325,9 +1325,9 @@ void MergeScripts(sci::Script &mainScript, sci::Script &scriptToBeMerged)
 	// reparented to mainScript. Otherwise FunctionBase::PreScan dereferences a
 	// dangling GetOwnerScript() (reading the owning script's variables), which
 	// is a use-after-free. Merging the defines (previously dropped) also makes a
-	// (define) in a non-header include usable in the including script.
-	// (Classes/instances from a non-header include are still not merged; that is
-	// a separate follow-up.)
+	// (define) in a non-header include usable in the including script. Classes and
+	// instances are merged too (the loop below); previously they were dropped, so a
+	// non-header include's classes never reached the including script.
 	auto &procs = scriptToBeMerged.GetProceduresNC();
 	for (auto &proc : procs)
 	{
@@ -1345,6 +1345,15 @@ void MergeScripts(sci::Script &mainScript, sci::Script &scriptToBeMerged)
 	{
 		define->SetScript(&mainScript);
 		mainScript.AddDefine(move(define));
+	}
+	// A ClassDefinition holds either a class or an instance (IsInstance() tells
+	// them apart); both live in GetClassesNC(). Reparent and move them too, so a
+	// non-header include's classes and instances reach the including script.
+	auto &classes = scriptToBeMerged.GetClassesNC();
+	for (auto &classDef : classes)
+	{
+		classDef->SetScript(&mainScript);
+		mainScript.AddClass(move(classDef));
 	}
 }
 

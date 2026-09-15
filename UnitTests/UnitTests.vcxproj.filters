@@ -68,6 +68,9 @@
     <ClCompile Include="TestViewRle.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestMergeScripts.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestCodec.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
