@@ -143,9 +143,15 @@ void ReadImageDataWorker(sci::istream &byteStreamRLE, Cel &cel, bool isVGA, sci:
 		}
 		else
 		{
-			// We are going to fill up to the end of the line, and pad the rest
+			// We are going to fill up to the end of the line, and pad the rest.
 			cAmountToFill = cxLine - x;
-			memcpy(&cel.Data[y * cxActual + x], scratchBuffer, cAmountToFill);
+			// Copy from the current position in the run and advance it -- like the
+			// in-line branch above -- so a run that crosses a scanline continues
+			// from the right byte on the next line. Copying from scratchBuffer
+			// (the run start) and not advancing repeated the run's first bytes on
+			// each new line, which corrupts a literal run (#67).
+			memcpy(&cel.Data[y * cxActual + x], scratchPointer, cAmountToFill);
+			scratchPointer += cAmountToFill;
 
 			cBufferSizeRemaining -= cAmountToFill;
 
