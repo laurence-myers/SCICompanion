@@ -106,6 +106,7 @@
     <ClCompile Include="TestViewRle.cpp" />
     <ClCompile Include="TestMergeScripts.cpp" />
     <ClCompile Include="TestDecompilerDangling.cpp" />
+    <ClCompile Include="TestDecompilerDroppedBlock.cpp" />
     <ClCompile Include="DecompileHelper.cpp" />
     <ClCompile Include="OracleHelper.cpp" />
     <ClCompile Include="AstPassHelper.cpp" />
