@@ -14,3 +14,13 @@
 #pragma once
 
 BOOL HandleEditBoxCommands(MSG* pMsg, CEdit &wndEdit);
+
+// True if the compile-dialog pump should dispatch this message: paint always,
+// other messages only when they belong to hDialog (or a child). See #55.
+bool ShouldDispatchCompilePumpMessage(const MSG &msg, HWND hDialog);
+
+// Pump paint and input during a compile, dispatching only hDialog's own messages
+// (so its Cancel button stays live while a foreign command cannot re-enter the
+// resource map). Returns true if a WM_QUIT was seen -- it is reposted via
+// PostQuitMessage and the caller must stop its loop. See #55.
+bool PumpCompileDialogMessagesQuitPending(HWND hDialog);

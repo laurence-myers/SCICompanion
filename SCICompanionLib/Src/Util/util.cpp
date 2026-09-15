@@ -1117,6 +1117,61 @@ BOOL HandleEditBoxCommands(MSG* pMsg, CEdit &wndEdit)
 	return fRet;
 }
 
+// Decide whether the compile-dialog pump should dispatch a pumped message.
+// Always dispatch paint: an undispatched WM_PAINT is returned again and again
+// (it clears only when the window validates), so skipping one would spin the
+// pump. Otherwise dispatch only the dialog's own input, so its Cancel button
+// stays live; drop input aimed at other windows, whose command handlers could
+// re-enter the resource map while the compile batches appends. (#55)
+bool ShouldDispatchCompilePumpMessage(const MSG &msg, HWND hDialog)
+{
+	if (msg.message == WM_PAINT)
+	{
+		return true;
+	}
+	if (hDialog == NULL)
+	{
+		return false;
+	}
+	return (msg.hwnd == hDialog) || (::IsChild(hDialog, msg.hwnd) != FALSE);
+}
+
+// Pump paint and input while a compile runs, but dispatch only the messages
+// ShouldDispatchCompilePumpMessage allows.
+//
+// Compile All drives itself with a self-reposted UWM_STARTCOMPILE. A posted
+// message outranks queued hardware input in GetMessage, so the modal loop would
+// service the repost forever and never dispatch a Cancel click -- the operation
+// would be uncancellable. A PeekMessage that includes PM_QS_INPUT pulls that
+// input out of the queue regardless of the pending posted message, which is what
+// keeps Cancel responsive. Dispatch is gated so a foreign command cannot run
+// re-entrantly. Dropping foreign input is safe: DoModal disables the owner, so
+// the dialog is the only window the user can drive.
+//
+// A PeekMessage filtered to paint and input does not surface WM_QUIT (it is in
+// neither category), so a pending quit simply stays in the queue for the modal
+// loop, which ends DoModal -- it is not dispatched and lost. The WM_QUIT branch
+// is therefore defensive: on any platform that does surface WM_QUIT here, repost
+// it with PostQuitMessage and return true so the caller stops. Returns false when
+// the queue drains normally. (#55)
+bool PumpCompileDialogMessagesQuitPending(HWND hDialog)
+{
+	MSG msg;
+	while (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE | PM_QS_PAINT | PM_QS_INPUT))
+	{
+		if (msg.message == WM_QUIT)
+		{
+			::PostQuitMessage((int)msg.wParam);
+			return true;
+		}
+		if (ShouldDispatchCompilePumpMessage(msg, hDialog))
+		{
+			::DispatchMessage(&msg);
+		}
+	}
+	return false;
+}
+
 bool TerminateProcessTree(HANDLE hProcess, DWORD retCode)
 {
 	bool success = true;
