@@ -47,6 +47,41 @@ namespace UnitTests
             ResourceEntity *pTest = CreateDefaultViewResource(sciVersion0);
         }
 
+        // Saving a VGA2 view transfers the per-row-offset region using the
+        // row-offset stream's size, not the (larger) literal-image size. Before
+        // the fix the transfer used celRawData.GetDataSize(), which over-read the
+        // row-offset stream; sci::transfer now detects that short read and throws,
+        // so WriteTo failed. With the correct size, WriteTo serializes cleanly.
+        // (Cels are sized so the literal image is larger than the row offsets:
+        // per cel, 32*20 literal bytes vs 20*8 row-offset bytes.)
+        TEST_METHOD(ViewVGA2Save_RowOffsetTransferInBounds)
+        {
+            SCIVersion version = sciVersion2; // ViewFormat::VGA2
+            std::unique_ptr<ResourceEntity> resource(CreateViewResource(version));
+            RasterComponent &raster = resource->GetComponent<RasterComponent>();
+            raster.Resolution = version.DefaultResolution;
+
+            Loop loop;
+            for (int c = 0; c < 2; c++)
+            {
+                Cel cel;
+                cel.size = size16(32, 20);
+                cel.TransparentColor = 0;
+                cel.Data.allocate(cel.GetDataSize());
+                for (size_t i = 0; i < cel.GetDataSize(); i++)
+                {
+                    cel.Data[i] = (uint8_t)((i * 37 + c * 101 + 7) & 0xff);
+                }
+                loop.Cels.push_back(cel);
+            }
+            raster.Loops.push_back(loop);
+
+            sci::ostream blob;
+            std::map<BlobKey, uint32_t> propertyBag;
+            resource->WriteTo(blob, true, 0, propertyBag);
+            Assert::IsTrue(blob.GetDataSize() > 0, L"VGA2 view failed to serialize");
+        }
+
         TEST_METHOD(TestViewMirror)
         {
             RasterChange change;

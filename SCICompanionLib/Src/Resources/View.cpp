@@ -989,7 +989,7 @@ void ViewWriteToVGA11_2_Helper(const ResourceEntity &resource, sci::ostream &byt
 
 	if (isVGA2)
 	{
-		sci::transfer(sci::istream_from_ostream(*rowOffsetStream), byteStream, celRawData.GetDataSize());
+		sci::transfer(sci::istream_from_ostream(*rowOffsetStream), byteStream, rowOffsetStream->GetDataSize());
 	}
 
 	// Done!
