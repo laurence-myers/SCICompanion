@@ -412,7 +412,11 @@ UINT CBitmapToPicDialog::s_ThreadWorker(THREADINFO *pInfo)
 	bool gammaCorrected = pInfo->gammaCorrected;
 	bool fIgnoreWhite = pInfo->fIgnoreWhite;
 	EGACOLOR *pPicPalette = pInfo->picPalette;
-	int cPicPalette = sizeof(pInfo->picPalette);
+	// The number of colors in the pic palette, not its byte size. EGACOLOR is one
+	// byte today, so sizeof happened to match the count; use the element count so
+	// the color count (below and in GetClosestEGAColorFromSet) and the CopyMemory
+	// byte count stay correct if EGACOLOR ever grows. (#54)
+	int cPicPalette = ARRAYSIZE(pInfo->picPalette);
 	COLORREF *pCRBitmap = pInfo->pCRBitmap;
 	std::unique_ptr<vector<PicCommand>> pcommands = make_unique<vector<PicCommand>>();
 	HWND hwnd = pInfo->hwndDlg;
@@ -461,7 +465,7 @@ UINT CBitmapToPicDialog::s_ThreadWorker(THREADINFO *pInfo)
 			if (iPalette == 4)
 			{
 				// This is easy, just copy the pic's palette.
-				CopyMemory(rgMostCommonColors, pPicPalette, cPicPalette);
+				CopyMemory(rgMostCommonColors, pPicPalette, cPicPalette * sizeof(EGACOLOR));
 				// We have 40 "most common colours"
 				cMostCommonColors = cPicPalette;
 			}
@@ -568,31 +572,31 @@ UINT CBitmapToPicDialog::s_ThreadWorker(THREADINFO *pInfo)
 			HBITMAP hbm = pdm.CreateBitmap(PicScreen::Visual, PicPosition::Final, pic.Size, pic.Size.cx, pic.Size.cy);
 			if (hbm)
 			{
-				THREADRESPONSE *pResponse = new THREADRESPONSE;
-				if (pResponse)
-				{
-					if (iPalette == 4)
-					{
-						// This means we used the current pic's palette. We had to add it in s_ConvertToPic in order
-						// to get a representative bitmap. But we don't want to add it to the final list of commands.
-						assert(pcommands->begin()->type == PicCommand::CommandType::SetPalette);
-						pcommands->erase(pcommands->begin());
-					}
+				// The response owns hbm from here: ~THREADRESPONSE deletes it. A
+				// unique_ptr frees the response -- and so the bitmap -- if the
+				// transfer does not complete (SendMessage returns 0 once the window
+				// is gone), so a closed window can no longer leak it, and there is
+				// no separate DeleteObject left to double-free. (#54)
+				std::unique_ptr<THREADRESPONSE> pResponse = std::make_unique<THREADRESPONSE>();
+				pResponse->hbm = hbm;
 
-					pResponse->hbm = hbm;
-					pResponse->pcommands = move(pcommands);
-					pResponse->fTooBig = fTooBig;
-					fSuccess = TRUE;
-					if (::SendMessage(hwnd, UWM_PICREADY, 0, (LPARAM)pResponse))
-					{
-						// The information has been transfered.
-						hbm = nullptr;
-					}
-				}
-				if (hbm)
+				if (iPalette == 4)
 				{
-					DeleteObject(hbm);
+					// This means we used the current pic's palette. We had to add it in s_ConvertToPic in order
+					// to get a representative bitmap. But we don't want to add it to the final list of commands.
+					assert(pcommands->begin()->type == PicCommand::CommandType::SetPalette);
+					pcommands->erase(pcommands->begin());
 				}
+
+				pResponse->pcommands = move(pcommands);
+				pResponse->fTooBig = fTooBig;
+				fSuccess = TRUE;
+				if (::SendMessage(hwnd, UWM_PICREADY, 0, (LPARAM)pResponse.get()))
+				{
+					// Transferred: the handler now owns and deletes the response.
+					pResponse.release();
+				}
+				// Otherwise the unique_ptr deletes the response here, freeing hbm.
 			}
 		}
 
