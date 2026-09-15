@@ -40,3 +40,7 @@ private:
 };
 
 std::shared_ptr<DebuggerThread> CreateDebuggerThread(const std::string &gameFolder, int optionalResourceNumber);
+
+// Split a rolling read buffer into complete lines, carrying any trailing partial
+// line across calls. Exposed for unit testing the line reassembly.
+std::vector<std::string> ExtractDebugLines(char *szBuffer, size_t bufferSize, size_t &validTextInBuffer, DWORD cbRead);

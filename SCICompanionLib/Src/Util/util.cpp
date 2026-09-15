@@ -1026,7 +1026,12 @@ bool DeleteDirectory(HWND hwnd, const std::string &folder)
 {
 	char szPath[MAX_PATH];
 	StringCchCopy(szPath, ARRAYSIZE(szPath), folder.c_str());
-	szPath[folder.length() + 1] = 0;   // double null term
+	size_t iDblNullTerm = strlen(szPath) + 1;
+	if (iDblNullTerm >= ARRAYSIZE(szPath))
+	{
+		return false; // Path too long to double-null-terminate safely; refuse rather than delete a truncated path.
+	}
+	szPath[iDblNullTerm] = 0;   // pFrom needs a double null terminator
 
 	SHFILEOPSTRUCT fileOp = { 0 };
 	fileOp.hwnd = nullptr;

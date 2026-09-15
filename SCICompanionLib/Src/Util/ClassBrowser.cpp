@@ -216,7 +216,7 @@ void SCIClassBrowser::_AddInstanceToMap(Script& script, ClassDefinition *pClass)
 	WORD wScript = GetScriptNumberHelper(&script);
 	if (wScript == InvalidResourceNumber)
 	{
-		appState->LogInfo(TEXT("Class browser: Invalid script number in %s."), script.GetPath());
+		appState->LogInfo(TEXT("Class browser: Invalid script number in %s."), script.GetPath().c_str());
 	}
 
 	// As always, the script owns the class
@@ -774,6 +774,7 @@ bool SCIClassBrowser::_AddFileName(std::string fullPath, bool fReplace)
 							fAdded = true;
 							// Replace
 							script = std::move(pScript); // Take ownership.
+							break; // pScript is now moved-from; stop before it is assigned into another matching slot.
 						}
 					}
 				}

@@ -19,6 +19,35 @@
 
 using namespace std;
 
+// Split a rolling read buffer into complete lines, carrying any trailing
+// partial line to the next call. The NUL terminator must land at the true end
+// of the valid data (validTextInBuffer + cbRead), not at cbRead: the latter
+// lands inside carried-over data and injects a NUL that corrupts a reassembled
+// line whenever a partial line was carried over.
+std::vector<std::string> ExtractDebugLines(char *szBuffer, size_t bufferSize, size_t &validTextInBuffer, DWORD cbRead)
+{
+	std::vector<std::string> lines;
+	assert((validTextInBuffer + cbRead) < bufferSize);
+	szBuffer[validTextInBuffer + cbRead] = 0; // terminator at the true end of valid data
+	validTextInBuffer += cbRead;
+
+	size_t start = 0;
+	for (size_t i = 0; i < validTextInBuffer; i++)
+	{
+		if (szBuffer[i] == '\n')
+		{
+			lines.emplace_back(szBuffer + start, (i - start));
+			start = i + 1;
+		}
+	}
+	if (start < validTextInBuffer)
+	{
+		memmove(szBuffer, szBuffer + start, (validTextInBuffer - start));
+	}
+	validTextInBuffer -= start;
+	return lines;
+}
+
 shared_ptr<DebuggerThread> CreateDebuggerThread(const std::string &gameFolder, int optionalResourceNumber)
 {
 	shared_ptr<DebuggerThread> debugger = make_shared<DebuggerThread>(gameFolder, optionalResourceNumber);
@@ -158,30 +187,16 @@ void DebuggerThread::_Main()
 					DWORD cbRead;
 					while (ReadFile(readHandle.hFile, szBuffer + validTextInBuffer, sizeof(szBuffer) - 1 - validTextInBuffer, &cbRead, nullptr) && cbRead)
 					{
-						szBuffer[cbRead] = 0;
-						validTextInBuffer += cbRead;
-
-						unique_ptr<vector<CompileResult>> results = make_unique<vector<CompileResult>>();
-						// Make a result for each new line.
-						size_t start = 0;
-						for (size_t i = 0; i < validTextInBuffer; i++)
-						{
-							if (szBuffer[i] == '\n')
-							{
-								string textLine(szBuffer + start, (i - start));
-								results->emplace_back(textLine);
-								start = i + 1;
-							}
-						}
-						if (start < validTextInBuffer)
-						{
-							memmove(szBuffer, szBuffer + start, (validTextInBuffer - start));
-						}
-						validTextInBuffer -= start;
+						std::vector<std::string> lines = ExtractDebugLines(szBuffer, sizeof(szBuffer), validTextInBuffer, cbRead);
 						// TODO: Also, if we're filling up, then process
 
-						if (!results->empty() && _hwndUI)
+						if (!lines.empty() && _hwndUI)
 						{
+							unique_ptr<vector<CompileResult>> results = make_unique<vector<CompileResult>>();
+							for (const string &line : lines)
+							{
+								results->emplace_back(line);
+							}
 							// Send to the UI thread.
 							SendMessage(_hwndUI, UWM_RESULTS, (WPARAM)OutputPaneType::Debug, reinterpret_cast<LPARAM>(results.release()));
 						}
