@@ -107,6 +107,7 @@
     <ClCompile Include="TestAllGamesLoad.cpp" />
     <ClCompile Include="TestClassBrowser.cpp" />
     <ClCompile Include="TestCompile.cpp" />
+    <ClCompile Include="TestCompiledScript.cpp" />
     <ClCompile Include="TestDecompile.cpp" />
     <ClCompile Include="TestBytecodeOracle.cpp" />
     <ClCompile Include="TestKeywordCodegen.cpp" />
