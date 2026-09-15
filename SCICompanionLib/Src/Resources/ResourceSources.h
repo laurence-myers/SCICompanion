@@ -186,18 +186,18 @@ struct FileDescriptorBase
 			holderMap.Write(mapStream.GetInternalPointer(), mapStream.GetDataSize());
 		}
 
-		// Move the volumes over
+		// Move the volumes over. replacefile is one atomic operation, so there is
+		// no moment where a volume file is missing -- a failed move after a delete
+		// would have lost that file.
 		for (const auto &volumeStream : volumeWriteStreams)
 		{
 			std::string package_name = _GetVolumeFilename( volumeStream.first);
-			deletefile(package_name);
-			movefile(_GetVolumeFilenameBak( volumeStream.first), package_name);
+			replacefile(_GetVolumeFilenameBak( volumeStream.first), package_name);
 		}
 
-		// Nothing to do at this point if it fails.
+		// Replace the map last, so it only changes once every volume is in place.
 		std::string resmap_name = _GetMapFilename();
-		deletefile(resmap_name);
-		movefile(_GetMapFilenameBak(), resmap_name);
+		replacefile(_GetMapFilenameBak(), resmap_name);
 	}
 };
 

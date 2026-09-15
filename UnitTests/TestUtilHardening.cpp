@@ -50,6 +50,57 @@ namespace UnitTests
             }
         }
 
+        // replacefile must atomically replace the destination (MoveFileEx with
+        // MOVEFILE_REPLACE_EXISTING), whether or not it already exists, and remove
+        // the source. This primitive is what makes the resource save (#66) never
+        // leave a volume or patch file missing.
+        TEST_METHOD(ReplaceFile_ReplacesExistingOrCreates_AndRemovesSource)
+        {
+            char tempDir[MAX_PATH] = { 0 };
+            GetTempPathA(ARRAYSIZE(tempDir), tempDir);
+            std::string dst = std::string(tempDir) + "scic_replacefile_dst.tmp";
+            std::string src = std::string(tempDir) + "scic_replacefile_src.tmp";
+
+            auto writeFile = [](const std::string &path, const std::string &content)
+            {
+                ScopedFile f(path, GENERIC_WRITE, 0, CREATE_ALWAYS);
+                f.Write(reinterpret_cast<const uint8_t *>(content.data()), (uint32_t)content.size());
+            };
+            auto readFile = [](const std::string &path) -> std::string
+            {
+                ScopedFile f(path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
+                DWORD size = GetFileSize(f.hFile, nullptr);
+                std::string out(size, '\0');
+                DWORD read = 0;
+                ReadFile(f.hFile, &out[0], size, &read, nullptr);
+                out.resize(read);
+                return out;
+            };
+            auto exists = [](const std::string &path)
+            {
+                return GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES;
+            };
+
+            DeleteFileA(dst.c_str());
+            DeleteFileA(src.c_str());
+
+            // Destination exists -> its contents are replaced, source removed.
+            writeFile(dst, "old-destination-contents");
+            writeFile(src, "new-content");
+            replacefile(src, dst);
+            Assert::AreEqual(std::string("new-content"), readFile(dst), L"destination is replaced");
+            Assert::IsFalse(exists(src), L"source is moved away");
+
+            // Destination absent -> replacefile still creates it.
+            DeleteFileA(dst.c_str());
+            writeFile(src, "fresh");
+            replacefile(src, dst);
+            Assert::AreEqual(std::string("fresh"), readFile(dst), L"destination created when absent");
+            Assert::IsFalse(exists(src), L"source is moved away (absent-destination case)");
+
+            DeleteFileA(dst.c_str());
+        }
+
         // (d1) A GIF whose file cannot be opened: DGifOpenFileName returns null,
         // and DGifSlurp(null) immediately writes through the null pointer. The
         // loader must return false before calling DGifSlurp.
