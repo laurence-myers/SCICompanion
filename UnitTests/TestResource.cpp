@@ -23,6 +23,7 @@
 #include "RasterOperations.h"
 #include "Vocab000.h"
 #include "Audio.h"
+#include "SoundUtil.h"
 #include "PaletteOperations.h"
 #include "Stream.h"
 #include "sci.h"
@@ -363,6 +364,60 @@ namespace UnitTests
                     badNav.GetLookupPointers(badStream);
                 }, L"a lookup table with no terminator must be rejected as corrupt");
             }
+        }
+
+        // istream::skip computed (_iIndex + cBytes) in uint32_t, which wraps for
+        // a large count. From offset 12, skipping 0xFFFFFFF8 wrapped to 4, moved
+        // the cursor backward, and reported success. The skip must fail instead,
+        // and must not move the cursor backward.
+        TEST_METHOD(StreamSkip_Overflow_DoesNotWrapBackwards)
+        {
+            const uint8_t data[20] = {};
+            sci::istream stream(data, (uint32_t)sizeof(data));
+            uint32_t dummy;
+            stream >> dummy; stream >> dummy; stream >> dummy; // _iIndex == 12
+            Assert::AreEqual((uint32_t)12, stream.tellg());
+
+            stream.skip(0xFFFFFFF8u); // (12 + 0xFFFFFFF8) wraps to 4 with the old code
+
+            Assert::IsFalse(stream.good(), L"an overflowing skip must fail, not wrap");
+            Assert::IsTrue(stream.tellg() >= 12u, L"the cursor must not move backward");
+        }
+
+        // Skipping exactly to the end of the stream is a valid EOF position. The
+        // old "<" test wrongly treated it as a read past the end.
+        TEST_METHOD(StreamSkip_ToExactEnd_Succeeds)
+        {
+            const uint8_t data[] = { 1, 2, 3, 4 };
+            sci::istream stream(data, (uint32_t)sizeof(data));
+
+            stream.skip((uint32_t)sizeof(data)); // land exactly at EOF
+
+            Assert::IsTrue(stream.good(), L"skipping exactly to EOF is valid");
+            Assert::AreEqual((uint32_t)sizeof(data), stream.tellg());
+        }
+
+        // A WAV whose first post-WAVE chunk is not "fmt " and declares a size of
+        // 0xFFFFFFF8. Before the fix, skip wrapped the cursor backward and the
+        // fmt-search loop re-read the same header forever (a hang). After the fix
+        // the skip fails, the loop exits, and the loader throws.
+        // NOTE: this hangs against unfixed code (no per-test timeout); it is a
+        // post-fix smoke test and ships with the fix. The two StreamSkip_* tests
+        // above are the deterministic guards.
+        TEST_METHOD(WaveFile_OversizedChunkSize_Terminates)
+        {
+            const uint8_t wav[] = {
+                'R','I','F','F', 0,0,0,0, 'W','A','V','E',
+                'J','U','N','K',                 // a chunk marker that is not "fmt "
+                0xF8,0xFF,0xFF,0xFF,             // chunkSize = 0xFFFFFFF8
+                0,0,0,0, 0,0,0,0                 // 8 payload bytes
+            };
+            sci::istream stream(wav, (uint32_t)sizeof(wav));
+            AudioComponent audio;
+            Assert::ExpectException<std::exception>([&]()
+            {
+                AudioComponentFromWaveFile(stream, audio);
+            }, L"a WAV with an oversized chunk size must terminate with an error, not hang");
         }
 
         TEST_METHOD(TestViewMirror)

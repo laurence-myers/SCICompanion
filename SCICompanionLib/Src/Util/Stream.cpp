@@ -258,7 +258,13 @@ namespace sci
 
 	void istream::skip(uint32_t cBytes)
 	{
-		if ((_iIndex + cBytes) < _cbSizeValid)
+		// Overflow-safe: compare the request against the bytes remaining rather
+		// than computing (_iIndex + cBytes), which wraps mod 2^32 for a large
+		// cBytes (e.g. a corrupt 0xFFFFFFF8 WAV chunk size) and could leave
+		// _iIndex unchanged or moving backwards -> infinite re-read loop.
+		// Skipping exactly to the end of the stream is a valid EOF position,
+		// matching _Read()/seekg() which treat _iIndex == _cbSizeValid as valid.
+		if (cBytes <= getBytesRemaining())
 		{
 			_iIndex += cBytes;
 		}
