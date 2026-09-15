@@ -6,13 +6,15 @@
     Then:
       .\UnitTests\RunTests.ps1
 
-    Defaults to the decompiler suite plus the pic-draw tests. The wider suite
-    still has a pre-existing SCI0 compile failure unrelated to the decompiler,
-    so pass -All to run everything.
+    Runs the whole suite by default, so CI (which invokes this script with no
+    arguments) cannot silently skip a test. Pass -Filter "FullyQualifiedName~..."
+    to run a subset locally; -All is kept as an explicit "everything" override.
 #>
 param(
     [string]$Configuration = "Release",
-    [string]$Filter = "FullyQualifiedName~TestDecompile|FullyQualifiedName~TestAstPasses|FullyQualifiedName~TestShippedFiles|FullyQualifiedName~TestPics|FullyQualifiedName~TestKeywordCodegen",
+    # Empty by default: run every test. A non-empty value is passed straight to
+    # vstest's /TestCaseFilter for a local subset run.
+    [string]$Filter = "",
     [switch]$All,
     # After the run, copy the decompiled template snapshots the test wrote into
     # the source tree, so an intended output change is committed with the code.
@@ -48,7 +50,7 @@ $vstestArgs = @(
     "/logger:trx;LogFileName=UnitTests.trx",
     "/ResultsDirectory:$resultsDir"
 )
-if (-not $All) {
+if ($Filter -and -not $All) {
     $vstestArgs += "/TestCaseFilter:$Filter"
 }
 
