@@ -66,7 +66,17 @@ jobs:
     # test, so nothing is silently skipped in CI.
     - name: Test
       shell: pwsh
+      timeout-minutes: 15
       run: .\UnitTests\RunTests.ps1 -Configuration ${{ matrix.configuration }}
+
+    # Integration tests (threads, child processes, windows) run in their own
+    # step, separate from the fast unit leg above and reusing the same build.
+    # They are deadline-wrapped; -BlameHang adds a vstest hang dump and the step
+    # timeout is the hard backstop if a test wedges the host.
+    - name: Test (integration)
+      shell: pwsh
+      timeout-minutes: 10
+      run: .\UnitTests\RunTests.ps1 -Configuration ${{ matrix.configuration }} -Integration -BlameHang
 
     - name: Upload Test Results
       if: always()

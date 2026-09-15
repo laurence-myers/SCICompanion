@@ -6,9 +6,12 @@
     Then:
       .\UnitTests\RunTests.ps1
 
-    Runs the whole suite by default, so CI (which invokes this script with no
-    arguments) cannot silently skip a test. Pass -Filter "FullyQualifiedName~..."
-    to run a subset locally; -All is kept as an explicit "everything" override.
+    Runs the UNIT suite by default: it excludes the integration tests (test
+    classes whose name contains "Integration"), so a plain run never spawns a
+    thread or a process. -Integration runs only the integration tests; -All runs
+    everything (unit + integration); -Filter "FullyQualifiedName~..." runs an
+    explicit subset and overrides the switches. The default still cannot silently
+    skip a UNIT test -- it excludes only the integration category by name.
 
     Bytecode oracle env vars (read by TestBytecodeOracle.Oracle_ExistingGame,
     which is skipped and green unless SCICOMP_ORACLE_GAME is set):
@@ -20,10 +23,18 @@
 #>
 param(
     [string]$Configuration = "Release",
-    # Empty by default: run every test. A non-empty value is passed straight to
-    # vstest's /TestCaseFilter for a local subset run.
+    # Empty by default. A non-empty value is passed straight to vstest's
+    # /TestCaseFilter for a local subset run and overrides the switches below.
     [string]$Filter = "",
+    # -All runs every test, including the Integration category. With no switch,
+    # the run is unit-only: the Integration category is excluded.
     [switch]$All,
+    # -Integration runs ONLY the integration tests (threads, child processes,
+    # windows, filesystem), separately from the fast unit run.
+    [switch]$Integration,
+    # -BlameHang makes vstest collect a hang dump and kill a wedged test. Pair it
+    # with -Integration in CI so a real deadlock fails the job instead of hanging.
+    [switch]$BlameHang,
     # After the run, copy the decompiled template snapshots the test wrote into
     # the source tree, so an intended output change is committed with the code.
     [switch]$UpdateSnapshots
@@ -52,14 +63,34 @@ if (-not (Test-Path $vstest)) {
 }
 
 $resultsDir = Join-Path $repoRoot "TestResults"
+# Give the integration leg its own TRX so it does not overwrite the unit leg's
+# results in a shared directory (both legs run this script in CI).
+$trxName = if ($Integration) { "IntegrationTests.trx" } else { "UnitTests.trx" }
 $vstestArgs = @(
     $dll,
     "/Platform:x86",
-    "/logger:trx;LogFileName=UnitTests.trx",
+    "/logger:trx;LogFileName=$trxName",
     "/ResultsDirectory:$resultsDir"
 )
-if ($Filter -and -not $All) {
-    $vstestArgs += "/TestCaseFilter:$Filter"
+# Integration test classes carry "Integration" in their name (the C++ test
+# adapter filters on FullyQualifiedName, not on trait attributes). The default
+# run excludes them, so the unit leg stays fast and never spawns a process.
+# -Integration runs only them; -All runs everything; -Filter overrides all this.
+$effectiveFilter = ""
+if ($Filter) {
+    $effectiveFilter = $Filter          # explicit subset wins
+} elseif ($All) {
+    $effectiveFilter = ""               # everything: unit + integration (so -Integration -All runs all)
+} elseif ($Integration) {
+    $effectiveFilter = "FullyQualifiedName~Integration"
+} else {
+    $effectiveFilter = "FullyQualifiedName!~Integration"
+}
+if ($effectiveFilter) {
+    $vstestArgs += "/TestCaseFilter:$effectiveFilter"
+}
+if ($BlameHang) {
+    $vstestArgs += "/Blame:CollectHangDump;TestTimeout=120000"
 }
 
 # The snapshot test writes each decompiled script to SnapshotActuals next to
