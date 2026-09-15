@@ -1718,6 +1718,9 @@
     <ClInclude Include="Src\Util\VGADither.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
+    <ClInclude Include="Src\Util\GdiRaii.h">
+      <Filter>Header Files\Util</Filter>
+    </ClInclude>
     <ClInclude Include="Src\Util\WindowsUtil.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>

@@ -108,6 +108,7 @@
     <ClCompile Include="TestDecompilerDangling.cpp" />
     <ClCompile Include="TestDecompilerDroppedBlock.cpp" />
     <ClCompile Include="TestCompileAllPumpIntegration.cpp" />
+    <ClCompile Include="TestGdiRaii.cpp" />
     <ClCompile Include="DecompileHelper.cpp" />
     <ClCompile Include="OracleHelper.cpp" />
     <ClCompile Include="AstPassHelper.cpp" />

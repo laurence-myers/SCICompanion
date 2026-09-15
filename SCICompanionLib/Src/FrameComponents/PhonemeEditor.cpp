@@ -14,6 +14,7 @@
 #include "stdafx.h"
 #include "PhonemeEditor.h"
 #include "AppState.h"
+#include "GdiRaii.h"
 #include "RasterOperations.h"
 #include "View.h"
 #include "PhonemeMap.h"
@@ -114,11 +115,11 @@ void PhonemeEditor::_ShowPhonemeTipAtCursor(CPoint pt)
 {
 	std::string phoneme = _cache[_dragSourceIndex.y][_dragSourceIndex.x];
 	std::string tooltipText = fmt::format("{0} ({1})", phoneme, _phonemeToExample[phoneme]);
-	CDC *pDC = GetDC();
-	if (pDC)
+	WindowDcGuard dc(this); // releases the DC on scope exit (#51)
+	if (dc.Dc())
 	{
 		CRect rcMeasure;
-		pDC->DrawText(tooltipText.c_str(), &rcMeasure, DT_SINGLELINE | DT_CALCRECT);
+		dc.Dc()->DrawText(tooltipText.c_str(), &rcMeasure, DT_SINGLELINE | DT_CALCRECT);
 		int x = pt.x - rcMeasure.Width() / 2;
 		int y = pt.y;
 		CRect rc;
@@ -131,11 +132,11 @@ void PhonemeEditor::_ShowPhonemeTip(CPoint index)
 {
 	std::string phoneme = _cache[index.y][index.x];
 	std::string tooltipText = fmt::format("{0} ({1})", phoneme, _phonemeToExample[phoneme]);
-	CDC *pDC = GetDC();
-	if (pDC)
+	WindowDcGuard dc(this); // releases the DC on scope exit (#51)
+	if (dc.Dc())
 	{
 		CRect rcMeasure;
-		pDC->DrawText(tooltipText.c_str(), &rcMeasure, DT_SINGLELINE | DT_CALCRECT);
+		dc.Dc()->DrawText(tooltipText.c_str(), &rcMeasure, DT_SINGLELINE | DT_CALCRECT);
 		CRect rcPhoneme = _GetIndexRect(index);
 		int xCenter = (rcMeasure.Width() - rcPhoneme.Width()) / 2;
 		int x = rcPhoneme.left - xCenter;

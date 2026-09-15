@@ -20,6 +20,7 @@
 
 #include "stdafx.h"
 #include "AppState.h"
+#include "GdiRaii.h"
 #include "ResourceListDoc.h"
 #include "ResourceListView.h"
 #include "RasterResourceListView.h"
@@ -81,10 +82,14 @@ void _StretchForAspectRatio(CWnd *pwnd, CBitmap &bitmap)
 			int cyNew = appState->AspectRatioY(size.cy);
 			if (stretchedBmp.CreateCompatibleBitmap(pDC, size.cx, cyNew))
 			{
-				dcMemSource.SelectObject(&bitmap);
 				dcMemDest.SelectObject(&stretchedBmp);
 				dcMemDest.SetStretchBltMode(HALFTONE);
-				dcMemDest.StretchBlt(0, 0, size.cx, cyNew, &dcMemSource, 0, 0, size.cx, size.cy, SRCCOPY);
+				{
+					// Deselect the source bitmap before deleting it below: GDI will not
+					// delete a bitmap a device context still holds. (#51)
+					GdiSelectGuard sourceGuard(dcMemSource.GetSafeHdc(), bitmap.GetSafeHandle());
+					dcMemDest.StretchBlt(0, 0, size.cx, cyNew, &dcMemSource, 0, 0, size.cx, size.cy, SRCCOPY);
+				}
 				bitmap.DeleteObject();
 				bitmap.Attach(stretchedBmp.Detach());
 				bitmap.SetBitmapDimension(size.cx, cyNew);

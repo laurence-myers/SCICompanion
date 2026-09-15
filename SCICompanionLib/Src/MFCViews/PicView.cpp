@@ -17,6 +17,7 @@
 
 #include "stdafx.h"
 #include "AppState.h"
+#include "GdiRaii.h"
 #include "PicChildFrame.h"
 #include "PicDoc.h"
 #include "PicView.h"
@@ -2431,7 +2432,9 @@ void CPicView::_DrawPolygon(CDC *pDC, const SCIPolygon *polygon, bool isActive)
 		if ((_currentHoverPolyPointIndex == -1) && (_currentHoverPolyEdgeIndex != -1) && (_currentHoverPolyEdgeIndex < (int)polygon->Points().size()))
 		{
 			CPen penEdge(penStyle, 1, ColorPolyHighlight);
-			pDC->SelectObject(penEdge);
+			// Declared after penEdge, so the guard restores (deselects) before penEdge
+			// is deleted -- else the still-selected pen leaks. (#51)
+			GdiSelectGuard penEdgeGuard(pDC->GetSafeHdc(), penEdge.GetSafeHandle());
 			point16 a = polygon->Points()[_currentHoverPolyEdgeIndex];
 			point16 b = polygon->Points()[(_currentHoverPolyEdgeIndex + 1) % polygon->Points().size()];
 			points.push_back(PointToCPoint(a));
@@ -2943,7 +2946,8 @@ void CPicView::OnDraw(CDC *pDC)
 		if (bestDistance != INT_MAX)
 		{
 			CPen penRed(PS_SOLID, 1, RGB(255, 0, 0));
-			pDC->SelectObject(&penRed);
+			// The guard deselects penRed before it is deleted, else the pen leaks. (#51)
+			GdiSelectGuard penRedGuard(pDC->GetSafeHdc(), penRed.GetSafeHandle());
 			_DrawCoord(pDC, xBest, yBest, 1);
 		}
 
