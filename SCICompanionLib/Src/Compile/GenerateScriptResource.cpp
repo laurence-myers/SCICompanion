@@ -590,6 +590,7 @@ void _Section2_Code(Script &script, CompileContext &context, vector<BYTE> &outpu
 	}
 
 	wStartOfCode = (uint16_t)output.size(); // Store where the code begins
+	size_t realStartOfCode = output.size();
 
 	if (context.GenerateDebugInfo)
 	{
@@ -597,6 +598,16 @@ void _Section2_Code(Script &script, CompileContext &context, vector<BYTE> &outpu
 	}
 	context.code().write_code(context, output, context.GenerateDebugInfo ? &results.GetDebugInfo() : nullptr);
 	zero_pad(output, fRoundUp);
+
+	// The code section size is stored in a 16-bit word and all in-code
+	// branch/pointer offsets are 16-bit, so the code cannot exceed 0xFFFF bytes.
+	// calc_size() accumulates into a 16-bit value and would silently wrap, so
+	// report an explicit error here instead.
+	size_t realCodeSize = output.size() - realStartOfCode;
+	if (realCodeSize > 0xFFFF)
+	{
+		context.ReportError(&script, "The script's code is too large (%u bytes); a script code section cannot exceed 65535 bytes.", (unsigned int)realCodeSize);
+	}
 
 	uint16_t after = (uint16_t)output.size();
 	if ((after - wStartOfCode) != codeSizeBase)
@@ -679,7 +690,7 @@ void _Section4_Saids(CompileContext &context, vector<BYTE> &output, CompileResul
 	results.Stats.Saids += (int)(output.size() - beginning);
 }
 
-void _Section5_Strings(CompileContext &context, vector<BYTE> &outputScr, vector<BYTE> &outputHeap, bool writeSCI0SectionHeader, CompileResults &results)
+void _Section5_Strings(Script &script, CompileContext &context, vector<BYTE> &outputScr, vector<BYTE> &outputHeap, bool writeSCI0SectionHeader, CompileResults &results)
 {
 	size_t beginning = outputHeap.size();
 
@@ -687,8 +698,15 @@ void _Section5_Strings(CompileContext &context, vector<BYTE> &outputScr, vector<
 	auto strings = context.GetStringsThatWereWritten();
 	if (!strings.empty())
 	{
-		// Compute the length of all the strings.
-		WORD wStringSectionSize = accumulate(strings.begin(), strings.end(), 0, [](std::string::size_type sumSoFar, const std::string &theString) { return sumSoFar + theString.length() + 1; });
+		// Compute the length of all the strings. Accumulate into a wide type so a
+		// table too large to represent is detected, rather than silently wrapping
+		// the 16-bit section size written into the resource.
+		size_t stringSectionSizeFull = accumulate(strings.begin(), strings.end(), (size_t)0, [](size_t sumSoFar, const std::string &theString) { return sumSoFar + theString.length() + 1; });
+		if ((stringSectionSizeFull + 4) > 0xFFFF)   // +4 for the section header/size words
+		{
+			context.ReportError(&script, "The script's string table is too large (%u bytes); it cannot exceed 65535 bytes.", (unsigned int)stringSectionSizeFull);
+		}
+		WORD wStringSectionSize = (WORD)stringSectionSizeFull;
 
 		// Round it up to a WORD boundary:
 		bool fRoundUp = make_even(wStringSectionSize);
@@ -1241,7 +1259,7 @@ bool GenerateScriptResource_SCI0(Script &script, PrecompiledHeaders &headers, Co
 	// The parser ensures that local vars (which follow) do not have ValueType::ResourceString.
 	// Also note: The strings section should come after all sinks have been written - because we
 	// won't bother writing a string if it isn't referenced by anyone.
-	_Section5_Strings(context, output, output, true, results);
+	_Section5_Strings(script, context, output, output, true, results);
 
 	_Section8_RelocationTable(context, output);
 
@@ -1494,7 +1512,7 @@ bool GenerateScriptResource_SCI11(Script &script, PrecompiledHeaders &headers, C
 		// Now it appears there is a zero marker in the heap, after the objects
 		push_word(outputHeap, 0);
 
-		_Section5_Strings(context, outputScr, outputHeap, false, results);
+		_Section5_Strings(script, context, outputScr, outputHeap, false, results);
 
 		// At the beginning of the file, write the offset to after string table:
 		write_word(outputHeap, 0, (uint16_t)outputHeap.size());
