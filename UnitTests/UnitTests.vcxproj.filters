@@ -71,6 +71,9 @@
     <ClCompile Include="TestMergeScripts.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestDecompilerDangling.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestCodec.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

@@ -222,6 +222,12 @@ private:
 
 void DecompileRaw(sci::FunctionBase &func, DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEnd, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset);
 
+// Repoint the branch targets of `copy` (a positional duplicate of `source`) so
+// they refer to nodes inside `copy` instead of the shared nodes in `source`.
+// After this, `source` can be edited or have nodes erased without leaving the
+// copy's branch iterators dangling. See #62.
+void RepointBranchTargetsIntoCopy(std::list<scii> &source, std::list<scii> &copy);
+
 struct VariableRange
 {
 	uint16_t index;
