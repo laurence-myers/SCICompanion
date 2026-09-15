@@ -99,6 +99,7 @@
     <ClCompile Include="Helper.cpp" />
     <ClCompile Include="IntegrationHarness.cpp" />
     <ClCompile Include="TestIntegrationHarness.cpp" />
+    <ClCompile Include="TestPostBuildThreadIntegration.cpp" />
     <ClCompile Include="DecompileHelper.cpp" />
     <ClCompile Include="OracleHelper.cpp" />
     <ClCompile Include="AstPassHelper.cpp" />
