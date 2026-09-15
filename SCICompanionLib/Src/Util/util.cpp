@@ -975,6 +975,23 @@ void movefile(const std::string &from, const std::string &to)
 	}
 }
 
+void replacefile(const std::string &from, const std::string &to)
+{
+	// MOVEFILE_REPLACE_EXISTING makes this one atomic operation: unlike a
+	// delete-then-move, there is no window where 'to' is missing, so an
+	// interrupted replace cannot lose the destination file. MOVEFILE_WRITE_THROUGH
+	// flushes the rename (the directory-entry change) before returning; it does not
+	// flush the file's data, so this is crash-atomic, not proof against power loss.
+	if (!MoveFileEx(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+	{
+		std::string details = "Replacing ";
+		details += to;
+		details += " with ";
+		details += from;
+		throw std::exception(GetMessageFromLastError(details).c_str());
+	}
+}
+
 struct convert {
 	void operator()(char& c) { c = toupper((unsigned char)c); }
 };
