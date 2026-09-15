@@ -50,6 +50,9 @@
     <ClCompile Include="TestUtilHardening.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestUndoResource.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestCompile.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

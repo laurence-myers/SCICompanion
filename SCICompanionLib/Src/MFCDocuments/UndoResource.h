@@ -29,14 +29,16 @@ class CUndoResource : public _TBase
 private:
 	struct UndoData
 	{
-		UndoData(std::unique_ptr<_TItem>&& theItem, ptrdiff_t theExtra)
+		UndoData(std::unique_ptr<_TItem>&& theItem, ptrdiff_t theExtra, size_t theId)
 		{
 			item = std::move(theItem);
 			extra = theExtra;
+			id = theId;
 		}
 
 		std::unique_ptr<_TItem> item;
 		ptrdiff_t extra;
+		size_t id; // durable frame identity, independent of the heap address
 	};
 
 protected:
@@ -50,14 +52,16 @@ public:
 	CUndoResource()
 	{
 		_pos = _undo.end();
-		_pLastSaved = nullptr;
+		_nextId = 0;
+		_lastSavedId = _cInvalidId;
 	}
 
 	void AddFirstResource(std::unique_ptr<_TItem> pResource, ptrdiff_t extra = 0)
 	{
 		ASSERT(_pos == _undo.end());
-		_pLastSaved = pResource.get();
-		_undo.emplace_back(std::move(pResource), extra);
+		size_t id = _nextId++;
+		_lastSavedId = id;
+		_undo.emplace_back(std::move(pResource), extra, id);
 		_pos = _GetLastUndoFrame();
 	}
 
@@ -76,7 +80,7 @@ public:
 		}
 
 		// Insert after the current pos (which is now the end), and make this our new pos.
-		_undo.emplace_back(std::move(pResourceNew), extra);
+		_undo.emplace_back(std::move(pResourceNew), extra, _nextId++);
 		_pos = _GetLastUndoFrame();
 
 		// Make sure we don't grow infinitely.
@@ -93,7 +97,19 @@ public:
 
 	void SetLastSaved(const _TItem *pResource)
 	{
-		_pLastSaved = pResource;
+		// Record the saved frame by its durable id, looked up while the pointer
+		// is still live (called right after a save). A raw pointer would dangle
+		// once the frame is trimmed or its redo tail is erased, and a reused
+		// heap address could then falsely match an unsaved frame.
+		_lastSavedId = _cInvalidId;
+		for (const UndoData &frame : _undo)
+		{
+			if (frame.item.get() == pResource)
+			{
+				_lastSavedId = frame.id;
+				break;
+			}
+		}
 	}
 
 	// Gets the resource at the current location
@@ -121,7 +137,7 @@ protected:
 		{
 			--_pos;
 			_OnUndoRedo();
-			SetModifiedFlag((*_pos).item.get() != _pLastSaved);
+			SetModifiedFlag((*_pos).id != _lastSavedId);
 		}
 	}
 
@@ -131,7 +147,7 @@ protected:
 		{
 			++_pos;
 			_OnUndoRedo();
-			SetModifiedFlag((*_pos).item.get() != _pLastSaved);
+			SetModifiedFlag((*_pos).id != _lastSavedId);
 		}
 	}
 
@@ -207,7 +223,9 @@ private:
 	_MyListType _undo;
 	typename _MyListType::iterator _pos;
 
-	const _TItem *_pLastSaved; // Weak ref
+	static const size_t _cInvalidId = (size_t)-1;
+	size_t _lastSavedId; // id of the saved frame, or _cInvalidId if none is reachable
+	size_t _nextId;      // monotonically increasing per-frame id source
 };
 
 BEGIN_TEMPLATE_MESSAGE_MAP_2(CUndoResource, _TBase, _TItem, _TBase)
