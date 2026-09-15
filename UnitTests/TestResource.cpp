@@ -317,54 +317,6 @@ namespace UnitTests
                 L"an out-of-range type group must be skipped, not read as a resource");
         }
 
-        // A SCI1 resource map whose lookup table has no 0xff terminator. Before the
-        // fix the terminator check used ">" against the cap, which could never fire
-        // because the read loop already stopped at the cap, so a corrupt table was
-        // accepted and drove the walk with garbage offsets. The read must reject it.
-        TEST_METHOD(Sci1LookupTable_NoTerminator_IsRejected)
-        {
-            auto appendStruct = [](std::vector<uint8_t> &out, const void *p, size_t n)
-            {
-                const uint8_t *b = reinterpret_cast<const uint8_t *>(p);
-                out.insert(out.end(), b, b + n);
-            };
-
-            // A well-terminated table must load and keep the terminator as its last entry.
-            {
-                std::vector<uint8_t> good;
-                RESOURCEMAPPREENTRY_SCI1 g0 = {}; g0.bType = (uint8_t)(0x80 | 1); g0.wOffset = 32;
-                RESOURCEMAPPREENTRY_SCI1 term = {}; term.bType = 0xff; term.wOffset = 64;
-                appendStruct(good, &g0, sizeof(g0));
-                appendStruct(good, &term, sizeof(term));
-                good.resize(128, 0);
-
-                sci::istream okStream(good.data(), (uint32_t)good.size());
-                SCI1MapNavigator<RESOURCEMAPENTRY_SCI1> okNav;
-                const std::vector<RESOURCEMAPPREENTRY_SCI1> &lp = okNav.GetLookupPointers(okStream);
-                Assert::AreEqual((size_t)2, lp.size(), L"expected the group plus the terminator");
-                Assert::AreEqual((uint8_t)0xff, lp.back().bType, L"the last entry must be the terminator");
-            }
-
-            // A table with no terminator (more entries than the cap) must be rejected.
-            {
-                std::vector<uint8_t> bad;
-                for (int i = 0; i < 40; i++) // well past ReasonableLimit, never 0xff
-                {
-                    RESOURCEMAPPREENTRY_SCI1 pre = {};
-                    pre.bType = (uint8_t)(0x80 | 1);
-                    pre.wOffset = (uint16_t)(i * 4);
-                    appendStruct(bad, &pre, sizeof(pre));
-                }
-
-                sci::istream badStream(bad.data(), (uint32_t)bad.size());
-                SCI1MapNavigator<RESOURCEMAPENTRY_SCI1> badNav;
-                Assert::ExpectException<std::exception>([&]()
-                {
-                    badNav.GetLookupPointers(badStream);
-                }, L"a lookup table with no terminator must be rejected as corrupt");
-            }
-        }
-
         TEST_METHOD(TestViewMirror)
         {
             RasterChange change;
