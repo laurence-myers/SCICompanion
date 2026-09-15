@@ -277,6 +277,7 @@ class ControlFlowException : public std::exception
 {
 public:
 	ControlFlowException(ControlFlowNode *node, const std::string &message) : message(message), node(node) {}
+	const char *what() const noexcept override { return message.c_str(); }
 
 	ControlFlowNode *node;
 	std::string message;

@@ -276,6 +276,7 @@ class ConsumptionNodeException : public std::exception
 {
 public:
 	ConsumptionNodeException(const ConsumptionNode *node, const std::string &message) : message(message), node(node) {}
+	const char *what() const noexcept override { return message.c_str(); }
 
 	const ConsumptionNode *node;
 	std::string message;
@@ -3715,6 +3716,21 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 			message = fmt::format("{0}: {1}: {2}", messagePrefix, e.message, (int)e.node->GetType());
 		}
 		lookups.DecompileResults().AddResult(DecompilerResultType::Warning, message);
+		return false;
+	}
+	catch (ControlFlowException &e)
+	{
+		// A control-flow shape the chunk enumerator cannot resolve (e.g.
+		// GetThenAndElseBranches). Report it and return false so DecompileRaw
+		// falls back to disassembly for this one function, instead of the
+		// exception escaping to the batch's catch(...) and killing the run.
+		if (showFile)
+		{
+			std::stringstream ss;
+			mainChunk->Print(ss, 0);
+			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, debugTrackName + " chunks (at failure):\n" + ss.str());
+		}
+		lookups.DecompileResults().AddResult(DecompilerResultType::Warning, fmt::format("{0}: {1}", messagePrefix, e.what()));
 		return false;
 	}
 	return true;
