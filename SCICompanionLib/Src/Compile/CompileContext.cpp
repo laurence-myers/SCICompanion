@@ -1317,16 +1317,34 @@ void GenericOutputByteCode::operator()(const IOutputByteCode* proc)
 // Note: The items merged from scriptToBeMerged are removed from it.
 void MergeScripts(sci::Script &mainScript, sci::Script &scriptToBeMerged)
 {
-	// For now, just support procedures and local variables
+	// Move procedures, local variables and defines into the main script. Each
+	// of these nodes carries an owning-script pointer (set via
+	// ScriptSite::SetScript during parsing) that still points at
+	// scriptToBeMerged. The caller (PrecompiledHeaders::Update) destroys
+	// scriptToBeMerged right after this merge, so every moved node must be
+	// reparented to mainScript. Otherwise FunctionBase::PreScan dereferences a
+	// dangling GetOwnerScript() (reading the owning script's variables), which
+	// is a use-after-free. Merging the defines (previously dropped) also makes a
+	// (define) in a non-header include usable in the including script.
+	// (Classes/instances from a non-header include are still not merged; that is
+	// a separate follow-up.)
 	auto &procs = scriptToBeMerged.GetProceduresNC();
 	for (auto &proc : procs)
 	{
+		proc->SetScript(&mainScript);
 		mainScript.AddProcedure(move(proc));
 	}
 	auto &localVars = scriptToBeMerged.GetScriptVariables();
 	for (auto &localVar : localVars)
 	{
+		localVar->SetScript(&mainScript);
 		mainScript.AddVariable(move(localVar));
+	}
+	auto &defines = scriptToBeMerged.GetDefines();
+	for (auto &define : defines)
+	{
+		define->SetScript(&mainScript);
+		mainScript.AddDefine(move(define));
 	}
 }
 
