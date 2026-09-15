@@ -90,3 +90,79 @@ jobs:
       with:
         name: SCICompanion-${{ matrix.configuration }}-${{ matrix.platform }}-${{ github.sha }}
         path: artifacts
+
+  # AddressSanitizer leg. Builds the unit-test tree with /fsanitize=address and
+  # runs the unit suite, so a memory-safety regression (out-of-bounds read/write,
+  # use-after-free) faults the build instead of passing unnoticed in a plain
+  # Release build. Runs in parallel with the fast `build` job above.
+  asan:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    # Same MFC/ATL install as the build job (a separate job gets a clean runner).
+    - name: Install MFC and ATL for the 14.44 toolset
+      shell: pwsh
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $installPath = & $vswhere -latest -products '*' -property installationPath
+        if (-not $installPath) { throw "Visual Studio not found." }
+
+        $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+        $vsArgs = "modify --installPath `"$installPath`"" +
+          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL" +
+          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.MFC" +
+          " --quiet --norestart --force --nocache"
+        $proc = Start-Process -FilePath $setup -ArgumentList $vsArgs -Wait -PassThru -NoNewWindow
+        if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) { throw "Install failed ($($proc.ExitCode))." }
+
+        $mfc = Get-ChildItem -ErrorAction SilentlyContinue `
+          -Path "$installPath\VC\Tools\MSVC\14.44.*\atlmfc\lib\x86\mfc140.lib"
+        if (-not $mfc) { throw "MFC for the 14.44 toolset was not found after the install." }
+
+    # Build only the UnitTests project and its dependencies with ASan. /MT links
+    # the ASan runtime statically, so no extra DLL is needed to run the tests.
+    #
+    # _DISABLE_STRING_ANNOTATION / _DISABLE_VECTOR_ANNOTATION: the tree links
+    # prebuilt libraries (MFC), so the std::string / std::vector container-overflow
+    # annotations cannot be guaranteed identical across every linked object, which
+    # otherwise fails linking with LNK2038. Disabling them drops only the container-
+    # overflow check; core ASan (heap and stack out-of-bounds, use-after-free) still
+    # applies, which is what the memory-safety tests exercise.
+    - name: Build UnitTests with AddressSanitizer
+      shell: pwsh
+      env:
+        CL: /D_DISABLE_STRING_ANNOTATION /D_DISABLE_VECTOR_ANNOTATION
+      run: |
+        msbuild SCICompanion.sln -m -t:UnitTests -p:Configuration=Release -p:Platform=Win32 -p:EnableASAN=true
+
+    # Run the unit suite under ASan. An out-of-bounds access or use-after-free now
+    # aborts the run. The integration tests (threads, child processes) are excluded
+    # here; this leg targets the memory-safety unit tests.
+    - name: Test (unit, under ASan)
+      shell: pwsh
+      timeout-minutes: 25
+      env:
+        ASAN_OPTIONS: abort_on_error=1
+      run: |
+        # An ASan-instrumented DLL needs the dynamic ASan runtime
+        # (clang_rt.asan_dynamic-i386.dll) at load time -- a DLL target uses the
+        # dynamic runtime even with /MT. Put the toolset bin that ships it on PATH
+        # so the test host can load UnitTests.dll.
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $vc = & $vswhere -latest -products '*' -property installationPath
+        $asan = Get-ChildItem "$vc\VC\Tools\MSVC\*\bin\Hostx86\x86\clang_rt.asan_dynamic-i386.dll" | Select-Object -First 1
+        if (-not $asan) { throw "ASan runtime DLL not found." }
+        $env:PATH = "$($asan.Directory.FullName);$env:PATH"
+        .\UnitTests\RunTests.ps1 -Configuration Release
+
+    - name: Upload ASan Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ASanTestResults-${{ github.sha }}
+        path: TestResults
