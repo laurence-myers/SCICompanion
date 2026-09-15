@@ -186,3 +186,56 @@ jobs:
       with:
         name: ASanTestResults-${{ github.sha }}
         path: TestResults
+
+  # MSVC Code Analysis (/analyze) leg. Informational for now: the first-party
+  # library has never been analysed, so it reports a backlog rather than gating
+  # (like the ASan leg). Findings are in the uploaded log artifact. Runs in
+  # parallel with build and asan. Follow-on #80 steps (raise to /W4 and promote a
+  # few warnings to errors after a clean-up pass; clang-tidy; [[nodiscard]] on
+  # context.code().inst via #59; SARIF to code scanning) are tracked separately.
+  static-analysis:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Install MFC and ATL for the 14.44 toolset
+      shell: pwsh
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $installPath = & $vswhere -latest -products '*' -property installationPath
+        if (-not $installPath) { throw "Visual Studio not found." }
+
+        $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+        $vsArgs = "modify --installPath `"$installPath`"" +
+          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL" +
+          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.MFC" +
+          " --quiet --norestart --force --nocache"
+        $proc = Start-Process -FilePath $setup -ArgumentList $vsArgs -Wait -PassThru -NoNewWindow
+        if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) { throw "Install failed ($($proc.ExitCode))." }
+
+        $mfc = Get-ChildItem -ErrorAction SilentlyContinue `
+          -Path "$installPath\VC\Tools\MSVC\14.44.*\atlmfc\lib\x86\mfc140.lib"
+        if (-not $mfc) { throw "MFC for the 14.44 toolset was not found after the install." }
+
+    # Build the first-party library with Code Analysis on. continue-on-error: the
+    # analysis reports a backlog today, so it must not fail the build. A clean-up
+    # pass and a promotion to a hard gate are follow-on work (#80).
+    - name: Build with MSVC Code Analysis
+      shell: pwsh
+      continue-on-error: true
+      run: |
+        msbuild SCICompanion.sln -m -t:SCICompanionLib -p:Configuration=Release -p:Platform=Win32 -p:RunCodeAnalysis=true -v:normal |
+          Tee-Object -FilePath analyze.log
+        $warns = @(Select-String -Path analyze.log -Pattern 'warning C(6|26|28)\d\d\d').Count
+        Write-Host "MSVC Code Analysis warnings: $warns"
+
+    - name: Upload Code Analysis log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: CodeAnalysis-${{ github.sha }}
+        path: analyze.log
