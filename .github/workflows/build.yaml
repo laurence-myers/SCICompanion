@@ -151,16 +151,22 @@ jobs:
       run: |
         # An ASan-instrumented DLL needs the dynamic ASan runtime
         # (clang_rt.asan_dynamic-i386.dll) at load time -- a DLL target uses the
-        # dynamic runtime even with /MT. The vstest test host does not reliably
-        # search PATH for a native dependency, so copy the runtime next to
-        # UnitTests.dll (a test DLL's own directory is searched for its
-        # dependencies). Keep it on PATH too, and best-effort copy it to System32
-        # (which is always searched) as a fallback.
+        # dynamic runtime even with /MT. It MUST be the runtime from the SAME
+        # toolset that compiled the code; an older one (the image ships several
+        # MSVC versions) does not export the symbols the instrumented DLL imports,
+        # and the test assembly then fails to load. Read the exact v143 toolset
+        # version the build used, and take that version's runtime.
         $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
         $vc = & $vswhere -latest -products '*' -property installationPath
-        $asan = Get-ChildItem "$vc\VC\Tools\MSVC\*\bin\Host*\x86\clang_rt.asan_dynamic-i386.dll" | Select-Object -First 1
-        if (-not $asan) { throw "ASan runtime DLL not found." }
+        $verFile = "$vc\VC\Auxiliary\Build\Microsoft.VCToolsVersion.v143.default.txt"
+        if (-not (Test-Path $verFile)) { $verFile = "$vc\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt" }
+        $toolsVersion = (Get-Content $verFile -Raw).Trim()
+        $asan = Get-ChildItem "$vc\VC\Tools\MSVC\$toolsVersion\bin\Host*\x86\clang_rt.asan_dynamic-i386.dll" | Select-Object -First 1
+        if (-not $asan) { throw "ASan runtime DLL not found for toolset $toolsVersion." }
         Write-Host "ASan runtime: $($asan.FullName)"
+        # Put it where the test host will find it: next to UnitTests.dll (a test
+        # DLL's own directory is searched for its dependencies), on PATH, and (belt
+        # and suspenders) in System32, which is always searched.
         Copy-Item $asan.FullName "Release" -Force
         $env:PATH = "$($asan.Directory.FullName);$env:PATH"
         try { Copy-Item $asan.FullName "$env:SystemRoot\System32" -Force -ErrorAction Stop }
