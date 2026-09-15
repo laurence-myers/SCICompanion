@@ -66,6 +66,7 @@ jobs:
     # test, so nothing is silently skipped in CI.
     - name: Test
       shell: pwsh
+      timeout-minutes: 15
       run: .\UnitTests\RunTests.ps1 -Configuration ${{ matrix.configuration }}
 
     # Integration tests (threads, child processes, windows) run in their own

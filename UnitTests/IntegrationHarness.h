@@ -27,6 +27,7 @@
 #include <thread>
 #include <atomic>
 #include <chrono>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -38,11 +39,14 @@ namespace IntegrationHarness
     // per-test timeout, so a concurrency test that fails by hanging would wedge
     // the whole run; this gives it a soft deadline instead.
     //
-    // Contract on timeout: the worker is still running. It cannot be killed in
-    // process, so a body that MIGHT time out must touch only state that outlives
-    // this object (a gate the test releases, or heap). Release the body, then
-    // call Join(). If a body is left blocked, the destructor detaches it rather
-    // than block; the real backstop for a true deadlock is vstest --blame-hang.
+    // Contract on timeout: the worker is still running and cannot be killed in
+    // process, so it is detached rather than joined. The completion flag is
+    // heap-owned (a shared_ptr the worker holds by value), so a detached worker
+    // that finishes later writes only to memory that outlives this object --
+    // there is no use-after-free. A body that shares OTHER state with the test
+    // must likewise keep it alive (a gate the test releases, or heap). Run()
+    // reclaims a prior worker, so a runner is reusable. The real backstop for a
+    // true deadlock is vstest --blame-hang.
     //
     class DeadlineRunner
     {
@@ -53,12 +57,12 @@ namespace IntegrationHarness
         DeadlineRunner &operator=(const DeadlineRunner &) = delete;
 
         bool Run(unsigned timeoutMs, std::function<void()> body);
-        bool Finished() const { return _done.load(); }
+        bool Finished() const { return _done && _done->load(); }
         void Join();
 
     private:
         std::thread _thread;
-        std::atomic<bool> _done{ false };
+        std::shared_ptr<std::atomic<bool>> _done;
     };
 
     //

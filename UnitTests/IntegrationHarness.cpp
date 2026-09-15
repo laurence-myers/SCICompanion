@@ -19,18 +19,27 @@ namespace IntegrationHarness
 {
     bool DeadlineRunner::Run(unsigned timeoutMs, std::function<void()> body)
     {
-        _done.store(false);
-        _thread = std::thread([this, body]()
+        // Reclaim any previous worker so a reused runner never move-assigns onto
+        // a joinable thread, which would call std::terminate.
+        if (_thread.joinable())
+        {
+            if (_done && _done->load()) { _thread.join(); }
+            else { _thread.detach(); }
+        }
+
+        auto done = std::make_shared<std::atomic<bool>>(false);
+        _done = done;
+        _thread = std::thread([done, body]()
         {
             body();
-            _done.store(true);
+            done->store(true); // heap-owned: safe even if the runner was destroyed
         });
         auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
-        while (!_done.load() && std::chrono::steady_clock::now() < deadline)
+        while (!done->load() && std::chrono::steady_clock::now() < deadline)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
-        return _done.load();
+        return done->load();
     }
 
     void DeadlineRunner::Join()
@@ -45,15 +54,16 @@ namespace IntegrationHarness
     {
         if (_thread.joinable())
         {
-            if (_done.load())
+            if (_done && _done->load())
             {
                 _thread.join();
             }
             else
             {
                 // The body did not finish and cannot be killed in process. Detach
-                // so this object's destruction does not block the whole run; a true
-                // deadlock is caught by vstest --blame-hang, not here.
+                // so this object's destruction does not block the whole run. The
+                // completion flag is heap-owned, so the detached worker writing it
+                // later is safe. A true deadlock is caught by vstest --blame-hang.
                 _thread.detach();
             }
         }
@@ -110,6 +120,13 @@ namespace IntegrationHarness
 
     bool MessageOnlyWindow::Post(UINT msg, WPARAM wParam, LPARAM lParam)
     {
+        if (_destroyed)
+        {
+            // Deterministic: a post after the window is torn down fails, without
+            // relying on the stale handle value (which Windows may recycle and
+            // hand to an unrelated window).
+            return false;
+        }
         return ::PostMessage(_hwnd, msg, wParam, lParam) != FALSE;
     }
 
@@ -193,6 +210,9 @@ namespace IntegrationHarness
             {
                 state->text.append(buffer, read);
             }
+            // The reader owns the read end and closes it here, so it is released
+            // on both the normal and the timed-out (detached) path.
+            ::CloseHandle(state->readEnd);
             state->eof.store(true); // ReadFile failed or returned 0: the pipe is closed
         });
 
@@ -202,17 +222,16 @@ namespace IntegrationHarness
             out.reachedEof = state->eof.load();
             out.text = state->text;
         }
-        // If not finished, the reader is left running on heap-owned state and the
-        // runner detaches it. That path is the #48 hang, backstopped by --blame-hang.
+        // If not finished, the reader is left running on heap-owned state, closes
+        // its own handle when the pipe finally drains, and the runner detaches it.
+        // That path is the #48 hang, backstopped by --blame-hang.
 
-        ::WaitForSingleObject(pi.hProcess, 2000);
-        ::GetExitCodeProcess(pi.hProcess, &out.exitCode);
+        if (::WaitForSingleObject(pi.hProcess, timeoutMs) == WAIT_OBJECT_0)
+        {
+            ::GetExitCodeProcess(pi.hProcess, &out.exitCode);
+        }
         ::CloseHandle(pi.hProcess);
         ::CloseHandle(pi.hThread);
-        if (finished)
-        {
-            ::CloseHandle(readEnd);
-        }
         return out;
     }
 }

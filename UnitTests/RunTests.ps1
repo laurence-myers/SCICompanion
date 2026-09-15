@@ -6,9 +6,12 @@
     Then:
       .\UnitTests\RunTests.ps1
 
-    Runs the whole suite by default, so CI (which invokes this script with no
-    arguments) cannot silently skip a test. Pass -Filter "FullyQualifiedName~..."
-    to run a subset locally; -All is kept as an explicit "everything" override.
+    Runs the UNIT suite by default: it excludes the integration tests (test
+    classes whose name contains "Integration"), so a plain run never spawns a
+    thread or a process. -Integration runs only the integration tests; -All runs
+    everything (unit + integration); -Filter "FullyQualifiedName~..." runs an
+    explicit subset and overrides the switches. The default still cannot silently
+    skip a UNIT test -- it excludes only the integration category by name.
 
     Bytecode oracle env vars (read by TestBytecodeOracle.Oracle_ExistingGame,
     which is skipped and green unless SCICOMP_ORACLE_GAME is set):
@@ -60,10 +63,13 @@ if (-not (Test-Path $vstest)) {
 }
 
 $resultsDir = Join-Path $repoRoot "TestResults"
+# Give the integration leg its own TRX so it does not overwrite the unit leg's
+# results in a shared directory (both legs run this script in CI).
+$trxName = if ($Integration) { "IntegrationTests.trx" } else { "UnitTests.trx" }
 $vstestArgs = @(
     $dll,
     "/Platform:x86",
-    "/logger:trx;LogFileName=UnitTests.trx",
+    "/logger:trx;LogFileName=$trxName",
     "/ResultsDirectory:$resultsDir"
 )
 # Integration test classes carry "Integration" in their name (the C++ test
@@ -72,10 +78,12 @@ $vstestArgs = @(
 # -Integration runs only them; -All runs everything; -Filter overrides all this.
 $effectiveFilter = ""
 if ($Filter) {
-    $effectiveFilter = $Filter
+    $effectiveFilter = $Filter          # explicit subset wins
+} elseif ($All) {
+    $effectiveFilter = ""               # everything: unit + integration (so -Integration -All runs all)
 } elseif ($Integration) {
     $effectiveFilter = "FullyQualifiedName~Integration"
-} elseif (-not $All) {
+} else {
     $effectiveFilter = "FullyQualifiedName!~Integration"
 }
 if ($effectiveFilter) {
