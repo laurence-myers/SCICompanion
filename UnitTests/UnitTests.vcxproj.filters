@@ -56,6 +56,9 @@
     <ClCompile Include="TestPostBuildThreadIntegration.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestPMachine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestCodec.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
