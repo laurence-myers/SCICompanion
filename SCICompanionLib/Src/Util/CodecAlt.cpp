@@ -163,7 +163,7 @@ void reorderView(byte *src, BoundsCheckedArray<BYTE> dest) {
 	int l, lb, c, celindex, lh_last = -1;
 	int chptr;
 	int w;
-	int *cc_lengths;
+	std::vector<int> cc_lengths;  // (e) RAII: frees on any throw/early return
 	std::unique_ptr<BoundsCheckedArray<byte>[]> cc_pos;
 
 	/* Parse the main header */
@@ -183,7 +183,7 @@ void reorderView(byte *src, BoundsCheckedArray<BYTE> dest) {
 	cc_pos = std::make_unique<BoundsCheckedArray<byte>[]>(cel_total);
 
 
-	cc_lengths = (int *)malloc(sizeof(int) * cel_total);
+	cc_lengths.resize(cel_total);
 
 	for (c = 0; c < cel_total; c++)
 		cc_lengths[c] = READ_LE_UINT16(cellengths + 2 * c);
@@ -202,6 +202,10 @@ void reorderView(byte *src, BoundsCheckedArray<BYTE> dest) {
 
 	byte *pix_ptr;
 
+	if (lh_present > (int)sizeof(celcounts)) {
+		appState->LogInfo("View decompression: too many loop headers (%d)", lh_present);
+		return;  // (e) a file byte 0..255 into char[100] would smash the stack
+	}
 	memcpy(celcounts, seeker, lh_present);
 	seeker += lh_present;
 
@@ -221,6 +225,10 @@ void reorderView(byte *src, BoundsCheckedArray<BYTE> dest) {
 			lh_ptr += 2;
 		}
 		else {
+			if (w >= lh_present) {
+				appState->LogInfo("View decompression: more present loops than cel counts");
+				return;  // (e) celcounts only has lh_present (<=100) valid entries
+			}
 			lh_last = writer - dest;
 			WRITE_LE_UINT16(lh_ptr, lh_last);
 			lh_ptr += 2;
@@ -233,13 +241,17 @@ void reorderView(byte *src, BoundsCheckedArray<BYTE> dest) {
 			chptr = (writer - dest) + (2 * celcounts[w]);
 
 			for (c = 0; c < celcounts[w]; c++) {
+				if (celindex + c >= cel_total) {
+					appState->LogInfo("View decompression: cel index out of range");
+					return;  // (e) bound the cc_pos[] write and the cellengths[] read
+				}
 				WRITE_LE_UINT16(writer, chptr);
 				writer += 2;
 				cc_pos[celindex + c] = dest + chptr;
 				chptr += 8 + READ_LE_UINT16(cellengths + 2 * (celindex + c));
 			}
 
-			buildCelHeaders(&seeker, &writer, celindex, cc_lengths, celcounts[w]);
+			buildCelHeaders(&seeker, &writer, celindex, cc_lengths.data(), celcounts[w]);  // vector -> raw ptr; range already validated above
 
 			celindex += celcounts[w];
 			w++;
@@ -250,8 +262,7 @@ void reorderView(byte *src, BoundsCheckedArray<BYTE> dest) {
 
 	if (celindex < cel_total) {
 		appState->LogInfo("View decompression generated too few (%d / %d) headers", celindex, cel_total);
-		free(cc_lengths);
-		return;
+		return;  // (e) cc_lengths is now RAII
 	}
 
 	/* Figure out where the pixel data begins. */
@@ -274,9 +285,7 @@ void reorderView(byte *src, BoundsCheckedArray<BYTE> dest) {
 		int space = 4 * 256 + 4;
 		memcpy(writer.GetRawDataEnsureSpace(space), seeker, space);
 	}
-
-	free(cc_lengths);
-}
+}  // (e) cc_lengths (std::vector) frees itself
 
 #define PAL_SIZE 1284
 #define EXTRA_MAGIC_SIZE 15
@@ -316,21 +325,22 @@ void reorderPic(byte *src, byte *destRaw, int dsize) {
 	seeker += 4 * 256;
 	writer += 4 * 256;
 
-	if (view_start != PAL_SIZE + 2) { /* +2 for the opcode */
+	if (view_start > PAL_SIZE + 2) { /* +2 for the opcode */  // (e) '>' not '!=' so (view_start-PAL_SIZE-2) can't be negative -> no ~4GB memcpy
 		memcpy(writer.GetRawDataEnsureSpace(view_start - PAL_SIZE - 2), seeker, view_start - PAL_SIZE - 2);
 		seeker += view_start - PAL_SIZE - 2;
 		writer += view_start - PAL_SIZE - 2;
 	}
 
-	if (dsize != view_start + EXTRA_MAGIC_SIZE + view_size) {
+	if (dsize > view_start + EXTRA_MAGIC_SIZE + view_size) {  // (e) '>' guards the negative-size memcpy and keeps the dest+offset in range
 		memcpy((dest + view_size + view_start + EXTRA_MAGIC_SIZE).GetRawDataEnsureSpace(dsize - view_size - view_start - EXTRA_MAGIC_SIZE), seeker,
 			dsize - view_size - view_start - EXTRA_MAGIC_SIZE);
 		seeker += dsize - view_size - view_start - EXTRA_MAGIC_SIZE;
 	}
 
-	cdata_start = cdata = (byte *)malloc(cdata_size);
+	std::vector<byte> cdata_storage(cdata_size);
+	cdata_start = cdata = cdata_storage.data();
 	memcpy(cdata, seeker, cdata_size);
-	seeker += cdata_size;
+	seeker += cdata_size;  // (e) RAII: frees even if decodeRLE/writer throws
 
 	writer = dest + view_start;
 	*writer++ = PIC_OP_OPX;
@@ -347,6 +357,4 @@ void reorderPic(byte *src, byte *destRaw, int dsize) {
 	*writer++ = 0;
 
 	decodeRLE(&seeker, &cdata, writer, view_size);
-
-	free(cdata_start);
-}
+}  // (e) cdata_storage frees itself

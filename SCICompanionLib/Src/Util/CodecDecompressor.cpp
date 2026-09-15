@@ -57,7 +57,10 @@ byte Decompressor::getByteLSB() {
 }
 
 void Decompressor::putByte(byte b) {
-	_dest[_dwWrote++] = b;
+	// (b) output bound, shared by LZS and DCL. DCL already guards its own copies
+	// against _szUnpacked, so this never drops a byte DCL intended to write.
+	if (_dwWrote < _szUnpacked)
+		_dest[_dwWrote++] = b;
 }
 byte Decompressor::getByteMSB() {
 	return getBitsMSB(8);

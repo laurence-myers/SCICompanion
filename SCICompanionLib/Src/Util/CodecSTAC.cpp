@@ -86,15 +86,18 @@ uint32_t DecompressorLZS::getCompLen() {
 }
 
 void DecompressorLZS::copyComp(int offs, uint32_t clen) {
-	int hpos = _dwWrote - offs;
+	int hpos = (int)_dwWrote - offs;
+	if (hpos < 0)
+		return;  // (b) back-reference before start of output; corrupt stream
 
-	while (clen--)
+	// hpos stays == _dwWrote-offs < _dwWrote < _szUnpacked throughout, so the read is in-bounds.
+	while (clen-- && _dwWrote < _szUnpacked)
 		putByte(_dest[hpos++]);
 }
 
 bool decompressLZS(byte *dest, byte *src, uint32_t unpackedSize, uint32_t packedSize)
 {
-	ReadStream readStream(src);
+	ReadStream readStream(src, packedSize);
 	DecompressorLZS stac;
 	return stac.unpack(&readStream, dest, packedSize, unpackedSize);
 }

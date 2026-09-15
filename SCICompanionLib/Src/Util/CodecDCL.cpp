@@ -314,7 +314,7 @@ bool DecompressorDCL::unpack(ReadStream *src, byte *dest, uint32_t nPacked, uint
 
 bool decompressDCL(byte *dest, byte *src, uint32_t unpackedSize, uint32_t packedSize)
 {
-	ReadStream readStream(src);
+	ReadStream readStream(src, packedSize);
 	DecompressorDCL dcl;
 	return dcl.unpack(&readStream, dest, packedSize, unpackedSize);
 }

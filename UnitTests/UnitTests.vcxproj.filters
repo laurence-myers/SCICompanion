@@ -44,6 +44,9 @@
     <ClCompile Include="TestResource.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestCodec.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestCompile.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

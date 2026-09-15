@@ -111,6 +111,7 @@
     <ClCompile Include="TestDecompile.cpp" />
     <ClCompile Include="TestBytecodeOracle.cpp" />
     <ClCompile Include="TestKeywordCodegen.cpp" />
+    <ClCompile Include="TestCodec.cpp" />
     <ClCompile Include="TestAstPasses.cpp" />
     <ClCompile Include="TestPicDraw.cpp" />
     <ClCompile Include="TestPolygonLoad.cpp" />
