@@ -87,6 +87,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Helper.h" />
+    <ClInclude Include="IntegrationHarness.h" />
     <ClInclude Include="DecompileHelper.h" />
     <ClInclude Include="OracleHelper.h" />
     <ClInclude Include="AstPassHelper.h" />
@@ -96,6 +97,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Helper.cpp" />
+    <ClCompile Include="IntegrationHarness.cpp" />
+    <ClCompile Include="TestIntegrationHarness.cpp" />
     <ClCompile Include="DecompileHelper.cpp" />
     <ClCompile Include="OracleHelper.cpp" />
     <ClCompile Include="AstPassHelper.cpp" />

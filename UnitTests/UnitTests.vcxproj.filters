@@ -24,6 +24,9 @@
     <ClInclude Include="Helper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="IntegrationHarness.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="DecompileHelper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -42,6 +45,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestResource.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="IntegrationHarness.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestIntegrationHarness.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestCodec.cpp">

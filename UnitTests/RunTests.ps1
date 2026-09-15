@@ -20,10 +20,18 @@
 #>
 param(
     [string]$Configuration = "Release",
-    # Empty by default: run every test. A non-empty value is passed straight to
-    # vstest's /TestCaseFilter for a local subset run.
+    # Empty by default. A non-empty value is passed straight to vstest's
+    # /TestCaseFilter for a local subset run and overrides the switches below.
     [string]$Filter = "",
+    # -All runs every test, including the Integration category. With no switch,
+    # the run is unit-only: the Integration category is excluded.
     [switch]$All,
+    # -Integration runs ONLY the integration tests (threads, child processes,
+    # windows, filesystem), separately from the fast unit run.
+    [switch]$Integration,
+    # -BlameHang makes vstest collect a hang dump and kill a wedged test. Pair it
+    # with -Integration in CI so a real deadlock fails the job instead of hanging.
+    [switch]$BlameHang,
     # After the run, copy the decompiled template snapshots the test wrote into
     # the source tree, so an intended output change is committed with the code.
     [switch]$UpdateSnapshots
@@ -58,8 +66,23 @@ $vstestArgs = @(
     "/logger:trx;LogFileName=UnitTests.trx",
     "/ResultsDirectory:$resultsDir"
 )
-if ($Filter -and -not $All) {
-    $vstestArgs += "/TestCaseFilter:$Filter"
+# Integration test classes carry "Integration" in their name (the C++ test
+# adapter filters on FullyQualifiedName, not on trait attributes). The default
+# run excludes them, so the unit leg stays fast and never spawns a process.
+# -Integration runs only them; -All runs everything; -Filter overrides all this.
+$effectiveFilter = ""
+if ($Filter) {
+    $effectiveFilter = $Filter
+} elseif ($Integration) {
+    $effectiveFilter = "FullyQualifiedName~Integration"
+} elseif (-not $All) {
+    $effectiveFilter = "FullyQualifiedName!~Integration"
+}
+if ($effectiveFilter) {
+    $vstestArgs += "/TestCaseFilter:$effectiveFilter"
+}
+if ($BlameHang) {
+    $vstestArgs += "/Blame:CollectHangDump;TestTimeout=120000"
 }
 
 # The snapshot test writes each decompiled script to SnapshotActuals next to
