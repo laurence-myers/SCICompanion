@@ -61,8 +61,7 @@ bool CompiledScript::Load(const GameFolderHelper &helper, SCIVersion version, in
 	std::unique_ptr<ResourceBlob> scriptResource = helper.MostRecentResource(ResourceType::Script, iScriptNumber, ResourceEnumFlags::None);
 	if (scriptResource)
 	{
-		Load(helper, version, iScriptNumber, scriptResource->GetReadStream());
-		return true;
+		return Load(helper, version, iScriptNumber, scriptResource->GetReadStream());
 	}
 	return false;
 }
@@ -347,6 +346,13 @@ bool CompiledScript::_LoadSCI1_1(const GameFolderHelper &helper, int iScriptNumb
 				{
 					uint16_t offset = (uint16_t)heapStream->tellg();
 					(*heapStream) >> aString;
+					if (!heapStream->good())
+					{
+						// A bad string-pointer-offsets offset or an unterminated final
+						// string leaves operator>>(string) rewinding without progress.
+						// istream state is sticky, so stop rather than spin forever.
+						break;
+					}
 					// We DO add empty strings to the offsets. However, we may have a bogus empty
 					// one at the end, since afterStrings is WORD-aligned.
 					if (!aString.empty() || (heapStream->tellg() < stringPointerOffsetsOffset))
@@ -364,20 +370,30 @@ bool CompiledScript::_LoadSCI1_1(const GameFolderHelper &helper, int iScriptNumb
 			assert((addressAfterLastObject <= earliestMethodCodeOffset) || _version.IsZeroExportValid);
 			if (addressAfterLastObject < heapPointerListOffset)
 			{
-				CodeSection all;
-				all.begin = addressAfterLastObject;
-				all.end = heapPointerListOffset;
-				_codeSections.push_back(all);
-
-				if (_version.IsZeroExportValid) // SCI2, etc...
+				if (heapPointerListOffset >= _scriptResource.size())
 				{
-					// A zero export in this case is actually supposed to point to the start of the code section, not the start of the script resource.
-					// So adjust that offset.
-					for (size_t i = 0; i < _exportsTO.size(); i++)
+					// Corrupt/malicious: the code section would extend to or past
+					// the end of the script resource, which would be read out of
+					// bounds later (e.g. FindInternalCallsTO indexes _scriptResource[end]).
+					isSuccess = false;
+				}
+				else
+				{
+					CodeSection all;
+					all.begin = addressAfterLastObject;
+					all.end = heapPointerListOffset;
+					_codeSections.push_back(all);
+
+					if (_version.IsZeroExportValid) // SCI2, etc...
 					{
-						if (_exportsTO[i] == 0)
+						// A zero export in this case is actually supposed to point to the start of the code section, not the start of the script resource.
+						// So adjust that offset.
+						for (size_t i = 0; i < _exportsTO.size(); i++)
 						{
-							_exportsTO[i] = addressAfterLastObject;
+							if (_exportsTO[i] == 0)
+							{
+								_exportsTO[i] = addressAfterLastObject;
+							}
 						}
 					}
 				}
@@ -760,19 +776,6 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 	heapStream >> mysteryValue;
 	assert(mysteryValue == 0);
 
-	// Get the property selectors, which are only present for classes.
-	if (!_fInstance)
-	{
-		scriptStream.seekg(varOffset);
-		_propertySelectors.reserve(numVars);
-		for (uint16_t i = 0; i < numVars; i++)
-		{
-			uint16_t propertySelector;
-			scriptStream >> propertySelector;
-			_propertySelectors.push_back(propertySelector);
-		}
-	}
-
 	// Now get the property values
 	for (uint16_t i = 0; i < numVars; i++)
 	{
@@ -806,6 +809,23 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 			// when it's actually x. We can't technically determine if this is name without knowing the super classes.
 			wName = _propertyValues[i].value;
 			break;
+		}
+	}
+
+	// Get the property selectors, which are only present for classes. This must
+	// run AFTER the property-values loop, since that loop computes _fInstance
+	// from the --info-- selector. Instances share their class's selectors (their
+	// varOffset points at method data, not a selector table), so they must not
+	// be read here.
+	if (!_fInstance)
+	{
+		scriptStream.seekg(varOffset);
+		_propertySelectors.reserve(numVars);
+		for (uint16_t i = 0; i < numVars; i++)
+		{
+			uint16_t propertySelector;
+			scriptStream >> propertySelector;
+			_propertySelectors.push_back(propertySelector);
 		}
 	}
 
@@ -881,12 +901,16 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 			}
 		}
 		uint16_t wName = 0;
-		if (wNumVarSelectors >= 3)
+		// Guard by the number of values ACTUALLY read: the fill loop can stop
+		// early on a short/corrupt stream, so wNumVarSelectors (the declared
+		// count) may exceed _propertyValues.size(). They are equal for valid
+		// input, so this is identical there and prevents an out-of-bounds read.
+		if (_propertyValues.size() >= 3)
 		{
 			_wSpeciesIfClass = _propertyValues[0].value;
 			_wSuperClass = _propertyValues[1].value;
 			_wInfo = _propertyValues[2].value;
-			if (wNumVarSelectors >= 4)
+			if (_propertyValues.size() >= 4)
 			{
 				wName = _propertyValues[3].value;
 			}

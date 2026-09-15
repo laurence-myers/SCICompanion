@@ -357,7 +357,7 @@ void AppState::OpenScript(std::string strName, const ResourceBlob *pData, WORD w
 				{
 					if (FAILED(GetResourceMap().GetScriptNumber(scriptId, wScriptNum)))
 					{
-						LogInfo("Couldn't get script number for %s", scriptId.GetFullPath());
+						LogInfo("Couldn't get script number for %s", scriptId.GetFullPath().c_str());
 					}
 				}
 			}

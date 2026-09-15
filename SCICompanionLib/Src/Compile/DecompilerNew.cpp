@@ -276,6 +276,7 @@ class ConsumptionNodeException : public std::exception
 {
 public:
 	ConsumptionNodeException(const ConsumptionNode *node, const std::string &message) : message(message), node(node) {}
+	const char *what() const noexcept override { return message.c_str(); }
 
 	const ConsumptionNode *node;
 	std::string message;
@@ -3618,8 +3619,20 @@ void _RestructureCaseHeaders(ConsumptionNode *chunk, DecompileLookups &lookups)
 		// [CaseCondition]
 		//   ldi   // Something that puts stuff in the accumulator
 		//
+		// Validate the assumed dup/compare/bnt shape before indexing. _IdentifySwitchCases
+		// only checked the head starts with dup and ends with bnt, so a compare-less
+		// "dup; bnt" head would otherwise index past too-few children. Throw instead;
+		// OutputNewStructure catches this and falls back to disassembly.
+		if ((chunk->GetChildCount() < 1) || (chunk->Child(0)->GetChildCount() < 1))
+		{
+			throw ConsumptionNodeException(chunk, "Unexpected case header shape.");
+		}
 		ConsumptionNode *bnt = chunk->Child(0);
 		ConsumptionNode *eq = bnt->Child(0);
+		if (eq->GetChildCount() < 2)
+		{
+			throw ConsumptionNodeException(eq, "Case header compare is missing an operand.");
+		}
 		ConsumptionNode *dup = eq->Child(0);
 		unique_ptr<ConsumptionNode> putInAcc = eq->StealChild(1);
 		assert(_GetInstructionConsumption(*putInAcc, lookups).cAccGenerate == 1);
@@ -3715,6 +3728,21 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 			message = fmt::format("{0}: {1}: {2}", messagePrefix, e.message, (int)e.node->GetType());
 		}
 		lookups.DecompileResults().AddResult(DecompilerResultType::Warning, message);
+		return false;
+	}
+	catch (ControlFlowException &e)
+	{
+		// A control-flow shape the chunk enumerator cannot resolve (e.g.
+		// GetThenAndElseBranches). Report it and return false so DecompileRaw
+		// falls back to disassembly for this one function, instead of the
+		// exception escaping to the batch's catch(...) and killing the run.
+		if (showFile)
+		{
+			std::stringstream ss;
+			mainChunk->Print(ss, 0);
+			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, debugTrackName + " chunks (at failure):\n" + ss.str());
+		}
+		lookups.DecompileResults().AddResult(DecompilerResultType::Warning, fmt::format("{0}: {1}", messagePrefix, e.what()));
 		return false;
 	}
 	return true;

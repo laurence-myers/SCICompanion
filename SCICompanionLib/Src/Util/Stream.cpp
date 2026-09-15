@@ -258,7 +258,13 @@ namespace sci
 
 	void istream::skip(uint32_t cBytes)
 	{
-		if ((_iIndex + cBytes) < _cbSizeValid)
+		// Overflow-safe: compare the request against the bytes remaining rather
+		// than computing (_iIndex + cBytes), which wraps mod 2^32 for a large
+		// cBytes (e.g. a corrupt 0xFFFFFFF8 WAV chunk size) and could leave
+		// _iIndex unchanged or moving backwards -> infinite re-read loop.
+		// Skipping exactly to the end of the stream is a valid EOF position,
+		// matching _Read()/seekg() which treat _iIndex == _cbSizeValid as valid.
+		if (cBytes <= getBytesRemaining())
 		{
 			_iIndex += cBytes;
 		}
@@ -386,6 +392,16 @@ namespace sci
 		{
 			uint32_t amountToTransfer = min(count, ARRAYSIZE(buffer));
 			from.read_data(buffer, amountToTransfer);
+			if (!from.good())
+			{
+				// read_data does not throw on a short read: it only sets the fail/eof
+				// state and leaves 'buffer' unchanged. Fail here so we never copy stale
+				// stack bytes into the destination (which silently corrupted output).
+				// Callers pass count == the source's exact available size, so this does
+				// not fire on valid input; the one caller that can hit a truncated
+				// source (RebuildResources) already catches std::exception.
+				throw std::exception("sci::transfer: source stream exhausted before count bytes were read.");
+			}
 			to.WriteBytes(buffer, amountToTransfer);
 			count -= amountToTransfer;
 		}

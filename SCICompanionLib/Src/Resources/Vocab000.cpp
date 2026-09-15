@@ -122,7 +122,10 @@ void Vocab000::_ReadWord(sci::istream &byteStream, char *pszBuffer, size_t cchBu
 		cchBuffer -= bCopyCount;
 
 		uint8_t bChar;
-		while ((cchBuffer > 0) && (byteStream >> bChar).good())
+		// Always leave room for the null terminator (cchBuffer > 1) so the word is
+		// bounded and terminated, even for corrupt/overlong data that never signals
+		// its end.
+		while ((cchBuffer > 1) && (byteStream >> bChar).good())
 		{
 			*pszStartHere = is900 ? bChar : (0x7f & bChar);
 			pszStartHere++;
@@ -130,15 +133,6 @@ void Vocab000::_ReadWord(sci::istream &byteStream, char *pszBuffer, size_t cchBu
 			if (!is900 && (bChar & 0x80))
 			{
 				// This was the last char.
-				if (cchBuffer > 0)
-				{
-					*pszStartHere = 0; // Null terminate.
-				}
-				else
-				{
-					// Ran over our buffer length.
-					// TODO: throw exception?
-				}
 				break;
 			}
 			else if (is900 && !bChar)
@@ -147,6 +141,7 @@ void Vocab000::_ReadWord(sci::istream &byteStream, char *pszBuffer, size_t cchBu
 				break;
 			}
 		}
+		*pszStartHere = 0; // Null terminate (space reserved by the cchBuffer > 1 guard).
 	}
 	else
 	{
@@ -584,13 +579,16 @@ void VocabWriteTo(const ResourceEntity &resource, sci::ostream &byteStream, bool
 		{
 			if (is900)
 			{
-				if (pszWord[0] < 255) // For some reason, 255 is not allowed
+				uint8_t bFirst = (uint8_t)pszWord[0];
+				if (bFirst < 255) // For some reason, 255 is not allowed
 				{
 					// We're at the beginning of a new set of letters.  Take note of the offset.
+					// Index by the unsigned first byte: a signed char >= 0x80 would give a
+					// negative index and write before the stream buffer.
 					uint16_t *rgwOffsets = (uint16_t*)byteStream.GetInternalPointer();
-					assert(rgwOffsets[pszWord[0]] == 0);
+					assert(rgwOffsets[bFirst] == 0);
 					assert(byteStream.tellp() < 0xffff);
-					rgwOffsets[pszWord[0]] = (uint16_t)byteStream.tellp();
+					rgwOffsets[bFirst] = (uint16_t)byteStream.tellp();
 				}
 			}
 			else
@@ -672,7 +670,7 @@ void VocabReadFrom(ResourceEntity &resource, sci::istream &byteStream, bool is90
 	byteStream.skip(is900 ? Vocab000::AlphaIndexLength_900 : Vocab000::AlphaIndexLength);
 
 	// Now we have started with the words.
-	char sz[MAX_PATH];
+	char sz[MAX_PATH] = { 0 };
 	while (byteStream.has_more_data())
 	{
 		vocab._ReadWord(byteStream, sz, ARRAYSIZE(sz), is900);

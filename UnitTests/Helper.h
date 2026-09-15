@@ -27,3 +27,11 @@ std::string SetUpGameSCI11();
 // game folder. Pair with CleanUpExistingGame, which does not delete anything.
 void SetUpExistingGame(const std::string &gameFolder);
 void CleanUpExistingGame();
+
+// Copies an existing game from an absolute source folder (e.g. a real Sierra
+// game under F:\Games\Sierra\...) to a temp folder and points AppState there,
+// so recompiles and commits never touch the original. Point it at the concrete
+// folder that holds resource.map, not a variant parent. Returns the temp folder
+// to pass to CleanUpGame. The copy includes any audio/video volumes, which is
+// slow for CD titles, but this is only used by the opt-in bytecode oracle test.
+std::string SetUpExistingGameCopy(const std::string &absoluteGameFolder);

@@ -106,7 +106,9 @@ bool EvalBinaryOp(Opcode opcode, uint16_t aUnsigned, uint16_t bUnsigned, uint16_
 			result = (aUnsigned > bUnsigned);
 			break;
 		case Opcode::SHR:
-			result = (aUnsigned >> bUnsigned);
+			// SCI shifts a 16-bit value; a count >= 16 shifts every bit out (0).
+			// Guarding also avoids C++ undefined behaviour from an out-of-range shift.
+			result = (bUnsigned >= 16) ? 0 : (uint16_t)(aUnsigned >> bUnsigned);
 			break;
 		case Opcode::GT:
 			result = (a > b);
@@ -121,7 +123,9 @@ bool EvalBinaryOp(Opcode opcode, uint16_t aUnsigned, uint16_t bUnsigned, uint16_
 			result = (aUnsigned < bUnsigned);
 			break;
 		case Opcode::SHL:
-			result = (aUnsigned << bUnsigned);
+			// SCI shifts a 16-bit value; a count >= 16 shifts every bit out (0).
+			// Guarding also avoids C++ undefined behaviour from an out-of-range shift.
+			result = (bUnsigned >= 16) ? 0 : (uint16_t)(aUnsigned << bUnsigned);
 			break;
 		case Opcode::LT:
 			result = (a < b);
@@ -139,7 +143,24 @@ bool EvalBinaryOp(Opcode opcode, uint16_t aUnsigned, uint16_t bUnsigned, uint16_
 			result = (b == 0) ? 0 : (a / b);
 			break;
 		case Opcode::MOD:
-			result = (b == 0) ? 0 : (a & b);
+			if (b == 0)
+			{
+				result = 0;
+			}
+			else
+			{
+				// The SCI PMachine computes a signed modulo whose result is always
+				// non-negative and less than |b| (Euclidean modulo): it forces the
+				// divisor positive, then adds |b| back to a negative remainder. This
+				// matches ScummVM's reg_t::operator% for SCI0..SCI1.1.
+				int modulus = (b < 0) ? -(int)b : (int)b;
+				int rem = (int)a % modulus;
+				if (rem < 0)
+				{
+					rem += modulus;
+				}
+				result = (uint16_t)rem;
+			}
 			break;
 		case Opcode::AND:
 			result = (aUnsigned & bUnsigned);

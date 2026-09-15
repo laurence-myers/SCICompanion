@@ -169,10 +169,19 @@ void ForEachLoop::Traverse(IExploreNode &en)
 		_statement1->Traverse(en);
 	}
 	ForwardTraverse2(_segments, en);
+	// Once _ProcessForEach has lowered this loop, its body has been moved into
+	// FinalCode (the generated for/while loop) and _segments is empty. Descend
+	// into FinalCode so a foreach or &getpoly nested in the body is still
+	// reached by the Pre-order lowering passes; otherwise it is never lowered
+	// and emits nothing.
+	ForwardTraverse2(FinalCode, en);
 }
 void GetPolyStatement::Traverse(IExploreNode &en)
 {
 	ExploreNodeBlock enb(en, *this);
+	// Descend into the generated Send, for consistency with the other
+	// FinalCode-carrying nodes.
+	ForwardTraverse2(FinalCode, en);
 }
 void Script::Traverse(IExploreNode &en)
 {

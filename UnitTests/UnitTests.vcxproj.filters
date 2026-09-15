@@ -27,6 +27,9 @@
     <ClInclude Include="DecompileHelper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="OracleHelper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="AstPassHelper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -39,6 +42,15 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestResource.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestCodec.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestUtilHardening.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestUndoResource.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestCompile.cpp">
@@ -68,7 +80,16 @@
     <ClCompile Include="DecompileHelper.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="OracleHelper.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestDecompile.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestCompiledScript.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestBytecodeOracle.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="AstPassHelper.cpp">

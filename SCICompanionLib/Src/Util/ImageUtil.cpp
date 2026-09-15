@@ -297,6 +297,10 @@ bool GetCelsAndPaletteFromGIFFile(const char *filename, std::vector<Cel> &cels, 
 {
 	int errorCode;
 	GifFileType *fileType = DGifOpenFileName(filename, &errorCode);
+	if (fileType == nullptr)
+	{
+		return false; // Open failed; DGifSlurp(nullptr) would null-deref.
+	}
 	bool success = (DGifSlurp(fileType) == GIF_OK);
 	if (success)
 	{
@@ -369,14 +373,19 @@ bool GetCelsAndPaletteFromGIFFile(const char *filename, std::vector<Cel> &cels, 
 				int yDest = (y + cel.size.cy - top - savedImage.ImageDesc.Height);
 				if ((yDest >= 0) && (yDest < cel.size.cy))
 				{
-					uint8_t *dest = &cel.Data[yDest * CX_ACTUAL(cel.size.cx) + left];
+					uint8_t *destRow = &cel.Data[yDest * CX_ACTUAL(cel.size.cx)];
 					uint8_t *src = savedImage.RasterBits + yUpsideDown * savedImage.ImageDesc.Width;
-					for (int x = 0; x < savedImage.ImageDesc.Width; x++, dest++, src++)
+					for (int x = 0; x < savedImage.ImageDesc.Width; x++, src++)
 					{
+						int xDest = left + x;
+						if ((xDest < 0) || (xDest >= cel.size.cx))
+						{
+							continue; // Frame extends past the logical screen width; skip out-of-range columns.
+						}
 						uint8_t sourceValue = *src;
 						if (sourceValue != transparentColor)
 						{
-							*dest = *src;
+							destRow[xDest] = sourceValue;
 						}
 					}
 				}

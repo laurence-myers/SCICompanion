@@ -96,6 +96,18 @@ void LoadPALFile(const std::string &filename, PaletteComponent &palette, int sta
 		}
 		byteStream >> ch; // Consume the newline
 		int colorCount = std::atoi(colorCountStr.c_str());
+		// A corrupt/malicious .pal can declare a count far larger than Colors[256];
+		// bound it so we never write past the palette (the RIFF branch is already
+		// bounded), and so we don't spin over thousands of nonexistent entries.
+		int maxColors = ARRAYSIZE(palette.Colors) - startIndex;
+		if (colorCount > maxColors)
+		{
+			colorCount = maxColors;
+		}
+		if (colorCount < 0)
+		{
+			colorCount = 0;
+		}
 
 		std::string componentStr;
 

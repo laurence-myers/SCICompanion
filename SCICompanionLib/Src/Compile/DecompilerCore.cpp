@@ -149,11 +149,19 @@ const BYTE *_ConvertToInstructions(DecompileLookups &lookups, std::list<scii> &c
 		uint16_t wOperands[3];
 		ZeroMemory(wOperands, sizeof(wOperands));
 		int cIncr = 0;
+		bool fTruncatedOperand = false;
 
 		for (int i = 0; i < 3; i++)
 		{
 			OperandType opType = GetOperandTypes(sciVersion, bOpcode)[i];
 			cIncr = GetOperandSize(bRawOpcode, opType, pCur);
+			if ((cIncr != 0) && ((pEnd - pCur) < (ptrdiff_t)cIncr))
+			{
+				// The operand runs past the end of the code. Stop before we read
+				// it, so we never index past the script resource buffer.
+				fTruncatedOperand = true;
+				break;
+			}
 			switch (cIncr)
 			{
 			case 1:
@@ -178,6 +186,19 @@ const BYTE *_ConvertToInstructions(DecompileLookups &lookups, std::list<scii> &c
 			{
 				break;
 			}
+		}
+		if (fTruncatedOperand)
+		{
+			// A truncated final instruction. On the abort pass, fail so the caller
+			// retries with a tighter bound; otherwise report it and stop decoding,
+			// leaving the already-decoded instructions (and their fixups) intact.
+			if (abortOnError)
+			{
+				return nullptr;
+			}
+			lookups.DecompileResults().AddResult(DecompilerResultType::Warning,
+				fmt::format("Truncated instruction at 0x{0:04x}; stopping decode.", (uint16_t)(pThisInstruction - pBegin) + wBaseOffset));
+			break;
 		}
 		// Add the instruction - use the constructor that takes all arguments, even if
 		// not all are valid.

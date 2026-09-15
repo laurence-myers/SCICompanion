@@ -3172,6 +3172,16 @@ CodeResult Asm::OutputByteCode(CompileContext &context) const
 	{
 		context.ReportError(this, "Unknown instruction '%s'", _innerName.c_str());
 	}
+	else if (((opcode == Opcode::Filename) || (opcode == Opcode::LineNumber)) &&
+		(context.GetVersion().PackageFormat != ResourcePackageFormat::SCI2))
+	{
+		// _file_ / _line_ are SCI2-only debug pseudo-opcodes. NameToOpcode accepts
+		// them for every version, but GetOperandTypes only has operand entries for
+		// them in its SCI2 branch; for any other version it would index
+		// OpArgTypes_SCI0[128]/[129], past the TOTAL_OPCODES (128) table, and emit
+		// a corrupt opcode with no error.
+		context.ReportError(this, "The '%s' instruction is only supported in SCI2 games.", _innerName.c_str());
+	}
 	else
 	{
 		// Special case some opcodes

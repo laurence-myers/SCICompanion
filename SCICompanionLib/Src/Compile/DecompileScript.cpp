@@ -207,6 +207,22 @@ void DetermineAndInsertUsings(const GameFolderHelper &helper, Script &script, De
 
 // e.g. of the form "proc255_3", or "localproc_0b2a", where localproc_0b2a is actually an exported procedure.
 // If true, returns the script number and export index so we can look up the real name.
+static bool _AllDigits(const std::string &s)
+{
+	if (s.empty()) { return false; }
+	for (char c : s) { if (c < '0' || c > '9') { return false; } }
+	return true;
+}
+static bool _AllHexDigits(const std::string &s)
+{
+	if (s.empty()) { return false; }
+	for (char c : s)
+	{
+		bool isHex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+		if (!isHex) { return false; }
+	}
+	return true;
+}
 bool _IsUndeterminedPublicProc(const CompiledScript &compiledScript, const std::string &procName, uint16_t &script, uint16_t &index)
 {
 	script = 0;
@@ -214,17 +230,19 @@ bool _IsUndeterminedPublicProc(const CompiledScript &compiledScript, const std::
 	if (0 == procName.compare(0, 4, "proc"))
 	{
 		string rest = procName.substr(4, string::npos);
-		// This needs to be of the form [number]_[number]
-		size_t position = 0;
-		int scriptNumber = stoi(rest, &position);
-		if ((position > 0) && (position < rest.size()))
+		// Must be of the form [number]_[number], and short enough to fit our
+		// generated names (script/index are uint16_t). A real public proc whose
+		// name merely starts with "proc" (e.g. "procFoo") is not one of ours; bail
+		// out rather than let stoi throw into the batch's catch(...).
+		size_t underscore = rest.find('_');
+		if (underscore != string::npos)
 		{
-			if (rest[position] == '_')
+			string scriptPart = rest.substr(0, underscore);
+			string indexPart = rest.substr(underscore + 1, string::npos);
+			if (_AllDigits(scriptPart) && _AllDigits(indexPart) && (scriptPart.size() <= 5) && (indexPart.size() <= 5))
 			{
-				rest = rest.substr(position + 1, string::npos);
-				int indexNumber = stoi(rest, &position);
-				script = (uint16_t)scriptNumber;
-				index = (uint16_t)indexNumber;
+				script = (uint16_t)stoi(scriptPart);
+				index = (uint16_t)stoi(indexPart);
 				return true;
 			}
 		}
@@ -232,10 +250,9 @@ bool _IsUndeterminedPublicProc(const CompiledScript &compiledScript, const std::
 	else if (0 == procName.compare(0, 10, "localproc_"))
 	{
 		string rest = procName.substr(10, string::npos);
-		size_t position = 0;
-		int offset = stoi(rest, &position, 16);
-		if (position == rest.size())	// Consumed whole thing
+		if (_AllHexDigits(rest) && (rest.size() <= 4))
 		{
+			int offset = stoi(rest, nullptr, 16);
 			// Find the offset of this proc. If it's also a public export, count it as so.
 			int indexNumber;
 			if (compiledScript.IsExportAProcedure((uint16_t)offset, &indexNumber))
@@ -350,8 +367,9 @@ void ResolvePublicProcedureCalls(DecompileLookups &lookups, const GameFolderHelp
 			{
 				assert(scriptNumber == script.GetScriptNumber());
 				string newProcName = thisSCO->GetExportName(index);
-				assert(!newProcName.empty());
-				if (newProcName.empty())
+				// A stale .sco may not carry this export; keep the generated
+				// procN_i name rather than blanking it.
+				if (!newProcName.empty())
 				{
 					proc->SetName(newProcName);
 				}

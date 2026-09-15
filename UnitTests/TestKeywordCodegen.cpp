@@ -136,6 +136,145 @@ namespace UnitTests
                 L"&exists emitted different bytecode than its (> argc N) expansion");
         }
 
+        // _file_ / _line_ are SCI2-only debug pseudo-opcodes. Using one in an
+        // asm block in a non-SCI2 (here SCI1.1) game must be a compile error, not
+        // an out-of-bounds read of the operand table that emits a corrupt opcode.
+        TEST_METHOD(AsmFileOpcode_RejectedInSCI11)
+        {
+            _gameFolder = SetUpGameSCI11();
+            std::string source = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest)\n"
+                "\t(asm\n"
+                "\t\t_file_ 0\n"
+                "\t\tret\n"
+                "\t)\n"
+                ")\n";
+            std::string error;
+            bool compiled = CompileSource(902, "kTest", source, error);
+            Assert::IsFalse(compiled,
+                L"_file_ was accepted in a non-SCI2 game but is an SCI2-only pseudo-opcode");
+            // Assert the SPECIFIC guard error, not just any failure: before the
+            // fix the out-of-bounds operand row can yield a spurious "too many
+            // arguments" error, which would make a bare IsFalse pass vacuously.
+            Assert::IsTrue(error.find("SCI2") != npos,
+                W("expected an SCI2-only error, got: " + error).c_str());
+        }
+
+        // A string table larger than 64 KB cannot be represented in the 16-bit
+        // section size. The compiler must report an error, not silently wrap it.
+        TEST_METHOD(StringTableOverflow_YieldsError)
+        {
+            _gameFolder = SetUpGameSCI11();
+            std::string body;
+            for (int i = 0; i < 400; i++)
+            {
+                std::string s = "s" + std::to_string(i) + "_";   // distinct prefix (avoids dedup)
+                s.append(200 - s.size(), 'x');                    // pad to 200 chars
+                body += "\t(= bigStr \"" + s + "\")\n";           // ~400 * 201 = ~80KB > 0xFFFF
+            }
+            std::string source = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(local bigStr)\n"
+                "(procedure (kTest)\n" + body +
+                "\t(return bigStr)\n"
+                ")\n";
+            std::string error;
+            bool compiled = CompileSource(902, "kTest", source, error);
+            Assert::IsFalse(compiled,
+                L"a >64KB string table compiled without error (the 16-bit section size wrapped)");
+            Assert::IsTrue(error.find("too large") != npos,
+                W("expected a string-table-too-large error, got: " + error).c_str());
+        }
+
+        // A constant binary expression must fold to the value the SCI runtime
+        // would compute. The regression: (mod a b) folded to (a & b), and the
+        // shifts had undefined behaviour for a count of 16 or more.
+        TEST_METHOD(ConstantFold_BinaryOperators)
+        {
+            _gameFolder = SetUpGameSCI11();
+
+            auto Proc = [](const std::string &expr) {
+                return Header() +
+                    "(public\n\tkTest 0\n)\n"
+                    "(procedure (kTest)\n\t(return " + expr + ")\n)\n";
+            };
+
+            struct Case { const char *expr; const char *expected; };
+            const Case cases[] = {
+                { "(mod 7 3)", "1" },       // regression: the folder did (a & b) == 3
+                { "(mod -7 3)", "2" },      // SCI modulo is Euclidean, not C's -1
+                { "(mod 7 -3)", "1" },      // the divisor magnitude only
+                { "(+ 7 3)", "10" }, { "(- 7 3)", "4" }, { "(* 7 3)", "21" }, { "(/ 7 3)", "2" },
+                { "(& 6 3)", "2" }, { "(| 6 3)", "7" }, { "(^ 6 3)", "5" },
+                { "(>> 16 2)", "4" }, { "(<< 3 2)", "12" },
+                { "(>> 65535 40)", "0" },   // regression: was UB (shift count >= 16)
+                { "(<< 1 40)", "0" },       // regression: was UB
+                { "(== 7 3)", "0" }, { "(!= 7 3)", "1" }, { "(< 3 7)", "1" }, { "(<= 7 7)", "1" },
+                { "(> 7 3)", "1" }, { "(>= 3 7)", "0" },
+            };
+
+            for (const Case &c : cases)
+            {
+                std::string error;
+                Assert::IsTrue(CompileSource(902, "kTest", Proc(c.expr), error),
+                    W(std::string("expr failed: ") + c.expr + " : " + error).c_str());
+                std::vector<uint8_t> exprBytes = LoadCompiledBytes(902);
+
+                error.clear();
+                Assert::IsTrue(CompileSource(902, "kTest", Proc(c.expected), error),
+                    W(std::string("literal failed: ") + c.expected + " : " + error).c_str());
+                std::vector<uint8_t> litBytes = LoadCompiledBytes(902);
+
+                Assert::IsTrue(exprBytes == litBytes,
+                    W(std::string("fold of ") + c.expr + " != literal " + c.expected).c_str());
+            }
+        }
+
+        // A foreach nested inside another foreach must lower BOTH loops. The
+        // regression: the outer loop's lowering moved its body (with the inner
+        // foreach) into FinalCode, which the lowering traversal never visited,
+        // so the inner loop was dropped and emitted nothing.
+        TEST_METHOD(NestedForEach_LowersBothLoops)
+        {
+            _gameFolder = SetUpGameSCI11();
+
+            std::string source = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(local\n\t[arr1 5]\n\t[arr2 3]\n\tsum\n)\n"
+                "(procedure (kTest)\n"
+                "\t(= sum 0)\n"
+                "\t(foreach a arr1\n"
+                "\t\t(foreach b arr2\n"
+                "\t\t\t(= sum (+ sum b))\n"
+                "\t\t)\n"
+                "\t)\n"
+                "\t(return sum)\n"
+                ")\n";
+
+            std::string error;
+            Assert::IsTrue(CompileSource(902, "kTest", source, error),
+                W("nested foreach did not compile: " + error).c_str());
+
+            DecompileOutput decompiled = DecompileToText(902);
+            Assert::AreEqual(0, decompiled.fallbacks, L"nested foreach fell back to assembly");
+            Assert::IsFalse(decompiled.ContainsAsm(), L"nested foreach produced an assembly block");
+            Assert::IsTrue(decompiled.text.find("foreach") == npos,
+                L"foreach survived into the decompiled output (it is not a real opcode)");
+
+            // Both foreachs must lower to a loop. The decompiler renders these
+            // array-bounded loops as (while ...). Before the fix the inner loop
+            // is dropped and only the outer loop is emitted (one while).
+            size_t loops = 0;
+            for (size_t p = decompiled.text.find("(while"); p != npos; p = decompiled.text.find("(while", p + 1))
+            {
+                loops++;
+            }
+            Assert::IsTrue(loops >= 2,
+                W(fmt::format("expected two nested loops, found {0} (while) construct(s):\n{1}",
+                    loops, decompiled.text)).c_str());
+        }
+
         // foreach over an array must compile to an ordinary loop over standard
         // opcodes, with no assembly fallback and no trace of the keyword.
         TEST_METHOD(ForEach_LowersToStandardLoop)

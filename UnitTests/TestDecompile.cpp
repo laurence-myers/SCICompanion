@@ -18,6 +18,10 @@
 #include "DecompileHelper.h"
 #include "StructuralCompare.h"
 #include "AppState.h"
+#include "ResourceMap.h"
+#include "SCO.h"
+#include "CompiledScript.h"
+#include "GameFolderHelper.h"
 #include "format.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -80,6 +84,59 @@ namespace UnitTests
         // left in the accumulator) and round-trips. Fidelity to (and a b) comes
         // with the AST passes; here we only require a stable round trip with no
         // fallback.
+        // A public procedure whose real name starts with "proc" but is not a
+        // generated procN_i name. Before the fix, ResolvePublicProcedureCalls ->
+        // _IsUndeterminedPublicProc -> stoi("Foo") threw std::invalid_argument,
+        // which escaped to the batch's catch(...) and killed the run. Here it
+        // escapes to the test (DecompileToText does not catch), failing it.
+        TEST_METHOD(PublicProcNamedProc_NoThrow)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AddFixtureScript("PublicProcFoo");
+            std::string error;
+            Assert::IsTrue(CompileFixture(940, "PublicProcFoo", &error),
+                std::wstring(error.begin(), error.end()).c_str());
+            DecompileOutput out = DecompileToText(940);
+            Assert::IsTrue(out.text.find("procFoo") != std::string::npos,
+                L"the public procedure procFoo should decompile with its name intact");
+        }
+
+        // A stale .sco with fewer exports than the compiled script. The proc at
+        // the missing export index gets the generated proc952_1 name. Before the
+        // fix the inverted condition (if (name.empty()) SetName(name)) blanked
+        // it; after the fix the generated name survives.
+        TEST_METHOD(StaleSco_KeepsProcName)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AddFixtureScript("StaleScoProcs");
+            std::string error;
+            Assert::IsTrue(CompileFixture(952, "StaleScoProcs", &error),
+                std::wstring(error.begin(), error.end()).c_str());
+
+            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            GlobalCompiledScriptLookups lookups;
+            lookups.Load(helper);
+            std::unique_ptr<CSCOFile> sco = GetExistingSCOFromScriptNumber(helper, 952, lookups.GetSelectorTable());
+            Assert::IsNotNull(sco.get(), L"compile should have written an .sco");
+            Assert::IsTrue(sco->GetExports().size() >= 2, L"fixture should export two procs");
+
+            // Drop export index 1 explicitly to simulate a stale .sco.
+            std::vector<CSCOPublicExport> &exports = sco->GetExports();
+            for (auto it = exports.begin(); it != exports.end(); ++it)
+            {
+                if (it->GetIndex() == 1)
+                {
+                    exports.erase(it);
+                    break;
+                }
+            }
+            SaveSCOFile(helper, *sco);
+
+            DecompileOutput out = DecompileToText(952);
+            Assert::IsTrue(out.text.find("proc952_1") != std::string::npos,
+                L"the undetermined public proc name must survive a stale .sco, not be blanked");
+        }
+
         TEST_METHOD(Compiler_ValueAndOr)
         {
             _gameFolder = SetUpGameSCI11();

@@ -78,3 +78,8 @@
 ###############################################################################
 UnitTests/Files/Decompile/Snapshots/** linguist-generated=true
 UnitTests/Files/Decompile/Snapshots/** -diff
+
+# The emitted-bytecode goldens are compared to freshly written LF actuals, so
+# keep them LF on checkout regardless of core.autocrlf (belt-and-suspenders with
+# the CR-stripping comparison in OracleHelper.cpp).
+UnitTests/Files/Decompile/Snapshots/Bytecode/**/*.hex text eol=lf

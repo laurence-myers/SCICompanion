@@ -3,16 +3,21 @@
 class ReadStream
 {
 public:
-	ReadStream(byte *data) : _data(data), _index(0) {}
+	ReadStream(byte *data, uint32_t length) : _data(data), _length(length), _index(0) {}
 
 	byte readByte()
 	{
+		// (a) bound reads; return 0 past end-of-stream so a truncated packed
+		// stream cannot walk off the end of the buffer.
+		if (_index >= _length)
+			return 0;
 		return _data[_index++];
 	}
 
 private:
-	int _index;
 	byte *_data;
+	uint32_t _length;
+	uint32_t _index;
 };
 
 class Decompressor

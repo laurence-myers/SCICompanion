@@ -246,6 +246,18 @@ void AudioReadFromHelper(ResourceEntity &resource, sci::istream &stream, const s
 		audio.Frequency = header.sampleRate;
 		audio.Flags = header.flags;
 
+		// sizeExcludingHeader comes straight from the (attacker-controlled) resource
+		// header. Clamp it to the bytes actually present before it is doubled and
+		// used to size the buffer, so (size * 2) can't overflow/over-allocate and the
+		// de-DPCM / raw copy can't run past the end of the stream. A valid resource
+		// always has sizeExcludingHeader <= the remaining bytes, so this only engages
+		// on malformed/truncated input.
+		if ((header.sizeExcludingHeader > 0) &&
+			(static_cast<uint32_t>(header.sizeExcludingHeader) > stream.getBytesRemaining()))
+		{
+			header.sizeExcludingHeader = static_cast<int32_t>(stream.getBytesRemaining());
+		}
+
 		if (header.sizeExcludingHeader > 0)
 		{
 			if (IsFlagSet(audio.Flags, AudioFlags::SixteenBit))

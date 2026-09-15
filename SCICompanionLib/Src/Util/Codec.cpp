@@ -261,7 +261,7 @@ int decompressLZW(BYTE *dest, BYTE *src, int length, int complength)
 
 						i = 0;
 						for (; destctr<length; destctr++) {
-						  dest[destctr++] = dest [tokenlist[token]+i];
+						  dest[destctr] = dest [tokenlist[token]+i];  // (d) the for-loop already advances destctr; remove the double-increment
 						  i++;
 						}
 					  } else
@@ -330,6 +330,8 @@ __int16 getc2(BoundsCheckedArray<BYTE> node, BYTE *src,
 	WORD next;
 
 	while (node[1] != 0) {
+		if (*bytectr >= complength)
+			return -1;  // (c) guard the tree-walk read; -1 is the existing out-of-data sentinel
 		__int16 value = (src[*bytectr] << (*bitctr));
 		(*bitctr)++;
 		if (*bitctr == 8) {
@@ -340,6 +342,8 @@ __int16 getc2(BoundsCheckedArray<BYTE> node, BYTE *src,
 		if (value & 0x80) {
 			next = node[1] & 0x0f; /* low 4 bits */
 			if (next == 0) {
+				if (*bytectr >= complength)
+					return -1;  // (c) *bytectr may have advanced to complength since the loop top
 				WORD result = (src[*bytectr] << (*bitctr));
 
 				if (++(*bytectr) > complength)
@@ -367,6 +371,8 @@ int decompressHuffman(BYTE* dest, BYTE* src, int length, int complength)
 	__int16 c;
 	WORD bitctr = 0, bytectr;
 
+	if (complength < 2)
+		return SCI_ERROR_DECOMPRESSION_OVERFLOW;  // (c) src[0]/src[1] would read out of bounds
 	numnodes = src[0];
 	terminator = src[1];
 	bytectr = 2+ (numnodes << 1);

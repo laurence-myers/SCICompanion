@@ -286,7 +286,7 @@ struct RESOURCEHEADERBASE
 		uint32_t cbDecompressedTemp = agnostic.cbDecompressed;
 		uint32_t cbCompressedTemp = agnostic.cbCompressed + ((DoesPackageFormatIncludeHeaderInCompressedSize(agnostic.Version)) ? 4 : 0);
 		ThrowExceptionIfOverflow(cbDecompressedTemp, (std::numeric_limits<_TDataSizeSize>::max)(), "Size");
-		ThrowExceptionIfOverflow(cbCompressed, (std::numeric_limits<_TDataSizeSize>::max)(), "Compressed size");
+		ThrowExceptionIfOverflow(cbCompressedTemp, (std::numeric_limits<_TDataSizeSize>::max)(), "Compressed size");
 		cbDecompressed = (_TDataSizeSize)cbDecompressedTemp;
 		cbCompressed = (_TDataSizeSize)cbCompressedTemp;
 		iMethod = agnostic.CompressionMethod;

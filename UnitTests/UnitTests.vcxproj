@@ -88,6 +88,7 @@
   <ItemGroup>
     <ClInclude Include="Helper.h" />
     <ClInclude Include="DecompileHelper.h" />
+    <ClInclude Include="OracleHelper.h" />
     <ClInclude Include="AstPassHelper.h" />
     <ClInclude Include="StructuralCompare.h" />
     <ClInclude Include="stdafx.h" />
@@ -96,6 +97,7 @@
   <ItemGroup>
     <ClCompile Include="Helper.cpp" />
     <ClCompile Include="DecompileHelper.cpp" />
+    <ClCompile Include="OracleHelper.cpp" />
     <ClCompile Include="AstPassHelper.cpp" />
     <ClCompile Include="StructuralCompare.cpp" />
     <ClCompile Include="stdafx.cpp">
@@ -105,8 +107,13 @@
     <ClCompile Include="TestAllGamesLoad.cpp" />
     <ClCompile Include="TestClassBrowser.cpp" />
     <ClCompile Include="TestCompile.cpp" />
+    <ClCompile Include="TestCompiledScript.cpp" />
     <ClCompile Include="TestDecompile.cpp" />
+    <ClCompile Include="TestBytecodeOracle.cpp" />
     <ClCompile Include="TestKeywordCodegen.cpp" />
+    <ClCompile Include="TestCodec.cpp" />
+    <ClCompile Include="TestUtilHardening.cpp" />
+    <ClCompile Include="TestUndoResource.cpp" />
     <ClCompile Include="TestAstPasses.cpp" />
     <ClCompile Include="TestPicDraw.cpp" />
     <ClCompile Include="TestPolygonLoad.cpp" />
