@@ -136,6 +136,50 @@ namespace UnitTests
                 L"&exists emitted different bytecode than its (> argc N) expansion");
         }
 
+        // A constant binary expression must fold to the value the SCI runtime
+        // would compute. The regression: (mod a b) folded to (a & b), and the
+        // shifts had undefined behaviour for a count of 16 or more.
+        TEST_METHOD(ConstantFold_BinaryOperators)
+        {
+            _gameFolder = SetUpGameSCI11();
+
+            auto Proc = [](const std::string &expr) {
+                return Header() +
+                    "(public\n\tkTest 0\n)\n"
+                    "(procedure (kTest)\n\t(return " + expr + ")\n)\n";
+            };
+
+            struct Case { const char *expr; const char *expected; };
+            const Case cases[] = {
+                { "(mod 7 3)", "1" },       // regression: the folder did (a & b) == 3
+                { "(mod -7 3)", "2" },      // SCI modulo is Euclidean, not C's -1
+                { "(mod 7 -3)", "1" },      // the divisor magnitude only
+                { "(+ 7 3)", "10" }, { "(- 7 3)", "4" }, { "(* 7 3)", "21" }, { "(/ 7 3)", "2" },
+                { "(& 6 3)", "2" }, { "(| 6 3)", "7" }, { "(^ 6 3)", "5" },
+                { "(>> 16 2)", "4" }, { "(<< 3 2)", "12" },
+                { "(>> 65535 40)", "0" },   // regression: was UB (shift count >= 16)
+                { "(<< 1 40)", "0" },       // regression: was UB
+                { "(== 7 3)", "0" }, { "(!= 7 3)", "1" }, { "(< 3 7)", "1" }, { "(<= 7 7)", "1" },
+                { "(> 7 3)", "1" }, { "(>= 3 7)", "0" },
+            };
+
+            for (const Case &c : cases)
+            {
+                std::string error;
+                Assert::IsTrue(CompileSource(902, "kTest", Proc(c.expr), error),
+                    W(std::string("expr failed: ") + c.expr + " : " + error).c_str());
+                std::vector<uint8_t> exprBytes = LoadCompiledBytes(902);
+
+                error.clear();
+                Assert::IsTrue(CompileSource(902, "kTest", Proc(c.expected), error),
+                    W(std::string("literal failed: ") + c.expected + " : " + error).c_str());
+                std::vector<uint8_t> litBytes = LoadCompiledBytes(902);
+
+                Assert::IsTrue(exprBytes == litBytes,
+                    W(std::string("fold of ") + c.expr + " != literal " + c.expected).c_str());
+            }
+        }
+
         // foreach over an array must compile to an ordinary loop over standard
         // opcodes, with no assembly fallback and no trace of the keyword.
         TEST_METHOD(ForEach_LowersToStandardLoop)
