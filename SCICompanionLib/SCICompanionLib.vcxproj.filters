@@ -1688,6 +1688,9 @@
     <ClInclude Include="Src\Util\SoundUtil.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
+    <ClInclude Include="Src\Util\TemplateMessageMap.h">
+      <Filter>Header Files\Util</Filter>
+    </ClInclude>
     <ClInclude Include="Src\Util\StlUtil.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
