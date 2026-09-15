@@ -985,6 +985,42 @@ void _RemoveDeadBranches(std::list<scii> &code)
 	}
 }
 
+// `copy` is a positional duplicate of `source` (list assignment copies each
+// scii by value, so a branch target still points at the node in `source`).
+// Repoint every branch target in `copy` at the matching node inside `copy`, so
+// `copy` no longer depends on `source`. The caller then edits or erases nodes
+// from `source` (see _RemoveDeadBranches) while `copy` stays valid. The two
+// lists are identical when this runs, so map node-to-node by position.
+void RepointBranchTargetsIntoCopy(std::list<scii> &source, std::list<scii> &copy)
+{
+	// `copy` must be a positional duplicate of `source` (the caller copies the
+	// list immediately before this call), so the two walk in lockstep.
+	assert(source.size() == copy.size());
+	std::map<code_pos, code_pos> sourceToCopy;
+	code_pos itCopy = copy.begin();
+	for (code_pos itSource = source.begin(); (itSource != source.end()) && (itCopy != copy.end()); ++itSource, ++itCopy)
+	{
+		sourceToCopy[itSource] = itCopy;
+	}
+	// Only BNT/BT/JMP get a within-list target iterator during decompilation
+	// (see _ConvertToInstructions), and a successful conversion resolves every
+	// one, so the target node is always present in the map. The assert makes a
+	// future change that breaks either invariant fail loudly, rather than leave
+	// a copied branch still pointing into `source` (the #62 dangle).
+	for (scii &inst : copy)
+	{
+		if (inst._is_branch_instruction())
+		{
+			auto found = sourceToCopy.find(inst.get_branch_target());
+			assert(found != sourceToCopy.end());
+			if (found != sourceToCopy.end())
+			{
+				inst.set_branch_target(found->second, inst.is_forward_branch());
+			}
+		}
+	}
+}
+
 void _DetermineIfFunctionReturnsValue(std::list<scii> code, DecompileLookups &lookups)
 {
 	// Look for return statements and see if they have any statements without side effects before them.
@@ -1160,6 +1196,12 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 		// Do some early things. The fallback disassembles the original
 		// instructions, not the ones the dead-branch removal edited.
 		originalCode = code;
+		// The copied instructions still hold branch targets that point into
+		// `code`. _RemoveDeadBranches erases nodes from `code` below, which
+		// would leave those copied iterators dangling; the fallback path then
+		// dereferences them (CalcBranchLabels and DisassembleFallback). Repoint
+		// the copy's branch targets into itself so it is self-contained. See #62.
+		RepointBranchTargetsIntoCopy(code, originalCode);
 		_RemoveDeadBranches(code);
 		_DetermineIfFunctionReturnsValue(code, lookups);
 
