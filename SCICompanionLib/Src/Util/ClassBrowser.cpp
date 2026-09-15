@@ -143,6 +143,16 @@ void SCIClassBrowser::SetClassBrowserEvents(IClassBrowserEvents *pEvents)
 
 void SCIClassBrowser::OnOpenGame(SCIVersion version)
 {
+	// Stop the background worker BEFORE taking _mutexClassBrowser. The reload the
+	// worker runs (ReLoadFromSources / ReLoadFromCompiled) takes _mutexClassBrowser,
+	// and ExitSchedulerAndReset() below joins that worker. Joining while we hold the
+	// mutex the worker is waiting for deadlocks (a recursive_mutex does not help
+	// across threads). Joining here, before the lock, lets the worker finish first.
+	// See #47.
+	if (_scheduler)
+	{
+		_scheduler->Exit();
+	}
 	std::lock_guard<std::recursive_mutex> lock(_mutexClassBrowser);
 	_version = version;
 	if (IsBrowseInfoEnabled() && appState->GetResourceMap().IsGameLoaded())

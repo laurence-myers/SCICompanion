@@ -14,10 +14,13 @@
 #include "stdafx.h"
 #include "CppUnitTest.h"
 #include "Task.h"
+#include <atomic>
 #include <chrono>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
+#include <thread>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -63,6 +66,59 @@ namespace UnitTests
             Assert::IsTrue(status == std::future_status::ready,
                 L"the scheduler must survive a throwing task and run the next one");
             Assert::AreEqual(42, future.get(), L"the following task ran with its payload");
+        }
+
+        // #47 is a lock-ordering deadlock in SCIClassBrowser::OnOpenGame: it held
+        // _mutexClassBrowser and then joined the reload worker, which needs that
+        // same mutex. This reproduces the general hazard on the real scheduler:
+        // Exit() (which joins the worker) called while the caller holds a lock the
+        // running task needs deadlocks. The OnOpenGame fix is to Exit() before
+        // taking the mutex. OnOpenGame itself needs a loaded game to drive, so its
+        // reorder is verified by inspection; this test guards the mechanism.
+        BEGIN_TEST_METHOD_ATTRIBUTE(Scheduler_ExitWhileHoldingTaskLock_Deadlocks)
+            TEST_METHOD_ATTRIBUTE(L"TestCategory", L"Integration")
+        END_TEST_METHOD_ATTRIBUTE()
+        TEST_METHOD(Scheduler_ExitWhileHoldingTaskLock_Deadlocks)
+        {
+            std::recursive_mutex sharedMutex; // stands in for _mutexClassBrowser
+            BackgroundScheduler<int> scheduler;
+
+            auto taskStarted = std::make_shared<std::promise<void>>();
+            std::future<void> started = taskStarted->get_future();
+            scheduler.SubmitTask(std::make_unique<int>(0),
+                [&sharedMutex, taskStarted](ITaskStatus &, int &) -> std::unique_ptr<int>
+                {
+                    taskStarted->set_value();
+                    // The reload takes the browser mutex; here it blocks because the
+                    // "OnOpenGame" thread below holds it.
+                    std::lock_guard<std::recursive_mutex> lock(sharedMutex);
+                    return nullptr;
+                });
+
+            // Hold the mutex, as the buggy OnOpenGame did before joining the worker.
+            std::unique_lock<std::recursive_mutex> held(sharedMutex);
+            Assert::IsTrue(started.wait_for(std::chrono::seconds(5)) == std::future_status::ready,
+                L"the scheduler must dispatch the task");
+
+            // Exit() joins the worker, which is blocked on the mutex we hold. Run it
+            // on our own thread so we can join it after breaking the deadlock (a
+            // detached thread would touch the scheduler after it is destroyed).
+            std::atomic<bool> exitReturned{ false };
+            std::thread exitThread([&scheduler, &exitReturned]()
+            {
+                scheduler.Exit();
+                exitReturned.store(true);
+            });
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            Assert::IsFalse(exitReturned.load(),
+                L"Exit() while holding the lock the task needs must deadlock (the #47 hazard)");
+
+            // Break the deadlock so the test can clean up: release the mutex; the
+            // worker then finishes, Exit() returns, and we join our thread.
+            held.unlock();
+            exitThread.join();
+            Assert::IsTrue(exitReturned.load(), L"releasing the lock lets Exit() return");
         }
     };
 }
