@@ -119,8 +119,10 @@ public:
 			{
 				if (preview)
 				{
-					// Undo the preview we added to the stack.
-					OnUndo();
+					// Back out the preview clone we added to the stack. Erase it
+					// rather than OnUndo alone, which would leave it as a phantom
+					// redo frame (making Redo a no-op that still refreshes).
+					RemoveLastResourceFromUndo();
 				}
 			}
 		} 
