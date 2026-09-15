@@ -87,6 +87,27 @@ public:
 		_TrimUndoStack();
 	}
 
+	// Backs out the frame most recently added by AddNewResourceToUndo -- e.g. a
+	// preview clone that turned out to make no change. OnUndo restores the previous
+	// frame and refreshes the views; then the clone is erased, so it is not left as
+	// a phantom redo frame (which would otherwise make Redo a no-op that still
+	// fires a full view refresh).
+	void RemoveLastResourceFromUndo()
+	{
+		if (_undo.empty())
+		{
+			return;
+		}
+		typename _MyListType::iterator last = _GetLastUndoFrame();
+		OnUndo();
+		// OnUndo moved _pos off the clone (unless the clone was the only frame, in
+		// which case it stays current and we leave it -- no phantom redo either way).
+		if (_pos != last)
+		{
+			_undo.erase(last);
+		}
+	}
+
 	void SetExtra(ptrdiff_t extra)
 	{
 		if (_pos != _undo.end())
