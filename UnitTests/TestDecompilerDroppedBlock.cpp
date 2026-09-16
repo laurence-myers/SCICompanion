@@ -58,5 +58,35 @@ namespace UnitTests
             Assert::IsTrue(GetFirstPredecessorOrNull(&body) == &head,
                 L"one predecessor returns that predecessor");
         }
+
+        // #104: symmetric to the above on the successor axis. A node with two
+        // successors passed to GetFirstSuccOrNull only asserted "at most one" (a
+        // no-op in Release) and returned the first, silently dropping the other
+        // successor's blocks. It must throw so OutputNewStructure falls back.
+        TEST_METHOD(GetFirstSuccOrNull_MultipleSuccessors_Throws)
+        {
+            // InsertPredecessor adds the reverse edge, so this gives `fork` two
+            // successors (succA and succB).
+            ExitNode fork(1), succA(2), succB(3);
+            succA.InsertPredecessor(&fork);
+            succB.InsertPredecessor(&fork);
+            Assert::AreEqual((size_t)2, fork.Successors().size(), L"setup: two successors");
+
+            Assert::ExpectException<ControlFlowException>(
+                [&]() { GetFirstSuccOrNull(&fork); },
+                L"a block with two successors must throw, not drop a block");
+        }
+
+        // The single-successor and no-successor paths must be unchanged.
+        TEST_METHOD(GetFirstSuccOrNull_SingleOrNone_ReturnsExpected)
+        {
+            ExitNode node(1), succ(2);
+            Assert::IsNull(GetFirstSuccOrNull(&node),
+                L"no successors returns null");
+
+            succ.InsertPredecessor(&node);
+            Assert::IsTrue(GetFirstSuccOrNull(&node) == &succ,
+                L"one successor returns that successor");
+        }
     };
 }

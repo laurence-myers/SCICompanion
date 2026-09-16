@@ -636,7 +636,18 @@ ControlFlowNode *GetFirstPredecessorOrNull(ControlFlowNode *node)
 }
 ControlFlowNode *GetFirstSuccOrNull(ControlFlowNode *node)
 {
-	assert(node->Successors().size() <= 1);
+	// Symmetric to GetFirstPredecessorOrNull (#64): the callers treat the node as
+	// having a single successor and follow it. A node with more than one successor
+	// means following only the first silently drops the other successors' blocks.
+	// Throw (rather than assert, which does nothing in Release and would abort a
+	// Debug build): the EnumerateCodeChunks walk runs under OutputNewStructure's
+	// try, which catches ControlFlowException and falls back to disassembly for
+	// this one function instead of losing code, keeping Debug and Release
+	// consistent. (#104)
+	if (node->Successors().size() > 1)
+	{
+		throw ControlFlowException(node, "A block has multiple successors; the output walk would drop code.");
+	}
 	return node->Successors().empty() ? nullptr : *node->Successors().begin();
 }
 
