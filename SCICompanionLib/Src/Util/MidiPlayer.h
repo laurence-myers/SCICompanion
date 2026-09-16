@@ -14,6 +14,7 @@
 #pragma once
 
 #include "Sound.h"
+#include <atomic>
 
 class MidiPlayer
 {
@@ -42,9 +43,15 @@ private:
 	void _SetTempoAndDivision();
 	void _ClearHeaders();
 	void static CALLBACK s_MidiOutProc(HMIDIOUT hmo, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2);
+	// The MM_MOM_DONE callback posts to this message-only window so the follow-up
+	// MMSYSTEM work runs on the UI thread, not inside the driver callback (which
+	// forbids multimedia calls and can deadlock). See #49.
+	static LRESULT CALLBACK s_NotifyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	bool _EnsureNotifyWindow();
 	void _OnStreamDone();
 	void _CuePosition(DWORD dwEventIndex, DWORD ticks = 0xffffffff);
 
+	HWND _hNotifyWnd;
 	HMIDISTRM _handle;
 	MIDIHDR _midiHdr;
 	DWORD _cRemainingStreamEvents; // In case it didn't fit into a 64k chunk
@@ -56,7 +63,11 @@ private:
 	DeviceType _device;
 	bool _fPlaying;
 	bool _fQueuedUp;
-	bool _fStoppingStream;
+	// Set true only around the deliberate midiOutReset calls, which make the driver
+	// re-report the flushed buffer via MM_MOM_DONE. The callback reads this (on the
+	// driver thread) to suppress that reset-generated notification, so it must be
+	// atomic. (#49)
+	std::atomic<bool> _fStoppingStream;
 	DWORD _wTotalTime;
 	uint16_t _wTempo;
 	uint16_t _wTimeDivision;

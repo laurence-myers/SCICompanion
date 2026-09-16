@@ -21,12 +21,19 @@
 #include "QueueItems.h"
 #include "ResourceBlob.h"
 
+struct PaletteComponent;
+
 // This is created by the UI thread, and deleted by the worker thread.
 class VIEWWORKITEM
 {
 public:
 	ResourceBlob blob;
 	LPARAM lParam;
+	// The global palette (palette 999), copied on the UI thread when the work item
+	// is created. The worker merges it with the resource's own palette instead of
+	// reading the shared resource map, which is not thread-safe (#97). Null when the
+	// game has no global palette. shared_ptr so this header needs no full definition.
+	std::shared_ptr<PaletteComponent> palette999;
 };
 
 

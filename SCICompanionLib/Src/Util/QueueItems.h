@@ -13,6 +13,8 @@
 ***************************************************************************/
 #pragma once
 
+#include <atomic>
+
 //
 // This template implements a worker thread that can be used to perform background tasks.
 //
@@ -135,7 +137,19 @@ private:
 				std::unique_ptr<TITEM> workItem = std::move(_workItems.back());
 				_workItems.pop_back();
 				lock.unlock(); // While we do heavy work
-				std::unique_ptr<TRESULT> pResult(TRESULT::CreateFromWorkItem(workItem.get()));
+				std::unique_ptr<TRESULT> pResult;
+				try
+				{
+					pResult.reset(TRESULT::CreateFromWorkItem(workItem.get()));
+				}
+				catch (...)
+				{
+					// A corrupt resource can make the parse throw. This runs on a
+					// detached thread, where an exception escaping the thread
+					// function is an unconditional std::terminate. Drop this item
+					// and keep serving the rest.
+					pResult = nullptr;
+				}
 				if (pResult)
 				{
 					_GiveWorkResult(std::move(pResult));
@@ -158,7 +172,9 @@ private:
 	std::condition_variable _condition;
 
 	std::thread _thread;
-	bool _fAbort;
+	// Atomic: the worker loop tests it (while (!_fAbort)) without holding _mutex,
+	// while Abort() sets it under _mutex from the UI thread.
+	std::atomic<bool> _fAbort;
 
 	std::list<std::unique_ptr<TITEM>> _workItems;
 	std::list<std::unique_ptr<TRESULT>> _workResults;

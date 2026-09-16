@@ -112,6 +112,12 @@ public:
 	std::vector<int> GetPaletteList();
 	std::unique_ptr<PaletteComponent> GetPalette(int fallbackPalette);
 	std::unique_ptr<PaletteComponent> GetMergedPalette(const ResourceEntity &resource, int fallbackPalette);
+	// Thread-safe overload for the render workers (#97): the caller supplies the
+	// global palette (precomputed on the UI thread, e.g. a copy of GetPalette999()),
+	// so this touches no shared mutable map state -- only the passed resource and the
+	// immutable _emptyPalette. The fallbackPalette overload above walks the map to
+	// resolve the global palette and so must run on the UI thread.
+	std::unique_ptr<PaletteComponent> GetMergedPalette(const ResourceEntity &resource, const PaletteComponent *globalPalette) const;
 	ResourceEntity *GetVocabResourceToEdit();
 	void ClearVocab000();
 	std::unique_ptr<ResourceEntity> CreateResourceFromNumber(ResourceType type, int wNumber, uint32_t base36Number = NoBase36, int mapContext = -1);

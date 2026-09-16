@@ -208,6 +208,7 @@
     <ClCompile Include="Src\GIFLIB\gifalloc.cpp" />
     <ClCompile Include="Src\GIFLIB\gif_err.cpp" />
     <ClCompile Include="Src\GIFLIB\gif_hash.cpp" />
+    <ClCompile Include="Src\GIFLIB\openbsd-reallocarray.cpp" />
     <ClCompile Include="Src\MFCDocuments\MessageDoc.cpp" />
     <ClCompile Include="Src\MFCDocuments\PaletteDoc.cpp" />
     <ClCompile Include="Src\MFCFrames\MessageChildFrame.cpp" />
@@ -550,6 +551,7 @@
     <ClInclude Include="Src\Util\sciwin.h" />
     <ClInclude Include="Src\Util\SortedVector.h" />
     <ClInclude Include="Src\Util\SoundUtil.h" />
+    <ClInclude Include="Src\Util\TemplateMessageMap.h" />
     <ClInclude Include="Src\Compile\CompileContext.h" />
     <ClInclude Include="Src\Compile\CompiledScript.h" />
     <ClInclude Include="Src\Compile\CompileInterfaces.h" />
@@ -702,6 +704,7 @@
     <ClInclude Include="Src\Util\ToolTipResult.h" />
     <ClInclude Include="Src\Util\Version.h" />
     <ClInclude Include="Src\Util\VGADither.h" />
+    <ClInclude Include="Src\Util\GdiRaii.h" />
     <ClInclude Include="Src\Util\WindowsUtil.h" />
     <ClInclude Include="Src\Util\WordEnumString.h" />
     <ClInclude Include="stdafx.h" />
@@ -747,6 +750,7 @@
     <None Include="Src\CrystalEdit\CCrystalTextView.inl" />
     <None Include="Src\GIFLIB\AUTHORS" />
     <None Include="Src\GIFLIB\COPYING" />
+    <None Include="Src\GIFLIB\README.md" />
     <None Include="Src\r8brain\README.md" />
   </ItemGroup>
   <ItemGroup>

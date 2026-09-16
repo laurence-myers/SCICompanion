@@ -63,7 +63,7 @@ void _GetVarType(std::ostream &out, Opcode bOpcode, uint16_t wIndex, IObjectFile
 	}
 }
 
-int GetOperandSize(BYTE bOpcode, OperandType operandType, const uint8_t *pNext)
+int GetOperandSize(BYTE bOpcode, OperandType operandType, const uint8_t *pNext, const uint8_t *pEnd)
 {
 	int cIncr = 0;
 	switch (operandType)
@@ -95,9 +95,19 @@ int GetOperandSize(BYTE bOpcode, OperandType operandType, const uint8_t *pNext)
 		break;
 	case otDEBUGSTRING:
 	{
-		// file name
+		// file name -- bounded so a string with no null terminator before the end
+		// of the code cannot be read past the buffer. If there is no null before
+		// pEnd, this returns (pEnd - pNext) + 1, which is larger than the remaining
+		// bytes, so the caller's end-bound check treats the instruction as
+		// truncated. (#63)
 		const char *psz = reinterpret_cast<const char *>(pNext);
-		cIncr += lstrlen(psz) + 1;	// TODO: Bound this somehow
+		const char *pEndCode = reinterpret_cast<const char *>(pEnd);
+		const char *p = psz;
+		while ((p < pEndCode) && (*p != '\0'))
+		{
+			++p;
+		}
+		cIncr += static_cast<int>(p - psz) + 1;
 	}
 		break;
 	default:
@@ -118,7 +128,7 @@ void DisassembleCode(SCIVersion version, std::ostream &out, ICompiledScriptLooku
 			const BYTE *pCur = pBegin;
 			uint16_t wOffset = wBaseOffset;
 			auto currentLabelOffset = codeLabelOffsets.begin(); // for STATE_CALCBRANCHES
-			while (pCur < pEnd) // Possibility of read AVs here, but we catch exceptions.
+			while (pCur < pEnd) // Operand reads are now end-bounded (#116). The try/catch below only guards C++ exceptions from the lookups, not access violations (the build uses /EHsc, not /EHa).
 			{
 				BYTE bRawOpcode = *pCur;
 				Opcode bOpcode = RawToOpcode(version, bRawOpcode);
@@ -144,13 +154,19 @@ void DisassembleCode(SCIVersion version, std::ostream &out, ICompiledScriptLooku
 					const BYTE *pCurTemp = pCur; // skip past opcode
 					for (int i = -1; i < 3; i++)
 					{
-						int cIncr = (i == -1) ? 1 : GetOperandSize(bRawOpcode, GetOperandTypes(version, bOpcode)[i], pCur + 1);
+						int cIncr = (i == -1) ? 1 : GetOperandSize(bRawOpcode, GetOperandTypes(version, bOpcode)[i], pCur + 1, pEnd);
 						if (cIncr == 0)
 						{
 							break;
 						}
 						else
 						{
+							if ((pEnd - pCurTemp) < (ptrdiff_t)cIncr)
+							{
+								// The operand runs past the end of the code section; stop the
+								// hex display before reading past it. (#116)
+								break;
+							}
 							uint16_t wOperandTemp = (cIncr == 2) ? *((uint16_t*)pCurTemp) : *pCurTemp;
 							out << setw((cIncr == 1) ? 2 : 4);
 							out << setfill('0') << wOperandTemp << " ";
@@ -174,19 +190,38 @@ void DisassembleCode(SCIVersion version, std::ostream &out, ICompiledScriptLooku
 					{
 						// This is a branch instruction.  Figure out the offset.
 						// The relative offset is either a byte or word, and is calculated post instruction
-						// (hence we add 1 or 2 to our calculation)
-						codeLabelOffsets.insert(CalcOffset(version, wOperandStart, (bByte ? ((uint16_t)*pCur) : (*((uint16_t*)pCur))), bByte, bRawOpcode));
+						// (hence we add 1 or 2 to our calculation). Bound the read: a branch
+						// operand truncated at the end of the code section must not be read
+						// past pEnd. A truncated branch has no valid target, so skip it. (#116)
+						const ptrdiff_t branchSize = bByte ? 1 : 2;
+						if ((pEnd - pCur) >= branchSize)
+						{
+							codeLabelOffsets.insert(CalcOffset(version, wOperandStart, (bByte ? ((uint16_t)*pCur) : (*((uint16_t*)pCur))), bByte, bRawOpcode));
+						}
 					}
 				}
 
 				uint16_t wOperandsRaw[3];
 				uint16_t wOperands[3];
+				bool fTruncated = false;
 				for (int i = 0; !fDone && i < 3; i++)
 				{
 					szBuf[0] = 0;
-					int cIncr = GetOperandSize(bRawOpcode, GetOperandTypes(version, bOpcode)[i], pCur);
+					int cIncr = GetOperandSize(bRawOpcode, GetOperandTypes(version, bOpcode)[i], pCur, pEnd);
 					if (cIncr == 0)
 					{
+						break;
+					}
+					if ((pEnd - pCur) < (ptrdiff_t)cIncr)
+					{
+						// The operand runs past the end of the code section. Stop
+						// before we read it, so we never index past the script
+						// resource buffer. (#116)
+						if (state == STATE_OUTPUT)
+						{
+							out << "(truncated)";
+						}
+						fTruncated = true;
 						break;
 					}
 					if (state == STATE_OUTPUT)
@@ -260,9 +295,19 @@ void DisassembleCode(SCIVersion version, std::ostream &out, ICompiledScriptLooku
 							break;
 
 						case otDEBUGSTRING:
-							// Filename
-							out << "\"" << reinterpret_cast<const char *>(pCur) << "\"";
+						{
+							// Filename -- bounded to the operand size (cIncr includes the
+							// null), so an unterminated string is not read past the end of
+							// the code. (#63)
+							int cch = (cIncr > 0) ? (cIncr - 1) : 0;
+							ptrdiff_t remaining = pEnd - pCur;
+							if ((ptrdiff_t)cch > remaining)
+							{
+								cch = (int)remaining;
+							}
+							out << "\"" << std::string(reinterpret_cast<const char *>(pCur), cch) << "\"";
 							break;
+						}
 
 						default:
 							assert(false && "Unknown operand type");
@@ -273,6 +318,13 @@ void DisassembleCode(SCIVersion version, std::ostream &out, ICompiledScriptLooku
 					}
 					pCur += cIncr;
 					wOffset += cIncr;
+				}
+
+				if (fTruncated)
+				{
+					// A truncated operand ends the walk: there is no complete
+					// instruction after it. (#116)
+					break;
 				}
 
 				if (analyzeInstruction && (state == STATE_OUTPUT))

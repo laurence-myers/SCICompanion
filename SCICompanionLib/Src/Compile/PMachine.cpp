@@ -345,13 +345,26 @@ const OperandType *GetOperandTypes(const SCIVersion &version, Opcode opcode)
 			case Opcode::LineNumber:
 				return lineNumberOperands;
 		}
-	
-		return OpArgTypes_SCI2[static_cast<BYTE>(opcode)];
 	}
-	else
+
+	// The operand tables only have rows for the real opcodes 0..LastLoadStore
+	// (127). Opcodes at or past TOTAL_OPCODES (128) have no row: the SCI2 debug
+	// pseudo-opcodes Filename (128) / LineNumber (129) when seen outside SCI2
+	// (handled for SCI2 above), and INDETERMINATE (130) for an unrecognised
+	// instruction. Return an empty row instead of reading past the global table,
+	// which was a global-buffer-overflow (e.g. from _IsVariableUse during decompile).
+	BYTE index = static_cast<BYTE>(opcode);
+	if (index >= TOTAL_OPCODES)
 	{
-		return OpArgTypes_SCI0[static_cast<BYTE>(opcode)];
+		static const OperandType emptyOperands[3] = { otEMPTY, otEMPTY, otEMPTY };
+		return emptyOperands;
 	}
+
+	if (version.PackageFormat == ResourcePackageFormat::SCI2)
+	{
+		return OpArgTypes_SCI2[index];
+	}
+	return OpArgTypes_SCI0[index];
 }
 
 // Corresponds to Opcode enum

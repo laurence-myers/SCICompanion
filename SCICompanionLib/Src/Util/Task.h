@@ -13,6 +13,7 @@
 ***************************************************************************/
 #pragma once
 
+#include <atomic>
 #include <deque>
 
 class ITaskStatus
@@ -51,9 +52,14 @@ public:
 	}
 	int SubmitTask(HWND hwnd, UINT msg, std::unique_ptr<_TPayload> task, std::function<std::unique_ptr<_TResponse>(ITaskStatus&, _TPayload&)> func)
 	{
-		// This allows us to keep the same scheduler around for different windows
+		// This allows us to keep the same scheduler around for different windows.
+		// Guard _hwndResponse/_msgResponse with _mutexResponse -- the SAME mutex the
+		// worker reads them under in _DoWork and that DeactivateHWND clears them
+		// under -- so every access agrees on one mutex (#92). _mutex guards the task
+		// queue, a separate concern; the two are never held at once, so there is no
+		// lock-ordering hazard.
 		{
-			std::lock_guard<std::mutex> lock(_mutex);
+			std::lock_guard<std::mutex> lock(_mutexResponse);
 			_hwndResponse = hwnd;
 			_msgResponse = msg;
 		}
@@ -82,7 +88,11 @@ public:
 	{
 		// Since multiple windows may use the same scheduler, when a window that submits
 		// as task is destroyed, we want to clear the response hwnd out so that we don't
-		// post to an invalid hwnd.
+		// post to an invalid hwnd. Take _mutexResponse: this runs on the UI thread
+		// while the worker may be reading _hwndResponse in _DoWork, so without the
+		// lock the clear races the worker's read -- a torn/stale pointer and, worst
+		// case, a PostMessage to a destroyed window (#92).
+		std::lock_guard<std::mutex> lock(_mutexResponse);
 		if (_hwndResponse == hwndNoMore)
 		{
 			_hwndResponse = nullptr;
@@ -139,34 +149,44 @@ private:
 				std::function<std::unique_ptr<_TResponse>(ITaskStatus&, _TPayload&)> func = _queue.front().func;
 				int id = _queue.front().id;
 				_queue.pop_front();
-				// But we'll unlock it while we do our heavy work.
-				_mutex.unlock();
+				// But we'll unlock it while we do our heavy work. Unlock through the
+				// unique_lock so its ownership state stays consistent.
+				lock.unlock();
 
 				if (payload)
 				{
-					std::unique_ptr<_TResponse> response = func(*this, *payload);
-					// If the owner wanted a response, send it now.
-					if (response)
+					try
 					{
-						HWND hwnd;
-						UINT msg;
+						std::unique_ptr<_TResponse> response = func(*this, *payload);
+						// If the owner wanted a response, send it now.
+						if (response)
 						{
-							std::lock_guard<std::mutex> lock(_mutexResponse);
-							hwnd = _hwndResponse;
-							msg = _msgResponse;
-							if (_hwndResponse)
+							HWND hwnd;
+							UINT msg;
 							{
-								_responseQueue.emplace_back(id, std::move(response));
+								std::lock_guard<std::mutex> lock(_mutexResponse);
+								hwnd = _hwndResponse;
+								msg = _msgResponse;
+								if (_hwndResponse)
+								{
+									_responseQueue.emplace_back(id, std::move(response));
+								}
+							}
+							if (hwnd)
+							{
+								PostMessage(hwnd, msg, 0, 0);
 							}
 						}
-						if (hwnd)
-						{
-							PostMessage(hwnd, msg, 0, 0);
-						}
+					}
+					catch (...)
+					{
+						// A task -- or handling its response -- must not take down the
+						// worker thread: an exception escaping here would propagate out
+						// of the thread function, an unconditional std::terminate.
 					}
 				}
-				// Now lock it again before we loop
-				_mutex.lock();
+				// No re-lock needed: the lock is already released, and the next
+				// iteration's unique_lock reacquires _mutex fresh.
 			}
 		}
 	}
@@ -176,7 +196,10 @@ private:
 	// REVIEW: these were auto reset...
 	std::condition_variable _conditionWakeUp;
 
-	bool _exit;
+	// Atomic so the worker loop can test it without holding _mutex (the loop
+	// condition below reads it outside the lock). It is still written under
+	// _mutex in Exit(), so the check-then-set there stays a unit.
+	std::atomic<bool> _exit;
 
 	struct TaskInfo
 	{
@@ -206,51 +229,138 @@ private:
 };
 
 #include <future>
+#include <thread>
+#include <mutex>
+#include <memory>
+#include <cassert>
 
-template<typename _TResponse, typename _TInnerFunc>
-_TResponse HWNDTaskWrapper(_TInnerFunc innerFunc, HWND hwnd, UINT message)
-{
-	assert(hwnd != nullptr);
-	_TResponse response = innerFunc();
-	if (hwnd)
-	{
-		PostMessage(hwnd, message, 0, 0);
-	}
-	return response;
-}
-
-// A more generic mechanism?
+// Runs a function on a background thread and posts a message to a window when it
+// finishes. On Abandon (called from the destructor when the owning dialog closes),
+// it stops depending on the window and detaches the worker, so closing the dialog
+// neither blocks the UI thread nor posts to a window that no longer exists. The
+// worker's state is heap-owned (a shared_ptr the worker holds by value), so a
+// detached worker that finishes later writes only to memory that outlives the
+// sink -- there is no use-after-free. The work function must copy everything it
+// needs (capture by value), because the worker may outlive the owning dialog. (#53)
 template<typename _TResponse>
 class CWndTaskSink
 {
 public:
 	// pwnd guaranteed to exist as long as CWndTaskSink does.
 	CWndTaskSink(CWnd *pwnd, UINT message) : _pwnd(pwnd), _message(message) {}
+	CWndTaskSink(const CWndTaskSink &) = delete;
+	CWndTaskSink &operator=(const CWndTaskSink &) = delete;
 
-	~CWndTaskSink() { Abandon(); }
+	~CWndTaskSink()
+	{
+		Abandon();
+		if (_thread.joinable())
+		{
+			// Do not block the UI thread waiting for the work; the heap-owned state
+			// keeps the detached worker safe.
+			_thread.detach();
+		}
+	}
 
 	template<typename _TFunc>
 	void StartTask(_TFunc func)
 	{
-		// TODO: add futures to a queue, so we can instantiate new ones.
-		_future = std::make_unique<std::future<_TResponse>>(std::async(std::launch::async, HWNDTaskWrapper<_TResponse, _TFunc>, func, _pwnd->GetSafeHwnd(), _message));
+		// Abandon and detach any previous run. Callers start one at a time, but a
+		// joinable std::thread must not be overwritten (that would std::terminate).
+		Abandon();
+		if (_thread.joinable())
+		{
+			_thread.detach();
+		}
+
+		auto state = std::make_shared<SharedState>();
+		state->hwnd = _pwnd->GetSafeHwnd();
+		state->message = _message;
+		state->runId = ++_nextRunId;
+		_state = state;
+
+		_thread = std::thread([state, func]()
+		{
+			try
+			{
+				// Compute the result first (the work is the slow part), then publish
+				// it under the lock.
+				std::unique_ptr<_TResponse> response = std::make_unique<_TResponse>(func());
+				std::lock_guard<std::mutex> lock(state->mutex);
+				state->response = std::move(response);
+				// Post only if the owner still wants the result. Abandon nulls the
+				// hwnd, so a closed dialog is never posted to. Posting to a stale HWND
+				// (a worker that finishes in the small gap before Abandon) merely
+				// returns FALSE -- MFC has already detached it, so no message reaches
+				// a destroyed window.
+				if (state->hwnd != nullptr)
+				{
+					// Tag the completion with this run's id so GetResponse can ignore a
+					// stale completion from a superseded run. (#112)
+					::PostMessage(state->hwnd, state->message, static_cast<WPARAM>(state->runId), 0);
+				}
+			}
+			catch (...)
+			{
+				// A work function that throws must not escape the thread's top-level
+				// function -- that is an unconditional std::terminate (see the same
+				// guard in BackgroundScheduler). Match the previous std::async
+				// behavior: leave the response unset and post nothing, so the failure
+				// is not delivered rather than crashing the application. (#53)
+			}
+		});
 	}
 
 	void Abandon()
 	{
-		// TODO
+		if (_state)
+		{
+			std::lock_guard<std::mutex> lock(_state->mutex);
+			_state->hwnd = nullptr;
+		}
 	}
 
-	_TResponse GetResponse()
+	// Call from the message handler after the task posts its completion message,
+	// passing that message's wParam (the run id StartTask tagged it with). The
+	// worker stores the response before it posts, so it is ready here.
+	//
+	// Returns a default-constructed _TResponse (a "no result" sentinel) instead of
+	// crashing when there is nothing valid to return: before any task has run
+	// (_state is null, e.g. a stray message), when the completion is from a
+	// superseded run (its id does not match the current run), or when the response
+	// is not set. Callers that run one task at a time and handle each completion
+	// before starting the next always get the real result. (#112)
+	_TResponse GetResponse(WPARAM completionRunId)
 	{
-		// Ok to block, since we posted the message just as we were about to be done. get blocks
-		//if (future_status::ready == _future.wait_for(std::chrono::seconds(0)))
-		return _future->get();
+		if (!_state)
+		{
+			return _TResponse{};
+		}
+		std::lock_guard<std::mutex> lock(_state->mutex);
+		if ((static_cast<UINT>(completionRunId) != _state->runId) || !_state->response)
+		{
+			return _TResponse{};
+		}
+		// Consume the response: reset it after the move so a duplicate completion for
+		// the same run returns the sentinel rather than a moved-from value. (#112)
+		_TResponse result = std::move(*_state->response);
+		_state->response.reset();
+		return result;
 	}
 
 private:
-	std::unique_ptr<std::future<_TResponse>> _future;
+	struct SharedState
+	{
+		std::mutex mutex;
+		HWND hwnd = nullptr;
+		UINT message = 0;
+		UINT runId = 0;
+		std::unique_ptr<_TResponse> response;
+	};
 
+	std::shared_ptr<SharedState> _state;
+	std::thread _thread;
 	CWnd *_pwnd;
 	UINT _message;
+	UINT _nextRunId = 0;   // incremented per StartTask; tags each completion (#112)
 };

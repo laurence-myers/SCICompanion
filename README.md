@@ -9,6 +9,50 @@ The bulk of the code is in SCICompanionLib\Src
 
 SCICompanion is the .exe which is just a thin wrapper over SCICompanionLib
 
+## What's new in 4.0.0
+
+This release focuses on the compiler and decompiler, on stability, and on
+modernizing the build. Broad highlights since the previous release:
+
+* **Eliminated most `asm` fallbacks in the decompiler.** When the decompiler
+  could not reconstruct a function's control flow it used to give up and emit
+  raw `asm` disassembly. It now rebuilds the control flow into real source, so
+  far fewer functions fall back to `asm` -- for example, the Quest for Glory IV
+  scripts now decompile with no `asm` fallbacks.
+* **Fixed bytecode output.** The compiler produced wrong bytecode in some cases:
+  a constant `(mod a b)` was folded as bitwise-and instead of modulo (so
+  `(mod 7 3)` gave 3, not 1), and large shift counts were mishandled. It now
+  also reports an error instead of silently emitting bad bytecode when it cannot
+  resolve a branch, corrects the SCI0 public-export order, and rejects assembly
+  opcodes that the target SCI interpreter cannot run.
+* **Improved decompilation output.** The reconstructed source is more idiomatic
+  and follows the "golden" decompilations from
+  [sluicebox's SCI tools](https://github.com/sluicebox/sci-tools) much more
+  closely (control-flow shapes, expressions and comparisons).
+* **Fewer crashes on bad or corrupt data.** The decompiler, compiler and
+  resource loaders are hardened against malformed, truncated or crafted game
+  files, so opening a damaged game no longer crashes the app.
+* **Fixed deadlocks and race conditions** in background work (compiling,
+  decompiling, the class browser, resource rendering and MIDI playback).
+* **Fixed use-after-free bugs and memory leaks** across the editors and dialogs.
+* **Fixed other crash conditions** surfaced by static analysis and sanitizers.
+* **Safer saving.** Writing game resources is now atomic, so an interrupted or
+  failed save no longer corrupts or loses a resource or volume file.
+* **Removed legacy SCI Studio script syntax.** Scripts now use SCI Companion's
+  Sierra-style syntax only.
+* **Modern build tools.** The project now builds with the Visual Studio 2022
+  toolset (v143), upgraded from Visual Studio 2015 (v140), and uses standard C++
+  facilities such as `std::filesystem`.
+* **More testing and continuous integration.** The unit-test suite runs by
+  default and is much larger, with an integration-test harness and golden
+  regression suites for both compiled bytecode and decompiler output. CI also
+  runs an AddressSanitizer leg and MSVC static analysis (`/analyze`).
+* **Updated dependencies.** The bundled giflib is updated from 5.1.1 to 5.2.2,
+  which brings its decoder hardening and security fixes.
+* **Removed SCI11+ extensions.** Language extensions that only run on the
+  customized SCI11+ interpreter have been removed, because they do not work on a
+  stock Sierra SCI interpreter. See the note below for details.
+
 ## Language extensions
 
 The compiler supports a few keywords beyond Sierra's original syntax. Each

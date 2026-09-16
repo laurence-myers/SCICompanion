@@ -116,5 +116,33 @@ namespace UnitTests
             Assert::IsTrue(doc.IsModified() != FALSE,
                 L"D is an unsaved edit reusing B's heap address and must not read as saved");
         }
+
+        // #56: a no-op preview adds a clone via AddNewResourceToUndo, then backs
+        // out. Backing out with OnUndo alone left the clone as a phantom redo
+        // frame, so Redo became a no-op that still refreshed.
+        // RemoveLastResourceFromUndo erases the clone, so no redo frame remains.
+        TEST_METHOD(UndoResource_RemoveLastResource_LeavesNoPhantomRedo)
+        {
+            PoolItem::FreeList().clear();
+            TestUndoDoc doc;
+
+            auto a = std::make_unique<PoolItem>(); a->value = 1;
+            doc.AddFirstResource(std::move(a));            // [A], pos = A
+            auto b = std::make_unique<PoolItem>(); b->value = 2;
+            doc.AddNewResourceToUndo(std::move(b));         // [A,B], pos = B
+            Assert::AreEqual(2, doc.GetResource()->value, L"B is current");
+
+            // Simulate a no-op preview: add a clone, then back it out.
+            auto c = std::make_unique<PoolItem>(); c->value = 3;
+            doc.AddNewResourceToUndo(std::move(c));         // [A,B,C], pos = C
+            Assert::AreEqual(3, doc.GetResource()->value, L"the preview clone is current");
+
+            doc.RemoveLastResourceFromUndo();               // back out C -> [A,B], pos = B
+            Assert::AreEqual(2, doc.GetResource()->value, L"current is B again after backing out the clone");
+
+            // No phantom redo frame: Redo must not move to the erased clone.
+            doc.PubOnRedo();
+            Assert::AreEqual(2, doc.GetResource()->value, L"Redo is a no-op; the clone left no phantom redo frame");
+        }
     };
 }

@@ -15,6 +15,18 @@
 
 bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &func, MainNode &main, DecompileLookups &lookups);
 
+// Returns the node's single predecessor, or null if it has none. The main-chunk
+// output walk requires at most one predecessor; this throws ControlFlowException
+// if the node has more (a block reached by two one-way jmps), so the caller falls
+// back to disassembly instead of silently dropping code. (#64)
+ControlFlowNode *GetFirstPredecessorOrNull(ControlFlowNode *node);
+
+// Returns the node's single successor, or null if it has none. Symmetric to
+// GetFirstPredecessorOrNull: throws ControlFlowException if the node has more
+// than one successor, so the caller falls back to disassembly instead of
+// silently dropping code. (#104)
+ControlFlowNode *GetFirstSuccOrNull(ControlFlowNode *node);
+
 /*
 	Decompilation summary
 

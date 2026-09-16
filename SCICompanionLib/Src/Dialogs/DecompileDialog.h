@@ -16,6 +16,7 @@
 #include "GameFolderHelper.h"
 #include "DecompilerResults.h"
 #include <future>
+#include <atomic>
 
 class CSCOFile;
 class IDecompilerConfig;
@@ -40,7 +41,9 @@ public:
 	int _fallbackBytes;
 
 private:
-	bool _aborted;
+	// Written by the UI thread (SetAborted) and read by the worker thread
+	// (IsAborted), so it must be atomic. (#53)
+	std::atomic<bool> _aborted;
 	HWND _hwnd;
 	std::vector<std::pair<std::string, std::string>> _globalsUpdated;
 };
@@ -49,6 +52,7 @@ class DecompileDialog : public CExtResizableDialog
 {
 public:
 	DecompileDialog(CWnd* pParent = nullptr);   // standard constructor
+	~DecompileDialog();                         // joins the worker before members are torn down (#53)
 
 	// Dialog Data
 	enum { IDD = IDD_DECOMPILER };
@@ -57,6 +61,7 @@ protected:
 	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV support
 	BOOL PreTranslateMessage(MSG* pMsg) override;
 	BOOL OnInitDialog() override;
+	void OnCancel() override; // aborts a running decompile before closing (#53)
 
 	DECLARE_MESSAGE_MAP()
 private:

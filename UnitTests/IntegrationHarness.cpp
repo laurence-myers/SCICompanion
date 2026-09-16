@@ -28,10 +28,23 @@ namespace IntegrationHarness
         }
 
         auto done = std::make_shared<std::atomic<bool>>(false);
+        auto threw = std::make_shared<std::atomic<bool>>(false);
         _done = done;
-        _thread = std::thread([done, body]()
+        _threw = threw;
+        _thread = std::thread([done, threw, body]()
         {
-            body();
+            // Catch anything the body throws. An exception escaping a std::thread's
+            // function is an unconditional std::terminate that would kill the whole
+            // test run; record it instead and still mark the work done so Run()
+            // returns rather than timing out.
+            try
+            {
+                body();
+            }
+            catch (...)
+            {
+                threw->store(true);
+            }
             done->store(true); // heap-owned: safe even if the runner was destroyed
         });
         auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
@@ -85,6 +98,7 @@ namespace IntegrationHarness
         {
             // Record only application messages, so system traffic is not noise.
             self->_received.push_back(msg);
+            self->_receivedParams.push_back(std::make_pair(msg, wParam));
         }
         return ::DefWindowProc(hwnd, msg, wParam, lParam);
     }
@@ -150,6 +164,19 @@ namespace IntegrationHarness
             }
         }
         return false;
+    }
+
+    WPARAM MessageOnlyWindow::WParamOf(UINT msg) const
+    {
+        // Most recent match wins.
+        for (auto it = _receivedParams.rbegin(); it != _receivedParams.rend(); ++it)
+        {
+            if (it->first == msg)
+            {
+                return it->second;
+            }
+        }
+        return 0;
     }
 
     namespace

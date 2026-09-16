@@ -29,19 +29,27 @@ bool InspectCode(SCIVersion version, const uint8_t *pBegin, const uint8_t *pEnd,
 	{
 		const uint8_t *pCur = pBegin;
 		uint16_t wOffset = wBaseOffset;
-		while (pCur < pEnd) // Possibility of read AVs here, but we catch exceptions.
+		while (pCur < pEnd) // Operand reads are now end-bounded (#116). The catch below only guards C++ exceptions, not access violations (the build uses /EHsc, not /EHa).
 		{
 			uint8_t bRawOpcode = *pCur;
 			Opcode opcode = RawToOpcode(version, bRawOpcode);
 			// Advance past opcode
 			pCur++;
 			wOffset++;
-			uint16_t wOperandsRaw[3];
+			uint16_t wOperandsRaw[3] = {};
 			for (int i = 0; i < 3; i++)
 			{
-				int cIncr = GetOperandSize(bRawOpcode, GetOperandTypes(version, opcode)[i], pCur);
+				int cIncr = GetOperandSize(bRawOpcode, GetOperandTypes(version, opcode)[i], pCur, pEnd);
 				if (cIncr == 0)
 				{
+					break;
+				}
+				if ((pEnd - pCur) < (ptrdiff_t)cIncr)
+				{
+					// The operand runs past the end of the code section. Stop before
+					// we read it, so we never index past the script resource buffer.
+					// Setting pCur to pEnd ends the outer walk after this opcode. (#116)
+					pCur = pEnd;
 					break;
 				}
 				wOperandsRaw[i] = (cIncr == 2) ? *((uint16_t*)pCur) : *pCur;

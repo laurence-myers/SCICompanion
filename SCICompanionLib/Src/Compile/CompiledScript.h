@@ -269,5 +269,10 @@ private:
 	CompiledScriptFlags _flags;
 };
 
-int GetOperandSize(BYTE bOpcode, OperandType operandType, const uint8_t *pNext);
+int GetOperandSize(BYTE bOpcode, OperandType operandType, const uint8_t *pNext, const uint8_t *pEnd);
 uint16_t CalcOffset(const SCIVersion &version, uint16_t wOperandStart, uint16_t wRelOffset, bool bByte, BYTE bRawOpcode);
+// Scans one span of raw bytecode [pBegin, pEnd) for CALL instructions and inserts
+// each call target (a text offset) into wOffsets. baseOffsetTO is the text offset
+// of pBegin. Each instruction is sized from its actual operand bytes, so a
+// variable-length Filename (otDEBUGSTRING) operand is stepped over as data (#124).
+void FindInternalCallsInCodeSection(const SCIVersion &version, const BYTE *pBegin, const BYTE *pEnd, uint16_t baseOffsetTO, std::set<uint16_t> &wOffsets);

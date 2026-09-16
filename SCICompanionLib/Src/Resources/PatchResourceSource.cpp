@@ -156,28 +156,19 @@ AppendBehavior PatchFilesResourceSource::AppendResources(const std::vector<const
 {
 	for (const ResourceBlob *blob : blobs)
 	{
-		// if it's a script or a text resource, we don't really need to worry about preserving the contents, so we can just overwrite directly.
-		if ((blob->GetType() == ResourceType::Script) || (blob->GetType() == ResourceType::Text))
+		// Write to a .bak file, then atomically replace the target. This keeps an
+		// interrupted write from corrupting the existing file. It applies to every
+		// resource type, including Script and Text: writing those directly with
+		// CREATE_ALWAYS would leave a half-written .scr or text file as the game's
+		// resource if the write stopped part way.
+		std::string filename = GetFileNameFor(*blob);
+		std::string fullPath = _gameFolder + "\\" + filename;
+		std::string bakPath = fullPath + ".bak";
 		{
-			std::string filename = GetFileNameFor(*blob);
-			std::string fullPath = _gameFolder + "\\" + filename;
-			ScopedFile file(fullPath, GENERIC_WRITE, 0, CREATE_ALWAYS);
+			ScopedFile file(bakPath, GENERIC_WRITE, 0, CREATE_ALWAYS);
 			blob->SaveToHandle(file.hFile, true);
 		}
-		else
-		{
-			std::string filename = GetFileNameFor(*blob);
-			std::string fullPath = _gameFolder + "\\" + filename;
-			std::string bakPath = _gameFolder + "\\" + filename + ".bak";
-			// Write to the bak file
-			{
-				ScopedFile file(bakPath, GENERIC_WRITE, 0, CREATE_ALWAYS);
-				blob->SaveToHandle(file.hFile, true);
-			}
-			// move it to the main guy
-			deletefile(fullPath);
-			movefile(bakPath, fullPath);
-		}
+		replacefile(bakPath, fullPath);
 	}
 	return AppendBehavior::Replace;
 }

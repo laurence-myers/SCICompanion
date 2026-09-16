@@ -620,12 +620,34 @@ private:
 
 ControlFlowNode *GetFirstPredecessorOrNull(ControlFlowNode *node)
 {
-	assert(node->Predecessors().size() <= 1);
+	// The main-chunk output walk (Visit(const MainNode &)) treats the chunk as a
+	// linear chain and follows a single predecessor back toward the head. A block
+	// reached by two one-way jmps has two predecessors; following only the first
+	// silently drops the other predecessor's blocks. Real game code hits this, so
+	// throw (rather than assert, which does nothing in Release and would abort a
+	// Debug build): OutputNewStructure catches it and falls back to disassembly for
+	// this one function instead of losing code. This keeps Debug and Release
+	// consistent -- both fall back gracefully. (#64)
+	if (node->Predecessors().size() > 1)
+	{
+		throw ControlFlowException(node, "A block has multiple predecessors; the output walk would drop code.");
+	}
 	return node->Predecessors().empty() ? nullptr : *node->Predecessors().begin();
 }
 ControlFlowNode *GetFirstSuccOrNull(ControlFlowNode *node)
 {
-	assert(node->Successors().size() <= 1);
+	// Symmetric to GetFirstPredecessorOrNull (#64): the callers treat the node as
+	// having a single successor and follow it. A node with more than one successor
+	// means following only the first silently drops the other successors' blocks.
+	// Throw (rather than assert, which does nothing in Release and would abort a
+	// Debug build): the EnumerateCodeChunks walk runs under OutputNewStructure's
+	// try, which catches ControlFlowException and falls back to disassembly for
+	// this one function instead of losing code, keeping Debug and Release
+	// consistent. (#104)
+	if (node->Successors().size() > 1)
+	{
+		throw ControlFlowException(node, "A block has multiple successors; the output walk would drop code.");
+	}
 	return node->Successors().empty() ? nullptr : *node->Successors().begin();
 }
 

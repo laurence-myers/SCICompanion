@@ -456,10 +456,19 @@ void SaveCelsAndPaletteToGIFFile(const char *filename, const std::vector<Cel> &c
 			gifColors[i].Blue = rgb.rgbBlue;
 		}
 		fileType->SColorMap = GifMakeMapObject(colorCount, gifColors);
-		fileType->SColorMap->SortFlag = true;   // SV.exe includes it, so I will too.
 
 		// Now the images
 		int result = GIF_OK;
+		if (fileType->SColorMap == NULL)
+		{
+			// GifMakeMapObject returns NULL if colorCount is not a power of two,
+			// or on an allocation failure. Fail the export instead of dereferencing.
+			result = GIF_ERROR;
+		}
+		else
+		{
+			fileType->SColorMap->SortFlag = true;   // SV.exe includes it, so I will too.
+		}
 		for (size_t i = 0; (result == GIF_OK) && (i < cels.size()); i++)
 		{
 			const Cel &cel = cels[i];
@@ -524,16 +533,24 @@ void SaveCelsAndPaletteToGIFFile(const char *filename, const std::vector<Cel> &c
 			}
 		}
 
+		bool calledSpew = false;
 		if (result == GIF_OK)
 		{
 			result = EGifSpew(fileType);
-			// Amazingly, this deallocates internal storage for nearly everything, except for the SavedImage data.
-			// We can't delete the SavedImage data afterwards, because the fileType struct contents will be garbage.
-			// We can't delete them before, because they are required for EGifSpew. What a silly API.
+			calledSpew = true;
 		}
-		if (result != GIF_OK)
+		if (!calledSpew)
 		{
-			// If an error happens, then I have to close the file? What on earth?
+			// Close the file only when EGifSpew never ran -- i.e. the setup failed,
+			// so the file is still open. If EGifSpew ran, it owns the close: it
+			// closes on success, and on a failing internal close it has already
+			// freed fileType (though it returns GIF_ERROR), so re-closing here would
+			// be a double-free / use-after-free. Trade-off: if EGifSpew fails
+			// part-way through the write (a disk I/O error), fileType -- including
+			// its open handle -- leaks, so the partial file stays locked (deny-share)
+			// until the app exits and a retry to the same name fails. That is rare
+			// and bounded, and far safer than the double-free. (Making EGifSpew never
+			// close would remove even the leak, but it would diverge vendored giflib.)
 			int closeError;
 			EGifCloseFile(fileType, &closeError);
 		}

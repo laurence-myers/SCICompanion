@@ -991,8 +991,29 @@ std::unique_ptr<PaletteComponent> CResourceMap::GetPalette(int fallbackPaletteNu
 
 std::unique_ptr<PaletteComponent> CResourceMap::GetMergedPalette(const ResourceEntity &resource, int fallbackPaletteNumber)
 {
+	// Resolve the global palette from the map (GetPalette999 lazily creates a cached
+	// member; CreateResourceFromNumber walks the map), then merge. This map access is
+	// why this overload must run on the UI thread; the render workers use the
+	// overload below with a palette the UI thread precomputed for them (#97).
+	if (fallbackPaletteNumber == 999)
+	{
+		return GetMergedPalette(resource, GetPalette999());
+	}
+
+	std::unique_ptr<ResourceEntity> paletteFallback = CreateResourceFromNumber(ResourceType::Palette, fallbackPaletteNumber);
+	const PaletteComponent *globalPalette = paletteFallback ? paletteFallback->TryGetComponent<PaletteComponent>() : nullptr;
+	return GetMergedPalette(resource, globalPalette);
+}
+
+std::unique_ptr<PaletteComponent> CResourceMap::GetMergedPalette(const ResourceEntity &resource, const PaletteComponent *globalPalette) const
+{
 	assert((_gameFolderHelper.Version.ViewFormat != ViewFormat::EGA) || (_gameFolderHelper.Version.PicFormat != PicFormat::EGA));
-	std::unique_ptr<PaletteComponent> paletteReturn;
+	// Thread-safe: reads only the passed resource, the caller-supplied globalPalette,
+	// and the immutable _emptyPalette (set once in the constructor) -- no mutable
+	// shared map state, so a render worker can call this concurrently with the UI
+	// thread (#97). (The Debug-only assert above reads _gameFolderHelper.Version,
+	// which is stable during rendering.) MergeFromOther is a no-op when globalPalette
+	// is null.
 	const PaletteComponent *paletteEmbedded = resource.TryGetComponent<PaletteComponent>();
 	if (!paletteEmbedded)
 	{
@@ -1000,19 +1021,8 @@ std::unique_ptr<PaletteComponent> CResourceMap::GetMergedPalette(const ResourceE
 	}
 
 	// Clone the embedded palette first - REVIEW: make_unique arg forwarding doesn't work with copy constructor. No object copy happens.
-	paletteReturn = make_unique<PaletteComponent>(*paletteEmbedded);
-	if (fallbackPaletteNumber == 999)
-	{
-		paletteReturn->MergeFromOther(GetPalette999());
-	}
-	else
-	{
-		std::unique_ptr<ResourceEntity> paletteFallback = CreateResourceFromNumber(ResourceType::Palette, fallbackPaletteNumber);
-		if (paletteFallback)
-		{
-			paletteReturn->MergeFromOther(paletteFallback->TryGetComponent<PaletteComponent>());
-		}
-	}
+	std::unique_ptr<PaletteComponent> paletteReturn = make_unique<PaletteComponent>(*paletteEmbedded);
+	paletteReturn->MergeFromOther(globalPalette);
 	return paletteReturn;
 }
 

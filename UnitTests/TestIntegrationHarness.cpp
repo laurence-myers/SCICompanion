@@ -16,6 +16,7 @@
 #include "IntegrationHarness.h"
 #include <atomic>
 #include <chrono>
+#include <stdexcept>
 #include <thread>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -100,6 +101,29 @@ namespace UnitTests
             bool postedAfterDestroy = window.Post(kResult, 0, 0);
             Assert::IsFalse(postedAfterDestroy, L"a post to a destroyed window must fail, not crash");
             window.Pump(); // must not crash
+        }
+
+        // A body that throws must not crash the run. Run() catches the exception,
+        // still reports the work as finished, and records it via ThrewException().
+        // A body that returns normally leaves ThrewException() false. Without the
+        // catch, an exception escaping the worker thread is an unconditional
+        // std::terminate that takes down the whole test process.
+        BEGIN_TEST_METHOD_ATTRIBUTE(Deadline_CatchesAThrowingBody)
+            TEST_METHOD_ATTRIBUTE(L"TestCategory", L"Integration")
+        END_TEST_METHOD_ATTRIBUTE()
+        TEST_METHOD(Deadline_CatchesAThrowingBody)
+        {
+            DeadlineRunner throwing;
+            bool finished = throwing.Run(2000, []() { throw std::runtime_error("boom"); });
+            Assert::IsTrue(finished, L"a throwing body must still be reported as finished, not a hang");
+            throwing.Join();
+            Assert::IsTrue(throwing.ThrewException(), L"the thrown exception must be recorded");
+
+            DeadlineRunner clean;
+            bool finishedClean = clean.Run(2000, []() { /* returns normally */ });
+            Assert::IsTrue(finishedClean, L"a normal body finishes");
+            clean.Join();
+            Assert::IsFalse(clean.ThrewException(), L"a normal body records no exception");
         }
     };
 }

@@ -20,6 +20,7 @@
 
 #include "stdafx.h"
 #include "AppState.h"
+#include "GdiRaii.h"
 #include "ResourceListDoc.h"
 #include "ResourceListView.h"
 #include "RasterResourceListView.h"
@@ -81,10 +82,14 @@ void _StretchForAspectRatio(CWnd *pwnd, CBitmap &bitmap)
 			int cyNew = appState->AspectRatioY(size.cy);
 			if (stretchedBmp.CreateCompatibleBitmap(pDC, size.cx, cyNew))
 			{
-				dcMemSource.SelectObject(&bitmap);
 				dcMemDest.SelectObject(&stretchedBmp);
 				dcMemDest.SetStretchBltMode(HALFTONE);
-				dcMemDest.StretchBlt(0, 0, size.cx, cyNew, &dcMemSource, 0, 0, size.cx, size.cy, SRCCOPY);
+				{
+					// Deselect the source bitmap before deleting it below: GDI will not
+					// delete a bitmap a device context still holds. (#51)
+					GdiSelectGuard sourceGuard(dcMemSource.GetSafeHdc(), bitmap.GetSafeHandle());
+					dcMemDest.StretchBlt(0, 0, size.cx, cyNew, &dcMemSource, 0, 0, size.cx, size.cy, SRCCOPY);
+				}
 				bitmap.DeleteObject();
 				bitmap.Attach(stretchedBmp.Detach());
 				bitmap.SetBitmapDimension(size.cx, cyNew);
@@ -185,7 +190,11 @@ VIEWWORKRESULT *VIEWWORKRESULT::CreateFromWorkItem(VIEWWORKITEM *pWorkItem)
 		std::unique_ptr<PaletteComponent> palette;
 		if (raster.Traits.PaletteType == PaletteType::VGA_256)
 		{
-			palette = appState->GetResourceMap().GetMergedPalette(*pEntity, 999);
+			// Merge with the global palette the UI thread precomputed for this work
+			// item, using the thread-safe overload. Reading the shared resource map
+			// here (as the plain GetMergedPalette(entity, 999) did) races the UI
+			// thread (#97).
+			palette = appState->GetResourceMap().GetMergedPalette(*pEntity, pWorkItem->palette999.get());
 		}
 		CelIndex previewCel = CelIndex(0, raster.Traits.PreviewCel);
 		if (raster.Traits.PreviewCel == 0)
@@ -249,6 +258,14 @@ void CRasterResourceListCtrl::OnGetDispInfo(NMHDR* pNMHDR, LRESULT* pResult)
 				std::unique_ptr<VIEWWORKITEM> pWorkItem = std::make_unique<VIEWWORKITEM>();
 				pWorkItem->blob = *pData;
 				pWorkItem->lParam = pItem->lParam;
+				// Precompute the global palette here on the UI thread so the worker
+				// never reads the shared resource map (#97). GetPalette999 returns a
+				// pointer into a cached map member; copy it into the work item.
+				const PaletteComponent *global999 = appState->GetResourceMap().GetPalette999();
+				if (global999)
+				{
+					pWorkItem->palette999 = std::make_shared<PaletteComponent>(*global999);
+				}
 				_pQueue->GiveWorkItem(move(pWorkItem));
 				pItem->iImage = _iTokenImageIndex; // Done!
 				pItem->mask |= LVIF_DI_SETITEM; // So we don't ask for it again.

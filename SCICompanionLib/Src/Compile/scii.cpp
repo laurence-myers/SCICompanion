@@ -155,6 +155,17 @@ uint16_t scii::_get_instruction_size(const SCIVersion &version, Opcode bOpcode, 
 	assert(opSize != Undefined);
 	const OperandType *argTypes = ::GetOperandTypes(version, bOpcode);
 	uint16_t wSize = 1; // for the opcode
+	// Note: there is no case for otDEBUGSTRING (the SCI2 Filename opcode's
+	// variable-length string). This function sizes an instruction from its opcode
+	// alone, with no access to the operand bytes, so it cannot measure that string
+	// -- a Filename opcode sizes here as 1 (opcode only). Callers that meet a real
+	// Filename opcode in bytecode must size its string from the bytes instead (the
+	// disassembler's GetOperandSize does). The bytecode read path already does:
+	// FindInternalCallsInCodeSection (CompiledScript.cpp) now walks with
+	// GetOperandSize. The remaining opcode-only under-size is on the _file_ asm
+	// write path (calc_size via this function; and output_code, which has no
+	// otDEBUGSTRING case, so it writes a bogus word for the operand instead of the
+	// string bytes) -- a pre-existing, SCI2-debug-only broken feature tracked in #124.
 	bool fDone = false;
 	for (int i = 0; !fDone && i < 3; i++)
 	{
@@ -490,14 +501,30 @@ void scii::output_code(ITrackCodeSink &trackCodeSink, std::vector<BYTE> &output)
 //
 // The size of the entire piece of code, guaranteed to return something with a uint16_t boundary.
 //
+bool scicode::has_undetermined_branch()
+{
+	for (scii &instruction : _code)
+	{
+		if (!instruction.is_branch_determined())
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 uint16_t scicode::calc_size()
 {
 	for(scii &instruction : _code)
 	{
 		if (!instruction.is_branch_determined())
 		{
-			// Hopefully we resolved this at an earlier point and produced an error.
-			// assert(false);
+			// This is an internal codegen error. The caller checks
+			// has_undetermined_branch() first and reports it, so control does not
+			// normally reach here undetermined. Retarget to the code start anyway,
+			// as a crash guard, so size calculation does not read a bad iterator;
+			// the reported error makes the compile fail and the byte code is
+			// discarded. (#59)
 			instruction.set_branch_target(_code.begin(), false);
 		}
 	}
@@ -752,7 +779,7 @@ scii::scii(const SCIVersion &version, Opcode bOpcode, uint16_t w1, uint16_t w2, 
 	_fForceWord = false;
 	_fUndetermined = false;
 	_bOpcode = bOpcode;
-	assert(_bOpcode <= Opcode::LastOne);
+	assert(_bOpcode <= Opcode::INDETERMINATE); // allow the decompiler's transient INDETERMINATE sentinel (the output path still rejects it)
 	_wOperands[0] = w1;
 	_wOperands[1] = w2;
 	_wOperands[2] = w3;
@@ -770,7 +797,7 @@ scii::scii(const SCIVersion &version, Opcode bOpcode, _code_pos branch, bool fUn
 	_fForceWord = false;
 	_fUndetermined = fUndetermined;
 	_bOpcode = bOpcode;
-	assert(_bOpcode <= Opcode::LastOne);
+	assert(_bOpcode <= Opcode::INDETERMINATE); // allow the decompiler's transient INDETERMINATE sentinel (the output path still rejects it)
 	_itOffset = branch;
 	// Assume a backward branch for now...
 	// (if branch is .end(), then we'll need to fix it up later anyhow, via set_branch_target)

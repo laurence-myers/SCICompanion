@@ -43,6 +43,24 @@ DecompileDialog::DecompileDialog(CWnd* pParent /*=NULL*/)
 {
 }
 
+DecompileDialog::~DecompileDialog()
+{
+	// Join the worker before any member is torn down. The worker holds _lookups
+	// (by reference) and _decompilerConfig (by pointer) across the whole
+	// DecompileScript call, but those members are declared after _future, so member
+	// destruction would free them before _future's own blocking dtor joins the
+	// worker -- a use-after-free. Abort first so the wait is short, then wait here,
+	// while every member the worker uses is still alive. (#53)
+	if (_decompileResults)
+	{
+		_decompileResults->SetAborted();
+	}
+	if (_future && _future->valid())
+	{
+		_future->wait();
+	}
+}
+
 BOOL DecompileDialog::OnInitDialog()
 {
 	BOOL fRet = __super::OnInitDialog();
@@ -754,6 +772,19 @@ void DecompileDialog::OnBnClickedDecompilecancel()
 	}
 }
 
+void DecompileDialog::OnCancel()
+{
+	// The user is closing the dialog (Escape, the close box, or Cancel). Abort a
+	// running decompile so the worker stops at its next check, rather than the
+	// window's destruction blocking on -- and losing status posts to -- a worker
+	// that keeps running to the end. (#53)
+	if (_decompileResults)
+	{
+		_decompileResults->SetAborted();
+	}
+	__super::OnCancel();
+}
+
 void DecompileDialog::s_DecompileThreadWorker(DecompileDialog *pThis)
 {
 	try
@@ -836,7 +867,13 @@ void DecompileDialog::s_DecompileThreadWorker(DecompileDialog *pThis)
 void DecompilerDialogResults::AddResult(DecompilerResultType type, const std::string &message)
 {
 	std::string *ptrToString = new std::string(message);
-	::PostMessage(_hwnd, UWM_UPDATESTATUS, static_cast<WPARAM>(type), reinterpret_cast<LPARAM>(ptrToString));
+	// UpdateStatus deletes the string when it handles the message. If the window
+	// is gone (the dialog was closed while the worker ran), the post fails and the
+	// message is never handled, so delete the string here to avoid a leak. (#53)
+	if (!::PostMessage(_hwnd, UWM_UPDATESTATUS, static_cast<WPARAM>(type), reinterpret_cast<LPARAM>(ptrToString)))
+	{
+		delete ptrToString;
+	}
 }
 
 void DecompilerDialogResults::InformStats(bool functionSuccessful, int byteCount)

@@ -323,7 +323,7 @@ const int LipSyncMarqueeMilliseconds = 30;
 LRESULT ExtractLipSyncDialog::_OnLipSyncDone(WPARAM wParam, LPARAM lParam)
 {
 	m_wndLipSyncButton.EnableWindow(TRUE);
-	LipSyncDialogTaskResult result = _taskSink->GetResponse();
+	LipSyncDialogTaskResult result = _taskSink->GetResponse(wParam);
 
 	_audioResource->AddComponent<SyncComponent>(make_unique<SyncComponent>(result.Sync));
 	m_wndWaveform.SetRawLipSyncData(result.RawResults);

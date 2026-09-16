@@ -538,6 +538,9 @@ BOOL OpenResource(const ResourceBlob *pData, bool setModifier = false);
 int ResourceNumberFromFileName(PCTSTR pszFileName);
 void deletefile(const std::string &filename);
 void movefile(const std::string &from, const std::string &to);
+// Atomically replaces 'to' with 'from' (MoveFileEx with MOVEFILE_REPLACE_EXISTING),
+// so there is no moment where the destination is missing. 'to' need not exist.
+void replacefile(const std::string &from, const std::string &to);
 void testopenforwrite(const std::string &filename);
 uint32_t GetResourceOffsetInFile(uint8_t secondHeaderByte);
 extern const TCHAR g_szResourceSpec[];

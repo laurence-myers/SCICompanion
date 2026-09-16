@@ -90,3 +90,152 @@ jobs:
       with:
         name: SCICompanion-${{ matrix.configuration }}-${{ matrix.platform }}-${{ github.sha }}
         path: artifacts
+
+  # AddressSanitizer leg. Builds the unit-test tree with /fsanitize=address and
+  # runs the unit suite, so a memory-safety regression (out-of-bounds read/write,
+  # use-after-free) faults the build instead of passing unnoticed in a plain
+  # Release build. Runs in parallel with the fast `build` job above.
+  asan:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    # Same MFC/ATL install as the build job (a separate job gets a clean runner).
+    - name: Install MFC and ATL for the 14.44 toolset
+      shell: pwsh
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $installPath = & $vswhere -latest -products '*' -property installationPath
+        if (-not $installPath) { throw "Visual Studio not found." }
+
+        $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+        $vsArgs = "modify --installPath `"$installPath`"" +
+          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL" +
+          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.MFC" +
+          " --quiet --norestart --force --nocache"
+        $proc = Start-Process -FilePath $setup -ArgumentList $vsArgs -Wait -PassThru -NoNewWindow
+        if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) { throw "Install failed ($($proc.ExitCode))." }
+
+        $mfc = Get-ChildItem -ErrorAction SilentlyContinue `
+          -Path "$installPath\VC\Tools\MSVC\14.44.*\atlmfc\lib\x86\mfc140.lib"
+        if (-not $mfc) { throw "MFC for the 14.44 toolset was not found after the install." }
+
+    # Build only the UnitTests project and its dependencies with ASan. /MT links
+    # the ASan runtime statically, so no extra DLL is needed to run the tests.
+    #
+    # _DISABLE_STRING_ANNOTATION / _DISABLE_VECTOR_ANNOTATION: the tree links
+    # prebuilt libraries (MFC), so the std::string / std::vector container-overflow
+    # annotations cannot be guaranteed identical across every linked object, which
+    # otherwise fails linking with LNK2038. Disabling them drops only the container-
+    # overflow check; core ASan (heap and stack out-of-bounds, use-after-free) still
+    # applies, which is what the memory-safety tests exercise.
+    - name: Build UnitTests with AddressSanitizer
+      shell: pwsh
+      env:
+        CL: /D_DISABLE_STRING_ANNOTATION /D_DISABLE_VECTOR_ANNOTATION
+      run: |
+        msbuild SCICompanion.sln -m -t:UnitTests -p:Configuration=Release -p:Platform=Win32 -p:EnableASAN=true
+
+    # Run the unit suite under ASan. The integration tests (threads, child
+    # processes) are excluded here; this leg targets the memory-safety unit tests.
+    #
+    # continue-on-error: informational for now. The ASan unit run surfaces
+    # pre-existing memory issues in the compile / class-browser tests that the
+    # plain build tolerates (tracked in a follow-up issue), so it must not fail the
+    # build yet. The ASan *build* step above still gates -- the tree has to compile
+    # and link under ASan. Once the suite is ASan-clean, drop continue-on-error to
+    # make this a hard gate. halt_on_error=0 lets it report every finding in a run.
+    - name: Test (unit, under ASan)
+      shell: pwsh
+      timeout-minutes: 25
+      continue-on-error: true
+      env:
+        ASAN_OPTIONS: halt_on_error=0
+      run: |
+        # An ASan-instrumented DLL needs the dynamic ASan runtime
+        # (clang_rt.asan_dynamic-i386.dll) at load time -- a DLL target uses the
+        # dynamic runtime even with /MT. It MUST be the runtime from the SAME
+        # toolset that compiled the code; an older one (the image ships several
+        # MSVC versions) does not export the symbols the instrumented DLL imports,
+        # and the test assembly then fails to load. Read the exact v143 toolset
+        # version the build used, and take that version's runtime.
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $vc = & $vswhere -latest -products '*' -property installationPath
+        $verFile = "$vc\VC\Auxiliary\Build\Microsoft.VCToolsVersion.v143.default.txt"
+        if (-not (Test-Path $verFile)) { $verFile = "$vc\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt" }
+        $toolsVersion = (Get-Content $verFile -Raw).Trim()
+        $asan = Get-ChildItem "$vc\VC\Tools\MSVC\$toolsVersion\bin\Host*\x86\clang_rt.asan_dynamic-i386.dll" | Select-Object -First 1
+        if (-not $asan) { throw "ASan runtime DLL not found for toolset $toolsVersion." }
+        Write-Host "ASan runtime: $($asan.FullName)"
+        # Put it where the test host will find it: next to UnitTests.dll (a test
+        # DLL's own directory is searched for its dependencies), on PATH, and (belt
+        # and suspenders) in System32, which is always searched.
+        Copy-Item $asan.FullName "Release" -Force
+        $env:PATH = "$($asan.Directory.FullName);$env:PATH"
+        try { Copy-Item $asan.FullName "$env:SystemRoot\System32" -Force -ErrorAction Stop }
+        catch { Write-Host "Could not copy ASan runtime to System32 (continuing): $_" }
+        .\UnitTests\RunTests.ps1 -Configuration Release
+
+    - name: Upload ASan Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ASanTestResults-${{ github.sha }}
+        path: TestResults
+
+  # MSVC Code Analysis (/analyze) leg. Informational for now: the first-party
+  # library has never been analysed, so it reports a backlog rather than gating
+  # (like the ASan leg). Findings are in the uploaded log artifact. Runs in
+  # parallel with build and asan. Follow-on #80 steps (raise to /W4 and promote a
+  # few warnings to errors after a clean-up pass; clang-tidy; [[nodiscard]] on
+  # context.code().inst via #59; SARIF to code scanning) are tracked separately.
+  static-analysis:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Install MFC and ATL for the 14.44 toolset
+      shell: pwsh
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $installPath = & $vswhere -latest -products '*' -property installationPath
+        if (-not $installPath) { throw "Visual Studio not found." }
+
+        $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+        $vsArgs = "modify --installPath `"$installPath`"" +
+          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL" +
+          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.MFC" +
+          " --quiet --norestart --force --nocache"
+        $proc = Start-Process -FilePath $setup -ArgumentList $vsArgs -Wait -PassThru -NoNewWindow
+        if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) { throw "Install failed ($($proc.ExitCode))." }
+
+        $mfc = Get-ChildItem -ErrorAction SilentlyContinue `
+          -Path "$installPath\VC\Tools\MSVC\14.44.*\atlmfc\lib\x86\mfc140.lib"
+        if (-not $mfc) { throw "MFC for the 14.44 toolset was not found after the install." }
+
+    # Build the first-party library with Code Analysis on. continue-on-error: the
+    # analysis reports a backlog today, so it must not fail the build. A clean-up
+    # pass and a promotion to a hard gate are follow-on work (#80).
+    - name: Build with MSVC Code Analysis
+      shell: pwsh
+      continue-on-error: true
+      run: |
+        msbuild SCICompanion.sln -m -t:SCICompanionLib -p:Configuration=Release -p:Platform=Win32 -p:RunCodeAnalysis=true -v:normal |
+          Tee-Object -FilePath analyze.log
+        $warns = @(Select-String -Path analyze.log -Pattern 'warning C(6|26|28)\d\d\d').Count
+        Write-Host "MSVC Code Analysis warnings: $warns"
+
+    - name: Upload Code Analysis log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: CodeAnalysis-${{ github.sha }}
+        path: analyze.log

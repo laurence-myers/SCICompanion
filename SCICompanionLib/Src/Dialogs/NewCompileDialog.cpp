@@ -18,6 +18,7 @@
 #include "AppState.h"
 #include "ScriptOM.h"
 #include "NewCompileDialog.h"
+#include "WindowsUtil.h"
 #include "ScriptDocument.h"
 #include <filesystem>
 #include <regex>
@@ -69,19 +70,18 @@ LRESULT CNewCompileDialog::CompileAll(WPARAM wParam, LPARAM lParam)
 	// Update the edit control with the current scripts name.
 	m_wndDisplay.SetWindowText(scriptId.GetTitle().c_str());
 
-	// Now pump some messages, so the display updates
-	// Read all of the messages in this next loop, 
-	// removing each message as we read it.
-	MSG msg; 
-	while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE | PM_QS_PAINT | PM_QS_INPUT)) 
-	{ 
-		// If it is a quit message, exit.
-		ASSERT(msg.message != WM_QUIT);
-
-		//  return 1; 
-		// Otherwise, dispatch the message.
-		DispatchMessage(&msg); 
-	} // End of PeekMessage while loop.
+	// Pump paint and input so the display and progress controls repaint and the
+	// Cancel button stays responsive, but dispatch only this dialog's own
+	// messages. Dispatching a foreign command mid-compile could re-enter the
+	// resource map while the compile batches appends. A plain modal loop cannot
+	// keep Cancel alive here, because the self-reposted UWM_STARTCOMPILE outranks
+	// queued input; pumping PM_QS_INPUT is what pulls the Cancel click out. Stop
+	// if a quit is pending, instead of dispatching (and losing) the WM_QUIT. (#55)
+	if (PumpCompileDialogMessagesQuitPending(GetSafeHwnd()))
+	{
+		_fDone = true;
+		return 0;
+	}
 	if (_fAbort)
 	{
 		_fDone = true;
