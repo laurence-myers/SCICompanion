@@ -112,6 +112,7 @@
     <ClCompile Include="TestScicodeBranch.cpp" />
     <ClCompile Include="TestWndTaskSinkIntegration.cpp" />
     <ClCompile Include="TestFindInternalCalls.cpp" />
+    <ClCompile Include="TestMergedPalette.cpp" />
     <ClCompile Include="TestGetOperandSize.cpp" />
     <ClCompile Include="DecompileHelper.cpp" />
     <ClCompile Include="OracleHelper.cpp" />

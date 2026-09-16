@@ -92,6 +92,9 @@
     <ClCompile Include="TestFindInternalCalls.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestMergedPalette.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestGetOperandSize.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
