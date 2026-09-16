@@ -155,6 +155,14 @@ uint16_t scii::_get_instruction_size(const SCIVersion &version, Opcode bOpcode, 
 	assert(opSize != Undefined);
 	const OperandType *argTypes = ::GetOperandTypes(version, bOpcode);
 	uint16_t wSize = 1; // for the opcode
+	// Note: there is no case for otDEBUGSTRING (the SCI2 Filename opcode's
+	// variable-length string). This function sizes an instruction from its opcode
+	// alone, with no access to the operand bytes, so it cannot measure that string
+	// -- a Filename opcode sizes here as 1 (opcode only). Callers that meet a real
+	// Filename opcode in bytecode must size its string from the bytes instead (the
+	// disassembler's GetOperandSize does). The opcode-only sizers do not, which
+	// under-sizes Filename on the FindInternalCallsTO/CalcOffset read path and the
+	// _file_ asm write path -- a pre-existing, SCI2-debug-only bug tracked in #124.
 	bool fDone = false;
 	for (int i = 0; !fDone && i < 3; i++)
 	{
@@ -768,7 +776,7 @@ scii::scii(const SCIVersion &version, Opcode bOpcode, uint16_t w1, uint16_t w2, 
 	_fForceWord = false;
 	_fUndetermined = false;
 	_bOpcode = bOpcode;
-	assert(_bOpcode <= Opcode::LastOne);
+	assert(_bOpcode <= Opcode::INDETERMINATE); // allow the decompiler's transient INDETERMINATE sentinel (the output path still rejects it)
 	_wOperands[0] = w1;
 	_wOperands[1] = w2;
 	_wOperands[2] = w3;
@@ -786,7 +794,7 @@ scii::scii(const SCIVersion &version, Opcode bOpcode, _code_pos branch, bool fUn
 	_fForceWord = false;
 	_fUndetermined = fUndetermined;
 	_bOpcode = bOpcode;
-	assert(_bOpcode <= Opcode::LastOne);
+	assert(_bOpcode <= Opcode::INDETERMINATE); // allow the decompiler's transient INDETERMINATE sentinel (the output path still rejects it)
 	_itOffset = branch;
 	// Assume a backward branch for now...
 	// (if branch is .end(), then we'll need to fix it up later anyhow, via set_branch_target)
