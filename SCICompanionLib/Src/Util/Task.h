@@ -52,9 +52,14 @@ public:
 	}
 	int SubmitTask(HWND hwnd, UINT msg, std::unique_ptr<_TPayload> task, std::function<std::unique_ptr<_TResponse>(ITaskStatus&, _TPayload&)> func)
 	{
-		// This allows us to keep the same scheduler around for different windows
+		// This allows us to keep the same scheduler around for different windows.
+		// Guard _hwndResponse/_msgResponse with _mutexResponse -- the SAME mutex the
+		// worker reads them under in _DoWork and that DeactivateHWND clears them
+		// under -- so every access agrees on one mutex (#92). _mutex guards the task
+		// queue, a separate concern; the two are never held at once, so there is no
+		// lock-ordering hazard.
 		{
-			std::lock_guard<std::mutex> lock(_mutex);
+			std::lock_guard<std::mutex> lock(_mutexResponse);
 			_hwndResponse = hwnd;
 			_msgResponse = msg;
 		}
@@ -83,7 +88,11 @@ public:
 	{
 		// Since multiple windows may use the same scheduler, when a window that submits
 		// as task is destroyed, we want to clear the response hwnd out so that we don't
-		// post to an invalid hwnd.
+		// post to an invalid hwnd. Take _mutexResponse: this runs on the UI thread
+		// while the worker may be reading _hwndResponse in _DoWork, so without the
+		// lock the clear races the worker's read -- a torn/stale pointer and, worst
+		// case, a PostMessage to a destroyed window (#92).
+		std::lock_guard<std::mutex> lock(_mutexResponse);
 		if (_hwndResponse == hwndNoMore)
 		{
 			_hwndResponse = nullptr;

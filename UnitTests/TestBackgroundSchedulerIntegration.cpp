@@ -120,5 +120,79 @@ namespace UnitTests
             exitThread.join();
             Assert::IsTrue(exitReturned.load(), L"releasing the lock lets Exit() return");
         }
+
+        // #92: _hwndResponse/_msgResponse were touched under three different regimes
+        // -- written under _mutex in SubmitTask(HWND,...), read under _mutexResponse
+        // in _DoWork, and cleared under NO lock in DeactivateHWND -- a data race whose
+        // worst case is a PostMessage to a destroyed window. The fix routes every
+        // access through _mutexResponse. A data race cannot be reproduced
+        // deterministically on MSVC (no ThreadSanitizer), so this test guards the
+        // mechanism: it churns DeactivateHWND and the response-window setter from a
+        // second thread while the worker keeps completing response-bearing tasks, and
+        // asserts the scheduler stays live and shuts down cleanly (no hang, no crash,
+        // no deadlock from the lock change). Under the ASan leg (#42) it also runs the
+        // concurrent accesses through tooling.
+        BEGIN_TEST_METHOD_ATTRIBUTE(Scheduler_ResponseHwndChurn_StaysLiveAndExits)
+            TEST_METHOD_ATTRIBUTE(L"TestCategory", L"Integration")
+        END_TEST_METHOD_ATTRIBUTE()
+        TEST_METHOD(Scheduler_ResponseHwndChurn_StaysLiveAndExits)
+        {
+            // A non-null but bogus window handle: _DoWork takes the response path when
+            // _hwndResponse is set, and PostMessage to an invalid handle just returns
+            // FALSE (no window is created or destroyed here).
+            HWND fakeHwnd = reinterpret_cast<HWND>(static_cast<uintptr_t>(0x1));
+            const UINT msg = 0x8000; // WM_APP
+
+            auto completed = std::make_shared<std::atomic<int>>(0);
+            {
+                BackgroundScheduler<int, int> scheduler(fakeHwnd, msg);
+
+                // Churn the response window from another thread: alternately clear it
+                // (DeactivateHWND) and set it again (SubmitTask(HWND,...)), racing the
+                // worker's reads in _DoWork.
+                std::atomic<bool> stop{ false };
+                std::thread churn([&scheduler, fakeHwnd, msg, &stop]()
+                {
+                    while (!stop.load())
+                    {
+                        scheduler.DeactivateHWND(fakeHwnd);
+                        scheduler.SubmitTask(fakeHwnd, msg, std::make_unique<int>(0),
+                            [](ITaskStatus &, int &) -> std::unique_ptr<int> { return nullptr; });
+                    }
+                });
+
+                // Meanwhile submit many response-bearing tasks; each makes _DoWork read
+                // _hwndResponse/_msgResponse under _mutexResponse.
+                for (int i = 0; i < 2000; i++)
+                {
+                    scheduler.SubmitTask(std::make_unique<int>(i),
+                        [completed](ITaskStatus &, int &payload) -> std::unique_ptr<int>
+                        {
+                            completed->fetch_add(1);
+                            return std::make_unique<int>(payload);
+                        });
+                }
+
+                // The worker must still be alive: a sentinel task signals a promise.
+                auto ran = std::make_shared<std::promise<int>>();
+                std::future<int> future = ran->get_future();
+                scheduler.SubmitTask(std::make_unique<int>(7),
+                    [ran](ITaskStatus &, int &payload) -> std::unique_ptr<int>
+                    {
+                        ran->set_value(payload);
+                        return nullptr;
+                    });
+
+                Assert::IsTrue(future.wait_for(std::chrono::seconds(10)) == std::future_status::ready,
+                    L"the scheduler must stay live while the response window is churned");
+                Assert::AreEqual(7, future.get(), L"the sentinel task ran");
+
+                stop.store(true);
+                churn.join();
+                // scheduler destructor calls Exit(), which must return (no deadlock).
+            }
+
+            Assert::IsTrue(completed->load() > 0, L"response-bearing tasks ran");
+        }
     };
 }
