@@ -39,7 +39,7 @@ bool InspectCode(SCIVersion version, const uint8_t *pBegin, const uint8_t *pEnd,
 			uint16_t wOperandsRaw[3];
 			for (int i = 0; i < 3; i++)
 			{
-				int cIncr = GetOperandSize(bRawOpcode, GetOperandTypes(version, opcode)[i], pCur);
+				int cIncr = GetOperandSize(bRawOpcode, GetOperandTypes(version, opcode)[i], pCur, pEnd);
 				if (cIncr == 0)
 				{
 					break;

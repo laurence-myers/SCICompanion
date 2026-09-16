@@ -63,7 +63,7 @@ void _GetVarType(std::ostream &out, Opcode bOpcode, uint16_t wIndex, IObjectFile
 	}
 }
 
-int GetOperandSize(BYTE bOpcode, OperandType operandType, const uint8_t *pNext)
+int GetOperandSize(BYTE bOpcode, OperandType operandType, const uint8_t *pNext, const uint8_t *pEnd)
 {
 	int cIncr = 0;
 	switch (operandType)
@@ -95,9 +95,19 @@ int GetOperandSize(BYTE bOpcode, OperandType operandType, const uint8_t *pNext)
 		break;
 	case otDEBUGSTRING:
 	{
-		// file name
+		// file name -- bounded so a string with no null terminator before the end
+		// of the code cannot be read past the buffer. If there is no null before
+		// pEnd, this returns (pEnd - pNext) + 1, which is larger than the remaining
+		// bytes, so the caller's end-bound check treats the instruction as
+		// truncated. (#63)
 		const char *psz = reinterpret_cast<const char *>(pNext);
-		cIncr += lstrlen(psz) + 1;	// TODO: Bound this somehow
+		const char *pEndCode = reinterpret_cast<const char *>(pEnd);
+		const char *p = psz;
+		while ((p < pEndCode) && (*p != '\0'))
+		{
+			++p;
+		}
+		cIncr += static_cast<int>(p - psz) + 1;
 	}
 		break;
 	default:
@@ -144,7 +154,7 @@ void DisassembleCode(SCIVersion version, std::ostream &out, ICompiledScriptLooku
 					const BYTE *pCurTemp = pCur; // skip past opcode
 					for (int i = -1; i < 3; i++)
 					{
-						int cIncr = (i == -1) ? 1 : GetOperandSize(bRawOpcode, GetOperandTypes(version, bOpcode)[i], pCur + 1);
+						int cIncr = (i == -1) ? 1 : GetOperandSize(bRawOpcode, GetOperandTypes(version, bOpcode)[i], pCur + 1, pEnd);
 						if (cIncr == 0)
 						{
 							break;
@@ -184,7 +194,7 @@ void DisassembleCode(SCIVersion version, std::ostream &out, ICompiledScriptLooku
 				for (int i = 0; !fDone && i < 3; i++)
 				{
 					szBuf[0] = 0;
-					int cIncr = GetOperandSize(bRawOpcode, GetOperandTypes(version, bOpcode)[i], pCur);
+					int cIncr = GetOperandSize(bRawOpcode, GetOperandTypes(version, bOpcode)[i], pCur, pEnd);
 					if (cIncr == 0)
 					{
 						break;
@@ -260,9 +270,19 @@ void DisassembleCode(SCIVersion version, std::ostream &out, ICompiledScriptLooku
 							break;
 
 						case otDEBUGSTRING:
-							// Filename
-							out << "\"" << reinterpret_cast<const char *>(pCur) << "\"";
+						{
+							// Filename -- bounded to the operand size (cIncr includes the
+							// null), so an unterminated string is not read past the end of
+							// the code. (#63)
+							int cch = (cIncr > 0) ? (cIncr - 1) : 0;
+							ptrdiff_t remaining = pEnd - pCur;
+							if ((ptrdiff_t)cch > remaining)
+							{
+								cch = (int)remaining;
+							}
+							out << "\"" << std::string(reinterpret_cast<const char *>(pCur), cch) << "\"";
 							break;
+						}
 
 						default:
 							assert(false && "Unknown operand type");

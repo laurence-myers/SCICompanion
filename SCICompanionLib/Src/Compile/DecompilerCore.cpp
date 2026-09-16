@@ -154,7 +154,7 @@ const BYTE *_ConvertToInstructions(DecompileLookups &lookups, std::list<scii> &c
 		for (int i = 0; i < 3; i++)
 		{
 			OperandType opType = GetOperandTypes(sciVersion, bOpcode)[i];
-			cIncr = GetOperandSize(bRawOpcode, opType, pCur);
+			cIncr = GetOperandSize(bRawOpcode, opType, pCur, pEnd);
 			if ((cIncr != 0) && ((pEnd - pCur) < (ptrdiff_t)cIncr))
 			{
 				// The operand runs past the end of the code. Stop before we read

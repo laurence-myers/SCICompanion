@@ -269,5 +269,5 @@ private:
 	CompiledScriptFlags _flags;
 };
 
-int GetOperandSize(BYTE bOpcode, OperandType operandType, const uint8_t *pNext);
+int GetOperandSize(BYTE bOpcode, OperandType operandType, const uint8_t *pNext, const uint8_t *pEnd);
 uint16_t CalcOffset(const SCIVersion &version, uint16_t wOperandStart, uint16_t wRelOffset, bool bByte, BYTE bRawOpcode);
