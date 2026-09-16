@@ -260,6 +260,12 @@ public:
 	bool in_branch_block(BranchBlockIndex index, uint16_t levels = 1);
 
 	uint16_t calc_size();
+	// True if any branch is still undetermined. That is an internal codegen error
+	// (e.g. an else with no if): the branch form of inst() returns false, but the
+	// callers ignore it. calc_size() would then silently retarget the branch to the
+	// code start and emit wrong byte code, so the caller checks this first and
+	// reports a compile error. (#59)
+	bool has_undetermined_branch();
 	uint16_t offset_of(code_pos target);
 	void write_code(ITrackCodeSink &trackCodeSink, std::vector<uint8_t> &output, std::vector<uint8_t> *debugInfoOpt);
 	bool has_dangling_branches(bool &fAllBranchesAreReturns);
