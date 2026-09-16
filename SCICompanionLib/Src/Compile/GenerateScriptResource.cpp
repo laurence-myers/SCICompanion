@@ -577,6 +577,16 @@ void _Section2_Code(Script &script, CompileContext &context, vector<BYTE> &outpu
 	context.FixupLocalCalls();
 	context.FixupAsmLabelBranches();
 
+	// By now every branch must be resolved. A branch left undetermined is an
+	// internal codegen error (the branch form of inst() returns false -- e.g. an
+	// else with no if -- but the callers ignore it). calc_size() would otherwise
+	// silently retarget it to the code start and emit wrong byte code, so report
+	// an error instead. (#59)
+	if (context.code().has_undetermined_branch())
+	{
+		context.ReportError(&script, "There was an internal compiler error: a branch could not be resolved (for example, an 'else' with no matching 'if').");
+	}
+
 	uint16_t codeSizeBase = context.code().calc_size();
 	bool fRoundUp = make_even(codeSizeBase);
 

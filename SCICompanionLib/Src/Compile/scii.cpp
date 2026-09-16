@@ -490,14 +490,30 @@ void scii::output_code(ITrackCodeSink &trackCodeSink, std::vector<BYTE> &output)
 //
 // The size of the entire piece of code, guaranteed to return something with a uint16_t boundary.
 //
+bool scicode::has_undetermined_branch()
+{
+	for (scii &instruction : _code)
+	{
+		if (!instruction.is_branch_determined())
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 uint16_t scicode::calc_size()
 {
 	for(scii &instruction : _code)
 	{
 		if (!instruction.is_branch_determined())
 		{
-			// Hopefully we resolved this at an earlier point and produced an error.
-			// assert(false);
+			// This is an internal codegen error. The caller checks
+			// has_undetermined_branch() first and reports it, so control does not
+			// normally reach here undetermined. Retarget to the code start anyway,
+			// as a crash guard, so size calculation does not read a bad iterator;
+			// the reported error makes the compile fail and the byte code is
+			// discarded. (#59)
 			instruction.set_branch_target(_code.begin(), false);
 		}
 	}
