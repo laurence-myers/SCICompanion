@@ -98,6 +98,7 @@ namespace IntegrationHarness
         {
             // Record only application messages, so system traffic is not noise.
             self->_received.push_back(msg);
+            self->_receivedParams.push_back(std::make_pair(msg, wParam));
         }
         return ::DefWindowProc(hwnd, msg, wParam, lParam);
     }
@@ -163,6 +164,19 @@ namespace IntegrationHarness
             }
         }
         return false;
+    }
+
+    WPARAM MessageOnlyWindow::WParamOf(UINT msg) const
+    {
+        // Most recent match wins.
+        for (auto it = _receivedParams.rbegin(); it != _receivedParams.rend(); ++it)
+        {
+            if (it->first == msg)
+            {
+                return it->second;
+            }
+        }
+        return 0;
     }
 
     namespace

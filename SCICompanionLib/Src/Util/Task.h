@@ -276,6 +276,7 @@ public:
 		auto state = std::make_shared<SharedState>();
 		state->hwnd = _pwnd->GetSafeHwnd();
 		state->message = _message;
+		state->runId = ++_nextRunId;
 		_state = state;
 
 		_thread = std::thread([state, func]()
@@ -294,7 +295,9 @@ public:
 				// a destroyed window.
 				if (state->hwnd != nullptr)
 				{
-					::PostMessage(state->hwnd, state->message, 0, 0);
+					// Tag the completion with this run's id so GetResponse can ignore a
+					// stale completion from a superseded run. (#112)
+					::PostMessage(state->hwnd, state->message, static_cast<WPARAM>(state->runId), 0);
 				}
 			}
 			catch (...)
@@ -317,19 +320,32 @@ public:
 		}
 	}
 
-	// Call from the message handler after the task posts its completion message;
-	// the worker stores the response before it posts, so it is ready here.
+	// Call from the message handler after the task posts its completion message,
+	// passing that message's wParam (the run id StartTask tagged it with). The
+	// worker stores the response before it posts, so it is ready here.
 	//
-	// Contract: run one task at a time and handle its completion message before
-	// starting the next. StartTask replaces _state, and the completion message
-	// carries no run id, so an overlapping run would make this read the wrong
-	// state. The lip-sync/phoneme callers enforce this (they disable the trigger
-	// until the completion handler runs).
-	_TResponse GetResponse()
+	// Returns a default-constructed _TResponse (a "no result" sentinel) instead of
+	// crashing when there is nothing valid to return: before any task has run
+	// (_state is null, e.g. a stray message), when the completion is from a
+	// superseded run (its id does not match the current run), or when the response
+	// is not set. Callers that run one task at a time and handle each completion
+	// before starting the next always get the real result. (#112)
+	_TResponse GetResponse(WPARAM completionRunId)
 	{
+		if (!_state)
+		{
+			return _TResponse{};
+		}
 		std::lock_guard<std::mutex> lock(_state->mutex);
-		assert(_state->response);
-		return std::move(*_state->response);
+		if ((static_cast<UINT>(completionRunId) != _state->runId) || !_state->response)
+		{
+			return _TResponse{};
+		}
+		// Consume the response: reset it after the move so a duplicate completion for
+		// the same run returns the sentinel rather than a moved-from value. (#112)
+		_TResponse result = std::move(*_state->response);
+		_state->response.reset();
+		return result;
 	}
 
 private:
@@ -338,6 +354,7 @@ private:
 		std::mutex mutex;
 		HWND hwnd = nullptr;
 		UINT message = 0;
+		UINT runId = 0;
 		std::unique_ptr<_TResponse> response;
 	};
 
@@ -345,4 +362,5 @@ private:
 	std::thread _thread;
 	CWnd *_pwnd;
 	UINT _message;
+	UINT _nextRunId = 0;   // incremented per StartTask; tags each completion (#112)
 };

@@ -31,7 +31,7 @@ std::string g_samplePhonemeSentenceText;
 
 LRESULT PhonemeDialog::_OnLipSyncDone(WPARAM wParam, LPARAM lParam)
 {
-	g_samplePhonemeSentence = _taskSink->GetResponse();
+	g_samplePhonemeSentence = _taskSink->GetResponse(wParam);
 	SetAudioComponents(g_samplePhonemeSentenceAudio->TryGetComponent<AudioComponent>(), _syncComponent.get());
 	_UpdateLipSync();
 	return 0;

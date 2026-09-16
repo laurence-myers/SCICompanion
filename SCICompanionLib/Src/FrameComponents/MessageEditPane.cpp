@@ -769,7 +769,7 @@ LRESULT MessageEditPane::_OnLipSyncDone(WPARAM wParam, LPARAM lParam)
 	m_wndQuickLipSync.EnableWindow(TRUE);
 
 	// Update the sync component (or add one)
-	std::unique_ptr<SyncComponent> syncComponent = std::make_unique<SyncComponent>(_lipSyncTaskSink.GetResponse());
+	std::unique_ptr<SyncComponent> syncComponent = std::make_unique<SyncComponent>(_lipSyncTaskSink.GetResponse(wParam));
 	_pDoc->ModifyCurrentAudioResource(
 		[&syncComponent](ResourceEntity &audioResource)
 	{

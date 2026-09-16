@@ -29,6 +29,7 @@
 #include <chrono>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace IntegrationHarness
@@ -93,12 +94,15 @@ namespace IntegrationHarness
         void Destroy();
         bool ReceivedMessage(UINT msg) const;
         size_t ReceivedCount() const { return _received.size(); }
+        // wParam of the most recent received message equal to msg (0 if none).
+        WPARAM WParamOf(UINT msg) const;
 
     private:
         static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
         HWND _hwnd = nullptr;
         bool _destroyed = false;
         std::vector<UINT> _received;
+        std::vector<std::pair<UINT, WPARAM>> _receivedParams;
     };
 
     //
