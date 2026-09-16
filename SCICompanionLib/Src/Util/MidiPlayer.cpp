@@ -20,8 +20,14 @@ using namespace std;
 //
 // Midi helper
 //
+// Posted (not called) from the MM_MOM_DONE callback so the follow-up MMSYSTEM
+// work runs on the UI thread. (#49)
+static const UINT UWM_MIDISTREAMDONE = WM_USER + 1;
+static const TCHAR *g_szMidiPlayerNotifyClass = TEXT("SCICompanionMidiPlayerNotify");
+
 MidiPlayer::MidiPlayer()
 {
+	_hNotifyWnd = nullptr;
 	_handle = NULL;
 	ZeroMemory(&_midiHdr, sizeof(_midiHdr));
 	_pRealData = NULL;
@@ -58,6 +64,56 @@ void MidiPlayer::_Reset()
 MidiPlayer::~MidiPlayer()
 {
 	_Reset();
+	if (_hNotifyWnd)
+	{
+		DestroyWindow(_hNotifyWnd);
+		_hNotifyWnd = nullptr;
+	}
+}
+
+LRESULT CALLBACK MidiPlayer::s_NotifyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	if (msg == UWM_MIDISTREAMDONE)
+	{
+		// Runs on the UI thread (the thread that created this window and pumps its
+		// messages), so the MMSYSTEM work in _OnStreamDone is off the driver
+		// callback. (#49)
+		MidiPlayer *pThis = reinterpret_cast<MidiPlayer *>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+		if (pThis)
+		{
+			pThis->_OnStreamDone();
+		}
+		return 0;
+	}
+	return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+// Creates the message-only window used to marshal MM_MOM_DONE onto the UI thread.
+// Called from _Init on the UI thread, before the stream opens.
+bool MidiPlayer::_EnsureNotifyWindow()
+{
+	if (_hNotifyWnd == nullptr)
+	{
+		static bool s_registered = false;
+		HINSTANCE hInstance = AfxGetInstanceHandle();
+		if (!s_registered)
+		{
+			WNDCLASSEX wndClass = { sizeof(WNDCLASSEX) };
+			wndClass.lpfnWndProc = s_NotifyWndProc;
+			wndClass.hInstance = hInstance;
+			wndClass.lpszClassName = g_szMidiPlayerNotifyClass;
+			// Harmless if already registered (returns 0 with ERROR_CLASS_ALREADY_EXISTS).
+			RegisterClassEx(&wndClass);
+			s_registered = true;
+		}
+		_hNotifyWnd = CreateWindowEx(0, g_szMidiPlayerNotifyClass, TEXT(""), 0, 0, 0, 0, 0,
+			HWND_MESSAGE, nullptr, hInstance, nullptr);
+		if (_hNotifyWnd)
+		{
+			SetWindowLongPtr(_hNotifyWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+		}
+	}
+	return (_hNotifyWnd != nullptr);
 }
 
 void PrintMidiOutErrorMsg(unsigned long err)
@@ -112,6 +168,14 @@ void MidiPlayer::_SetTempoAndDivision()
 
 bool MidiPlayer::_Init()
 {
+	// Create the notify window before opening the stream, so the callback always
+	// has a valid target to post to. Without it the callback cannot marshal
+	// MM_MOM_DONE and playback would never advance/stop, so do not open the stream.
+	// (#49)
+	if (!_EnsureNotifyWindow())
+	{
+		return false;
+	}
 	if (_handle == nullptr)
 	{
 		UINT deviceId = appState->GetMidiDeviceId();
@@ -433,6 +497,12 @@ void MidiPlayer::_CuePosition(DWORD dwEventIndex, DWORD ticks)
 
 void MidiPlayer::_OnStreamDone()
 {
+	if (!_handle)
+	{
+		// The stream was closed (e.g. Reset) after this notification was posted but
+		// before the UI thread handled it. Nothing to do. (#49)
+		return;
+	}
 	if (!_fStoppingStream)
 	{
 		// There is more to this stream... keep going.
@@ -460,7 +530,21 @@ void CALLBACK MidiPlayer::s_MidiOutProc(HMIDIOUT hmo, UINT wMsg, DWORD_PTR dwIns
 {
 	if (wMsg == MM_MOM_DONE)
 	{
-		(reinterpret_cast<MidiPlayer*>(dwInstance))->_OnStreamDone();
+		// The MMSYSTEM contract forbids calling any multimedia function from inside
+		// this callback (it can deadlock). Post to the notify window instead; the
+		// UI thread then runs _OnStreamDone, which does the midiOutReset/midiStreamOut
+		// work. PostMessage is one of the few calls allowed here. (#49)
+		//
+		// Suppress the notification a deliberate midiOutReset generates: it runs
+		// this callback while _fStoppingStream is set, so it must be checked HERE
+		// (synchronously), not in the deferred _OnStreamDone, where the flag has
+		// already been cleared -- otherwise the reset's flush is mishandled as a
+		// real chunk completion (spurious stop/skip). (#49)
+		MidiPlayer *pThis = reinterpret_cast<MidiPlayer *>(dwInstance);
+		if (pThis && pThis->_hNotifyWnd && !pThis->_fStoppingStream)
+		{
+			::PostMessage(pThis->_hNotifyWnd, UWM_MIDISTREAMDONE, 0, 0);
+		}
 	}
 }
 
