@@ -110,6 +110,7 @@
     <ClCompile Include="TestCompileAllPumpIntegration.cpp" />
     <ClCompile Include="TestGdiRaii.cpp" />
     <ClCompile Include="TestScicodeBranch.cpp" />
+    <ClCompile Include="TestWndTaskSinkIntegration.cpp" />
     <ClCompile Include="DecompileHelper.cpp" />
     <ClCompile Include="OracleHelper.cpp" />
     <ClCompile Include="AstPassHelper.cpp" />

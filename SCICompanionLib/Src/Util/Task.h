@@ -220,51 +220,120 @@ private:
 };
 
 #include <future>
+#include <thread>
+#include <mutex>
+#include <memory>
+#include <cassert>
 
-template<typename _TResponse, typename _TInnerFunc>
-_TResponse HWNDTaskWrapper(_TInnerFunc innerFunc, HWND hwnd, UINT message)
-{
-	assert(hwnd != nullptr);
-	_TResponse response = innerFunc();
-	if (hwnd)
-	{
-		PostMessage(hwnd, message, 0, 0);
-	}
-	return response;
-}
-
-// A more generic mechanism?
+// Runs a function on a background thread and posts a message to a window when it
+// finishes. On Abandon (called from the destructor when the owning dialog closes),
+// it stops depending on the window and detaches the worker, so closing the dialog
+// neither blocks the UI thread nor posts to a window that no longer exists. The
+// worker's state is heap-owned (a shared_ptr the worker holds by value), so a
+// detached worker that finishes later writes only to memory that outlives the
+// sink -- there is no use-after-free. The work function must copy everything it
+// needs (capture by value), because the worker may outlive the owning dialog. (#53)
 template<typename _TResponse>
 class CWndTaskSink
 {
 public:
 	// pwnd guaranteed to exist as long as CWndTaskSink does.
 	CWndTaskSink(CWnd *pwnd, UINT message) : _pwnd(pwnd), _message(message) {}
+	CWndTaskSink(const CWndTaskSink &) = delete;
+	CWndTaskSink &operator=(const CWndTaskSink &) = delete;
 
-	~CWndTaskSink() { Abandon(); }
+	~CWndTaskSink()
+	{
+		Abandon();
+		if (_thread.joinable())
+		{
+			// Do not block the UI thread waiting for the work; the heap-owned state
+			// keeps the detached worker safe.
+			_thread.detach();
+		}
+	}
 
 	template<typename _TFunc>
 	void StartTask(_TFunc func)
 	{
-		// TODO: add futures to a queue, so we can instantiate new ones.
-		_future = std::make_unique<std::future<_TResponse>>(std::async(std::launch::async, HWNDTaskWrapper<_TResponse, _TFunc>, func, _pwnd->GetSafeHwnd(), _message));
+		// Abandon and detach any previous run. Callers start one at a time, but a
+		// joinable std::thread must not be overwritten (that would std::terminate).
+		Abandon();
+		if (_thread.joinable())
+		{
+			_thread.detach();
+		}
+
+		auto state = std::make_shared<SharedState>();
+		state->hwnd = _pwnd->GetSafeHwnd();
+		state->message = _message;
+		_state = state;
+
+		_thread = std::thread([state, func]()
+		{
+			try
+			{
+				// Compute the result first (the work is the slow part), then publish
+				// it under the lock.
+				std::unique_ptr<_TResponse> response = std::make_unique<_TResponse>(func());
+				std::lock_guard<std::mutex> lock(state->mutex);
+				state->response = std::move(response);
+				// Post only if the owner still wants the result. Abandon nulls the
+				// hwnd, so a closed dialog is never posted to. Posting to a stale HWND
+				// (a worker that finishes in the small gap before Abandon) merely
+				// returns FALSE -- MFC has already detached it, so no message reaches
+				// a destroyed window.
+				if (state->hwnd != nullptr)
+				{
+					::PostMessage(state->hwnd, state->message, 0, 0);
+				}
+			}
+			catch (...)
+			{
+				// A work function that throws must not escape the thread's top-level
+				// function -- that is an unconditional std::terminate (see the same
+				// guard in BackgroundScheduler). Match the previous std::async
+				// behavior: leave the response unset and post nothing, so the failure
+				// is not delivered rather than crashing the application. (#53)
+			}
+		});
 	}
 
 	void Abandon()
 	{
-		// TODO
+		if (_state)
+		{
+			std::lock_guard<std::mutex> lock(_state->mutex);
+			_state->hwnd = nullptr;
+		}
 	}
 
+	// Call from the message handler after the task posts its completion message;
+	// the worker stores the response before it posts, so it is ready here.
+	//
+	// Contract: run one task at a time and handle its completion message before
+	// starting the next. StartTask replaces _state, and the completion message
+	// carries no run id, so an overlapping run would make this read the wrong
+	// state. The lip-sync/phoneme callers enforce this (they disable the trigger
+	// until the completion handler runs).
 	_TResponse GetResponse()
 	{
-		// Ok to block, since we posted the message just as we were about to be done. get blocks
-		//if (future_status::ready == _future.wait_for(std::chrono::seconds(0)))
-		return _future->get();
+		std::lock_guard<std::mutex> lock(_state->mutex);
+		assert(_state->response);
+		return std::move(*_state->response);
 	}
 
 private:
-	std::unique_ptr<std::future<_TResponse>> _future;
+	struct SharedState
+	{
+		std::mutex mutex;
+		HWND hwnd = nullptr;
+		UINT message = 0;
+		std::unique_ptr<_TResponse> response;
+	};
 
+	std::shared_ptr<SharedState> _state;
+	std::thread _thread;
 	CWnd *_pwnd;
 	UINT _message;
 };

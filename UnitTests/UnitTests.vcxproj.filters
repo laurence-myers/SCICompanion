@@ -86,6 +86,9 @@
     <ClCompile Include="TestScicodeBranch.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestWndTaskSinkIntegration.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestCodec.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
