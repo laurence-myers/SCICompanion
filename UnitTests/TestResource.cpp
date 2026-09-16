@@ -318,6 +318,95 @@ namespace UnitTests
                 L"an out-of-range type group must be skipped, not read as a resource");
         }
 
+        // A corrupt SCI1 resource-map lookup table with no 0xff terminator: the
+        // stream of pre-entries ends (or hits ReasonableLimit) before a terminator.
+        // The old post-loop check (size > ReasonableLimit) was dead -- the loop caps
+        // the size at ReasonableLimit, so it never fired -- and the walk then trusted
+        // garbage offsets and produced a bogus entry. Detection must not throw (it
+        // runs inside the resource iterator), so NavAndReadNextEntry ends the walk
+        // cleanly and IsLookupTableCorrupt reports the corruption.
+        TEST_METHOD(Sci1MapLookup_NoTerminator_StopsCleanly)
+        {
+            auto appendStruct = [](std::vector<uint8_t> &out, const void *p, size_t n)
+            {
+                const uint8_t *b = reinterpret_cast<const uint8_t *>(p);
+                out.insert(out.end(), b, b + n);
+            };
+
+            // Several in-range groups and no terminator anywhere before the stream
+            // ends, with a valid entry just past the table (so the buffer is a
+            // realistic truncated map, not just an empty one).
+            const size_t entryCount = 20;
+            const uint32_t tableSize = (uint32_t)(entryCount * sizeof(RESOURCEMAPPREENTRY_SCI1));
+            std::vector<uint8_t> buf;
+            for (size_t i = 0; i < entryCount; i++)
+            {
+                RESOURCEMAPPREENTRY_SCI1 group = {};
+                group.bType = (uint8_t)0x80;                 // adorned View (in range)
+                group.wOffset = (uint16_t)tableSize;
+                appendStruct(buf, &group, sizeof(group));
+            }
+            RESOURCEMAPENTRY_SCI1 entry = {};
+            entry.wNumber = 7;
+            appendStruct(buf, &entry, sizeof(entry));
+            buf.resize(buf.size() + sizeof(RESOURCEMAPENTRY_SCI1), 0);
+
+            sci::istream mapStream(buf.data(), (uint32_t)buf.size());
+            SCI1MapNavigator<RESOURCEMAPENTRY_SCI1> nav;
+
+            // The discriminating assertion: without the fix the missing terminator
+            // is never detected (this flag stays false); with the fix it is set.
+            Assert::IsTrue(nav.IsLookupTableCorrupt(mapStream),
+                L"a lookup table with no terminator must be flagged corrupt");
+
+            // And the walk ends cleanly: a corrupt table yields no entry instead of
+            // reading one from a garbage offset.
+            IteratorState state;
+            ResourceMapEntryAgnostic entryOut = {};
+            bool got = nav.NavAndReadNextEntry(ResourceTypeFlags::All, mapStream, state, entryOut);
+            Assert::IsFalse(got,
+                L"a corrupt lookup table must end enumeration cleanly, not read a bogus entry");
+        }
+
+        // The regression guard for the above: a well-formed lookup table (one
+        // in-range group and the 0xff terminator) must not be flagged corrupt, and
+        // its single entry must still be read.
+        TEST_METHOD(Sci1MapLookup_ValidTerminator_ReadsEntry)
+        {
+            auto appendStruct = [](std::vector<uint8_t> &out, const void *p, size_t n)
+            {
+                const uint8_t *b = reinterpret_cast<const uint8_t *>(p);
+                out.insert(out.end(), b, b + n);
+            };
+
+            const uint32_t tableSize = 2 * (uint32_t)sizeof(RESOURCEMAPPREENTRY_SCI1);
+            RESOURCEMAPPREENTRY_SCI1 group = {};
+            group.bType = (uint8_t)0x80;                     // adorned View (in range)
+            group.wOffset = (uint16_t)tableSize;
+            RESOURCEMAPPREENTRY_SCI1 terminator = {};
+            terminator.bType = 0xff;
+            terminator.wOffset = (uint16_t)(tableSize + sizeof(RESOURCEMAPENTRY_SCI1));
+
+            std::vector<uint8_t> buf;
+            appendStruct(buf, &group, sizeof(group));
+            appendStruct(buf, &terminator, sizeof(terminator));
+            RESOURCEMAPENTRY_SCI1 entry = {};
+            entry.wNumber = 7;
+            appendStruct(buf, &entry, sizeof(entry));
+            buf.resize(buf.size() + sizeof(RESOURCEMAPENTRY_SCI1), 0);
+
+            sci::istream mapStream(buf.data(), (uint32_t)buf.size());
+            SCI1MapNavigator<RESOURCEMAPENTRY_SCI1> nav;
+            Assert::IsFalse(nav.IsLookupTableCorrupt(mapStream),
+                L"a table that ends with the terminator must not be flagged corrupt");
+
+            IteratorState state;
+            ResourceMapEntryAgnostic entryOut = {};
+            bool got = nav.NavAndReadNextEntry(ResourceTypeFlags::All, mapStream, state, entryOut);
+            Assert::IsTrue(got, L"a valid lookup table must still produce its entry");
+            Assert::AreEqual(7, (int)entryOut.Number, L"the entry number must be read");
+        }
+
         // istream::skip computed (_iIndex + cBytes) in uint32_t, which wraps for
         // a large count. From offset 12, skipping 0xFFFFFFF8 wrapped to 4, moved
         // the cursor backward, and reported success. The skip must fail instead,

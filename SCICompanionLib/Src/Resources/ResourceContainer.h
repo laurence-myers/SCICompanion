@@ -130,11 +130,27 @@ class SCI1MapNavigator
 {
 public:
 	const AppendBehavior AppendBehavior = AppendBehavior::Replace;
-	const size_t ReasonableLimit = 20;
+	// Upper bound on lookup-table pre-entries, used to bound the read of a
+	// corrupt/terminator-less table. A valid table holds one group per resource
+	// type present, and the adorned type byte allows at most 127 distinct groups
+	// (0x80..0xFE; 0xFF is the terminator), so 128 covers any valid directory --
+	// including SCI2/SCI2.1, whose maps carry types beyond the 18 this tool models
+	// (Robot, VMD, Chunk, Audio36...) -- while still bounding a corrupt read.
+	const size_t ReasonableLimit = 128;
 
 	bool NavAndReadNextEntry(ResourceTypeFlags typeFlags, sci::istream &mapStream, IteratorState &state, ResourceMapEntryAgnostic &entryOut, std::vector<uint8_t> *optionalRawData = nullptr)
 	{
 		_InitLookupPointers(mapStream);
+
+		if (_corruptLookupTable)
+		{
+			// The lookup table has no terminator within a sane bound: it is
+			// corrupt or truncated, so its offsets cannot be trusted. Do not walk
+			// it. End enumeration cleanly (as if this map held no more entries)
+			// instead of throwing. See _InitLookupPointers for why a throw is
+			// wrong here.
+			return false;
+		}
 
 		if ((state.mapStreamOffset == 0) && (state.lookupTableIndex == 0))// indicating a reset
 		{
@@ -307,6 +323,12 @@ public:
 
 	const std::vector<RESOURCEMAPPREENTRY_SCI1> &GetLookupPointers(sci::istream &mapStream) { _InitLookupPointers(mapStream); return lookupPointers; }
 
+	// True once _InitLookupPointers has read a lookup table with no 0xff
+	// terminator within ReasonableLimit (corrupt or truncated). Enumeration
+	// yields no entries in that case; callers that validate a map at open time
+	// can query this to surface a clear error.
+	bool IsLookupTableCorrupt(sci::istream &mapStream) { _InitLookupPointers(mapStream); return _corruptLookupTable; }
+
 private:
 	void _InitLookupPointers(sci::istream &mapStream)
 	{
@@ -317,12 +339,41 @@ private:
 			while ((preEntry.bType != 0xff) && (lookupPointers.size() < ReasonableLimit))
 			{
 				mapStream >> preEntry;
+				if (!mapStream.good())
+				{
+					// Truncated: the stream ran out before the terminator. Don't
+					// push the zero-filled entry a failed read leaves behind.
+					break;
+				}
 				lookupPointers.push_back(preEntry);
 			}
-			//assert(state.lookupTableIndex == 0);
-			if (lookupPointers.size() > ReasonableLimit)
+			// A valid table ends with the 0xff terminator. If we stopped because
+			// we hit ReasonableLimit or the stream ran out -- the last entry read
+			// is not the terminator -- the table is corrupt or truncated. (The old
+			// check, size > ReasonableLimit, was dead: the loop caps the size at
+			// ReasonableLimit, so it never fired.)
+			//
+			// We must NOT throw here. _InitLookupPointers runs inside the resource
+			// iterator (ResourceContainer::begin -> _GetNextEntry -> ReadNextEntry).
+			// Some enumeration callers are on the UI thread with no surrounding
+			// try/catch (e.g. the version-sniff loops in VersionDetectionHelper),
+			// where a throw would propagate uncaught. And even where a caller does
+			// catch -- the background BackgroundScheduler/CWndTaskSink wrap tasks in
+			// try/catch -- a throw would unwind and abandon the WHOLE enumeration,
+			// dropping every remaining map; the flag instead lets _GetNextEntry skip
+			// just this corrupt map and continue. (A throw here was tried in PR #24
+			// and reverted.) Flag it; NavAndReadNextEntry then ends this map cleanly
+			// and produces no entries.
+			if (lookupPointers.empty() || (lookupPointers.back().bType != 0xff))
 			{
-				throw std::exception("Corrupt map lookup tables.");
+				_corruptLookupTable = true;
+			}
+			else
+			{
+				// Recompute rather than latch: this block re-runs while
+				// lookupPointers is empty, so keep the flag a pure function of the
+				// current read for any future caller that reuses a navigator.
+				_corruptLookupTable = false;
 			}
 		}
 	}
@@ -331,6 +382,7 @@ private:
 	std::unordered_set<int> appendedResources[NumResourceTypes];
 
 	std::vector<RESOURCEMAPPREENTRY_SCI1> lookupPointers;
+	bool _corruptLookupTable = false;
 };
 
 template<typename _TReaderMapHeader>
