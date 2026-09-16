@@ -128,7 +128,7 @@ void DisassembleCode(SCIVersion version, std::ostream &out, ICompiledScriptLooku
 			const BYTE *pCur = pBegin;
 			uint16_t wOffset = wBaseOffset;
 			auto currentLabelOffset = codeLabelOffsets.begin(); // for STATE_CALCBRANCHES
-			while (pCur < pEnd) // Possibility of read AVs here, but we catch exceptions.
+			while (pCur < pEnd) // Operand reads are now end-bounded (#116). The try/catch below only guards C++ exceptions from the lookups, not access violations (the build uses /EHsc, not /EHa).
 			{
 				BYTE bRawOpcode = *pCur;
 				Opcode bOpcode = RawToOpcode(version, bRawOpcode);
@@ -161,6 +161,12 @@ void DisassembleCode(SCIVersion version, std::ostream &out, ICompiledScriptLooku
 						}
 						else
 						{
+							if ((pEnd - pCurTemp) < (ptrdiff_t)cIncr)
+							{
+								// The operand runs past the end of the code section; stop the
+								// hex display before reading past it. (#116)
+								break;
+							}
 							uint16_t wOperandTemp = (cIncr == 2) ? *((uint16_t*)pCurTemp) : *pCurTemp;
 							out << setw((cIncr == 1) ? 2 : 4);
 							out << setfill('0') << wOperandTemp << " ";
@@ -184,19 +190,38 @@ void DisassembleCode(SCIVersion version, std::ostream &out, ICompiledScriptLooku
 					{
 						// This is a branch instruction.  Figure out the offset.
 						// The relative offset is either a byte or word, and is calculated post instruction
-						// (hence we add 1 or 2 to our calculation)
-						codeLabelOffsets.insert(CalcOffset(version, wOperandStart, (bByte ? ((uint16_t)*pCur) : (*((uint16_t*)pCur))), bByte, bRawOpcode));
+						// (hence we add 1 or 2 to our calculation). Bound the read: a branch
+						// operand truncated at the end of the code section must not be read
+						// past pEnd. A truncated branch has no valid target, so skip it. (#116)
+						const ptrdiff_t branchSize = bByte ? 1 : 2;
+						if ((pEnd - pCur) >= branchSize)
+						{
+							codeLabelOffsets.insert(CalcOffset(version, wOperandStart, (bByte ? ((uint16_t)*pCur) : (*((uint16_t*)pCur))), bByte, bRawOpcode));
+						}
 					}
 				}
 
 				uint16_t wOperandsRaw[3];
 				uint16_t wOperands[3];
+				bool fTruncated = false;
 				for (int i = 0; !fDone && i < 3; i++)
 				{
 					szBuf[0] = 0;
 					int cIncr = GetOperandSize(bRawOpcode, GetOperandTypes(version, bOpcode)[i], pCur, pEnd);
 					if (cIncr == 0)
 					{
+						break;
+					}
+					if ((pEnd - pCur) < (ptrdiff_t)cIncr)
+					{
+						// The operand runs past the end of the code section. Stop
+						// before we read it, so we never index past the script
+						// resource buffer. (#116)
+						if (state == STATE_OUTPUT)
+						{
+							out << "(truncated)";
+						}
+						fTruncated = true;
 						break;
 					}
 					if (state == STATE_OUTPUT)
@@ -293,6 +318,13 @@ void DisassembleCode(SCIVersion version, std::ostream &out, ICompiledScriptLooku
 					}
 					pCur += cIncr;
 					wOffset += cIncr;
+				}
+
+				if (fTruncated)
+				{
+					// A truncated operand ends the walk: there is no complete
+					// instruction after it. (#116)
+					break;
 				}
 
 				if (analyzeInstruction && (state == STATE_OUTPUT))

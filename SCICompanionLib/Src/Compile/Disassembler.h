@@ -20,6 +20,11 @@ enum class Opcode : uint8_t;
 //void AnalyzeInstruction(uint8_t opcode, const uint16_t *operands);
 typedef void(*AnalyzeInstructionPtr)(Opcode opcode, const uint16_t *operands, uint16_t currentPCOffset);
 
+// Disassembles one span of code to `out`. Normally reached via DisassembleObject /
+// DisassembleScript; declared here so the end-bound guards (#116) can be tested
+// directly.
+void DisassembleCode(SCIVersion version, std::ostream &out, ICompiledScriptLookups *pLookups, IObjectFileScriptLookups *pOFLookups, const ICompiledScriptSpecificLookups *pScriptThings, const ILookupPropertyName *pPropertyNames, const BYTE *pBegin, const BYTE *pEnd, uint16_t wBaseOffset, AnalyzeInstructionPtr analyzeInstruction = nullptr);
+
 
 void DisassembleObject(const CompiledScript &script, 
 	const CompiledObject &object,

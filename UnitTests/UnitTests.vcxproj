@@ -111,6 +111,8 @@
     <ClCompile Include="TestGdiRaii.cpp" />
     <ClCompile Include="TestScicodeBranch.cpp" />
     <ClCompile Include="TestWndTaskSinkIntegration.cpp" />
+    <ClCompile Include="TestCodeInspectorOverread.cpp" />
+    <ClCompile Include="TestDisassembleOverread.cpp" />
     <ClCompile Include="TestFindInternalCalls.cpp" />
     <ClCompile Include="TestMergedPalette.cpp" />
     <ClCompile Include="TestGetOperandSize.cpp" />

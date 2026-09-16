@@ -89,6 +89,12 @@
     <ClCompile Include="TestWndTaskSinkIntegration.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestCodeInspectorOverread.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestDisassembleOverread.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestFindInternalCalls.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
