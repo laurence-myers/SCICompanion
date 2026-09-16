@@ -44,6 +44,7 @@ namespace UnitTests
             std::atomic<bool> aborted{ false };
             std::mutex mutex;
             std::string text;
+            ScopedHandle hAbort;   // heap-owned so a timed-out detached worker never dangles it
         };
 
     public:
@@ -119,6 +120,42 @@ namespace UnitTests
             Assert::IsTrue(finished, L"empty callbacks must not stop the read loop from reaching EOF");
             runner.Join();
             Assert::IsTrue(cap->launched.load(), L"the child process must launch");
+        }
+
+        // #83: a child that runs for several seconds but writes nothing to our pipe.
+        // The abort event is signalled, so RunPostBuildProcess must return promptly
+        // (reporting the abort) instead of blocking in ReadFile until the child
+        // exits. Before the fix the blocking read ignores the abort while the child
+        // is silent, so the worker overruns the deadline (finished == false).
+        BEGIN_TEST_METHOD_ATTRIBUTE(PostBuild_AbortDuringSilentChild_ReturnsPromptly)
+            TEST_METHOD_ATTRIBUTE(L"TestCategory", L"Integration")
+        END_TEST_METHOD_ATTRIBUTE()
+        TEST_METHOD(PostBuild_AbortDuringSilentChild_ReturnsPromptly)
+        {
+            auto cap = std::make_shared<Captured>();
+            // Manual-reset, pre-signalled: the abort is already set when the read
+            // loop starts, so honouring it must not depend on the (silent) child.
+            cap->hAbort.hFile = CreateEvent(nullptr, TRUE, TRUE, nullptr);
+            Assert::IsNotNull(cap->hAbort.hFile, L"create abort event");
+
+            DeadlineRunner runner;
+            bool finished = runner.Run(4000, [cap]()
+            {
+                PostBuildRunResult r = RunPostBuildProcess(
+                    "",
+                    "cmd.exe /c ping -n 6 127.0.0.1 > nul",   // ~5s, writes nothing to our pipe
+                    "",
+                    cap->hAbort.hFile,
+                    std::function<void()>(),
+                    std::function<void(const std::string &)>());
+                cap->launched.store(r.launched);
+                cap->aborted.store(r.aborted);
+            });
+
+            Assert::IsTrue(finished, L"the abort must be honoured while a silent child runs, not deferred until it exits");
+            runner.Join();
+            Assert::IsTrue(cap->launched.load(), L"the child process must launch");
+            Assert::IsTrue(cap->aborted.load(), L"the result must report the abort");
         }
     };
 }

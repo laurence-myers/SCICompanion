@@ -163,14 +163,37 @@ PostBuildRunResult RunPostBuildProcess(
 		DWORD waitResult;
 		HANDLE waitHandles[2] = { hProcess.hFile, hAbort };
 		DWORD handleCount = (hAbort != nullptr) ? 2 : 1;
-		// Loop, reading child output and checking for process exit or abort.
+		// Poll interval for re-checking the pipe for output while waiting on the
+		// process and the abort event. It bounds how long an abort can be deferred.
+		const DWORD kPollMs = 50;
+		// Loop: drain whatever output is available WITHOUT blocking, then wait for
+		// the process to exit or the abort to signal (or a short timeout, to
+		// re-check for more output). A blocking ReadFile here would ignore hAbort
+		// while a child runs but writes nothing, so a silent step could not be
+		// aborted (issue #83). PeekNamedPipe bounds each read to the bytes already
+		// present, so a read never blocks waiting for a silent child.
 		do
 		{
-			_DrainPipeChunk(childOutRead.hFile, onOutput);
-			waitResult = WaitForMultipleObjects(handleCount, waitHandles, FALSE, 0);
+			DWORD bytesAvailable = 0;
+			while (PeekNamedPipe(childOutRead.hFile, nullptr, 0, nullptr, &bytesAvailable, nullptr) &&
+				(bytesAvailable != 0))
+			{
+				_DrainPipeChunk(childOutRead.hFile, onOutput);
+			}
+			waitResult = WaitForMultipleObjects(handleCount, waitHandles, FALSE, kPollMs);
 		} while (waitResult == WAIT_TIMEOUT);
-		// Drain any final output now that the child has exited.
-		_DrainPipeChunk(childOutRead.hFile, onOutput);
+
+		// Drain any output still buffered in the pipe, without blocking. On an abort
+		// the child may still be running with its write end open, so a blocking read
+		// would hang; on a normal exit its write end is closed and PeekNamedPipe
+		// reports the remaining buffered output. (The parent write end was already
+		// closed above -- the #48 fix.)
+		DWORD bytesAvailable = 0;
+		while (PeekNamedPipe(childOutRead.hFile, nullptr, 0, nullptr, &bytesAvailable, nullptr) &&
+			(bytesAvailable != 0))
+		{
+			_DrainPipeChunk(childOutRead.hFile, onOutput);
+		}
 
 		result.aborted = (hAbort != nullptr) && (waitResult == (WAIT_OBJECT_0 + 1));
 	}
