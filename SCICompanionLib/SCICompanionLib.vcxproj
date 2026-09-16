@@ -208,6 +208,7 @@
     <ClCompile Include="Src\GIFLIB\gifalloc.cpp" />
     <ClCompile Include="Src\GIFLIB\gif_err.cpp" />
     <ClCompile Include="Src\GIFLIB\gif_hash.cpp" />
+    <ClCompile Include="Src\GIFLIB\openbsd-reallocarray.cpp" />
     <ClCompile Include="Src\MFCDocuments\MessageDoc.cpp" />
     <ClCompile Include="Src\MFCDocuments\PaletteDoc.cpp" />
     <ClCompile Include="Src\MFCFrames\MessageChildFrame.cpp" />
@@ -749,6 +750,7 @@
     <None Include="Src\CrystalEdit\CCrystalTextView.inl" />
     <None Include="Src\GIFLIB\AUTHORS" />
     <None Include="Src\GIFLIB\COPYING" />
+    <None Include="Src\GIFLIB\README.md" />
     <None Include="Src\r8brain\README.md" />
   </ItemGroup>
   <ItemGroup>

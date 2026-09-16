@@ -116,6 +116,107 @@ namespace UnitTests
             Assert::IsFalse(ok, L"a GIF that cannot be opened must fail, not null-deref");
         }
 
+        // Writes GIF bytes to a temp file for the loader tests below; the caller
+        // deletes it. (#41, giflib 5.2.2 re-vendor.)
+        std::string WriteTempGif(const std::vector<uint8_t> &bytes, const char *tag)
+        {
+            char tempDir[MAX_PATH] = { 0 };
+            GetTempPathA(ARRAYSIZE(tempDir), tempDir);
+            std::string path = std::string(tempDir) + "scic_gif_" + tag + ".gif";
+            ScopedFile f(path, GENERIC_WRITE, 0, CREATE_ALWAYS);
+            if (!bytes.empty())
+            {
+                f.Write(bytes.data(), (uint32_t)bytes.size());
+            }
+            return path;
+        }
+
+        // (#41) A decodable GIF still loads after the giflib 5.2.2 update: a
+        // canonical 1x1 GIF89a, which exercises the LZW decode path in dgif_lib.
+        TEST_METHOD(GetCelsAndPaletteFromGIFFile_ValidGif_Succeeds)
+        {
+            const std::vector<uint8_t> gif = {
+                0x47,0x49,0x46,0x38,0x39,0x61,                 // "GIF89a"
+                0x01,0x00, 0x01,0x00, 0x80, 0x00, 0x00,        // screen 1x1, global table of 2 colors
+                0x00,0x00,0x00,  0xFF,0xFF,0xFF,               // color table: black, white
+                0x21,0xF9,0x04,0x01,0x00,0x00,0x00,0x00,       // graphic control extension
+                0x2C,0x00,0x00,0x00,0x00, 0x01,0x00, 0x01,0x00, 0x00, // image descriptor 1x1
+                0x02,0x02,0x44,0x01,0x00,                      // LZW: min code size 2, one sub-block
+                0x3B                                           // trailer
+            };
+            std::string path = WriteTempGif(gif, "valid");
+            std::vector<Cel> cels;
+            std::vector<PaletteComponent> palettes;
+            PaletteComponent globalPalette;
+            bool ok = GetCelsAndPaletteFromGIFFile(path.c_str(), cels, palettes, globalPalette);
+            DeleteFileA(path.c_str());
+            Assert::IsTrue(ok, L"a valid 1x1 GIF must decode after the giflib 5.2.2 update");
+            Assert::AreEqual((size_t)1, cels.size(), L"one image yields one cel");
+            Assert::AreEqual(1, (int)cels[0].size.cx, L"decoded cel width");
+            Assert::AreEqual(1, (int)cels[0].size.cy, L"decoded cel height");
+        }
+
+        // (#41) The vendored giflib 5.1.1 had a DEAD DGifSlurp overflow guard
+        // (Width < 0 && Height < 0, never true for unsigned-parsed dimensions), so
+        // an image descriptor whose Width*Height overflows int reached the
+        // allocation. The 5.2.2 guard (Width <= 0 || Height <= 0 ||
+        // Width > INT_MAX/Height) rejects it, so the loader returns false instead
+        // of over-allocating or overflowing.
+        TEST_METHOD(GetCelsAndPaletteFromGIFFile_OversizeDimensions_ReturnsFalse)
+        {
+            const std::vector<uint8_t> gif = {
+                0x47,0x49,0x46,0x38,0x39,0x61,                 // "GIF89a"
+                0x01,0x00, 0x01,0x00, 0x00, 0x00, 0x00,        // screen 1x1, no global table
+                0x2C,0x00,0x00,0x00,0x00, 0xFF,0xFF, 0xFF,0xFF, 0x00, // image descriptor 65535x65535
+                0x08,                                          // LZW min code size: makes the image
+                                                               // header parse fully, so DGifSlurp
+                                                               // reaches the Width*Height guard rather
+                                                               // than failing earlier on truncation
+            };
+            std::string path = WriteTempGif(gif, "oversize");
+            std::vector<Cel> cels;
+            std::vector<PaletteComponent> palettes;
+            PaletteComponent globalPalette;
+            bool ok = GetCelsAndPaletteFromGIFFile(path.c_str(), cels, palettes, globalPalette);
+            DeleteFileA(path.c_str());
+            Assert::IsFalse(ok, L"a GIF whose image dimensions overflow must be rejected, not allocated");
+        }
+
+        // (#41) Round-trip: export cels+palette to a GIF and read them back, to
+        // exercise the updated egif_lib (encode, plus the re-applied SColorMap
+        // leak fix) together with dgif_lib.
+        TEST_METHOD(SaveThenLoadGIF_RoundTrips)
+        {
+            char tempDir[MAX_PATH] = { 0 };
+            GetTempPathA(ARRAYSIZE(tempDir), tempDir);
+            std::string path = std::string(tempDir) + "scic_gif_roundtrip.gif";
+
+            Cel cel(size16(4, 4), point16(0, 0), (uint8_t)0xFF);
+            cel.Data.allocate(cel.GetDataSize());
+            for (size_t i = 0; i < cel.Data.size(); i++)
+            {
+                cel.Data[i] = (uint8_t)(i & 1);
+            }
+            std::vector<Cel> cels{ cel };
+
+            RGBQUAD colors[2] = {};
+            colors[1].rgbRed = 255; colors[1].rgbGreen = 255; colors[1].rgbBlue = 255;
+            uint8_t paletteMapping[2] = { 0, 1 };
+
+            SaveCelsAndPaletteToGIFFile(path.c_str(), cels, 2, colors, paletteMapping,
+                (uint8_t)0xFF, GIFConfiguration());
+
+            std::vector<Cel> loadedCels;
+            std::vector<PaletteComponent> palettes;
+            PaletteComponent globalPalette;
+            bool ok = GetCelsAndPaletteFromGIFFile(path.c_str(), loadedCels, palettes, globalPalette);
+            DeleteFileA(path.c_str());
+            Assert::IsTrue(ok, L"a GIF written by the app must read back after the update");
+            Assert::AreEqual((size_t)1, loadedCels.size(), L"one cel round-trips");
+            Assert::AreEqual(4, (int)loadedCels[0].size.cx, L"width round-trips");
+            Assert::AreEqual(4, (int)loadedCels[0].size.cy, L"height round-trips");
+        }
+
         // (e) The debugger line splitter reassembles lines across reads and
         // carries a trailing partial line to the next call. The old code put the
         // terminator at cbRead, which lands inside carried-over data and injects

@@ -420,6 +420,9 @@
     <ClCompile Include="Src\GIFLIB\gif_hash.cpp">
       <Filter>Source Files\GIFLIB</Filter>
     </ClCompile>
+    <ClCompile Include="Src\GIFLIB\openbsd-reallocarray.cpp">
+      <Filter>Source Files\GIFLIB</Filter>
+    </ClCompile>
     <ClCompile Include="Src\GIFLIB\gifalloc.cpp">
       <Filter>Source Files\GIFLIB</Filter>
     </ClCompile>
@@ -1869,6 +1872,9 @@
       <Filter>Header Files\GIFLIB</Filter>
     </None>
     <None Include="Src\GIFLIB\AUTHORS">
+      <Filter>Header Files\GIFLIB</Filter>
+    </None>
+    <None Include="Src\GIFLIB\README.md">
       <Filter>Header Files\GIFLIB</Filter>
     </None>
     <None Include="Src\CppFormat\README.rst">
