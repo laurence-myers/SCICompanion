@@ -1158,6 +1158,50 @@ void CompiledScript::PopulateSaidStrings(const Vocab000 *pWords) const
 	assert(_saidStrings.size() == _saidsOffset.size());
 }
 
+void FindInternalCallsInCodeSection(const SCIVersion &version, const BYTE *pBegin, const BYTE *pEnd, uint16_t baseOffsetTO, std::set<uint16_t> &wOffsets)
+{
+	const BYTE *pCur = pBegin;
+	uint16_t wCurrentOffsetTO = baseOffsetTO;
+	while (pCur < pEnd)
+	{
+		BYTE bRawOpcode = *pCur;
+		bool bByte = (bRawOpcode & 1);
+		pCur++;
+		wCurrentOffsetTO++;
+
+		if (RawToOpcode(version, bRawOpcode) == Opcode::CALL)
+		{
+			// This is one. The first operand is a word or byte
+			uint16_t wRelOffset = (bByte ? ((uint16_t)*pCur) : (uint16_t)*pCur + (((uint16_t)*(pCur + 1)) << 8));
+			uint16_t theOffset = CalcOffset(version, wCurrentOffsetTO, wRelOffset, bByte, bRawOpcode);
+			wOffsets.insert(wOffsets.end(), theOffset);
+		}
+
+		// Skip past to the next instruction. Size the operands from the actual
+		// bytes (GetOperandSize), not from the opcode alone. The opcode-only sizer
+		// (scii::GetInstructionArgumentSize) has no operand bytes, so it under-sizes
+		// the variable-length Filename operand (otDEBUGSTRING) to zero; the walk
+		// would then decode the filename string's bytes as instructions and, when a
+		// string byte decodes as CALL, insert a bogus internal-call offset (#124).
+		// For every fixed-size opcode this yields the same total as before.
+		const OperandType *operandTypes = GetOperandTypes(version, RawToOpcode(version, bRawOpcode));
+		uint16_t argumentByteCount = 0;
+		const BYTE *pOperand = pCur;
+		for (int i = 0; i < 3; i++)
+		{
+			int cIncr = GetOperandSize(bRawOpcode, operandTypes[i], pOperand, pEnd);
+			if (cIncr == 0)
+			{
+				break;
+			}
+			pOperand += cIncr;
+			argumentByteCount = static_cast<uint16_t>(argumentByteCount + cIncr);
+		}
+		pCur += argumentByteCount;
+		wCurrentOffsetTO += argumentByteCount;
+	}
+}
+
 //
 // Scan all the code in the script, looking for call instructions
 //
@@ -1171,26 +1215,7 @@ set<uint16_t> CompiledScript::FindInternalCallsTO() const
 		if (pCur)
 		{
 			const BYTE *pEnd = &_scriptResource[_codeSections[i].end];
-			while (pCur < pEnd)
-			{
-				uint16_t wRelOffset;
-				BYTE bRawOpcode = *pCur;
-				bool bByte = (bRawOpcode & 1);
-				pCur++;
-				wCurrentOffsetTO++;
-				
-				if (RawToOpcode(_version, bRawOpcode) == Opcode::CALL)
-				{
-					// This is one. The first operand is a word or byte
-					wRelOffset = (bByte ? ((uint16_t)*pCur) : (uint16_t)*pCur + (((uint16_t)*(pCur + 1)) << 8));
-					uint16_t theOffset = CalcOffset(_version, wCurrentOffsetTO, wRelOffset, bByte, bRawOpcode);
-					wOffsets.insert(wOffsets.end(), theOffset);
-				}
-				// Skip past to the next instruction
-				uint16_t argumentByteCount = scii::GetInstructionArgumentSize(_version, bRawOpcode);
-				pCur += argumentByteCount;
-				wCurrentOffsetTO += argumentByteCount;
-			}
+			FindInternalCallsInCodeSection(_version, pCur, pEnd, wCurrentOffsetTO, wOffsets);
 		}
 	}
 	return wOffsets;

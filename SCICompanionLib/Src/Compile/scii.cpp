@@ -160,9 +160,12 @@ uint16_t scii::_get_instruction_size(const SCIVersion &version, Opcode bOpcode, 
 	// alone, with no access to the operand bytes, so it cannot measure that string
 	// -- a Filename opcode sizes here as 1 (opcode only). Callers that meet a real
 	// Filename opcode in bytecode must size its string from the bytes instead (the
-	// disassembler's GetOperandSize does). The opcode-only sizers do not, which
-	// under-sizes Filename on the FindInternalCallsTO/CalcOffset read path and the
-	// _file_ asm write path -- a pre-existing, SCI2-debug-only bug tracked in #124.
+	// disassembler's GetOperandSize does). The bytecode read path already does:
+	// FindInternalCallsInCodeSection (CompiledScript.cpp) now walks with
+	// GetOperandSize. The remaining opcode-only under-size is on the _file_ asm
+	// write path (calc_size via this function; and output_code, which has no
+	// otDEBUGSTRING case, so it writes a bogus word for the operand instead of the
+	// string bytes) -- a pre-existing, SCI2-debug-only broken feature tracked in #124.
 	bool fDone = false;
 	for (int i = 0; !fDone && i < 3; i++)
 	{
