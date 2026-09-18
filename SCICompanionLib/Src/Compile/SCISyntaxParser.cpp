@@ -48,15 +48,15 @@ bool SelectorP(const ParserSCI *pParser, SyntaxContext *pContext, _It &stream)
 	std::string &str = pContext->ScratchString();
 	str.clear();
 	char ch = *stream;
-	bool hadAlpha = !!isalpha(ch);
+	bool hadAlpha = !!isalpha((unsigned char)ch);
 	if (hadAlpha || (ch == '_') || (ch == '-'))	 // First character must be a letter or _ or -
 	{
 		fRet = true;
 		str += ch;
 		ch = *(++stream);
-		while (isalnum(ch) || (ch == '_') || (ch == '-'))  // Then any alphanumeric character is fine.
+		while (isalnum((unsigned char)ch) || (ch == '_') || (ch == '-'))  // Then any alphanumeric character is fine.
 		{
-			hadAlpha = hadAlpha || isalpha(ch);
+			hadAlpha = hadAlpha || isalpha((unsigned char)ch);
 			fRet = true;
 			str += ch;
 			ch = *(++stream);
@@ -246,7 +246,7 @@ bool SCIOperatorP(const ParserBase<_TContext, _It, _CommentPolicy> *pParser, _TC
 	if (*psz == 0)
 	{
 		pContext->ScratchString() = pParser->_psz;
-		return !!isspace(*stream);
+		return !!isspace((unsigned char)*stream);
 	}
 	else
 	{
@@ -546,7 +546,7 @@ bool SCIOptimizedOperatorP(const ParserSCI *pParser, _TContext *pContext, stream
 		const char *currentDbStart = currentdb;
 
 		//	not at end	 not equal to char	  and isn't end of op
-		while (*currentdb && (ch != *currentdb) && (*currentdb != ' ' || !isspace(ch)))
+		while (*currentdb && (ch != *currentdb) && (*currentdb != ' ' || !isspace((unsigned char)ch)))
 		{
 			currentdb += 2;
 		}
@@ -1861,7 +1861,7 @@ template<typename _It>
 void ExtractSomeToken(std::string &str, _It &stream)
 {
 	char ch = *stream;
-	while (ch && !isspace(ch) && (ch != '(') && (ch != ')'))
+	while (ch && !isspace((unsigned char)ch) && (ch != '(') && (ch != ')'))
 	{
 		str += ch;
 		ch = *(++stream);

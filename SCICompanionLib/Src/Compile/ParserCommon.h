@@ -89,7 +89,7 @@ public:
 			// Eat whitespace
 			// REVIEW: We need to audit all our uses of isspace, and cast char to unsigned char before passing to isspace.
 			// Otherwise, isspace asserts for chars over 127.
-			while (isspace(*stream))
+			while (isspace((unsigned char)*stream))
 			{
 				fDone = false;
 				++stream;
@@ -184,7 +184,7 @@ bool _ReadStringSCI(_TContext *pContext, _It &stream, std::string &str)
 			bool processCharNormally = true;
 			if (lookingForSecondHex)
 			{
-				if (isxdigit(ch))
+				if (isxdigit((unsigned char)ch))
 				{
 					chHex *= 16;
 					chHex += charToI(ch);
@@ -675,7 +675,7 @@ bool IntegerExpandedPWorker(_TContext *pContext, _It &stream)
 	{
 		fHex = true;
 		++stream;
-		while (isxdigit(*stream) && (i <= (std::numeric_limits<uint16_t>::max)()))
+		while (isxdigit((unsigned char)*stream) && (i <= (std::numeric_limits<uint16_t>::max)()))
 		{
 			i *= 16;
 			i += charToI(*stream);
@@ -753,7 +753,7 @@ bool IntegerExpandedPWorker(_TContext *pContext, _It &stream)
 			fNeg = true;
 			++stream;
 		}
-		while (isdigit(*stream) && (i <= (std::numeric_limits<uint16_t>::max)()))
+		while (isdigit((unsigned char)*stream) && (i <= (std::numeric_limits<uint16_t>::max)()))
 		{
 			i *= 10;
 			i += charToI(*stream);
@@ -764,7 +764,7 @@ bool IntegerExpandedPWorker(_TContext *pContext, _It &stream)
 	if (fRet)
 	{
 		// Make sure that the number isn't followed by an alphanumeric char
-		fRet = !isalnum(*stream);
+		fRet = !isalnum((unsigned char)*stream);
 	}
 	if (fNeg)
 	{
