@@ -117,6 +117,27 @@ std::unique_ptr<SyncComponent> CreateLipSyncComponentFromPhonemes(const PhonemeM
 	return syncComponent;
 }
 
+// The path and text that reach the lipsync engine are ANSI (system code page)
+// strings in this MBCS build: GetTempFileName gives an ANSI path, and the game
+// text is in the game's code page. Convert them as ANSI. The old code sent them
+// through a UTF-8 converter, which throws std::range_error on any non-ASCII byte
+// (for example an accented letter in the game folder path); the catch below
+// swallowed it, so the lipsync silently produced nothing (#71).
+static std::wstring _AnsiToWide(const std::string &ansi)
+{
+	std::wstring wide;
+	if (!ansi.empty())
+	{
+		int needed = MultiByteToWideChar(CP_ACP, 0, ansi.c_str(), (int)ansi.size(), nullptr, 0);
+		if (needed > 0)
+		{
+			wide.resize(needed);
+			MultiByteToWideChar(CP_ACP, 0, ansi.c_str(), (int)ansi.size(), &wide[0], needed);
+		}
+	}
+	return wide;
+}
+
 void CreateLipSyncDataFromWav(const std::string &wavePath, const std::string &optionalTextIn, std::vector<alignment_result> &rawResults)
 {
 	// Do the sapi thing
@@ -129,10 +150,9 @@ void CreateLipSyncDataFromWav(const std::string &wavePath, const std::string &op
 			// NOTE: for different phoneme sets: create a new estimator
 			phoneme_estimator sapi51Estimator;
 
-			std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-			std::wstring wfilename = converter.from_bytes(wavePath);
+			std::wstring wfilename = _AnsiToWide(wavePath);
 			std::string optionalTextTemp = RemoveVocalCues(optionalTextIn);
-			std::wstring optionalText = converter.from_bytes(optionalTextTemp);
+			std::wstring optionalText = _AnsiToWide(optionalTextTemp);
 			
 			// 2. declare the sapi lipsync object and call the lipsync method to
 			// start the lipsync process
