@@ -166,11 +166,11 @@ std::string CleanToken(const std::string &src, std::unordered_set<std::string> *
 	{
 		for (size_t i = 0; ok && (i < src.length()); i++)
 		{
-			if ((i == 0) && !isalpha(src[i]) && (src[i] != '_'))
+			if ((i == 0) && !isalpha((unsigned char)src[i]) && (src[i] != '_'))
 			{
 				ok = false;
 			}
-			else if ((i > 0) && !isalnum(src[i]) && (src[i] != '_'))
+			else if ((i > 0) && !isalnum((unsigned char)src[i]) && (src[i] != '_'))
 			{
 				ok = false;
 			}
