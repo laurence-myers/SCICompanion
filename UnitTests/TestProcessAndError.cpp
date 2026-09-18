@@ -41,6 +41,21 @@ namespace UnitTests
         // handle count does not climb with each call.
         TEST_METHOD(TerminateProcessTree_DoesNotLeakTheSnapshotHandle)
         {
+            // One un-measured warm-up call: the first CreateProcess / toolhelp use
+            // can lazily open a few persistent handles that are not leaks.
+            {
+                STARTUPINFOA si = { sizeof(si) };
+                PROCESS_INFORMATION pi = {};
+                char cmd[] = "cmd.exe /c pause";
+                if (CreateProcessA(nullptr, cmd, nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
+                {
+                    CloseHandle(pi.hThread);
+                    TerminateProcessTree(pi.hProcess, 0);
+                    WaitForSingleObject(pi.hProcess, 5000);
+                    CloseHandle(pi.hProcess);
+                }
+            }
+
             const int iterations = 8;
             DWORD before = 0;
             Assert::IsTrue(!!GetProcessHandleCount(GetCurrentProcess(), &before));
