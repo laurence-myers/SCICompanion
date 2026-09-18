@@ -18,6 +18,9 @@ class IExtractProgress
 public:
 	// Return false to abort
 	virtual bool SetProgress(const std::string &info, int amountDone, int totalAmount) = 0;
+	// Called once at the end with a summary of the resources that failed to
+	// extract (empty when every resource succeeded). Called on the worker thread.
+	virtual void SetSummary(const std::string &summary) { (void)summary; }
 };
 
 void ExtractAllResources(SCIVersion version, const std::string &destinationFolder, bool extractResources, bool extractPicImages, bool extractViewImages, bool disassembleScripts, bool extractMessages, bool generateWavs, IExtractProgress *progress = nullptr);

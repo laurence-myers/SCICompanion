@@ -31,6 +31,7 @@ public:
 	enum { IDD = IDD_EXTRACTALL };
 
 	bool SetProgress(const std::string &info, int amountDone, int totalAmount) override;
+	void SetSummary(const std::string &summary) override;
 
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV support
@@ -49,6 +50,9 @@ protected:
 	bool _fAbort;
 	bool _fExtracting;
 	int _nScript;
+	// Written by the worker (SetSummary) just before it finishes; read on the
+	// UI thread only after the future reports ready, so no lock is needed.
+	std::string _summary;
 
 	// Visuals
 	CExtButton m_wndCancel;

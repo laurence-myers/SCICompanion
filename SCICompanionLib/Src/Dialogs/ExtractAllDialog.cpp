@@ -50,6 +50,13 @@ bool ExtractAllDialog::SetProgress(const std::string &info, int amountDone, int 
 	return !_fAbort;
 }
 
+void ExtractAllDialog::SetSummary(const std::string &summary)
+{
+	// Worker thread, called once just before the extraction returns. OnTimer
+	// reads it after the future is ready, which orders this write before it.
+	_summary = summary;
+}
+
 void ExtractAllDialog::DoDataExchange(CDataExchange* pDX)
 {
 	CDialog::DoDataExchange(pDX);
@@ -247,7 +254,20 @@ void ExtractAllDialog::OnTimer(UINT_PTR nIDEvent)
 		{
 			_fExtracting = false;
 			_future = nullptr;
-			m_wndDisplay.SetWindowTextA(_fAbort ? "Aborted" : "Done!");
+			if (_fAbort)
+			{
+				m_wndDisplay.SetWindowTextA("Aborted");
+			}
+			else if (!_summary.empty())
+			{
+				// Some resources failed; show them instead of a plain "Done!" (#73).
+				m_wndDisplay.SetWindowTextA(("Done, with errors.\r\n" + _summary).c_str());
+			}
+			else
+			{
+				m_wndDisplay.SetWindowTextA("Done!");
+			}
+			_summary.clear();
 			_fAbort = false;
 			m_wndExtract.EnableWindow(TRUE);
 			m_wndProgress.SetPos(0);
