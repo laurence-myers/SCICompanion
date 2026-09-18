@@ -86,6 +86,10 @@ const ULONGLONG ullInterest = SPFEI(SPEI_SOUND_START) | SPFEI(SPEI_SOUND_END) |
 sapi_lipsync::sapi_lipsync()
 {
     m_pPhnEstimator = NULL;
+    // close() frees m_pWaveFmt and isDone() reads m_bDone; both must start
+    // with a value even when loadAudio() never runs (#70).
+    m_pWaveFmt = NULL;
+    m_bDone = false;
 }
 
 /**
@@ -98,6 +102,8 @@ sapi_lipsync::sapi_lipsync()
 sapi_lipsync::sapi_lipsync(phoneme_estimator* pEstimator)
 {
 	m_pPhnEstimator = pEstimator;
+	m_pWaveFmt = NULL;
+	m_bDone = false;
 }
 
 
@@ -122,6 +128,7 @@ void sapi_lipsync::close()
     {
         /// allocated by COM object
         CoTaskMemFree(m_pWaveFmt);
+        m_pWaveFmt = NULL; // close() can run more than once (#70)
     }
 }
 

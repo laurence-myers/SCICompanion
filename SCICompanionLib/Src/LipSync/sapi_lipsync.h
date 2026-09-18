@@ -175,7 +175,9 @@ public:
 	 **/
     long bytes_to_milli(DWORD dwBytes)
     {
-        return (UINT)((dwBytes * 1000 )/ m_pWaveFmt->nAvgBytesPerSec); 
+        // Multiply in 64 bits: dwBytes * 1000 overflows 32 bits above about
+        // 4.29 MB, which is under 100 seconds of 44.1 kHz audio (#70).
+        return (long)(((ULONGLONG)dwBytes * 1000) / m_pWaveFmt->nAvgBytesPerSec);
     }
 
 protected:
