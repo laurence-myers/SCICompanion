@@ -464,9 +464,15 @@ public:
 			newMapEntry.Offset = resourceOffset;
 			WriteEntry(newMapEntry, mapStreamWriteMain, mapStreamWriteSecondary, true);
 
-			// Write the header to the volume
-			header.CompressionMethod = 0; // We never write with compression, currently
-			(*_headerReadWrite.writer)(volumeWriteStreams[header.PackageHint], blob->GetHeader());
+			// Write the header to the volume. We never write with compression, so
+			// the header must say so and its compressed length must equal the
+			// decompressed length we transfer below. Write this local copy, not
+			// blob->GetHeader(): a blob read from a compressed volume still carries
+			// its source compression method and compressed length, and writing
+			// those over plain data made the next read try to decompress it (#68).
+			header.CompressionMethod = 0;
+			header.cbCompressed = header.cbDecompressed;
+			(*_headerReadWrite.writer)(volumeWriteStreams[header.PackageHint], header);
 			
 			// Follow the volume header with the actual resource data
 			transfer(blob->GetReadStream(), volumeWriteStreams[header.PackageHint], blob->GetDecompressedLength());

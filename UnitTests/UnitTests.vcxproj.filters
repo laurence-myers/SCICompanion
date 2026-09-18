@@ -116,6 +116,9 @@
     <ClCompile Include="TestScoExports.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestAppendHeader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestUndoResource.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
