@@ -692,8 +692,13 @@ int AppState::ExitInstance()
 //
 std::string AppState::GetGameName()
 {
-	TCHAR szGameName[MAX_PATH];
-	_GetGameStringProperty(TEXT("Name"), szGameName, ARRAYSIZE(szGameName));
+	// _GetGameStringProperty does not write the buffer when no game is loaded, so
+	// start from an empty string and return one on failure (#74).
+	TCHAR szGameName[MAX_PATH] = {};
+	if (FAILED(_GetGameStringProperty(TEXT("Name"), szGameName, ARRAYSIZE(szGameName))))
+	{
+		return "";
+	}
 	return szGameName;
 }
 
