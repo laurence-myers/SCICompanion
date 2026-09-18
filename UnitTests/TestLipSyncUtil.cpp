@@ -46,7 +46,7 @@ namespace UnitTests
         {
             // A map file that does not exist gives an empty map: every lookup,
             // including "x", returns 0xffff.
-            PhonemeMap emptyMap("Z:\\no-such-folder\\phonemes.ini");
+            PhonemeMap emptyMap(NoSuchMapPath());
             Assert::AreEqual((uint16_t)0xffff, emptyMap.PhonemeToCel("x"), L"setup: the empty map has no silence cel");
 
             std::vector<alignment_result> alignments;
@@ -63,7 +63,7 @@ namespace UnitTests
 
         TEST_METHOD(AlignmentWithoutPhonemeTimings_DoesNotReadPastAnEmptyVector)
         {
-            PhonemeMap emptyMap("Z:\\no-such-folder\\phonemes.ini");
+            PhonemeMap emptyMap(NoSuchMapPath());
 
             alignment_result word;
             word.m_msStart = 0;
