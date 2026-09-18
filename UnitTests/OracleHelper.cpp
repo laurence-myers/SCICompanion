@@ -255,6 +255,9 @@ BytecodeSnapshotResult CompareTemplateBytecodeSnapshots()
     rm.GetAllScripts(scripts);
 
     BytecodeSnapshotResult result;
+    // A script that did not recompile still has its original bytecode on
+    // disk, so the comparison below would pass vacuously for it (#79).
+    result.failedRecompile = failed;
     for (ScriptId &scriptId : scripts)
     {
         uint16_t number = scriptId.GetResourceNumber();

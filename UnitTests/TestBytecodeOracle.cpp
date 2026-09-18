@@ -67,6 +67,10 @@ namespace UnitTests
             BytecodeSnapshotResult r = CompareTemplateBytecodeSnapshots();
             Assert::IsTrue(r.processed >= 80,
                 W(fmt::format("expected at least 80 scripts, processed {0}", r.processed)).c_str());
+            // A script that did not recompile keeps its original bytecode, so
+            // its golden comparison would pass vacuously (#79).
+            Assert::IsTrue(r.failedRecompile.empty(),
+                JoinLines(r.failedRecompile, "decompiled template script did not recompile (its golden compare is vacuous):").c_str());
             Assert::IsTrue(r.missingExpected.empty(),
                 JoinLines(r.missingExpected, "no committed bytecode golden (run RunTests.ps1 -UpdateSnapshots):").c_str());
             Assert::IsTrue(r.mismatched.empty(),
@@ -91,17 +95,20 @@ namespace UnitTests
         }
 
         // Opt-in oracle for a real Sierra game. Set SCICOMP_ORACLE_GAME to the
-        // folder that holds resource.map (not a variant parent). SKIPPED (and so
-        // green) without it, so it adds no CI coverage; it is a developer tool.
+        // folder that holds resource.map (not a variant parent) and run it with
+        // RunTests.ps1 -Filter "FullyQualifiedName~OptIn". It is a developer
+        // tool: the "OptIn" name keeps it out of the default and -All runs, and
+        // it FAILS (not a silent green) when the variable is not set, so a green
+        // result always means the oracle ran (#79). CppUnitTest has no
+        // inconclusive outcome, which is why the exclusion is by name.
         // The game is COPIED to a temp folder first, so the original on disk is
         // never modified. SCI2+ games are load/parse only.
-        TEST_METHOD(Oracle_ExistingGame)
+        TEST_METHOD(OptIn_Oracle_ExistingGame)
         {
             const char *game = getenv("SCICOMP_ORACLE_GAME");
             if (!game)
             {
-                Logger::WriteMessage(L"Skipped: set SCICOMP_ORACLE_GAME to a game's resource.map folder.");
-                return;
+                Assert::Fail(L"SCICOMP_ORACLE_GAME is not set. Point it at a game's resource.map folder; this opt-in test must not pass without running.");
             }
             _gameFolder = SetUpExistingGameCopy(game);
 
