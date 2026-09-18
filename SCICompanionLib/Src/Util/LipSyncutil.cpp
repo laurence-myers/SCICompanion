@@ -81,8 +81,13 @@ std::unique_ptr<SyncComponent> CreateLipSyncComponentFromPhonemes(const PhonemeM
 
 	for (const auto &alignment : alignments)
 	{
-		int error = alignment.m_msEnd - alignment.m_phonemeEndTimes.back();
-		assert(abs(error) <= 1);
+		if (!alignment.m_phonemeEndTimes.empty())
+		{
+			// Sanity check only; back() on an empty vector is undefined (#71).
+			int error = alignment.m_msEnd - alignment.m_phonemeEndTimes.back();
+			assert(abs(error) <= 1);
+			(void)error;
+		}
 		for (size_t i = 0; i < alignment.m_phonemes.size(); i++)
 		{
 			uint16_t cel = phonemeMap.PhonemeToCel(converter.to_bytes(alignment.m_phonemes[i]));
