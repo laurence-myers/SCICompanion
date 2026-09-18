@@ -173,6 +173,9 @@ private:
 	IDecompilerResults &_decompilerResults;
 	std::string _statusMessagePrefix;
 	bool _allowContinues;
+	// Per-graph counter for ArbitraryDebugIndex (debug output only). It was a
+	// process-wide global shared by every graph on every thread (#65).
+	int debugIndex = 1;
 
 	bool _debug;
 	PCSTR _pszDebugFilter;

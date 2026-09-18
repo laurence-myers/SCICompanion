@@ -175,9 +175,9 @@ public:
 
 	bool DebugControlFlow;
 	bool DebugInstructionConsumption;
-	bool DecompileAsm;
-	bool SubstituteTextTuples;
-	PCSTR pszDebugFilter;
+	bool DecompileAsm = false;
+	bool SubstituteTextTuples = false;
+	PCSTR pszDebugFilter = nullptr;
 
 	const SelectorTable& GetSelectorTable() const;
 
@@ -192,7 +192,7 @@ private:
 	IObjectFileScriptLookups *_pOFLookups;
 	ICompiledScriptSpecificLookups *_pScriptThings;
 	ILookupNames *_pTextResource;
-	const ILookupPropertyName *_pPropertyNames;
+	const ILookupPropertyName *_pPropertyNames = nullptr;
 	IPrivateSpeciesLookups *_pPrivateSpecies;
 	sci::FunctionBase *_pFunc;
 	std::string _functionTrackingName;
