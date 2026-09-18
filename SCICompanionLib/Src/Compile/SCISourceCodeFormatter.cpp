@@ -190,7 +190,7 @@ std::string CleanTokenSCI(const std::string &src)
 	if (!src.empty())
 	{
 		char ch = src[0];
-		if (std::isdigit(ch))
+		if (std::isdigit((unsigned char)ch))
 		{
 			output = "_";
 		}
@@ -199,7 +199,7 @@ std::string CleanTokenSCI(const std::string &src)
 	std::transform(src.begin(), src.end(), std::back_inserter(output), [](char ch)
 	{
 		// Replace unwanted chars with underscores.
-		if (!std::isalnum(ch) && (ch != '-') && (ch != '_'))
+		if (!std::isalnum((unsigned char)ch) && (ch != '-') && (ch != '_'))
 		{
 			ch = '_';
 		}

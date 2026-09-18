@@ -709,7 +709,7 @@ bool IntegerExpandedPWorker(_TContext *pContext, _It &stream)
 			case '@':
 			{
 				// This is an alt key
-				int index = toupper(*stream) - 'A';
+				int index = toupper((unsigned char)*stream) - 'A';
 				++stream;
 				if ((index >= 0) && (index < ARRAYSIZE(AltKeys)))
 				{
@@ -721,7 +721,7 @@ bool IntegerExpandedPWorker(_TContext *pContext, _It &stream)
 			case '#':
 			{
 				// A function key
-				i = toupper(*stream);
+				i = toupper((unsigned char)*stream);
 				++stream;
 				if (i == '0') // F10 appears to be `#0
 				{
@@ -734,7 +734,7 @@ bool IntegerExpandedPWorker(_TContext *pContext, _It &stream)
 			case '^':
 			{
 				// A control key
-				i = toupper(*stream) - '@';
+				i = toupper((unsigned char)*stream) - '@';
 				++stream;
 				fRet = true;
 				break;
