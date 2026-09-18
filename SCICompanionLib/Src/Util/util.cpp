@@ -1179,17 +1179,24 @@ bool TerminateProcessTree(HANDLE hProcess, DWORD retCode)
 	bool success = true;
 	DWORD killId = GetProcessId(hProcess);
 
-	// Error handling removed for brevity
-	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-	PROCESSENTRY32 process;
-	ZeroMemory(&process, sizeof(process));
-	process.dwSize = sizeof(process);
-	Process32First(snapshot, &process);
+	// The snapshot handle is owned here so every return path closes it; the
+	// function used to leak one kernel handle per call (#72).
+	ScopedHandle snapshot;
+	snapshot.hFile = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 	std::unordered_map<DWORD, DWORD> childToParent;
-	do
+	if (snapshot.hFile != INVALID_HANDLE_VALUE)
 	{
-		childToParent[process.th32ProcessID] = process.th32ParentProcessID;
-	} while (Process32Next(snapshot, &process));
+		PROCESSENTRY32 process;
+		ZeroMemory(&process, sizeof(process));
+		process.dwSize = sizeof(process);
+		if (Process32First(snapshot.hFile, &process))
+		{
+			do
+			{
+				childToParent[process.th32ProcessID] = process.th32ParentProcessID;
+			} while (Process32Next(snapshot.hFile, &process));
+		}
+	}
 
 	std::set<DWORD> killIds;
 	killIds.insert(killId);
