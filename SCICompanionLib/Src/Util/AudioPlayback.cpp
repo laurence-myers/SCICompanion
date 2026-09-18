@@ -15,7 +15,7 @@
 #include "AudioPlayback.h"
 #include "Audio.h"
 
-AudioPlayback::AudioPlayback() : hWaveOut(nullptr), waveHeader()
+AudioPlayback::AudioPlayback() : hWaveOut(nullptr), waveHeader(), _sound(nullptr)
 {
 
 }
@@ -147,6 +147,13 @@ void AudioPlayback::Play(int slowDown)
 			if (result == MMSYSERR_NOERROR)
 			{
 				result = waveOutWrite(hWaveOut, &waveHeader, sizeof(waveHeader));
+			}
+			if (result != MMSYSERR_NOERROR)
+			{
+				// The device is open but nothing is queued: without this the header
+				// never reaches WHDR_DONE, IsPlaying() stays true and IdleUpdate never
+				// closes the device.
+				Cleanup();
 			}
 		}
 	}
