@@ -46,7 +46,13 @@ ExtractAllDialog::~ExtractAllDialog()
 bool ExtractAllDialog::SetProgress(const std::string &info, int amountDone, int totalAmount)
 {
 	std::string *ptrToString = new std::string(info);
-	PostMessage(UWM_UPDATESTATUS, MAKELONG(amountDone, totalAmount), reinterpret_cast<LPARAM>(ptrToString));
+	// UpdateStatus deletes the string when the message arrives. If the post
+	// fails (for example the window is gone) nothing receives it, so free it
+	// here (#57).
+	if (!PostMessage(UWM_UPDATESTATUS, MAKELONG(amountDone, totalAmount), reinterpret_cast<LPARAM>(ptrToString)))
+	{
+		delete ptrToString;
+	}
 	return !_fAbort;
 }
 
