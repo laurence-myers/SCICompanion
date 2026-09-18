@@ -1,4 +1,9 @@
-/***************************************************************************
+	if ((formatted == 0) && (lpMsgBuf != nullptr))
+	{
+		// Not documented to happen; free rather than leak if it ever does.
+		LocalFree(lpMsgBuf);
+		lpMsgBuf = nullptr;
+	}/***************************************************************************
 	Copyright (c) 2020 Philip Fortier
 
 	This program is free software; you can redistribute it and/or
@@ -912,7 +917,7 @@ std::string GetMessageFromLastError(const std::string &details)
 	{
 		StringCchPrintf(lpDisplayBuf,
 			LocalSize(lpDisplayBuf) / sizeof(TCHAR),
-			TEXT("%s failed with error %d: %s"),
+			TEXT("%s failed with error %u: %s"),
 			details.c_str(), dw, systemText);
 		message = (LPCTSTR)lpDisplayBuf;
 		LocalFree(lpDisplayBuf);
