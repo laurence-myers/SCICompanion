@@ -186,6 +186,10 @@ namespace sci
 	class array
 	{
 	public:
+		// The copy operations use memcpy, so the element type must be trivially
+		// copyable. The byte count is _size * sizeof(_T) (#74: it was _size, which
+		// is only right for a one-byte element).
+		static_assert(std::is_trivially_copyable<_T>::value, "sci::array copies with memcpy; the element type must be trivially copyable");
 		array() : _size(0), _data(nullptr) {}
 		array(size_t size) : array() { _allocateInternal(size); }
 
@@ -194,7 +198,7 @@ namespace sci
 			_allocateInternal(src._size);
 			if (_size > 0)
 			{
-				memcpy(_data, src._data, _size);
+				memcpy(_data, src._data, _size * sizeof(_T));
 			}
 		}
 
@@ -206,7 +210,7 @@ namespace sci
 			_allocateInternal(src._size);
 			if (_size > 0)
 			{
-				memcpy(_data, src._data, _size);
+				memcpy(_data, src._data, _size * sizeof(_T));
 			}
 			return *this;
 		}
