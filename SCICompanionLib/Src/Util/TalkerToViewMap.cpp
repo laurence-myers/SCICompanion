@@ -36,28 +36,42 @@ TalkerToViewMap::TalkerToViewMap(const std::string &lipSyncFolder)
 			{
 				size_t offset = 0;
 				AdvancePastWhitespace(line, offset);
-				string number = line.substr(offset);
-				size_t afterNumber;
-				uint16_t talkerNumber = (uint16_t)stoi(number, &afterNumber);
-				offset += afterNumber;
-				AdvancePastWhitespace(line, offset);
-				if (offset < line.size())
+				// A blank line or a comment has no number. stoi would throw
+				// std::invalid_argument, and the catch outside this loop ended the
+				// whole read, losing every entry after that line (#73). Skip them.
+				if ((offset >= line.size()) || (line[offset] == ';') || (line[offset] == '#'))
 				{
-					if (line[offset] == '=')
+					continue;
+				}
+				try
+				{
+					string number = line.substr(offset);
+					size_t afterNumber;
+					uint16_t talkerNumber = (uint16_t)stoi(number, &afterNumber);
+					offset += afterNumber;
+					AdvancePastWhitespace(line, offset);
+					if (offset < line.size())
 					{
-						++offset;
+						if (line[offset] == '=')
+						{
+							++offset;
 
-						AdvancePastWhitespace(line, offset);
-						number = line.substr(offset);
-						size_t afterNumber;
-						uint16_t viewNumber = (uint16_t)stoi(number, &afterNumber);
-						offset += afterNumber;
-						AdvancePastWhitespace(line, offset);
-						number = line.substr(offset);
-						uint16_t loopNumber = (uint16_t)stoi(number, &afterNumber);
+							AdvancePastWhitespace(line, offset);
+							number = line.substr(offset);
+							size_t afterNumber;
+							uint16_t viewNumber = (uint16_t)stoi(number, &afterNumber);
+							offset += afterNumber;
+							AdvancePastWhitespace(line, offset);
+							number = line.substr(offset);
+							uint16_t loopNumber = (uint16_t)stoi(number, &afterNumber);
 
-						_talkerToViewLoop[talkerNumber] = std::pair<uint16_t, uint16_t>(viewNumber, loopNumber);
+							_talkerToViewLoop[talkerNumber] = std::pair<uint16_t, uint16_t>(viewNumber, loopNumber);
+						}
 					}
+				}
+				catch (const std::exception &)
+				{
+					// A malformed line is skipped; the next line is still read.
 				}
 			}
 		}

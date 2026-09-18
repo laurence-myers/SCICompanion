@@ -140,6 +140,7 @@
     <ClCompile Include="TestLatentCorrectness.cpp" />
     <ClCompile Include="TestProcessAndError.cpp" />
     <ClCompile Include="TestLipSyncUtil.cpp" />
+    <ClCompile Include="TestConfigParsers.cpp" />
     <ClCompile Include="TestUndoResource.cpp" />
     <ClCompile Include="TestAstPasses.cpp" />
     <ClCompile Include="TestPicDraw.cpp" />
