@@ -472,6 +472,10 @@ public:
 			// those over plain data made the next read try to decompress it (#68).
 			header.CompressionMethod = 0;
 			header.cbCompressed = header.cbDecompressed;
+			// The SCI1 header writer decides the "+4 in the compressed size" rule from
+			// the header's Version, but every later read decides it from this source's
+			// version. Write with the source version so the two agree.
+			header.Version = _version;
 			(*_headerReadWrite.writer)(volumeWriteStreams[header.PackageHint], header);
 			
 			// Follow the volume header with the actual resource data
