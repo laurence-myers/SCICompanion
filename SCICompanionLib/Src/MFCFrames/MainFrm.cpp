@@ -606,7 +606,7 @@ void _AssignIcons(const key_value_pair<UINT, int> *rg, size_t count)
 			rg[i].key,
 			hicon,
 			true);
-		DeleteObject(hicon);
+		DestroyIcon(hicon);
 	}
 };
 
@@ -657,7 +657,7 @@ void RegisterCommands()
 			c_ShowResourceCommands[i].nCommandId,
 			hicon,
 			true);
-		DeleteObject(hicon);
+		DestroyIcon(hicon);
 	}
 
 	HICON hicon = (HICON)LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDI_COMPILEALL), IMAGE_ICON, 24, 24, LR_DEFAULTCOLOR);
@@ -665,7 +665,7 @@ void RegisterCommands()
 		ID_COMPILEALL,
 		hicon,
 		true);
-	DeleteObject(hicon);
+	DestroyIcon(hicon);
 
 	// The fake ego commands
 	for (UINT id = ID_FAKEEGO0; id <= ID_FAKEEGO12; id++)
