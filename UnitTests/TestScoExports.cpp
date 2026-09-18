@@ -100,7 +100,24 @@ namespace UnitTests
             std::unique_ptr<CSCOFile> sco = SCOFromScriptAndCompiledScript(script, *compiled);
 
             Assert::IsTrue(sco != nullptr);
-            Assert::AreEqual((size_t)0, sco->GetObjects().size(), L"a class with no compiled counterpart must be skipped, not written from a null pointer");
+
+            // The class list is consumed by position, so it must be exactly the
+            // compiled script's classes, in compiled order, and the AST class that
+            // the compiled script does not have must not appear.
+            std::vector<std::string> expectedNames;
+            for (const auto &object : compiled->GetObjects())
+            {
+                if (!object->IsInstance())
+                {
+                    expectedNames.push_back(object->GetName());
+                }
+            }
+            Assert::AreEqual(expectedNames.size(), sco->GetObjects().size(), L"one .sco class per compiled class, none from the unknown AST class");
+            for (size_t i = 0; i < expectedNames.size(); i++)
+            {
+                Assert::AreEqual(expectedNames[i], sco->GetObjects()[i].GetName(), L"the .sco class order must follow the compiled order");
+                Assert::AreNotEqual(std::string("ClassNotInCompiledScript"), sco->GetObjects()[i].GetName());
+            }
             Assert::AreEqual((size_t)0, sco->GetExports().size(), L"procedure exports with no public procedure name in the AST must be skipped");
         }
     };
