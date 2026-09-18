@@ -117,22 +117,24 @@ std::unique_ptr<SyncComponent> CreateLipSyncComponentFromPhonemes(const PhonemeM
 	return syncComponent;
 }
 
-// The path and text that reach the lipsync engine are ANSI (system code page)
-// strings in this MBCS build: GetTempFileName gives an ANSI path, and the game
-// text is in the game's code page. Convert them as ANSI. The old code sent them
-// through a UTF-8 converter, which throws std::range_error on any non-ASCII byte
-// (for example an accented letter in the game folder path); the catch below
-// swallowed it, so the lipsync silently produced nothing (#71).
-static std::wstring _AnsiToWide(const std::string &ansi)
+// The strings that reach the lipsync engine are 8-bit in this MBCS build: the
+// wave path comes from GetTempFileName (system code page, CP_ACP) and the
+// message text is Windows-1252 (Message.cpp runs every loaded string through
+// Dos2Win, which maps a CP437 game to 1252 and passes a 1252 game through).
+// Convert each with its own code page. The old code sent both through a UTF-8
+// converter, which throws std::range_error on any non-ASCII byte (for example
+// an accented letter in the game folder path); the catch below swallowed it, so
+// the lipsync silently produced nothing (#71).
+static std::wstring ToWide(const std::string &narrow, UINT codePage)
 {
 	std::wstring wide;
-	if (!ansi.empty())
+	if (!narrow.empty())
 	{
-		int needed = MultiByteToWideChar(CP_ACP, 0, ansi.c_str(), (int)ansi.size(), nullptr, 0);
+		int needed = MultiByteToWideChar(codePage, 0, narrow.c_str(), (int)narrow.size(), nullptr, 0);
 		if (needed > 0)
 		{
 			wide.resize(needed);
-			MultiByteToWideChar(CP_ACP, 0, ansi.c_str(), (int)ansi.size(), &wide[0], needed);
+			MultiByteToWideChar(codePage, 0, narrow.c_str(), (int)narrow.size(), &wide[0], needed);
 		}
 	}
 	return wide;
@@ -141,17 +143,17 @@ static std::wstring _AnsiToWide(const std::string &ansi)
 // Balances a successful CoInitialize (including S_FALSE, which still needs its
 // CoUninitialize) on every exit path. The old code only uninitialised in the
 // catch block, so each successful run left one extra COM initialisation (#71).
-struct _CoInitScope
+struct CoInitScope
 {
-	_CoInitScope() : hr(CoInitialize(nullptr)) {}
-	~_CoInitScope() { if (SUCCEEDED(hr)) { CoUninitialize(); } }
+	CoInitScope() : hr(CoInitialize(nullptr)) {}
+	~CoInitScope() { if (SUCCEEDED(hr)) { CoUninitialize(); } }
 	HRESULT hr;
 };
 
 void CreateLipSyncDataFromWav(const std::string &wavePath, const std::string &optionalTextIn, std::vector<alignment_result> &rawResults)
 {
 	// Do the sapi thing
-	_CoInitScope coInit;
+	CoInitScope coInit;
 	if (SUCCEEDED(coInit.hr))
 	{
 		try
@@ -160,9 +162,9 @@ void CreateLipSyncDataFromWav(const std::string &wavePath, const std::string &op
 			// NOTE: for different phoneme sets: create a new estimator
 			phoneme_estimator sapi51Estimator;
 
-			std::wstring wfilename = _AnsiToWide(wavePath);
+			std::wstring wfilename = ToWide(wavePath, CP_ACP);
 			std::string optionalTextTemp = RemoveVocalCues(optionalTextIn);
-			std::wstring optionalText = _AnsiToWide(optionalTextTemp);
+			std::wstring optionalText = ToWide(optionalTextTemp, 1252);
 			
 			// 2. declare the sapi lipsync object and call the lipsync method to
 			// start the lipsync process

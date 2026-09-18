@@ -33,6 +33,15 @@ namespace UnitTests
     TEST_CLASS(TestLipSyncUtil)
     {
     public:
+        // A path under the temp folder that does not exist: PathFileExists fails
+        // at once (no unmapped-drive or network timeout).
+        static std::string NoSuchMapPath()
+        {
+            char tempPath[MAX_PATH] = {};
+            GetTempPathA(ARRAYSIZE(tempPath), tempPath);
+            return std::string(tempPath) + "scicompanion-no-such-folder\phonemes.ini";
+        }
+
         TEST_METHOD(NoSilencePhonemeInMap_UsesCelZero_NotTheEndMarker)
         {
             // A map file that does not exist gives an empty map: every lookup,
