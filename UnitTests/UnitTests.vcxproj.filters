@@ -125,6 +125,9 @@
     <ClCompile Include="TestLatentCorrectness.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestProcessAndError.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestUndoResource.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

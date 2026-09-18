@@ -883,11 +883,14 @@ void throw_if(bool value, const char *message)
 // Ugly code straight off MSDN
 std::string GetMessageFromLastError(const std::string &details)
 {
-	LPVOID lpMsgBuf;
+	// FormatMessage does not set lpMsgBuf when it fails, so start from null and
+	// fall back to a fixed text; the old code read and freed the indeterminate
+	// pointer (#72).
+	LPVOID lpMsgBuf = nullptr;
 	LPTSTR lpDisplayBuf;
 	DWORD dw = GetLastError();
 
-	FormatMessage(
+	DWORD formatted = FormatMessage(
 		FORMAT_MESSAGE_ALLOCATE_BUFFER |
 		FORMAT_MESSAGE_FROM_SYSTEM |
 		FORMAT_MESSAGE_IGNORE_INSERTS,
@@ -896,20 +899,33 @@ std::string GetMessageFromLastError(const std::string &details)
 		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
 		(LPTSTR)&lpMsgBuf,
 		0, NULL);
+	if ((formatted == 0) || (lpMsgBuf == nullptr))
+	{
+		lpMsgBuf = nullptr;
+	}
+	LPCTSTR systemText = lpMsgBuf ? (LPCTSTR)lpMsgBuf : TEXT("(no system message)");
 
-	// Display the error message and exit the process
-
+	std::string message;
 	lpDisplayBuf = (LPTSTR)LocalAlloc(LMEM_ZEROINIT,
-		(lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)details.c_str()) + 40) * sizeof(TCHAR));
-	StringCchPrintf(lpDisplayBuf,
-		LocalSize(lpDisplayBuf) / sizeof(TCHAR),
-		TEXT("%s failed with error %d: %s"),
-		details.c_str(), dw, lpMsgBuf);
+		(lstrlen(systemText) + lstrlen((LPCTSTR)details.c_str()) + 40) * sizeof(TCHAR));
+	if (lpDisplayBuf)
+	{
+		StringCchPrintf(lpDisplayBuf,
+			LocalSize(lpDisplayBuf) / sizeof(TCHAR),
+			TEXT("%s failed with error %d: %s"),
+			details.c_str(), dw, systemText);
+		message = (LPCTSTR)lpDisplayBuf;
+		LocalFree(lpDisplayBuf);
+	}
+	else
+	{
+		message = details + " failed with error " + std::to_string(dw);
+	}
 
-	std::string message = (LPCTSTR)lpDisplayBuf;
-
-	LocalFree(lpMsgBuf);
-	LocalFree(lpDisplayBuf);
+	if (lpMsgBuf)
+	{
+		LocalFree(lpMsgBuf);
+	}
 
 	return message;
 }
