@@ -682,8 +682,17 @@ unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const Script &script, const 
 		// We only care about classes
 		if (!object->IsInstance())
 		{
+			// A class in the script AST that the compiled script does not have (for
+			// example a decompile that fell back for that object, or a stale AST)
+			// has no compiled counterpart. operator[] would insert a null entry and
+			// the reads below would dereference it (#60). Skip the class instead.
+			auto itCompiled = nameToCompiledObject.find(object->GetName());
+			if (itCompiled == nameToCompiledObject.end() || !itCompiled->second)
+			{
+				continue;
+			}
 			CSCOObjectClass newSCOObject;
-			CompiledObject *compiledObject = nameToCompiledObject[object->GetName()];
+			CompiledObject *compiledObject = itCompiled->second;
 			// With object and compiledObject, we should have everything we need?
 			newSCOObject.SetName(object->GetName());
 			newSCOObject.SetPublic(compiledObject->IsPublic);   // REVIEW: When is a class not public?
@@ -751,8 +760,14 @@ unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const Script &script, const 
 		}
 		else if (compiledScript.IsExportAProcedure(exportOffset))
 		{
-			exportName = publicProcNames[procIndex++];
-			sco->GetExports().emplace_back(exportName, exportIndex);
+			// The compiled script can export more procedures than the AST declares
+			// public (a mismatched or partial AST). Test the index, as the instance
+			// branch above does, instead of reading past the end (#60).
+			if (procIndex < publicProcNames.size())
+			{
+				exportName = publicProcNames[procIndex++];
+				sco->GetExports().emplace_back(exportName, exportIndex);
+			}
 		}
 		// Exports may be zero too. We won't write those to the SCO though.
 		exportIndex++;

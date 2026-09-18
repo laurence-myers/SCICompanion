@@ -134,6 +134,7 @@
     <ClCompile Include="TestCodec.cpp" />
     <ClCompile Include="TestUtilHardening.cpp" />
     <ClCompile Include="TestParserCtype.cpp" />
+    <ClCompile Include="TestScoExports.cpp" />
     <ClCompile Include="TestUndoResource.cpp" />
     <ClCompile Include="TestAstPasses.cpp" />
     <ClCompile Include="TestPicDraw.cpp" />
