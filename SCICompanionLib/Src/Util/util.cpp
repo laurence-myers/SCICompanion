@@ -859,14 +859,16 @@ bool operator==(const ScriptId& script1, const ScriptId& script2)
 
 bool operator<(const ScriptId& script1, const ScriptId& script2)
 {
-	bool fRet;
-	fRet = (script1.GetFileName() < script2.GetFileName());
-	if (fRet)
+	// Order by file name, then by folder. The old form returned (folder1 < folder2)
+	// only when (filename1 < filename2) was already true, which is not a strict
+	// weak ordering: two scripts with different names could compare "equal" in
+	// both directions, and a std::map or std::set keyed on ScriptId could lose
+	// entries (#74). This form is consistent with operator==, which compares both.
+	if (script1.GetFileName() != script2.GetFileName())
 	{
-		// Don't think we need to check _wScriptNum, in case it isn't set?
-		fRet = (script1.GetFolder() < script2.GetFolder());
+		return script1.GetFileName() < script2.GetFileName();
 	}
-	return fRet;
+	return script1.GetFolder() < script2.GetFolder();
 }
 
 
