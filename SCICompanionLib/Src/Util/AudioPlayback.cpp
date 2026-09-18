@@ -29,9 +29,11 @@ void AudioPlayback::Cleanup()
 {
 	if (hWaveOut)
 	{
-		waveOutUnprepareHeader(hWaveOut, &waveHeader, sizeof(waveHeader));
-		// Now we can free our data. TODO
+		// Stop the device first. While it still plays the buffer,
+		// waveOutUnprepareHeader fails with WAVERR_STILLPLAYING and the header
+		// stays prepared (#72).
 		waveOutReset(hWaveOut);
+		waveOutUnprepareHeader(hWaveOut, &waveHeader, sizeof(waveHeader));
 		waveOutClose(hWaveOut);
 		hWaveOut = nullptr;
 		memset(&waveHeader, 0, sizeof(waveHeader)); // Just for good measure
