@@ -68,7 +68,10 @@ std::unique_ptr<SyncComponent> CreateLipSyncComponentFromPhonemes(const PhonemeM
 	std::unique_ptr<SyncComponent> syncComponent = std::make_unique<SyncComponent>();
 
 	uint16_t silenceCel = (uint16_t)phonemeMap.PhonemeToCel("x");
-	if (silenceCel == -1)
+	// PhonemeToCel returns 0xffff when the map has no "x" entry. The old test
+	// compared the uint16_t against -1, which is never true, so 0xffff (the sync
+	// end-marker value) was written as a real cel (#71).
+	if (silenceCel == 0xffff)
 	{
 		silenceCel = 0;
 	}
