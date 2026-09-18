@@ -138,11 +138,21 @@ static std::wstring _AnsiToWide(const std::string &ansi)
 	return wide;
 }
 
+// Balances a successful CoInitialize (including S_FALSE, which still needs its
+// CoUninitialize) on every exit path. The old code only uninitialised in the
+// catch block, so each successful run left one extra COM initialisation (#71).
+struct _CoInitScope
+{
+	_CoInitScope() : hr(CoInitialize(nullptr)) {}
+	~_CoInitScope() { if (SUCCEEDED(hr)) { CoUninitialize(); } }
+	HRESULT hr;
+};
+
 void CreateLipSyncDataFromWav(const std::string &wavePath, const std::string &optionalTextIn, std::vector<alignment_result> &rawResults)
 {
 	// Do the sapi thing
-	HRESULT hrCoinit = CoInitialize(nullptr);
-	if (SUCCEEDED(hrCoinit))
+	_CoInitScope coInit;
+	if (SUCCEEDED(coInit.hr))
 	{
 		try
 		{
@@ -198,7 +208,7 @@ void CreateLipSyncDataFromWav(const std::string &wavePath, const std::string &op
 		}
 		catch (...)
 		{
-			CoUninitialize();
+			// The scope guard balances CoInitialize; nothing else to undo here.
 		}
 	}
 }
