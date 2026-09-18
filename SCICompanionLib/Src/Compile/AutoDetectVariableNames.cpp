@@ -24,7 +24,7 @@ using namespace fmt;
 
 bool _IsUndeterminedHelper(const std::string &suggestion, const std::string &varType)
 {
-	return (0 == suggestion.compare(0, varType.length(), varType)) && isdigit(suggestion[varType.length()]);
+	return (0 == suggestion.compare(0, varType.length(), varType)) && isdigit((unsigned char)suggestion[varType.length()]);
 }
 
 bool _IsUndeterminedFunctionScope(const std::string &suggestion)
@@ -305,7 +305,7 @@ void AppendUpper(string &value, const string &append)
 	}
 	else
 	{
-		value += toupper(append[0]);
+		value += toupper((unsigned char)append[0]);
 		if (!append.empty())
 		{
 			value += append.substr(1, string::npos);
@@ -348,7 +348,7 @@ string ResolveSuggestion(const Suggestion &suggestion, const string &original, c
 	}
 
 	// We should always start vars with lower case
-	baseValue[0] = tolower(baseValue[0]);
+	baseValue[0] = tolower((unsigned char)baseValue[0]);
 
 	// We can't randomly have vars with '-' in them. So replace with '_'
 	for (size_t i = 0; i < baseValue.size(); i++)
