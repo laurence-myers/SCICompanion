@@ -567,17 +567,6 @@ uint16_t SoundComponent::_ReadMidiFileTrack(size_t nTrack, std::istream &midiFil
 		}
 	}
 
-	if (GetKeyState(VK_SHIFT) & 0x8000)
-	{
-		// Stick a 120bpm at position 0 if this is the first entry and its not a pos 0
-		TempoEntry tempo120 = { 0, 120 };
-		tempoChanges.push_back(tempo120);
-
-		TempoEntry tempoEntry = { (1500), 180 };
-		tempoChanges.push_back(tempoEntry);
-	}
-
-
 	return wChannelMask;
 }
 

@@ -93,6 +93,10 @@ SCIClassBrowser::SCIClassBrowser(DependencyTracker &dependencyTracker) : _kernel
 	_fPublicClassesValid = false;
 	_fCBLocked = 0;
 	_pEvents = nullptr;
+	_pLKGScript = nullptr;
+	_wLKG = 65535; // out of bounds, same as Reset
+	fFoundRoot = false;
+	_fAbortBrowseInfoGeneration = false;
 	_scheduler = std::make_unique<BackgroundScheduler<ReloadScriptPayload>>();
 }
 

@@ -14,6 +14,7 @@
 #include "stdafx.h"
 #include "Version.h"
 #include "AudioMap.h"
+#include <tuple>
 
 // The actual version structure is determined by inspecting the resource map and other game files.
 // The following "default" versions are just examples. They are currently used to associate with sample
@@ -253,13 +254,30 @@ SCIVersion sciVersion2 =
 	true,
 };
 
+// Compare the members, not the raw bytes. The struct mixes bool, enum, uint16_t
+// and int members, so it has padding bytes with indeterminate values, and a
+// memcmp over sizeof(*this) could report two equal versions as different (#74).
+// Keep this list in step with the members in Version.h.
+static auto _TieVersion(const SCIVersion &v)
+{
+	return std::tie(
+		v.MapFormat, v.PackageFormat, v.SoundFormat, v.CompressionFormat, v.HasPalette,
+		v.ViewFormat, v.PicFormat, v.GrayScaleCursors, v.lofsaOpcodeIsAbsolute,
+		v.SeparateHeapResources, v.MainVocabResource, v.DefaultVolumeFile,
+		v.HasOldSCI0ScriptHeader, v.sci11Palettes, v.AudioVolumeName, v.SupportsMessages,
+		v.MessageMapSource, v.FontExtendedChars, v.HasSaidVocab, v.HasSyncResources,
+		v.AudioMapResourceNumber, v.MainAudioMapVersion, v.Base36AudioMapVersion,
+		v.AudioIsWav, v.DefaultResolution, v.Kernels, v.IsExportWide, v.IsZeroExportValid,
+		v.UsesPolygons);
+}
+
 bool SCIVersion::operator == (const SCIVersion &src) const
 {
-	return 0 == memcmp(this, &src, sizeof(*this));
+	return _TieVersion(*this) == _TieVersion(src);
 }
 bool SCIVersion::operator != (const SCIVersion &src) const
 {
-	return 0 != memcmp(this, &src, sizeof(*this));
+	return !(*this == src);
 }
 
 bool IsVersionCompatible(ResourceType type, SCIVersion versionA, SCIVersion versionB)

@@ -30,12 +30,12 @@ bool ExtractToken(std::string &str, _It &stream)
 	bool fRet = false;
 	str.clear();
 	char ch = *stream;
-	if (isalpha(ch) || (ch == '_'))	 // First character must be a letter or _
+	if (isalpha((unsigned char)ch) || (ch == '_'))	 // First character must be a letter or _
 	{
 		fRet = true;
 		str += ch;
 		ch = *(++stream);
-		while (isalnum(ch) || (ch == '_'))  // Then any alphanumeric character is fine.
+		while (isalnum((unsigned char)ch) || (ch == '_'))  // Then any alphanumeric character is fine.
 		{
 			fRet = true;
 			str += ch;
@@ -66,12 +66,12 @@ bool FilenameP(const ParserBase<_TContext, _It, _CommentPolicy> *pParser, _TCont
 	std::string &str = pContext->ScratchString();
 	str.clear();
 	char ch = *stream;
-	if (isalnum(ch) || (ch == '_'))
+	if (isalnum((unsigned char)ch) || (ch == '_'))
 	{
 		fRet = true;
 		str += ch;
 		ch = *(++stream);
-		while (isalnum(ch) || (ch == '_') || (ch == '.'))
+		while (isalnum((unsigned char)ch) || (ch == '_') || (ch == '.'))
 		{
 			fRet = true;
 			str += ch;
@@ -89,12 +89,12 @@ bool AsmInstructionP(const ParserBase<_TContext, _It, _CommentPolicy> *pParser, 
 	std::string &str = pContext->ScratchString();
 	str.clear();
 	char ch = *stream;
-	if (isalpha(ch) || (ch == '_') || (ch == '&') || (ch == '-') || (ch == '+'))	 // First character must be a letter or _ or & or + or - (for the rest instruction, or inc/dec)
+	if (isalpha((unsigned char)ch) || (ch == '_') || (ch == '&') || (ch == '-') || (ch == '+'))	 // First character must be a letter or _ or & or + or - (for the rest instruction, or inc/dec)
 	{
 		fRet = true;
 		str += ch;
 		ch = *(++stream);
-		while (isalnum(ch) || (ch == '_') || (ch == '?'))  // Then any alphanumeric character is fine, or ?
+		while (isalnum((unsigned char)ch) || (ch == '_') || (ch == '?'))  // Then any alphanumeric character is fine, or ?
 		{
 			fRet = true;
 			str += ch;
@@ -143,7 +143,7 @@ bool KleeneP(const ParserBase<_TContext, _It, _CommentPolicy> *pParser, _TContex
 {
 	while (pParser->_pa->Match(pContext, stream).Result())
 	{
-		while (isspace(*stream))
+		while (isspace((unsigned char)*stream))
 		{
 			++stream;
 		}
@@ -158,7 +158,7 @@ bool OneOrMoreP(const ParserBase<_TContext, _It, _CommentPolicy> *pParser, _TCon
 	while (pParser->_pa->Match(pContext, stream).Result())
 	{
 		atLeastOne = true;
-		while (isspace(*stream))
+		while (isspace((unsigned char)*stream))
 		{
 			++stream;
 		}
@@ -213,7 +213,7 @@ bool IntegerP(const ParserBase<_TContext, _It, _CommentPolicy> *pParser, _TConte
 	{
 		fHex = true;
 		++stream;
-		while (isxdigit(*stream) && (i <= (std::numeric_limits<uint16_t>::max)()))
+		while (isxdigit((unsigned char)*stream) && (i <= (std::numeric_limits<uint16_t>::max)()))
 		{
 			i *= 16;
 			i += charToI(*stream);
@@ -228,7 +228,7 @@ bool IntegerP(const ParserBase<_TContext, _It, _CommentPolicy> *pParser, _TConte
 			fNeg = true;
 			++stream;
 		}
-		while (isdigit(*stream) && (i <= (std::numeric_limits<uint16_t>::max)()))
+		while (isdigit((unsigned char)*stream) && (i <= (std::numeric_limits<uint16_t>::max)()))
 		{
 			i *= 10;
 			i += charToI(*stream);
@@ -239,7 +239,7 @@ bool IntegerP(const ParserBase<_TContext, _It, _CommentPolicy> *pParser, _TConte
 	if (fRet)
 	{
 		// Make sure that the number isn't followed by an alphanumeric char
-		fRet = !isalnum(*stream);
+		fRet = !isalnum((unsigned char)*stream);
 	}
 	if (fNeg)
 	{
@@ -278,12 +278,12 @@ bool AlphanumOpenP(const ParserBase<_TContext, _It, _CommentPolicy> *pParser, _T
 	std::string &str = pContext->ScratchString();
 	str.clear();
 	char ch = *stream;
-	if (isalpha(ch) || (ch == '_'))
+	if (isalpha((unsigned char)ch) || (ch == '_'))
 	{
 		fRet = true;
 		str += ch;
 		ch = *(++stream);
-		while (isalnum(ch) || (ch == '_'))
+		while (isalnum((unsigned char)ch) || (ch == '_'))
 		{
 			fRet = true;
 			str += ch;
@@ -340,7 +340,7 @@ bool KeywordP(const ParserBase<_TContext, _It, _CommentPolicy> *pParser, _TConte
 	if (*psz == 0)
 	{
 		// We used up the whole keyword.  Make sure it isn't followed by another alpha numeric char.
-		return !isalnum(*stream);
+		return !isalnum((unsigned char)*stream);
 	}
 	return false;
 }

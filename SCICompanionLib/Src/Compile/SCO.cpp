@@ -312,17 +312,6 @@ bool CSCOFile::GetExportIndex(const std::string &exportName, WORD &wIndex) const
 	return fRet;
 }
 
-bool CSCOFile::GetPublicExportByName(const std::string &exportName, CSCOPublicExport &theExport) const
-{
-	WORD wIndex;
-	bool fRet = GetExportIndex(exportName, wIndex);
-	if (fRet)
-	{
-		theExport = _publics[wIndex];
-	}
-	return fRet;
-}
-
 bool CSCOFile::GetClassSpecies(std::string className, SpeciesIndex &species) const
 {
 	for (const auto &theClass : _classes)
@@ -683,41 +672,60 @@ unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const Script &script, const 
 	// Classes
 	std::vector<CSCOObjectClass> &scoObjects = sco->GetObjects();
 	const vector<unique_ptr<CompiledObject>> &compiledObjects = compiledScript.GetObjects();
-	unordered_map<string, CompiledObject*> nameToCompiledObject;
-	for (const auto &compiledObject : compiledObjects)
+	// Walk the COMPILED objects, in compiled order, and write every class. The
+	// .sco class list is consumed by position (SpeciesTable::GetSpeciesLocation
+	// gives a class ordinal within the script, and CSCOFile::GetClassName indexes
+	// _classes with it), so the list must hold every class of the script in the
+	// order the compiled script has them. The old code walked the AST's classes
+	// and looked each one up by name in the compiled script: a class the AST had
+	// but the compiled script did not (a decompile that fell back for that object,
+	// or a stale AST) inserted a null map entry that was then dereferenced (#60),
+	// and skipping it instead would shift every later class's position.
+	// The compiled name is the source of truth. The AST is only consulted as a
+	// fallback for a nameless compiled class (the decompiler gives it a name).
+	vector<const ClassDefinition*> astClasses;
+	for (const auto &object : script.GetClasses())
 	{
-		nameToCompiledObject[compiledObject->GetName()] = compiledObject.get();
-	}
-	for (auto &object : script.GetClasses())
-	{
-		// We only care about classes
 		if (!object->IsInstance())
 		{
-			CSCOObjectClass newSCOObject;
-			CompiledObject *compiledObject = nameToCompiledObject[object->GetName()];
-			// With object and compiledObject, we should have everything we need?
-			newSCOObject.SetName(object->GetName());
-			newSCOObject.SetPublic(compiledObject->IsPublic);   // REVIEW: When is a class not public?
-			newSCOObject.SetSpecies(compiledObject->GetSpecies());
-			newSCOObject.SetSuperClass(compiledObject->GetSuperClass());
-
-			// Now the methods. All we care about are the selectors for the methods defined here.
-			vector<uint16_t> &methods = newSCOObject.GetMethods();
-			for (uint16_t methodSelector : compiledObject->GetMethods())
-			{
-				methods.emplace_back(methodSelector);
-			}
-
-			// And finally properties.
-			vector<CSCOObjectProperty> &properties = newSCOObject.GetPropertiesNonConst();
-			for (size_t i = 0; i < compiledObject->GetProperties().size(); i++)
-			{
-				properties.emplace_back(compiledObject->GetProperties()[i], compiledObject->GetPropertyValues()[i].value);
-			}
-
-			// Our object is complete.
-			scoObjects.push_back(newSCOObject);
+			astClasses.push_back(object.get());
 		}
+	}
+	size_t classOrdinal = 0;
+	for (const auto &compiledObject : compiledObjects)
+	{
+		if (compiledObject->IsInstance())
+		{
+			continue;
+		}
+		CSCOObjectClass newSCOObject;
+		string name = compiledObject->GetName();
+		if (name.empty() && (classOrdinal < astClasses.size()))
+		{
+			name = astClasses[classOrdinal]->GetName();
+		}
+		classOrdinal++;
+		newSCOObject.SetName(name);
+		newSCOObject.SetPublic(compiledObject->IsPublic);   // REVIEW: When is a class not public?
+		newSCOObject.SetSpecies(compiledObject->GetSpecies());
+		newSCOObject.SetSuperClass(compiledObject->GetSuperClass());
+
+		// Now the methods. All we care about are the selectors for the methods defined here.
+		vector<uint16_t> &methods = newSCOObject.GetMethods();
+		for (uint16_t methodSelector : compiledObject->GetMethods())
+		{
+			methods.emplace_back(methodSelector);
+		}
+
+		// And finally properties.
+		vector<CSCOObjectProperty> &properties = newSCOObject.GetPropertiesNonConst();
+		for (size_t i = 0; i < compiledObject->GetProperties().size(); i++)
+		{
+			properties.emplace_back(compiledObject->GetProperties()[i], compiledObject->GetPropertyValues()[i].value);
+		}
+
+		// Our object is complete.
+		scoObjects.push_back(newSCOObject);
 	}
 
 	// Now public procedures and instances. Get their names from the script first.
@@ -762,8 +770,14 @@ unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const Script &script, const 
 		}
 		else if (compiledScript.IsExportAProcedure(exportOffset))
 		{
-			exportName = publicProcNames[procIndex++];
-			sco->GetExports().emplace_back(exportName, exportIndex);
+			// The compiled script can export more procedures than the AST declares
+			// public (a mismatched or partial AST). Test the index, as the instance
+			// branch above does, instead of reading past the end (#60).
+			if (procIndex < publicProcNames.size())
+			{
+				exportName = publicProcNames[procIndex++];
+				sco->GetExports().emplace_back(exportName, exportIndex);
+			}
 		}
 		// Exports may be zero too. We won't write those to the SCO though.
 		exportIndex++;

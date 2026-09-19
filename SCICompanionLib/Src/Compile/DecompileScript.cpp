@@ -286,7 +286,9 @@ public:
 					if (sco)
 					{
 						string newProcName = sco->GetExportName(index);
-						assert(!newProcName.empty());
+						// A stale or renamed .sco may not carry this export any more, so the name
+						// can be empty. The guard below keeps the generated name in that case; do
+						// not assert (a Debug whole-game decompile would abort, #44).
 						if (!newProcName.empty())
 						{
 							procCall->SetName(newProcName);
@@ -322,7 +324,9 @@ public:
 						if (sco)
 						{
 							string newProcName = sco->GetExportName(index);
-							assert(!newProcName.empty());
+							// A stale or renamed .sco may not carry this export any more, so the name
+							// can be empty. The guard below keeps the generated name in that case; do
+							// not assert (a Debug whole-game decompile would abort, #44).
 							if (!newProcName.empty())
 							{
 								value->SetValue(newProcName, ValueType::Token);

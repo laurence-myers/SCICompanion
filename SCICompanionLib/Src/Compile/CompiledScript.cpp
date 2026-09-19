@@ -758,6 +758,11 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 {
 	uint16_t scriptNum = compiledScript.GetScriptNumber();
 	*pwOffset = heapStream.tellg();
+	// The object position is the offset of the object's 0x1234 magic word in the
+	// heap resource. Note the SCI0 path records the script offset just AFTER its
+	// magic word (object start + 2); the two differ by 2 and both feed only the
+	// disassembly and script-summary headers. It was never set for SCI1.1 (#65).
+	_wPosInResource = static_cast<uint16_t>(*pwOffset);
 	_version = version;
 	uint16_t wMagic, numVars, varOffset, methodsOffset;
 	heapStream >> wMagic;

@@ -439,8 +439,6 @@ bool IsNotAllowedAsPredecessor(code_pos pos)
 	return pos->get_opcode() == Opcode::JMP || pos->get_opcode() == Opcode::RET;
 }
 
-int debugIndex = 1;
-
 ControlFlowNode *_GetFirstPredecessorOrNull(ControlFlowNode *node)
 {
 	return node->Predecessors().empty() ? nullptr : *node->Predecessors().begin();

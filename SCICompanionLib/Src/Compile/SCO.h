@@ -169,7 +169,6 @@ public:
 	std::string GetClassName(WORD wIndex) const;
 	bool GetVariableIndex(const std::string &name, WORD &wIndex) const;
 	bool GetExportIndex(const std::string &name, WORD &wIndex) const;
-	bool GetPublicExportByName(const std::string &exportName, CSCOPublicExport &theExport) const;
 	bool GetClassSpecies(std::string, SpeciesIndex &species) const;
 	bool GetClass(std::string className, const CSCOObjectClass **ppClass) const;
 	WORD GetScriptNumber() const { return _wScriptNumber; }

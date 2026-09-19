@@ -163,17 +163,17 @@ public:
 	bool IsPublic;
 
 private:
-	uint16_t _wSpeciesIfClass;
-	uint16_t _wSuperClass;
+	uint16_t _wSpeciesIfClass = 0;
+	uint16_t _wSuperClass = 0;
 	std::string _strName;
-	uint16_t _wInfo;
+	uint16_t _wInfo = 0;
 	// These start from the 4th position (e.g. leave out species, superclass, --info-- and name)
 	std::vector<uint16_t> _propertySelectors;
 	std::vector<CompiledVarValue> _propertyValues;
 	std::vector<uint16_t> _functionSelectors;	  // selectors for the methods
 	std::vector<uint16_t> _functionOffsetsTO;
 	bool _fInstance;
-	uint16_t _wPosInResource;
+	uint16_t _wPosInResource = 0;
 	SCIVersion _version;
 };
 

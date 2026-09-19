@@ -14,6 +14,8 @@
 #pragma once
 
 #include <mmsystem.h>
+#include <cstdint>
+#include <vector>
 
 struct AudioComponent;
 
@@ -36,4 +38,7 @@ private:
 	HWAVEOUT hWaveOut;
 	WAVEHDR waveHeader;
 	const AudioComponent *_sound;
+	// Our own copy of the samples the device plays from. The device reads it
+	// asynchronously, so it must outlive _sound (#72). Freed in Cleanup.
+	std::vector<uint8_t> _playbackBuffer;
 };

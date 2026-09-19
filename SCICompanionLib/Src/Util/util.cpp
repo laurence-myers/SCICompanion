@@ -1,4 +1,9 @@
-/***************************************************************************
+	if ((formatted == 0) && (lpMsgBuf != nullptr))
+	{
+		// Not documented to happen; free rather than leak if it ever does.
+		LocalFree(lpMsgBuf);
+		lpMsgBuf = nullptr;
+	}/***************************************************************************
 	Copyright (c) 2020 Philip Fortier
 
 	This program is free software; you can redistribute it and/or
@@ -859,14 +864,16 @@ bool operator==(const ScriptId& script1, const ScriptId& script2)
 
 bool operator<(const ScriptId& script1, const ScriptId& script2)
 {
-	bool fRet;
-	fRet = (script1.GetFileName() < script2.GetFileName());
-	if (fRet)
+	// Order by file name, then by folder. The old form returned (folder1 < folder2)
+	// only when (filename1 < filename2) was already true, which is not a strict
+	// weak ordering: two scripts with different names could compare "equal" in
+	// both directions, and a std::map or std::set keyed on ScriptId could lose
+	// entries (#74). This form is consistent with operator==, which compares both.
+	if (script1.GetFileName() != script2.GetFileName())
 	{
-		// Don't think we need to check _wScriptNum, in case it isn't set?
-		fRet = (script1.GetFolder() < script2.GetFolder());
+		return script1.GetFileName() < script2.GetFileName();
 	}
-	return fRet;
+	return script1.GetFolder() < script2.GetFolder();
 }
 
 
@@ -881,11 +888,14 @@ void throw_if(bool value, const char *message)
 // Ugly code straight off MSDN
 std::string GetMessageFromLastError(const std::string &details)
 {
-	LPVOID lpMsgBuf;
+	// FormatMessage does not set lpMsgBuf when it fails, so start from null and
+	// fall back to a fixed text; the old code read and freed the indeterminate
+	// pointer (#72).
+	LPVOID lpMsgBuf = nullptr;
 	LPTSTR lpDisplayBuf;
 	DWORD dw = GetLastError();
 
-	FormatMessage(
+	DWORD formatted = FormatMessage(
 		FORMAT_MESSAGE_ALLOCATE_BUFFER |
 		FORMAT_MESSAGE_FROM_SYSTEM |
 		FORMAT_MESSAGE_IGNORE_INSERTS,
@@ -894,20 +904,33 @@ std::string GetMessageFromLastError(const std::string &details)
 		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
 		(LPTSTR)&lpMsgBuf,
 		0, NULL);
+	if ((formatted == 0) || (lpMsgBuf == nullptr))
+	{
+		lpMsgBuf = nullptr;
+	}
+	LPCTSTR systemText = lpMsgBuf ? (LPCTSTR)lpMsgBuf : TEXT("(no system message)");
 
-	// Display the error message and exit the process
-
+	std::string message;
 	lpDisplayBuf = (LPTSTR)LocalAlloc(LMEM_ZEROINIT,
-		(lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)details.c_str()) + 40) * sizeof(TCHAR));
-	StringCchPrintf(lpDisplayBuf,
-		LocalSize(lpDisplayBuf) / sizeof(TCHAR),
-		TEXT("%s failed with error %d: %s"),
-		details.c_str(), dw, lpMsgBuf);
+		(lstrlen(systemText) + lstrlen((LPCTSTR)details.c_str()) + 40) * sizeof(TCHAR));
+	if (lpDisplayBuf)
+	{
+		StringCchPrintf(lpDisplayBuf,
+			LocalSize(lpDisplayBuf) / sizeof(TCHAR),
+			TEXT("%s failed with error %u: %s"),
+			details.c_str(), dw, systemText);
+		message = (LPCTSTR)lpDisplayBuf;
+		LocalFree(lpDisplayBuf);
+	}
+	else
+	{
+		message = details + " failed with error " + std::to_string(dw);
+	}
 
-	std::string message = (LPCTSTR)lpDisplayBuf;
-
-	LocalFree(lpMsgBuf);
-	LocalFree(lpDisplayBuf);
+	if (lpMsgBuf)
+	{
+		LocalFree(lpMsgBuf);
+	}
 
 	return message;
 }
@@ -1177,17 +1200,24 @@ bool TerminateProcessTree(HANDLE hProcess, DWORD retCode)
 	bool success = true;
 	DWORD killId = GetProcessId(hProcess);
 
-	// Error handling removed for brevity
-	HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-	PROCESSENTRY32 process;
-	ZeroMemory(&process, sizeof(process));
-	process.dwSize = sizeof(process);
-	Process32First(snapshot, &process);
+	// The snapshot handle is owned here so every return path closes it; the
+	// function used to leak one kernel handle per call (#72).
+	ScopedHandle snapshot;
+	snapshot.hFile = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 	std::unordered_map<DWORD, DWORD> childToParent;
-	do
+	if (snapshot.hFile != INVALID_HANDLE_VALUE)
 	{
-		childToParent[process.th32ProcessID] = process.th32ParentProcessID;
-	} while (Process32Next(snapshot, &process));
+		PROCESSENTRY32 process;
+		ZeroMemory(&process, sizeof(process));
+		process.dwSize = sizeof(process);
+		if (Process32First(snapshot.hFile, &process))
+		{
+			do
+			{
+				childToParent[process.th32ProcessID] = process.th32ParentProcessID;
+			} while (Process32Next(snapshot.hFile, &process));
+		}
+	}
 
 	std::set<DWORD> killIds;
 	killIds.insert(killId);
