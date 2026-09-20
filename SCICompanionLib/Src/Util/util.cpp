@@ -1252,8 +1252,9 @@ bool TerminateProcessTree(HANDLE hProcess, DWORD retCode)
 	// function used to leak one kernel handle per call (#72).
 	ScopedHandle snapshot;
 	snapshot.hFile = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	bool snapshotOk = (snapshot.hFile != INVALID_HANDLE_VALUE);
 	std::unordered_map<DWORD, DWORD> childToParent;
-	if (snapshot.hFile != INVALID_HANDLE_VALUE)
+	if (snapshotOk)
 	{
 		PROCESSENTRY32 process;
 		ZeroMemory(&process, sizeof(process));
@@ -1267,8 +1268,14 @@ bool TerminateProcessTree(HANDLE hProcess, DWORD retCode)
 		}
 	}
 
-	bool cycle = false;
-	std::set<DWORD> killIds = CollectProcessTreeToKill(childToParent, killId, &cycle);
+	// The cycle flag returned here only bounds the walk (see the helper). A cycle
+	// in some unrelated part of the snapshot does NOT mean we failed to terminate
+	// the target and its descendants, so it must not be reported as failure -- a
+	// busy machine (the very case the guard handles) would otherwise trigger the
+	// caller's "Unable to terminate process" dialog even though the kill
+	// succeeded (#169). Success reflects only whether we could enumerate the
+	// process tree at all.
+	std::set<DWORD> killIds = CollectProcessTreeToKill(childToParent, killId, nullptr);
 
 	for (DWORD killPid : killIds)
 	{
@@ -1279,8 +1286,7 @@ bool TerminateProcessTree(HANDLE hProcess, DWORD retCode)
 			CloseHandle(killHandle);
 		}
 	}
-	// Report success unless the snapshot's parent chain was cyclic.
-	return !cycle;
+	return snapshotOk;
 }
 
 // Very basic function that turns a string into an integer, with no exceptions, no error-checking, etc...
