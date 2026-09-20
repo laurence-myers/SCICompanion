@@ -39,7 +39,7 @@ namespace UnitTests
         {
             char tempPath[MAX_PATH] = {};
             GetTempPathA(ARRAYSIZE(tempPath), tempPath);
-            return std::string(tempPath) + "scicompanion-no-such-folder\phonemes.ini";
+            return std::string(tempPath) + "scicompanion-no-such-folder\\phonemes.ini";
         }
 
         TEST_METHOD(NoSilencePhonemeInMap_UsesCelZero_NotTheEndMarker)
