@@ -16,7 +16,7 @@
 #include "ExtractAll.h"
 #include <future>
 
-class PaletteComponent;
+struct PaletteComponent;
 
 // CCompileDialog dialog
 

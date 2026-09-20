@@ -23,7 +23,7 @@ public:
 	virtual void SetSummary(const std::string &summary) { (void)summary; }
 };
 
-class PaletteComponent;
+struct PaletteComponent;
 
 // globalPalette is the game's palette 999, precomputed on the UI thread and
 // owned by the caller for the length of the call. The extraction runs on a
