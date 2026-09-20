@@ -14,6 +14,7 @@
 #include "stdafx.h"
 #include "AppState.h"
 #include "ExtractAllDialog.h"
+#include "PaletteOperations.h"
 #include "format.h"
 
 using namespace std;
@@ -236,6 +237,18 @@ void ExtractAllDialog::OnBnClickedExtract()
 		_exportMessages = m_wndExportMessages.GetCheck() != 0;
 		_generateWavs = m_wndGenerateWav.GetCheck() != 0;
 
+		// Copy palette 999 here, on the UI thread, so the extraction worker uses
+		// this copy and never reads the resource map's cached palette (#133).
+		_globalPalette.reset();
+		if (_extractViewImages)
+		{
+			const PaletteComponent *global999 = appState->GetResourceMap().GetPalette999();
+			if (global999)
+			{
+				_globalPalette = std::make_unique<PaletteComponent>(*global999);
+			}
+		}
+
 		try
 		{
 			_future = make_unique<future<void>>(async(launch::async, s_ThreadWorker, this));
@@ -249,7 +262,7 @@ void ExtractAllDialog::OnBnClickedExtract()
 
 void ExtractAllDialog::s_ThreadWorker(ExtractAllDialog *pThis)
 {
-	ExtractAllResources(pThis->_version, (PCSTR)pThis->_location, pThis->_extractResources, pThis->_extractPicImages, pThis->_extractViewImages, pThis->_disassembleScripts, pThis->_exportMessages, pThis->_generateWavs, pThis);
+	ExtractAllResources(pThis->_version, (PCSTR)pThis->_location, pThis->_extractResources, pThis->_extractPicImages, pThis->_extractViewImages, pThis->_disassembleScripts, pThis->_exportMessages, pThis->_generateWavs, pThis->_globalPalette.get(), pThis);
 }
 
 void ExtractAllDialog::OnTimer(UINT_PTR nIDEvent)

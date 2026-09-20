@@ -16,6 +16,8 @@
 #include "ExtractAll.h"
 #include <future>
 
+class PaletteComponent;
+
 // CCompileDialog dialog
 
 class ExtractAllDialog : public CExtResizableDialog, public IExtractProgress
@@ -53,6 +55,9 @@ protected:
 	// Written by the worker (SetSummary) just before it finishes; read on the
 	// UI thread only after the future reports ready, so no lock is needed.
 	std::string _summary;
+	// The game's palette 999, copied on the UI thread before the worker starts,
+	// so the worker never reads the resource map's cached palette (#133).
+	std::unique_ptr<PaletteComponent> _globalPalette;
 
 	// Visuals
 	CExtButton m_wndCancel;

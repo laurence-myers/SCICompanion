@@ -32,7 +32,7 @@
 #include "format.h"
 #include "AudioCacheResourceSource.h"
 
-void ExtractAllResources(SCIVersion version, const std::string &destinationFolderIn, bool extractResources, bool extractPicImages, bool extractViewImages, bool disassembleScripts, bool extractMessages, bool generateWavs, IExtractProgress *progress)
+void ExtractAllResources(SCIVersion version, const std::string &destinationFolderIn, bool extractResources, bool extractPicImages, bool extractViewImages, bool disassembleScripts, bool extractMessages, bool generateWavs, const PaletteComponent *globalPalette, IExtractProgress *progress)
 {
 	std::string destinationFolder = destinationFolderIn;
 	if (destinationFolder.back() != '\\')
@@ -158,7 +158,9 @@ void ExtractAllResources(SCIVersion version, const std::string &destinationFolde
 					std::unique_ptr<PaletteComponent> optionalPalette;
 					if (view->GetComponent<RasterComponent>().Traits.PaletteType == PaletteType::VGA_256)
 					{
-						optionalPalette = appState->GetResourceMap().GetMergedPalette(*view, 999);
+						// Use the palette the UI thread precomputed, via the thread-safe overload,
+						// so the worker never reads the resource map (#133).
+						optionalPalette = appState->GetResourceMap().GetMergedPalette(*view, globalPalette);
 					}
 					bitmap.Attach(CreateBitmapFromResource(*view, optionalPalette.get(), &bmi, &pBitsDest));
 				}

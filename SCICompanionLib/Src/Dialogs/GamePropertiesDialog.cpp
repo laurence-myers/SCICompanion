@@ -199,7 +199,7 @@ void CGamePropertiesDialog::OnOK()
 			if (usePatchFiles)
 			{
 				// Extract all resources
-				ExtractAllResources(appState->GetVersion(), appState->GetResourceMap().GetGameFolder(), true, false, false, false, false, false, nullptr);
+				ExtractAllResources(appState->GetVersion(), appState->GetResourceMap().GetGameFolder(), true, false, false, false, false, false, nullptr, nullptr);
 			}
 			else
 			{

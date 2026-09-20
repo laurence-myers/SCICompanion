@@ -23,4 +23,10 @@ public:
 	virtual void SetSummary(const std::string &summary) { (void)summary; }
 };
 
-void ExtractAllResources(SCIVersion version, const std::string &destinationFolder, bool extractResources, bool extractPicImages, bool extractViewImages, bool disassembleScripts, bool extractMessages, bool generateWavs, IExtractProgress *progress = nullptr);
+class PaletteComponent;
+
+// globalPalette is the game's palette 999, precomputed on the UI thread and
+// owned by the caller for the length of the call. The extraction runs on a
+// worker thread, so it must not read the resource map's own cached palette
+// itself (#133). Null when there is no global palette.
+void ExtractAllResources(SCIVersion version, const std::string &destinationFolder, bool extractResources, bool extractPicImages, bool extractViewImages, bool disassembleScripts, bool extractMessages, bool generateWavs, const PaletteComponent *globalPalette, IExtractProgress *progress = nullptr);
