@@ -391,6 +391,9 @@ class SCI0MapNavigator
 public:
 	const AppendBehavior AppendBehavior = AppendBehavior::Append;
 
+	// SCI0 has no lookup table, so it is never corrupt in the SCI1+ sense (#117).
+	bool IsLookupTableCorrupt(sci::istream &) { return false; }
+
 	bool NavAndReadNextEntry(ResourceTypeFlags typeFlags, sci::istream &mapStream, IteratorState &state, ResourceMapEntryAgnostic &entryOut, std::vector<uint8_t> *optionalRawData = nullptr)
 	{
 		mapStream.seekg(state.mapStreamOffset);

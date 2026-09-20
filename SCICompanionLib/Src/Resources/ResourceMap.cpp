@@ -1234,6 +1234,26 @@ RunLogic &CResourceMap::GetRunLogic()
 //
 // Called when we open a new game.
 //
+bool CResourceMap::IsResourceMapCorrupt()
+{
+	if (!IsGameLoaded())
+	{
+		return false;
+	}
+	try
+	{
+		std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, _gameFolderHelper, ResourceSourceFlags::ResourceMap);
+		return resourceSource && resourceSource->IsResourceMapCorrupt();
+	}
+	catch (std::exception &)
+	{
+		// Could not even open/read the map to check. Do not raise a false
+		// "corrupt lookup table" alarm here; other open-path handling reports a
+		// map that cannot be opened at all.
+		return false;
+	}
+}
+
 void CResourceMap::SetGameFolder(const string &gameFolder)
 {
 	_runLogic->SetGameFolder(gameFolder);

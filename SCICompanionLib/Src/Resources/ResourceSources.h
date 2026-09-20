@@ -119,6 +119,13 @@ public:
 	virtual void RemoveEntry(const ResourceMapEntryAgnostic &mapEntry) = 0;
 	virtual void RebuildResources(bool force, ResourceSource &source, std::map<ResourceType, RebuildStats> &stats) = 0;
 	virtual AppendBehavior AppendResources(const std::vector<const ResourceBlob*> &blobs) = 0;
+
+	// True when this source's resource map is corrupt or truncated (an SCI1+
+	// lookup table with no terminator). The map then enumerates safely to zero
+	// entries (see SCI1MapNavigator, #43); this lets the open path surface the
+	// problem to the user instead of silently showing an empty game (#117).
+	// Sources with no such table (patch files, audio) return false.
+	virtual bool IsResourceMapCorrupt() { return false; }
 };
 
 typedef std::vector<std::unique_ptr<ResourceSource>> ResourceSourceArray;
@@ -230,6 +237,13 @@ public:
 	bool ReadNextEntry(ResourceTypeFlags typeFlags, IteratorState &state, ResourceMapEntryAgnostic &entry, std::vector<uint8_t> *optionalRawData) override
 	{
 		return NavAndReadNextEntry(typeFlags, GetMapStream(), state, entry, optionalRawData);
+	}
+
+	bool IsResourceMapCorrupt() override
+	{
+		// Ask the navigator whether the lookup table is corrupt/truncated. The
+		// SCI0 navigator has no such table and reports false (#117).
+		return _TNavigator::IsLookupTableCorrupt(GetMapStream());
 	}
 
 	sci::istream GetHeaderAndPositionedStream(const ResourceMapEntryAgnostic &mapEntry, ResourceHeaderAgnostic &headerEntry) override
