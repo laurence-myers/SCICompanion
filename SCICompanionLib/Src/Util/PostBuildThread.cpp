@@ -153,17 +153,20 @@ PostBuildRunResult RunPostBuildProcess(
 		// that launches other tools; terminating only the top process would
 		// leave those running and still writing files (#127). The child was
 		// created suspended, so it is assigned to the Job before it can spawn
-		// anything. JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE also stops the tree if
-		// this function leaves early for any reason.
+		// anything.
+		//
+		// Deliberately NOT setting JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: on a
+		// normal (non-abort) completion the Job handle closes at scope exit, and
+		// that limit would then kill any process the script intentionally left
+		// running (for example a PostRepackage.cmd that launches the game or an
+		// emulator to test the build). The tree is stopped only on an explicit
+		// abort, via TerminateJobObject below.
 		ScopedHandle job;
 		bool jobReady = false;
 		job.hFile = CreateJobObject(nullptr, nullptr);
 		if (job.hFile != nullptr)
 		{
-			JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
-			limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-			if (SetInformationJobObject(job.hFile, JobObjectExtendedLimitInformation, &limits, sizeof(limits)) &&
-				AssignProcessToJobObject(job.hFile, hProcess.hFile))
+			if (AssignProcessToJobObject(job.hFile, hProcess.hFile))
 			{
 				jobReady = true;
 			}
