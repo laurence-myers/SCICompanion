@@ -48,7 +48,7 @@ private:
 	// forbids multimedia calls and can deadlock). See #49.
 	static LRESULT CALLBACK s_NotifyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	bool _EnsureNotifyWindow();
-	void _OnStreamDone();
+	void _OnStreamDone(DWORD generation);
 	void _CuePosition(DWORD dwEventIndex, DWORD ticks = 0xffffffff);
 
 	HWND _hNotifyWnd;
@@ -68,6 +68,13 @@ private:
 	// driver thread) to suppress that reset-generated notification, so it must be
 	// atomic. (#49)
 	std::atomic<bool> _fStoppingStream;
+	// Bumped each time a chunk is cued or playback stops/seeks. The MM_MOM_DONE
+	// callback stamps the current value into the posted message; _OnStreamDone
+	// ignores a notification whose stamp no longer matches, so a genuine
+	// chunk-end that was overtaken by a Stop/seek before the UI pump handled it
+	// cannot re-cue against the changed state. Read on the driver thread, so it
+	// is atomic. (#113)
+	std::atomic<DWORD> _streamGeneration;
 	DWORD _wTotalTime;
 	uint16_t _wTempo;
 	uint16_t _wTimeDivision;
