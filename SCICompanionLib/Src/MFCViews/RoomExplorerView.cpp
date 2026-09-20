@@ -289,7 +289,7 @@ CRoomExplorerWorkResult *CRoomExplorerWorkResult::CreateFromWorkItem(CRoomExplor
 
 		for (auto &pRoomView : pWorkItem->_views)
 		{
-			std::unique_ptr<ResourceEntity> view(CreateViewResource(appState->GetVersion()));
+			std::unique_ptr<ResourceEntity> view(CreateViewResource(pWorkItem->version));
 			if (SUCCEEDED(view->InitFromResource(&pRoomView->blob)))
 			{
 				DrawViewWithPriority(pic.Size, dataDisplay.get(), pdm.GetPicBits(PicScreen::Priority, PicPosition::Final, pic.Size), PriorityFromY(pRoomView->wy, *pdm.GetViewPort(PicPosition::Final)),
@@ -462,6 +462,7 @@ void CRoomExplorerNode::Init(const CRoomExplorerView::CRoomExplorerGrid *pGrid, 
 	_pGrid = pGrid;
 	assert(_pWorkItem.get() == nullptr);
 	_pWorkItem = make_unique<CRoomExplorerWorkItem>(compiledScript.GetScriptNumber());
+	_pWorkItem->version = appState->GetVersion();   // captured on the UI thread (#131)
 	ScriptNum = compiledScript.GetScriptNumber();
 	const vector<CompiledVarValue> &propValues = classDefinition.GetPropertyValues();
 	vector<uint16_t> props = classDefinition.GetProperties();
