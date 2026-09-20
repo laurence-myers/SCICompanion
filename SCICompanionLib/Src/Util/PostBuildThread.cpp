@@ -209,13 +209,25 @@ PostBuildRunResult RunPostBuildProcess(
 
 		result.aborted = (hAbort != nullptr) && (waitResult == (WAIT_OBJECT_0 + 1));
 
-		if (result.aborted && jobReady)
+		if (result.aborted)
 		{
 			// Terminate the child and everything it spawned before returning, so a
 			// .cmd that launched other tools does not keep running and writing
 			// files after the abort (#127). The killed processes then close their
 			// write ends, so the drain below sees the last output and then EOF.
-			TerminateJobObject(job.hFile, 1);
+			if (jobReady)
+			{
+				// Preferred: the Job kills the whole tree atomically.
+				TerminateJobObject(job.hFile, 1);
+			}
+			else
+			{
+				// The Job could not be set up -- this happens when the host process
+				// is already in a Job that does not allow a nested one (for example
+				// under some test runners). Fall back to walking the process tree by
+				// PID and terminating each process.
+				TerminateProcessTree(hProcess.hFile, 1);
+			}
 		}
 
 		// Drain any output still buffered in the pipe, without blocking. On a
