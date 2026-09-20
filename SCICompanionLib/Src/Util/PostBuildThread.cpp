@@ -133,7 +133,7 @@ PostBuildRunResult RunPostBuildProcess(
 		nullptr,	// process security attributes
 		nullptr,	// primary thread security attributes
 		TRUE,	   // inherit handles
-		0,		  // creation flags
+		CREATE_SUSPENDED,	// created suspended so it joins the Job before it can spawn children (#127)
 		nullptr,	// use the parent's environment
 		workingDir.empty() ? nullptr : workingDir.c_str(),
 		&startInfo,
@@ -147,6 +147,30 @@ PostBuildRunResult RunPostBuildProcess(
 		ScopedHandle hThread;
 		hProcess.hFile = procInfo.hProcess;
 		hThread.hFile = procInfo.hThread;
+
+		// Put the child in a Job object so an abort can stop the whole process
+		// tree, not just the top process. A post-build step is usually a .cmd
+		// that launches other tools; terminating only the top process would
+		// leave those running and still writing files (#127). The child was
+		// created suspended, so it is assigned to the Job before it can spawn
+		// anything. JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE also stops the tree if
+		// this function leaves early for any reason.
+		ScopedHandle job;
+		bool jobReady = false;
+		job.hFile = CreateJobObject(nullptr, nullptr);
+		if (job.hFile != nullptr)
+		{
+			JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
+			limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+			if (SetInformationJobObject(job.hFile, JobObjectExtendedLimitInformation, &limits, sizeof(limits)) &&
+				AssignProcessToJobObject(job.hFile, hProcess.hFile))
+			{
+				jobReady = true;
+			}
+		}
+		// Resume the child regardless: if the Job could not be set up, it still
+		// runs (without the tree-kill guarantee) rather than hanging suspended.
+		ResumeThread(hThread.hFile);
 
 		// Close the parent copy of the write end BEFORE the read loop. A blocking
 		// ReadFile reports EOF only when every write handle is closed. The child
@@ -183,19 +207,28 @@ PostBuildRunResult RunPostBuildProcess(
 			waitResult = WaitForMultipleObjects(handleCount, waitHandles, FALSE, kPollMs);
 		} while (waitResult == WAIT_TIMEOUT);
 
-		// Drain any output still buffered in the pipe, without blocking. On an abort
-		// the child may still be running with its write end open, so a blocking read
-		// would hang; on a normal exit its write end is closed and PeekNamedPipe
-		// reports the remaining buffered output. (The parent write end was already
-		// closed above -- the #48 fix.)
+		result.aborted = (hAbort != nullptr) && (waitResult == (WAIT_OBJECT_0 + 1));
+
+		if (result.aborted && jobReady)
+		{
+			// Terminate the child and everything it spawned before returning, so a
+			// .cmd that launched other tools does not keep running and writing
+			// files after the abort (#127). The killed processes then close their
+			// write ends, so the drain below sees the last output and then EOF.
+			TerminateJobObject(job.hFile, 1);
+		}
+
+		// Drain any output still buffered in the pipe, without blocking. On a
+		// normal exit the child's write end is closed and PeekNamedPipe reports
+		// the remaining buffered output; on an abort the tree was just terminated,
+		// so the same drain captures the final bytes. (The parent write end was
+		// already closed above -- the #48 fix.)
 		DWORD bytesAvailable = 0;
 		while (PeekNamedPipe(childOutRead.hFile, nullptr, 0, nullptr, &bytesAvailable, nullptr) &&
 			(bytesAvailable != 0))
 		{
 			_DrainPipeChunk(childOutRead.hFile, onOutput);
 		}
-
-		result.aborted = (hAbort != nullptr) && (waitResult == (WAIT_OBJECT_0 + 1));
 	}
 
 	return result;
