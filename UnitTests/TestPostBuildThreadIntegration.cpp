@@ -172,16 +172,13 @@ namespace UnitTests
         END_TEST_METHOD_ATTRIBUTE()
         TEST_METHOD(PostBuild_Abort_TerminatesTheChildTree)
         {
-            // A unique marker path under the temp folder, in 8.3 short form so it
-            // has no spaces (the temp path can contain a space) and needs no extra
-            // quoting inside the cmd redirect.
-            char tempLong[MAX_PATH] = {};
-            GetTempPathA(ARRAYSIZE(tempLong), tempLong);
-            char tempShort[MAX_PATH] = {};
-            DWORD shortLen = GetShortPathNameA(tempLong, tempShort, ARRAYSIZE(tempShort));
-            std::string tempDir = (shortLen > 0 && shortLen < ARRAYSIZE(tempShort)) ? std::string(tempShort) : std::string(tempLong);
-            Assert::IsTrue(tempDir.find(' ') == std::string::npos, L"setup: the temp path must be space-free for the cmd redirect");
-            std::string marker = tempDir + "scicompanion-postbuild-tree-" +
+            // A unique marker path under the temp folder. The temp path can
+            // contain a space (for example "C:\Users\First Last\..."), so the
+            // marker is quoted inside the inner cmd redirect rather than relying
+            // on 8.3 short names, which can be disabled per volume.
+            char tempDir[MAX_PATH] = {};
+            GetTempPathA(ARRAYSIZE(tempDir), tempDir);
+            std::string marker = std::string(tempDir) + "scicompanion-postbuild-tree-" +
                 std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount()) + ".marker";
             DeleteFileA(marker.c_str());
 
@@ -189,8 +186,12 @@ namespace UnitTests
             cap->hAbort.hFile = CreateEvent(nullptr, TRUE, FALSE, nullptr); // manual-reset, not signalled yet
             Assert::IsNotNull(cap->hAbort.hFile, L"create abort event");
 
-            std::string command = "cmd.exe /c start \"\" /b cmd.exe /c \"ping -n 5 127.0.0.1 >nul & echo done>" +
-                marker + "\" & ping -n 10 127.0.0.1 >nul";
+            // The inner cmd's command is wrapped in quotes, so the marker path is
+            // wrapped in doubled quotes ("") -- cmd's way of putting a literal
+            // quote inside an already-quoted command -- so a path with spaces
+            // still redirects correctly.
+            std::string command = "cmd.exe /c start \"\" /b cmd.exe /c \"ping -n 5 127.0.0.1 >nul & echo done>\"\"" +
+                marker + "\"\"\" & ping -n 10 127.0.0.1 >nul";
 
             // Signal the abort ~1.5s in, while RunPostBuildProcess is still running
             // and the grandchild is still waiting to write its marker.
