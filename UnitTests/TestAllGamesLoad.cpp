@@ -25,10 +25,26 @@
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 // This test enumerates all the resources of games in a folder. The games can't be checked in
-// to source code, so it's up to you to place your legitimately-owned Sierra games here:
-// (or change based on your needs):
-const char SierraGameFolder[] = "e:\\SierraGames\\";
+// to source code, so it's up to you to place your legitimately-owned Sierra games here.
+// Set the SCICOMP_GAMES_FOLDER environment variable to point at your own folder; the
+// hard-coded path below is only a fallback (#76 B5).
+const char SierraGameFolderFallback[] = "e:\\SierraGames\\";
 // Each subfolder of this folder will be analyzed to find a resource.map.
+static std::string GetSierraGameFolder()
+{
+    char buffer[MAX_PATH] = {};
+    DWORD len = GetEnvironmentVariableA("SCICOMP_GAMES_FOLDER", buffer, ARRAYSIZE(buffer));
+    if ((len > 0) && (len < ARRAYSIZE(buffer)))
+    {
+        std::string folder = buffer;
+        if (!folder.empty() && (folder.back() != '\\') && (folder.back() != '/'))
+        {
+            folder += "\\";
+        }
+        return folder;
+    }
+    return SierraGameFolderFallback;
+}
 
 // We can't easily identify the game, so just identify type/number pairs that are known to fail.
 // These are the known problems out of about 35 games from SCI0 to SCI1.1
@@ -61,7 +77,8 @@ namespace UnitTests
 
         TEST_METHOD(TestAllGames)
         {
-            std::string findString = SierraGameFolder;
+            const std::string gamesFolder = GetSierraGameFolder();
+            std::string findString = gamesFolder;
             findString += "*";
             // Collect the file names
             std::vector<std::string> folders;
@@ -92,7 +109,7 @@ namespace UnitTests
 
             for (auto folder : folders)
             {
-                std::string finalPath = SierraGameFolder;
+                std::string finalPath = gamesFolder;
                 finalPath += folder;
                 _LoadAllResources(finalPath);
             }
