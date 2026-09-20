@@ -1195,9 +1195,57 @@ bool PumpCompileDialogMessagesQuitPending(HWND hDialog)
 	return false;
 }
 
+std::set<DWORD> CollectProcessTreeToKill(const std::unordered_map<DWORD, DWORD> &childToParent, DWORD killId, bool *outCycleDetected)
+{
+	bool cycle = false;
+	std::set<DWORD> killIds;
+	killIds.insert(killId);
+	for (auto &pair : childToParent)
+	{
+		bool kill = false;
+		std::vector<DWORD> childrenToKill;
+		// The snapshot's parent map can contain a cycle: PIDs are reused, so a
+		// process's recorded parent PID may point at a newer, unrelated process
+		// whose own parent chain leads back around. The chain can be longer than
+		// two nodes ([508]->[524], [524]->[508] was one seen case, but a busy
+		// machine -- e.g. a CI runner -- produces longer ones). Walk the ancestor
+		// chain tracking the PIDs already visited; the first time one repeats the
+		// chain is cyclic, so stop. Without this the walk never terminates and
+		// childrenToKill grows until operator new throws (an OOM crash observed
+		// on CI). (#72)
+		std::set<DWORD> visitedInChain;
+		auto itParent = childToParent.find(pair.first);
+
+		while ((itParent != childToParent.end()) && itParent->first)
+		{
+			if (!visitedInChain.insert(itParent->first).second)
+			{
+				// Already seen this PID on this walk: the parent chain is cyclic.
+				cycle = true;
+				break;
+			}
+			childrenToKill.push_back(itParent->first);
+			if (itParent->second == killId)
+			{
+				kill = true;
+				break;
+			}
+			itParent = childToParent.find(itParent->second);
+		}
+		if (kill)
+		{
+			killIds.insert(childrenToKill.begin(), childrenToKill.end());
+		}
+	}
+	if (outCycleDetected)
+	{
+		*outCycleDetected = cycle;
+	}
+	return killIds;
+}
+
 bool TerminateProcessTree(HANDLE hProcess, DWORD retCode)
 {
-	bool success = true;
 	DWORD killId = GetProcessId(hProcess);
 
 	// The snapshot handle is owned here so every return path closes it; the
@@ -1219,41 +1267,8 @@ bool TerminateProcessTree(HANDLE hProcess, DWORD retCode)
 		}
 	}
 
-	std::set<DWORD> killIds;
-	killIds.insert(killId);
-	for (auto &pair : childToParent)
-	{
-		bool kill = false;
-		std::vector<DWORD> childrenToKill;
-		auto itParent = childToParent.find(pair.first);
-
-		while ((itParent != childToParent.end()) && itParent->first)
-		{
-			childrenToKill.push_back(itParent->first);
-			if (itParent->second == killId)
-			{
-				kill = true;
-				break;
-			}
-			DWORD temp = itParent->first;
-			itParent = childToParent.find(itParent->second);
-			if ((itParent != childToParent.end()) && (temp == itParent->second))
-			{
-				// REVIEW: Got into an infinite loop here when we had a mapping of:
-				// [508]->[524], and
-				// [524]->[508]
-				// This may be a race condition where new processes were created?
-				// This has happened twice now.
-				// Let's detect and bail.
-				success = false;
-				break;
-			}
-		}
-		if (kill)
-		{
-			killIds.insert(childrenToKill.begin(), childrenToKill.end());
-		}
-	}
+	bool cycle = false;
+	std::set<DWORD> killIds = CollectProcessTreeToKill(childToParent, killId, &cycle);
 
 	for (DWORD killPid : killIds)
 	{
@@ -1264,7 +1279,8 @@ bool TerminateProcessTree(HANDLE hProcess, DWORD retCode)
 			CloseHandle(killHandle);
 		}
 	}
-	return success;
+	// Report success unless the snapshot's parent chain was cyclic.
+	return !cycle;
 }
 
 // Very basic function that turns a string into an integer, with no exceptions, no error-checking, etc...
