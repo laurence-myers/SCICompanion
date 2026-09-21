@@ -509,6 +509,18 @@ void AppState::OpenMostRecentResourceAt(ResourceType type, uint16_t number, int 
 }
 
 // Output pane stuff
+
+// The output pane lives on the main frame window. Return it, or null when there
+// is no GUI: AppState can run headless (constructed with a null CWinApp), for
+// example in the unit tests and any command-line use, where _pApp and its main
+// window are null. Callers below must tolerate a null return -- without this,
+// dereferencing _pApp->m_pMainWnd faults (a wave resource whose conversion emits
+// warnings reaches OutputResults during a headless resource load). (#180)
+static CMainFrame *GetMainFrameOrNull(CWinApp *pApp)
+{
+	return (pApp != nullptr) ? static_cast<CMainFrame *>(pApp->m_pMainWnd) : nullptr;
+}
+
 void AppState::OutputResults(OutputPaneType type, std::vector<CompileResult> &compileResults)
 {
 	OutputClearResults(type);
@@ -518,19 +530,31 @@ void AppState::OutputResults(OutputPaneType type, std::vector<CompileResult> &co
 }
 void AppState::ShowOutputPane(OutputPaneType type)
 {
-	static_cast<CMainFrame*>(_pApp->m_pMainWnd)->ShowOutputPane(type);
+	if (CMainFrame *pMainWnd = GetMainFrameOrNull(_pApp))
+	{
+		pMainWnd->ShowOutputPane(type);
+	}
 }
 void AppState::OutputClearResults(OutputPaneType type)
 {
-	static_cast<CMainFrame*>(_pApp->m_pMainWnd)->GetOutputPane().ClearResults(type);
+	if (CMainFrame *pMainWnd = GetMainFrameOrNull(_pApp))
+	{
+		pMainWnd->GetOutputPane().ClearResults(type);
+	}
 }
 void AppState::OutputAddBatch(OutputPaneType type, std::vector<CompileResult> &compileResults)
 {
-	static_cast<CMainFrame*>(_pApp->m_pMainWnd)->GetOutputPane().AddBatch(type, compileResults);
+	if (CMainFrame *pMainWnd = GetMainFrameOrNull(_pApp))
+	{
+		pMainWnd->GetOutputPane().AddBatch(type, compileResults);
+	}
 }
 void AppState::OutputFinishAdd(OutputPaneType type)
 {
-	static_cast<CMainFrame*>(_pApp->m_pMainWnd)->GetOutputPane().FinishAdd(type);
+	if (CMainFrame *pMainWnd = GetMainFrameOrNull(_pApp))
+	{
+		pMainWnd->GetOutputPane().FinishAdd(type);
+	}
 }
 
 UINT AppState::GetMidiDeviceId()

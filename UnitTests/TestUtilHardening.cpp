@@ -50,6 +50,25 @@ namespace UnitTests
             }
         }
 
+        // Loading a resource with no GUI must not crash. AudioComponentFromWaveFile
+        // reports wave-conversion warnings through appState->OutputResults, which
+        // reaches the main-frame output pane. Headless (AppState is built with a
+        // null CWinApp, as in the unit tests and any command-line use), there is no
+        // main window; before the fix OutputResults dereferenced _pApp->m_pMainWnd
+        // and faulted with C0000005 (seen loading Space Quest VI audio under ASan).
+        // The Output* methods must now no-op without a GUI. (#180)
+        TEST_METHOD(OutputPane_Headless_DoesNotCrash)
+        {
+            std::vector<CompileResult> results;
+            results.emplace_back("a conversion warning", CompileResult::CRT_Warning);
+            appState->OutputResults(OutputPaneType::Compile, results);
+            appState->ShowOutputPane(OutputPaneType::Compile);
+            appState->OutputClearResults(OutputPaneType::Compile);
+            appState->OutputAddBatch(OutputPaneType::Compile, results);
+            appState->OutputFinishAdd(OutputPaneType::Compile);
+            Assert::IsTrue(true, L"the output-pane methods returned without crashing headless");
+        }
+
         // replacefile must atomically replace the destination (MoveFileEx with
         // MOVEFILE_REPLACE_EXISTING), whether or not it already exists, and remove
         // the source. This primitive is what makes the resource save (#66) never
