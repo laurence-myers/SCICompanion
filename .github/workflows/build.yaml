@@ -159,21 +159,49 @@ jobs:
       run: |
         msbuild SCICompanion.sln -m -t:UnitTests -p:Configuration=Release -p:Platform=Win32 -p:EnableASAN=true
 
+    # Deploy the game fixtures the compile / class-browser tests need. This job
+    # builds only -t:UnitTests, which does NOT build the SCICompanion app project
+    # -- and the app's post-build is what normally drops the template games,
+    # compile includes, decompiler and object templates next to the test binaries.
+    # Without them SetUpGame cannot copy a template game, so those tests fail (and,
+    # before the teardown guard, crashed the host). The plain `build` job never hit
+    # this because it builds the whole solution. Mirror just the folders these
+    # tests read, matching the app's own post-build robocopy targets. (#95)
+    - name: Deploy test fixtures for the ASan run
+      shell: pwsh
+      run: |
+        $pairs = @(
+          @{ src = "SCICompanion\Files\TemplateGame";   dst = "Release\TemplateGame" },
+          @{ src = "SCICompanion\Files\CompileInclude"; dst = "Release\include" },
+          @{ src = "SCICompanion\Files\Decompiler";     dst = "Release\Decompiler" },
+          @{ src = "SCICompanion\Files\Objects";        dst = "Release\Objects" },
+          @{ src = "SCICompanion\Tools";                dst = "Release\Tools" }
+        )
+        foreach ($p in $pairs) {
+          # robocopy exits 0-7 on success, 8+ on failure.
+          robocopy $p.src $p.dst /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+          if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE) for $($p.src)." }
+        }
+        Write-Host "Deployed test fixtures next to the ASan test binaries."
+        # robocopy leaves a non-zero SUCCESS code in $LASTEXITCODE (1 = files were
+        # copied; 0-7 all mean success). The pwsh step would otherwise exit with it
+        # and fail even though the copy worked, so exit 0 explicitly. A real failure
+        # (>= 8) has already thrown above, which fails the step.
+        exit 0
+
     # Run the unit suite under ASan. The integration tests (threads, child
     # processes) are excluded here; this leg targets the memory-safety unit tests.
     #
-    # continue-on-error: informational for now. The ASan unit run surfaces
-    # pre-existing memory issues in the compile / class-browser tests that the
-    # plain build tolerates (tracked in a follow-up issue), so it must not fail the
-    # build yet. The ASan *build* step above still gates -- the tree has to compile
-    # and link under ASan. Once the suite is ASan-clean, drop continue-on-error to
-    # make this a hard gate. halt_on_error=0 lets it report every finding in a run.
+    # This step is a HARD GATE. The unit suite is ASan-clean, and this ASan build
+    # is non-recoverable (/fsanitize=address without -fsanitize-recover), so the
+    # first memory-safety finding (heap/stack out-of-bounds, use-after-free)
+    # terminates the instrumented test host; vstest then aborts the run and
+    # RunTests.ps1 exits non-zero, failing the build. (Verified with a deliberate
+    # overflow tripwire: it crashed the host and failed the run.) The ASan *build*
+    # step above gates the compile and link; this step gates the run. (#95)
     - name: Test (unit, under ASan)
       shell: pwsh
       timeout-minutes: 25
-      continue-on-error: true
-      env:
-        ASAN_OPTIONS: halt_on_error=0
       run: |
         # An ASan-instrumented DLL needs the dynamic ASan runtime
         # (clang_rt.asan_dynamic-i386.dll) at load time -- a DLL target uses the
@@ -207,8 +235,9 @@ jobs:
         path: TestResults
 
   # MSVC Code Analysis (/analyze) leg. Informational for now: the first-party
-  # library has never been analysed, so it reports a backlog rather than gating
-  # (like the ASan leg). Findings are in the uploaded log artifact. Runs in
+  # library has never been analysed, so it reports a backlog rather than gating.
+  # (The ASan leg was informational in the same way until #95 made it a hard
+  # gate.) Findings are in the uploaded log artifact. Runs in
   # parallel with build and asan. Follow-on #80 steps (raise to /W4 and promote a
   # few warnings to errors after a clean-up pass; clang-tidy; [[nodiscard]] on
   # context.code().inst via #59; SARIF to code scanning) are tracked separately.
