@@ -69,6 +69,22 @@ namespace UnitTests
             Assert::IsTrue(true, L"the output-pane methods returned without crashing headless");
         }
 
+        // The other GUI entry points that reach the main-frame window must also
+        // tolerate a headless AppState (null _pApp). They are latent siblings of
+        // the output-pane crash: reachable from non-GUI code and any future
+        // command-line tool. Each now no-ops without a GUI instead of
+        // dereferencing _pApp->m_pMainWnd. (#180)
+        TEST_METHOD(HeadlessGuiEntryPoints_DoNotCrash)
+        {
+            appState->OpenScriptAtLine(ScriptId(), 1);
+            appState->OpenMostRecentResource(ResourceType::View, 0);
+            appState->ReopenScriptDocument(0);
+            appState->OpenMostRecentResourceAt(ResourceType::Vocab, 0, 0);
+            appState->NotifyChangeShowTabs();
+            appState->NotifyChangeAspectRatio();
+            Assert::IsTrue(true, L"the GUI entry points returned without crashing headless");
+        }
+
         // replacefile must atomically replace the destination (MoveFileEx with
         // MOVEFILE_REPLACE_EXISTING), whether or not it already exists, and remove
         // the source. This primitive is what makes the resource save (#66) never

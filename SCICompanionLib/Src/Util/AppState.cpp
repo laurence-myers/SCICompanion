@@ -408,9 +408,25 @@ void AppState::OpenScript(std::string strName, const ResourceBlob *pData, WORD w
 	}
 }
 
+// Return the main frame window, or null when there is no GUI. AppState can run
+// headless -- constructed with a null CWinApp, as in the unit tests and any
+// command-line use -- so _pApp, and the main window, are null. Every caller that
+// reaches into the GUI (open or refresh a document, refresh views, write the
+// output pane) must tolerate a null return; before this, dereferencing
+// _pApp->m_pMainWnd faulted -- e.g. a wave resource whose conversion emits
+// warnings reaches OutputResults during a headless resource load. (#180)
+static CMainFrame *GetMainFrameOrNull(CWinApp *pApp)
+{
+	return (pApp != nullptr) ? static_cast<CMainFrame *>(pApp->m_pMainWnd) : nullptr;
+}
+
 void AppState::OpenScriptAtLine(ScriptId script, int iLine)
 {
-	CMainFrame *pMainWnd = static_cast<CMainFrame*>(_pApp->m_pMainWnd);
+	CMainFrame *pMainWnd = GetMainFrameOrNull(_pApp);
+	if (!pMainWnd)
+	{
+		return;
+	}
 	if (script.GetResourceNumber() == InvalidResourceNumber)
 	{
 		WORD wScriptNumber;
@@ -462,7 +478,11 @@ void AppState::OpenScriptAtLine(ScriptId script, int iLine)
 //
 void AppState::OpenMostRecentResource(ResourceType type, uint16_t wNum)
 {
-	CMainFrame *pMainWnd = static_cast<CMainFrame*>(_pApp->m_pMainWnd);
+	CMainFrame *pMainWnd = GetMainFrameOrNull(_pApp);
+	if (!pMainWnd)
+	{
+		return;
+	}
 	CResourceDocument *pDocAlready = pMainWnd->Tabs().ActivateResourceDocument(type, wNum);
 	if (pDocAlready == nullptr)
 	{
@@ -474,7 +494,11 @@ void AppState::OpenMostRecentResource(ResourceType type, uint16_t wNum)
 
 void AppState::ReopenScriptDocument(uint16_t wNum)
 {
-	CMainFrame *pMainWnd = static_cast<CMainFrame*>(_pApp->m_pMainWnd);
+	CMainFrame *pMainWnd = GetMainFrameOrNull(_pApp);
+	if (!pMainWnd)
+	{
+		return;
+	}
 	CScriptDocument *pDocAlready = pMainWnd->Tabs().GetOpenScriptDocument(wNum);
 	if (pDocAlready)
 	{
@@ -484,6 +508,10 @@ void AppState::ReopenScriptDocument(uint16_t wNum)
 
 void AppState::OpenMostRecentResourceAt(ResourceType type, uint16_t number, int index)
 {
+	if (GetMainFrameOrNull(_pApp) == nullptr)
+	{
+		return;
+	}
 	OpenMostRecentResource(type, number);
 
 	// Now it should be open...
@@ -509,18 +537,6 @@ void AppState::OpenMostRecentResourceAt(ResourceType type, uint16_t number, int 
 }
 
 // Output pane stuff
-
-// The output pane lives on the main frame window. Return it, or null when there
-// is no GUI: AppState can run headless (constructed with a null CWinApp), for
-// example in the unit tests and any command-line use, where _pApp and its main
-// window are null. Callers below must tolerate a null return -- without this,
-// dereferencing _pApp->m_pMainWnd faults (a wave resource whose conversion emits
-// warnings reaches OutputResults during a headless resource load). (#180)
-static CMainFrame *GetMainFrameOrNull(CWinApp *pApp)
-{
-	return (pApp != nullptr) ? static_cast<CMainFrame *>(pApp->m_pMainWnd) : nullptr;
-}
-
 void AppState::OutputResults(OutputPaneType type, std::vector<CompileResult> &compileResults)
 {
 	OutputClearResults(type);
@@ -643,7 +659,7 @@ void AppState::TellScriptsToSave()
 
 void AppState::NotifyChangeShowTabs()
 {
-	CMainFrame *pMainWnd = static_cast<CMainFrame*>(_pApp->m_pMainWnd);
+	CMainFrame *pMainWnd = GetMainFrameOrNull(_pApp);
 	if (pMainWnd)
 	{
 		pMainWnd->Tabs().CallViews<CScriptView>(
@@ -661,7 +677,7 @@ void AppState::NotifyChangeAspectRatio()
 	// 1. Resource list view needs to regenerate its imagelists. Tell them that they need to reload resources.
 	GetResourceMap().NotifyToRegenerateImages();
 	// 2. And then let's just refresh all windows
-	CMainFrame *pMainWnd = static_cast<CMainFrame*>(_pApp->m_pMainWnd);
+	CMainFrame *pMainWnd = GetMainFrameOrNull(_pApp);
 	if (pMainWnd)
 	{
 		EnumChildWindows(AfxGetMainWnd()->GetSafeHwnd(), InvalidateChildProc, 0);
