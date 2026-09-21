@@ -84,6 +84,7 @@ public:
 		ResourceIterator operator++(int);
 
 		int GetResourceNumber();
+		ResourceType GetResourceType();
 
 	private:
 		sci::istream _GetResourceHeaderAndPackage(ResourceHeaderAgnostic &rh) const;

@@ -208,6 +208,11 @@ int ResourceContainer::ResourceIterator::GetResourceNumber()
 	return _currentEntry.Number;
 }
 
+ResourceType ResourceContainer::ResourceIterator::GetResourceType()
+{
+	return _currentEntry.Type;
+}
+
 void ResourceContainer::ResourceIterator::_GetNextEntry()
 {
 	assert(!_atEnd);
