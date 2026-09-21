@@ -78,6 +78,25 @@ jobs:
       timeout-minutes: 10
       run: .\UnitTests\RunTests.ps1 -Configuration ${{ matrix.configuration }} -Integration -BlameHang
 
+    # Show a pass/fail table in the run summary, so a failure is visible without
+    # downloading the .trx artifact. Runs even when a test step failed. (B8 of #76.)
+    - name: Test summary
+      if: always()
+      shell: pwsh
+      run: |
+        $rows = @()
+        Get-ChildItem TestResults -Filter *.trx -ErrorAction SilentlyContinue | ForEach-Object {
+          [xml]$trx = Get-Content $_.FullName
+          $c = $trx.TestRun.ResultSummary.Counters
+          $rows += "| $($_.Name) | $($c.total) | $($c.passed) | $($c.failed) |"
+        }
+        $summary = if ($rows.Count -gt 0) {
+          @("## Test results", "", "| File | Total | Passed | Failed |", "| --- | ---: | ---: | ---: |") + $rows
+        } else {
+          @("## Test results", "", "No .trx files were produced.")
+        }
+        $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
     - name: Upload Test Results
       if: always()
       uses: actions/upload-artifact@v4
