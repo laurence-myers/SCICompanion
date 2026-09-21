@@ -368,6 +368,19 @@ namespace UnitTests
                 L"a corrupt lookup table must end enumeration cleanly, not read a bogus entry");
         }
 
+        // #117: SCI0 has no lookup table, so its navigator must never report the
+        // map corrupt. The open-time surfacing (ResourceSource::IsResourceMapCorrupt
+        // -> CResourceMap::IsResourceMapCorrupt) reaches this for an SCI0 game, so
+        // a false positive here would pop a spurious "corrupt map" message.
+        TEST_METHOD(Sci0MapNavigator_NeverReportsCorrupt)
+        {
+            std::vector<uint8_t> buf(64, 0);
+            sci::istream mapStream(buf.data(), (uint32_t)buf.size());
+            SCI0MapNavigator<RESOURCEMAPENTRY_SCI0> nav;
+            Assert::IsFalse(nav.IsLookupTableCorrupt(mapStream),
+                L"SCI0 has no lookup table, so it must never be flagged corrupt");
+        }
+
         // The regression guard for the above: a well-formed lookup table (one
         // in-range group and the 0xff terminator) must not be flagged corrupt, and
         // its single entry must still be read.

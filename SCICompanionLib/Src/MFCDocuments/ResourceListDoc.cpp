@@ -192,6 +192,14 @@ void CResourceListDoc::Serialize(CArchive& ar)
 
 			appState->LogInfo(TEXT("Open game: %s"), (PCTSTR)path);
 
+			// Tell the user if the resource map is corrupt or truncated. Without
+			// this the game just appears empty, because the enumeration degrades
+			// to zero entries on a bad SCI1+ lookup table (#117).
+			if (map.IsResourceMapCorrupt())
+			{
+				AfxMessageBox(TEXT("The resource map for this game appears to be corrupt or truncated. Some or all resources may not be listed."), MB_OK | MB_ICONWARNING);
+			}
+
 			UpdateAllViews(nullptr, 0, &WrapHint(ResourceMapChangeHint::Change));
 		}
 		else

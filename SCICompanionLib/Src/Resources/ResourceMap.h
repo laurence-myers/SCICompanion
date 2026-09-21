@@ -88,6 +88,10 @@ public:
 	void DeleteResource(const ResourceBlob *pResource);
 
 	void SetGameFolder(const std::string &gameFolder);
+	// True when the game's resource map is corrupt or truncated (an SCI1+ lookup
+	// table with no terminator). Safe to call on the UI thread after a game is
+	// opened; the enumeration itself degrades to zero entries either way (#117).
+	bool IsResourceMapCorrupt();
 
 	TalkerToViewMap &GetTalkerToViewMap();
 

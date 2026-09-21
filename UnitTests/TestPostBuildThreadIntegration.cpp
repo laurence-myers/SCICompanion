@@ -19,6 +19,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 using namespace IntegrationHarness;
@@ -156,6 +157,76 @@ namespace UnitTests
             runner.Join();
             Assert::IsTrue(cap->launched.load(), L"the child process must launch");
             Assert::IsTrue(cap->aborted.load(), L"the result must report the abort");
+        }
+
+        // The abort must stop the whole process tree, not just the top process.
+        // The post-build command launches a detached grandchild (start /b, which
+        // does not break away from the Job) that waits ~4s then writes a marker
+        // file, while the top cmd waits ~9s. A signaller thread sets the abort
+        // ~1.5s in, while the grandchild is still waiting. With the Job-object
+        // fix the whole tree is terminated, so the marker is never written.
+        // Before the fix the abort left the grandchild running and it wrote the
+        // marker (#127).
+        BEGIN_TEST_METHOD_ATTRIBUTE(PostBuild_Abort_TerminatesTheChildTree)
+            TEST_METHOD_ATTRIBUTE(L"TestCategory", L"Integration")
+        END_TEST_METHOD_ATTRIBUTE()
+        TEST_METHOD(PostBuild_Abort_TerminatesTheChildTree)
+        {
+            // A unique marker path under the temp folder. The temp path can
+            // contain a space (for example "C:\Users\First Last\..."), so the
+            // marker is quoted inside the inner cmd redirect rather than relying
+            // on 8.3 short names, which can be disabled per volume.
+            char tempDir[MAX_PATH] = {};
+            GetTempPathA(ARRAYSIZE(tempDir), tempDir);
+            std::string marker = std::string(tempDir) + "scicompanion-postbuild-tree-" +
+                std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount()) + ".marker";
+            DeleteFileA(marker.c_str());
+
+            auto cap = std::make_shared<Captured>();
+            cap->hAbort.hFile = CreateEvent(nullptr, TRUE, FALSE, nullptr); // manual-reset, not signalled yet
+            Assert::IsNotNull(cap->hAbort.hFile, L"create abort event");
+
+            // The inner cmd's command is wrapped in quotes, so the marker path is
+            // wrapped in doubled quotes ("") -- cmd's way of putting a literal
+            // quote inside an already-quoted command -- so a path with spaces
+            // still redirects correctly.
+            std::string command = "cmd.exe /c start \"\" /b cmd.exe /c \"ping -n 5 127.0.0.1 >nul & echo done>\"\"" +
+                marker + "\"\"\" & ping -n 10 127.0.0.1 >nul";
+
+            // Signal the abort ~1.5s in, while RunPostBuildProcess is still running
+            // and the grandchild is still waiting to write its marker.
+            std::thread signaller([cap]()
+            {
+                Sleep(1500);
+                SetEvent(cap->hAbort.hFile);
+            });
+
+            DeadlineRunner runner;
+            bool finished = runner.Run(20000, [cap, command]()
+            {
+                PostBuildRunResult r = RunPostBuildProcess(
+                    "",
+                    command,
+                    "",
+                    cap->hAbort.hFile,
+                    std::function<void()>(),
+                    std::function<void(const std::string &)>());
+                cap->launched.store(r.launched);
+                cap->aborted.store(r.aborted);
+            });
+            signaller.join();
+
+            Assert::IsTrue(finished, L"RunPostBuildProcess must return after the abort");
+            runner.Join();
+            Assert::IsTrue(cap->launched.load(), L"the child process must launch");
+            Assert::IsTrue(cap->aborted.load(), L"the result must report the abort");
+
+            // Wait past the grandchild's ~4s delay. If the tree was terminated the
+            // marker is never written.
+            Sleep(6000);
+            bool markerExists = (GetFileAttributesA(marker.c_str()) != INVALID_FILE_ATTRIBUTES);
+            DeleteFileA(marker.c_str());
+            Assert::IsFalse(markerExists, L"the aborted post-build step's detached grandchild must be terminated, not left to write its marker");
         }
     };
 }
