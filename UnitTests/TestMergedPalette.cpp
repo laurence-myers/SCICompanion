@@ -120,4 +120,65 @@ namespace UnitTests
             return nullptr;
         }
     };
+
+    // #147: PaletteComponent::operator== used memcmp over the whole object, which
+    // read the base class vtable pointer and relied on the struct having no padding.
+    // The fix compares the members instead. On the current layout there is no padding
+    // and both operands share a vtable, so old and new behave identically here -- a
+    // test cannot show that difference on this build. These tests are instead a
+    // forward guard that every value-bearing member (Mapping, Colors, Compression,
+    // EntryType) still takes part in equality, so a later change that drops a member
+    // from the comparison is caught. They need no game folder.
+    TEST_CLASS(TestPaletteEquality)
+    {
+    public:
+        TEST_METHOD(PaletteEquality_IdenticalMembers_AreEqual)
+        {
+            PaletteComponent a; _Fill(a);
+            PaletteComponent b; _Fill(b);
+            Assert::IsTrue(a == b, L"palettes with identical members must compare equal");
+            Assert::IsFalse(a != b, L"operator!= must be the negation of operator==");
+        }
+
+        TEST_METHOD(PaletteEquality_DifferByOneMember_AreNotEqual)
+        {
+            {
+                PaletteComponent a; _Fill(a);
+                PaletteComponent b; _Fill(b);
+                b.Mapping[42] ^= 0xFF;
+                Assert::IsTrue(a != b, L"a difference in Mapping must be detected");
+            }
+            {
+                PaletteComponent a; _Fill(a);
+                PaletteComponent b; _Fill(b);
+                b.Colors[7].rgbReserved ^= 0xFF;
+                Assert::IsTrue(a != b, L"a difference in a Colors entry must be detected");
+            }
+            {
+                PaletteComponent a; _Fill(a);
+                PaletteComponent b; _Fill(b);
+                b.Compression = PaletteCompression::Header;
+                Assert::IsTrue(a != b, L"a difference in Compression must be detected");
+            }
+            {
+                PaletteComponent a; _Fill(a);
+                PaletteComponent b; _Fill(b);
+                b.EntryType = PaletteEntryType::FourByte;
+                Assert::IsTrue(a != b, L"a difference in EntryType must be detected");
+            }
+        }
+
+    private:
+        // Populate every member to a known state, including the Colors array the
+        // default constructor leaves uninitialised, so the comparison reads no
+        // indeterminate bytes.
+        static void _Fill(PaletteComponent &p)
+        {
+            for (size_t i = 0; i < sizeof(p.Mapping); i++) { p.Mapping[i] = (uint8_t)i; }
+            memset(p.Colors, 0, sizeof(p.Colors));
+            for (size_t i = 0; i < sizeof(p.Colors) / sizeof(p.Colors[0]); i++) { p.Colors[i].rgbReserved = (uint8_t)(i & 3); }
+            p.Compression = PaletteCompression::None;
+            p.EntryType = PaletteEntryType::ThreeByte;
+        }
+    };
 }
