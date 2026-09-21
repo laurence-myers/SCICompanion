@@ -136,5 +136,46 @@ namespace UnitTests
             Assert::IsTrue(after < before + (DWORD)iterations,
                 (std::wstring(L"handle count grew from ") + std::to_wstring(before) + L" to " + std::to_wstring(after)).c_str());
         }
+
+        // #173: killId 0 (an invalid handle's GetProcessId result, or the System
+        // Idle Process) must collect nothing. Otherwise every process whose recorded
+        // parent PID is 0 -- a top-level or system process -- would be marked for
+        // termination by the "parent == killId" test.
+        TEST_METHOD(CollectProcessTreeToKill_ZeroKillId_CollectsNothing)
+        {
+            std::unordered_map<DWORD, DWORD> childToParent;
+            childToParent[500] = 0;   // a top-level process (recorded parent PID 0)
+            childToParent[600] = 0;
+            childToParent[700] = 500;
+
+            bool cycle = true;
+            std::set<DWORD> killIds = CollectProcessTreeToKill(childToParent, 0, &cycle);
+            Assert::AreEqual((size_t)0, killIds.size(), L"PID 0 must not collect any process for killing");
+            Assert::IsFalse(cycle, L"the zero-target guard must report no cycle");
+        }
+
+        // #173: an invalid process handle yields killId 0 from GetProcessId, so there
+        // is no target. The call must report failure rather than try to kill PID 0.
+        TEST_METHOD(TerminateProcessTree_InvalidHandle_ReturnsFalse)
+        {
+            Assert::IsFalse(TerminateProcessTree(nullptr, 0), L"a null handle has no target to terminate");
+        }
+
+        // #173: terminating a real, live process reports success, so the caller does
+        // not show a spurious "Unable to terminate process" dialog on a normal kill.
+        TEST_METHOD(TerminateProcessTree_LiveProcess_ReturnsTrue)
+        {
+            STARTUPINFOA si = { sizeof(si) };
+            PROCESS_INFORMATION pi = {};
+            char cmd[] = "cmd.exe /c pause";
+            BOOL launched = CreateProcessA(nullptr, cmd, nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+            Assert::IsTrue(!!launched, L"setup: cmd.exe must launch");
+            CloseHandle(pi.hThread);
+
+            bool result = TerminateProcessTree(pi.hProcess, 0);
+            WaitForSingleObject(pi.hProcess, 5000);
+            CloseHandle(pi.hProcess);
+            Assert::IsTrue(result, L"terminating a live process must report success");
+        }
     };
 }
