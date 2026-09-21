@@ -1,6 +1,14 @@
 name: Build On Push
 
-on: [push]
+# Build on a push to master and on every pull request (a stacked PR bases on
+# another feature branch, so pull_request is left unfiltered to cover the whole
+# stack). A push to a feature branch no longer starts a build on its own: the
+# branch's open pull request already builds it, so this stops every branch push
+# from spending three CI jobs (build, asan, static-analysis). (B8 of #76.)
+on:
+  push:
+    branches: [master]
+  pull_request:
 
 jobs:
   build:

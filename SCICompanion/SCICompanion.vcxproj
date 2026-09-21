@@ -72,22 +72,36 @@
       <AdditionalIncludeDirectories>$(IntDir);$(SolutionDir)SCICompanionLib;$(SolutionDir)Prof-UIS.2.92\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <PostBuildEvent>
-      <Command>xcopy /S /Y /I /D "$(ProjectDir)Files\TemplateGame" "$(OutDir)TemplateGame"
+      <Command>rem /MIR mirrors each source folder, so a file deleted from the tree is
+rem removed from the output too. xcopy /D only added and updated, so a stale
+rem shipped file lingered (B7 of #76). robocopy returns 0-7 on success and 8+
+rem on failure, so only 8+ fails the build.
+robocopy "$(ProjectDir)Files\TemplateGame" "$(OutDir)TemplateGame" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
 
 
-xcopy /S /Y /I /D "$(ProjectDir)Files\CompileInclude" "$(OutDir)include"
+robocopy "$(ProjectDir)Files\CompileInclude" "$(OutDir)include" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
 
-xcopy /S /Y /I /D "$(ProjectDir)Docs\build\html" "$(OutDir)Help"
+robocopy "$(ProjectDir)Docs\build\html" "$(OutDir)Help" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
 
 
-xcopy /S /Y /I /D "$(ProjectDir)Files\Samples" "$(OutDir)Samples"
+robocopy "$(ProjectDir)Files\Samples" "$(OutDir)Samples" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
 
-xcopy /S /Y /I /D "$(ProjectDir)Files\Decompiler" "$(OutDir)Decompiler"
+robocopy "$(ProjectDir)Files\Decompiler" "$(OutDir)Decompiler" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
 
-xcopy /S /Y /I /D "$(ProjectDir)Files\Customization" "$(OutDir)Customization"
-xcopy /S /Y /I /D "$(ProjectDir)Files\Objects" "$(OutDir)Objects"
-xcopy /S /Y /I /D "$(ProjectDir)Files\Plugins" "$(OutDir)Plugins"
-xcopy /S /Y /I /D "$(ProjectDir)Tools" "$(OutDir)Tools"</Command>
+robocopy "$(ProjectDir)Files\Customization" "$(OutDir)Customization" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
+robocopy "$(ProjectDir)Files\Objects" "$(OutDir)Objects" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
+robocopy "$(ProjectDir)Files\Plugins" "$(OutDir)Plugins" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
+robocopy "$(ProjectDir)Tools" "$(OutDir)Tools" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
+exit /b 0</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -107,7 +121,6 @@ xcopy /S /Y /I /D "$(ProjectDir)Tools" "$(OutDir)Tools"</Command>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <AdditionalLibraryDirectories>$(SolutionDir)Prof-UIS.2.92\Bin_1000\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <Profile>true</Profile>
     </Link>
     <Midl>
       <MkTypLibCompatible>false</MkTypLibCompatible>
@@ -120,22 +133,36 @@ xcopy /S /Y /I /D "$(ProjectDir)Tools" "$(OutDir)Tools"</Command>
       <AdditionalIncludeDirectories>$(IntDir);$(SolutionDir)SCICompanionLib;$(SolutionDir)Prof-UIS.2.92\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <PostBuildEvent>
-      <Command>xcopy /S /Y /I /D "$(ProjectDir)Files\TemplateGame" "$(OutDir)TemplateGame"
+      <Command>rem /MIR mirrors each source folder, so a file deleted from the tree is
+rem removed from the output too. xcopy /D only added and updated, so a stale
+rem shipped file lingered (B7 of #76). robocopy returns 0-7 on success and 8+
+rem on failure, so only 8+ fails the build.
+robocopy "$(ProjectDir)Files\TemplateGame" "$(OutDir)TemplateGame" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
 
 
-xcopy /S /Y /I /D "$(ProjectDir)Files\CompileInclude" "$(OutDir)include"
+robocopy "$(ProjectDir)Files\CompileInclude" "$(OutDir)include" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
 
-xcopy /S /Y /I /D "$(ProjectDir)Docs\build\html" "$(OutDir)Help"
+robocopy "$(ProjectDir)Docs\build\html" "$(OutDir)Help" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
 
 
-xcopy /S /Y /I /D "$(ProjectDir)Files\Samples" "$(OutDir)Samples"
+robocopy "$(ProjectDir)Files\Samples" "$(OutDir)Samples" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
 
-xcopy /S /Y /I /D "$(ProjectDir)Files\Decompiler" "$(OutDir)Decompiler"
+robocopy "$(ProjectDir)Files\Decompiler" "$(OutDir)Decompiler" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
 
-xcopy /S /Y /I /D "$(ProjectDir)Files\Customization" "$(OutDir)Customization"
-xcopy /S /Y /I /D "$(ProjectDir)Files\Objects" "$(OutDir)Objects"
-xcopy /S /Y /I /D "$(ProjectDir)Files\Plugins" "$(OutDir)Plugins"
-xcopy /S /Y /I /D "$(ProjectDir)Tools" "$(OutDir)Tools"</Command>
+robocopy "$(ProjectDir)Files\Customization" "$(OutDir)Customization" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
+robocopy "$(ProjectDir)Files\Objects" "$(OutDir)Objects" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
+robocopy "$(ProjectDir)Files\Plugins" "$(OutDir)Plugins" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
+robocopy "$(ProjectDir)Tools" "$(OutDir)Tools" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
+exit /b 0</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

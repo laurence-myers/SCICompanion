@@ -1199,6 +1199,18 @@ std::set<DWORD> CollectProcessTreeToKill(const std::unordered_map<DWORD, DWORD> 
 {
 	bool cycle = false;
 	std::set<DWORD> killIds;
+	// PID 0 is never a valid target: GetProcessId returns 0 for an invalid handle,
+	// and 0 is the System Idle Process. Collecting it would also mark every process
+	// whose recorded parent PID is 0 -- top-level and system processes -- for
+	// killing via the "parent == killId" test below. Refuse it (#173).
+	if (killId == 0)
+	{
+		if (outCycleDetected)
+		{
+			*outCycleDetected = cycle;
+		}
+		return killIds;
+	}
 	killIds.insert(killId);
 	for (auto &pair : childToParent)
 	{
@@ -1247,6 +1259,13 @@ std::set<DWORD> CollectProcessTreeToKill(const std::unordered_map<DWORD, DWORD> 
 bool TerminateProcessTree(HANDLE hProcess, DWORD retCode)
 {
 	DWORD killId = GetProcessId(hProcess);
+	if (killId == 0)
+	{
+		// GetProcessId returns 0 for an invalid handle. There is no target to
+		// terminate, and asking the collector to kill PID 0 would over-match
+		// unrelated processes (#173).
+		return false;
+	}
 
 	// The snapshot handle is owned here so every return path closes it; the
 	// function used to leak one kernel handle per call (#72).
@@ -1268,25 +1287,44 @@ bool TerminateProcessTree(HANDLE hProcess, DWORD retCode)
 		}
 	}
 
-	// The cycle flag returned here only bounds the walk (see the helper). A cycle
-	// in some unrelated part of the snapshot does NOT mean we failed to terminate
-	// the target and its descendants, so it must not be reported as failure -- a
-	// busy machine (the very case the guard handles) would otherwise trigger the
-	// caller's "Unable to terminate process" dialog even though the kill
-	// succeeded (#169). Success reflects only whether we could enumerate the
-	// process tree at all.
 	std::set<DWORD> killIds = CollectProcessTreeToKill(childToParent, killId, nullptr);
 
+	// Terminate the collected set, and note whether the target itself was dealt
+	// with, so the return value is a real kill-success signal for the caller's
+	// "Unable to terminate process" dialog (#173). A cycle in some unrelated part
+	// of the snapshot, or a failure to kill some unrelated descendant, does not
+	// count as failure -- only the target matters (#169).
+	bool targetPresent = (childToParent.find(killId) != childToParent.end());
+	bool targetTerminated = false;
 	for (DWORD killPid : killIds)
 	{
 		HANDLE killHandle = OpenProcess(PROCESS_TERMINATE, TRUE, killPid);
 		if (killHandle)
 		{
-			TerminateProcess(killHandle, 0);
+			BOOL terminated = TerminateProcess(killHandle, 0);
 			CloseHandle(killHandle);
+			if (killPid == killId)
+			{
+				targetTerminated = (terminated != FALSE);
+			}
 		}
 	}
-	return snapshotOk;
+
+	// A target that was in the snapshot can still exit on its own in the window
+	// before TerminateProcess runs; TerminateProcess then fails on the dead process
+	// and targetTerminated stays false. That is not a real failure -- the process is
+	// gone -- so treat an already-signalled target handle as success. This avoids a
+	// spurious "Unable to terminate process" dialog for a process that exited just as
+	// we tried to kill it (#173).
+	if (!targetTerminated && (WaitForSingleObject(hProcess, 0) == WAIT_OBJECT_0))
+	{
+		targetTerminated = true;
+	}
+
+	// Success if we terminated the target, or if it had already exited before we
+	// enumerated (nothing left to kill). A target still present that we could not
+	// open and terminate is a genuine failure.
+	return targetTerminated || (snapshotOk && !targetPresent);
 }
 
 // Very basic function that turns a string into an integer, with no exceptions, no error-checking, etc...

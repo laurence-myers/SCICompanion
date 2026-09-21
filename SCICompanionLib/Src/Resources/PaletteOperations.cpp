@@ -522,13 +522,21 @@ void PaletteReadFrom(ResourceEntity &resource, sci::istream &byteStream, const s
 	ReadPalette(resource.GetComponent<PaletteComponent>(), byteStream);
 }
 
-bool PaletteComponent::operator == (const PaletteComponent &src)
+// #147: comparing the whole object with memcmp includes the base class vtable
+// pointer and relies on the struct carrying no padding. Compare the data members
+// instead, so a later layout change (an added member, a wider enum, a 64-bit build)
+// cannot make two equal palettes report as different. The arrays hold no padding, so
+// memcmp is exact for them; the two enums compare by value.
+bool PaletteComponent::operator == (const PaletteComponent &src) const
 {
-	return 0 == memcmp(this, &src, sizeof(*this));
+	return (0 == memcmp(Mapping, src.Mapping, sizeof(Mapping))) &&
+		(0 == memcmp(Colors, src.Colors, sizeof(Colors))) &&
+		(Compression == src.Compression) &&
+		(EntryType == src.EntryType);
 }
-bool PaletteComponent::operator != (const PaletteComponent &src)
+bool PaletteComponent::operator != (const PaletteComponent &src) const
 {
-	return 0 != memcmp(this, &src, sizeof(*this));
+	return !(*this == src);
 }
 
 ResourceTraits paletteTraits_SCI10 =

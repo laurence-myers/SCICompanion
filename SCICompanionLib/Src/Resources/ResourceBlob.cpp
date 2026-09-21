@@ -203,6 +203,15 @@ HRESULT ResourceBlob::CreateFromFile(PCTSTR pszName, std::string strFileName, SC
 
 sci::istream ResourceBlob::GetReadStream() const
 {
+	// #144: a blob created with delayed decompression has _pData allocated but not
+	// yet filled -- the decompressed bytes live in _pDataCompressed until the blob
+	// is realized. Without this, the stream would hand back uninitialised heap.
+	// Decompression is a logically-const, lazy step (like the cached checksum, whose
+	// members are already mutable), so const_cast to run it here.
+	if (IsFlagSet(_resourceLoadStatus, ResourceLoadStatusFlags::Delayed))
+	{
+		const_cast<ResourceBlob*>(this)->_EnsureDecompressed();
+	}
 	return (header.cbDecompressed > 0) ? sci::istream(&_pData[0], header.cbDecompressed) : sci::istream();
 }
 

@@ -13,6 +13,7 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "CppUnitTest.h"
+#include "Helper.h"
 #include "View.h"
 #include "ResourceEntity.h"
 #include "ResourceMap.h"
@@ -501,4 +502,66 @@ namespace UnitTests
         }
 
 	};
+
+    // #144: ResourceBlob::GetReadStream returned _pData without realizing a blob
+    // created with delayed decompression, so it handed back uninitialised bytes.
+    // (No shipping caller reads a delayed blob's stream today, so this was latent.)
+    // The test loads each compressed resource from the template twice -- once
+    // realized at creation, once with decompression delayed -- and checks that the
+    // delayed blob's stream now yields the same bytes. It also asserts at least one
+    // compressed resource was exercised, so the delayed path is really covered.
+    TEST_CLASS(TestResourceBlobRealize)
+    {
+        std::string _gameFolder;
+
+    public:
+        TEST_METHOD_CLEANUP(CleanUpResourceBlobRealize)
+        {
+            if (!_gameFolder.empty())
+            {
+                CleanUpGame(_gameFolder);
+                _gameFolder.clear();
+            }
+        }
+
+        TEST_METHOD(GetReadStream_DelayedBlob_RealizesBeforeReading)
+        {
+            _gameFolder = SetUpGameSCI11();
+            CResourceMap &rm = appState->GetResourceMap();
+
+            int compressedExercised = 0;
+            auto container = rm.Resources(ResourceTypeFlags::All, ResourceEnumFlags::AddInDefaultEnumFlags);
+            for (auto it = container->begin(); it != container->end(); ++it)
+            {
+                std::unique_ptr<ResourceBlob> delayed = it.CreateButDelayDecompression();
+                // Only a compressed resource is left unrealized by the delay; an
+                // uncompressed one is read straight into _pData at creation.
+                if (!IsFlagSet(delayed->GetStatusFlags(), ResourceLoadStatusFlags::Delayed))
+                {
+                    continue;
+                }
+                compressedExercised++;
+
+                std::unique_ptr<ResourceBlob> realized = *it; // realized at creation
+
+                DWORD length = delayed->GetDecompressedLength();
+                Assert::AreEqual(length, realized->GetDecompressedLength(),
+                    L"the two loads of the same resource must report the same length");
+
+                sci::istream delayedStream = delayed->GetReadStream();   // must realize now
+                sci::istream realizedStream = realized->GetReadStream();
+
+                std::vector<uint8_t> a(length), b(length);
+                if (length > 0)
+                {
+                    delayedStream.read_data(a.data(), length);
+                    realizedStream.read_data(b.data(), length);
+                }
+                Assert::IsTrue(a == b,
+                    L"a delayed blob's read stream must decompress to the same bytes as a realized blob");
+            }
+            Assert::IsTrue(compressedExercised > 0,
+                L"the template must contain at least one compressed resource to cover the delayed path");
+        }
+    };
 }

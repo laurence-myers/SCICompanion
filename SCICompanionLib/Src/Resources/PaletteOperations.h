@@ -49,8 +49,8 @@ struct PaletteComponent : public ResourceComponent
 		return new PaletteComponent(*this);
 	}
 
-	bool operator==(const PaletteComponent &src);
-	bool operator!=(const PaletteComponent &src);
+	bool operator==(const PaletteComponent &src) const;
+	bool operator!=(const PaletteComponent &src) const;
 
 	~PaletteComponent()
 	{
