@@ -138,24 +138,38 @@ namespace UnitTests
             auto container = appState->GetResourceMap().Resources(flags, ResourceEnumFlags::None | ResourceEnumFlags::AddInDefaultEnumFlags);
             int count = 0;
             auto toWide = [](const std::string &s) { return std::wstring(s.begin(), s.end()); };
-            // Iterate manually rather than with a range-for. Dereferencing the
-            // iterator (*it) reads AND decompresses the resource, so a read or
-            // decompression failure throws there -- and a range-for evaluates *it
-            // OUTSIDE the loop body's try, so such a failure used to escape as a
-            // bare "Unhandled C++ Exception" that named no resource. Keep *it inside
-            // the try and report the resource number, type and the exception
-            // message; guard the advance too, in case a corrupt map throws. (#182)
+            // Iterate manually rather than with a range-for. Reading and decompressing
+            // a resource can throw, and a range-for evaluates the iterator OUTSIDE the
+            // loop body's try, so such a failure used to escape as a bare "Unhandled
+            // C++ Exception" that named no resource. Keep the read inside the try and
+            // report the resource number, type and the exception message; guard the
+            // advance too, in case a corrupt map throws. (#182)
             for (auto it = container->begin(); it != container->end(); )
             {
                 ResourceType type = it.GetResourceType();
                 int number = it.GetResourceNumber();
                 try
                 {
-                    std::unique_ptr<ResourceBlob> blob = *it;
+                    // Read the map entry but delay decompression, so a zero-length
+                    // placeholder is skipped by its header length without trying to
+                    // decompress or parse it (e.g. KQ4 "view" 1029, an 8-byte header
+                    // with no payload). (#182)
+                    std::unique_ptr<ResourceBlob> blob = it.CreateButDelayDecompression();
                     type = blob->GetType();
                     number = blob->GetNumber();
-                    std::unique_ptr<ResourceEntity> resource = CreateResourceFromResourceData(*blob, false);
-                    count++;
+                    if (blob->GetLength() == 0)
+                    {
+                        std::wstring skipMessage = fmt::format(L"Skipping empty resource {0} of type {1}.", number, (int)type);
+                        Logger::WriteMessage(skipMessage.c_str());
+                    }
+                    else
+                    {
+                        // Realize (decompress) now, so a decompression failure throws
+                        // here inside the try and is reported with the resource id.
+                        blob->EnsureRealized();
+                        std::unique_ptr<ResourceEntity> resource = CreateResourceFromResourceData(*blob, false);
+                        count++;
+                    }
                 }
                 catch (const std::exception &e)
                 {
