@@ -14,6 +14,7 @@
 #include "stdafx.h"
 #include "AppState.h"
 #include "ExtractAllDialog.h"
+#include "PaletteOperations.h"
 #include "format.h"
 
 using namespace std;
@@ -46,8 +47,21 @@ ExtractAllDialog::~ExtractAllDialog()
 bool ExtractAllDialog::SetProgress(const std::string &info, int amountDone, int totalAmount)
 {
 	std::string *ptrToString = new std::string(info);
-	PostMessage(UWM_UPDATESTATUS, MAKELONG(amountDone, totalAmount), reinterpret_cast<LPARAM>(ptrToString));
+	// UpdateStatus deletes the string when the message arrives. If the post
+	// fails (for example the window is gone) nothing receives it, so free it
+	// here (#57).
+	if (!PostMessage(UWM_UPDATESTATUS, MAKELONG(amountDone, totalAmount), reinterpret_cast<LPARAM>(ptrToString)))
+	{
+		delete ptrToString;
+	}
 	return !_fAbort;
+}
+
+void ExtractAllDialog::SetSummary(const std::string &summary)
+{
+	// Worker thread, called once just before the extraction returns. OnTimer
+	// reads it after the future is ready, which orders this write before it.
+	_summary = summary;
 }
 
 void ExtractAllDialog::DoDataExchange(CDataExchange* pDX)
@@ -223,6 +237,18 @@ void ExtractAllDialog::OnBnClickedExtract()
 		_exportMessages = m_wndExportMessages.GetCheck() != 0;
 		_generateWavs = m_wndGenerateWav.GetCheck() != 0;
 
+		// Copy palette 999 here, on the UI thread, so the extraction worker uses
+		// this copy and never reads the resource map's cached palette (#133).
+		_globalPalette.reset();
+		if (_extractViewImages)
+		{
+			const PaletteComponent *global999 = appState->GetResourceMap().GetPalette999();
+			if (global999)
+			{
+				_globalPalette = std::make_unique<PaletteComponent>(*global999);
+			}
+		}
+
 		try
 		{
 			_future = make_unique<future<void>>(async(launch::async, s_ThreadWorker, this));
@@ -236,7 +262,7 @@ void ExtractAllDialog::OnBnClickedExtract()
 
 void ExtractAllDialog::s_ThreadWorker(ExtractAllDialog *pThis)
 {
-	ExtractAllResources(pThis->_version, (PCSTR)pThis->_location, pThis->_extractResources, pThis->_extractPicImages, pThis->_extractViewImages, pThis->_disassembleScripts, pThis->_exportMessages, pThis->_generateWavs, pThis);
+	ExtractAllResources(pThis->_version, (PCSTR)pThis->_location, pThis->_extractResources, pThis->_extractPicImages, pThis->_extractViewImages, pThis->_disassembleScripts, pThis->_exportMessages, pThis->_generateWavs, pThis->_globalPalette.get(), pThis);
 }
 
 void ExtractAllDialog::OnTimer(UINT_PTR nIDEvent)
@@ -247,7 +273,20 @@ void ExtractAllDialog::OnTimer(UINT_PTR nIDEvent)
 		{
 			_fExtracting = false;
 			_future = nullptr;
-			m_wndDisplay.SetWindowTextA(_fAbort ? "Aborted" : "Done!");
+			if (_fAbort)
+			{
+				m_wndDisplay.SetWindowTextA("Aborted");
+			}
+			else if (!_summary.empty())
+			{
+				// Some resources failed; show them instead of a plain "Done!" (#73).
+				m_wndDisplay.SetWindowTextA(("Done, with errors.\r\n" + _summary).c_str());
+			}
+			else
+			{
+				m_wndDisplay.SetWindowTextA("Done!");
+			}
+			_summary.clear();
 			_fAbort = false;
 			m_wndExtract.EnableWindow(TRUE);
 			m_wndProgress.SetPos(0);

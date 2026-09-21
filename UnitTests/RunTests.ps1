@@ -76,15 +76,18 @@ $vstestArgs = @(
 # adapter filters on FullyQualifiedName, not on trait attributes). The default
 # run excludes them, so the unit leg stays fast and never spawns a process.
 # -Integration runs only them; -All runs everything; -Filter overrides all this.
+# Opt-in tests carry "OptIn" in their name (e.g. the real-game bytecode oracle,
+# which needs SCICOMP_ORACLE_GAME). They FAIL when their input is missing, so
+# they are excluded from every run except an explicit -Filter (#79).
 $effectiveFilter = ""
 if ($Filter) {
     $effectiveFilter = $Filter          # explicit subset wins
 } elseif ($All) {
-    $effectiveFilter = ""               # everything: unit + integration (so -Integration -All runs all)
+    $effectiveFilter = "FullyQualifiedName!~OptIn"   # everything: unit + integration (so -Integration -All runs all)
 } elseif ($Integration) {
-    $effectiveFilter = "FullyQualifiedName~Integration"
+    $effectiveFilter = "FullyQualifiedName~Integration&FullyQualifiedName!~OptIn"
 } else {
-    $effectiveFilter = "FullyQualifiedName!~Integration"
+    $effectiveFilter = "FullyQualifiedName!~Integration&FullyQualifiedName!~OptIn"
 }
 if ($effectiveFilter) {
     $vstestArgs += "/TestCaseFilter:$effectiveFilter"

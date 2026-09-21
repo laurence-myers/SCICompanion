@@ -161,20 +161,24 @@ private:
 						// If the owner wanted a response, send it now.
 						if (response)
 						{
-							HWND hwnd;
-							UINT msg;
+							// Post inside the lock, not after it. Between an unlocked
+							// snapshot of _hwndResponse and the post, the UI thread can
+							// DeactivateHWND and destroy the window, so the worker would
+							// post to a just-destroyed handle (harmless unless the HWND
+							// is recycled, then a WM_APP-range message reaches an
+							// unrelated window). The only real caller
+							// (CScriptView::OnDestroy) calls DeactivateHWND on the UI
+							// thread while the handle is still valid, so holding the
+							// lock across the post keeps the deactivate from
+							// interleaving. PostMessage is asynchronous and returns
+							// without waiting for the UI thread, and on a full queue it
+							// returns FALSE rather than blocking, so it does not hold
+							// the lock long (#130).
+							std::lock_guard<std::mutex> lock(_mutexResponse);
+							if (_hwndResponse)
 							{
-								std::lock_guard<std::mutex> lock(_mutexResponse);
-								hwnd = _hwndResponse;
-								msg = _msgResponse;
-								if (_hwndResponse)
-								{
-									_responseQueue.emplace_back(id, std::move(response));
-								}
-							}
-							if (hwnd)
-							{
-								PostMessage(hwnd, msg, 0, 0);
+								_responseQueue.emplace_back(id, std::move(response));
+								PostMessage(_hwndResponse, _msgResponse, 0, 0);
 							}
 						}
 					}

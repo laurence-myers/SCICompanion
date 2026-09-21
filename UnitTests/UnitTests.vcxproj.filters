@@ -131,6 +131,9 @@
     <ClCompile Include="TestLipSyncUtil.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestConfigParsers.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestUndoResource.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

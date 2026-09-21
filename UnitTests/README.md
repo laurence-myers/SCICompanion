@@ -19,6 +19,12 @@ subset locally; `-All` is kept as an explicit "everything" override. Pass
 `-UpdateSnapshots` to accept a deliberate change in decompiler output (see
 Snapshots below).
 
+Tests with `OptIn` in their name need an input that CI does not have (for
+example `OptIn_Oracle_ExistingGame` needs `SCICOMP_ORACLE_GAME` set to a real
+game's `resource.map` folder). They fail when that input is missing, so no run
+includes them unless you ask with `-Filter "FullyQualifiedName~OptIn"`. A green
+result therefore always means the test really ran.
+
 The test DLL and its data land in the build's output folder (`Release`, or
 `Debug`) next to `SCICompanion.exe`. The app post-build copies the template
 game, the include headers, and the decompiler config there. The test

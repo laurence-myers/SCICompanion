@@ -32,7 +32,7 @@
 #include "format.h"
 #include "AudioCacheResourceSource.h"
 
-void ExtractAllResources(SCIVersion version, const std::string &destinationFolderIn, bool extractResources, bool extractPicImages, bool extractViewImages, bool disassembleScripts, bool extractMessages, bool generateWavs, IExtractProgress *progress)
+void ExtractAllResources(SCIVersion version, const std::string &destinationFolderIn, bool extractResources, bool extractPicImages, bool extractViewImages, bool disassembleScripts, bool extractMessages, bool generateWavs, const PaletteComponent *globalPalette, IExtractProgress *progress)
 {
 	std::string destinationFolder = destinationFolderIn;
 	if (destinationFolder.back() != '\\')
@@ -66,7 +66,9 @@ void ExtractAllResources(SCIVersion version, const std::string &destinationFolde
 		{
 			totalCount++;
 		}
-		if (disassembleScripts && (blob->GetType() == ResourceType::Pic))
+		// The work loop disassembles Script resources; this counted Pic, so the
+		// progress total did not match the work (#73).
+		if (disassembleScripts && (blob->GetType() == ResourceType::Script))
 		{
 			totalCount++;
 		}
@@ -98,6 +100,10 @@ void ExtractAllResources(SCIVersion version, const std::string &destinationFolde
 	}
 
 	int count = 0;
+	// Resources that failed to extract, reported to the caller at the end. The
+	// old code swallowed every failure in an empty catch, so the user believed
+	// the extraction was complete (#73).
+	std::vector<std::string> failures;
 	// Get it again, because we don't supprot reset.
 	resourceContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::All, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::ExcludePatchFiles);
 	bool keepGoing = true;
@@ -152,7 +158,9 @@ void ExtractAllResources(SCIVersion version, const std::string &destinationFolde
 					std::unique_ptr<PaletteComponent> optionalPalette;
 					if (view->GetComponent<RasterComponent>().Traits.PaletteType == PaletteType::VGA_256)
 					{
-						optionalPalette = appState->GetResourceMap().GetMergedPalette(*view, 999);
+						// Use the palette the UI thread precomputed, via the thread-safe overload,
+						// so the worker never reads the resource map (#133).
+						optionalPalette = appState->GetResourceMap().GetMergedPalette(*view, globalPalette);
 					}
 					bitmap.Attach(CreateBitmapFromResource(*view, optionalPalette.get(), &bmi, &pBitsDest));
 				}
@@ -203,9 +211,9 @@ void ExtractAllResources(SCIVersion version, const std::string &destinationFolde
 				}
 			}
 		}
-		catch (std::exception)
+		catch (const std::exception &e)
 		{
-
+			failures.push_back(filename + ": " + e.what());
 		}
 	}
 
@@ -251,5 +259,19 @@ void ExtractAllResources(SCIVersion version, const std::string &destinationFolde
 				}
 			}
 		}
+	}
+
+	if (progress)
+	{
+		std::string summary;
+		if (!failures.empty())
+		{
+			summary = fmt::format("{0} resource(s) failed to extract:", failures.size());
+			for (const std::string &failure : failures)
+			{
+				summary += "\r\n" + failure;
+			}
+		}
+		progress->SetSummary(summary);
 	}
 }

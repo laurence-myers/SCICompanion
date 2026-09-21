@@ -180,10 +180,16 @@ void CScriptDocument::OnCompile()
 			char sz[200];
 			StringCchPrintf(sz, ARRAYSIZE(sz), "There was a problem writing the compiled script: %x", hr);
 			log.ReportResult(CompileResult(sz));
-			char *dummyFN[1];
-			dummyFN[0] = "";
-			FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, 0, HRESULT_CODE(hr), 0,  sz, ARRAYSIZE(sz), dummyFN);
-			log.ReportResult(CompileResult(sz, CompileResult::CRT_Error));
+			// Without FORMAT_MESSAGE_IGNORE_INSERTS, FormatMessage reads the
+			// Arguments array for any %1/%2 insert in the system text; the old
+			// code passed a fake one-entry array, so such a message read bad
+			// data (#57). Use a separate buffer so the text above is kept.
+			char szSystem[200] = {};
+			if (FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, HRESULT_CODE(hr), 0, szSystem, ARRAYSIZE(szSystem), nullptr) == 0)
+			{
+				StringCchCopy(szSystem, ARRAYSIZE(szSystem), "(no system message)");
+			}
+			log.ReportResult(CompileResult(szSystem, CompileResult::CRT_Error));
 			log.CalculateErrors();
 		}
 		_DoErrorSummary(log);

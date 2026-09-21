@@ -52,6 +52,11 @@ struct BytecodeSnapshotResult
     int processed = 0;
     std::vector<std::string> mismatched;      // "<title>.scr"/"<title>.hep" whose bytes changed
     std::vector<std::string> missingExpected; // snapshots with no committed golden
+    // Scripts that did not recompile in the RecompileAllDecompiledScripts pass.
+    // Such a script keeps its ORIGINAL bytecode on disk, so comparing it against
+    // the golden is a comparison of the original with itself and always
+    // matches; the test must fail on this list instead (#79).
+    std::vector<std::string> failedRecompile;
 };
 
 // Recompiles every template script as one consistent world, then compares each

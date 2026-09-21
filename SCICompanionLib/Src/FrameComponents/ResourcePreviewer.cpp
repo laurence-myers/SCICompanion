@@ -731,10 +731,13 @@ BOOL SoundPreviewer::OnInitDialog()
 	GetClientRect(&rc);
 
 	CDC *pDC = GetDC();
+	// GetDC can return null; the old code dereferenced it at once (#57). Fall
+	// back to the standard 96 dpi when no device context is available.
 	{
+		int logPixelsY = pDC ? GetDeviceCaps((HDC)*pDC, LOGPIXELSY) : 96;
 		LOGFONT logFont = { 0 };
 		StringCchCopy(logFont.lfFaceName, ARRAYSIZE(logFont.lfFaceName), "Marlett");
-		logFont.lfHeight = -MulDiv(10, GetDeviceCaps((HDC)*pDC, LOGPIXELSY), 72);
+		logFont.lfHeight = -MulDiv(10, logPixelsY, 72);
 		logFont.lfWeight = FW_NORMAL;
 		logFont.lfItalic = FALSE;
 		logFont.lfCharSet = DEFAULT_CHARSET;
@@ -751,7 +754,10 @@ BOOL SoundPreviewer::OnInitDialog()
 
 	_UpdatePlayState();
 
-	ReleaseDC(pDC);
+	if (pDC)
+	{
+		ReleaseDC(pDC);
+	}
 	return fRet;
 }
 

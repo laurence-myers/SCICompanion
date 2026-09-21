@@ -37,6 +37,7 @@ MidiPlayer::MidiPlayer()
 	_wTimeDivision = SCI_PPQN;
 	_wTempo = 120;
 	_fStoppingStream = false;
+	_streamGeneration = 0;
 	_dwCookie = 0;
 }
 
@@ -81,7 +82,8 @@ LRESULT CALLBACK MidiPlayer::s_NotifyWndProc(HWND hwnd, UINT msg, WPARAM wParam,
 		MidiPlayer *pThis = reinterpret_cast<MidiPlayer *>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 		if (pThis)
 		{
-			pThis->_OnStreamDone();
+			// wParam carries the stream generation stamped by the callback (#113).
+			pThis->_OnStreamDone(static_cast<DWORD>(wParam));
 		}
 		return 0;
 	}
@@ -428,6 +430,9 @@ void MidiPlayer::CueTickPosition(DWORD dwTicks)
 //
 void MidiPlayer::_CuePosition(DWORD dwEventIndex, DWORD ticks)
 {
+	// A new chunk (or a stop/seek, which cue position 0) invalidates any
+	// MM_MOM_DONE that the driver has already posted for the previous chunk (#113).
+	++_streamGeneration;
 	if (_pRealData)
 	{
 		if (_fQueuedUp)
@@ -495,12 +500,19 @@ void MidiPlayer::_CuePosition(DWORD dwEventIndex, DWORD ticks)
 	}
 }
 
-void MidiPlayer::_OnStreamDone()
+void MidiPlayer::_OnStreamDone(DWORD generation)
 {
 	if (!_handle)
 	{
 		// The stream was closed (e.g. Reset) after this notification was posted but
 		// before the UI thread handled it. Nothing to do. (#49)
+		return;
+	}
+	if (generation != _streamGeneration.load())
+	{
+		// A Stop or a seek changed the stream between this notification being
+		// posted and the UI pump handling it, so it is stale. Ignoring it stops a
+		// stale done from re-cueing against the new state (#113).
 		return;
 	}
 	if (!_fStoppingStream)
@@ -543,7 +555,10 @@ void CALLBACK MidiPlayer::s_MidiOutProc(HMIDIOUT hmo, UINT wMsg, DWORD_PTR dwIns
 		MidiPlayer *pThis = reinterpret_cast<MidiPlayer *>(dwInstance);
 		if (pThis && pThis->_hNotifyWnd && !pThis->_fStoppingStream)
 		{
-			::PostMessage(pThis->_hNotifyWnd, UWM_MIDISTREAMDONE, 0, 0);
+			// Stamp the generation of the chunk that just finished. A Stop or seek
+			// bumps the generation, so a done posted here that the UI pump has not
+			// yet handled is ignored in _OnStreamDone (#113).
+			::PostMessage(pThis->_hNotifyWnd, UWM_MIDISTREAMDONE, static_cast<WPARAM>(pThis->_streamGeneration.load()), 0);
 		}
 	}
 }

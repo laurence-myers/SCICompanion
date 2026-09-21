@@ -53,8 +53,22 @@ PhonemeMap::PhonemeMap(const std::string &filename) : _filespec(filename.substr(
 				shared_ptr<cpptoml::table> phonemes = table->get_table("phoneme_to_cel");
 				for (auto entry : *phonemes.get())
 				{
+					// as<int64_t>() returns null when the value is not an integer
+					// (for example `ah = "3"`). That is not a parse_exception, so
+					// the catch below did not see it and the dereference crashed (#73).
 					auto value = entry.second->as<int64_t>();
-					_phonemeToCel[entry.first] = (int)(*value).get();
+					if (value)
+					{
+						_phonemeToCel[entry.first] = (int)(*value).get();
+					}
+					else
+					{
+						if (!_errors.empty())
+						{
+							_errors += "\n";
+						}
+						_errors += "phoneme_to_cel." + entry.first + " is not an integer; entry ignored.";
+					}
 				}
 			}
 
