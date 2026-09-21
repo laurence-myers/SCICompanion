@@ -13,7 +13,7 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{761DE01C-57F6-45C5-AAFC-AC48000C423F}</ProjectGuid>
     <RootNamespace>SCICompanionLib</RootNamespace>
-    <Keyword>MFCDLLProj</Keyword>
+    <Keyword>MFCProj</Keyword>
     <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -42,30 +42,23 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <LinkIncremental>true</LinkIncremental>
-    <EmbedManifest>true</EmbedManifest>
-  </PropertyGroup>
+    <LinkIncremental>true</LinkIncremental>  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <LinkIncremental>false</LinkIncremental>
-    <EmbedManifest>true</EmbedManifest>
-  </PropertyGroup>
+    <LinkIncremental>false</LinkIncremental>  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;NO_WARN_MBCS_MFC_DEPRECATION;_DEBUG;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NO_WARN_MBCS_MFC_DEPRECATION;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>$(SolutionDir)SCICompanionLib\;$(SolutionDir)SCICompanionLib\Src\Util;$(SolutionDir)SCICompanionLib\Src\Resources;$(SolutionDir)SCICompanionLib\Src\Docs;$(SolutionDir)SCICompanionLib\Src\GIFLIB;$(SolutionDir)SCICompanionLib\Src\MFCViews;$(SolutionDir)SCICompanionLib\Src\MFCFrames;$(SolutionDir)SCICompanionLib\Src\MFCDocuments;$(SolutionDir)SCICompanionLib\Src\FrameComponents;$(SolutionDir)SCICompanionLib\Src\Dialogs;$(SolutionDir)SCICompanionLib\Src\CrystalEdit;$(SolutionDir)SCICompanionLib\Src\CRC32;$(SolutionDir)SCICompanionLib\Src\r8brain;$(SolutionDir)SCICompanionLib\Src\LipSync;$(SolutionDir)SCICompanionLib\Src\CppFormat;$(SolutionDir)SCICompanionLib\Src\Compile;$(SolutionDir)Prof-UIS.2.92\Include;$(SolutionDir)Prof-UIS.2.92\Src;$(SolutionDir)SCICompanionLib\Src\cpptoml;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <AdditionalOptions>/Qpar %(AdditionalOptions)</AdditionalOptions>
-      <MultiProcessorCompilation>false</MultiProcessorCompilation>
-      <MinimalRebuild>true</MinimalRebuild>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <MinimalRebuild>false</MinimalRebuild>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-      <ModuleDefinitionFile>.\SCICompanionLib.def</ModuleDefinitionFile>
-      <AdditionalLibraryDirectories>$(SolutionDir)Prof-UIS.2.92\Bin_1000;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>      <AdditionalLibraryDirectories>$(SolutionDir)Prof-UIS.2.92\Bin_1000;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>gdiplus.lib;Vfw32.lib;$(AdditionalDependencies)</AdditionalDependencies>
       <DelayLoadDLLs>gdiplus.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
@@ -78,11 +71,7 @@
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(IntDir);$(SolutionDir)Prof-UIS.2.92\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ResourceOutputFileName />
-    </ResourceCompile>
-    <Manifest>
-      <AdditionalOptions>/VERBOSE %(AdditionalOptions)</AdditionalOptions>
-    </Manifest>
-    <Lib>
+    </ResourceCompile>    <Lib>
       <AdditionalOptions>/VERBOSE %(AdditionalOptions)</AdditionalOptions>
     </Lib>
   </ItemDefinitionGroup>
@@ -93,20 +82,17 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN32;_WINDOWS;NO_WARN_MBCS_MFC_DEPRECATION;NDEBUG;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NO_WARN_MBCS_MFC_DEPRECATION;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
       <AdditionalIncludeDirectories>$(SolutionDir)SCICompanionLib\;$(SolutionDir)SCICompanionLib\Src\Util;$(SolutionDir)SCICompanionLib\Src\Resources;$(SolutionDir)SCICompanionLib\Src\Docs;$(SolutionDir)SCICompanionLib\Src\GIFLIB;$(SolutionDir)SCICompanionLib\Src\MFCViews;$(SolutionDir)SCICompanionLib\Src\MFCFrames;$(SolutionDir)SCICompanionLib\Src\MFCDocuments;$(SolutionDir)SCICompanionLib\Src\FrameComponents;$(SolutionDir)SCICompanionLib\Src\Dialogs;$(SolutionDir)SCICompanionLib\Src\CrystalEdit;$(SolutionDir)SCICompanionLib\Src\CRC32;$(SolutionDir)SCICompanionLib\Src\r8brain;$(SolutionDir)SCICompanionLib\Src\LipSync;$(SolutionDir)SCICompanionLib\Src\CppFormat;$(SolutionDir)SCICompanionLib\Src\Compile;$(SolutionDir)Prof-UIS.2.92\Include;$(SolutionDir)Prof-UIS.2.92\Src;$(SolutionDir)SCICompanionLib\Src\cpptoml;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <AdditionalOptions>/Qpar %(AdditionalOptions)</AdditionalOptions>
-      <MultiProcessorCompilation>false</MultiProcessorCompilation>
-      <MinimalRebuild>true</MinimalRebuild>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <MinimalRebuild>false</MinimalRebuild>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
-      <OptimizeReferences>true</OptimizeReferences>
-      <ModuleDefinitionFile>.\SCICompanionLib.def</ModuleDefinitionFile>
-      <AdditionalLibraryDirectories>$(SolutionDir)Prof-UIS.2.92\Bin_1000;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <OptimizeReferences>true</OptimizeReferences>      <AdditionalLibraryDirectories>$(SolutionDir)Prof-UIS.2.92\Bin_1000;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>gdiplus.lib;Vfw32.lib;$(AdditionalDependencies)</AdditionalDependencies>
       <DelayLoadDLLs>gdiplus.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
@@ -119,11 +105,7 @@
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(IntDir);$(SolutionDir)Prof-UIS.2.92\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ResourceOutputFileName />
-    </ResourceCompile>
-    <Manifest>
-      <AdditionalOptions>/VERBOSE %(AdditionalOptions)</AdditionalOptions>
-    </Manifest>
-    <Lib>
+    </ResourceCompile>    <Lib>
       <AdditionalOptions>/VERBOSE %(AdditionalOptions)</AdditionalOptions>
     </Lib>
   </ItemDefinitionGroup>
@@ -740,9 +722,7 @@
     <None Include="res\mg_cur.cur" />
     <None Include="res\SCICompanionLib.rc2">
       <SubType>Designer</SubType>
-    </None>
-    <None Include="SCICompanionLib.def" />
-    <None Include="SCICompanionLib.licenseheader" />
+    </None>    <None Include="SCICompanionLib.licenseheader" />
     <None Include="Src\CppFormat\README.rst" />
     <None Include="Src\cpptoml\LICENSE" />
     <None Include="Src\CrystalEdit\CCrystalEditView.inl" />
