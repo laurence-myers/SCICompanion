@@ -16,6 +16,7 @@
 #include "ResourceEntity.h"
 #include "format.h"
 #include "ResourceSourceFlags.h"
+#include "AppState.h"
 
 using namespace std;
 
@@ -327,7 +328,7 @@ bool ValidateAudioMap(const ResourceEntity &resource)
 			if ((entry.Offset - cumulativeOffset) > (256 * 256 * 256))
 			{
 				std::string message = fmt::format("N:{0}, V:{1}, C:{2}, S:{3} is tool large. It needs to be less than 16MB.", (int)entry.Noun, (int)entry.Verb, (int)entry.Condition, (int)entry.Sequence);
-				AfxMessageBox(message.c_str(), MB_ICONWARNING | MB_OK);
+				SafeMessageBox(message, MB_ICONWARNING | MB_OK);
 				return false;
 			}
 			cumulativeOffset = entry.Offset;

@@ -18,6 +18,7 @@
 #include "format.h"
 #include "NounsAndCases.h"
 #include "ResourceSourceFlags.h"
+#include "AppState.h"
 
 using namespace std;
 
@@ -401,7 +402,7 @@ bool ValidateMessage(const ResourceEntity &resource)
 				tuples[tuple]->Text
 				);
 
-			AfxMessageBox(message.c_str(), MB_OK | MB_ICONWARNING);
+			SafeMessageBox(message, MB_OK | MB_ICONWARNING);
 			return false;
 		}
 		else
@@ -422,7 +423,7 @@ bool ValidateMessage(const ResourceEntity &resource)
 		if (!pair.second)
 		{
 			string message = fmt::format("The following mesaage: (noun:{0}, verb:{1}, cond:{2}) has a sequence that doesn't begin at 1. Save anyway?", (pair.first & 0xff), (pair.first >> 8) & 0xff, (pair.first >> 16) & 0xff);
-			if (IDNO == AfxMessageBox(message.c_str(), MB_YESNO | MB_ICONWARNING))
+			if (IDNO == SafeMessageBox(message, MB_YESNO | MB_ICONWARNING))
 			{
 				return false;
 			}

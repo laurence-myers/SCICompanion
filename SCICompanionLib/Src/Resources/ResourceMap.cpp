@@ -13,6 +13,7 @@
 ***************************************************************************/
 
 #include "stdafx.h"
+#include "AppState.h"
 #include "ResourceContainer.h"
 #include "ResourceMap.h"
 #include "ResourceRecency.h"
@@ -202,7 +203,7 @@ HRESULT RebuildResources(const GameFolderHelper &helper, SCIVersion version, BOO
 	}
 	catch (std::exception &e)
 	{
-		AfxMessageBox(e.what(), MB_OK | MB_ICONWARNING);
+		SafeMessageBox(e.what(), MB_OK | MB_ICONWARNING);
 	}
 	return S_OK;
 }
@@ -318,7 +319,7 @@ HRESULT CResourceMap::EndDeferAppend()
 					}
 					catch (std::exception &e)
 					{
-						AfxMessageBox(e.what(), MB_OK | MB_ICONWARNING);
+						SafeMessageBox(e.what(), MB_OK | MB_ICONWARNING);
 					}
 				}
 
@@ -523,7 +524,7 @@ HRESULT CResourceMap::AppendResource(const ResourceBlob &resource)
 		}
 		catch (std::exception &e)
 		{
-			AfxMessageBox(e.what(), MB_OK | MB_ICONWARNING);
+			SafeMessageBox(e.what(), MB_OK | MB_ICONWARNING);
 		}
 
 		AssignName(resource);
@@ -730,7 +731,7 @@ void CResourceMap::DeleteResource(const ResourceBlob *pData)
 	}
 	catch (std::exception &e)
 	{
-		AfxMessageBox(e.what(), MB_OK | MB_ICONWARNING);
+		SafeMessageBox(e.what(), MB_OK | MB_ICONWARNING);
 	}
 
 	// Call our syncs, so they update.
@@ -1286,7 +1287,7 @@ void CResourceMap::SetGameFolder(const string &gameFolder)
 		}
 		catch (std::exception &e)
 		{
-			AfxMessageBox(fmt::format("Unable to open resource map: {0}", e.what()).c_str(), MB_OK | MB_ICONWARNING);
+			SafeMessageBox(fmt::format("Unable to open resource map: {0}", e.what()), MB_OK | MB_ICONWARNING);
 			_gameFolderHelper.GameFolder = "";
 			AfxThrowUserException();
 		}

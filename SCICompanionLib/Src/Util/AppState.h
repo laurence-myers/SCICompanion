@@ -96,6 +96,10 @@ public:
 	CIntellisenseListBox &GetIntellisense() { return m_wndIntel; }
 	CColoredToolTip &GetToolTipCtrl() { return m_wndToolTip; }
 	bool IsBrowseInfoEnabled() { return _fBrowseInfo != 0; }
+	// True only when there is an interactive GUI (a real CWinApp with a main
+	// window). AppState also runs headless -- the unit tests and any batch/CLI
+	// use construct it with a null CWinApp -- where a modal dialog must not pop.
+	bool HasGui() const;
 	BOOL IsCodeCompletionEnabled() { return _fBrowseInfo && _fCodeCompletion; }
 	BOOL AreHoverTipsEnabled() { return _fBrowseInfo && _fHoverTips; }
 	BOOL IsScriptNavEnabled() { return _fBrowseInfo && _fScriptNav; }
@@ -261,3 +265,11 @@ public: // TODO for now
 };
 
 extern AppState *appState;
+
+// A message box that is safe to call from library code that also runs headless.
+// When there is an interactive GUI it behaves exactly like AfxMessageBox. When
+// there is none (unit tests, batch, any future CLI) it logs the text instead of
+// popping a modal dialog that would block or appear stray, and returns the
+// non-destructive default (IDNO for a yes/no prompt, otherwise IDOK). Use this
+// for warnings raised while loading or rebuilding resources. (#182)
+int SafeMessageBox(const std::string &text, UINT type);
