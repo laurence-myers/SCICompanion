@@ -588,6 +588,14 @@ enum class OutputPaneType
 
 bool TerminateProcessTree(HANDLE hProcess, DWORD retCode);
 
+// Pure helper behind TerminateProcessTree: given a process snapshot's
+// child-PID -> parent-PID map and the root PID to kill, return the PIDs of the
+// root and all of its descendants. A snapshot can contain a cyclic parent
+// chain (PID reuse reparents a chain onto itself); the walk is bounded so it
+// always terminates, and *outCycleDetected is set true when a cycle is seen.
+// Exposed so the cycle handling can be unit-tested with a crafted map. (#72)
+std::set<DWORD> CollectProcessTreeToKill(const std::unordered_map<DWORD, DWORD> &childToParent, DWORD killId, bool *outCycleDetected = nullptr);
+
 // Returns "n004" for 4.
 std::string default_reskey(int iNumber, uint32_t base36Number);
 

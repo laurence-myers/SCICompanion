@@ -230,7 +230,13 @@ bool DecompileTemplateScriptByTitle(const std::string &title, DecompileOutput &o
         if (scriptId.GetTitle() == title)
         {
             bool debugChunks = (getenv("SCICOMP_DEBUG_CHUNKS") != nullptr);
-            out = DecompileToText(scriptId.GetResourceNumber(), debugChunks, true);
+            // The control-flow-graph "digraph code" dump is a developer aid, not
+            // routine output. It used to be on unconditionally here, so every run
+            // logged a graphviz block per function -- pure noise on a passing
+            // test. Gate it behind SCICOMP_DEBUG_CFG (matching SCICOMP_DEBUG_CHUNKS)
+            // so it is off by default and opt-in when diagnosing a failure.
+            bool debugCfg = (getenv("SCICOMP_DEBUG_CFG") != nullptr);
+            out = DecompileToText(scriptId.GetResourceNumber(), debugChunks, debugCfg);
             return true;
         }
     }
@@ -245,10 +251,15 @@ DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t s
     bool compiled = CompileFixture(scriptNumber, fixtureName, &compileError);
     Assert::IsTrue(compiled, ToWString("Initial compile failed: " + fixtureName + ": " + compileError).c_str());
 
-    // The control-flow dump is added to the warnings only when analysis fails.
-    // Set SCICOMP_DEBUG_CHUNKS to also get the chunk-tree dump.
+    // The control-flow-graph "digraph code" dump is a developer aid. It was on
+    // unconditionally here, so every round-trip test logged a graphviz block per
+    // function even when it passed -- pure noise. Gate it behind SCICOMP_DEBUG_CFG
+    // (like SCICOMP_DEBUG_CHUNKS for the chunk-tree dump) so it is off by default
+    // and opt-in when diagnosing a failure. A failing round trip already logs the
+    // decompiled text and the assertion.
     bool debugChunks = (getenv("SCICOMP_DEBUG_CHUNKS") != nullptr);
-    DecompileOutput first = DecompileToText(scriptNumber, debugChunks, true);
+    bool debugCfg = (getenv("SCICOMP_DEBUG_CFG") != nullptr);
+    DecompileOutput first = DecompileToText(scriptNumber, debugChunks, debugCfg);
 
     std::string path = appState->GetResourceMap().Helper().GetScriptFileName(fixtureName);
     WriteTextFile(path, first.text);

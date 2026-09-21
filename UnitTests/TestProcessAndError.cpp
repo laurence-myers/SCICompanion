@@ -14,7 +14,9 @@
 #include "stdafx.h"
 #include "CppUnitTest.h"
 #include "sci.h"
+#include <set>
 #include <string>
+#include <unordered_map>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -34,6 +36,59 @@ namespace UnitTests
             Assert::IsTrue(message.find("UnitTestOperation") != std::string::npos, L"the caller's details must be in the message");
             Assert::IsTrue(message.find("failed with error") != std::string::npos);
             Assert::IsTrue(message.find(std::to_string(0x3FFFFFFF)) != std::string::npos, L"the error code must be in the message");
+        }
+
+        // The process-tree walk must terminate even when the snapshot's parent
+        // chain is cyclic. PID reuse on a busy machine (a CI runner) can make a
+        // process's recorded parent lead back around; the old two-node-only
+        // cycle check missed longer cycles, so the walk looped and the kill
+        // vector grew until operator new threw an out-of-memory exception
+        // (observed on CI). CollectProcessTreeToKill now bounds the walk with a
+        // visited set. A crafted cyclic map exercises that deterministically.
+        TEST_METHOD(CollectProcessTreeToKill_CyclicParentChain_TerminatesAndFlagsCycle)
+        {
+            // 1 -> 2 -> 3 -> 1 is a three-node cycle (longer than the old check
+            // handled), and it does NOT contain the target PID. This mirrors the
+            // real crash: the process being killed is a leaf, while an unrelated
+            // group of PIDs forms a parent-chain cycle elsewhere in the snapshot,
+            // so the "reached the target's parent" check never breaks the walk --
+            // only the cycle guard can. Every PID is non-zero.
+            std::unordered_map<DWORD, DWORD> childToParent;
+            childToParent[1] = 2;
+            childToParent[2] = 3;
+            childToParent[3] = 1;
+
+            bool cycle = false;
+            // Without the fix this call never returns (it loops until OOM); the
+            // test therefore also proves the walk terminates.
+            std::set<DWORD> killIds = CollectProcessTreeToKill(childToParent, 99, &cycle);
+            Assert::IsTrue(cycle, L"a cyclic parent chain not containing the target must be detected and the walk must stop");
+            // Nothing is a descendant of the (absent) target 99, so only 99 is in
+            // the kill set.
+            Assert::IsTrue(killIds.find(99) != killIds.end(), L"the target PID is always included");
+            Assert::AreEqual((size_t)1, killIds.size(), L"no unrelated cyclic PID should be marked for killing");
+        }
+
+        // The normal (acyclic) case still collects the whole descendant tree.
+        TEST_METHOD(CollectProcessTreeToKill_AcyclicTree_CollectsDescendants)
+        {
+            // Kill root 100. 200's parent is 100, 300's parent is 200 (a
+            // grandchild), 400 belongs to an unrelated tree (parent 999).
+            std::unordered_map<DWORD, DWORD> childToParent;
+            childToParent[100] = 1;     // root's own parent is some other process
+            childToParent[200] = 100;
+            childToParent[300] = 200;
+            childToParent[400] = 999;
+            childToParent[999] = 1;
+
+            bool cycle = true;
+            std::set<DWORD> killIds = CollectProcessTreeToKill(childToParent, 100, &cycle);
+            Assert::IsFalse(cycle, L"an acyclic map must not be flagged cyclic");
+            Assert::IsTrue(killIds.find(100) != killIds.end(), L"the root must be killed");
+            Assert::IsTrue(killIds.find(200) != killIds.end(), L"a direct child must be killed");
+            Assert::IsTrue(killIds.find(300) != killIds.end(), L"a grandchild must be killed");
+            Assert::IsTrue(killIds.find(400) == killIds.end(), L"an unrelated process must NOT be killed");
+            Assert::IsTrue(killIds.find(999) == killIds.end(), L"an unrelated parent must NOT be killed");
         }
 
         // TerminateProcessTree leaked the CreateToolhelp32Snapshot handle on
