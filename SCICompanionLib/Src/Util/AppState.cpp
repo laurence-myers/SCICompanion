@@ -841,6 +841,27 @@ void AppState::LogInfo(const TCHAR *pszFormat, ...)
 	}
 }
 
+bool AppState::HasGui() const
+{
+	return (_pApp != nullptr) && (_pApp->m_pMainWnd != nullptr);
+}
+
+int SafeMessageBox(const std::string &text, UINT type)
+{
+	if (appState != nullptr && appState->HasGui())
+	{
+		return AfxMessageBox(text.c_str(), type);
+	}
+	// No GUI: log it instead of popping a modal dialog that would block a headless
+	// run (unit tests, batch) or appear as a stray window. Return the
+	// non-destructive default so a yes/no prompt does not "proceed" unattended.
+	if (appState != nullptr)
+	{
+		appState->LogInfo("%s", text.c_str());
+	}
+	return (type & MB_YESNO) ? IDNO : IDOK;
+}
+
 // AppState message handlers
 
 // TODO: better error messages.

@@ -1172,7 +1172,7 @@ bool PicValidateVGA(const ResourceEntity &resource)
 		}
 		if (found)
 		{
-			AfxMessageBox("This pic contains pen commands, which are not supported by this version of pic resources.", MB_ICONWARNING | MB_OK);
+			SafeMessageBox("This pic contains pen commands, which are not supported by this version of pic resources.", MB_ICONWARNING | MB_OK);
 		}
 	}
 
