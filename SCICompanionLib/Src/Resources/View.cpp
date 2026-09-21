@@ -232,8 +232,21 @@ void ReadCelFrom(ResourceEntity &resource, sci::istream byteStream, Cel &cel, bo
 	// allocating huge amounts of memory.
 	if (ClampSize(resource.GetComponent<RasterComponent>(), cel.size))
 	{
-		appState->LogInfo("Corrupt view resource: (%d,%d).", resource.ResourceNumber, resource.PackageNumber);
-		throw std::exception("Invalid cel size.");
+		// The cel's declared size is out of range, so the view is corrupt (for
+		// example Police Quest 3 EGA view 390, loop 0 cel 2, whose size decodes to
+		// 23828x5633 -- a data problem, not a decompression one). Rather than reject
+		// the whole view, replace this one cel with a 1x1 placeholder and stop
+		// reading its (garbage) placement and image data, so the rest of the view
+		// still loads. Each cel is read from its own offset in ReadLoopFrom, so
+		// returning early here does not disturb the other cels. ScummVM likewise
+		// does not reject a view over a cel size at load. Warn so the corruption is
+		// visible (appState is null in headless/unit-test loads). (#182)
+		if (appState != nullptr)
+		{
+			appState->LogInfo("Corrupt cel in view %d (package %d): replaced with a 1x1 placeholder.", resource.ResourceNumber, resource.PackageNumber);
+		}
+		CreateDegenerate(cel, 0);
+		return;
 	}
 
 	// x and y placement (right, down)

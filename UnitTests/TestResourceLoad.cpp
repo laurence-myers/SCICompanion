@@ -29,6 +29,7 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 // External-linkage cel readers, defined in View.cpp (no public header). Used by
 // the size-validation tests below to feed a crafted cel header directly.
 void ReadCelFromVGA11(sci::istream &byteStream, Cel &cel, bool isPic);
+void ReadCelFrom(ResourceEntity &resource, sci::istream byteStream, Cel &cel, bool isVGA);
 
 namespace UnitTests
 {
@@ -156,6 +157,33 @@ namespace UnitTests
             catch (std::exception &e) { threw = true; message = e.what(); }
             Assert::IsTrue(threw, L"an oversize view save must be rejected, not truncated");
             Assert::AreEqual(std::string("View resource is too large"), message);
+        }
+
+        // An EGA view cel whose declared size is far larger than any real cel --
+        // the Police Quest 3 EGA view 390 corruption, loop 0 cel 2, size 23828x5633.
+        // The loader must not reject the whole view; it collapses the corrupt cel to
+        // a 1x1 placeholder and keeps going, so the rest of the view still loads.
+        // (#182)
+        TEST_METHOD(CorruptEgaCelSize_CollapsesToPlaceholder)
+        {
+            std::unique_ptr<ResourceEntity> view(CreateViewResource(sciVersion0)); // EGA, 320x200 max
+
+            std::vector<uint8_t> buf;
+            auto push16 = [&](uint16_t v) { buf.push_back((uint8_t)(v & 0xff)); buf.push_back((uint8_t)(v >> 8)); };
+            push16(23828); // width  -- out of range
+            push16(5633);  // height -- out of range
+            push16(0);     // placement
+            buf.push_back(0); // transparent colour
+            // No image data on purpose: a corrupt size must be caught before any decode.
+
+            sci::istream stream(buf.data(), (uint32_t)buf.size());
+            Cel cel;
+            bool threw = false;
+            try { ReadCelFrom(*view, stream, cel, false); }
+            catch (std::exception &) { threw = true; }
+            Assert::IsFalse(threw, L"a corrupt cel size must not fail the whole view");
+            Assert::AreEqual(1, (int)cel.size.cx, L"corrupt cel width collapses to 1");
+            Assert::AreEqual(1, (int)cel.size.cy, L"corrupt cel height collapses to 1");
         }
     };
 }
