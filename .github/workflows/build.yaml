@@ -187,18 +187,16 @@ jobs:
     # Run the unit suite under ASan. The integration tests (threads, child
     # processes) are excluded here; this leg targets the memory-safety unit tests.
     #
-    # continue-on-error: informational for now. The ASan unit run surfaces
-    # pre-existing memory issues in the compile / class-browser tests that the
-    # plain build tolerates (tracked in a follow-up issue), so it must not fail the
-    # build yet. The ASan *build* step above still gates -- the tree has to compile
-    # and link under ASan. Once the suite is ASan-clean, drop continue-on-error to
-    # make this a hard gate. halt_on_error=0 lets it report every finding in a run.
+    # This step is a HARD GATE. The unit suite is ASan-clean, and this ASan build
+    # is non-recoverable (/fsanitize=address without -fsanitize-recover), so the
+    # first memory-safety finding (heap/stack out-of-bounds, use-after-free)
+    # terminates the instrumented test host; vstest then aborts the run and
+    # RunTests.ps1 exits non-zero, failing the build. (Verified with a deliberate
+    # overflow tripwire: it crashed the host and failed the run.) The ASan *build*
+    # step above gates the compile and link; this step gates the run. (#95)
     - name: Test (unit, under ASan)
       shell: pwsh
       timeout-minutes: 25
-      continue-on-error: true
-      env:
-        ASAN_OPTIONS: halt_on_error=0
       run: |
         # An ASan-instrumented DLL needs the dynamic ASan runtime
         # (clang_rt.asan_dynamic-i386.dll) at load time -- a DLL target uses the
@@ -232,8 +230,9 @@ jobs:
         path: TestResults
 
   # MSVC Code Analysis (/analyze) leg. Informational for now: the first-party
-  # library has never been analysed, so it reports a backlog rather than gating
-  # (like the ASan leg). Findings are in the uploaded log artifact. Runs in
+  # library has never been analysed, so it reports a backlog rather than gating.
+  # (The ASan leg was informational in the same way until #95 made it a hard
+  # gate.) Findings are in the uploaded log artifact. Runs in
   # parallel with build and asan. Follow-on #80 steps (raise to /W4 and promote a
   # few warnings to errors after a clean-up pass; clang-tidy; [[nodiscard]] on
   # context.code().inst via #59; SARIF to code scanning) are tracked separately.
