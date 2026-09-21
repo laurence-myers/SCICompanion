@@ -183,6 +183,11 @@ jobs:
           if ($LASTEXITCODE -ge 8) { throw "robocopy failed ($LASTEXITCODE) for $($p.src)." }
         }
         Write-Host "Deployed test fixtures next to the ASan test binaries."
+        # robocopy leaves a non-zero SUCCESS code in $LASTEXITCODE (1 = files were
+        # copied; 0-7 all mean success). The pwsh step would otherwise exit with it
+        # and fail even though the copy worked, so exit 0 explicitly. A real failure
+        # (>= 8) has already thrown above, which fails the step.
+        exit 0
 
     # Run the unit suite under ASan. The integration tests (threads, child
     # processes) are excluded here; this leg targets the memory-safety unit tests.
