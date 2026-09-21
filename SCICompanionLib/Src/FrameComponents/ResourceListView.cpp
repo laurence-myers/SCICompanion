@@ -1117,7 +1117,18 @@ HRESULT CResourceListCtrl::_UpdateEntries()
 			// REVIEW: We might want to have a wrapper.
 			for (auto it = resourceContainer->begin(); it != resourceContainer->end(); ++it)
 			{
-				resources.push_back(std::move(it.CreateButDelayDecompression()));
+				std::unique_ptr<ResourceBlob> blob = it.CreateButDelayDecompression();
+				if (blob->GetLength() == 0)
+				{
+					// Skip a zero-length resource. These are stray/placeholder map
+					// entries (for example an 8-byte header with no payload, as in
+					// KQ4 "view" 1029) that cannot be decompressed or parsed; listing
+					// one shows a broken 0-byte entry and opening it fails. Warn so it
+					// is not silently dropped. (#182)
+					appState->LogInfo("Skipping empty resource: type %x number %d", (int)blob->GetType(), blob->GetNumber());
+					continue;
+				}
+				resources.push_back(std::move(blob));
 			}
 
 			if (!resources.empty())
