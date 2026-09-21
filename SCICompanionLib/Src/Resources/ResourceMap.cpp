@@ -484,6 +484,14 @@ ResourceSaveLocation CResourceMap::GetDefaultResourceSaveLocation()
 	return Helper().GetResourceSaveLocation(ResourceSaveLocation::Default);
 }
 
+// #144: the passed blob's header is NOT updated to describe what was written.
+// AppendResources writes a corrected header to the volume (compression method 0,
+// compressed length equal to the decompressed length, the source version -- see
+// MapAndPackageSource::AppendResources), but it works on a local copy of the header.
+// The blob object still carries its source header (its original compression method
+// and compressed length). So the blob is stale after this call: do not reuse it to,
+// for example, locate and delete the resource by header comparison. Re-read the
+// resource from the map instead. The blob is only valid for the length of this call.
 HRESULT CResourceMap::AppendResource(const ResourceBlob &resource)
 {
 	HRESULT hr;

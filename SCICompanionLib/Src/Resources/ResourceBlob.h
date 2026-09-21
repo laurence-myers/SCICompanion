@@ -332,6 +332,9 @@ public:
 	// In case we delayed decompression
 	void EnsureRealized();
 
+	// Realizes a delayed blob on first call (like EnsureRealized), so it is const in
+	// effect only. Do not call it on a blob shared across threads without external
+	// synchronisation; realize such a blob on one thread first (#144).
 	sci::istream GetReadStream() const;
 
 	HRESULT SaveToHandle(HANDLE hFile, bool fNoHeader, DWORD *pcbWritten = nullptr) const;
