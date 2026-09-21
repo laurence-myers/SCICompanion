@@ -627,9 +627,14 @@ void ViewReadFromVersioned(ResourceEntity &resource, sci::istream &byteStream, b
 	uint16_t paletteOffset;
 	byteStream >> paletteOffset;
 
-	if (hasPalette)
+	// Only read an embedded palette when the offset actually points at one. Some
+	// views set the palette flag (bit 0x80 of byte 1) but store a palette offset
+	// of 0 (e.g. Hoyle 3 view 200) or 0x100. Offset 0 points back at the view
+	// header, so reading it as a palette yields garbage ("Invalid palette").
+	// ScummVM guards this the same way: it reads the palette only when
+	// "palOffset && palOffset != 0x100" (engines/sci/graphics/view.cpp).
+	if (hasPalette && (paletteOffset != 0) && (paletteOffset != 0x100))
 	{
-		assert(paletteOffset != 0x100 && "Unimplemented");
 		sci::istream streamPalette(byteStream);
 		streamPalette.seekg(paletteOffset);
 		ReadPalette(resource, streamPalette);
