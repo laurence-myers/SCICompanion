@@ -99,6 +99,19 @@ void SetUpExistingGame(const std::string &gameFolder)
 
 void CleanUpExistingGame()
 {
+    // SetUpGame can fail before it assigns appState -- for example when a test
+    // fixture (the template game) is missing, the recursive copy in SetUpGame
+    // asserts and the test aborts before SetUpExistingGame runs. The per-test
+    // TEST_METHOD_CLEANUP still runs afterwards, so guard against a null appState
+    // here. Without the guard, appState->GetClassBrowser() dereferences null and
+    // faults with C0000005, which crashes the whole (ASan-instrumented) test host
+    // and aborts the rest of the run instead of reporting a single failed test.
+    // (#95)
+    if (appState == nullptr)
+    {
+        return;
+    }
+
     appState->GetClassBrowser().SetClassBrowserEvents(nullptr);
 
     appState->ResetClassBrowser();
