@@ -153,23 +153,40 @@ namespace UnitTests
             flags &= ~ResourceTypeFlags::Vocab;     // Vocabs can't just be "created", we need to follow more specific logic. TODO
             auto container = appState->GetResourceMap().Resources(flags, ResourceEnumFlags::None | ResourceEnumFlags::AddInDefaultEnumFlags);
             int count = 0;
-            // Iterate manually rather than with a range-for. Reading and decompressing
-            // a resource can throw, and a range-for evaluates the iterator OUTSIDE the
-            // loop body's try, so such a failure used to escape as a bare "Unhandled
-            // C++ Exception" that named no resource. Keep the read inside the try and
-            // report the resource number, type and the exception message; guard the
-            // advance too, in case a corrupt map throws. (#182)
+            // Iterate manually rather than with a range-for. Reading a resource can
+            // throw, and a range-for evaluates the iterator OUTSIDE the loop body's
+            // try, so such a failure used to escape as a bare "Unhandled C++
+            // Exception" that named no resource. Read the header in its own try, then
+            // decompress and parse in a second try -- the two failures mean different
+            // things: a header that cannot be read or does not match the map is a
+            // corrupt/stray map entry (e.g. KQ4 "view" 1049, whose offset lands in
+            // non-header bytes), not a real resource, so skip it as ScummVM does; a
+            // failure while decompressing or parsing is a real load problem, reported
+            // with the resource id. Guard the advance too, in case a corrupt map
+            // throws. (#182)
             for (auto it = container->begin(); it != container->end(); )
             {
                 ResourceType type = it.GetResourceType();
                 int number = it.GetResourceNumber();
+
+                // Read the map entry but delay decompression, so a zero-length
+                // placeholder is skipped by its header length without trying to
+                // decompress it (e.g. KQ4 "view" 1029, an 8-byte header with no
+                // payload), and a header-level failure is skipped rather than failing.
+                std::unique_ptr<ResourceBlob> blob;
                 try
                 {
-                    // Read the map entry but delay decompression, so a zero-length
-                    // placeholder is skipped by its header length without trying to
-                    // decompress or parse it (e.g. KQ4 "view" 1029, an 8-byte header
-                    // with no payload). (#182)
-                    std::unique_ptr<ResourceBlob> blob = it.CreateButDelayDecompression();
+                    blob = it.CreateButDelayDecompression();
+                }
+                catch (const std::exception &e)
+                {
+                    std::wstring skipMessage = fmt::format(L"Skipping unreadable resource {0} of type {1}: {2}",
+                        number, (int)type, toWide(e.what()));
+                    Logger::WriteMessage(skipMessage.c_str());
+                }
+
+                if (blob != nullptr)
+                {
                     type = blob->GetType();
                     number = blob->GetNumber();
                     if (blob->GetLength() == 0)
@@ -179,24 +196,27 @@ namespace UnitTests
                     }
                     else
                     {
-                        // Realize (decompress) now, so a decompression failure throws
-                        // here inside the try and is reported with the resource id.
-                        blob->EnsureRealized();
-                        std::unique_ptr<ResourceEntity> resource = CreateResourceFromResourceData(*blob, false);
-                        count++;
-                    }
-                }
-                catch (const std::exception &e)
-                {
-                    auto itFind = std::find_if(std::begin(KnownFailures), std::end(KnownFailures),
-                        [&](const std::pair<ResourceType, int> &pair) { return pair.first == type && pair.second == number; }
-                        );
+                        try
+                        {
+                            // Realize (decompress) and parse now, so a failure throws
+                            // here inside the try and is reported with the resource id.
+                            blob->EnsureRealized();
+                            std::unique_ptr<ResourceEntity> resource = CreateResourceFromResourceData(*blob, false);
+                            count++;
+                        }
+                        catch (const std::exception &e)
+                        {
+                            auto itFind = std::find_if(std::begin(KnownFailures), std::end(KnownFailures),
+                                [&](const std::pair<ResourceType, int> &pair) { return pair.first == type && pair.second == number; }
+                                );
 
-                    if (itFind == std::end(KnownFailures))
-                    {
-                        std::wstring message = fmt::format(L"Unexpected: failed to load resource {0} of type {1}: {2}",
-                            number, (int)type, toWide(e.what()));
-                        Assert::IsTrue(false, message.c_str());
+                            if (itFind == std::end(KnownFailures))
+                            {
+                                std::wstring message = fmt::format(L"Unexpected: failed to load resource {0} of type {1}: {2}",
+                                    number, (int)type, toWide(e.what()));
+                                Assert::IsTrue(false, message.c_str());
+                            }
+                        }
                     }
                 }
 
