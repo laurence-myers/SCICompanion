@@ -1,0 +1,9 @@
+Crystal Edit - a syntax colouring text editor
+(SCICompanionLib/Src/CrystalEdit)
+
+Author: Stcherbatchenko Andrei (windfall@gmx.de)
+
+You are free to use or modify this code subject to these restrictions:
+- Acknowledge the author somewhere in your about box; a simple "Parts of code
+  by.." is enough. (SCI Companion does this in its About box.)
+- Leave the source file headers intact.

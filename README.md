@@ -9,6 +9,32 @@ The bulk of the code is in SCICompanionLib\Src
 
 SCICompanion is the .exe which is just a thin wrapper over SCICompanionLib
 
+## Building
+
+SCI Companion builds with **Visual Studio 2022** and the **v143** platform
+toolset. You need:
+
+* Visual Studio 2022 with the **Desktop development with C++** workload,
+* the **MFC** component (the app and library are MFC), and
+* the **Windows 10 SDK** (10.0.26100 or later).
+
+Open `SCICompanion.sln` and build the **Release / Win32** configuration, or
+build from a command prompt:
+
+```
+MSBuild.exe SCICompanion.sln -m -p:Configuration=Release -p:Platform=Win32
+```
+
+The unit tests live in the `UnitTests` project. Run them with
+`UnitTests\RunTests.ps1` after building.
+
+## Licence
+
+SCI Companion is licensed under the GNU General Public License, version 2 or
+(at your option) any later version; see the root `LICENSE` file. The notices
+for the third-party components it uses are under
+`SCICompanion/Files/Licenses` and are distributed with the program.
+
 ## What's new in 4.0.0
 
 This release focuses on the compiler and decompiler, on stability, and on
