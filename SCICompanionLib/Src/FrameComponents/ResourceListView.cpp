@@ -1117,7 +1117,33 @@ HRESULT CResourceListCtrl::_UpdateEntries()
 			// REVIEW: We might want to have a wrapper.
 			for (auto it = resourceContainer->begin(); it != resourceContainer->end(); ++it)
 			{
-				resources.push_back(std::move(it.CreateButDelayDecompression()));
+				std::unique_ptr<ResourceBlob> blob;
+				try
+				{
+					blob = it.CreateButDelayDecompression();
+				}
+				catch (const std::exception &e)
+				{
+					// A resource whose header does not match the map -- a stray or
+					// corrupt map entry, for example KQ4 "view" 1049, whose offset
+					// lands in non-header bytes -- throws here. Skip it with a warning
+					// rather than let one bad entry abort the whole list. Without this
+					// the catch below showed an "Error enumerating items" dialog and
+					// left the list empty, so none of the good resources appeared. (#182)
+					appState->LogInfo("Skipping unreadable resource: number %d - %s", it.GetResourceNumber(), e.what());
+					continue;
+				}
+				if (blob->GetLength() == 0)
+				{
+					// Skip a zero-length resource. These are stray/placeholder map
+					// entries (for example an 8-byte header with no payload, as in
+					// KQ4 "view" 1029) that cannot be decompressed or parsed; listing
+					// one shows a broken 0-byte entry and opening it fails. Warn so it
+					// is not silently dropped. (#182)
+					appState->LogInfo("Skipping empty resource: type %x number %d", (int)blob->GetType(), blob->GetNumber());
+					continue;
+				}
+				resources.push_back(std::move(blob));
 			}
 
 			if (!resources.empty())
