@@ -123,8 +123,24 @@ namespace UnitTests
             std::wstring message = fmt::format(L"Loading game in {0}.", gameFolder);
             Logger::WriteMessage(message.c_str());
 
+            auto toWide = [](const std::string &s) { return std::wstring(s.begin(), s.end()); };
+
             appState = new AppState(nullptr);
-            appState->GetResourceMap().SetGameFolder(gameFolder);
+            try
+            {
+                appState->GetResourceMap().SetGameFolder(gameFolder);
+            }
+            catch (CException *pEx)
+            {
+                // A failed map open is signalled to the caller with
+                // AfxThrowUserException (a CUserException), which carries no text.
+                // Without this catch it escaped as a bare "Unhandled C++ Exception"
+                // that named no game. Name the folder and the likely reasons
+                // instead. (#182)
+                pEx->Delete();
+                std::wstring message = fmt::format(L"Failed to open the game in {0}. Its resource map could not be read (missing, corrupt, or an unrecognised SCI version).", toWide(gameFolder));
+                Assert::IsTrue(false, message.c_str());
+            }
             Assert::IsTrue(appState->GetResourceMap().IsGameLoaded());
 
             // Normally ResourceMap uses the module filename for this. But unit tests are run from another exe.
@@ -137,7 +153,6 @@ namespace UnitTests
             flags &= ~ResourceTypeFlags::Vocab;     // Vocabs can't just be "created", we need to follow more specific logic. TODO
             auto container = appState->GetResourceMap().Resources(flags, ResourceEnumFlags::None | ResourceEnumFlags::AddInDefaultEnumFlags);
             int count = 0;
-            auto toWide = [](const std::string &s) { return std::wstring(s.begin(), s.end()); };
             // Iterate manually rather than with a range-for. Reading and decompressing
             // a resource can throw, and a range-for evaluates the iterator OUTSIDE the
             // loop body's try, so such a failure used to escape as a bare "Unhandled
