@@ -137,24 +137,50 @@ namespace UnitTests
             flags &= ~ResourceTypeFlags::Vocab;     // Vocabs can't just be "created", we need to follow more specific logic. TODO
             auto container = appState->GetResourceMap().Resources(flags, ResourceEnumFlags::None | ResourceEnumFlags::AddInDefaultEnumFlags);
             int count = 0;
-            for (auto &blob : *container)
+            auto toWide = [](const std::string &s) { return std::wstring(s.begin(), s.end()); };
+            // Iterate manually rather than with a range-for. Dereferencing the
+            // iterator (*it) reads AND decompresses the resource, so a read or
+            // decompression failure throws there -- and a range-for evaluates *it
+            // OUTSIDE the loop body's try, so such a failure used to escape as a
+            // bare "Unhandled C++ Exception" that named no resource. Keep *it inside
+            // the try and report the resource number, type and the exception
+            // message; guard the advance too, in case a corrupt map throws. (#182)
+            for (auto it = container->begin(); it != container->end(); )
             {
+                ResourceType type = it.GetResourceType();
+                int number = it.GetResourceNumber();
                 try
                 {
+                    std::unique_ptr<ResourceBlob> blob = *it;
+                    type = blob->GetType();
+                    number = blob->GetNumber();
                     std::unique_ptr<ResourceEntity> resource = CreateResourceFromResourceData(*blob, false);
                     count++;
                 }
-                catch (std::exception)
+                catch (const std::exception &e)
                 {
                     auto itFind = std::find_if(std::begin(KnownFailures), std::end(KnownFailures),
-                        [&blob](std::pair<ResourceType, int> &pair) { return pair.first == blob->GetType() && pair.second == blob->GetNumber(); }
+                        [&](const std::pair<ResourceType, int> &pair) { return pair.first == type && pair.second == number; }
                         );
 
                     if (itFind == std::end(KnownFailures))
                     {
-                        std::wstring message = fmt::format(L"Unexpected: failed to load resource {0} of type {1}.", blob->GetNumber(), (int)blob->GetType());
+                        std::wstring message = fmt::format(L"Unexpected: failed to load resource {0} of type {1}: {2}",
+                            number, (int)type, toWide(e.what()));
                         Assert::IsTrue(false, message.c_str());
                     }
+                }
+
+                try
+                {
+                    ++it;
+                }
+                catch (const std::exception &e)
+                {
+                    std::wstring message = fmt::format(L"Failed to advance the resource iterator after resource {0} of type {1}: {2}",
+                        number, (int)type, toWide(e.what()));
+                    Assert::IsTrue(false, message.c_str());
+                    break;
                 }
             }
             
