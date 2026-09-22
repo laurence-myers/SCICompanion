@@ -353,15 +353,20 @@ ResourceMapFormat _DetectMapFormat(GameFolderHelper &helper)
 	sci::istream byteStream = streamHolder->getReader();
 
 	bool mustBeSCI0 = false;
-	// Detect SCI0 by checking to see if the last 6 bytes are 0xff
+	// The SCI0 resource map ends with a terminator entry whose 16-bit id is 0xFFFF
+	// (its type field is 0x1F, matching the EOF marker used when reading the map
+	// below). Later SCI0 fills the whole 6-byte entry with 0xFF, but early SCI0 --
+	// for example King's Quest 4 -- writes 0xFFFF for the id and a zero offset
+	// (FF FF 00 00 00 00). Detect the terminator by its id, so both are recognised
+	// as SCI0 and an early-SCI0 map is not mistaken for an SCI2 directory below.
 	{
 		sci::istream byteStreamSCI0 = byteStream;
 		byteStreamSCI0.seekg(-6, std::ios_base::end);
-		uint8_t ffs[6];
-		byteStreamSCI0.read_data(ffs, sizeof(ffs));
+		uint8_t entry[6];
+		byteStreamSCI0.read_data(entry, sizeof(entry));
 		if (byteStreamSCI0.good())
 		{
-			mustBeSCI0 = std::count(ffs, ffs + sizeof(ffs), 0xff) == 6;
+			mustBeSCI0 = (entry[0] == 0xff) && (entry[1] == 0xff);
 		}
 	}
 
