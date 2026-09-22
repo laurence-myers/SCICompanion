@@ -5,6 +5,7 @@
 #include "AppState.h"
 #include "ResourceMap.h"
 #include "CompiledScript.h"
+#include "ScriptOMAll.h" // DecompilerConfig.h uses sci:: node types declared here
 #include "DecompilerConfig.h"
 #include "DecompileBatch.h"
 #include "SCO.h"
