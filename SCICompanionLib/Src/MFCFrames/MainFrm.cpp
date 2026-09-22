@@ -1673,8 +1673,13 @@ void CMainFrame::OnFileNewSound()
 	}
 }
 
-#define PATCH_FILE_VIEW "view.*;*.v56"
-#define PATCH_FILE_PIC "pic.*;*.p56"
+// *.v56/*.p56 are VGA SCI1.1 view/pic patches; *.v16/*.p16 are the EGA SCI1
+// equivalents (e.g. the ega\NNN.V16 views shipped with some SCI1 games). Both
+// decode with the game's own view/pic format, so recognise them as loose
+// patches. (Amiga *.v32/*.v64/*.p32/*.p64 are intentionally omitted: their
+// bitplane format is not supported.)
+#define PATCH_FILE_VIEW "view.*;*.v56;*.v16"
+#define PATCH_FILE_PIC "pic.*;*.p56;*.p16"
 #define PATCH_FILE_SCRIPT "script.*;*.scr"
 #define PATCH_FILE_TEXT "text.*;*.tex"
 #define PATCH_FILE_SOUND "sound.*;*.snd"
@@ -1738,8 +1743,8 @@ const TCHAR* g_szResourceSpecByType[(int)ResourceType::Max] =
 };
 
 const TCHAR g_szResourceFilter[] = TEXT("All resources|" PATCH_FILE_TYPES "||"
-	"Pics (pic.*)|pic.*;*.p56||"
-	"Views (view.*)|view.*;*.v56||"
+	"Pics (pic.*)|pic.*;*.p56;*.p16||"
+	"Views (view.*)|view.*;*.v56;*.v16||"
 	"Vocabs (vocab.*)|vocab.*;*.voc||"
 	"Fonts (font.*)|font.*;*.fon||"
 	"Cursors (cursor.*)|cursor.*;*.cur||"

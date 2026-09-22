@@ -56,6 +56,49 @@ namespace UnitTests
             _DoIt();
         }
 
+        // A .v16 file is an EGA SCI1 view loose patch. SCICompanion used to ignore
+        // it (its patch mask was only view.*/*.v56), so such a view never loaded.
+        // Save an EGA view from the SCI0 template as a NNN.v16 loose patch, then
+        // re-enumerate and confirm it is picked up as a view and decodes. (#188)
+        TEST_METHOD(LoosePatchV16_EgaViewIsLoaded)
+        {
+            _gameFolder = SetUpGameSCI0(); // an EGA game
+            CResourceMap &map = appState->GetResourceMap();
+
+            // Take an existing view from the template to re-save under a new number.
+            std::unique_ptr<ResourceBlob> source;
+            {
+                auto container = map.Resources(ResourceTypeFlags::View, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+                for (auto it = container->begin(); it != container->end(); ++it)
+                {
+                    source = *it;
+                    break;
+                }
+            }
+            Assert::IsTrue(source != nullptr, L"the SCI0 template must contain at least one view");
+
+            const int patchNumber = 909; // a number the template does not use
+            std::string patchPath = _gameFolder + "\\" + std::to_string(patchNumber) + ".v16";
+            Assert::IsTrue(SUCCEEDED(source->SaveToFile(patchPath)), L"failed to write the .v16 loose patch");
+
+            // Re-enumerate: the .v16 must now be recognised and load as a view.
+            bool loaded = false;
+            auto container = map.Resources(ResourceTypeFlags::View, ResourceEnumFlags::AddInDefaultEnumFlags);
+            for (auto it = container->begin(); it != container->end(); ++it)
+            {
+                if (it.GetResourceNumber() == patchNumber)
+                {
+                    std::unique_ptr<ResourceBlob> blob = *it;
+                    Assert::IsTrue(blob->GetType() == ResourceType::View, L"a .v16 patch must be recognised as a view");
+                    std::unique_ptr<ResourceEntity> view = CreateResourceFromResourceData(*blob, false);
+                    Assert::IsTrue(view->GetComponent<RasterComponent>().Loops.size() > 0, L"the .v16 view must decode with at least one loop");
+                    loaded = true;
+                    break;
+                }
+            }
+            Assert::IsTrue(loaded, L"a .v16 loose patch must be enumerated and load as a view");
+        }
+
         TEST_METHOD_CLEANUP(TestLoadResources_Clean)
         {
             CleanUpGame(_gameFolder);
