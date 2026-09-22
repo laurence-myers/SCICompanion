@@ -105,6 +105,7 @@ private:
 	bool initialized;
 
 	void _SelectAll(bool select);
+	void _SelectScripts(const std::set<uint16_t> &scriptNumbers);
 	void _PopulateScripts();
 	void _UpdateScripts(std::set<uint16_t> updatedScripts);
 	void _PopulateSCOTree();

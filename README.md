@@ -51,6 +51,12 @@ modernizing the build. Broad highlights since the previous release:
   also reports an error instead of silently emitting bad bytecode when it cannot
   resolve a branch, corrects the SCI0 public-export order, and rejects assembly
   opcodes that the target SCI interpreter cannot run.
+* **Faster whole-game decompiles.** Naming the global variables used to mean
+  decompiling every script again, several times over, until no more names
+  changed. The decompiler now decompiles each script once, works out the global
+  names across all of them in memory, and then writes everything. When a
+  smaller selection renames a global, only the previously decompiled scripts
+  that use it are offered for decompiling again.
 * **Improved decompilation output.** The reconstructed source is more idiomatic
   and follows the "golden" decompilations from
   [sluicebox's SCI tools](https://github.com/sluicebox/sci-tools) much more

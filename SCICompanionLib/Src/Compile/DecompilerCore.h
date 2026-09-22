@@ -273,3 +273,5 @@ class IDecompilerResults;
 class GameFolderHelper;
 class GlobalCompiledScriptLookups;
 std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, const GameFolderHelper &helper, uint16_t wScript, CompiledScript &compiledScript, IDecompilerResults &results, bool debugControlFlow = false, bool debugInstConsumption = false, PCSTR pszDebugFilter = nullptr, bool decompileAsm = false, bool substituteTextTuples = false);
+// Gives objects that share a name distinct names (name_a, name_b, ...), keeping the original as the name property.
+void FixDuplicateObjectNames(CompiledScript &compiledScript, const SelectorTable &selectorTable);

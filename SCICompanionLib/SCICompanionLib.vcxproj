@@ -116,6 +116,7 @@
     <ClCompile Include="Src\Compile\DecompilerFallback.cpp" />
     <ClCompile Include="Src\Compile\DecompilerNew.cpp" />
     <ClCompile Include="Src\Compile\DecompilerSpecialCases.cpp" />
+    <ClCompile Include="Src\Compile\DecompileBatch.cpp" />
     <ClCompile Include="Src\Compile\DecompileScript.cpp" />
     <ClCompile Include="Src\Compile\DisassembleHelper.cpp" />
     <ClCompile Include="Src\Compile\Disassembler.cpp" />
@@ -485,6 +486,7 @@
   <ItemGroup>
     <ClInclude Include="Src\Compile\ControlFlowNode.h" />
     <ClInclude Include="Src\Compile\ControlFlowGraphViz.h" />
+    <ClInclude Include="Src\Compile\DecompileBatch.h" />
     <ClInclude Include="Src\Compile\DecompileScript.h" />
     <ClInclude Include="Src\Compile\DisassembleHelper.h" />
     <ClInclude Include="Src\Compile\Disassembler.h" />

@@ -412,7 +412,7 @@ private:
 	const IDecompilerConfig &_config;
 };
 
-Script *Decompile(const GameFolderHelper &helper, const CompiledScript &compiledScript, DecompileLookups &lookups, const Vocab000 *pWords)
+unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const CompiledScript &compiledScript, DecompileLookups &lookups, const Vocab000 *pWords)
 {
 	unique_ptr<Script> pScript = std::make_unique<Script>();
 	ScriptId scriptId;
@@ -543,6 +543,40 @@ Script *Decompile(const GameFolderHelper &helper, const CompiledScript &compiled
 	{
 		AddLocalVariablesToScript(*pScript, compiledScript, lookups, compiledScript._localVars);
 
+		for (auto &pair : exportSlotToName)
+		{
+			unique_ptr<ExportEntry> entry = make_unique<ExportEntry>(pair.first, pair.second);
+			pScript->GetExports().push_back(move(entry));
+		}
+	}
+	return pScript;
+}
+
+void FinishDecompiledScript(const GameFolderHelper &helper, Script &script, const CompiledScript &compiledScript, DecompileLookups &lookups)
+{
+	ResolvePublicProcedureCalls(lookups, helper, script, compiledScript);
+
+	MassageProcedureCalls(lookups, script);
+
+	if (lookups.GetDecompilerConfig())
+	{
+		ResolveVariableValues resolveVariableValues(*lookups.GetDecompilerConfig());
+		script.Traverse(resolveVariableValues);
+	}
+
+	InsertHeaders(script);
+
+	DetermineAndInsertUsings(helper, script, lookups);
+
+	InsertClassDefs(script, lookups);
+}
+
+Script *Decompile(const GameFolderHelper &helper, const CompiledScript &compiledScript, DecompileLookups &lookups, const Vocab000 *pWords)
+{
+	unique_ptr<Script> pScript = DecompileToAst(helper, compiledScript, lookups, pWords);
+
+	if (!lookups.DecompileResults().IsAborted())
+	{
 		// Load this script's SCO, and main's SCO (assuming this isn't main)
 		unique_ptr<CSCOFile> mainSCO;
 		if (compiledScript.GetScriptNumber() != 0)
@@ -554,27 +588,7 @@ Script *Decompile(const GameFolderHelper &helper, const CompiledScript &compiled
 		vector<pair<string, string>> mainDirtyRenames;
 		AutoDetectVariableNames(*pScript, lookups.GetDecompilerConfig(), mainSCO.get(), oldScriptSCO.get(), mainDirtyRenames);
 
-		ResolvePublicProcedureCalls(lookups, helper, *pScript, compiledScript);
-
-		MassageProcedureCalls(lookups, *pScript);
-
-		if (lookups.GetDecompilerConfig())
-		{
-			ResolveVariableValues resolveVariableValues(*lookups.GetDecompilerConfig());
-			pScript->Traverse(resolveVariableValues);
-		}
-
-		InsertHeaders(*pScript);
-
-		DetermineAndInsertUsings(helper, *pScript, lookups);
-
-		InsertClassDefs(*pScript, lookups);
-
-		for (auto &pair : exportSlotToName)
-		{
-			unique_ptr<ExportEntry> entry = make_unique<ExportEntry>(pair.first, pair.second);
-			pScript->GetExports().push_back(move(entry));
-		}
+		FinishDecompiledScript(helper, *pScript, compiledScript, lookups);
 
 		// Decompiling always generates an SCO. Any pertinent info from the old SCO should be transfered
 		// to the new one based extracting info from the script.
