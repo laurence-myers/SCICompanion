@@ -589,6 +589,7 @@ void DecompileDialog::OnTimer(UINT_PTR nIDEvent)
 		if (_future && (future_status::ready == _future->wait_for(std::chrono::seconds(0))))
 		{
 			vector<pair<string, string>> updatedGlobalsList = _decompileResults->GetUpdatedGlobalsList();
+			set<uint16_t> staleScripts = _decompileResults->GetStaleScripts();
 
 			_decompileResults.reset(nullptr);
 			_SyncButtonState();
@@ -608,16 +609,6 @@ void DecompileDialog::OnTimer(UINT_PTR nIDEvent)
 				// the new names. A script decompiled in an earlier pass still
 				// refers to a renamed global by its old name, and needs to go
 				// again; only those, not the whole game.
-				set<uint16_t> candidates;
-				for (int i = 0; i < m_wndListScripts.GetItemCount(); i++)
-				{
-					uint16_t scriptNumber = (uint16_t)m_wndListScripts.GetItemData(i);
-					if (_scriptNumbers.find(scriptNumber) == _scriptNumbers.end())
-					{
-						candidates.insert(scriptNumber);
-					}
-				}
-				set<uint16_t> staleScripts = FindScriptsReferencingGlobals(_helper, candidates, updatedGlobalsList);
 				if (!staleScripts.empty())
 				{
 					bool redecompile = (m_wndRedecompile.GetCheck() == BST_CHECKED);
@@ -844,6 +835,23 @@ void DecompileDialog::s_DecompileThreadWorker(DecompileDialog *pThis)
 			options.SubstituteTextTuples = pThis->_substituteTextTuples;
 			DecompileBatch batch(pThis->_decompilerConfig.get(), *pThis->_lookups, helper, *pThis->_decompileResults, options);
 			batch.Run(scriptNumbers);
+
+			// Which scripts this batch did not write still use a renamed global
+			// by its old name? Found here, on the worker, so the UI thread does
+			// not read every source file of the game.
+			if (!batch.GetGlobalRenames().empty())
+			{
+				set<uint16_t> candidates;
+				for (CompiledScript *script : pThis->_lookups->GetGlobalClassTable().GetAllScripts())
+				{
+					uint16_t scriptNumber = script->GetScriptNumber();
+					if (batch.GetWrittenScripts().find(scriptNumber) == batch.GetWrittenScripts().end())
+					{
+						candidates.insert(scriptNumber);
+					}
+				}
+				pThis->_decompileResults->SetStaleScripts(FindScriptsReferencingGlobals(helper, candidates, batch.GetGlobalRenames()));
+			}
 			if (pThis->_decompileResults->IsAborted())
 			{
 				pThis->_decompileResults->AddResult(DecompilerResultType::Warning, "Decompile aborted");
@@ -991,6 +999,8 @@ void DecompileDialog::_SelectAll(bool select)
 
 void DecompileDialog::_SelectScripts(const std::set<uint16_t> &scriptNumbers)
 {
+	// A partial selection: keep the "select all" box in step with it.
+	m_wndSelectAll.SetCheck(BST_UNCHECKED);
 	m_wndListScripts.SetRedraw(FALSE);
 	int itemCount = m_wndListScripts.GetItemCount();
 	for (int i = 0; i < itemCount; i++)

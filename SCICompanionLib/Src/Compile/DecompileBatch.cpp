@@ -15,6 +15,9 @@
 #include "Text.h"
 #include "format.h"
 #include <fstream>
+#include <iterator>
+#include <psapi.h>
+#pragma comment(lib, "psapi.lib")
 
 using namespace sci;
 using namespace std;
@@ -79,6 +82,9 @@ public:
 				_oldSCO = GetExistingSCOFromScriptNumber(_helper, _number, _scriptLookups.GetSelectorTable());
 			}
 			_namer = make_unique<VariableNamer>(*_script, _config, mainSCO, _oldSCO.get());
+			// The namer copies the names it wants from the old .sco; it only
+			// keeps a pointer to mainSCO. Let the old .sco go.
+			_oldSCO.reset();
 		}
 		return _namer->Run();
 	}
@@ -114,7 +120,7 @@ private:
 	DecompileOptions _options; // Our own copy: _lookups points into DebugFunctionMatch.
 
 	// In dependency order. _lookups points at the members above it, and _namer
-	// at _script and _oldSCO; members are destroyed in reverse order.
+	// at _script; members are destroyed in reverse order.
 	CompiledScript _compiledScript;
 	ObjectFileScriptLookups _objectFileLookups;
 	unique_ptr<ResourceEntity> _textResource;
@@ -131,10 +137,56 @@ DecompileBatch::DecompileBatch(const IDecompilerConfig *config, GlobalCompiledSc
 
 DecompileBatch::~DecompileBatch() {}
 
+// The batch holds every script's syntax tree until the end, so its memory
+// use is the sum of the batch where it used to be one script's. Report the
+// process working set at each phase, so a whole-game decompile shows what
+// the batch costs and where the peak is.
+namespace
+{
+	struct MemoryUsage
+	{
+		size_t workingSet = 0;
+		size_t peakWorkingSet = 0;
+		bool valid = false;
+	};
+
+	MemoryUsage _GetMemoryUsage()
+	{
+		MemoryUsage usage;
+		PROCESS_MEMORY_COUNTERS counters = {};
+		counters.cb = sizeof(counters);
+		if (GetProcessMemoryInfo(GetCurrentProcess(), &counters, sizeof(counters)))
+		{
+			usage.workingSet = counters.WorkingSetSize;
+			usage.peakWorkingSet = counters.PeakWorkingSetSize;
+			usage.valid = true;
+		}
+		return usage;
+	}
+
+	double _ToMB(size_t bytes)
+	{
+		return bytes / (1024.0 * 1024.0);
+	}
+
+	void _ReportMemory(IDecompilerResults &results, const char *stage, const MemoryUsage &start)
+	{
+		MemoryUsage now = _GetMemoryUsage();
+		if (now.valid && start.valid)
+		{
+			double delta = _ToMB(now.workingSet) - _ToMB(start.workingSet);
+			results.AddResult(DecompilerResultType::Important, fmt::format("Memory {0}: working set {1:.1f} MB ({2:+.1f} MB since the batch started), process peak {3:.1f} MB",
+				stage, _ToMB(now.workingSet), delta, _ToMB(now.peakWorkingSet)));
+		}
+	}
+}
+
 void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 {
 	_globalRenames.clear();
 	_written.clear();
+
+	MemoryUsage memoryAtStart = _GetMemoryUsage();
 
 	// mainSCO is declared before the items so it outlives them: each item's
 	// namer keeps a pointer to it.
@@ -176,6 +228,14 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 		items.push_back(move(item));
 	}
 
+	if (_results.IsAborted() && !items.empty())
+	{
+		// The work done so far is kept: name and write what was decompiled.
+		_results.AddResult(DecompilerResultType::Important, fmt::format("Decompile aborted: naming and writing the {0} script(s) already decompiled", items.size()));
+	}
+
+	_ReportMemory(_results, fmt::format("after decompiling {0} script(s)", items.size()).c_str(), memoryAtStart);
+
 	if (items.empty())
 	{
 		return;
@@ -185,46 +245,88 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 	_results.AddResult(DecompilerResultType::Update, "Naming variables...");
 
 	// The set is ordered, so script 0 is first if it is here at all.
-	Item *mainItem = (items.front()->GetNumber() == 0) ? items.front().get() : nullptr;
+	bool mainInBatch = (items.front()->GetNumber() == 0);
 	mainSCO = GetExistingSCOFromScriptNumber(_helper, 0, _scriptLookups.GetSelectorTable());
-	if (!mainSCO && mainItem)
+	if (!mainSCO && mainInBatch)
 	{
 		// No main .sco yet: this batch's decompile of script 0 supplies it, as
 		// it does when script 0 is decompiled first on its own.
-		mainSCO = SCOFromScriptAndCompiledScript(mainItem->GetScript(), mainItem->GetCompiledScript());
+		mainSCO = SCOFromScriptAndCompiledScript(items.front()->GetScript(), items.front()->GetCompiledScript());
 	}
 
 	// A global named in one script lets the scripts before it name more, so
 	// go round again until a round names nothing new. The rounds are cheap
 	// (tree walks), and the names only ever accumulate, so this ends.
+	// A script that throws in either phase is reported and dropped (its files
+	// are not written); the rest of the batch goes on.
 	bool namedSomething;
 	do
 	{
 		namedSomething = false;
 		for (auto &item : items)
 		{
-			vector<pair<string, string>> renames = item->NameVariables(mainSCO.get());
-			if (!renames.empty())
+			if (!item)
 			{
-				namedSomething = true;
-				_globalRenames.insert(_globalRenames.end(), renames.begin(), renames.end());
+				continue;
+			}
+			try
+			{
+				vector<pair<string, string>> renames = item->NameVariables(mainSCO.get());
+				if (!renames.empty())
+				{
+					namedSomething = true;
+					_globalRenames.insert(_globalRenames.end(), renames.begin(), renames.end());
+				}
+			}
+			catch (std::exception &e)
+			{
+				_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed while naming variables: {1}", item->GetNumber(), e.what()));
+				item.reset();
+			}
+			catch (...)
+			{
+				_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed while naming variables.", item->GetNumber()));
+				item.reset();
 			}
 		}
 	} while (namedSomething);
 
-	// Phase 3: finish each script and write its files.
+	_ReportMemory(_results, "after naming variables", memoryAtStart);
+
+	// Phase 3: finish each script and write its files. Each script is released
+	// once written, so memory falls as the phase goes on.
 	for (auto &item : items)
 	{
-		item->FinishAndWrite();
-		_written.insert(item->GetNumber());
+		if (!item)
+		{
+			continue;
+		}
+		try
+		{
+			item->FinishAndWrite();
+			_written.insert(item->GetNumber());
+		}
+		catch (std::exception &e)
+		{
+			_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed to write: {1}", item->GetNumber(), e.what()));
+		}
+		catch (...)
+		{
+			_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed to write.", item->GetNumber()));
+		}
+		item.reset();
 	}
+	items.clear();
+
+	_ReportMemory(_results, "after writing", memoryAtStart);
 
 	if (!_globalRenames.empty())
 	{
 		_results.SetGlobalVarsUpdated(_globalRenames);
 		// Script 0's .sco was just written from its own script, names included.
-		// Otherwise main's .sco on disk gets the names now.
-		if (!mainItem && mainSCO)
+		// Otherwise (script 0 not in the batch, or its write failed) main's .sco
+		// on disk gets the names now.
+		if (mainSCO && (_written.find(0) == _written.end()))
 		{
 			_results.AddResult(DecompilerResultType::Important, "Updating global variables in script 0");
 			SaveSCOFile(_helper, *mainSCO);
@@ -277,9 +379,7 @@ set<uint16_t> FindScriptsReferencingGlobals(const GameFolderHelper &helper, cons
 		{
 			continue;
 		}
-		std::stringstream ss;
-		ss << file.rdbuf();
-		string text = ss.str();
+		string text((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
 		for (const auto &rename : renames)
 		{
 			if (ContainsIdentifier(text, rename.first))

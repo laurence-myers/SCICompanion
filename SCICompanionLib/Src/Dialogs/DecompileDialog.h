@@ -34,6 +34,12 @@ public:
 
 	std::vector<std::pair<std::string, std::string>> GetUpdatedGlobalsList() { return _globalsUpdated; }
 
+	// The scripts decompiled in an earlier pass that still use a renamed global
+	// by its old name. The worker finds them; the UI thread reads them once the
+	// worker is done.
+	void SetStaleScripts(const std::set<uint16_t> &staleScripts) { _staleScripts = staleScripts; }
+	const std::set<uint16_t> &GetStaleScripts() const { return _staleScripts; }
+
 	// Stats
 	int _successCount;
 	int _fallbackCount;
@@ -46,6 +52,7 @@ private:
 	std::atomic<bool> _aborted;
 	HWND _hwnd;
 	std::vector<std::pair<std::string, std::string>> _globalsUpdated;
+	std::set<uint16_t> _staleScripts;
 };
 
 class DecompileDialog : public CExtResizableDialog
