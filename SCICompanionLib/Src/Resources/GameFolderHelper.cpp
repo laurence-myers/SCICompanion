@@ -367,6 +367,22 @@ std::unique_ptr<ResourceContainer> GameFolderHelper::Resources(ResourceTypeFlags
 			}
 		}
 
+		// SCI1.1 CD talkie games can keep their speech in an AUDIO subfolder: the
+		// per-room maps (NNN.MAP, the same patch format as other loose maps) sit next
+		// to RESOURCE.AUD there rather than in the game root. Scan that subfolder for
+		// the audio maps so the speech in those rooms is found; the matching volume is
+		// resolved by GetAudioVolumePath, which also looks in AUDIO. Freddy Pharkas is
+		// one such game. (#182)
+		if (IsFlagSet(types, ResourceTypeFlags::AudioMap))
+		{
+			std::string audioSubfolder = GameFolder + "\\AUDIO";
+			DWORD attribs = GetFileAttributes(audioSubfolder.c_str());
+			if ((attribs != INVALID_FILE_ATTRIBUTES) && (attribs & FILE_ATTRIBUTE_DIRECTORY))
+			{
+				mapAndVolumes->push_back(move(std::make_unique<PatchFilesResourceSource>(ResourceTypeFlags::AudioMap, Version, audioSubfolder, ResourceSourceFlags::PatchFile)));
+			}
+		}
+
 		// First, any stray files...
 		if (!IsFlagSet(enumFlags, ResourceEnumFlags::ExcludePatchFiles) && (mapContext == -1))
 		{
