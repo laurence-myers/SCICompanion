@@ -1115,7 +1115,7 @@ HRESULT CResourceListCtrl::_UpdateEntries()
 			auto resourceContainer = appState->GetResourceMap().Resources(ResourceTypeToFlag(GetType()), enumFlags | ResourceEnumFlags::AddInDefaultEnumFlags);
 			// Copy the ResourceBlobs into resources, but delay decompression (for performance)
 			// REVIEW: We might want to have a wrapper.
-			for (auto it = resourceContainer->begin(); it != resourceContainer->end(); ++it)
+			for (auto it = resourceContainer->begin(); it != resourceContainer->end(); )
 			{
 				std::unique_ptr<ResourceBlob> blob;
 				try
@@ -1131,19 +1131,39 @@ HRESULT CResourceListCtrl::_UpdateEntries()
 					// the catch below showed an "Error enumerating items" dialog and
 					// left the list empty, so none of the good resources appeared. (#182)
 					appState->LogInfo("Skipping unreadable resource: number %d - %s", it.GetResourceNumber(), e.what());
-					continue;
 				}
-				if (blob->GetLength() == 0)
+
+				if (blob != nullptr)
 				{
-					// Skip a zero-length resource. These are stray/placeholder map
-					// entries (for example an 8-byte header with no payload, as in
-					// KQ4 "view" 1029) that cannot be decompressed or parsed; listing
-					// one shows a broken 0-byte entry and opening it fails. Warn so it
-					// is not silently dropped. (#182)
-					appState->LogInfo("Skipping empty resource: type %x number %d", (int)blob->GetType(), blob->GetNumber());
-					continue;
+					if (blob->GetLength() == 0)
+					{
+						// Skip a zero-length resource. These are stray/placeholder map
+						// entries (for example an 8-byte header with no payload, as in
+						// KQ4 "view" 1029) that cannot be decompressed or parsed; listing
+						// one shows a broken 0-byte entry and opening it fails. Warn so it
+						// is not silently dropped. (#182)
+						appState->LogInfo("Skipping empty resource: type %x number %d", (int)blob->GetType(), blob->GetNumber());
+					}
+					else
+					{
+						resources.push_back(std::move(blob));
+					}
 				}
-				resources.push_back(std::move(blob));
+
+				// Advance in its own try. A corrupt map can throw while stepping
+				// (ResourceIterator::_GetNextEntry), and letting that escape would abort
+				// the whole list via the catch below -- the same failure the per-item
+				// skip above prevents. Stop enumeration gracefully instead, keeping the
+				// resources found so far. (#182)
+				try
+				{
+					++it;
+				}
+				catch (const std::exception &e)
+				{
+					appState->LogInfo("Stopping resource enumeration after a map error: %s", e.what());
+					break;
+				}
 			}
 
 			if (!resources.empty())

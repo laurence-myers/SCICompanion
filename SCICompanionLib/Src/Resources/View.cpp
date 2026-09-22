@@ -245,7 +245,12 @@ void ReadCelFrom(ResourceEntity &resource, sci::istream byteStream, Cel &cel, bo
 		{
 			appState->LogInfo("Corrupt cel in view %d (package %d): replaced with a 1x1 placeholder.", resource.ResourceNumber, resource.PackageNumber);
 		}
-		CreateDegenerate(cel, 0);
+		// Set the transparent colour explicitly first: we return before reading it
+		// from the (corrupt) stream, and Cel() leaves it indeterminate. Fill the 1x1
+		// pixel with that same colour so the placeholder is fully transparent and its
+		// serialized bytes are deterministic (matches the other degenerate-cel sites).
+		cel.TransparentColor = 0;
+		CreateDegenerate(cel, cel.TransparentColor);
 		return;
 	}
 

@@ -236,9 +236,11 @@ namespace UnitTests
 
             // CD talkie games keep their speech in per-room message-audio maps. A
             // bulk enumeration yields only the main audio map (the AudioResourceSource
-            // filters to the map context), so load each room's speech through its own
-            // map context. Freddy Pharkas, for example, keeps ~47 room maps plus
-            // RESOURCE.AUD in an AUDIO subfolder. (#182)
+            // filters to the map context, rewriting -1 to the version's main map
+            // number), so load each room's speech through its own map context. Freddy
+            // Pharkas, for example, keeps ~47 room maps plus RESOURCE.AUD in an AUDIO
+            // subfolder. (#182)
+            const int mainAudioMapNumber = appState->GetResourceMap().Helper().Version.AudioMapResourceNumber;
             std::vector<int> audioMapNumbers;
             {
                 auto mapContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::AudioMap, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
@@ -250,12 +252,26 @@ namespace UnitTests
             }
             for (int audioMapNumber : audioMapNumbers)
             {
+                // The main audio map was already loaded by the bulk enumeration above
+                // (its Audio source used map context -1, which resolves to this map);
+                // skip it here so its speech is not loaded and counted twice.
+                if (audioMapNumber == mainAudioMapNumber)
+                {
+                    continue;
+                }
                 auto speechContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::Audio, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags, audioMapNumber);
                 count += _LoadResourceContainer(speechContainer.get());
             }
 
             message = fmt::format(L"Loaded {0} resources.", count);
             Logger::WriteMessage(message.c_str());
+
+            // A game the tool opened must yield at least one loadable resource. Since
+            // header-stage and zero-length failures are skipped (not reported), this
+            // floor is what still catches a wholesale load regression -- e.g. a broken
+            // version detection that makes every resource skip -- which would otherwise
+            // leave the sweep green with count 0. (#182)
+            Assert::IsTrue(count > 0, fmt::format(L"No resources loaded from {0}.", toWide(gameFolder)).c_str());
 
             appState->ResetClassBrowser();
             delete appState;

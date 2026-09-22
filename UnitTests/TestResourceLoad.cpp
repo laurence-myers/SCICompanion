@@ -221,12 +221,17 @@ namespace UnitTests
 
             sci::istream stream(buf.data(), (uint32_t)buf.size());
             Cel cel;
+            cel.TransparentColor = 0xAB; // stand in for the indeterminate default; the fix must overwrite it
             bool threw = false;
             try { ReadCelFrom(*view, stream, cel, false); }
             catch (std::exception &) { threw = true; }
             Assert::IsFalse(threw, L"a corrupt cel size must not fail the whole view");
             Assert::AreEqual(1, (int)cel.size.cx, L"corrupt cel width collapses to 1");
             Assert::AreEqual(1, (int)cel.size.cy, L"corrupt cel height collapses to 1");
+            // The placeholder's transparent colour must be set deterministically (not
+            // left as the indeterminate default), so the 1x1 pixel is transparent and
+            // its serialized byte is stable.
+            Assert::AreEqual(0, (int)cel.TransparentColor, L"placeholder cel must have a deterministic transparent colour");
         }
     };
 }
