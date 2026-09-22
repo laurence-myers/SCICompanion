@@ -34,6 +34,10 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
+// External-linkage map-format detector, defined in VersionDetectionHelper.cpp
+// (no public header). Used by the map-format detection tests below.
+ResourceMapFormat _DetectMapFormat(GameFolderHelper &helper);
+
 std::wstring ToString(const RasterChangeHint& q)
 {
     return fmt::format(L"RasterChangeHint:{0:08x}", (int)q);
@@ -367,6 +371,60 @@ namespace UnitTests
             bool got = nav.NavAndReadNextEntry(ResourceTypeFlags::All, mapStream, state, entryOut);
             Assert::IsFalse(got,
                 L"a corrupt lookup table must end enumeration cleanly, not read a bogus entry");
+        }
+
+        // Writes a resource.map (and an empty resource.000 so referenced volumes
+        // exist) into a fresh temp folder, runs _DetectMapFormat over it, cleans up,
+        // and returns the detected format.
+        static ResourceMapFormat _DetectMapFormatOfCraftedMap(const std::vector<uint8_t> &map)
+        {
+            namespace fs = std::filesystem;
+            fs::path dir = fs::temp_directory_path() / fs::path(L"scicomp_mapformat_test");
+            std::error_code ec;
+            fs::remove_all(dir, ec);
+            fs::create_directories(dir, ec);
+            {
+                std::ofstream mapFile((dir / L"resource.map").string(), std::ios::binary);
+                mapFile.write(reinterpret_cast<const char *>(map.data()), (std::streamsize)map.size());
+            }
+            {
+                // Package 0 -> resource.000; the detector checks that it exists.
+                std::ofstream volFile((dir / L"resource.000").string(), std::ios::binary);
+            }
+
+            GameFolderHelper helper;
+            helper.GameFolder = dir.string();
+            ResourceMapFormat format = _DetectMapFormat(helper);
+
+            fs::remove_all(dir, ec);
+            return format;
+        }
+
+        // King's Quest 4 (the earliest SCI game) ends its SCI0 resource map with a
+        // terminator of FF FF 00 00 00 00 -- id 0xFFFF, offset 0 -- rather than the
+        // six 0xFF bytes later SCI0 uses. The old "last six bytes are 0xFF" check
+        // missed it, so the map (whose first byte is < 0x80) was mistaken for an
+        // SCI2 directory and read as garbage. It must be detected as SCI0. (#189)
+        TEST_METHOD(EarlySci0Map_ShortTerminator_DetectsSci0)
+        {
+            std::vector<uint8_t> map = {
+                0x01, 0x00, 0x00, 0x00, 0x00, 0x00, // number=1 type=0(View) offset=0 package=0
+                0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, // early-SCI0 terminator: id=0xFFFF, offset=0
+            };
+            Assert::AreEqual((int)ResourceMapFormat::SCI0, (int)_DetectMapFormatOfCraftedMap(map),
+                L"an early-SCI0 map (0xFFFF short terminator) must be detected as SCI0, not SCI2");
+        }
+
+        // Regression guard: the usual full six-0xFF SCI0 terminator must still be
+        // detected as SCI0 after relaxing the terminator check above.
+        TEST_METHOD(Sci0Map_FullFFTerminator_DetectsSci0)
+        {
+            std::vector<uint8_t> map = {
+                0x01, 0x00, 0x00, 0x00, 0x00, 0x00, // number=1 type=0(View) offset=0 package=0
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // standard SCI0 terminator
+            };
+            Assert::AreEqual((int)ResourceMapFormat::SCI0, (int)_DetectMapFormatOfCraftedMap(map),
+                L"a standard six-0xFF SCI0 terminator must still be detected as SCI0");
         }
 
         // #117: SCI0 has no lookup table, so its navigator must never report the
