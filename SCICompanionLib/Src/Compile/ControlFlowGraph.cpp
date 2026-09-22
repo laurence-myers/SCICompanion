@@ -2322,7 +2322,7 @@ void _DeoptimizeBtChains(code_pos start, code_pos end)
 //  jmp LoopExit
 //A:jmp LoopHead
 // Which will cause us to identify this as a loop with no tail condition, which ends in an (if (foo) break)
-void _FixupConfusingBranches(code_pos start, code_pos end, const std::string &statusPrefix, IDecompilerResults &results)
+void _FixupConfusingBranches(code_pos start, code_pos end, const std::string &statusPrefix, IDecompilerResults &results, bool debug)
 {
 	// First, track all branch targets
 	vector<uint16_t> branchTargets;
@@ -2352,7 +2352,12 @@ void _FixupConfusingBranches(code_pos start, code_pos end, const std::string &st
 				{
 					// This jump goes to the same place as the bnt. So turn the bnt into a forward branch.
 					theBranch->set_branch_target(cur, true);
-					results.AddResult(DecompilerResultType::Important, fmt::format("Restructured branches in {0}", statusPrefix));
+					// A routine repair, not a warning: report it only when the
+					// control-flow debug output is on.
+					if (debug)
+					{
+						results.AddResult(DecompilerResultType::Important, fmt::format("Restructured branches in {0}", statusPrefix));
+					}
 				}
 			}
 
@@ -2368,7 +2373,7 @@ void _FixupConfusingBranches(code_pos start, code_pos end, const std::string &st
 	// dead jmp has no predecessor, so it is pruned, and the inner loop has no
 	// forward exit. Its follow node cannot be found. Retarget the backward
 	// conditional exit onto the dead jmp, so the inner loop gets a real exit.
-	void _FixupFoldedLoopExits(code_pos start, code_pos end, const std::string &statusPrefix, IDecompilerResults &results)
+	void _FixupFoldedLoopExits(code_pos start, code_pos end, const std::string &statusPrefix, IDecompilerResults &results, bool debug)
 {
 	std::vector<uint16_t> branchTargets;
 	code_pos cur = start;
@@ -2401,7 +2406,10 @@ void _FixupConfusingBranches(code_pos start, code_pos end, const std::string &st
 					deadByFallthrough && notABranchTarget)
 				{
 					cur->set_branch_target(scan, true);
-					results.AddResult(DecompilerResultType::Important, fmt::format("Restructured folded loop exit in {0}", statusPrefix));
+					if (debug)
+					{
+						results.AddResult(DecompilerResultType::Important, fmt::format("Restructured folded loop exit in {0}", statusPrefix));
+					}
 					break;
 				}
 				prev = scan;
@@ -2783,8 +2791,8 @@ bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 		_DeoptimizeBntChains(start, end);
 		_UnchainBtToBnt(start, end);
 		_DeoptimizeBtChains(start, end);
-		_FixupConfusingBranches(start, end, _contextName, _decompilerResults);
-		_FixupFoldedLoopExits(start, end, _contextName, _decompilerResults);
+		_FixupConfusingBranches(start, end, _contextName, _decompilerResults, _debug);
+		_FixupFoldedLoopExits(start, end, _contextName, _decompilerResults, _debug);
 
 		bool showFile = _debug && (!_pszDebugFilter || PathMatchSpec(_contextName.c_str(), _pszDebugFilter));
 
