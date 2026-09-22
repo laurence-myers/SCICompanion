@@ -427,10 +427,6 @@ namespace UnitTests
                 L"a standard six-0xFF SCI0 terminator must still be detected as SCI0");
         }
 
-        // #117: SCI0 has no lookup table, so its navigator must never report the
-        // map corrupt. The open-time surfacing (ResourceSource::IsResourceMapCorrupt
-        // -> CResourceMap::IsResourceMapCorrupt) reaches this for an SCI0 game, so
-        // a false positive here would pop a spurious "corrupt map" message.
         // GetAudioVolumePath falls back to an AUDIO subfolder. Some SCI1.1 CD talkie
         // games (for example Freddy Pharkas) keep RESOURCE.AUD and their per-room
         // audio maps in an AUDIO subfolder rather than the game root, so the speech
@@ -455,6 +451,10 @@ namespace UnitTests
                 L"a RESOURCE.AUD in an AUDIO subfolder must be found");
         }
 
+        // #117: SCI0 has no lookup table, so its navigator must never report the
+        // map corrupt. The open-time surfacing (ResourceSource::IsResourceMapCorrupt
+        // -> CResourceMap::IsResourceMapCorrupt) reaches this for an SCI0 game, so
+        // a false positive here would pop a spurious "corrupt map" message.
         TEST_METHOD(Sci0MapNavigator_NeverReportsCorrupt)
         {
             std::vector<uint8_t> buf(64, 0);
