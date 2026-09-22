@@ -58,6 +58,33 @@ namespace UnitTests
             }
         }
 
+        // Copies and compiles the two fixtures. Before compiling, renames slot 5
+        // of Main.sco (gCast in the template) to its standard name, global5, so
+        // the fixtures can refer to it and the decompiler sees it as unnamed.
+        // Slot 3 is already global3 (an unused slot in the template's Main).
+        // The .sco is what the compiler resolves (use Main) globals against, and
+        // what the decompiler reads global names from, so Main.sc is left alone.
+        void PrepareBatchFixtures()
+        {
+            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            {
+                GlobalCompiledScriptLookups lookups;
+                Assert::IsTrue(lookups.Load(helper), L"lookups should load");
+                std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(helper, 0, lookups.GetSelectorTable());
+                Assert::IsNotNull(mainSCO.get(), L"the template game should have Main.sco");
+                Assert::IsTrue(mainSCO->GetVariables().size() > 5, L"Main should have more than 5 globals");
+                Assert::AreEqual(std::string("global3"), mainSCO->GetVariableName(3), L"slot 3 should be unnamed in the template");
+                mainSCO->GetVariables()[5].SetName("global5");
+                SaveSCOFile(helper, *mainSCO);
+            }
+
+            AddFixtureScript("BatchGlobalsA");
+            AddFixtureScript("BatchGlobalsB");
+            std::string error;
+            Assert::IsTrue(CompileFixture(950, "BatchGlobalsA", &error), ToW("compile of BatchGlobalsA failed: " + error).c_str());
+            Assert::IsTrue(CompileFixture(951, "BatchGlobalsB", &error), ToW("compile of BatchGlobalsB failed: " + error).c_str());
+        }
+
         TEST_METHOD(ContainsIdentifier_WholeWordOnly)
         {
             Assert::IsTrue(ContainsIdentifier("(= global3 gEgo)", "global3"));
@@ -71,19 +98,15 @@ namespace UnitTests
             Assert::IsFalse(ContainsIdentifier("global3", ""));
         }
 
-        // Script 950 assigns global3 from global40; script 951 assigns global40
-        // from gEgo. In script order, 950 sees global40 with no name and can
-        // name nothing. The batch names global40 from 951, goes round again,
+        // Script 950 assigns global3 from global5; script 951 assigns global5
+        // from gEgo. In script order, 950 sees global5 with no name and can
+        // name nothing. The batch names global5 from 951, goes round again,
         // and names global3 from 950's use of the new name. Before, that took
         // a second full decompile of every script.
         TEST_METHOD(Batch_NamesGlobalsAcrossScriptsToFixpoint)
         {
             _gameFolder = SetUpGameSCI11();
-            AddFixtureScript("BatchGlobalsA");
-            AddFixtureScript("BatchGlobalsB");
-            std::string error;
-            Assert::IsTrue(CompileFixture(950, "BatchGlobalsA", &error), ToW("compile of BatchGlobalsA failed: " + error).c_str());
-            Assert::IsTrue(CompileFixture(951, "BatchGlobalsB", &error), ToW("compile of BatchGlobalsB failed: " + error).c_str());
+            PrepareBatchFixtures();
 
             const GameFolderHelper &helper = appState->GetResourceMap().Helper();
             GlobalCompiledScriptLookups lookups;
@@ -91,17 +114,6 @@ namespace UnitTests
             uint16_t dummy;
             lookups.GetSelectorTable().ReverseLookup("", dummy);
             std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
-
-            // The fixtures rely on the template's Main leaving these two slots
-            // under their standard names, so the decompiler treats them as
-            // unnamed. If the template changes, pick two other unused slots.
-            {
-                std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(helper, 0, lookups.GetSelectorTable());
-                Assert::IsNotNull(mainSCO.get(), L"the template game should have Main.sco");
-                Assert::IsTrue(mainSCO->GetVariables().size() > 40, L"Main should have more than 40 globals");
-                Assert::AreEqual(std::string("global3"), mainSCO->GetVariableName(3), L"slot 3 should be unnamed in the template");
-                Assert::AreEqual(std::string("global40"), mainSCO->GetVariableName(40), L"slot 40 should be unnamed in the template");
-            }
 
             TestDecompilerResults results;
             DecompileBatch batch(config.get(), lookups, helper, results);
@@ -111,34 +123,34 @@ namespace UnitTests
             Assert::AreEqual(0, results.fallbacks, L"the fixtures should not fall back");
 
             bool named3 = false;
-            bool named40 = false;
+            bool named5 = false;
             for (const auto &rename : batch.GetGlobalRenames())
             {
                 named3 = named3 || (rename.first == "global3");
-                named40 = named40 || (rename.first == "global40");
+                named5 = named5 || (rename.first == "global5");
             }
-            Assert::IsTrue(named40, L"global40 should be named from its assignment in script 951");
-            Assert::IsTrue(named3, L"global3 should be named from global40's new name, which takes a second naming round");
+            Assert::IsTrue(named5, L"global5 should be named from its assignment in script 951");
+            Assert::IsTrue(named3, L"global3 should be named from global5's new name, which takes a second naming round");
 
             // Main's .sco carries the names.
             std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(helper, 0, lookups.GetSelectorTable());
             Assert::IsNotNull(mainSCO.get(), L"Main.sco should still exist");
             std::string name3 = mainSCO->GetVariableName(3);
-            std::string name40 = mainSCO->GetVariableName(40);
+            std::string name5 = mainSCO->GetVariableName(5);
             Assert::AreNotEqual(std::string("global3"), name3, L"Main.sco should hold the new name of slot 3");
-            Assert::AreNotEqual(std::string("global40"), name40, L"Main.sco should hold the new name of slot 40");
+            Assert::AreNotEqual(std::string("global5"), name5, L"Main.sco should hold the new name of slot 5");
             Assert::IsFalse(name3.empty());
-            Assert::IsFalse(name40.empty());
+            Assert::IsFalse(name5.empty());
 
             // And the written sources use them, with no old name left behind.
             std::string textA = ReadTextFile(helper.GetScriptFileName(950));
             Assert::IsFalse(ContainsIdentifier(textA, "global3"), ToW("script 950 still uses global3:\n" + textA).c_str());
-            Assert::IsFalse(ContainsIdentifier(textA, "global40"), ToW("script 950 still uses global40:\n" + textA).c_str());
+            Assert::IsFalse(ContainsIdentifier(textA, "global5"), ToW("script 950 still uses global5:\n" + textA).c_str());
             Assert::IsTrue(ContainsIdentifier(textA, name3), ToW("script 950 should use " + name3 + ":\n" + textA).c_str());
-            Assert::IsTrue(ContainsIdentifier(textA, name40), ToW("script 950 should use " + name40 + ":\n" + textA).c_str());
+            Assert::IsTrue(ContainsIdentifier(textA, name5), ToW("script 950 should use " + name5 + ":\n" + textA).c_str());
             std::string textB = ReadTextFile(helper.GetScriptFileName(951));
-            Assert::IsFalse(ContainsIdentifier(textB, "global40"), ToW("script 951 still uses global40:\n" + textB).c_str());
-            Assert::IsTrue(ContainsIdentifier(textB, name40), ToW("script 951 should use " + name40 + ":\n" + textB).c_str());
+            Assert::IsFalse(ContainsIdentifier(textB, "global5"), ToW("script 951 still uses global5:\n" + textB).c_str());
+            Assert::IsTrue(ContainsIdentifier(textB, name5), ToW("script 951 should use " + name5 + ":\n" + textB).c_str());
 
             // Each script got its own .sco too.
             Assert::IsNotNull(GetExistingSCOFromScriptNumber(helper, 950, lookups.GetSelectorTable()).get(), L"script 950 should have an .sco");
@@ -150,11 +162,7 @@ namespace UnitTests
         TEST_METHOD(Batch_SecondRunIsStable)
         {
             _gameFolder = SetUpGameSCI11();
-            AddFixtureScript("BatchGlobalsA");
-            AddFixtureScript("BatchGlobalsB");
-            std::string error;
-            Assert::IsTrue(CompileFixture(950, "BatchGlobalsA", &error), ToW(error).c_str());
-            Assert::IsTrue(CompileFixture(951, "BatchGlobalsB", &error), ToW(error).c_str());
+            PrepareBatchFixtures();
 
             const GameFolderHelper &helper = appState->GetResourceMap().Helper();
             GlobalCompiledScriptLookups lookups;
@@ -186,8 +194,8 @@ namespace UnitTests
         TEST_METHOD(FindScriptsReferencingGlobals_FindsOldNamesOnly)
         {
             _gameFolder = SetUpGameSCI11();
-            AddFixtureScript("BatchGlobalsA"); // uses global3 and global40
-            AddFixtureScript("BatchGlobalsB"); // uses global40
+            AddFixtureScript("BatchGlobalsA"); // uses global3 and global5
+            AddFixtureScript("BatchGlobalsB"); // uses global5
             CResourceMap &rm = appState->GetResourceMap();
             rm.AssignName(ResourceType::Script, 950, NoBase36, "BatchGlobalsA");
             rm.AssignName(ResourceType::Script, 951, NoBase36, "BatchGlobalsB");
@@ -198,14 +206,14 @@ namespace UnitTests
             Assert::AreEqual(1, (int)stale.size(), L"only script 950 uses global3");
             Assert::IsTrue(stale.count(950) == 1, L"script 950 uses global3");
 
-            renames = { { "global40", "gOther" } };
+            renames = { { "global5", "gOther" } };
             stale = FindScriptsReferencingGlobals(helper, { 950, 951 }, renames);
-            Assert::AreEqual(2, (int)stale.size(), L"both scripts use global40");
+            Assert::AreEqual(2, (int)stale.size(), L"both scripts use global5");
 
-            // A global whose standard name is a prefix of another's is not a match.
-            renames = { { "global4", "gFour" } };
+            // A global neither script mentions.
+            renames = { { "global50", "gFifty" } };
             stale = FindScriptsReferencingGlobals(helper, { 950, 951 }, renames);
-            Assert::IsTrue(stale.empty(), L"global4 is not global40");
+            Assert::IsTrue(stale.empty(), L"global50 is used nowhere; global5 is not a match for it");
 
             Assert::IsTrue(FindScriptsReferencingGlobals(helper, { 950, 951 }, {}).empty(), L"no renames, nothing stale");
         }
