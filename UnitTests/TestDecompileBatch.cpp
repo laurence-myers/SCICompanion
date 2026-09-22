@@ -10,6 +10,11 @@
 #include "DecompileBatch.h"
 #include "SCO.h"
 #include "GameFolderHelper.h"
+#include "ResourceContainer.h"
+#include "DecompilerCore.h"
+#include "DecompileScript.h"
+#include "AutoDetectVariableNames.h"
+#include "format.h"
 #include <fstream>
 #include <sstream>
 #include <memory>
@@ -216,6 +221,118 @@ namespace UnitTests
             Assert::IsTrue(stale.empty(), L"global50 is used nowhere; global5 is not a match for it");
 
             Assert::IsTrue(FindScriptsReferencingGlobals(helper, { 950, 951 }, {}).empty(), L"no renames, nothing stale");
+        }
+
+        // The batch runs its naming rounds over each script's naming skeleton,
+        // not its full tree, so the two must name the same globals: script 951
+        // names global5 from gEgo, and script 950 then names global3 from it.
+        TEST_METHOD(NamingSkeleton_NamesTheSameGlobalsAsTheFullTree)
+        {
+            _gameFolder = SetUpGameSCI11();
+            PrepareBatchFixtures();
+
+            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            GlobalCompiledScriptLookups lookups;
+            Assert::IsTrue(lookups.Load(helper), L"lookups should load");
+            uint16_t dummy;
+            lookups.GetSelectorTable().ReverseLookup("", dummy);
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+
+            for (uint16_t number : { (uint16_t)951, (uint16_t)950 })
+            {
+                CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+                Assert::IsTrue(compiled.Load(helper, helper.Version, number), L"the fixture should load");
+                FixDuplicateObjectNames(compiled, config->GetSelectorTable());
+                ObjectFileScriptLookups objectFileLookups(helper, lookups.GetSelectorTable());
+                TestDecompilerResults results;
+                DecompileLookups decompileLookups(config.get(), helper, number, &lookups, &objectFileLookups, &compiled, nullptr, &compiled, results);
+                std::unique_ptr<sci::Script> full = DecompileToAst(helper, compiled, decompileLookups, appState->GetResourceMap().GetVocab000());
+                std::unique_ptr<sci::Script> skeleton = BuildNamingSkeleton(*full);
+
+                std::unique_ptr<CSCOFile> mainForFull = GetExistingSCOFromScriptNumber(helper, 0, lookups.GetSelectorTable());
+                Assert::IsNotNull(mainForFull.get(), L"Main.sco should exist");
+                CSCOFile mainForSkeleton = *mainForFull;
+                std::unique_ptr<CSCOFile> oldSCO = GetExistingSCOFromScriptNumber(helper, number, lookups.GetSelectorTable());
+
+                std::vector<std::pair<std::string, std::string>> fromFull, fromSkeleton;
+                {
+                    VariableNamer namer(*full, config.get(), mainForFull.get(), oldSCO.get());
+                    fromFull = namer.Run();
+                }
+                {
+                    VariableNamer namer(*skeleton, config.get(), &mainForSkeleton, oldSCO.get());
+                    fromSkeleton = namer.Run();
+                }
+                Assert::IsFalse(fromFull.empty(), ToW(fmt::format("script {0} should name a global", number)).c_str());
+                Assert::IsTrue(fromFull == fromSkeleton, ToW(fmt::format("script {0}: the skeleton should name the same globals as the full tree", number)).c_str());
+                for (size_t i = 0; i < mainForFull->GetVariables().size(); i++)
+                {
+                    Assert::AreEqual(mainForFull->GetVariableName(i), mainForSkeleton.GetVariableName(i), L"Main.sco should end up the same either way");
+                }
+                // Script 950 can only name global3 once global5 has its name.
+                SaveSCOFile(helper, *mainForFull);
+            }
+        }
+
+        // Runs one batch over every script of a real game, as the Decompile
+        // dialog does, and records the batch's memory lines and its elapsed
+        // time. For measuring the batch on a whole game and for diffing its
+        // output between two builds. Opt-in, driven by environment variables
+        // so no local path is in the source:
+        //   SCICOMP_BATCH_GAME  game folder (the batch WRITES its src folder,
+        //                       so point this at a copy)
+        //   SCICOMP_BATCH_OUT   file to write the report to
+        TEST_METHOD(OptIn_BatchExistingGame)
+        {
+            const char *game = getenv("SCICOMP_BATCH_GAME");
+            const char *outPath = getenv("SCICOMP_BATCH_OUT");
+            Assert::IsTrue(game && outPath, L"set SCICOMP_BATCH_GAME and SCICOMP_BATCH_OUT");
+            SetUpExistingGame(game);
+
+            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            GlobalCompiledScriptLookups lookups;
+            Assert::IsTrue(lookups.Load(helper), L"lookups should load");
+            uint16_t dummy;
+            lookups.GetSelectorTable().ReverseLookup("", dummy);
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+
+            std::set<uint16_t> numbers;
+            {
+                auto container = appState->GetResourceMap().Resources(ResourceTypeFlags::Script, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+                for (auto &blob : *container)
+                {
+                    numbers.insert((uint16_t)blob->GetNumber());
+                }
+            }
+
+            class MemoryLines : public TestDecompilerResults
+            {
+            public:
+                void AddResult(DecompilerResultType type, const std::string &message) override
+                {
+                    if (message.compare(0, 7, "Memory ") == 0)
+                    {
+                        lines.push_back(message);
+                    }
+                    TestDecompilerResults::AddResult(type, message);
+                }
+                std::vector<std::string> lines;
+            } results;
+
+            ULONGLONG start = GetTickCount64();
+            {
+                DecompileBatch batch(config.get(), lookups, helper, results);
+                batch.Run(numbers);
+                results.lines.push_back(fmt::format("Wrote {0} of {1} scripts; {2} globals named", batch.GetWrittenScripts().size(), numbers.size(), batch.GetGlobalRenames().size()));
+            }
+            results.lines.push_back(fmt::format("Elapsed: {0} s", (GetTickCount64() - start) / 1000));
+
+            std::ofstream out(outPath, std::ios::binary);
+            for (const std::string &line : results.lines)
+            {
+                out << line << "\n";
+            }
+            CleanUpExistingGame();
         }
     };
 }
