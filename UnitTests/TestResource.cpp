@@ -373,6 +373,30 @@ namespace UnitTests
         // map corrupt. The open-time surfacing (ResourceSource::IsResourceMapCorrupt
         // -> CResourceMap::IsResourceMapCorrupt) reaches this for an SCI0 game, so
         // a false positive here would pop a spurious "corrupt map" message.
+        // GetAudioVolumePath falls back to an AUDIO subfolder. Some SCI1.1 CD talkie
+        // games (for example Freddy Pharkas) keep RESOURCE.AUD and their per-room
+        // audio maps in an AUDIO subfolder rather than the game root, so the speech
+        // volume must be found there. (#182)
+        TEST_METHOD(GetAudioVolumePath_FindsAudioSubfolder)
+        {
+            namespace fs = std::filesystem;
+            fs::path dir = fs::temp_directory_path() / fs::path(L"scicomp_audio_subfolder_test");
+            std::error_code ec;
+            fs::remove_all(dir, ec);
+            fs::create_directories(dir / fs::path(L"AUDIO"), ec);
+            {
+                // Only in the AUDIO subfolder -- not the game root.
+                std::ofstream f((dir / fs::path(L"AUDIO") / fs::path(L"resource.aud")).string(), std::ios::binary);
+                f << "x";
+            }
+
+            std::string path = GetAudioVolumePath(dir.string(), false, AudioVolumeName::Aud, nullptr);
+
+            fs::remove_all(dir, ec);
+            Assert::IsTrue(path.find("AUDIO") != std::string::npos,
+                L"a RESOURCE.AUD in an AUDIO subfolder must be found");
+        }
+
         TEST_METHOD(Sci0MapNavigator_NeverReportsCorrupt)
         {
             std::vector<uint8_t> buf(64, 0);

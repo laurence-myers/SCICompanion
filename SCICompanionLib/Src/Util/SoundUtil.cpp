@@ -355,22 +355,34 @@ void WriteWaveFile(const std::string &filename, const AudioComponent &audio, con
 std::string GetAudioVolumePath(const std::string &gameFolder, bool bak, AudioVolumeName volumeToUse, ResourceSourceFlags *sourceFlags)
 {
 	ResourceSourceFlags sourceFlagsTemp = (volumeToUse == AudioVolumeName::Aud) ? ResourceSourceFlags::Aud : ResourceSourceFlags::Sfx;
-	std::string fullPath = gameFolder + "\\" + ((volumeToUse == AudioVolumeName::Aud) ? "resource.aud" : "resource.sfx");
+	std::string volumeName = (volumeToUse == AudioVolumeName::Aud) ? "resource.aud" : "resource.sfx";
 	if (bak)
 	{
-		fullPath += ".bak";
+		volumeName += ".bak";
 	}
 
 	if (sourceFlags)
 	{
 		*sourceFlags = sourceFlagsTemp;
 	}
-	WIN32_FIND_DATA fd = { 0 };
-	auto ffh = FindFirstFile(fullPath.c_str(), &fd);
-	if (ffh == INVALID_HANDLE_VALUE)
-		return fullPath;
-	FindClose(ffh);
-	return gameFolder + "\\" + fd.cFileName;
+
+	// Look in the game folder, then in an AUDIO subfolder. Some SCI1.1 CD talkie
+	// games keep their speech volume (RESOURCE.AUD) and per-room audio maps in an
+	// AUDIO subfolder rather than the game root -- for example Freddy Pharkas. (#182)
+	for (const std::string &folder : { gameFolder, gameFolder + "\\AUDIO" })
+	{
+		std::string fullPath = folder + "\\" + volumeName;
+		WIN32_FIND_DATA fd = { 0 };
+		auto ffh = FindFirstFile(fullPath.c_str(), &fd);
+		if (ffh != INVALID_HANDLE_VALUE)
+		{
+			FindClose(ffh);
+			return folder + "\\" + fd.cFileName;
+		}
+	}
+
+	// Not found in either location; return the game-root path (the historical default).
+	return gameFolder + "\\" + volumeName;
 }
 
 AudioVolumeName GetVolumeToUse(SCIVersion version, uint32_t base36Number)

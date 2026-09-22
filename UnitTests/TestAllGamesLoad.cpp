@@ -115,64 +115,24 @@ namespace UnitTests
             }
         }
 
-        void _LoadAllResources(const std::string &gameFolder)
+        // Loads every resource a container yields, with the shared robustness: skip a
+        // header-stage failure and a zero-length placeholder, and report a
+        // decompress/parse failure (unless it is a KnownFailure). Iterate manually so
+        // the read stays inside a try (a range-for evaluates the iterator outside it).
+        // Returns the number that loaded. (#182)
+        int _LoadResourceContainer(ResourceContainer *container)
         {
-            char szPath[MAX_PATH];
-            GetCurrentDirectory(MAX_PATH, szPath);
-
-            std::wstring message = fmt::format(L"Loading game in {0}.", gameFolder);
-            Logger::WriteMessage(message.c_str());
-
             auto toWide = [](const std::string &s) { return std::wstring(s.begin(), s.end()); };
-
-            appState = new AppState(nullptr);
-            try
-            {
-                appState->GetResourceMap().SetGameFolder(gameFolder);
-            }
-            catch (CException *pEx)
-            {
-                // A failed map open is signalled to the caller with
-                // AfxThrowUserException (a CUserException), which carries no text.
-                // Without this catch it escaped as a bare "Unhandled C++ Exception"
-                // that named no game. Name the folder and the likely reasons
-                // instead. (#182)
-                pEx->Delete();
-                std::wstring message = fmt::format(L"Failed to open the game in {0}. Its resource map could not be read (missing, corrupt, or an unrecognised SCI version).", toWide(gameFolder));
-                Assert::IsTrue(false, message.c_str());
-            }
-            Assert::IsTrue(appState->GetResourceMap().IsGameLoaded());
-
-            // Normally ResourceMap uses the module filename for this. But unit tests are run from another exe.
-            std::string exeFolder = szPath;
-            exeFolder += "\\";
-            appState->GetResourceMap().SetIncludeFolderForTest(exeFolder);
-
-            ResourceTypeFlags flags = ResourceTypeFlags::AllCreatable;
-            flags &= ~ResourceTypeFlags::Sound;     // Leave sounds out for now, we still don't load SCI10 sounds properly.
-            flags &= ~ResourceTypeFlags::Vocab;     // Vocabs can't just be "created", we need to follow more specific logic. TODO
-            auto container = appState->GetResourceMap().Resources(flags, ResourceEnumFlags::None | ResourceEnumFlags::AddInDefaultEnumFlags);
             int count = 0;
-            // Iterate manually rather than with a range-for. Reading a resource can
-            // throw, and a range-for evaluates the iterator OUTSIDE the loop body's
-            // try, so such a failure used to escape as a bare "Unhandled C++
-            // Exception" that named no resource. Read the header in its own try, then
-            // decompress and parse in a second try -- the two failures mean different
-            // things: a header that cannot be read or does not match the map is a
-            // corrupt/stray map entry (e.g. KQ4 "view" 1049, whose offset lands in
-            // non-header bytes), not a real resource, so skip it as ScummVM does; a
-            // failure while decompressing or parsing is a real load problem, reported
-            // with the resource id. Guard the advance too, in case a corrupt map
-            // throws. (#182)
             for (auto it = container->begin(); it != container->end(); )
             {
                 ResourceType type = it.GetResourceType();
                 int number = it.GetResourceNumber();
 
                 // Read the map entry but delay decompression, so a zero-length
-                // placeholder is skipped by its header length without trying to
-                // decompress it (e.g. KQ4 "view" 1029, an 8-byte header with no
-                // payload), and a header-level failure is skipped rather than failing.
+                // placeholder is skipped by its header length, and a header-level
+                // failure (a corrupt/stray map entry, e.g. KQ4 "view" 1049) is skipped
+                // rather than failing -- as ScummVM does with a mismatched header.
                 std::unique_ptr<ResourceBlob> blob;
                 try
                 {
@@ -232,7 +192,68 @@ namespace UnitTests
                     break;
                 }
             }
-            
+            return count;
+        }
+
+        void _LoadAllResources(const std::string &gameFolder)
+        {
+            char szPath[MAX_PATH];
+            GetCurrentDirectory(MAX_PATH, szPath);
+
+            std::wstring message = fmt::format(L"Loading game in {0}.", gameFolder);
+            Logger::WriteMessage(message.c_str());
+
+            auto toWide = [](const std::string &s) { return std::wstring(s.begin(), s.end()); };
+
+            appState = new AppState(nullptr);
+            try
+            {
+                appState->GetResourceMap().SetGameFolder(gameFolder);
+            }
+            catch (CException *pEx)
+            {
+                // A failed map open is signalled to the caller with
+                // AfxThrowUserException (a CUserException), which carries no text.
+                // Without this catch it escaped as a bare "Unhandled C++ Exception"
+                // that named no game. Name the folder and the likely reasons
+                // instead. (#182)
+                pEx->Delete();
+                std::wstring message = fmt::format(L"Failed to open the game in {0}. Its resource map could not be read (missing, corrupt, or an unrecognised SCI version).", toWide(gameFolder));
+                Assert::IsTrue(false, message.c_str());
+            }
+            Assert::IsTrue(appState->GetResourceMap().IsGameLoaded());
+
+            // Normally ResourceMap uses the module filename for this. But unit tests are run from another exe.
+            std::string exeFolder = szPath;
+            exeFolder += "\\";
+            appState->GetResourceMap().SetIncludeFolderForTest(exeFolder);
+
+            ResourceTypeFlags flags = ResourceTypeFlags::AllCreatable;
+            flags &= ~ResourceTypeFlags::Sound;     // Leave sounds out for now, we still don't load SCI10 sounds properly.
+            flags &= ~ResourceTypeFlags::Vocab;     // Vocabs can't just be "created", we need to follow more specific logic. TODO
+            auto container = appState->GetResourceMap().Resources(flags, ResourceEnumFlags::None | ResourceEnumFlags::AddInDefaultEnumFlags);
+            int count = _LoadResourceContainer(container.get());
+
+            // CD talkie games keep their speech in per-room message-audio maps. A
+            // bulk enumeration yields only the main audio map (the AudioResourceSource
+            // filters to the map context), so load each room's speech through its own
+            // map context. Freddy Pharkas, for example, keeps ~47 room maps plus
+            // RESOURCE.AUD in an AUDIO subfolder. (#182)
+            std::vector<int> audioMapNumbers;
+            {
+                auto mapContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::AudioMap, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+                for (auto it = mapContainer->begin(); it != mapContainer->end(); )
+                {
+                    audioMapNumbers.push_back(it.GetResourceNumber());
+                    try { ++it; } catch (...) { break; }
+                }
+            }
+            for (int audioMapNumber : audioMapNumbers)
+            {
+                auto speechContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::Audio, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags, audioMapNumber);
+                count += _LoadResourceContainer(speechContainer.get());
+            }
+
             message = fmt::format(L"Loaded {0} resources.", count);
             Logger::WriteMessage(message.c_str());
 
