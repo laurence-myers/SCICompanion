@@ -1352,7 +1352,6 @@ std::string _GetVariableNameFromCodePos(const scii &inst, DecompileLookups &look
 DecompileLookups::DecompileLookups(const IDecompilerConfig *config, const GameFolderHelper &helper, uint16_t wScript, GlobalCompiledScriptLookups *pLookups, IObjectFileScriptLookups *pOFLookups, ICompiledScriptSpecificLookups *pScriptThings, ILookupNames *pTextResource, IPrivateSpeciesLookups *pPrivateSpecies, IDecompilerResults &results) :
 _wScript(wScript), _pLookups(pLookups), _pOFLookups(pOFLookups), _pScriptThings(pScriptThings), _pTextResource(pTextResource), _pPrivateSpecies(pPrivateSpecies), PreferLValue(false), _results(results), Helper(helper), DebugControlFlow(false), DebugInstructionConsumption(false), _config(config)
 {
-	_CategorizeSelectors();
 
 	// Track all the valid script/export combos, so we know when someone is calling an invalid one.
 	for (CompiledScript *script : _pLookups->GetGlobalClassTable().GetAllScripts())
@@ -1517,28 +1516,13 @@ std::string DecompileLookups::LookupTextResource(WORD wIndex) const
 	return ret;
 }
 
-void DecompileLookups::_CategorizeSelectors()
-{
-	for (auto &script : _pLookups->GetGlobalClassTable().GetAllScripts())
-	{
-		for (auto &object : script->GetObjects())
-		{
-			for (uint16_t propSelector : object->GetProperties())
-			{
-				_propertySelectors.insert(propSelector);
-			}
-			for (uint16_t methodSelector : object->GetMethods())
-			{
-				_methodSelectors.insert(methodSelector);
-			}
-		}
-	}
-}
-
 bool DecompileLookups::IsPropertySelectorOnly(uint16_t selector) const
 {
-	return (_propertySelectors.find(selector) != _propertySelectors.end()) &&
-		(_methodSelectors.find(selector) == _methodSelectors.end());
+	// Heuristic: a selector no object in the game uses as a method.
+	const auto &propertySelectors = _pLookups->GetPropertySelectors();
+	const auto &methodSelectors = _pLookups->GetMethodSelectors();
+	return (propertySelectors.find(selector) != propertySelectors.end()) &&
+		(methodSelectors.find(selector) == methodSelectors.end());
 }
 
 const SelectorTable& DecompileLookups::GetSelectorTable() const
@@ -1663,6 +1647,17 @@ void DecompileLookups::ResetOnFailure()
 {
 	// This holds weak pointers to objects in the script, so clear those out.
 	_restStatementTrack.clear();
+}
+
+void DecompileLookups::ReleaseDecompileState()
+{
+	_localVarUsage.clear();
+	_tempVarUsage.clear();
+	_restStatementTrack.clear();
+	_localProcToPropLookups.clear();
+	_pPropertyNames = nullptr;
+	_pFunc = nullptr;
+	FunctionDecompileHints.Reset();
 }
 
 void DecompileLookups::TrackRestStatement(sci::RestStatement *rest, uint16_t index)

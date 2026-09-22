@@ -67,6 +67,12 @@ public:
 		_lookups->SubstituteTextTuples = _options.SubstituteTextTuples;
 
 		_script = DecompileToAst(_helper, _compiledScript, *_lookups, appState->GetResourceMap().GetVocab000());
+
+		// The later phases work on the tree. Let go of what the instruction
+		// decompile built up (variable usage, the .sco cache), since the batch
+		// holds every script until the end and it all adds up.
+		_lookups->ReleaseDecompileState();
+		_objectFileLookups.ClearCache();
 	}
 
 	// Phase 2. mainSCO holds the global names shared by the batch; it must

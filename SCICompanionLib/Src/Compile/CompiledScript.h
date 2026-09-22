@@ -93,10 +93,24 @@ public:
 	const SelectorTable &GetSelectorTable() const { return _selectors; }
 	GlobalClassTable &GetGlobalClassTable() { return _classes; }
 
+	// The selectors some object in the game uses as a property, and those some
+	// object uses as a method. The decompiler consults them to tell a property
+	// read from a method call. They come from the class table, so they are the
+	// same for every script: built once, on first use, and shared. (Each
+	// script's lookups used to build its own copy, which a whole-game batch
+	// held 285 times over.)
+	const std::unordered_set<uint16_t> &GetPropertySelectors();
+	const std::unordered_set<uint16_t> &GetMethodSelectors();
+
 private:
+	void _EnsureSelectorCategories();
+
 	SelectorTable _selectors;
 	KernelTable	_kernels;
 	GlobalClassTable _classes;
+	bool _selectorCategoriesValid = false;
+	std::unordered_set<uint16_t> _propertySelectors;
+	std::unordered_set<uint16_t> _methodSelectors;
 };
 
 class ObjectFileScriptLookups : public IObjectFileScriptLookups
@@ -105,6 +119,9 @@ public:
 	ObjectFileScriptLookups(const GameFolderHelper &helper, const SelectorTable &selectors) : _helper(helper), _selectors(selectors) {}
 	std::string ReverseLookupGlobalVariableName(uint16_t wIndex);
 	std::string ReverseLookupPublicExportName(uint16_t wScript, uint16_t wIndex);
+
+	// Drops the cached .sco files. A later lookup reads them from disk again.
+	void ClearCache() { _mapScriptToObject.clear(); }
 
 private:
 	bool _GetSCOFile(uint16_t wScript, CSCOFile &scoFile);
