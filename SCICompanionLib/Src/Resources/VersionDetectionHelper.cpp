@@ -588,9 +588,14 @@ void SniffSCIVersion(GameFolderHelper &helper)
 	// Just as a start...
 	helper.Version = sciVersion0;
 
-	// Audio volume name is easy
-	std::string fullPathAud = helper.GameFolder + "\\" + "resource.aud";
-	std::string fullPathSFX = helper.GameFolder + "\\" + "resource.sfx";
+	// Audio volume name is easy. Look where the volumes are read from: the game
+	// folder, or its audio subfolder. Freddy Pharkas keeps RESOURCE.AUD (the
+	// speech) under AUDIO, Gabriel Knight and Larry 6 under AUD, with
+	// RESOURCE.SFX in the root. Checking only the root found just the .sfx, so
+	// every speech resource was read from the wrong volume: a zero sample rate
+	// and no samples, and no error. (#182)
+	std::string fullPathAud = GetAudioVolumePath(helper.GameFolder, false, AudioVolumeName::Aud);
+	std::string fullPathSFX = GetAudioVolumePath(helper.GameFolder, false, AudioVolumeName::Sfx);
 	helper.Version.AudioVolumeName = AudioVolumeName::None;
 	if (PathFileExists(fullPathAud.c_str()))
 	{

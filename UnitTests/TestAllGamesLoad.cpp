@@ -19,6 +19,7 @@
 #include "ResourceMap.h"
 #include "AppState.h"
 #include "ResourceContainer.h"
+#include "Audio.h"
 #include "Helper.h"
 #include "format.h"
 
@@ -113,7 +114,22 @@ namespace UnitTests
                 finalPath += folder;
                 _LoadAllResources(finalPath);
             }
+
+            if (!_gamesWithBadAudio.empty())
+            {
+                std::string report;
+                for (const std::string &game : _gamesWithBadAudio)
+                {
+                    report += "\n" + game;
+                }
+                Assert::IsTrue(false, fmt::format(L"{0} game(s) have audio that loads with implausible content:{1}",
+                    _gamesWithBadAudio.size(), std::wstring(report.begin(), report.end())).c_str());
+            }
         }
+
+        // One entry per game whose audio failed the content check, for the
+        // report at the end of the sweep.
+        std::vector<std::string> _gamesWithBadAudio;
 
         // Loads every resource a container yields, with the shared robustness: skip a
         // header-stage failure and a zero-length placeholder, and report a
@@ -163,6 +179,10 @@ namespace UnitTests
                             blob->EnsureRealized();
                             std::unique_ptr<ResourceEntity> resource = CreateResourceFromResourceData(*blob, false);
                             count++;
+                            if (type == ResourceType::Audio)
+                            {
+                                _CheckAudioContent(*resource, number, blob->GetBase36());
+                            }
                         }
                         catch (const std::exception &e)
                         {
@@ -195,8 +215,38 @@ namespace UnitTests
             return count;
         }
 
+        // A resource that "loads" is not enough for audio: a read from the wrong
+        // volume, offset or address space yields a resource with a zero sample
+        // rate and no samples, and no exception. The message editor then shows
+        // a play button that plays nothing, and the lip-sync dialog divides by
+        // the zero rate. Record any audio whose content is not plausible.
+        std::vector<std::string> _badAudio;
+
+        void _CheckAudioContent(const ResourceEntity &resource, int number, uint32_t base36)
+        {
+            const AudioComponent *audio = resource.TryGetComponent<AudioComponent>();
+            std::string problem;
+            if (!audio)
+            {
+                problem = "no audio component";
+            }
+            else if ((audio->Frequency < 4000) || (audio->Frequency > 48000))
+            {
+                problem = fmt::format("sample rate {0} Hz", audio->Frequency);
+            }
+            else if (audio->DigitalSamplePCM.empty())
+            {
+                problem = "no samples";
+            }
+            if (!problem.empty())
+            {
+                _badAudio.push_back(fmt::format("audio {0} (base36 {1:x}): {2}", number, base36, problem));
+            }
+        }
+
         void _LoadAllResources(const std::string &gameFolder)
         {
+            _badAudio.clear();
             char szPath[MAX_PATH];
             GetCurrentDirectory(MAX_PATH, szPath);
 
@@ -272,6 +322,19 @@ namespace UnitTests
             // version detection that makes every resource skip -- which would otherwise
             // leave the sweep green with count 0. (#182)
             Assert::IsTrue(count > 0, fmt::format(L"No resources loaded from {0}.", toWide(gameFolder)).c_str());
+
+            if (!_badAudio.empty())
+            {
+                // Record it and go on to the next game, so one sweep reports
+                // every game with the problem; TestAllGames fails at the end.
+                std::string detail;
+                for (size_t i = 0; (i < _badAudio.size()) && (i < 5); i++)
+                {
+                    detail += "\n  " + _badAudio[i];
+                }
+                _gamesWithBadAudio.push_back(fmt::format("{0} audio resource(s) in {1} loaded with implausible content:{2}",
+                    _badAudio.size(), gameFolder, detail));
+            }
 
             appState->ResetClassBrowser();
             delete appState;
