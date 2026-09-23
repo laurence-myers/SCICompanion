@@ -1587,7 +1587,7 @@ sci::Status CheckResourceData(const ResourceBlob &data)
 	where.resource = DescribeResource(data.GetType(), data.GetNumber());
 	if (IsFlagSet(data.GetStatusFlags(), ResourceLoadStatusFlags::Corrupted))
 	{
-		return sci::Fail(sci::ErrorCode::Format, "the resource header is corrupt", where);
+		return sci::Fail(sci::ErrorCode::Format, "the resource is damaged: its header or its data could not be read", where);
 	}
 	if (IsFlagSet(data.GetStatusFlags(), ResourceLoadStatusFlags::DecompressionFailed))
 	{

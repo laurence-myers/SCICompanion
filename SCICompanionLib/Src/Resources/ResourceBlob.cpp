@@ -378,6 +378,11 @@ void ResourceBlob::_DecompressFromBits(sci::istream &byteStream, bool delay)
 			if (header.cbDecompressed > 0)
 			{
 				byteStream.read_data(&_pData[0], header.cbDecompressed);
+				if (!byteStream.good())
+				{
+					// The volume ends inside the data: the rest is not the resource.
+					_resourceLoadStatus |= ResourceLoadStatusFlags::Corrupted;
+				}
 			}
 		}
 		else
@@ -385,6 +390,11 @@ void ResourceBlob::_DecompressFromBits(sci::istream &byteStream, bool delay)
 			assert(_pDataCompressed.empty()); // Verify no leaks
 			_pDataCompressed.allocate(cbCompressedRemaining);
 			byteStream.read_data(&_pDataCompressed[0], cbCompressedRemaining);
+			if (!byteStream.good())
+			{
+				// The volume ends inside the data.
+				_resourceLoadStatus |= ResourceLoadStatusFlags::Corrupted;
+			}
 			_resourceLoadStatus |= ResourceLoadStatusFlags::Delayed;
 			if (!delay)
 			{

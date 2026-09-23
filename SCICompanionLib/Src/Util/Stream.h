@@ -117,6 +117,10 @@ namespace sci
 		bool peek(uint16_t &w);
 		uint8_t peek();
 		void setThrowExceptions(bool shouldThrow) { _throwExceptions = shouldThrow; }
+		// The resource that the stream reads, for example "heap 110". In throw
+		// mode, a read past the end gives it, and the offset of the read, as
+		// the error location. Copies of the stream keep it.
+		void setSourceName(const std::string &name) { _sourceName = name; }
 
 		// Use with caution!
 		const uint8_t *GetInternalPointer() const { return _pDataReadOnly; }
@@ -132,6 +136,7 @@ namespace sci
 		const uint8_t *_pDataReadOnly;
 		bool _throwExceptions;
 		std::ios_base::iostate _state;
+		std::string _sourceName;
 	};
 
 	istream istream_from_ostream(ostream &src);

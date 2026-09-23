@@ -218,6 +218,12 @@ void TextReadFrom(ResourceEntity &resource, sci::istream &byteStream, const std:
 			entry.Text = Dos2Win(str);
 			text.Texts.push_back(entry);
 		}
+		else
+		{
+			// Outside throw mode (ResourceEntity::ReadFrom), the read rewinds, so
+			// the loop would read the same place again.
+			throw sci::DataError("the last text of the resource has no end (no NUL)");
+		}
 	}
 }
 

@@ -304,10 +304,12 @@ for each step, and a follow-up commit if the review finds a problem.
   (`Audio.cpp`, `AudioMap.cpp`, `Message.cpp`, `ResourceMap.cpp`,
   `Sync.cpp`, `Vocab000.cpp`). B3b removed it from the `Src\Compile` files.
 - F2: the 46 `throw std::exception("...")` became `sci::DataError`:
-  `Format` for bad data (the default), `Unsupported` for a size limit or
-  an audio map or wave format that SCI Companion does not know, `Internal`
-  for a misuse (an iterator past the end, a missing component, "not
-  implemented", a docs mismatch), and `Io` for a short file read.
+  `Format` for bad data (the default; also a docs comment that does not
+  match its function), `Unsupported` for a size limit, an audio map or
+  wave format that SCI Companion does not know, or an audio operation
+  that is not implemented, `Internal` for a misuse (an iterator past the
+  end, a missing component, a seek outside a write stream, a script that
+  loads once and not the second time), and `Io` for a short file read.
   `DataError` derives from `std::runtime_error`, so every old
   `catch (std::exception &)` still catches it, with the same text.
   `deletefile` throws `ThrowWin32` (`Io` or `NotFound`); its text changed
@@ -320,22 +322,66 @@ for each step, and a follow-up commit if the review finds a problem.
   `where.resource`; the context does not repeat it ("the script could not
   be read: Read past end of stream. (script 110) [format]").
 - F2: `CompiledScript::TryLoad` reads in throw mode, so a read past the
-  end is an error, not a zero. A probe over 31 GOG game folders (5,944
+  end is an error, not a zero. A probe over 31 GOG game folders (5,913
   scripts) found no script that `Load` reads and `TryLoad` rejects. The
-  2,191 text resources of those games all end with a NUL, so the
+  2,193 text resources of those games all end with a NUL, so the
   `TextReadFrom` change affects none of them. Willy Beamish shows no
   scripts at all (an older detection problem, not F2); `TryLoad` of its
-  tables gives `NotFound` for vocab 996.
+  tables gives `NotFound` for vocab 996. (The first count, 5,944, had the
+  31 scripts of the SCI0 template in it.)
+- F2 review: the SCI1.1 template has one script that `TryLoad` rejected
+  and `Load` read. In script 990, an object's name value is outside the
+  heap, and the loader gives the object a made-up name. The name read is
+  tolerant again (not in throw mode). A test checks that `TryLoad` and
+  `Load` agree on every script of both templates.
+- F2 review: `sci::istream::setSourceName` gives a stream the name of its
+  resource. In throw mode, a read past the end then puts the name, and
+  the offset of the read, in the error location. Copies of the stream
+  keep the name. `TryLoad` names the script and heap streams, so a
+  damaged heap gives "heap N", also where the loader reads a copy of the
+  heap stream.
+- F2 review: `GlobalCompiledScriptLookups::TryLoad` and
+  `CompileTables::TryLoad` load one table at a time. A failure names the
+  table and its vocab resource ("the selector table is not valid", vocab
+  997). A missing or bad vocab.000 stays a default (K6).
+- F2 review: `CheckResourceData` finds two more kinds of damage. The
+  iterator marks a blob `Corrupted` when the map points to a header that
+  is not in the volume (before: an empty blob with no flag).
+  `ResourceBlob` marks it when the volume ends inside the data (before:
+  bytes that were not read from the volume, with no flag). The error is
+  `Format`, "the resource is damaged: its header or its data could not
+  be read".
 - F2 (GUI change): `TextReadFrom` no longer swallows a read failure. A
   text resource whose last string has no NUL now opens as a default
-  resource marked "creation failed", instead of showing the strings read
-  so far. The decompile worker shows an exception in the results pane
-  (Error) instead of stopping with no message. The version probes log a
-  warning with the reason.
+  resource marked "Resource load failed", instead of showing the strings
+  read so far. The decompile worker shows an exception in the results
+  pane (Error) instead of stopping with no message. The version probes
+  log the reason at the Info level. The audio map probe fails on LB2
+  (floppy) and Mother Goose because of an older detection problem (the
+  blobs are made before the audio map number is known), and a warning at
+  each open would be noise.
+- F2 review (GUI change): a resource whose header or data is not in its
+  volume shows "Corrupt" in the status column of the resource list.
+  Before, it showed as an empty resource, or as bytes that were not read
+  from the volume.
+- F2 review: outside throw mode, a failed string read puts the stream
+  back, so `TextReadFrom` read the same place again with no end (through
+  `ResourceEntity::ReadFrom`). It now throws a `DataError`. This loop was
+  also in the code before F2.
 - Known gap: other empty `catch (...)` blocks stay in the allowlist
   (`AudioCacheResourceSource.cpp`, `CodeInspector.h`, `PhonemeDialog.cpp`,
-  `LipSyncutil.cpp`, `TalkerToViewMap.cpp`, `Task.h`); they are not on the
-  script paths.
+  `LipSyncutil.cpp`, `TalkerToViewMap.cpp`, `Task.h`). Only the one in
+  `CodeInspector.h` is on the script paths: the version detection walks
+  script code with it when a game opens, and an exception there ends the
+  walk with no message.
+- Known gap (F2 review): in throw mode, only the word, byte and string
+  reads, `seekg` and `skip` throw. The struct read (the `operator>>`
+  template, which also reads an `int16_t` or a `uint32_t`) gives zeros,
+  and `read_data` leaves its buffer as it was; both only set the fail
+  state. A change affects every resource reader of the GUI, so F2 does
+  not make it.
+- Known gap: the SCI0 LZW decoder (`decompressLZW`) finds no errors. Bad
+  LZW data gives wrong bytes and no `DecompressionFailed` flag.
 - K1: the fix was already in the branch base (`f5f7a01b`, 2026-09-12:
   "Sierra semantics for a value-position and/or"). The plan's check on
   `0dc1fef5` saw `_WriteFakeIfStatement` and missed the `if (true)` path
@@ -384,5 +430,7 @@ for each step, and a follow-up commit if the review finds a problem.
   before.
 ## Next action
 
-Read the F2 and K1 reviews (running) and fix any real finding. Run the
-K2, K3 and K4 reviews. Then K5 (plan section 9).
+The F2 review findings are fixed. Fix the K1 review findings (the README
+note, the plan text, a push-context test, an `or` condition test, and
+the dead `WeakSyntaxNode`). Read the K2 to K4 review (running) and fix
+any real finding. Then K5 (plan section 9).

@@ -107,6 +107,9 @@ sci::Status CompiledScript::TryLoad(const GameFolderHelper &helper, SCIVersion v
 		SCI_TRY(CheckResourceData(scriptBlob));
 		sci::istream scriptStream = scriptBlob.GetReadStream();
 		scriptStream.setThrowExceptions(true);
+		// A read past the end names the stream that it was in, also when the
+		// loader reads a copy of the stream.
+		scriptStream.setSourceName(resource);
 		std::unique_ptr<sci::istream> heapStream;
 		if (version.SeparateHeapResources)
 		{
@@ -119,6 +122,7 @@ sci::Status CompiledScript::TryLoad(const GameFolderHelper &helper, SCIVersion v
 			SCI_TRY(CheckResourceData(*heapBlob));
 			heapStream = std::make_unique<sci::istream>(heapBlob->GetReadStream());
 			heapStream->setThrowExceptions(true);
+			heapStream->setSourceName(DescribeResource(ResourceType::Heap, iScriptNumber));
 		}
 		if (!Load(helper, version, iScriptNumber, scriptStream, heapStream.get()))
 		{
@@ -917,8 +921,12 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 	// Get the name
 	if (wName != 0)
 	{
-		// Don't modify heapstream, it's right where we need it.
+		// Don't modify heapstream, it's right where we need it. The name read
+		// stays tolerant in throw mode (TryLoad): script 990 of the SCI1.1
+		// template has a name value outside its heap, and the object then gets
+		// a made-up name below.
 		sci::istream temp = heapStream;
+		temp.setThrowExceptions(false);
 		temp.seekg(wName);
 		temp >> _strName;
 	}
@@ -1474,9 +1482,27 @@ sci::Status GlobalCompiledScriptLookups::TryLoad(const GameFolderHelper &helper)
 	return sci::Guard("loading the class and selector tables", [&]() -> sci::Status
 	{
 		SCI_TRY(CheckVocabTables(helper));
-		if (!Load(helper))
+		// The steps of Load, one at a time, so that a failure names its table.
+		// Each load changes a table, so the selector categories are stale
+		// before the first one, also when a load fails.
+		_selectorCategoriesValid = false;
+		_propertySelectors.clear();
+		_methodSelectors.clear();
+		sci::ErrorLocation where;
+		if (!_selectors.Load(helper))
 		{
-			return sci::Fail(sci::ErrorCode::Format, "the class, selector or kernel table is not valid");
+			where.resource = DescribeResource(ResourceType::Vocab, 997);
+			return sci::Fail(sci::ErrorCode::Format, "the selector table is not valid", where);
+		}
+		if (!_kernels.Load(helper))
+		{
+			where.resource = DescribeResource(ResourceType::Vocab, 999);
+			return sci::Fail(sci::ErrorCode::Format, "the kernel table is not valid", where);
+		}
+		if (!_classes.Load(helper))
+		{
+			where.resource = DescribeResource(ResourceType::Vocab, 996);
+			return sci::Fail(sci::ErrorCode::Format, "the class table is not valid", where);
 		}
 		return sci::Ok();
 	});

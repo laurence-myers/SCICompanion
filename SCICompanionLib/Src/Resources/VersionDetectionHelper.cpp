@@ -903,7 +903,7 @@ void SniffSCIVersion(GameFolderHelper &helper)
 		catch (...)
 		{
 			// The audio map versions keep their defaults.
-			CoreLog(LogLevel::Warning, sci::ErrorFromCurrentException("detecting the audio map format").ToString());
+			CoreLog(LogLevel::Info, sci::ErrorFromCurrentException("detecting the audio map format").ToString());
 		}
 	}
 
@@ -927,7 +927,7 @@ void SniffSCIVersion(GameFolderHelper &helper)
 		catch (...)
 		{
 			// The resolution keeps its default.
-			CoreLog(LogLevel::Warning, sci::ErrorFromCurrentException("detecting the view resolution").ToString());
+			CoreLog(LogLevel::Info, sci::ErrorFromCurrentException("detecting the view resolution").ToString());
 		}
 	}
 

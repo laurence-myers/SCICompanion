@@ -70,8 +70,9 @@ modernizing the build. Broad highlights since the previous release:
   resource loaders are hardened against malformed, truncated or crafted game
   files, so opening a damaged game no longer crashes the app. Damaged data is
   now reported instead of hidden: the Decompile dialog shows why a decompile
-  stopped, and a text resource that is cut off is marked as failed instead of
-  being shown in part.
+  stopped, a text resource that is cut off is marked as failed instead of
+  being shown in part, and a resource that is missing from its volume file is
+  marked "Corrupt" in the resource list.
 * **Fixed deadlocks and race conditions** in background work (compiling,
   decompiling, the class browser, resource rendering and MIDI playback).
 * **Fixed use-after-free bugs and memory leaks** across the editors and dialogs.

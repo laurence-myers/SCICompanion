@@ -96,7 +96,7 @@ namespace sci
 	{
 		if (newPosition > _cbSizeValid)
 		{
-			throw sci::DataError("Attempt to seek past end of stream.");
+			throw sci::DataError("Attempt to seek past end of stream.", sci::ErrorCode::Internal);
 		}
 		else
 		{
@@ -115,14 +115,14 @@ namespace sci
 			assert(false); // I think this is broken
 			if (offset > (int32_t)_iIndex)
 			{
-				throw sci::DataError("Attempt to seek past the beginning of the stream.");
+				throw sci::DataError("Attempt to seek past the beginning of the stream.", sci::ErrorCode::Internal);
 			}
 			seekp(_iIndex - offset);
 			break;
 		case std::ios_base::end:
 			if ((offset > (int32_t)_cbSizeValid) || (offset > 0))
 			{
-				throw sci::DataError("Attempt to seek outside stream.");
+				throw sci::DataError("Attempt to seek outside stream.", sci::ErrorCode::Internal);
 			}
 			seekp(_cbSizeValid + offset);
 			break;
@@ -200,7 +200,16 @@ namespace sci
 		_state = std::ios_base::eofbit | std::ios_base::failbit;
 		if (_throwExceptions)
 		{
-			throw sci::DataError("Read past end of stream.");
+			sci::Error error;
+			error.code = sci::ErrorCode::Format;
+			error.message = "Read past end of stream.";
+			if (!_sourceName.empty())
+			{
+				// A failed read puts the index back at the start of the read.
+				error.where.resource = _sourceName;
+				error.where.offset = _iIndex;
+			}
+			throw sci::DataError(std::move(error));
 		}
 	}
 

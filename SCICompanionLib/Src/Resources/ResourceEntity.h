@@ -13,6 +13,8 @@
 ***************************************************************************/
 #pragma once
 
+#include "Result.h"
+
 #include "Components.h"
 #include <memory>
 #include <typeinfo>

@@ -23,6 +23,7 @@
 #include "GameSession.h"
 #include "ClassHints.h"
 #include "ResourceMap.h"
+#include "ResourceUtil.h"
 #include "SyntaxParser.h"
 #include <unordered_map>
 #include "Text.h"
@@ -91,10 +92,27 @@ sci::Status CompileTables::TryLoad(CResourceMap &resourceMap)
 {
 	return sci::Guard("loading the compile tables", [&]() -> sci::Status
 	{
-		SCI_TRY(CheckVocabTables(resourceMap.Helper()));
-		if (!Load(resourceMap))
+		const GameFolderHelper &helper = resourceMap.Helper();
+		SCI_TRY(CheckVocabTables(helper));
+		// The steps of Load, one at a time, so that a failure names its table.
+		// A missing or bad vocab.000 is not an error here: GetVocab000 gives a
+		// default, and only a Said string needs it (K6).
+		_pVocab = resourceMap.GetVocab000();
+		sci::ErrorLocation where;
+		if (!_kernels.Load(helper))
 		{
-			return sci::Fail(sci::ErrorCode::Format, "the kernel, class or selector table is not valid");
+			where.resource = DescribeResource(ResourceType::Vocab, 999);
+			return sci::Fail(sci::ErrorCode::Format, "the kernel table is not valid", where);
+		}
+		if (!_species.Load(helper))
+		{
+			where.resource = DescribeResource(ResourceType::Vocab, 996);
+			return sci::Fail(sci::ErrorCode::Format, "the class table is not valid", where);
+		}
+		if (!_selectors.Load(helper))
+		{
+			where.resource = DescribeResource(ResourceType::Vocab, 997);
+			return sci::Fail(sci::ErrorCode::Format, "the selector table is not valid", where);
 		}
 		return sci::Ok();
 	});

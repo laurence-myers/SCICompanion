@@ -87,7 +87,7 @@ public:
 		ResourceType GetResourceType();
 
 	private:
-		sci::istream _GetResourceHeaderAndPackage(ResourceHeaderAgnostic &rh) const;
+		sci::istream _GetResourceHeaderAndPackage(ResourceHeaderAgnostic &rh, bool *headerUnreadable = nullptr) const;
 		void _GetNextEntry();
 		reference _CreateHelper(bool delayDecompression) const;
 

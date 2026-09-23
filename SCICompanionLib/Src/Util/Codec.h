@@ -1,6 +1,8 @@
 
 #pragma once
 
+#include "Result.h"
+
 enum class DecompressionAlgorithm
 {
 	None = 0,
