@@ -68,7 +68,9 @@ Tests are in `UnitTests`.
 - **The app version lives in the `.rc` files.** Update both
   `SCICompanion\SCICompanion.rc` and `SCICompanionLib\SCICompanionLib.rc`
   (`FILEVERSION` / `PRODUCTVERSION` and their string values), and the About-box
-  version text in `SCICompanionLib\SCICompanionLib.rc`.
+  version text in `SCICompanionLib\SCICompanionLib.rc`. The command line
+  `scic.exe` takes its version from `SCICompanionLib\Src\Cli\CliVersion.h`;
+  update it too (a unit test checks that it equals `SCICompanionLib.rc`).
 - **The About-box credits** are built in `AppState::GetAboutText()`
   (`SCICompanionLib\Src\Util\AppState.cpp`), not in the `.rc`.
 
@@ -83,7 +85,8 @@ Tests are in `UnitTests`.
 - **Keep `README.md` updated with a change summary.** When you make user-visible
   changes, add to or update the broad, user-friendly highlights in the
   "What's new" section (categories, not individual fixes).
-- On a release, bump the version in both `.rc` files and update the About box.
+- On a release, bump the version in both `.rc` files and in
+  `SCICompanionLib\Src\Cli\CliVersion.h`, and update the About box.
 
 ## Pull requests
 

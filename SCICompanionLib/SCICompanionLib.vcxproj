@@ -110,6 +110,11 @@
     </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Src\Cli\ExitCodes.cpp" />
+    <ClCompile Include="Src\Cli\CliScriptCommands.cpp" />
+    <ClCompile Include="Src\Cli\CliHost.cpp" />
+    <ClCompile Include="Src\Cli\CliConsole.cpp" />
+    <ClCompile Include="Src\Cli\Cli.cpp" />
     <ClCompile Include="Src\Dialogs\CompileBatchGui.cpp" />
     <ClCompile Include="Src\Compile\DecompileRun.cpp" />
     <ClCompile Include="Src\Compile\CompileBatch.cpp" />
@@ -225,6 +230,12 @@
     <ClCompile Include="Src\Resources\VersionDetectionHelper.cpp" />
     <ClCompile Include="Src\Resources\View.cpp" />
     <ClCompile Include="Src\Util\AudioPlayback.cpp" />
+    <ClInclude Include="Src\Cli\ExitCodes.h" />
+    <ClInclude Include="Src\Cli\CliVersion.h" />
+    <ClInclude Include="Src\Cli\CliHost.h" />
+    <ClInclude Include="Src\Cli\CliConsole.h" />
+    <ClInclude Include="Src\Cli\CliCommands.h" />
+    <ClInclude Include="Src\Cli\Cli.h" />
     <ClInclude Include="Src\Dialogs\CompileBatchGui.h" />
     <ClInclude Include="Src\Compile\DecompileRun.h" />
     <ClInclude Include="Src\Compile\CompileBatch.h" />

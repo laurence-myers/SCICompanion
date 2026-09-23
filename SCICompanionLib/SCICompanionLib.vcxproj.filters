@@ -1,6 +1,12 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <Filter Include="Header Files\Cli">
+      <UniqueIdentifier>{295dcbe1-2477-4bc9-bb65-7157deab8a80}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Cli">
+      <UniqueIdentifier>{873bf0a3-41af-4c4f-b077-8c92adc21897}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Header Files\Core">
       <UniqueIdentifier>{0f1c9fa6-6f99-4c28-9d4e-29b3fc9feda9}</UniqueIdentifier>
     </Filter>
@@ -123,6 +129,21 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Src\Cli\ExitCodes.cpp">
+      <Filter>Source Files\Cli</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Cli\CliScriptCommands.cpp">
+      <Filter>Source Files\Cli</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Cli\CliHost.cpp">
+      <Filter>Source Files\Cli</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Cli\CliConsole.cpp">
+      <Filter>Source Files\Cli</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Cli\Cli.cpp">
+      <Filter>Source Files\Cli</Filter>
+    </ClCompile>
     <ClCompile Include="Src\Dialogs\CompileBatchGui.cpp">
       <Filter>Source Files\Dialogs</Filter>
     </ClCompile>
@@ -950,6 +971,24 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Src\Cli\ExitCodes.h">
+      <Filter>Header Files\Cli</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Cli\CliVersion.h">
+      <Filter>Header Files\Cli</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Cli\CliHost.h">
+      <Filter>Header Files\Cli</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Cli\CliConsole.h">
+      <Filter>Header Files\Cli</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Cli\CliCommands.h">
+      <Filter>Header Files\Cli</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Cli\Cli.h">
+      <Filter>Header Files\Cli</Filter>
+    </ClInclude>
     <ClInclude Include="Src\Dialogs\CompileBatchGui.h">
       <Filter>Header Files\Dialogs</Filter>
     </ClInclude>
