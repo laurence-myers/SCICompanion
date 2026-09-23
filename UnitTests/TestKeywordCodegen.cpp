@@ -142,11 +142,15 @@ namespace UnitTests
         // procedure, and returns whether their bytes are equal.
         void AssertSameBytes(const std::string &keyword, const std::string &manual, const wchar_t *what)
         {
+            // Compile first: the arguments of Assert::IsTrue are evaluated in
+            // no fixed order, so the text must not read error in the same call.
             std::string error;
-            Assert::IsTrue(CompileSource(902, "kTest", keyword, error), W("the expression did not compile: " + error).c_str());
+            bool compiled = CompileSource(902, "kTest", keyword, error);
+            Assert::IsTrue(compiled, W("the expression did not compile: " + error).c_str());
             std::vector<uint8_t> keywordBytes = LoadCompiledBytes(902);
             error.clear();
-            Assert::IsTrue(CompileSource(902, "kTest", manual, error), W("the asm form did not compile: " + error).c_str());
+            compiled = CompileSource(902, "kTest", manual, error);
+            Assert::IsTrue(compiled, W("the asm form did not compile: " + error).c_str());
             std::vector<uint8_t> manualBytes = LoadCompiledBytes(902);
             Assert::IsTrue(keywordBytes == manualBytes, what);
         }

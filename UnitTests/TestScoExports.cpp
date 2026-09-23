@@ -154,8 +154,11 @@ namespace UnitTests
                 std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
                 file << source;
             }
+            // Compile first: the arguments of Assert::IsTrue are evaluated in
+            // no fixed order, so the text must not read error in the same call.
             std::string error;
-            Assert::IsTrue(CompileFixture(950, name, &error), std::wstring(error.begin(), error.end()).c_str());
+            bool fixtureCompiled = CompileFixture(950, name, &error);
+            Assert::IsTrue(fixtureCompiled, std::wstring(error.begin(), error.end()).c_str());
 
             ScriptId scriptId(path.c_str());
             scriptId.SetResourceNumber(950);
