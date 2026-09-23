@@ -55,9 +55,10 @@
 - New library services (`ScriptCatalog`, `CompileBatch`, `DecompileRun`)
   have MFC-free interfaces. The CLI and the GUI dialogs both call them, so
   they share the code and the tests.
-- Phase K fixes six compiler bugs that `scicompile` found (section 14), for
-  example `(and a b)` in a value position, which must give the deciding
-  operand as Sierra's compiler does, not 1 or 0.
+- Phase K makes the compiler agree with Sierra's compiler on six points
+  that `scicompile` found (section 14). Five are fixes. The sixth, `(and a
+  b)` in a value position giving the deciding operand and not 1 or 0, was
+  already fixed in the branch base (`f5f7a01b`); K1 pins its bytes.
 - `scic script sco` makes the `.sco` files from existing source and the
   game's compiled scripts, so a source tree from another decompiler (for
   example sluicebox's sci-tools) can be compiled.
@@ -1230,11 +1231,13 @@ days, L is 3 to 5 days.
 ### Phase K: compiler fixes found in `scicompile` (section 14)
 
 Each fix makes the compiler agree with Sierra's compiler or with the game's
-own data. Each fix is one PR with a test that fails before it.
+own data. Each fix is one PR with a test that fails before it. (K1 pins a
+fix that the branch base already had: its tests fail with the old code put
+back, not on the commit before K1.)
 
 | PR | Change | Test (negative check) | Size |
 |---|---|---|---|
-| K1 | `and` and `or` in a value position give the deciding operand, as Sierra's `sc` does (`MakeAnd`/`MakeOr` in `COMPILE.CPP`): `a; bnt E; b; E:` for `and`, `bt` for `or`. Found at K1: commit `f5f7a01b` (2026-09-12, in the branch base) already does this; the plan's check missed its `if (true)` path above the old code. K1 removes the unreachable old code (`_WriteFakeIfStatement`, which gave 1 or 0) and pins the bytes. No GUI change. | The bytes of `(= t (and a b))` and `(= t (or a b))` equal the Sierra shape written in `asm` (fails with the old path: `ldi 1`, `ldi 0`). The bytes of `(if (and a b) ...)` equal the branch-to-the-end shape written in `asm` (the condition path does not change). The round-trip test `Compiler_ValueAndOr` still passes. | S |
+| K1 | `and` and `or` in a value position give the deciding operand, as Sierra's `sc` does (`MakeAnd`/`MakeOr` in `COMPILE.CPP`): `a; bnt E; b; E:` for `and`, `bt` for `or`. Found at K1: commit `f5f7a01b` (2026-09-12, in the branch base) already does this; the plan's check missed its path above the old code (`f5f7a01b` guarded the path with `LangSyntaxSCI`, and `b6b892d9`, 2026-09-14, made that guard `if (true)`). K1 removes the unreachable old code (`_WriteFakeIfStatement`: an if with `ldi 1` and no else, so 1 or 0) and the `WeakSyntaxNode` that only it used, and pins the bytes. No GUI change in K1: the change of compiled output came with `f5f7a01b`. A nest of the other operator (`(or (and a b) c)`) gives Sierra's value but not Sierra's bytes (older than K1; section 14). | The bytes of `(= t (and a b))` and `(= t (or a b))` equal the Sierra shape written in `asm` (fails with the old path: `ldi 1` and no else). The same in a call argument, `(Abs (and a b))`: both exits join before the `push` (fails with a join after the push). The bytes of `(if (and a b) ... else ...)` and `(if (or a b) ... else ...)` equal the branch-to-the-else shape written in `asm` (the condition path does not change; fails with an `or` condition that goes through the value path). With the old path put back, 8 unit tests fail, the template recompiles among them. | S |
 | K2 | `SCOFromScriptAndCompiledScript`: when the source has a `(public name N ...)` block, record those slots as they are. Only without that block, pair the definition order with the export table. | A script whose public procedures are defined out of slot order gives each name its own slot (fails before: the names shift). | S |
 | K3 | Class numbering: in each script, order the species of `vocab.996` as the classes are in the game's compiled script (the species in each class header), not in number order; the table's other species for the script follow, in number order. A script that does not load keeps the old order. A compiled class whose species the table gives another script (a leftover class) is left out, so it keeps the old positional numbering (61 scripts in 30 GOG game folders; a known gap). The scripts are found in one pass (`CompiledScript::TryLoad` from blobs): a lookup for each script cost 300 to 700 ms on big games. | A table and a compiled script whose class order differs from the number order give each class its own species (fails before: two classes swap). An opt-in test over real games (`SCICOMP_SPECIES_GAME`): every script without a leftover class keeps each class's species in 30 GOG game folders (fails before: LB2 script 0 swaps two classes; The Colonel's Bequest script 999 shifts five). | M |
 | K4 | `#` inside a selector name (not first): the parser (`SelectorP`) accepts it, and the formatter keeps it in property names and send selectors. KQ6 names selector 879 `dungeon#`. | `(properties dungeon# 0)` and `(self dungeon#:)` parse, and the formatter writes `dungeon#` (fails before: a parse error, and `dungeon_`). | S |
@@ -1304,10 +1307,11 @@ GUI changes in this plan (all others are refactors with no visible change):
 - S2: compile-all saves the tables only if one or more scripts compiled.
 - S3: the `_N` suffix of a duplicate automatic script name follows the
   script number.
-- K1: `(and a b)` and `(or a b)` in a value position compile to Sierra's
-  code, so their value is the deciding operand, not 1 or 0. A fan script
-  that used the number 1 from such an expression gets a different number.
-  The README "What's new" says so.
+- `f5f7a01b` (in the branch base; K1 pins it): `(and a b)` and `(or a b)`
+  in a value position compile to Sierra's code, so their value is the
+  deciding operand, not 1 or 0. A fan script that used the number 1 from
+  such an expression gets a different number. The README "What's new"
+  says so (added by the K1 review fixes).
 - K3: a recompiled Sierra script keeps each class's own species.
 - K4: the decompiler writes selector names with `#` as they are.
 - K5: a call into a script that the game does not have compiles, with a
@@ -1388,7 +1392,7 @@ Still open (the plan uses the recommendation unless you say otherwise):
 | Q9 | Phase E (core library split) | After phase C, as a separate stack. |
 | Q10 | The rewrite plan's CLI uses `scic compile` (verb first). | Change it to the `scic script compile` form, so scripts carry over to the .NET tool. |
 | Q11 | Result library | tl::expected v1.3.1, using only the `std::expected` names (section 6.7). |
-| Q12 | K1 changes compiled output for fan scripts that used the 1 from an `and`/`or` value. | Adopt Sierra's semantics (the project's direction: Sierra syntax and Sierra-compatible output), with a README note. |
+| Q12 | `f5f7a01b` (which K1 pins) changes compiled output for fan scripts that used the 1 from an `and`/`or` value. | Adopt Sierra's semantics (the project's direction: Sierra syntax and Sierra-compatible output), with a README note. |
 | Q13 | The scope of the `calle` fallback for `proc<N>_<M>` (K5) | Only when the game has no script N, with a warning. `scicompile` applies it to every unresolved name; a typo then compiles into a call to a missing export. |
 
 ## 12. Risks
@@ -1463,7 +1467,7 @@ It found these problems. The table shows how each one applies to this code
 | Their change | This code | Action |
 |---|---|---|
 | `a[i] op= v` with a non-literal index stored to `a[0]` or `a[1]` (`eq?; toss; pprev`) | already fixed: `push0; eq?; ldi 0; or; pprev; sa?i` (`Compile.cpp:2089-2098`) | none |
-| `(and a b)` / `(or a b)` in a value position gave 1 or 0 | already fixed by `f5f7a01b`, before this plan (the first check missed its `if (true)` path; found at K1). Sierra's `sc` 4.100 (`MakeAnd`: "the expression evaluates to its value") and the `sc` learnings table agree with `scicompile`. | K1: remove the old code, pin the bytes |
+| `(and a b)` / `(or a b)` in a value position gave 1 or 0 | already fixed by `f5f7a01b`, before this plan (the first check missed its path, which `b6b892d9` had put behind an `if (true)`; found at K1). A nest of the other operator, such as `(or (and a b) c)`, gives Sierra's value but not Sierra's bytes: SCI Companion takes the inner `bnt` straight to the next operand of the `or`, and Sierra's optimizer does not take a `bnt` through a `bt` (`a; bnt O1; b; O1: bt O; c; O:`). This is older than K1; only a byte-exact round trip of such a nest sees it. Sierra's `sc` 4.100 (`MakeAnd`: "the expression evaluates to its value") and the `sc` learnings table agree with `scicompile`. | K1: remove the old code, pin the bytes |
 | `.sco` from source: a class missing from the compiled script dereferenced null | already fixed (#60) | none |
 | `.sco` from source: a procedure export past the source's public procedures read past the end | already fixed (#60) | none |
 | `.sco` from source: the public procedure names paired by definition order, not by the `(public name N)` slots (KQ5 `Interface.sc`) | the same bug (`SCO.cpp:730-780`); the decompiler uses this function too | K2 |

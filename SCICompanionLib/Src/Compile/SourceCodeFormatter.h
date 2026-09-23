@@ -13,11 +13,6 @@
 ***************************************************************************/
 #pragma once
 
-namespace sci
-{
-	class WeakSyntaxNode;
-}
-
 class SourceCodeFormatter : public sci::ISyntaxNodeVisitor
 {
 public:
@@ -95,5 +90,4 @@ protected:
 			out.out << ")";
 		}
 	}
-	void Visit(const sci::WeakSyntaxNode &weakNode);
 };

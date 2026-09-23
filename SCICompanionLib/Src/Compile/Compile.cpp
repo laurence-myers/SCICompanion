@@ -830,9 +830,8 @@ CodeResult SingleStatementVectorOutputHelper(const SyntaxNodeVector &statements,
 	return CodeResult(wBytes, returnType);
 }
 
-// We pull the code out, because we need to use the exact same code in another case
-// pFailure is optional.
-CodeResult _OutputCodeForIfStatement(CompileContext &context, const SyntaxNode &condition, const SyntaxNode &success, const SyntaxNode *pFailure, bool fMeaning = false)
+// The code of an if statement. pFailure (the else) is optional.
+CodeResult _OutputCodeForIfStatement(CompileContext &context, const SyntaxNode &condition, const SyntaxNode &success, const SyntaxNode *pFailure, bool fMeaning)
 {
 	declare_conditional isCondition(context, false);
 	change_meaning meaning(context, fMeaning);
@@ -2348,6 +2347,10 @@ CodeResult BinaryOp::OutputByteCode(CompileContext &context) const
 			// Evaluate the expression as a condition, but resolve both the success
 			// and failure exits to the end of the expression, so whichever operand
 			// the short circuit stops on is left in the accumulator.
+			// A nest of the other operator ((or (and a b) c)) gives Sierra's
+			// value, but not Sierra's bytes: the inner bnt goes straight to the
+			// next operand of the or. Sierra's optimizer does not take a bnt
+			// through a bt, so sc gives "a; bnt O1; b; O1: bt O; c; O:".
 			branch_block blockSuccess(context, BranchBlockIndex::Success);
 			branch_block blockFailure(context, BranchBlockIndex::Failure);
 			{
@@ -3918,16 +3921,6 @@ void Asm::PreScan(CompileContext &context)
 		context.ReportLabelName(this, _label);
 	}
 	ForwardPreScan2(_segments, context);
-}
-
-void WeakSyntaxNode::PreScan(CompileContext &context)
-{
-	assert(false);
-}
-CodeResult WeakSyntaxNode::OutputByteCode(CompileContext &context) const
-{
-	if (WeakNode) { return WeakNode->OutputByteCode(context); }
-	return 0;
 }
 
 // Converts a flat list of statements and andOrs into a tree of binary operations.

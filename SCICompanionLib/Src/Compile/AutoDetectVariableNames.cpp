@@ -440,8 +440,7 @@ public:
 	void Visit(const Asm &asmSection) override {}
 	void Visit(const AsmBlock &asmBlock) override {}
 	void Visit(const ExportEntry &exportEntry) override {}
-	void Visit(const WeakSyntaxNode &weakNode) override {}
-	void Visit(const NaryOp &weakNode) override {}
+	void Visit(const NaryOp &naryOp) override {}
 	void Visit(const ClassDefDeclaration &classDef) override {}
 	void Visit(const SelectorDeclaration &selectorDef) override {}
 	void Visit(const GlobalDeclaration &globalDecl) override {}
@@ -551,8 +550,7 @@ public:
 	void Visit(const Asm &asmSection) override {}
 	void Visit(const AsmBlock &asmBlock) override {}
 	void Visit(const ExportEntry &exportEntry) override {}
-	void Visit(const WeakSyntaxNode &weakNode) override {}
-	void Visit(const NaryOp &weakNode) override {}
+	void Visit(const NaryOp &naryOp) override {}
 	void Visit(const ClassDefDeclaration &classDef) override {}
 	void Visit(const SelectorDeclaration &selectorDef) override {}
 	void Visit(const GlobalDeclaration &globalDecl) override {}

@@ -151,8 +151,9 @@ namespace UnitTests
 
         // Plan step K1. An and/or used for its value gives the operand that
         // decides it, as Sierra's sc does (MakeAnd, MakeOr): "a; bnt E; b; E:"
-        // for and, and bt for or. The old SCI Studio code gave 1 or 0 (an
-        // if/else with ldi 1 and ldi 0).
+        // for and, and bt for or. The old SCI Studio code gave 1 or 0: an if
+        // with ldi 1 and no else ("a; bnt F; b; bnt F; ldi 1; F:"), where the
+        // 0 is the operand that the taken bnt leaves in the accumulator.
         TEST_METHOD(ValueAndOr_GiveTheDecidingOperand)
         {
             _gameFolder = SetUpGameSCI11();
@@ -183,7 +184,48 @@ namespace UnitTests
             AssertSameBytes(keyword, manual, L"a value and/or must compile to Sierra's short-circuit shape");
         }
 
-        // In a condition, and/or branches to the if's else as before.
+        // K1 review: the same in a push context (a call argument). Both exits
+        // of the short circuit must join before the push; a join after it
+        // skips the push on the short path, and the call gets a wrong stack.
+        TEST_METHOD(ValueAndOr_InACallArgument_JoinBeforeThePush)
+        {
+            _gameFolder = SetUpGameSCI11();
+            std::string keyword = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest a b &tmp t)\n"
+                "\t(= t (Abs (and a b)))\n"
+                "\t(= t (Abs (or a b)))\n"
+                "\t(return t)\n"
+                ")\n";
+            std::string manual = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest a b &tmp t)\n"
+                "\t(asm\n"
+                "\t\tpush1\n"
+                "\t\tlap a\n"
+                "\t\tbnt andEnd\n"
+                "\t\tlap b\n"
+                "\tandEnd:\n"
+                "\t\tpush\n"
+                "\t\tcallk Abs, 2\n"
+                "\t\tsat t\n"
+                "\t\tpush1\n"
+                "\t\tlap a\n"
+                "\t\tbt orEnd\n"
+                "\t\tlap b\n"
+                "\torEnd:\n"
+                "\t\tpush\n"
+                "\t\tcallk Abs, 2\n"
+                "\t\tsat t\n"
+                "\t)\n"
+                "\t(return t)\n"
+                ")\n";
+            AssertSameBytes(keyword, manual, L"a value and/or in a call argument must join before the push");
+        }
+
+        // In a condition, and/or branch to the if's else, as before. This
+        // test also passes with the old value path: it pins the condition
+        // shape, and it is not a negative check for K1.
         TEST_METHOD(ConditionAndOr_BranchToTheElse)
         {
             _gameFolder = SetUpGameSCI11();
@@ -192,6 +234,13 @@ namespace UnitTests
                 "(procedure (kTest a b &tmp t)\n"
                 "\t(if (and a b)\n"
                 "\t\t(= t 1)\n"
+                "\telse\n"
+                "\t\t(= t 2)\n"
+                "\t)\n"
+                "\t(if (or a b)\n"
+                "\t\t(= t 3)\n"
+                "\telse\n"
+                "\t\t(= t 4)\n"
                 "\t)\n"
                 "\t(return t)\n"
                 ")\n";
@@ -200,17 +249,33 @@ namespace UnitTests
                 "(procedure (kTest a b &tmp t)\n"
                 "\t(asm\n"
                 "\t\tlap a\n"
-                "\t\tbnt ifEnd\n"
+                "\t\tbnt andElse\n"
                 "\t\tlap b\n"
-                "\t\tbnt ifEnd\n"
+                "\t\tbnt andElse\n"
                 "\t\tldi 1\n"
                 "\t\tsat t\n"
-                "\tifEnd:\n"
+                "\t\tjmp andEnd\n"
+                "\tandElse:\n"
+                "\t\tldi 2\n"
+                "\t\tsat t\n"
+                "\tandEnd:\n"
+                "\t\tlap a\n"
+                "\t\tbt orThen\n"
+                "\t\tlap b\n"
+                "\t\tbnt orElse\n"
+                "\torThen:\n"
+                "\t\tldi 3\n"
+                "\t\tsat t\n"
+                "\t\tjmp orEnd\n"
+                "\torElse:\n"
+                "\t\tldi 4\n"
+                "\t\tsat t\n"
+                "\torEnd:\n"
                 "\t\tlat t\n"
                 "\t\tret\n"
                 "\t)\n"
                 ")\n";
-            AssertSameBytes(keyword, manual, L"an and in a condition must branch to the end of the if");
+            AssertSameBytes(keyword, manual, L"an and/or in a condition must branch to the else of the if");
         }
         // _file_ / _line_ are SCI2-only debug pseudo-opcodes. Using one in an
         // asm block in a non-SCI2 (here SCI1.1) game must be a compile error, not

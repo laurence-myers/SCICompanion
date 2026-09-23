@@ -140,7 +140,6 @@ namespace sci
 	class Asm;
 	class AsmBlock;
 	class ExportEntry;
-	class WeakSyntaxNode;
 	class NaryOp;
 	class ClassDefDeclaration;
 	class SelectorDeclaration;
@@ -193,7 +192,6 @@ namespace sci
 		virtual void Visit(const Asm &asmSection) = 0;
 		virtual void Visit(const AsmBlock &asmBlock) = 0;
 		virtual void Visit(const ExportEntry &exportEntry) = 0;
-		virtual void Visit(const WeakSyntaxNode &weakNode) = 0;
 		virtual void Visit(const ClassDefDeclaration &classDef) = 0;
 		virtual void Visit(const SelectorDeclaration &selectorDef) = 0;
 		virtual void Visit(const GlobalDeclaration &globalDecl) = 0;

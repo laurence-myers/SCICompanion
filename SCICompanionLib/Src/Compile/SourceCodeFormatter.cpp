@@ -153,8 +153,3 @@ void ClassProperty::OutputSourceCode(SourceCodeWriter &out) const
 {
 	OutputSourceCode_SCI(*this, out);
 }
-
-void SourceCodeFormatter::Visit(const sci::WeakSyntaxNode &weakNode)
-{
-	if (weakNode.WeakNode) { weakNode.WeakNode->Accept(*this); }
-}

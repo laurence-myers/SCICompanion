@@ -383,13 +383,37 @@ for each step, and a follow-up commit if the review finds a problem.
 - Known gap: the SCI0 LZW decoder (`decompressLZW`) finds no errors. Bad
   LZW data gives wrong bytes and no `DecompressionFailed` flag.
 - K1: the fix was already in the branch base (`f5f7a01b`, 2026-09-12:
-  "Sierra semantics for a value-position and/or"). The plan's check on
-  `0dc1fef5` saw `_WriteFakeIfStatement` and missed the `if (true)` path
-  above it. K1 removed the unreachable old code, and added two byte-level
-  tests: the value form against the Sierra shape in `asm`, and the
-  condition form against its branch-to-the-end shape. The earlier test
-  (`Compiler_ValueAndOr`) is a decompile round trip; it did not pin the
-  bytes.
+  "Sierra semantics for a value-position and/or"). `f5f7a01b` guarded the
+  new path with `LangSyntaxSCI`, and `b6b892d9` (2026-09-14) made the
+  guard `if (true)`. The plan's check on `0dc1fef5` saw
+  `_WriteFakeIfStatement` and missed the path above it. K1 removed the
+  unreachable old code, and added byte-level tests: the value form
+  against the Sierra shape in `asm`, and the condition form against its
+  branch shape. With the old path put back, 8 unit tests fail:
+  `Compiler_ValueAndOr`, `Family3_AndAsArgument`, `Family3_ValueIfReturn`,
+  `Plain_CompoundConditions`, the three template tests
+  (`TemplateGame_Recompiles`, `TemplateGame_BytecodeIdempotence`,
+  `TemplateGame_BytecodeSnapshot`: the old path typed the value as bool,
+  so `GameControls.sc` does not recompile) and the new
+  `ValueAndOr_GiveTheDecidingOperand`. The older ones check a round trip
+  or a snapshot; the new tests compare the bytes with Sierra's shape.
+- K1 review: a push-context test (`(Abs (and a b))`: both exits join
+  before the `push`) and an `or` condition with an else. The dead
+  `WeakSyntaxNode` (only the old code made one) is gone, with
+  `NodeTypeWeak`. The README "What's new" names the change of value. It
+  came with `f5f7a01b`; the plan said that the note was there, and it
+  was not.
+- Known gap (K1 review): a nest of the other operator, such as
+  `(or (and a b) c)`, gives Sierra's value but not Sierra's bytes. SCI
+  Companion takes the inner `bnt` straight to the next operand of the
+  `or`; Sierra's optimizer does not take a `bnt` through a `bt` (`a; bnt
+  O1; b; O1: bt O; c; O:`). It is older than K1. The flat forms, `not`,
+  call and send arguments, `return` and compare operands give Sierra's
+  shape. Only a byte-exact round trip of such a nest sees the difference.
+- Three other `if (true)` stubs from `b6b892d9` stay in `Compile.cpp`
+  (the `if (true)` near lines 1386 and 1823, and `(simpleIndexer ||
+  (true))` near line 2055). A separate task can remove them; they are
+  on master too.
 - K2: `SCOFromScriptAndCompiledScript` records the `(public name N ...)`
   slots as they are, a name that is in several slots included, and
   returns. In Sierra syntax, a procedure or instance is public only when
@@ -430,7 +454,6 @@ for each step, and a follow-up commit if the review finds a problem.
   before.
 ## Next action
 
-The F2 review findings are fixed. Fix the K1 review findings (the README
-note, the plan text, a push-context test, an `or` condition test, and
-the dead `WeakSyntaxNode`). Read the K2 to K4 review (running) and fix
-any real finding. Then K5 (plan section 9).
+The F2 and K1 review findings are fixed. Read the K2 to K4 review
+(running) and fix any real finding. Then K5 (plan section 9). Add the
+review-fix commits (F2 and K1) to the next review.
