@@ -23,6 +23,9 @@
   earlier headless port of this compiler (section 14): six compiler fixes
   (phase K), `scic script sco`, a compile-all that repeats until the `.sco`
   files are stable, and compile output to another folder.
+- Revision 5 (your change of plan): the CLI works on a game that SCI
+  Companion never opened, so it does not need `game.ini`. A script-name map
+  replaces the `[Script]` section (section 3.4).
 
 ## 0. Summary
 
@@ -43,6 +46,9 @@
   the old code into an `Error`. No exception leaves a service. Batches
   return a report with a status for each script, so partial success is
   explicit.
+- The CLI does not need `game.ini`. It takes script names from `game.ini`
+  when the file exists, else from the files in `src\`, else from the
+  compiled scripts. It never creates `game.ini` unless you ask.
 - A new `GameSession` object replaces the GUI object `AppState` in the
   script engine. The CLI then runs with no `AppState`, no GUI object and no
   modal dialog. The GUI keeps `AppState`, and `AppState` owns a `GameSession`.
@@ -74,6 +80,7 @@ From you:
 | R7 | Refactoring is allowed, to make the code easier to call from a CLI and to decouple it from MFC and the GUI. |
 | R8 | Propagate failures with a non-exception method (a `Result` type). No failure mode stays unhandled when an exception is thrown. Return partial success and failure after a compile or decompile. |
 | R9a | Adopt the changes from lucasartsifier's `scicompile` that apply to this code (section 14). |
+| R9b | The CLI works on a game that SCI Companion never opened: it does not rely on `game.ini`. |
 
 Added by this plan:
 
@@ -219,6 +226,18 @@ plain in-memory sink. The message text already has a GUI prefix
   writes nothing.
 - The Decompile dialog lists each script resource with its name, and shows
   if the `.sc` and `.sco` files exist (`DecompileDialog.cpp:220-260`).
+- Everything that turns a script number into a file name reads `[Script]`
+  in `game.ini`: `GameFolderHelper::GetScriptFileName(n)`,
+  `GetScriptObjectFileName(n)` and `FigureOutName(Script, n)`
+  (`Src\Resources\GameFolderHelper.cpp:61-120, 327`), `SaveSCOFile(helper, sco)`
+  (`Src\Compile\SCO.cpp:630-637`), and `CResourceMap::GetAllScripts`,
+  `GetNumberToNameMap` and `GetScriptNumber` (`ResourceMap.cpp:922-1210`).
+  With no `game.ini`, every script is `nNNN`: the decompiler writes
+  `src\n110.sc` and `(use n255)`, and compile-all finds no script.
+- The other `game.ini` values (`SaveToPatchFiles`, `Codepage`,
+  `GenerateDebugInfo`, `NoDbugStr`) have defaults when the file is missing.
+  A game folder opens with no `game.ini` (`SniffSCIVersion` reads only the
+  resources).
 
 ### 2.6 How resources are saved today
 
@@ -290,6 +309,7 @@ plain in-memory sink. The message text already has a GUI prefix
 | P19 | The data folders (`include\`, `Decompiler\`) must be next to the exe. | `util.cpp:1026-1042`, `GameFolderHelper.cpp:122-135` | `scic.exe` cannot move, and tests need `SetIncludeFolderForTest`. |
 | P20 | The parser reads its input through the editor's text buffer class (CrystalEdit). | `Src\Util\CrystalScriptStream.h`, `Src\Compile\SyntaxParser.h:24` | The engine depends on an MFC editor class. |
 | P21 | Failures use at least seven styles, and some are lost (section 2.9). | section 2.9 | No reliable exit code; no partial-success report. |
+| P22 | Script names come only from `game.ini`. | section 2.5 | A game that SCI Companion never opened has no names: wrong file names, no compile-all. |
 
 ### 2.8 MFC and `AppState` coupling (inventory)
 
@@ -513,7 +533,37 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
   There is no `HWND` and no `PostMessage`.
 - `CompileReport` and `DecompileReport` are in section 6.5.
 
-### 3.4 Program name and folder
+### 3.4 Script names without `game.ini`
+
+The CLI must work on a game folder that SCI Companion never opened
+(requirement R9b). So the script names come from a script-name map, not
+from `game.ini` alone. The session builds the map when it opens the game.
+For each script number, the first source that has a name wins:
+
+1. `game.ini` `[Script]`, if the file exists (SCI Companion projects).
+2. A `src\*.sc` file that declares `(script# N)`: the file title. This
+   covers source trees from other decompilers and projects with no
+   `game.ini`. Two files for one number is a usage error that names both.
+3. A `src\*.sco` file: the script number is in its header.
+4. A name derived from the compiled script, with the decompiler's rule
+   (Main, the first class, the first public instance, a `_N` suffix in
+   number order; section 2.4). Only `list` and `decompile` need it, so the
+   session derives these names only when asked.
+5. `nNNN`.
+
+Rules:
+
+- `GameFolderHelper` gets an optional `std::shared_ptr<const ScriptNameMap>`.
+  When it is set, `GetScriptFileName(n)`, `GetScriptObjectFileName(n)`,
+  `FigureOutName(Script, n)`, `SaveSCOFile` and the compiler's number-to-name
+  map use it. When it is not set (the GUI), they read `game.ini` as before.
+- The CLI never creates `game.ini` unless you give `--game-ini create` to
+  `script decompile`. When `game.ini` exists, `decompile` adds the names of
+  the scripts it writes that have no entry, so the GUI finds them.
+- The names are stable from run to run: a file that `decompile` wrote is
+  found again by rule 2 on the next run.
+
+### 3.5 Program name and folder
 
 - Name: `scic.exe`. Project: `SCICompanionCli\SCICompanionCli.vcxproj`.
 - Output: `$(SolutionDir)Release\scic.exe`, next to `SCICompanion.exe` and
@@ -559,7 +609,7 @@ All three script commands use the same selectors:
 |---|---|---|
 | number | `110` | script 110 |
 | range | `100-199` | each script in the range that exists |
-| name | `rm110`, `Main` | the `game.ini` name (case-insensitive). For `list` and `decompile`, also a derived name. |
+| name | `rm110`, `Main` | a name from the script-name map (section 3.4), case-insensitive: `game.ini`, `src\`, or for `list` and `decompile` a derived name. |
 | path | `src\rm110.sc` | `compile` only. The file must be in `<game>\src`. |
 | `--all` | | every script |
 
@@ -573,9 +623,9 @@ Rules:
 - An unknown selector is a usage error. `scic` finds all of them before any
   work starts, and the message tells you to run `scic script list`.
 - `compile` rejects header files (`.sh`, `.shm`, `.shp`).
-- Order: `compile` uses the `[Script]` order of `game.ini`, the same as the
-  GUI (see Q4). A script given by a path that is not in `[Script]` comes
-  last. `decompile` uses the script numbers in ascending order, as the
+- Order: `compile` uses the `[Script]` order of `game.ini` when the file
+  exists, the same as the GUI (see Q4), then the other scripts in number
+  order. `decompile` uses the script numbers in ascending order, as the
   batch does now.
 
 ### 4.3 `scic script list`
@@ -587,27 +637,32 @@ Default output:
 ```
  No.  Name        Name from  In game          src  sco
    0  Main        game.ini   resource.000     yes  yes
-  13  AboutCode   game.ini   13.scr (patch)   yes  yes
+  13  AboutCode   source     13.scr (patch)   yes  yes
+  26  rm26        sco        resource.000     -    yes
  110  rm110       derived    resource.000     -    -
  255  Controls    game.ini   (not compiled)   yes  yes
  994  n994        default    resource.000     -    -
 ```
 
-- Rows: each script resource in the game, plus each `[Script]` entry that
-  has no resource ("not compiled"). The rows are in number order.
-- "Name from" tells you where the name comes from:
+- Rows: each script resource in the game, plus each script that has only a
+  source file, a `.sco` file or a `[Script]` entry ("not compiled"). The
+  rows are in number order.
+- "Name from" is the rule of section 3.4 that gave the name:
   - `game.ini`: the `[Script]` section has the name.
-  - `derived`: `game.ini` has no name. `scic` derives the name from the
-    compiled script with the decompiler's rule (Main, first class, first
-    public instance). `scic script decompile` gives the script this name.
-  - `default`: `scic` cannot derive a name, or a file already uses the
-    default name. The name is `nNNN`.
+  - `source`: a `src\*.sc` file declares `(script# N)`.
+  - `sco`: a `src\*.sco` file has the number.
+  - `derived`: `scic` derives the name from the compiled script with the
+    decompiler's rule (Main, first class, first public instance).
+    `scic script decompile` writes the script under this name.
+  - `default`: no rule gives a name, or a file already uses the default
+    name. The name is `nNNN`.
 - `list` and `decompile` use one library function for this rule, so they
   always agree.
 - To derive names, `list` loads the compiled scripts
   (`GlobalCompiledScriptLookups`). This is the "some decompilation" case: it
   reads the object tables, not the code. `list` does it only if one or more
-  scripts have no `game.ini` name, or if you give `--derived`.
+  scripts have no name from rules 1 to 3, or if you give `--derived`.
+- `list` works the same with or without `game.ini`.
 - A script that cannot be read is still listed. Its row shows the error
   (for example `(unreadable: truncated heap)`), and `list` exits with 6.
 - "In game" shows where the resource is: a package volume or a patch file.
@@ -616,7 +671,7 @@ Default output:
   - `--format text|tsv`: `tsv` prints tab-separated columns with a header
     row, for use in scripts. JSON comes later (section 13).
   - `--derived`: add a column with the derived name, also for scripts that
-    have a `game.ini` name. It shows where the two names differ.
+    have a name from rules 1 to 3. It shows where the names differ.
 - `list` writes nothing: no `game.ini`, no `src\` folder, no `Decompiler.ini`.
 
 ### 4.4 `scic script decompile`
@@ -632,13 +687,16 @@ Steps:
 1. Open the game. Resolve the selectors.
 2. Prepare `src\`. Create it if necessary. If `Decompiler.ini` is missing,
    copy `<data folder>\Decompiler\*` into it. Never overwrite a file here.
-3. Assign names (see `--assign-names`).
+3. Resolve the names of all scripts with the script-name map, deriving the
+   missing ones (section 3.4). All scripts need names first, because
+   `(use Name)` refers to them.
 4. Run the batch on the selected numbers. Existing `.sc` files are
    overwritten, as in the GUI.
-5. For an individual run, find the stale scripts and report them. With
+5. Write the names into `game.ini` as `--game-ini` says.
+6. For an individual run, find the stale scripts and report them. With
    `--update-stale`, decompile them too. Repeat until there are no new
    stale scripts.
-6. Print the report: each failed script with its error, then the totals
+7. Print the report: each failed script with its error, then the totals
    (scripts written and failed, function and byte success rates, asm
    fallbacks, globals renamed).
 
@@ -649,16 +707,17 @@ Individual and bulk:
 | Scripts | the selection | each script resource (patch file or package) |
 | Global names | found across the selection, plus the names already in `Main.sco` | found across the whole game |
 | Other scripts | can still use an old global name ("stale"). `scic` reports them, or decompiles them with `--update-stale`. | none are stale |
-| Names in `game.ini` | assigned for all scripts first, because `(use Name)` needs them | the same |
+| Names | resolved for all scripts first, because `(use Name)` needs them | the same |
 | `Main.sco` | updated when a global gets a name | the same |
 
 Options:
 
 | Option | Meaning |
 |---|---|
-| `--assign-names missing\|all\|none` | `missing` (default): give a derived name to each script that has no `game.ini` name and no `src\nNNN.sc` or `src\nNNN.sco` file. For an empty `[Script]` section, this does the same as the GUI. `all`: rename every script (the dialog's "Reset filenames"). The old files keep their old names, and a warning lists them. `none`: never write names. |
+| `--game-ini update\|create\|none` | `update` (default): when `game.ini` exists, add a `[Script]` entry for each written script that has none, so the GUI finds the files. `create`: the same, and create `game.ini` when it is missing. `none`: never write `game.ini`. Without `game.ini`, the names come back on the next run from the files in `src\` (section 3.4). |
+| `--reset-names` | Use the derived name for every script, also for scripts that have a name (the dialog's "Reset filenames"). The old files keep their old names, and a warning lists them. |
 | `--update-stale` | After an individual run, also decompile the stale scripts. |
-| `--stdout` | One script only. Print the source to stdout and write nothing: no `.sc`, `.sco`, `game.ini` or `src\`. If `game.ini` has no names yet, the `(use ...)` lines show the default names. |
+| `--stdout` | One script only. Print the source to stdout and write nothing: no `.sc`, `.sco`, `game.ini` or `src\`. The `(use ...)` lines use the names of section 3.4, as a file run does. |
 | `--text-tuples` | Replace text resource tuples with strings (a dialog option). |
 | `--asm-only` | Disassemble only (the dialog's "Disassemble only"). |
 | `--debug-control-flow`, `--debug-instructions`, `--debug-filter <name>` | Decompiler debug output (dialog options). |
@@ -692,9 +751,10 @@ Individual and bulk:
 
 | | Individual | Bulk (`--all`) |
 |---|---|---|
-| Scripts | the selection, in `game.ini` order | the `[Script]` section, in file order |
-| Empty `[Script]` section | not applicable | error; with `--scan-src`, compile each `src\*.sc` (the GUI's fallback) |
-| A `[Script]` entry with no `.sc` file | usage error (exit 2) | skipped, and listed as a warning |
+| Scripts | the selection | every script that has a source file: the `[Script]` entries of `game.ini` (when it exists) and every `src\*.sc` that declares `(script# N)` |
+| Order | `game.ini` order, then number order | the same |
+| No `game.ini` | works: the names come from `src\` (section 3.4) | the same |
+| A script with a name but no `.sc` file | usage error (exit 2) | skipped, and listed as a warning |
 | Passes | one | repeat while a `.sco` file changed, at most `--passes` times (section 14) |
 | Tables (996, 997) | saved once at the end, if one or more scripts compiled | the same |
 | Resource writes | one batch | one batch, from the last pass |
@@ -723,7 +783,6 @@ Options:
 | `--out-dir <folder>` | Write the patch files into this folder, not into the game folder. The game's resources do not change; `src\*.sco` still does. Use it to build a set of patch files to ship. Not with `--to package`. |
 | `--raw` | With `--out-dir`: write the plain resource data with no patch header, as `script.110.bin` and `heap.110.bin`. |
 | `--passes <n>` | With `--all`: the largest number of passes (default 5). `--passes 1` is one pass, as in the GUI. |
-| `--scan-src` | With `--all` and an empty `[Script]` section: compile each `src\*.sc`. |
 | `--fail-fast` | Stop at the first script with errors. |
 | `--no-warn-unused` | Turn off the "unused instance" warning. It is on by default, as in the GUI. |
 | `--dry-run` | Compile, but write no resource, table, `.sco` or `.scd`. Later scripts in the same run then read the old `.sco` of earlier scripts. |
@@ -859,8 +918,7 @@ namespace sci
     struct ErrorLocation
     {
         std::string file;                          // a game file or a source file
-        ResourceType resourceType = ResourceType::None;
-        int resourceNumber = -1;
+        std::string resource;                      // for example "script 110" or "heap 110"
         int64_t offset = -1;
         int line = 0, column = 0;
     };
@@ -1126,7 +1184,7 @@ days, L is 3 to 5 days.
 
 | PR | Change | Test (negative check) | Size |
 |---|---|---|---|
-| F1 | Vendor tl::expected v1.3.1 (`Src\tl-expected\`, `COPYING`, notice in `SCICompanion\Files\Licenses`). `Src\Core\Result.h`: `ErrorCode`, `ErrorLocation`, `Error`, `Result`, `Status`, `Fail`, `SCI_TRY`, `SCI_TRY_ASSIGN`, `WithContext`, `FromHResult`, `FromLastError`, `InvariantViolation`, `TL_ASSERT`. `Src\Core\Guard.cpp`: the exception boundary (section 6.3). Include through the precompiled header. `/we4834` for our projects. The CI check script and its allowlist (section 6.8). | `Guard` maps each exception kind to its code (`DataError`, `bad_alloc`, `std::exception`, `CException*`, `CFileException*`, `...`). `SCI_TRY` returns early. A wrong access throws `InvariantViolation` in Release (fails before `TL_ASSERT` is defined). | M |
+| F1 | Vendor tl::expected v1.3.1 (`Src\tl-expected\`, `COPYING`, notice in `SCICompanion\Files\Licenses`). `Src\Core\Result.h`: `ErrorCode`, `ErrorLocation`, `Error`, `Result`, `Status`, `Fail`, `SCI_TRY`, `SCI_TRY_ASSIGN`, `WithContext`, `FromHResult`, `FromLastError`, `InvariantViolation`, `TL_ASSERT`. `Src\Core\Result.cpp`: the exception boundary's exception mapping (section 6.3). Include through the precompiled header. `/we4834` for our projects. The CI check script and its allowlist (section 6.8). | `Guard` maps each exception kind to its code (`DataError`, `bad_alloc`, `std::exception`, `CException*`, `CFileException*`, `...`). `SCI_TRY` returns early. A wrong access throws `InvariantViolation` in Release (fails before `TL_ASSERT` is defined). | M |
 
 ### Phase A: safety fixes
 
@@ -1163,17 +1221,17 @@ own data. Each fix is one PR with a test that fails before it.
 | PR | Change | Fixes | Test (negative check) | Size |
 |---|---|---|---|---|
 | S1 | Compile destination: `CompileWriteOptions { ResourceSaveLocation saveTo; std::string outDir; bool raw; bool writeResources, writeObjectFile, writeDebugInfo; }`. With `outDir`, the patch files (or with `raw` the plain data) go to that folder through `ResourceBlob::SaveToFile`. The script, heap and text writes and `CompileTables::Save(saveTo)` use it. `GameFolderHelper::GetSaveSourceFlags(location)` resolves `Default`. The GUI passes `Default`. The `.sco`, `.scd` and `.sc` writes return a `Status`. | P2, P10 | Copies of the SCI0 and SCI1.1 templates: `Patch` writes `script.NNN`, or `NNN.scr` and `NNN.hep`, and `resource.map` stays byte-equal (fails before: the output goes into the package). `Package` in a patch-mode copy writes the package. A `.sco` write into a read-only `src\` returns `Io` (fails before: silent). | M |
-| S2 | `CompileBatch` and `CompileScripts` (section 3.3), returning `CompileReport` (section 6.5): one log for each script, the table rule, one deferred commit, an abort flag, the shadow check, `Guard` around each script, the passes of section 4.5 (write a `.sco` only when its bytes change; the commit holds the last pass), and a skip of `[Script]` entries with no source file. `CNewCompileDialog` and `OnCompile` use it. `CalculateErrors` counts again from zero. `CompileResult` gets the raw message. All lines are 1-based. GUI change: before a package save that a patch file would hide, the GUI asks to move the patch files aside. | P1 (compile), P11, P13 | Compile all scripts of both templates with 0 errors. With one broken script, the others compile and are written, and the report shows one `Compile` status. A script that throws inside the engine gives an `Internal` status, and the batch goes on (fault injection). The error counts are exact (fails before). A parser error gives the source line (fails before for the 0-based sites). The shadow check finds `997.voc`. | M |
-| S3 | `ScriptCatalog` (section 3.3): `SuggestScriptNames` (pure, in number order), the effective-name rule of section 4.3, `ListScripts`, `ResolveScriptSelectors`, `FindShadowingPatches`, all returning `Result`. `DecompileDialog::_AssignFilenames` uses `SuggestScriptNames`. GUI change: the `_N` suffix for a duplicate name follows the script number. | P14 | The name rules: Main, "Game" first, first class, public instance, and a `_N` suffix that follows the number (fails before: hash order). Catalogs of both templates. A copy with no `[Script]` section gives derived names. Selector cases: number, range, name, path, duplicate, header, unknown (all bad selectors in one `Usage` error). An unreadable script gives a row with its error. | M |
-| S4 | `DecompileRun` (section 3.3), returning `DecompileReport`: `AssignScriptNames(mode)`, `PrepareDecompileFolder` (plain file copy, no shell), the batch with `Guard` around each script, the stale-script loop, the statistics, an output sink (files or a callback). Also `GenerateObjectFiles(session, scripts)` for `script sco` (section 4.6). `DecompileDialog` uses it. Remove the 3-argument `DecompileScript` and the leftover `theApp`. | P1 (decompile), P16 | The `missing`, `all` and `none` modes. The folder preparation copies once and never overwrites. The callback sink writes no file. `--update-stale` stops when no script is stale. A script that fails gives a status in the report, and the others are written. | M |
+| S2 | `CompileBatch` and `CompileScripts` (section 3.3), returning `CompileReport` (section 6.5): one log for each script, the table rule, one deferred commit, an abort flag, the shadow check, `Guard` around each script, the passes of section 4.5 (write a `.sco` only when its bytes change; the commit holds the last pass), the `--all` list from the script-name map (not `GetAllScripts`), and a skip of named scripts with no source file. `CNewCompileDialog` and `OnCompile` use it. `CalculateErrors` counts again from zero. `CompileResult` gets the raw message. All lines are 1-based. GUI change: before a package save that a patch file would hide, the GUI asks to move the patch files aside. | P1 (compile), P11, P13 | Compile all scripts of both templates with 0 errors. With one broken script, the others compile and are written, and the report shows one `Compile` status. A script that throws inside the engine gives an `Internal` status, and the batch goes on (fault injection). The error counts are exact (fails before). A parser error gives the source line (fails before for the 0-based sites). The shadow check finds `997.voc`. | M |
+| S3 | `ScriptCatalog` and the script-name map (sections 3.3, 3.4): `ScriptNameMap` built from `game.ini` (optional), `src\*.sc`, `src\*.sco`, derived names and `nNNN`; `GameFolderHelper` uses it when it is set (`GetScriptFileName(n)`, `GetScriptObjectFileName(n)`, `FigureOutName(Script, n)`, `SaveSCOFile`, the compiler's number-to-name map); `GameSession` builds and installs it. Also `SuggestScriptNames` (pure, in number order), `ListScripts`, `ResolveScriptSelectors`, `FindShadowingPatches`, all returning `Result`. `DecompileDialog::_AssignFilenames` uses `SuggestScriptNames`. GUI change: the `_N` suffix for a duplicate name follows the script number. | P14, P22 | The name rules: Main, "Game" first, first class, public instance, and a `_N` suffix that follows the number (fails before: hash order). The rule order of section 3.4 (a `.sc` name beats a derived name; `game.ini` beats both). A template copy with no `game.ini` gives the same file names from `src\` (fails before: `nNNN`). Two `.sc` files for one number is a `Usage` error. Selector cases: number, range, name, path, duplicate, header, unknown (all bad selectors in one `Usage` error). An unreadable script gives a row with its error. | M |
+| S4 | `DecompileRun` (section 3.3), returning `DecompileReport`: the names of section 3.4 with `--reset-names`, `WriteScriptNamesToGameIni(update\|create\|none)`, `PrepareDecompileFolder` (plain file copy, no shell), the batch with `Guard` around each script, the stale-script loop, the statistics, an output sink (files or a callback). Also `GenerateObjectFiles(session, scripts)` for `script sco` (section 4.6). `DecompileDialog` uses it. Remove the 3-argument `DecompileScript` and the leftover `theApp`. | P1 (decompile), P16 | The `update`, `create` and `none` modes of `--game-ini`, and `--reset-names`. With no `game.ini`, nothing creates it (fails before: the dialog's naming writes it). The folder preparation copies once and never overwrites. The callback sink writes no file. `--update-stale` stops when no script is stale. A script that fails gives a status in the report, and the others are written. | M |
 
 ### Phase C: the CLI
 
 | PR | Change | Test | Size |
 |---|---|---|---|
 | C1 | The `SCICompanionCli` project: `scic.exe`, console subsystem, static MFC for now, Release\|Win32, references to the library and Prof-UIS, `.sln` rows, a VERSIONINFO `.rc`. `Src\Cli\`: the command groups and arguments (vendored CLI11, BSD-3 licence, notice in `SCICompanion\Files\Licenses`), console, the exit-code mapping (section 8), the host (section 7) with the crash settings, Ctrl+C. Commands: `help`, `--version`, `script list`. | In-process `RunCli`: `script list` on both templates (text and tsv), usage errors (exit 2), a bad folder (exit 3), a missing data folder (exit 3), and `list` writes nothing (the folder snapshot stays equal). A unit test for each row of the exit-code mapping. Integration: `scic.exe script list` through `IntegrationHarness::RunChildReadStdout` (`UnitTests\IntegrationHarness.h:126`). | M |
-| C2 | `scic script decompile` (section 4.4) and `scic script sco` (section 4.6). | Individual and `--all` runs on template copies. `--stdout` and `--dry-run` write nothing. The stale report and `--update-stale`. Exit 6 when one script fails (a truncated script in a copy). | M |
-| C3 | `scic script compile` (sections 4.5 and 5). | The default writes patch files and leaves `resource.map` byte-equal. `--to package` writes the package. The script bytes are equal for both destinations, and equal to the GUI path (S2). The shadow refusal (exit 8) and `--replace-patches`. The patch-mode refusal. `--dry-run` writes nothing. Exit 5 with one broken script, and the others are written. Round trip: `decompile --all`, then `compile --all`, with 0 errors (as `RecompileAllDecompiledScripts`, `UnitTests\DecompileHelper.cpp:544-593`). | M |
+| C2 | `scic script decompile` (section 4.4) and `scic script sco` (section 4.6). | A template copy with no `game.ini` and no `src\` (a game SCI Companion never opened): `decompile --all` writes the derived names and creates no `game.ini`; a second run finds the same names. Individual and `--all` runs on template copies. `--stdout` and `--dry-run` write nothing. The stale report and `--update-stale`. Exit 6 when one script fails (a truncated script in a copy). | M |
+| C3 | `scic script compile` (sections 4.5 and 5). | `compile --all` on a template copy with no `game.ini` compiles every `src\*.sc`. The default writes patch files and leaves `resource.map` byte-equal. `--to package` writes the package. The script bytes are equal for both destinations, and equal to the GUI path (S2). The shadow refusal (exit 8) and `--replace-patches`. The patch-mode refusal. `--dry-run` writes nothing. Exit 5 with one broken script, and the others are written. Round trip: `decompile --all`, then `compile --all`, with 0 errors (as `RecompileAllDecompiledScripts`, `UnitTests\DecompileHelper.cpp:544-593`). | M |
 | C4 | CI and documents: a smoke step in `build.yaml` (copy `Release\TemplateGame\SCI1.1` to a temp folder, then run `script list`, `script decompile --all` and `script compile --all`). README "What's new": a "Command-line tool" item. AGENTS.md: the CLI build and tests, the third `.rc` file for the version, and the failure-handling rules (section 6.2). `UnitTests\README.md`. `UnitTests\Tools\CliCorpusSweep.ps1` (local use). | CI passes. | S |
 
 ### Phase E (optional, after phase C): a core library with no MFC GUI headers
@@ -1191,11 +1249,12 @@ own data. Each fix is one PR with a test that fails before it.
 
 Dependencies: F1 is first; every later PR uses it. A1, A2, B1 and B2 need
 only F1. B3 needs B1 and B2. F2 needs B3. The K PRs need F2 (they change
-code that B3 and F2 move) and do not depend on each other. S1 and S3 need
-the K PRs. S2 needs S1 and A1. S4 needs S3 and K2. C1 needs S3. C2 needs
-C1 and S4. C3 needs C1, S2 and A2. C4 is last. E1 comes after C4. For the
-stacked-PR workflow, one straight order works: F1, A1, A2, B1, B2, B3, F2,
-K1, K2, K3, K4, K5, K6, S1, S2, S3, S4, C1, C2, C3, C4.
+code that B3 and F2 move) and do not depend on each other. S3 needs the K
+PRs, because every later service uses the script-name map. S1 needs S3. S2
+needs S1, S3 and A1. S4 needs S3 and K2. C1 needs S3. C2 needs C1 and S4.
+C3 needs C1, S2 and A2. C4 is last. E1 comes after C4. For the stacked-PR
+workflow, one straight order works: F1, A1, A2, B1, B2, B3, F2, K1, K2,
+K3, K4, K5, K6, S3, S1, S2, S4, C1, C2, C3, C4.
 
 GUI changes in this plan (all others are refactors with no visible change):
 
@@ -1234,6 +1293,10 @@ GUI changes in this plan (all others are refactors with no visible change):
     sizes, hashes) before and after the run.
   - Register each new test `.cpp` in `UnitTests.vcxproj` and
     `UnitTests.vcxproj.filters`.
+- "Never opened" scenario: a copy of each template with `game.ini` deleted,
+  and for `decompile` also `src\` deleted, must pass `script list`,
+  `script decompile --all` and `script compile --all` from end to end, and
+  no run may create `game.ini`.
 - Golden suites: the bytecode oracle and the decompile snapshots must not
   change in phases F and B. They prove that the refactor keeps the output.
 - Integration tests (the class name contains `Integration`; run with
@@ -1272,13 +1335,14 @@ Your answers:
 | — | Command structure | Command groups: `scic script <command>`. |
 | — | Refactoring | Allowed, to decouple from MFC and the GUI (phases B and E). |
 | — | Failure handling | Failures are values (`Result`), with partial-success reports (section 6). |
+| — | `game.ini` | The CLI works on a game that SCI Companion never opened; it does not rely on `game.ini` (section 3.4). |
 
 Still open (the plan uses the recommendation unless you say otherwise):
 
 | # | Question | Recommendation |
 |---|---|---|
 | Q4 | Compile order | `game.ini` order in version 1, as in the GUI. An order that compiles a used script first comes later. |
-| Q5 | Give names to scripts with no name (`--assign-names missing`) | Yes, so `list` and `decompile` agree. The GUI assigns names only when `[Script]` is empty. |
+| Q5 | Names for scripts that have none | The derived name (section 3.4), the same in `list` and `decompile`. When `game.ini` exists, `decompile` adds the missing entries (`--game-ini update`); it creates the file only with `--game-ini create`. |
 | Q6 | JSON output in version 1 | No. `list --format tsv` in version 1; `--json` for all commands later. |
 | Q7 | GUI and CLI on the same game at the same time | Version 1: not supported, and the documents say so. Later: a shared lock file. |
 | Q8 | Argument parser | Vendor CLI11 (one header file, BSD-3 licence). It supports command groups. The other choice is a small parser written by hand. |

@@ -10,9 +10,12 @@ Update this file in the same commit as each step.
   the background.
 - Baseline on `0dc1fef5`: the Release build passes; the unit suite passes
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242.
-- A full rebuild shows 48 old warnings (C4996, C5033, C4267, C4018), all in
-  third-party code (GIFLIB, CrystalEdit, a Windows SDK header). A new
-  warning in our files is a regression.
+- A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
+  C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
+  (`getenv`) and C4267 in the UnitTests helpers (`DecompileHelper.cpp`,
+  `TestDecompile.cpp`, `TestBytecodeOracle.cpp`, `TestDecompileBatch.cpp`).
+  A warning in a file that a step changed, which the parent commit did not
+  have, is a regression.
 
 ## Progress
 
@@ -21,8 +24,8 @@ for each step, and a follow-up commit if the review finds a problem.
 
 | Step | Status | Commit | Review |
 |---|---|---|---|
-| F1 Result foundation | done | `04361133` | running |
-| A1 Deferred writes | done | `fix(scic): A1` (the commit after `04361133`) | pending |
+| F1 Result foundation | done | `04361133`, review fixes `b499f9ac` | FIX: 2 should-fix, 8 nits; fixed except the Gdiplus `Status`/`Ok` name overlap in `RoomExplorerView.cpp` (latent, not used) |
+| A1 Deferred writes | done | `1c4d1c6f` | running |
 | A2 Patch writer, size check | not started | | |
 | B1 GameSession, core log | not started | | |
 | B2 Script text loader | not started | | |
@@ -34,9 +37,9 @@ for each step, and a follow-up commit if the review finds a problem.
 | K4 `#` in selector names | not started | | |
 | K5 `proc<N>_<M>` for a missing script | not started | | |
 | K6 No `vocab.000`; `/` in paths | not started | | |
+| S3 ScriptCatalog, script names without `game.ini` | not started | | |
 | S1 Compile destination | not started | | |
 | S2 CompileBatch | not started | | |
-| S3 ScriptCatalog | not started | | |
 | S4 DecompileRun | not started | | |
 | C1 CLI project, `script list` | not started | | |
 | C2 `script decompile`, `script sco` | not started | | |
@@ -81,8 +84,14 @@ for each step, and a follow-up commit if the review finds a problem.
   features (plan section 14), at your request.
 - 2026-09-23, your change of plan: the CLI must work on a game that SCI
   Companion never opened, so it must not rely on `game.ini`. Plan revision
-  5 records how (a script-name map from `game.ini` if present, `src\*.sc`,
-  `src\*.sco`, derived names, then `nNNN`).
+  5 (plan section 3.4) records how: a script-name map from `game.ini` if
+  present, `src\*.sc`, `src\*.sco`, derived names, then `nNNN`. S3 now
+  comes first in phase S. The CLI creates `game.ini` only with
+  `script decompile --game-ini create`.
+- `util.cpp` on `master` starts with a stray code fragment (from commit
+  `136c9ba1`) that only compiles because MSVC skips everything before
+  `#include "stdafx.h"`. It was meant to free the buffer in
+  `GetMessageFromLastError`. A small separate commit moves it there.
 - A1 keeps `HRESULT CResourceMap::AppendResource(const ResourceBlob&)` for
   the GUI (it shows the error text) and adds `sci::Status WriteResource`
   (no UI) for the engine and the services.
