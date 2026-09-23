@@ -110,6 +110,8 @@
     </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Src\Core\GameSession.cpp" />
+    <ClCompile Include="Src\Core\CoreLog.cpp" />
     <ClCompile Include="Src\Core\Result.cpp" />
     <ClCompile Include="Src\Compile\AutoDetectVariableNames.cpp" />
     <ClCompile Include="Src\Compile\ControlFlowNode.cpp" />
@@ -214,6 +216,8 @@
     <ClCompile Include="Src\Resources\VersionDetectionHelper.cpp" />
     <ClCompile Include="Src\Resources\View.cpp" />
     <ClCompile Include="Src\Util\AudioPlayback.cpp" />
+    <ClInclude Include="Src\Core\GameSession.h" />
+    <ClInclude Include="Src\Core\CoreLog.h" />
     <ClInclude Include="Src\Core\Result.h" />
     <ClInclude Include="DrawPixelCallback.h" />
     <ClInclude Include="Src\Compile\AutoCompleteSourceTypes.h" />

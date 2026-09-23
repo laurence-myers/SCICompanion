@@ -25,7 +25,9 @@ namespace sci
 class DependencyTracker
 {
 public:
-	DependencyTracker(BOOL fTrackHeaderFiles);
+	// Keeps a reference to the setting, so a change in the preferences takes
+	// effect at once. The setting must live longer than the tracker.
+	DependencyTracker(BOOL &fTrackHeaderFiles);
 	void ProcessScript(sci::Script &script);
 	void NotifyHeaderFileChanged(const std::string &filename);
 	void NotifyScriptFileChanged(const ScriptId &scriptId);

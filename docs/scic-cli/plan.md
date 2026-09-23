@@ -304,7 +304,7 @@ plain in-memory sink. The message text already has a GUI prefix
 | P14 | Script names are chosen in hash-table order, not by number. The `_N` suffix does not follow the number. | `DecompileDialog.cpp:727-780`, `Vocab99x.cpp:907` | `list` and `decompile` must share one ordered rule. |
 | P15 | The 3-argument `DecompileScript(helper, n, results)` passes a null config, which is then used. | `ScriptDocument.cpp:344-355` | Dead code. It crashes if called. |
 | P16 | The library has a leftover DLL-template `theApp` object. | `SCICompanionLib\SCICompanionLib.cpp:67` | A second `CWinApp` if a CLI links it. |
-| P17 | `_fTrackHeaderFiles` is read before it is set. | `AppState.cpp:82` and `:108` | Undefined value. |
+| P17 | `_fTrackHeaderFiles` is read before it is set. Worse, `DependencyTracker` takes the value by value and keeps a reference to that parameter, so every later read is undefined. | `AppState.cpp:82` and `:108`, `DependencyTracker.cpp:20` | Undefined value. |
 | P18 | The engine reaches the game through the global GUI object `appState`. | section 2.8 | The CLI needs `AppState`, or the engine must change. |
 | P19 | The data folders (`include\`, `Decompiler\`) must be next to the exe. | `util.cpp:1026-1042`, `GameFolderHelper.cpp:122-135` | `scic.exe` cannot move, and tests need `SetIncludeFolderForTest`. |
 | P20 | The parser reads its input through the editor's text buffer class (CrystalEdit). | `Src\Util\CrystalScriptStream.h`, `Src\Compile\SyntaxParser.h:24` | The engine depends on an MFC editor class. |
@@ -429,30 +429,39 @@ public:
 };
 
 // Engine code logs through CoreLog. The host installs the sink: the GUI
-// sends it to the log file and the output pane, the CLI to stderr.
-void SetCoreLogSink(ILogSink *sink);
+// (AppState) sends it to the log file from its command line, the CLI to
+// stderr, a test to a list. A sink must be thread-safe.
+ILogSink *SetCoreLogSink(ILogSink *sink);   // returns the sink before it
 void CoreLog(LogLevel level, const std::string &text);
+void CoreLogFormat(LogLevel level, const char *format, ...);  // for old LogInfo sites
+class ScopedCoreLogSink;                    // installs a sink for a scope
 
 struct SessionOptions
 {
     std::string dataFolder;             // include\ and Decompiler\; default: the exe folder
-    bool warnOnUnusedInstances = true;  // the GUI default
+    bool warnOnUnusedInstances = true;  // the GUI default (added in B3, where the compiler reads it)
 };
 
-class IClassHints;                      // optional compile error hints; the class browser implements it
+class IClassHints;                      // optional compile error hints; the class browser implements it (B3)
 
 class GameSession
 {
 public:
-    GameSession(const SessionOptions &options, ILogSink &log);
+    // The GUI passes its app services and resource recency; the CLI neither.
+    GameSession(const SessionOptions &options = {}, ISCIAppServices *appServices = nullptr,
+        ResourceRecency *resourceRecency = nullptr);
     sci::Status Open(const std::string &gameFolder);   // no exception, no dialog
     CResourceMap &ResourceMap();
     const GameFolderHelper &Helper() const;
     const SCIVersion &Version() const;
     const SessionOptions &Options() const;
-    IClassHints *ClassHints() const;    // null in the CLI
+    IClassHints *ClassHints() const;    // null in the CLI (B3)
 };
 ```
+
+B1 built the log and the session without a log sink parameter: the host
+installs the one global sink (`ScopedCoreLogSink` in the CLI and the tests;
+`AppState` in the GUI).
 
 Rules:
 
@@ -1197,7 +1206,7 @@ days, L is 3 to 5 days.
 
 | PR | Change | Fixes | Test (negative check) | Size |
 |---|---|---|---|---|
-| B1 | `Src\Core\`: `GameSession`, `ILogSink`, `CoreLog`, `SessionOptions` (section 3.2). `CResourceMap::TryOpen` returns a `Status`. `AppState` owns a `GameSession` and forwards `GetResourceMap`, `GetVersion` and `LogInfo` to it. The session calls `InitializeSyntaxParsers()`. `SafeMessageBox` with no GUI goes to `CoreLog`. The codecs use `CoreLog`. Fix the `_fTrackHeaderFiles` order. | P8, P12, P17 | `GameSession::Open` on a corrupt map returns a `Format` error with the file name (fails before: an exception with no text). A headless `SafeMessageBox` text reaches the sink in full (fails before). | M |
+| B1 | `Src\Core\`: `GameSession`, `ILogSink`, `CoreLog`, `SessionOptions` (section 3.2). `CResourceMap::TryOpen` returns a `Status`. `AppState` owns a `GameSession` and forwards `GetResourceMap` and `GetVersion` to it; `LogInfo` goes to `CoreLog`, and `AppState` is the GUI's sink. The session calls `InitializeSyntaxParsers()`. `SafeMessageBox` with no GUI goes to `CoreLog`. The codecs use `CoreLog`. `SessionOptions::dataFolder` sets the resource map's include and decompiler folders (`SetDataFolder` replaces `SetIncludeFolderForTest`). Fix the `_fTrackHeaderFiles` order, and the dangling reference in `DependencyTracker`. | P8, P12, P17 | `GameSession::Open` opens both templates with `appState == nullptr`. `Open` on a folder with no `resource.map` returns `NotFound` that names the file (fails before: `SetGameFolder` throws a `CUserException` with no text). A garbage map still opens, because the format detection is permissive (F2). A headless `SafeMessageBox` text reaches the sink in full (fails before). A codec failure logs with no `AppState` (fails before: a null dereference). | M |
 | B2 | Script text with no CrystalEdit: `ReadOnlyTextBuffer(const std::string &)`, `LoadScriptText(path)` returning `Result<ScriptText>` with the line-ending rule of section 2.8, and a small `TextPos` in place of `CPoint` in the stream. The engine call sites use it: the compile, `SimpleCompile`, the header loads (`CompileContext.cpp:1204`) and `DecompilerConfig`. The editor keeps its buffer. | P20 | For every `.sc` and `.sh` file in both templates, and for crafted files (LF only, CR only, mixed, no final line break), the lines from both loaders are equal. A naive splitter fails the mixed case (the negative check). A missing file gives `NotFound`. | S |
 | B3 | The script engine takes the session: `CompileTables`, `CompileResults`, `CompileContext`, `GenerateScriptResource`, `NewCompileScript` (moved to `Src\Compile\CompileScript.cpp`), the vocab 996/997 tables and the class table (`Vocab99x.cpp`), the text codepage (`Text.cpp`), the polygon folder (`SCISyntaxParser.cpp`), `ValidateSaid`, `SCISourceCodeFormatter`, `DecompileBatch`, `DecompileScript` (moved out of `ScriptDocument.cpp`), `DecompilerFallback`, `DecompilerNew`, `Disassembler`. The class browser becomes an optional `IClassHints`; the lock is taken only when a browser exists. The data folder comes from the session. | P15, P18, P19 | Compile all and decompile all of both templates with `appState == nullptr` (fails before: null dereference). The existing golden suites (bytecode oracle, decompile snapshots) do not change. | L |
 | F2 | Engine errors as values at the boundary. `sci::DataError` (standard C++, with an `ErrorCode`) replaces the 52 `throw std::exception("…")`. `Result` forms of the reads that the services use: `CreateResourceFromResourceData`, `CompiledScript::Load`, `GlobalCompiledScriptLookups::Load`, `CompileTables::Load`; a decompression failure reaches the caller as `Format`, not only as a log line. The silent swallows on the script paths go: `Text.cpp:209` (a partial read is a `Format` error), `DecompileDialog.cpp:866` (the worker reports through the service), `VersionDetectionHelper.cpp:902, 925` (a failed probe keeps the default and logs why). | P21 | A truncated script resource gives `Format` with the resource number (fails before: generic text, or nothing). A truncated text resource gives a `Format` error (fails before: a silent partial read). The golden suites do not change. | M |

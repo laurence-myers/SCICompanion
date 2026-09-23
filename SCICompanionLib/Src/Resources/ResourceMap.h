@@ -101,7 +101,12 @@ public:
 
 	void DeleteResource(const ResourceBlob *pResource);
 
+	// Opens the game in the folder (an empty folder closes it). The GUI form:
+	// a failure shows a message box and throws a CUserException.
 	void SetGameFolder(const std::string &gameFolder);
+	// Opens the game in the folder. No dialog and no exception: a failure
+	// comes back as an error, and then no game is open.
+	sci::Status TryOpen(const std::string &gameFolder);
 	// True when the game's resource map is corrupt or truncated (an SCI1+ lookup
 	// table with no terminator). Safe to call on the UI thread after a game is
 	// opened; the enumeration itself degrades to zero entries either way (#117).
@@ -141,7 +146,9 @@ public:
 	std::unique_ptr<ResourceEntity> CreateResourceFromNumber(ResourceType type, int wNumber, uint32_t base36Number = NoBase36, int mapContext = -1);
 	void GetAllScripts(std::vector<ScriptId> &scripts);
 	void GetNumberToNameMap(std::unordered_map<WORD, std::string> &scos);
-	void SetIncludeFolderForTest(const std::string &folder) { _includeFolderOverride = folder; }
+	// The folder that holds include\ and Decompiler\. By default, the folder
+	// of the program.
+	void SetDataFolder(const std::string &folder);
 	bool CanSaveResourcesToMap();
 	void SkipNextVersionSniff() { _skipVersionSniffOnce = true; }
 
@@ -161,6 +168,7 @@ public:
 
 private:
 	void _SniffSCIVersion();
+	sci::Status _OpenGameFolder(const std::string &gameFolder);
 
 	void BeginDeferAppend();
 	sci::Status EndDeferAppend();
@@ -208,7 +216,7 @@ private:
 
 	bool _skipVersionSniffOnce;					 // Skip version sniffing when loading a game the next time.
 
-	std::string _includeFolderOverride;			 // For unit-testing
+	std::string _dataFolder;					 // With a final backslash; empty for the folder of the program
 
 	std::shared_ptr<DebuggerThread> _debuggerThread;
 	std::shared_ptr<PostBuildThread> _postBuildThread;

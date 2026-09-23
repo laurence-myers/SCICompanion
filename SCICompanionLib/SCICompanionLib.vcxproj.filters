@@ -123,6 +123,12 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Src\Core\GameSession.cpp">
+      <Filter>Source Files\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Core\CoreLog.cpp">
+      <Filter>Source Files\Core</Filter>
+    </ClCompile>
     <ClCompile Include="Src\Core\Result.cpp">
       <Filter>Source Files\Core</Filter>
     </ClCompile>
@@ -920,6 +926,12 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Src\Core\GameSession.h">
+      <Filter>Header Files\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Core\CoreLog.h">
+      <Filter>Header Files\Core</Filter>
+    </ClInclude>
     <ClInclude Include="Src\Core\Result.h">
       <Filter>Header Files\Core</Filter>
     </ClInclude>

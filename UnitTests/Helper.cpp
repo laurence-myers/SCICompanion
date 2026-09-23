@@ -50,7 +50,7 @@ std::string GetTestModuleDirectory()
     return GetModuleDirectory();
 }
 
-std::string SetUpGame(const std::string &name)
+std::string CopyGameFromModuleFolder(const std::string &name)
 {
     std::string moduleDir = GetModuleDirectory();
     std::string srcGameFolder = moduleDir + name;
@@ -64,7 +64,12 @@ std::string SetUpGame(const std::string &name)
     std::filesystem::copy(srcGameFolder, gameFolder,
         std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing, ec);
     Assert::IsFalse(static_cast<bool>(ec), L"copying the template game failed");
+    return gameFolder;
+}
 
+std::string SetUpGame(const std::string &name)
+{
+    std::string gameFolder = CopyGameFromModuleFolder(name);
     SetUpExistingGame(gameFolder);
     return gameFolder;
 }
@@ -85,16 +90,14 @@ std::string SetUpExistingGameCopy(const std::string &absoluteGameFolder)
 
 void SetUpExistingGame(const std::string &gameFolder)
 {
+    // AppState's GameSession loads the compiler's grammars.
     appState = new AppState(nullptr);
-    // AppState(nullptr) does not run InitInstance, so the grammars are not
-    // loaded. Load them now, or SyntaxParser_Parse fails.
-    InitializeSyntaxParsers();
     appState->GetResourceMap().SetGameFolder(gameFolder);
 
-    // Point the include folder at the module folder. The app post-build put the
+    // Point the data folder at the module folder. The app post-build put the
     // "include" folder (sci.sh, keys.sh) there.
     std::string exeFolder = GetModuleDirectory() + "\\";
-    appState->GetResourceMap().SetIncludeFolderForTest(exeFolder);
+    appState->GetResourceMap().SetDataFolder(exeFolder);
 }
 
 void CleanUpExistingGame()

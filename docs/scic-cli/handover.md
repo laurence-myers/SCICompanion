@@ -6,12 +6,14 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: B1 (next). F1, A1 and A2 are committed. F1 and A1 are
-  reviewed, with their review fixes. The A2 review (which also covers the
-  A1 review fixes, `258ce43c`) runs in the background.
+- Current step: B2 (next). F1, A1, A2 and B1 are committed. F1 and A1
+  are reviewed, with their review fixes. The A2 review (which also covers
+  the A1 review fixes, `258ce43c`) and the B1 review run in the
+  background.
 - Baseline on `0dc1fef5`: the Release build passes; the unit suite passes
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
+  After B1: 264.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
   (`getenv`) and C4267 in the UnitTests helpers (`DecompileHelper.cpp`,
@@ -29,7 +31,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | F1 Result foundation | done | `04361133`, review fixes `b499f9ac` | FIX: 2 should-fix, 8 nits; fixed except the Gdiplus `Status`/`Ok` name overlap in `RoomExplorerView.cpp` (latent, not used) |
 | A1 Deferred writes | done | `1c4d1c6f`, review fixes `258ce43c` | FIX: 3 should-fix, 5 nits. Fixed: savepoints (an abandoned inner batch withdraws its resources and puts back what it replaced), the audio repackage stops on a failed map save, every queued type reloads, guards around the context text and the notifications, tests on SCI1.1 and for mixed destinations and a read-only volume, the plan row. Moved to A2: the audio cache writer swallows its errors and saves its audio map through the GUI wrapper. Already fixed by `b499f9ac`: the last-error capture in `util.cpp`. |
 | A2 Patch writer, size check | done | the commit after `258ce43c` | running (also reviews `258ce43c`) |
-| B1 GameSession, core log | not started | | |
+| B1 GameSession, core log | done | the commit after `7432a479` | running |
 | B2 Script text loader | not started | | |
 | B3 Engine on the session | not started | | |
 | F2 Engine errors as values | not started | | |
@@ -115,7 +117,24 @@ for each step, and a follow-up commit if the review finds a problem.
 - Known gap, not in any step yet: `AudioCacheResourceSource::RemoveEntries`
   (the delete path) still swallows its errors and saves its audio map
   through the GUI `AppendResource`.
+- B1: `GameSession` takes no log sink. The host installs the one global
+  sink: `AppState` in the GUI (it writes to the log file from the GUI's
+  command line; before B1, `LogInfo` wrote there only, and cut lines at
+  260 characters), `ScopedCoreLogSink` in the CLI and the tests.
+  `SessionOptions` has only `dataFolder`; B3 adds `warnOnUnusedInstances`
+  when the compiler reads it.
+- B1: `CResourceMap::SetDataFolder` replaces `SetIncludeFolderForTest` and
+  also moves the Decompiler folder. `DecompilerConfig.cpp` still reads
+  the static `GameFolderHelper::GetIncludeFolder()` (B3).
+- B1: P17 was worse than the plan said: `DependencyTracker` took the
+  setting by value and kept a reference to that parameter.
+- B1: the "corrupt map" test of the plan became a "missing map" test. A
+  garbage `resource.map` still opens, because the format detection is
+  permissive; F2 can add a check.
+- The test helper `CopyGameFromModuleFolder` copies a template without an
+  `AppState`, for tests that must run with `appState == nullptr`.
 
 ## Next action
 
-Read the A2 review and fix any real finding. Then B1 (plan section 9).
+Read the A2 and B1 reviews and fix any real finding. Then B2 (plan
+section 9).

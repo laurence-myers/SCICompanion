@@ -1,7 +1,7 @@
 #include "stdafx.h"
 #include "Codec.h"
 #include "CodecDecompressor.h"
-#include "AppState.h"
+#include "CoreLog.h"
 
 // Based on ScummVM, which is originally based on Andre Beck's code from http://micky.ibh.de/~beck/stuff/lzs4i4l/
 
@@ -34,7 +34,7 @@ bool DecompressorLZS::unpackLZS() {
 				if (!offs) // This is the end marker - a 7 bit offset of zero
 					break;
 				if (!(clen = getCompLen())) {
-					appState->LogInfo("lzsDecomp: length mismatch");
+					CoreLogFormat(LogLevel::Warning, "lzsDecomp: length mismatch");
 					return false;
 				}
 				copyComp(offs, clen);
@@ -42,7 +42,7 @@ bool DecompressorLZS::unpackLZS() {
 			else { // Eleven bit offset follows
 				offs = getBitsMSB(11);
 				if (!(clen = getCompLen())) {
-					appState->LogInfo("lzsDecomp: length mismatch");
+					CoreLogFormat(LogLevel::Warning, "lzsDecomp: length mismatch");
 					return false;
 				}
 				copyComp(offs, clen);

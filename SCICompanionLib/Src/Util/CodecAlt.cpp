@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include "CodecAlt.h"
-#include "AppState.h"
+#include "CoreLog.h"
 #include "PicCommands.h"
 
 #define VIEW_HEADER_COLORS_8BIT 0x80
@@ -203,7 +203,7 @@ void reorderView(byte *src, BoundsCheckedArray<BYTE> dest) {
 	byte *pix_ptr;
 
 	if (lh_present > (int)sizeof(celcounts)) {
-		appState->LogInfo("View decompression: too many loop headers (%d)", lh_present);
+		CoreLogFormat(LogLevel::Warning, "View decompression: too many loop headers (%d)", lh_present);
 		return;  // (e) a file byte 0..255 into char[100] would smash the stack
 	}
 	memcpy(celcounts, seeker, lh_present);
@@ -218,7 +218,7 @@ void reorderView(byte *src, BoundsCheckedArray<BYTE> dest) {
 	for (l = 0; l < loopheaders; l++) {
 		if (lh_mask & lb) { /* The loop is _not_ present */
 			if (lh_last == -1) {
-				appState->LogInfo("Error: While reordering view: Loop not present, but can't re-use last loop");
+				CoreLogFormat(LogLevel::Warning, "Error: While reordering view: Loop not present, but can't re-use last loop");
 				lh_last = 0;
 			}
 			WRITE_LE_UINT16(lh_ptr, lh_last);
@@ -226,7 +226,7 @@ void reorderView(byte *src, BoundsCheckedArray<BYTE> dest) {
 		}
 		else {
 			if (w >= lh_present) {
-				appState->LogInfo("View decompression: more present loops than cel counts");
+				CoreLogFormat(LogLevel::Warning, "View decompression: more present loops than cel counts");
 				return;  // (e) celcounts only has lh_present (<=100) valid entries
 			}
 			lh_last = writer - dest;
@@ -242,7 +242,7 @@ void reorderView(byte *src, BoundsCheckedArray<BYTE> dest) {
 
 			for (c = 0; c < celcounts[w]; c++) {
 				if (celindex + c >= cel_total) {
-					appState->LogInfo("View decompression: cel index out of range");
+					CoreLogFormat(LogLevel::Warning, "View decompression: cel index out of range");
 					return;  // (e) bound the cc_pos[] write and the cellengths[] read
 				}
 				WRITE_LE_UINT16(writer, chptr);
@@ -261,7 +261,7 @@ void reorderView(byte *src, BoundsCheckedArray<BYTE> dest) {
 	}
 
 	if (celindex < cel_total) {
-		appState->LogInfo("View decompression generated too few (%d / %d) headers", celindex, cel_total);
+		CoreLogFormat(LogLevel::Warning, "View decompression generated too few (%d / %d) headers", celindex, cel_total);
 		return;  // (e) cc_lengths is now RAII
 	}
 

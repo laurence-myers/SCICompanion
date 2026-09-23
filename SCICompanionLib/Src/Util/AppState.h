@@ -16,6 +16,9 @@
 #include "resource.h"	   // main symbols
 #include "ResourceMap.h"
 #include "ResourceRecency.h"
+#include "GameSession.h"
+#include "CoreLog.h"
+#include <mutex>
 #include "IntellisenseListBox.h"
 #include "ColoredToolTip.h"
 #include "CompileInterfaces.h"
@@ -52,7 +55,9 @@ public:
 	virtual void InitialUpdateFrame(CFrameWnd *pFrame, CDocument *pDoc, BOOL bMakeVisible);
 };
 
-class AppState : public ISCIAppServices
+// The GUI's state. It owns the GameSession, and it is the core log sink: the
+// log goes to the file given on the command line, if any.
+class AppState : public ISCIAppServices, public ILogSink
 {
 public:
 	AppState(CWinApp *pApp = nullptr);
@@ -85,8 +90,9 @@ public:
 	void ReopenScriptDocument(uint16_t wNum);
 	void OpenMostRecentResourceAt(ResourceType type, uint16_t number, int index);
 	void SetScriptFrame(CFrameWnd *pScriptFrame) { _pScriptFrame = pScriptFrame; }
-	CResourceMap &GetResourceMap() { return _resourceMap; }
-	const SCIVersion &GetVersion() const { return _resourceMap.GetSCIVersion(); }
+	GameSession &GetSession() { return _session; }
+	CResourceMap &GetResourceMap() { return _session.ResourceMap(); }
+	const SCIVersion &GetVersion() const { return _session.Version(); }
 	UINT GetCommandClipboardFormat() { return _uClipboardFormat; }
 	CDocument* OpenDocumentFile(PCTSTR lpszFileName);
 	int GetSelectedViewResourceNumber();
@@ -147,7 +153,11 @@ public:
 	void OnGameFolderUpdate() override;
 	void SetRecentlyInteractedView(int resourceNumber) override;
 
+	// Sends the text to the core log (CoreLog), at the Info level.
 	void LogInfo(const TCHAR *pszFormat, ...);
+
+	// ILogSink
+	void Write(LogLevel level, const std::string &text) override;
 
 	// Global settings:
 	int _cxFakeEgo;
@@ -239,11 +249,12 @@ public: // TODO for now
 	ResourceType _shownType;
 	CFrameWnd *_pExplorerFrame;
 
-	CResourceMap _resourceMap;
+	GameSession _session;
 
 	UINT _uClipboardFormat;
 
 	CFile _logFile;
+	std::mutex _logFileMutex;	// Codecs log from worker threads.
 
 	// Last folder for exporting resources
 	LPITEMIDLIST _pidlFolder;

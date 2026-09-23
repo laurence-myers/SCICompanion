@@ -931,13 +931,20 @@ std::string CResourceMap::GetGameFolder() const
 //
 std::string CResourceMap::GetIncludeFolder()
 {
-	std::string includeFolder = _includeFolderOverride;
-	if (includeFolder.empty())
+	if (_dataFolder.empty())
 	{
 		return _gameFolderHelper.GetIncludeFolder();
 	}
-	includeFolder += "include";
-	return includeFolder;
+	return _dataFolder + "include";
+}
+
+void CResourceMap::SetDataFolder(const std::string &folder)
+{
+	_dataFolder = folder;
+	if (!_dataFolder.empty() && (_dataFolder.back() != '\\') && (_dataFolder.back() != '/'))
+	{
+		_dataFolder += "\\";
+	}
 }
 
 //
@@ -990,7 +997,7 @@ std::string CResourceMap::GetObjectsFolder()
 
 std::string CResourceMap::GetDecompilerFolder()
 {
-	return GetExeSubFolder("Decompiler");
+	return _dataFolder.empty() ? GetExeSubFolder("Decompiler") : (_dataFolder + "Decompiler");
 }
 
 bool hasEnding(std::string const &fullString, std::string const &ending) {
@@ -1420,6 +1427,21 @@ bool CResourceMap::IsResourceMapCorrupt()
 
 void CResourceMap::SetGameFolder(const string &gameFolder)
 {
+	sci::Status opened = _OpenGameFolder(gameFolder);
+	if (!opened)
+	{
+		SafeMessageBox(fmt::format("Unable to open resource map: {0}", opened.error().message), MB_OK | MB_ICONWARNING);
+		AfxThrowUserException();
+	}
+}
+
+sci::Status CResourceMap::TryOpen(const std::string &gameFolder)
+{
+	return _OpenGameFolder(gameFolder);
+}
+
+sci::Status CResourceMap::_OpenGameFolder(const string &gameFolder)
+{
 	_runLogic->SetGameFolder(gameFolder);
 	_gameFolderHelper.GameFolder = gameFolder;
 	_talkerToView = TalkerToViewMap(Helper().GetLipSyncFolder());
@@ -1430,7 +1452,7 @@ void CResourceMap::SetGameFolder(const string &gameFolder)
 	_verbsHeaderFile.reset(nullptr);
 	if (!gameFolder.empty())
 	{
-		try
+		sci::Status status = sci::Guard("opening the game in " + gameFolder, [&]() -> sci::Status
 		{
 			// We get here when we close documents.
 			_SniffSCIVersion();
@@ -1439,12 +1461,13 @@ void CResourceMap::SetGameFolder(const string &gameFolder)
 			for_each(_syncs.begin(), _syncs.end(), bind2nd(mem_fun(&IResourceMapEvents::OnResourceMapReloaded), true));
 
 			_paletteListNeedsUpdate = true;
-		}
-		catch (std::exception &e)
+			return sci::Ok();
+		});
+		if (!status)
 		{
-			SafeMessageBox(fmt::format("Unable to open resource map: {0}", e.what()), MB_OK | MB_ICONWARNING);
+			// No game is open now.
 			_gameFolderHelper.GameFolder = "";
-			AfxThrowUserException();
+			return status;
 		}
 	}
 
@@ -1454,6 +1477,7 @@ void CResourceMap::SetGameFolder(const string &gameFolder)
 	{
 		_appServices->OnGameFolderUpdate();
 	}
+	return sci::Ok();
 }
 
 TalkerToViewMap &CResourceMap::GetTalkerToViewMap()

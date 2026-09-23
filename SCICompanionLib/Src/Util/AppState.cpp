@@ -77,8 +77,10 @@ void CMultiDocTemplateWithNonViews::InitialUpdateFrame(CFrameWnd *pFrame, CDocum
 	__super::InitialUpdateFrame(pFrame, pDoc, bMakeVisible);
 }
 
-AppState::AppState(CWinApp *pApp) : _resourceMap(this, &_resourceRecency)
+AppState::AppState(CWinApp *pApp) : _session(SessionOptions(), this, &_resourceRecency)
 {
+	// The tracker keeps a reference to this setting, so set it first.
+	_fTrackHeaderFiles = TRUE;
 	_dependencyTracker = std::make_unique<DependencyTracker>(_fTrackHeaderFiles);
 	// This is a pointer because we don't want a dependency on it in the header file.
 	_classBrowser = std::make_unique<SCIClassBrowser>(*_dependencyTracker);
@@ -105,7 +107,6 @@ AppState::AppState(CWinApp *pApp) : _resourceMap(this, &_resourceRecency)
 	_fShowTabs = FALSE;
 	_fShowToolTips = TRUE;
 	_fSaveScriptsBeforeRun = TRUE;
-	_fTrackHeaderFiles = TRUE;
 	_fCompileDirtyScriptsBeforeRun = TRUE;
 	_onionLeftTint = 0x80FF8080;
 	_onionRightTint = 0x808080FF;
@@ -182,7 +183,8 @@ AppState::AppState(CWinApp *pApp) : _resourceMap(this, &_resourceRecency)
 	EGAPaletteColorsClipboardFormat = RegisterClipboardFormat("SCICompanionEGAPaletteColors");
 	LoadSyntaxHighlightingColors();
 
-	InitializeSyntaxParsers();
+	// The session loaded the compiler's grammars. The core log comes here.
+	SetCoreLogSink(this);
 }
 
 DependencyTracker &AppState::GetDependencyTracker()
@@ -241,6 +243,10 @@ void AppState::HideTipWindows()
 
 AppState::~AppState()
 {
+	if (GetCoreLogSink() == this)
+	{
+		SetCoreLogSink(nullptr);
+	}
 	delete _pACThread;
 	CoTaskMemFree(_pidlFolder);
 }
@@ -299,7 +305,7 @@ void AppState::OpenScriptHeader(std::string strName)
 {
 	if (_pApp && _pScriptTemplate)
 	{
-		std::string fullPath = _resourceMap.GetIncludePath(strName);
+		std::string fullPath = _session.ResourceMap().GetIncludePath(strName);
 		ScriptId scriptId(fullPath);
 		if (!scriptId.IsNone())
 		{
@@ -344,7 +350,7 @@ void AppState::OpenScript(std::string strName, const ResourceBlob *pData, WORD w
 {
 	if (_pScriptTemplate && _pApp)
 	{
-		ScriptId scriptId = _resourceMap.Helper().GetScriptId(strName);
+		ScriptId scriptId = _session.ResourceMap().Helper().GetScriptId(strName);
 		if (!scriptId.IsNone())
 		{
 			if (wScriptNum == InvalidResourceNumber)
@@ -486,7 +492,7 @@ void AppState::OpenMostRecentResource(ResourceType type, uint16_t wNum)
 	CResourceDocument *pDocAlready = pMainWnd->Tabs().ActivateResourceDocument(type, wNum);
 	if (pDocAlready == nullptr)
 	{
-		std::unique_ptr<ResourceBlob> blob = move(_resourceMap.MostRecentResource(type, wNum, true));
+		std::unique_ptr<ResourceBlob> blob = move(_session.ResourceMap().MostRecentResource(type, wNum, true));
 		OpenResource(blob.get());
 		_resourceRecency.AddResourceToRecency(blob.get());
 	}
@@ -827,9 +833,9 @@ HRESULT AppState::_SetGameStringProperty(PCTSTR pszProp, PCTSTR pszValue)
 HRESULT AppState::_GetGameIni(PTSTR pszValue, size_t cchValue)
 {
 	HRESULT hr = E_FAIL;
-	if (_resourceMap.IsGameLoaded())
+	if (_session.ResourceMap().IsGameLoaded())
 	{
-		hr = StringCchPrintf(pszValue, cchValue, TEXT("%s\\game.ini"), _resourceMap.GetGameFolder().c_str());
+		hr = StringCchPrintf(pszValue, cchValue, TEXT("%s\\game.ini"), _session.ResourceMap().GetGameFolder().c_str());
 	}
 	return hr;
 }
@@ -869,15 +875,34 @@ std::vector<int> &AppState::GetRecentViews() { return _recentViews; }
 
 void AppState::LogInfo(const TCHAR *pszFormat, ...)
 {
+	if (GetCoreLogSink() == nullptr)
+	{
+		return;
+	}
+	std::string text;
+	va_list argList;
+	va_start(argList, pszFormat);
+	va_list measure;
+	va_copy(measure, argList);
+	int length = std::vsnprintf(nullptr, 0, pszFormat, measure);
+	va_end(measure);
+	if (length > 0)
+	{
+		text.assign((size_t)length, '\0');
+		std::vsnprintf(&text[0], (size_t)length + 1, pszFormat, argList);
+	}
+	va_end(argList);
+	CoreLog(LogLevel::Info, text);
+}
+
+void AppState::Write(LogLevel level, const std::string &text)
+{
+	std::lock_guard<std::mutex> lock(_logFileMutex);
 	if (_logFile.m_hFile != INVALID_HANDLE_VALUE)
 	{
-		TCHAR szMessage[MAX_PATH];
-		va_list argList;
-		va_start(argList, pszFormat);
-		StringCchVPrintf(szMessage, ARRAYSIZE(szMessage), pszFormat, argList);
-		StringCchCat(szMessage, ARRAYSIZE(szMessage), TEXT("\n"));
-		_logFile.Write(szMessage, lstrlen(szMessage) * sizeof(TCHAR));
-		va_end(argList);
+		std::string line = (level == LogLevel::Info) ? text : (std::string(LogLevelName(level)) + ": " + text);
+		line += "\n";
+		_logFile.Write(line.c_str(), (UINT)line.size());
 	}
 }
 
@@ -892,13 +917,21 @@ int SafeMessageBox(const std::string &text, UINT type)
 	{
 		return AfxMessageBox(text.c_str(), type);
 	}
-	// No GUI: log it instead of popping a modal dialog that would block a headless
-	// run (unit tests, batch) or appear as a stray window. Return the
-	// non-destructive default so a yes/no prompt does not "proceed" unattended.
-	if (appState != nullptr)
+	// No GUI: send the whole text to the core log, instead of a modal dialog
+	// that would block a headless run (the command line, unit tests) or appear
+	// as a stray window. Return the non-destructive default so a yes/no prompt
+	// does not "proceed" unattended.
+	LogLevel level = LogLevel::Info;
+	switch (type & MB_ICONMASK)
 	{
-		appState->LogInfo("%s", text.c_str());
+		case MB_ICONERROR:
+			level = LogLevel::Error;
+			break;
+		case MB_ICONWARNING:
+			level = LogLevel::Warning;
+			break;
 	}
+	CoreLog(level, text);
 	return (type & MB_YESNO) ? IDNO : IDOK;
 }
 
