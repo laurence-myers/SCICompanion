@@ -932,7 +932,7 @@ void ReadPicCelFromVGA2(sci::istream &byteStream, Cel &cel, int16_t &priority, b
 		size_t dataSize = (size_t)celHeader.size.cx * (size_t)celHeader.size.cy;
 		if (dataSize > (size_t)16 * 1024 * 1024)
 		{
-			throw std::exception("Corrupt raster resource.");
+			throw sci::DataError("Corrupt raster resource.");
 		}
 		cel.Data.allocate(max(1, dataSize));
 		byteStream.read_data(&cel.Data[0], dataSize);

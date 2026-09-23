@@ -206,22 +206,19 @@ void TextReadFrom(ResourceEntity &resource, sci::istream &byteStream, const std:
 	TextComponent &text = resource.GetComponent<TextComponent>();
 	assert(text.Texts.empty());
 	text.Flags = MessagePropertyFlags::None;
-	// Catch our own exceptions.
-	try
+	// A last string with no NUL is a read past the end: a Format error for the
+	// caller, not a silent partial read.
+	while (byteStream.has_more_data())
 	{
-		while (byteStream.has_more_data())
+		string str;
+		byteStream >> str;
+		if (byteStream.good())
 		{
-			string str;
-			byteStream >> str;
-			if (byteStream.good())
-			{
-				TextEntry entry = { 0 };				
-				entry.Text = Dos2Win(str);
-				text.Texts.push_back(entry);
-			}
+			TextEntry entry = { 0 };
+			entry.Text = Dos2Win(str);
+			text.Texts.push_back(entry);
 		}
 	}
-	catch (...) {}
 }
 
 ResourceTraits textTraits =

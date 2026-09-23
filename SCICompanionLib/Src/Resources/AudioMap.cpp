@@ -174,7 +174,7 @@ AudioMapVersion _DetermineAudioMapVersion(int resourceNumber, int mainAudioMapRe
 		}
 	}
 
-	throw std::exception("Unknown audio map format");
+	throw sci::DataError("Unknown audio map format", sci::ErrorCode::Unsupported);
 }
 
 std::pair<AudioMapVersion, uint32_t> AudioMapVersionByteCounts[] =
@@ -373,7 +373,7 @@ ResourceEntity *CreateMapResource(SCIVersion version)
 	}
 	else
 	{
-		throw std::exception("Unknown audio map resource number.");
+		throw sci::DataError("Unknown audio map resource number.", sci::ErrorCode::Unsupported);
 	}
 
 	std::unique_ptr<ResourceEntity> pResource = std::make_unique<ResourceEntity>(audioMapTraits);

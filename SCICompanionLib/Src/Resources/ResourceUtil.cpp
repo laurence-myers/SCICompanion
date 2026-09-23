@@ -102,6 +102,13 @@ const char *GetResourceTypeTitle(ResourceType type)
 	return ((size_t)type < ARRAYSIZE(g_resourceInfo)) ? g_resourceInfo[(size_t)type].pszTitleDefault : "Resource";
 }
 
+std::string DescribeResource(ResourceType type, int number)
+{
+	std::string title = GetResourceTypeTitle(type);
+	std::transform(title.begin(), title.end(), title.begin(), [](char c) { return (char)tolower((unsigned char)c); });
+	return fmt::format("{0} {1}", title, number);
+}
+
 bool MatchesResourceFilenameFormat(const std::string &filename, ResourceType type, SCIVersion version, int *numberOut, std::string &nameOut)
 {
 	SCI_RESOURCE_INFO &resInfo = GetResourceInfo(type);

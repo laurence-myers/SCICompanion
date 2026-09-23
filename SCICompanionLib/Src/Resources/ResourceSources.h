@@ -53,12 +53,12 @@ ResourceHeaderAgnostic ReadResourceHeader(sci::istream &byteStream, SCIVersion v
 	{
 		// TODO: This is a failure, but corrupted data possibly... just continue and log it? Instead of ending
 		// Or make an empty resource.
-		throw std::exception("corrupted resource!");
+		throw sci::DataError("corrupted resource!");
 	}
 	ResourceHeaderAgnostic rhAgnostic = rh.ToAgnostic(version, sourceFlags, packageHint);
 	if ((rhAgnostic.cbCompressed == 0) || (rhAgnostic.cbDecompressed == 0))
 	{
-		throw std::exception("corrupted resource!");
+		throw sci::DataError("corrupted resource!");
 	}
 	return rhAgnostic;
 }
@@ -253,7 +253,7 @@ public:
 		{
 			// TODO: This is a failure, but corrupted data possibly... just continue and log it? Instead of ending
 			// Or make an empty resource.
-			throw std::exception("corrupted resource!");
+			throw sci::DataError("corrupted resource!");
 		}
 
 		packageByteStream.seekg(mapEntry.Offset);
@@ -269,7 +269,7 @@ public:
 		sci::istream packageByteStream = _GetVolumeStream(mapEntry.PackageNumber);
 		if (!packageByteStream.good())
 		{
-			throw std::exception("corrupted resource!");
+			throw sci::DataError("corrupted resource!");
 		}
 
 		packageByteStream.seekg(mapEntry.Offset);

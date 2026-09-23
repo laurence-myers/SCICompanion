@@ -20,6 +20,7 @@
 #include "GameFolderHelper.h"
 #include "ResourceContainer.h"
 #include "ResourceBlob.h"
+#include "ResourceUtil.h"
 
 const static int VocabClassTable = 996;
 const static int VocabSelectorNames = 997;
@@ -32,6 +33,26 @@ ResourceBlob *_GetVocabData(const GameFolderHelper &helper, int iVocab)
 	return helper.MostRecentResource(ResourceType::Vocab, iVocab, ResourceEnumFlags::None).release();
 }
 
+sci::Status CheckVocabTables(const GameFolderHelper &helper)
+{
+	struct VocabTable { int number; bool required; const char *name; };
+	const VocabTable tables[] = { { VocabClassTable, true, "class table" }, { VocabSelectorNames, true, "selector table" }, { VocabKernelNames, false, "kernel table" } };
+	for (const VocabTable &table : tables)
+	{
+		std::unique_ptr<ResourceBlob> blob(_GetVocabData(helper, table.number));
+		if (blob)
+		{
+			SCI_TRY(CheckResourceData(*blob));
+		}
+		else if (table.required)
+		{
+			sci::ErrorLocation where;
+			where.resource = DescribeResource(ResourceType::Vocab, table.number);
+			return sci::Fail(sci::ErrorCode::NotFound, std::string("the game has no ") + table.name, where);
+		}
+	}
+	return sci::Ok();
+}
 // Default kernal name table, taken from ScummVM source.
 // We use vocab999, and if that's not present, then we use this.
 static const char *const s_defaultKernelNames[] = {

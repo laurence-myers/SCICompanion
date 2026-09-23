@@ -501,7 +501,7 @@ void ReadPalette(PaletteComponent &palette, sci::istream &byteStream)
 			}
 			else
 			{
-				throw std::exception("Invalid palette.");
+				throw sci::DataError("Invalid palette.");
 			}
 		}
 		else

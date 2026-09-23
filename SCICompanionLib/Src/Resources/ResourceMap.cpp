@@ -69,9 +69,8 @@ void deletefile(const string &filename)
 	{
 		if (!DeleteFile(filename.c_str()))
 		{
-			std::string details = "Deleting ";
-			details += filename;
-			throw std::exception(GetMessageFromLastError(details).c_str());
+			DWORD error = GetLastError();
+			sci::ThrowWin32(error, "Deleting " + filename);
 		}
 	}
 }
@@ -1578,4 +1577,42 @@ std::unique_ptr<ResourceEntity> CreateResourceFromResourceData(const ResourceBlo
 		break;
 	}
 	return nullptr;
+}
+
+sci::Status CheckResourceData(const ResourceBlob &data)
+{
+	// A blob that delayed its decompression decompresses when its data is read.
+	data.GetReadStream();
+	sci::ErrorLocation where;
+	where.resource = DescribeResource(data.GetType(), data.GetNumber());
+	if (IsFlagSet(data.GetStatusFlags(), ResourceLoadStatusFlags::Corrupted))
+	{
+		return sci::Fail(sci::ErrorCode::Format, "the resource header is corrupt", where);
+	}
+	if (IsFlagSet(data.GetStatusFlags(), ResourceLoadStatusFlags::DecompressionFailed))
+	{
+		return sci::Fail(sci::ErrorCode::Format, "the resource data could not be decompressed", where);
+	}
+	return sci::Ok();
+}
+
+sci::Result<std::unique_ptr<ResourceEntity>> TryCreateResourceFromResourceData(const ResourceBlob &data)
+{
+	std::string resource = DescribeResource(data.GetType(), data.GetNumber());
+	// The context does not name the resource: the location does.
+	sci::Result<std::unique_ptr<ResourceEntity>> created = sci::Guard("the resource could not be read", [&]() -> sci::Result<std::unique_ptr<ResourceEntity>>
+	{
+		SCI_TRY(CheckResourceData(data));
+		std::unique_ptr<ResourceEntity> entity = CreateResourceFromResourceData(data, false);
+		if (!entity)
+		{
+			return sci::Fail(sci::ErrorCode::Unsupported, "this type of resource cannot be read");
+		}
+		return std::move(entity);
+	});
+	if (!created && created.error().where.resource.empty())
+	{
+		created.error().where.resource = resource;
+	}
+	return created;
 }

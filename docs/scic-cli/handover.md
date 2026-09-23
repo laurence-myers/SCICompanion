@@ -6,8 +6,8 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: F2 (next). F1, A1, A2, B1, B2, B3a and B3b are committed
-  and reviewed, with their review fixes.
+- Current step: the F2 review, then K1. F1, A1, A2, B1, B2, B3a and B3b are
+  committed and reviewed, with their review fixes. F2 is committed.
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -16,7 +16,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -39,7 +39,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | B2 Script text loader | done | `3be03ff1`, review fixes (the commit after `af7cdb5f`) | FIX: 1 should-fix, 1 nit. No difference from the editor in about 46,000 files (a differential probe), 723 parses and 5 compiles. Fixed: `LoadScriptText` names the file for a thrown failure and refuses a file over 64 MB (`Unsupported`); tests at the exact 32 KB edge of the style rule, and a stream walk; the exception boundary reports an MFC `CMemoryException` as "out of memory" (an F1 gap the review found). |
 | B3a Compile path on the session | done | `8fe055d0`, review fixes (the commit after `f646dd52`) | FIX: 1 should-fix, 6 nits, 1 question. Fixed: the compile-all tests fail on a `&getpoly` message (a missing polygon is only a message, so a wrong polygon folder passed every test); tests for the codepage set by Game Properties, for the table saves, and for a compile error with no class hints; no polygon file read when the script has no game folder; `CompileLog::SummarizeAndReportErrors` moved to the engine, and the GUI plays the error sound; "Ignoring class" is Info; `OutputScriptStrings.h` hygiene; stale plan references. |
 | B3b Decompile path on the session, `appState` check rule | done | `f646dd52`, review fixes (the commit after `56b487d5`) | FIX: 1 should-fix, 6 nits, 1 question. Fixed: a test that the decompiler reads `sci.sh` from the data folder (the real-game tools now resolve enum names; see "Decisions"); `Src\Util` in the `appState` rule (13 GUI files in the allowlist); `DecompileScript` declared in `DecompileScript.h`; `GetIncludeFolder` is const; `%zu` and Warning for two log lines; corrected documents and CI comment. Outside the branch: the whole-game dump writes `.sco` files into the game folder that it dumps (a separate task was proposed). |
-| F2 Engine errors as values | not started | | |
+| F2 Engine errors as values | done | the commit after `637d1ab1` | next |
 | K1 `and`/`or` value semantics | not started | | |
 | K2 `.sco` exports from the public block | not started | | |
 | K3 Species order from compiled scripts | not started | | |
@@ -302,8 +302,40 @@ for each step, and a follow-up commit if the review finds a problem.
 - For E1: some engine files still include `AppState.h` with no use
   (`Audio.cpp`, `AudioMap.cpp`, `Message.cpp`, `ResourceMap.cpp`,
   `Sync.cpp`, `Vocab000.cpp`). B3b removed it from the `Src\Compile` files.
+- F2: the 46 `throw std::exception("...")` became `sci::DataError`:
+  `Format` for bad data (the default), `Unsupported` for a size limit or
+  an audio map or wave format that SCI Companion does not know, `Internal`
+  for a misuse (an iterator past the end, a missing component, "not
+  implemented", a docs mismatch), and `Io` for a short file read.
+  `DataError` derives from `std::runtime_error`, so every old
+  `catch (std::exception &)` still catches it, with the same text.
+  `deletefile` throws `ThrowWin32` (`Io` or `NotFound`); its text changed
+  from "Deleting X failed with error 5: ..." to "Deleting X: ...".
+- F2: the `Result` forms (`TryCreateResourceFromResourceData`,
+  `CompiledScript::TryLoad`, `GlobalCompiledScriptLookups::TryLoad`,
+  `CompileTables::TryLoad`) are new functions; the old `bool` forms do
+  not change, and the GUI still uses them. The services (S1 to S4) use
+  the new forms. Each error puts the resource ("script 110") in
+  `where.resource`; the context does not repeat it ("the script could not
+  be read: Read past end of stream. (script 110) [format]").
+- F2: `CompiledScript::TryLoad` reads in throw mode, so a read past the
+  end is an error, not a zero. A probe over 31 GOG game folders (5,944
+  scripts) found no script that `Load` reads and `TryLoad` rejects. The
+  2,191 text resources of those games all end with a NUL, so the
+  `TextReadFrom` change affects none of them. Willy Beamish shows no
+  scripts at all (an older detection problem, not F2); `TryLoad` of its
+  tables gives `NotFound` for vocab 996.
+- F2 (GUI change): `TextReadFrom` no longer swallows a read failure. A
+  text resource whose last string has no NUL now opens as a default
+  resource marked "creation failed", instead of showing the strings read
+  so far. The decompile worker shows an exception in the results pane
+  (Error) instead of stopping with no message. The version probes log a
+  warning with the reason.
+- Known gap: other empty `catch (...)` blocks stay in the allowlist
+  (`AudioCacheResourceSource.cpp`, `CodeInspector.h`, `PhonemeDialog.cpp`,
+  `LipSyncutil.cpp`, `TalkerToViewMap.cpp`, `Task.h`); they are not on the
+  script paths.
 ## Next action
 
-F2 (plan section 9). Before the `TextReadFrom` change, probe the real
-games for text resources whose last string has no NUL: such a resource
-would go from "partial texts" to "failed" in the GUI.
+Run the F2 adversarial review (a worktree on the F2 commit) and fix any
+real finding. Then K1 (plan section 9).

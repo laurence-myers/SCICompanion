@@ -865,6 +865,9 @@ void DecompileDialog::s_DecompileThreadWorker(DecompileDialog *pThis)
 	}
 	catch (...)
 	{
+		// Show the failure in the results; the stats below still run.
+		sci::Error error = sci::ErrorFromCurrentException("decompiling");
+		pThis->_decompileResults->AddResult(DecompilerResultType::Error, error.ToString());
 	}
 
 	// Stats reporting

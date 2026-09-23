@@ -412,7 +412,7 @@ public:
 		DecompileState state(_helper, _scriptLookups.GetSelectorTable());
 		if (!state.compiledScript.Load(_helper, _helper.Version, _number))
 		{
-			throw std::exception("the script did not load the second time");
+			throw sci::DataError("the script did not load the second time");
 		}
 		// The first decompile reported this script's progress and statistics.
 		PassThroughResults quiet(_results, true);

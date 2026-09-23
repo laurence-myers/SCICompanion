@@ -1456,7 +1456,7 @@ void ReadChannel(sci::istream &stream, std::vector<SoundEvent> &events, DWORD &t
 				/*
 				if ((event.GetChannel() != *mustBeChannel) && (event.GetChannel() != 0x0F))
 				{
-					throw std::exception("Corrupt audio resource.");
+					throw sci::DataError("Corrupt audio resource.");
 				}*/
 			}
 

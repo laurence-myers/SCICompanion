@@ -876,7 +876,7 @@ void throw_if(bool value, const char *message)
 {
 	if (value)
 	{
-		throw std::exception(message);
+		throw sci::DataError(message);
 	}
 }
 

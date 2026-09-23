@@ -96,7 +96,7 @@ namespace sci
 	{
 		if (newPosition > _cbSizeValid)
 		{
-			throw std::exception("Attempt to seek past end of stream.");
+			throw sci::DataError("Attempt to seek past end of stream.");
 		}
 		else
 		{
@@ -115,14 +115,14 @@ namespace sci
 			assert(false); // I think this is broken
 			if (offset > (int32_t)_iIndex)
 			{
-				throw std::exception("Attempt to seek past the beginning of the stream.");
+				throw sci::DataError("Attempt to seek past the beginning of the stream.");
 			}
 			seekp(_iIndex - offset);
 			break;
 		case std::ios_base::end:
 			if ((offset > (int32_t)_cbSizeValid) || (offset > 0))
 			{
-				throw std::exception("Attempt to seek outside stream.");
+				throw sci::DataError("Attempt to seek outside stream.");
 			}
 			seekp(_cbSizeValid + offset);
 			break;
@@ -200,7 +200,7 @@ namespace sci
 		_state = std::ios_base::eofbit | std::ios_base::failbit;
 		if (_throwExceptions)
 		{
-			throw std::exception("Read past end of stream.");
+			throw sci::DataError("Read past end of stream.");
 		}
 	}
 
@@ -377,7 +377,7 @@ namespace sci
 				}
 				else
 				{
-					throw std::exception("Unable to read file data.");
+					throw sci::DataError("Unable to read file data.", sci::ErrorCode::Io);
 				}
 			}
 		}
@@ -400,7 +400,7 @@ namespace sci
 				// Callers pass count == the source's exact available size, so this does
 				// not fire on valid input; the one caller that can hit a truncated
 				// source (RebuildResources) already catches std::exception.
-				throw std::exception("sci::transfer: source stream exhausted before count bytes were read.");
+				throw sci::DataError("sci::transfer: source stream exhausted before count bytes were read.");
 			}
 			to.WriteBytes(buffer, amountToTransfer);
 			count -= amountToTransfer;

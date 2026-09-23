@@ -21,6 +21,7 @@
 #include "ResourceEntity.h"
 #include "PMachine.h"
 #include "ResourceBlob.h"
+#include "ResourceUtil.h"
 
 const uint16_t KQ5CD_BadExport = 0xfffe;
 
@@ -66,6 +67,49 @@ bool CompiledScript::Load(const GameFolderHelper &helper, SCIVersion version, in
 	return false;
 }
 
+sci::Status CompiledScript::TryLoad(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber)
+{
+	std::string resource = DescribeResource(ResourceType::Script, iScriptNumber);
+	// The context does not name the resource: the location does.
+	sci::Status loaded = sci::Guard("the script could not be read", [&]() -> sci::Status
+	{
+		_version = version;
+		_wScript = (uint16_t)iScriptNumber;
+		std::unique_ptr<ResourceBlob> scriptBlob = helper.MostRecentResource(ResourceType::Script, iScriptNumber, ResourceEnumFlags::None);
+		if (!scriptBlob)
+		{
+			return sci::Fail(sci::ErrorCode::NotFound, "the script is missing");
+		}
+		SCI_TRY(CheckResourceData(*scriptBlob));
+		sci::istream scriptStream = scriptBlob->GetReadStream();
+		scriptStream.setThrowExceptions(true);
+		std::unique_ptr<ResourceBlob> heapBlob;
+		std::unique_ptr<sci::istream> heapStream;
+		if (version.SeparateHeapResources)
+		{
+			heapBlob = helper.MostRecentResource(ResourceType::Heap, iScriptNumber, ResourceEnumFlags::None);
+			if (!heapBlob)
+			{
+				sci::ErrorLocation where;
+				where.resource = DescribeResource(ResourceType::Heap, iScriptNumber);
+				return sci::Fail(sci::ErrorCode::NotFound, "the heap of the script is missing", where);
+			}
+			SCI_TRY(CheckResourceData(*heapBlob));
+			heapStream = std::make_unique<sci::istream>(heapBlob->GetReadStream());
+			heapStream->setThrowExceptions(true);
+		}
+		if (!Load(helper, version, iScriptNumber, scriptStream, heapStream.get()))
+		{
+			return sci::Fail(sci::ErrorCode::Format, "the script data is not valid");
+		}
+		return sci::Ok();
+	});
+	if (!loaded && loaded.error().where.resource.empty())
+	{
+		loaded.error().where.resource = resource;
+	}
+	return loaded;
+}
 bool CompiledScript::IsExportAnObject(uint16_t wOffset) const
 {
 	return find(_exportedObjectInstances.begin(), _exportedObjectInstances.end(), wOffset) != _exportedObjectInstances.end();
@@ -1403,6 +1447,18 @@ bool GlobalCompiledScriptLookups::Load(const GameFolderHelper &helper)
 	return selOk && kernelOk && classesOk;
 }
 
+sci::Status GlobalCompiledScriptLookups::TryLoad(const GameFolderHelper &helper)
+{
+	return sci::Guard("loading the class and selector tables", [&]() -> sci::Status
+	{
+		SCI_TRY(CheckVocabTables(helper));
+		if (!Load(helper))
+		{
+			return sci::Fail(sci::ErrorCode::Format, "the class, selector or kernel table is not valid");
+		}
+		return sci::Ok();
+	});
+}
 void GlobalCompiledScriptLookups::_EnsureSelectorCategories()
 {
 	if (!_selectorCategoriesValid)

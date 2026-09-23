@@ -68,7 +68,7 @@ void ReadImageDataWorker(sci::istream &byteStreamRLE, Cel &cel, bool isVGA, sci:
 
 	if (dataSize > ReasonableLimit)
 	{
-		throw std::exception("Corrupt raster resource.");
+		throw sci::DataError("Corrupt raster resource.");
 	}
 
 	// The image starts from the bottom left, not the top left:
@@ -287,7 +287,7 @@ void ReadLoopFrom(ResourceEntity &resource, sci::istream byteStream, Loop &loop,
 	}
 	if (nCels > ReasonableCelCount)
 	{
-		throw std::exception("Too many cels.");
+		throw sci::DataError("Too many cels.");
 	}
 	loop.Cels.assign(nCels, Cel()); // Just a bunch of empty ones.
 	byteStream >> loop.UnknownData; // Skip 2 bytes (function unknown) - store just in case
@@ -579,7 +579,7 @@ void WriteLoopTo(const ResourceEntity &resource, sci::ostream &byteStream, const
 		// Cel offsets are stored 16-bit; reject rather than silently truncate.
 		if (byteStream.tellp() > 0xffff)
 		{
-			throw std::exception("View resource is too large");
+			throw sci::DataError("View resource is too large", sci::ErrorCode::Unsupported);
 		}
 		pOffsets[i] = ((uint16_t)(byteStream.tellp()));
 		WriteCelTo(resource, byteStream, loop.Cels[i], isVGA);
@@ -611,7 +611,7 @@ void PostReadProcessing(ResourceEntity &resource, RasterComponent &raster)
 		}
 		if (loop.IsMirror && (loop.MirrorOf >= (uint8_t)raster.Loops.size()))
 		{
-			throw std::exception("Invalid mirror.");
+			throw sci::DataError("Invalid mirror.");
 		}
 	}
 }
@@ -632,7 +632,7 @@ void ViewReadFromVersioned(ResourceEntity &resource, sci::istream &byteStream, b
 
 	if ((nLoops == 0) || nLoops > ReasonableLoopCount)
 	{
-		throw std::exception("None, or too many loops - corrupt resource?");
+		throw sci::DataError("None, or too many loops - corrupt resource?");
 	}
 	raster.Loops.assign(nLoops, Loop()); // Just empty ones for now
 	byteStream >> mirrorMask;
@@ -792,7 +792,7 @@ void ReadCelFromVGA11(sci::istream &byteStream, Cel &cel, bool isPic)
 		size_t rawDataSize = (size_t)CX_ACTUAL(celHeader.size.cx) * (size_t)celHeader.size.cy;
 		if (rawDataSize > ReasonableLimit)
 		{
-			throw std::exception("Corrupt raster resource.");
+			throw sci::DataError("Corrupt raster resource.");
 		}
 		cel.Data.allocate(max(1, rawDataSize));
 		for (int y = cel.size.cy - 1; y >= 0; y--)
@@ -1181,7 +1181,7 @@ void ViewWriteTo(const ResourceEntity &resource, sci::ostream &byteStream, bool 
 			// Loop offsets are stored 16-bit; reject rather than silently truncate.
 			if (byteStream.tellp() > 0xffff)
 			{
-				throw std::exception("View resource is too large");
+				throw sci::DataError("View resource is too large", sci::ErrorCode::Unsupported);
 			}
 			pOffsets[i] = ((uint16_t)(byteStream.tellp()));
 
@@ -1210,7 +1210,7 @@ void ViewWriteTo(const ResourceEntity &resource, sci::ostream &byteStream, bool 
 	{
 		if (byteStream.tellp() > 0xffff)
 		{
-			throw std::exception("View resource is too large");
+			throw sci::DataError("View resource is too large", sci::ErrorCode::Unsupported);
 		}
 		// Write the offset to the palette
 		*(reinterpret_cast<uint16_t*>(byteStream.GetInternalPointer() + paletteOffsetPosition)) = (uint16_t)byteStream.tellp();

@@ -108,6 +108,7 @@ exit /b 0</Command>
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="TestEngineErrors.cpp" />
     <ClCompile Include="TestScriptText.cpp" />
     <ClCompile Include="TestGameSession.cpp" />
     <ClCompile Include="TestPatchWrites.cpp" />

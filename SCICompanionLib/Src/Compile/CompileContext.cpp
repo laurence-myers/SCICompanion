@@ -87,6 +87,18 @@ bool CompileTables::Load(CResourceMap &resourceMap)
 	return _kernels.Load(helper) && _species.Load(helper) && _selectors.Load(helper);
 }
 
+sci::Status CompileTables::TryLoad(CResourceMap &resourceMap)
+{
+	return sci::Guard("loading the compile tables", [&]() -> sci::Status
+	{
+		SCI_TRY(CheckVocabTables(resourceMap.Helper()));
+		if (!Load(resourceMap))
+		{
+			return sci::Fail(sci::ErrorCode::Format, "the kernel, class or selector table is not valid");
+		}
+		return sci::Ok();
+	});
+}
 void CompileTables::Save(CResourceMap &resourceMap)
 {
 	_species.Save(resourceMap);

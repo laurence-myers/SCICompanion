@@ -502,6 +502,8 @@ class CompileTables
 {
 public:
 	bool Load(CResourceMap &resourceMap);
+	// Load, with the reason for a failure (see CheckVocabTables).
+	sci::Status TryLoad(CResourceMap &resourceMap);
 	void Save(CResourceMap &resourceMap);
 	const Vocab000 *Vocab() { return _pVocab; }
 	const KernelTable &Kernels() { return _kernels; }

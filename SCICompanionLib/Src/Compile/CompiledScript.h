@@ -83,6 +83,8 @@ public:
 	GlobalCompiledScriptLookups &operator=(const GlobalCompiledScriptLookups &other) = delete;
 
 	bool Load(const GameFolderHelper &helper);
+	// Load, with the reason for a failure (see CheckVocabTables).
+	sci::Status TryLoad(const GameFolderHelper &helper);
 	std::string LookupSelectorName(uint16_t wIndex);
 	std::string LookupKernelName(uint16_t wIndex);
 	std::string LookupClassName(uint16_t wIndex);
@@ -221,6 +223,11 @@ public:
 	CompiledScript(uint16_t wScript, CompiledScriptFlags flags = CompiledScriptFlags::None) { _wScript = wScript; _flags = flags; }
 	bool Load(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber);
 	bool Load(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber, sci::istream &byteStream, sci::istream *heapStream = nullptr);
+	// Loads the most recent script resource (and in SCI1.1 its heap) of the
+	// game. NotFound when there is none; Format when its data cannot be read,
+	// with the resource in the location. A read past the end of the data is an
+	// error here, not a zero.
+	sci::Status TryLoad(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber);
 	std::vector<std::unique_ptr<CompiledObject>> &GetObjects() { return _objects; }
 	const std::vector<std::unique_ptr<CompiledObject>> &GetObjects() const { return _objects; }
 	uint16_t GetScriptNumber() const { return _wScript; }

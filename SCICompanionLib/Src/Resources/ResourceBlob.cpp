@@ -727,6 +727,6 @@ void ThrowExceptionIfOverflow(uint32_t sizeNeeded, uint32_t sizeAvailable, const
 {
 	if (sizeNeeded > sizeAvailable)
 	{
-		throw std::exception(fmt::format("{} ({} bytes) is too large for this version of SCI. Reduce the size to {} bytes or less.", name, sizeNeeded, sizeAvailable).c_str());
+		throw sci::DataError(fmt::format("{} ({} bytes) is too large for this version of SCI. Reduce the size to {} bytes or less.", name, sizeNeeded, sizeAvailable), sci::ErrorCode::Unsupported);
 	}
 }

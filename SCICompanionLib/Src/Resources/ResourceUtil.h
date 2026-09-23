@@ -14,6 +14,9 @@
 #pragma once
 
 #include "Version.h"
+#include "Result.h"
+#include <memory>
+#include <string>
 
 class ResourceEntity;
 
@@ -30,6 +33,14 @@ public:
 // fwd decl
 class ResourceBlob;
 std::unique_ptr<ResourceEntity> CreateResourceFromResourceData(const ResourceBlob &data, bool fallbackOnException = true);
+// Creates the resource from its data, with no default resource in place of a
+// failure. A read failure is an Error (Format for bad data), with the resource
+// in its location.
+sci::Result<std::unique_ptr<ResourceEntity>> TryCreateResourceFromResourceData(const ResourceBlob &data);
+// The load status of the blob: a corrupt header or a failed decompression is a
+// Format error, with the resource in its location. It decompresses a blob that
+// delayed its decompression.
+sci::Status CheckResourceData(const ResourceBlob &data);
 
 void ExportResourceAsBitmap(const ResourceEntity &resourceEntity);
 
@@ -48,6 +59,8 @@ SCI_RESOURCE_INFO &GetResourceInfo(ResourceType type);
 ResourceType ValidateResourceType(ResourceType type);
 // "Script", "Text", ...; "Resource" for a type that is not valid.
 const char *GetResourceTypeTitle(ResourceType type);
+// "script 110", "text 0": a resource, for the location of an error.
+std::string DescribeResource(ResourceType type, int number);
 std::string GetFileDialogFilterFor(ResourceType type, SCIVersion version);
 std::string GetFileNameFor(ResourceType type, int number, uint32_t base36Number, SCIVersion version);
 std::string GetFileNameFor(const ResourceBlob &blob);

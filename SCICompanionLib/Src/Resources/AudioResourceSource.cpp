@@ -194,12 +194,12 @@ sci::istream AudioResourceSource::GetHeaderAndPositionedStream(const ResourceMap
 // repackage files on demand into the audio resource packages.
 void AudioResourceSource::RemoveEntry(const ResourceMapEntryAgnostic &mapEntry)
 {
-	throw std::exception("not implemented");
+	throw sci::DataError("not implemented", sci::ErrorCode::Internal);
 }
 
 AppendBehavior AudioResourceSource::AppendResources(const std::vector<const ResourceBlob*> &blobs)
 {
-	throw std::exception("not implemented");
+	throw sci::DataError("not implemented", sci::ErrorCode::Internal);
 	return AppendBehavior::Append;
 }
 

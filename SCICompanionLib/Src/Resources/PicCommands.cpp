@@ -2457,7 +2457,7 @@ void DrawVisualBitmap_Serialize(sci::ostream *pSerial, const PicCommand *pComman
 	//if (finalSize > (std::numeric_limits<uint16_t>::max()))
 	if (finalSize > 0xffff)
 	{
-		throw std::exception("Resource too large");
+		throw sci::DataError("Resource too large", sci::ErrorCode::Unsupported);
 	}
 	*(reinterpret_cast<uint16_t*>(pSerial->GetInternalPointer() + currentOffset)) = (uint16_t)finalSize;
 }

@@ -88,7 +88,7 @@ void AudioComponentFromWaveFile(sci::istream &stream, AudioComponent &audio, Aud
 	if ((riff != (*(uint32_t*)riffMarker)) ||
 		(wave != (*(uint32_t*)waveMarker)))
 	{
-		throw std::exception("Wave file: invalid header.");
+		throw sci::DataError("Wave file: invalid header.");
 	}
 
 	stream >> fmt;
@@ -114,12 +114,12 @@ void AudioComponentFromWaveFile(sci::istream &stream, AudioComponent &audio, Aud
 
 	if (!stream.good())
 	{
-		throw std::exception("Unable to find wave fmt marker.");
+		throw sci::DataError("Unable to find wave fmt marker.");
 	}
 
 	if (chunkSize < sizeof(WaveHeader))
 	{
-		throw std::exception("Wave file: invalid fmt header.");
+		throw sci::DataError("Wave file: invalid fmt header.");
 	}
 
 	WaveHeader header;
@@ -140,13 +140,13 @@ void AudioComponentFromWaveFile(sci::istream &stream, AudioComponent &audio, Aud
 
 	if (!stream.good())
 	{
-		throw std::exception("Unable to find wave data marker.");
+		throw sci::DataError("Unable to find wave data marker.");
 	}
 
 	// Now validate the format
 	if (header.formatTag != WAVE_FORMAT_PCM)
 	{
-		throw std::exception("Only uncompressed wave files are supported");
+		throw sci::DataError("Only uncompressed wave files are supported", sci::ErrorCode::Unsupported);
 	}
 
 	std::vector<CompileResult> conversionResults;
@@ -161,7 +161,7 @@ void AudioComponentFromWaveFile(sci::istream &stream, AudioComponent &audio, Aud
 	if ((header.bitsPerSample != 8) && (header.bitsPerSample != 16))
 	{
 		convertedBitsPerSample = 16;
-		throw std::exception(fmt::format("{0} bits per sample: Only 8 or 16 bit sound supported", header.bitsPerSample).c_str());
+		throw sci::DataError(fmt::format("{0} bits per sample: Only 8 or 16 bit sound supported", header.bitsPerSample), sci::ErrorCode::Unsupported);
 	}
 
 	if (limitTo8Bit && (convertedBitsPerSample != 8))

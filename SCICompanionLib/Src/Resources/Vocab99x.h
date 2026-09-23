@@ -44,6 +44,12 @@ protected:
 
 std::unordered_set<std::string> GetDefaultSelectorNames(SCIVersion version);
 
+// The vocab resources of the class table (996), the selector names (997) and
+// the kernel names (999). NotFound when 996 or 997 is missing (999 is
+// optional); Format when one cannot be read. Each with the resource in the
+// location.
+sci::Status CheckVocabTables(const GameFolderHelper &helper);
+
 //
 // Selector names
 //

@@ -109,7 +109,7 @@ sci::istream ResourceContainer::ResourceIterator::_GetResourceHeaderAndPackage(R
 {
 	if (_atEnd)
 	{
-		throw std::exception("invalid iterator!");
+		throw sci::DataError("invalid iterator!", sci::ErrorCode::Internal);
 	}
 
 	sci::istream temp;
@@ -160,7 +160,7 @@ ResourceContainer::ResourceIterator::reference ResourceContainer::ResourceIterat
 	// We should validate against the type here.
 	if (!IsFlagSet(_container->_resourceTypes, ResourceTypeToFlag(rh.Type)))
 	{
-		throw std::exception("Corrupt resource header - mismatched types.");
+		throw sci::DataError("Corrupt resource header - mismatched types.");
 	}
 
 	std::string name;
@@ -187,7 +187,7 @@ ResourceContainer::ResourceIterator& ResourceContainer::ResourceIterator::operat
 {
 	if (_atEnd)
 	{
-		throw std::exception("Can't increment an iterator past the end");
+		throw sci::DataError("Can't increment an iterator past the end", sci::ErrorCode::Internal);
 	}
 	_GetNextEntry();
 	return *this;
@@ -198,7 +198,7 @@ ResourceContainer::ResourceIterator ResourceContainer::ResourceIterator::operato
 	// This is actually the heavy weight thingy.
 	if (_atEnd)
 	{
-		throw std::exception("Can't increment an iterator past the end");
+		throw sci::DataError("Can't increment an iterator past the end", sci::ErrorCode::Internal);
 	}
 	return ResourceIterator(_container, _atEnd, _state);
 }
