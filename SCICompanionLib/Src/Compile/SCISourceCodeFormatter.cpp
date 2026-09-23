@@ -209,6 +209,28 @@ std::string CleanTokenSCI(const std::string &src)
 	return output;
 }
 
+// A selector name: as CleanTokenSCI, but a # after the first character stays,
+// as the parser takes it (KQ6 names selector 879 "dungeon#"). "dungeon_" would
+// compile to a new selector.
+std::string CleanSelectorSCI(const std::string &src)
+{
+	std::string output = CleanTokenSCI(src);
+	// CleanTokenSCI keeps the length, or puts a _ in front. (It changes
+	// "paramTotal" to "argc", which has no #.)
+	if (output.size() >= src.size())
+	{
+		size_t offset = output.size() - src.size();
+		for (size_t i = 1; i < src.size(); i++)
+		{
+			if (src[i] == '#')
+			{
+				output[offset + i] = '#';
+			}
+		}
+	}
+	return output;
+}
+
 std::string GetPropertyText(const PropertyValueBase &prop)
 {
 	std::stringstream mw;
@@ -1050,7 +1072,7 @@ public:
 		_MaybeNewLineIndent();
 		// Always inline
 		GO_INLINE;
-		out.out << CleanTokenSCI(classProp.GetName());
+		out.out << CleanSelectorSCI(classProp.GetName());
 		classProp.GetStatement1()->Accept(*this);
 	}
 
@@ -1192,7 +1214,7 @@ public:
 	{
 		_MaybeNewLineIndent();
 
-		out.out << CleanTokenSCI(sendParam.GetSelectorName()) << ":";
+		out.out << CleanSelectorSCI(sendParam.GetSelectorName()) << ":";
 
 		if (!sendParam.GetSelectorParams().empty())
 		{

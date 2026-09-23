@@ -39,7 +39,8 @@ bool IntegerNonZeroP(const ParserSCI *pParser, SyntaxContext *pContext, _It &str
 
 // Selectors, as far as I can tell, look like this:
 // A-Za-z0-9_-
-// But they must have at least one letter and not start with a number
+// But they must have at least one letter and not start with a number. A #
+// may follow the first character: KQ6 names selector 879 "dungeon#".
 template<typename _It>
 bool SelectorP(const ParserSCI *pParser, SyntaxContext *pContext, _It &stream)
 {
@@ -53,7 +54,7 @@ bool SelectorP(const ParserSCI *pParser, SyntaxContext *pContext, _It &stream)
 		fRet = true;
 		str += ch;
 		ch = *(++stream);
-		while (isalnum((unsigned char)ch) || (ch == '_') || (ch == '-'))  // Then any alphanumeric character is fine.
+		while (isalnum((unsigned char)ch) || (ch == '_') || (ch == '-') || (ch == '#'))  // Then any alphanumeric character is fine, and #.
 		{
 			hadAlpha = hadAlpha || isalpha((unsigned char)ch);
 			fRet = true;

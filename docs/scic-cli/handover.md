@@ -6,9 +6,9 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: the F2, K1, K2 and K3 reviews, then K4. F1, A1, A2, B1,
-  B2, B3a and B3b are committed and reviewed, with their review fixes. F2,
-  K1, K2 and K3 are committed.
+- Current step: the F2, K1, K2, K3 and K4 reviews, then K5. F1, A1, A2,
+  B1, B2, B3a and B3b are committed and reviewed, with their review fixes.
+  F2, K1, K2, K3 and K4 are committed.
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -17,7 +17,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`).
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -43,8 +43,8 @@ for each step, and a follow-up commit if the review finds a problem.
 | F2 Engine errors as values | done | the commit after `637d1ab1` | next |
 | K1 `and`/`or` value semantics | done | `cdf8759d` | running |
 | K2 `.sco` exports from the public block | done | `c6f42341` | next |
-| K3 Species order from compiled scripts | done | the commit after `c6f42341` | next |
-| K4 `#` in selector names | not started | | |
+| K3 Species order from compiled scripts | done | `746518e5` | next |
+| K4 `#` in selector names | done | the commit after `746518e5` | next |
 | K5 `proc<N>_<M>` for a missing script | not started | | |
 | K6 No `vocab.000`; `/` in paths | not started | | |
 | S3 ScriptCatalog, script names without `game.ini` | not started | | |
@@ -374,7 +374,15 @@ for each step, and a follow-up commit if the review finds a problem.
   It passes on the 30 GOG game folders; before K3, LB2 script 0 (two
   classes swapped) and The Colonel's Bequest script 999 (five classes
   shifted) failed.
+- K4: `SelectorP` is the base rule of every name in the parser, not only
+  of selectors. So a `#` after the first character is now accepted in any
+  name. `script#` stays a keyword, and a `#` at the start is still a
+  selector literal (`#look`). A name written as `x#y` with no space is now
+  one name; the formatter always writes a space between items. The
+  formatter keeps the `#` only in property names and send selectors
+  (`CleanSelectorSCI`); class names and other tokens still get `_`, as
+  before.
 ## Next action
 
 Read the F2 and K1 reviews (running) and fix any real finding. Run the
-K2 and K3 reviews. Then K4 (plan section 9).
+K2, K3 and K4 reviews. Then K5 (plan section 9).

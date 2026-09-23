@@ -107,4 +107,70 @@ namespace UnitTests
             }
         }
     };
+
+    // Plan step K4. A selector name can have a # after its first character:
+    // KQ6 names selector 879 "dungeon#". The parser stopped at the #, and the
+    // formatter wrote "dungeon_", which compiles to a new selector.
+    TEST_CLASS(TestSelectorNameHash)
+    {
+        std::string _gameFolder;
+
+    public:
+        TEST_METHOD_INITIALIZE(Setup)
+        {
+            _gameFolder = SetUpGameSCI0();
+        }
+
+        TEST_METHOD_CLEANUP(CleanUp)
+        {
+            if (!_gameFolder.empty())
+            {
+                CleanUpGame(_gameFolder);
+                _gameFolder.clear();
+            }
+        }
+
+        TEST_METHOD(HashInSelectorName_ParsesAndIsWrittenBack)
+        {
+            std::string source =
+                "(script# 950)\n"
+                "(class HashTest of Obj\n"
+                "    (properties\n"
+                "        dungeon# 0\n"
+                "    )\n"
+                "    (method (look)\n"
+                "        (return (self dungeon#:))\n"
+                "    )\n"
+                ")\n";
+            std::string error;
+            std::unique_ptr<sci::Script> script = TryParseSierraScript(source, &error);
+            Assert::IsTrue(script != nullptr, std::wstring(error.begin(), error.end()).c_str());
+            Assert::AreEqual(size_t(1), script->GetClasses().size());
+            const sci::ClassPropertyVector &properties = script->GetClasses()[0]->GetProperties();
+            Assert::AreEqual(size_t(1), properties.size());
+            Assert::AreEqual(std::string("dungeon#"), properties[0]->GetName(), L"the property name keeps its #");
+
+            std::string text = ScriptToText(*script);
+            std::wstring wideText(text.begin(), text.end());
+            Assert::IsTrue(text.find("dungeon# 0") != std::string::npos, wideText.c_str());
+            Assert::IsTrue(text.find("dungeon#:") != std::string::npos, wideText.c_str());
+            Assert::IsTrue(text.find("dungeon_") == std::string::npos, wideText.c_str());
+        }
+
+        // A # cannot start a name: that is a selector literal (#look).
+        TEST_METHOD(HashFirst_IsASelectorLiteral)
+        {
+            std::string source =
+                "(script# 950)\n"
+                "(procedure (hashFirst &tmp t)\n"
+                "    (= t #look)\n"
+                "    (return t)\n"
+                ")\n";
+            std::string error;
+            std::unique_ptr<sci::Script> script = TryParseSierraScript(source, &error);
+            Assert::IsTrue(script != nullptr, std::wstring(error.begin(), error.end()).c_str());
+            std::string text = ScriptToText(*script);
+            Assert::IsTrue(text.find("#look") != std::string::npos, std::wstring(text.begin(), text.end()).c_str());
+        }
+    };
 }
