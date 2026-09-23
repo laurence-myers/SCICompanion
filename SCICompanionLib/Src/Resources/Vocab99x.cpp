@@ -909,7 +909,10 @@ bool KernelTable::Load(const GameFolderHelper &helper)
 bool GlobalClassTable::Load(const GameFolderHelper &helper)
 {
 	SpeciesTable speciesTable;
-	bool fRet = speciesTable.Load(helper);
+	// _Create needs only the script of each species, not its place in the
+	// script, so the table is not aligned to the compiled scripts (K3
+	// review: that alignment made this load 1.3 to 1.9 times slower).
+	bool fRet = speciesTable.Load(helper, false);
 	if (fRet)
 	{
 		fRet = _Create(speciesTable, helper);
@@ -1160,7 +1163,7 @@ void SpeciesTable::_AlignToCompiledScripts(const GameFolderHelper &helper)
 	}
 }
 
-bool SpeciesTable::Load(const GameFolderHelper &helper)
+bool SpeciesTable::Load(const GameFolderHelper &helper, bool alignToCompiledScripts)
 {
 	bool fRet = false;
 	unique_ptr<ResourceBlob> blob(_GetVocabData(helper, VocabClassTable));
@@ -1168,7 +1171,7 @@ bool SpeciesTable::Load(const GameFolderHelper &helper)
 	{
 		fRet = _Create(blob->GetReadStream());
 	}
-	if (fRet)
+	if (fRet && alignToCompiledScripts)
 	{
 		_AlignToCompiledScripts(helper);
 	}

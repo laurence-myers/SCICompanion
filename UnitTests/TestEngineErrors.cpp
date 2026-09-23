@@ -367,6 +367,27 @@ namespace UnitTests
             Assert::AreEqual(std::string("script 0"), loaded.error().where.resource);
         }
 
+        // K3 review: the TryLoad form that takes the blobs (K3 uses it), for
+        // an SCI1.1 script with no heap blob. Without the check, Load would
+        // find the heap by itself, and the caller's "no heap" would be lost.
+        TEST_METHOD(CompiledScriptTryLoad_BlobsWithNoHeap_IsNotFound)
+        {
+            NoAppStateInScope noAppState;
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            GameSession session;
+            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            const GameFolderHelper &helper = session.Helper();
+            std::unique_ptr<ResourceBlob> script = helper.MostRecentResource(ResourceType::Script, 0, ResourceEnumFlags::None);
+            Assert::IsTrue(script != nullptr);
+
+            CompiledScript compiled(0);
+            sci::Status loaded = compiled.TryLoad(helper, helper.Version, 0, *script, nullptr);
+
+            Assert::IsFalse(loaded.has_value());
+            Assert::AreEqual(std::string("not-found"), CodeName(loaded.error()));
+            Assert::AreEqual(std::string("heap 0"), loaded.error().where.resource);
+        }
+
         // A blob that delays its decompression decompresses when its data is
         // first read. CheckResourceData must read it before it tests the flags.
         TEST_METHOD(TryCreateResource_DelayedBlobThatDoesNotDecompress_IsAFormatError)

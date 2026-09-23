@@ -10,6 +10,7 @@
 #include "Vocab99x.h"
 #include "Helper.h"
 #include <filesystem>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -153,6 +154,8 @@ namespace UnitTests
             }
             NoAppStateForSpecies noAppState;
             std::string mismatches;
+            int mismatchCount = 0;
+            std::set<std::string> mismatchedScripts;
             int leftoverScripts = 0;
             std::string list = folders;
             size_t start = 0;
@@ -210,13 +213,28 @@ namespace UnitTests
                         SpeciesIndex fromTable;
                         if (table.GetSpeciesIndex((uint16_t)blob->GetNumber(), (uint16_t)i, fromTable) && (fromTable.Type() != species[i]))
                         {
-                            mismatches += folder + ": script " + std::to_string(blob->GetNumber()) + " class " + std::to_string(i) + ": table " + std::to_string(fromTable.Type()) + ", compiled " + std::to_string(species[i]) + "\n";
+                            // One log line for each mismatch: the text of a
+                            // failed assert is cut, and on a run over many
+                            // games it hid mismatches (K3 review).
+                            std::string line = folder + ": script " + std::to_string(blob->GetNumber()) + " class " + std::to_string(i) + ": table " + std::to_string(fromTable.Type()) + ", compiled " + std::to_string(species[i]);
+                            Logger::WriteMessage(WideForSpecies(line).c_str());
+                            mismatchCount++;
+                            mismatchedScripts.insert(folder + ": script " + std::to_string(blob->GetNumber()));
+                            if (mismatches.size() < 1000)
+                            {
+                                mismatches += line + "\n";
+                            }
                         }
                     }
                 }
             }
             Logger::WriteMessage(WideForSpecies("Scripts with a leftover class (not compared): " + std::to_string(leftoverScripts)).c_str());
-            Assert::IsTrue(mismatches.empty(), WideForSpecies(mismatches).c_str());
+            for (const std::string &script : mismatchedScripts)
+            {
+                Logger::WriteMessage(WideForSpecies("Mismatched " + script).c_str());
+            }
+            Assert::AreEqual(0, mismatchCount, WideForSpecies(std::to_string(mismatchCount) + " mismatches in " + std::to_string(mismatchedScripts.size()) +
+                " scripts; the test log has one line for each. The first ones:\n" + mismatches).c_str());
         }
     };
 }

@@ -454,19 +454,37 @@ for each step, and a follow-up commit if the review finds a problem.
   gives to another script (or to none) is left out: to give its position
   that species would give a new class there the species of another
   script's class. So a script with such a leftover class keeps the old
-  positional numbering (61 scripts in the 30 GOG game folders; a known
-  gap). SCI Companion's own compiles give each class its species in
-  number order, so the templates and fan games do not change.
+  positional numbering (57 scripts in the 27 GOG game folders, the "- dev"
+  copies left out; a known gap). SCI Companion's own compiles give each
+  class its species in number order, so the templates and fan games do
+  not change.
 - K3: a lookup of each script (`MostRecentResource`) costs about 15 ms,
   so the first version made `SpeciesTable::Load` take 300 to 700 ms on the
   big games (the GUI loads it for each compile). The scripts and heaps are
   now found in one pass, and `CompiledScript::TryLoad` has a form that
-  takes the blobs: 15 to 31 ms.
+  takes the blobs: 4 to 69 ms (the K3 review measured QfG3 69 ms and QfG1
+  VGA 66 ms; the first text said 15 to 31 ms).
+- K3 review: `GlobalClassTable::Load` (inside
+  `GlobalCompiledScriptLookups::Load`) needs only the script of each
+  species, not its place in the script, but it ran the alignment too:
+  that load was 1.3 to 1.9 times slower (QfG3 82 to 153 ms). It now calls
+  `SpeciesTable::Load(helper, false)`. The compile tables and the
+  "rebuild class table" command keep the alignment.
 - K3: `OptIn_SpeciesOrder_RealGame` (`SCICOMP_SPECIES_GAME`, one folder or
   several separated by `;`) checks every script without a leftover class.
-  It passes on the 30 GOG game folders; before K3, LB2 script 0 (two
-  classes swapped) and The Colonel's Bequest script 999 (five classes
-  shifted) failed.
+  It passes on the 27 GOG game folders (1.4 min). With the alignment off,
+  it fails on 18 classes in 7 scripts of 5 games: Freddy Pharkas 0, QfG1
+  VGA 0 and 15, QfG2 944 and 995, The Colonel's Bequest 999, and LB2 0.
+  The first list had only LB2 0 and The Colonel's Bequest 999: the text
+  of a failed assert is cut, so the test now logs one line for each
+  mismatch and a line for each script (K3 review).
+- K3 review: a test for the `TryLoad` form that takes the blobs, with no
+  heap blob for an SCI1.1 script: `NotFound`, "heap 0" (fails when
+  `TryLoad` skips the heap, so that `Load` finds it by itself).
+- Known gap (K3 review): the compiler still gives each class its species
+  by position (`GenerateScriptResource.cpp`). A leftover class, or a
+  user who moves the classes of a source, still moves species. Matching
+  the classes by name would close both cases; it is not planned yet.
 - K4: `SelectorP` is the base rule of every name in the parser, not only
   of selectors. So a `#` after the first character is now accepted in any
   name. `script#` stays a keyword, and a `#` at the start is still a
