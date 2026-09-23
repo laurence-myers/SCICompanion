@@ -766,7 +766,7 @@ void AudioCacheResourceSource::RebuildResources(bool force, ResourceSource &sour
 				audioMap.second->SourceFlags = ResourceSourceFlags::ResourceMap;
 				_resourceMap->AppendResource(*audioMap.second);
 			}
-			defer.Commit();
+			ShowWriteError(defer.Commit());
 		}
 
 		// 6) And then if that's good, then replace the audio files.

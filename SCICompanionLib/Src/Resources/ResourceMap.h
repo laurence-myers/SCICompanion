@@ -62,6 +62,13 @@ public:
 
 	// ResourceBlob: the raw resource bits already in a ready-to-save format.
 	// ResourceEntity: a runtime version of a resource that we can edit.
+	//
+	// WriteResource writes a resource into the game: into the package or as a
+	// patch file, as the blob's source flags say. While a DeferResourceAppend
+	// batch is open, it only queues the resource (a second copy of the same
+	// resource replaces the first), and the batch's Commit writes it. No UI.
+	sci::Status WriteResource(const ResourceBlob &resource);
+	// The GUI form of WriteResource: it also shows the error text.
 	HRESULT AppendResource(const ResourceBlob &resource);
 	HRESULT AppendResourceAskForNumber(ResourceBlob &resource, bool warnOnOverwrite);
 	void AppendResourceAskForNumber(ResourceEntity &resource);
@@ -149,7 +156,7 @@ private:
 	void _SniffSCIVersion();
 
 	void BeginDeferAppend();
-	HRESULT EndDeferAppend();
+	sci::Status EndDeferAppend();
 	void AbandonAppend();
 	friend class DeferResourceAppend;
 
@@ -194,31 +201,43 @@ private:
 //
 // Defer the actual writing of resources so it happens in one big batch at the end.
 //
+// Batches nest. Only the outermost Commit writes; an inner Commit only closes
+// the inner batch and keeps the queue for the outer one. A batch that is
+// destroyed without a Commit abandons its level; the outermost level then
+// discards the queue.
+//
 class DeferResourceAppend
 {
 public:
-	DeferResourceAppend(CResourceMap &map, bool fDoIt = true) : _map(map)
+	DeferResourceAppend(CResourceMap &map, bool fDoIt = true) : _map(map), _fDoIt(fDoIt), _closed(false)
 	{
 		if (fDoIt)
 		{
 			_map.BeginDeferAppend();
 		}
-		_fDoIt = fDoIt;
 	}
-	HRESULT Commit()
+	DeferResourceAppend(const DeferResourceAppend &) = delete;
+	DeferResourceAppend &operator=(const DeferResourceAppend &) = delete;
+
+	// Writes the queued resources, one rewrite for each destination, and
+	// returns the first failure. The resources of a destination that failed
+	// are not named in game.ini.
+	sci::Status Commit()
 	{
-		if (_fDoIt)
+		if (!_fDoIt || _closed)
 		{
-			return _map.EndDeferAppend();
+			return sci::Ok();
 		}
-		else
-		{
-			return S_OK;
-		}
+		_closed = true;
+		return _map.EndDeferAppend();
 	}
+
+	// The resources queued so far, by this batch and by any batch around it.
+	const std::vector<ResourceBlob> &Pending() const { return _map._deferredResources; }
+
 	~DeferResourceAppend()
 	{
-		if (_fDoIt)
+		if (_fDoIt && !_closed)
 		{
 			_map.AbandonAppend();
 		}
@@ -226,4 +245,9 @@ public:
 private:
 	CResourceMap &_map;
 	bool _fDoIt;
+	bool _closed;
 };
+
+// Shows a failed write to the user (a message box with a GUI, the log
+// without one). For GUI code that has nowhere else to report it.
+void ShowWriteError(const sci::Status &status);

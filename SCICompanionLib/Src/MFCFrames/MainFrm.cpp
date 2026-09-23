@@ -2096,6 +2096,7 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 	g_compileAppendTimer.Reset();
 
 	bool result = true;
+	sci::Status committed = sci::Ok();
 
 	// Clear out results
 	appState->ShowOutputPane(OutputPaneType::Compile);
@@ -2107,7 +2108,7 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 		result = !dialog.HasErrors();
 		g_compileIOTimer.Start();
 		g_compileAppendTimer.Start();
-		defer.Commit();
+		committed = defer.Commit();
 		g_compileIOTimer.Stop();
 		g_compileAppendTimer.Stop();
 	}
@@ -2115,6 +2116,11 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 	timer.Stop();
 
 	CompileLog log;
+	if (!committed)
+	{
+		result = false;
+		log.ReportResult(CompileResult("There was a problem writing the compiled scripts: " + committed.error().ToString(), CompileResult::CRT_Error));
+	}
 	log.ReportResult(CompileResult("--------------------------------"));
 	std::stringstream strMessage;
 	strMessage << "Time elapsed: " << fmt::format("{0:.2f}", (float)timer.GetElapsed()) << " seconds.";

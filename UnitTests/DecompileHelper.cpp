@@ -150,8 +150,8 @@ bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::
     }
     // Commit persists the compiled resource. A failure here must fail the
     // compile, or a later decompile reads a stale resource.
-    HRESULT hr = defer.Commit();
-    bool success = ok && !log.HasErrors() && SUCCEEDED(hr);
+    sci::Status committed = defer.Commit();
+    bool success = ok && !log.HasErrors() && committed.has_value();
     if (outWarnings)
     {
         for (const CompileResult &r : log.Results())
@@ -176,7 +176,7 @@ bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::
         }
         if (outError->empty())
         {
-            *outError = fmt::format("(compiled={0} commit={1:#x})", ok, (unsigned)hr);
+            *outError = fmt::format("(compiled={0} commit={1})", ok, committed ? std::string("ok") : committed.error().ToString());
             for (const CompileResult &r : log.Results())
             {
                 *outError += "\n  " + r.GetMessage();

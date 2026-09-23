@@ -174,22 +174,10 @@ void CScriptDocument::OnCompile()
 		);
 		log.ReportResult(CompileResult(info));
 
-		HRESULT hr = defer.Commit();
-		if (FAILED(hr))
+		sci::Status committed = defer.Commit();
+		if (!committed)
 		{
-			char sz[200];
-			StringCchPrintf(sz, ARRAYSIZE(sz), "There was a problem writing the compiled script: %x", hr);
-			log.ReportResult(CompileResult(sz));
-			// Without FORMAT_MESSAGE_IGNORE_INSERTS, FormatMessage reads the
-			// Arguments array for any %1/%2 insert in the system text; the old
-			// code passed a fake one-entry array, so such a message read bad
-			// data (#57). Use a separate buffer so the text above is kept.
-			char szSystem[200] = {};
-			if (FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, HRESULT_CODE(hr), 0, szSystem, ARRAYSIZE(szSystem), nullptr) == 0)
-			{
-				StringCchCopy(szSystem, ARRAYSIZE(szSystem), "(no system message)");
-			}
-			log.ReportResult(CompileResult(szSystem, CompileResult::CRT_Error));
+			log.ReportResult(CompileResult("There was a problem writing the compiled script: " + committed.error().ToString(), CompileResult::CRT_Error));
 			log.CalculateErrors();
 		}
 		_DoErrorSummary(log);

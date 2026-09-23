@@ -6,9 +6,10 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: A1 (next). F1 is committed; its review is the next check.
+- Current step: A2 (next). F1 and A1 are committed; their reviews run in
+  the background.
 - Baseline on `0dc1fef5`: the Release build passes; the unit suite passes
-  217 of 217 tests in about 4 minutes. After F1: 237 of 237.
+  217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242.
 - A full rebuild shows 48 old warnings (C4996, C5033, C4267, C4018), all in
   third-party code (GIFLIB, CrystalEdit, a Windows SDK header). A new
   warning in our files is a regression.
@@ -20,8 +21,8 @@ for each step, and a follow-up commit if the review finds a problem.
 
 | Step | Status | Commit | Review |
 |---|---|---|---|
-| F1 Result foundation | done | `feat(scic): F1` (the commit after `949638b5`) | pending |
-| A1 Deferred writes | not started | | |
+| F1 Result foundation | done | `04361133` | running |
+| A1 Deferred writes | done | `fix(scic): A1` (the commit after `04361133`) | pending |
 | A2 Patch writer, size check | not started | | |
 | B1 GameSession, core log | not started | | |
 | B2 Script text loader | not started | | |
@@ -78,7 +79,15 @@ for each step, and a follow-up commit if the review finds a problem.
 - The open questions Q4 to Q13 use the plan's recommendations.
 - Revision 4 of the plan (2026-09-23) added phase K and the `scicompile`
   features (plan section 14), at your request.
+- 2026-09-23, your change of plan: the CLI must work on a game that SCI
+  Companion never opened, so it must not rely on `game.ini`. Plan revision
+  5 records how (a script-name map from `game.ini` if present, `src\*.sc`,
+  `src\*.sco`, derived names, then `nNNN`).
+- A1 keeps `HRESULT CResourceMap::AppendResource(const ResourceBlob&)` for
+  the GUI (it shows the error text) and adds `sci::Status WriteResource`
+  (no UI) for the engine and the services.
 
 ## Next action
 
-Review F1, fix any real finding, then start A1 (plan section 9, phase A).
+Read the F1 and A1 reviews and fix any real finding. Then plan revision 5
+(the CLI must work without `game.ini`; see "Decisions"), then A2.

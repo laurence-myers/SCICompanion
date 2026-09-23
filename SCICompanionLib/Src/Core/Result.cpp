@@ -134,6 +134,12 @@ namespace sci
         return FromWin32(GetLastError(), what);
     }
 
+    void ThrowLastError(const std::string &what)
+    {
+        Error error = FromLastError(what);
+        throw DataError(error.message, error.code);
+    }
+
     Error ErrorFromCurrentException(const std::string &context)
     {
         Error error;

@@ -130,6 +130,10 @@ namespace sci
     Error FromHResult(long hr, const std::string &what);
     Error FromLastError(const std::string &what);
 
+    // For deep I/O code that cannot return a Result: throws a DataError with
+    // the code and text of GetLastError (NotFound or Io).
+    [[noreturn]] void ThrowLastError(const std::string &what);
+
     // Call only inside a catch block. Turns the exception in flight into an
     // Error. DataError keeps its code; a CFileException gives Io; any other
     // exception gives Internal.

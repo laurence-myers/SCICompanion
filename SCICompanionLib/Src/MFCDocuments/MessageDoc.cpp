@@ -216,7 +216,7 @@ void CMessageDoc::PostSuccessfulSave(const ResourceEntity *pResource)
 				assert(!companionAudio || (textEntryTuple == companionAudio->Base36Number));
 			}
 		}
-		defer.Commit();
+		ShowWriteError(defer.Commit());
 
 		// Save the negatives
 		if (!audioNegatives.empty())

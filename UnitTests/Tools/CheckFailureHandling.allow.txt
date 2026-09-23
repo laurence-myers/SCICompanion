@@ -1,6 +1,6 @@
 # Failure-handling sites that existed before the rules (see CheckFailureHandling.ps1).
 # Format: <rule> <path under SCICompanionLib\Src> <count>. Lower a count when you remove a site.
-afxmessagebox-in-engine Resources\ResourceMap.cpp 4
+afxmessagebox-in-engine Resources\ResourceMap.cpp 3
 afxmessagebox-in-engine Resources\ResourceMapOperations.cpp 2
 afxmessagebox-in-engine Resources\Sound.cpp 4
 afxmessagebox-in-engine Resources\SoundOperations.cpp 4
@@ -29,4 +29,4 @@ throw-std-exception Resources\View.cpp 8
 throw-std-exception Util\Codec.h 3
 throw-std-exception Util\SoundUtil.cpp 6
 throw-std-exception Util\Stream.cpp 6
-throw-std-exception Util\util.cpp 8
+throw-std-exception Util\util.cpp 1

@@ -277,73 +277,111 @@ void CResourceMap::AbandonAppend()
 		}
 	}
 }
-HRESULT CResourceMap::EndDeferAppend()
+namespace
 {
-	HRESULT hr = S_OK;
-	if (_cDeferAppend)
+	// "text 901 to the patch file 901.tex", "script 110 to the resource package"
+	std::string _DescribeWrite(const ResourceBlob &blob)
 	{
-		--_cDeferAppend;
-		if (_cDeferAppend == 0)
+		std::string destination = IsFlagSet(blob.GetSourceFlags(), ResourceSourceFlags::PatchFile) ?
+			("the patch file " + GetFileNameFor(blob)) : std::string("the resource package");
+		return fmt::format("writing {0} {1} to {2}", GetResourceInfo(blob.GetType()).pszTitleDefault, blob.GetNumber(), destination);
+	}
+
+	// The same resource for the same destination: a second copy in one batch
+	// replaces the first. Two copies would give the map two entries (SCI1) or
+	// keep the older copy (SCI0).
+	bool _IsSameQueuedResource(const ResourceBlob &a, const ResourceBlob &b)
+	{
+		return (a.GetType() == b.GetType()) && (a.GetNumber() == b.GetNumber()) &&
+			(a.GetBase36() == b.GetBase36()) && (a.GetSourceFlags() == b.GetSourceFlags());
+	}
+}
+
+sci::Status CResourceMap::EndDeferAppend()
+{
+	if (_cDeferAppend == 0)
+	{
+		return sci::Ok();
+	}
+	--_cDeferAppend;
+	if ((_cDeferAppend != 0) || _deferredResources.empty())
+	{
+		// An inner batch: the outermost Commit writes the queue.
+		return sci::Ok();
+	}
+
+	// Take the queue first, so a failure below cannot leave it behind.
+	std::vector<ResourceBlob> queued;
+	queued.swap(_deferredResources);
+
+	// Bucketize the resources by resource source and map context. Each bucket
+	// is one rewrite of its destination.
+	std::map<uint64_t, std::vector<const ResourceBlob*>> keyToIndices;
+	for (const ResourceBlob &blob : queued)
+	{
+		uint32_t mapContext = (uint32_t)((blob.GetBase36() == NoBase36) ? -1 : blob.GetNumber());
+		uint64_t bucketKey = (uint64_t)blob.GetSourceFlags() | (((uint64_t)mapContext) << 32);
+		keyToIndices[bucketKey].push_back(&blob);
+	}
+
+	sci::Status firstFailure = sci::Ok();
+	std::vector<const ResourceBlob*> written;
+	for (auto &pair : keyToIndices)
+	{
+		std::vector<const ResourceBlob*> &blobsForThisSource = pair.second;
+		ResourceSourceFlags sourceFlags = blobsForThisSource[0]->GetSourceFlags();
+		int mapContext = (blobsForThisSource[0]->GetBase36() == NoBase36) ? -1 : blobsForThisSource[0]->GetNumber();
+		std::string context = _DescribeWrite(*blobsForThisSource[0]);
+		if (blobsForThisSource.size() > 1)
 		{
-			if (!_deferredResources.empty())
+			context += fmt::format(" (and {0} more)", blobsForThisSource.size() - 1);
+		}
+
+		sci::Status status = sci::Guard(context, [&]() -> sci::Status
+		{
+			std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, _gameFolderHelper, sourceFlags, ResourceSourceAccessFlags::ReadWrite, mapContext);
+			if (!resourceSource)
 			{
-				// TODO: Assert that all defereed resources come from the same source.
-				// Or rather we could support from multiple sources. The defer append only happens during
-				// "compile all". Which actually might eventually support auto-generating message resources, so this is
-				// probably something we'll need to handle. And now also audiomaps
-
-				// Bucketize the resources by resourcesource and map context.
-				std::map<uint64_t, std::vector<const ResourceBlob*>> keyToIndices;
-				for (size_t i = 0; i < _deferredResources.size(); i++)
-				{
-					uint32_t mapContext = (uint32_t)((_deferredResources[i].GetBase36() == NoBase36) ? -1 : _deferredResources[i].GetNumber());
-					uint64_t bucketKey = (uint64_t)_deferredResources[i].GetSourceFlags() | (((uint64_t)mapContext) << 32);
-					keyToIndices[bucketKey].push_back(&_deferredResources[i]);
-				}
-
-				for (auto &pair : keyToIndices)
-				{
-					// For each bucket, create a resourcesource and save them.
-					std::vector<const ResourceBlob*> &blobsForThisSource = pair.second;
-					ResourceSourceFlags sourceFlags = blobsForThisSource[0]->GetSourceFlags();
-
-					int mapContext = (blobsForThisSource[0]->GetBase36() == NoBase36) ? -1 : blobsForThisSource[0]->GetNumber();
-					// Enumerate resources and write the ones we have not already encountered.
-					std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, _gameFolderHelper, sourceFlags, ResourceSourceAccessFlags::ReadWrite, mapContext);
-
-					try
-					{
-						// We're going to tell the relevant folks to reload completely, so we
-						// don't care about the return value here (replace or append)
-						resourceSource->AppendResources(blobsForThisSource);
-					}
-					catch (std::exception &e)
-					{
-						SafeMessageBox(e.what(), MB_OK | MB_ICONWARNING);
-					}
-				}
-
-				bool reload[NumResourceTypes] = {};
-				for (ResourceBlob &blob : _deferredResources)
-				{
-					AssignName(blob);
-					reload[(int)blob.GetType()] = true;
-				}
-
-				_deferredResources.clear();
-
-				// Tell the views that might have changed, to reload:
-				for (int iType = 0; iType < ARRAYSIZE(reload); iType++)
-				{
-					if (reload[iType])
-					{
-						NotifyToReloadResourceType((ResourceType)iType);
-					}
-				}
+				return sci::Fail(sci::ErrorCode::Unsupported, "no writer for this destination");
 			}
+			resourceSource->AppendResources(blobsForThisSource);
+			return sci::Ok();
+		});
+		if (status)
+		{
+			written.insert(written.end(), blobsForThisSource.begin(), blobsForThisSource.end());
+		}
+		else if (firstFailure)
+		{
+			firstFailure = status;
 		}
 	}
-	return hr;
+
+	// Name only what was written; a failed write must not change game.ini.
+	bool reload[NumResourceTypes] = {};
+	for (const ResourceBlob *blob : written)
+	{
+		AssignName(*blob);
+		reload[(int)blob->GetType()] = true;
+	}
+
+	// Tell the views that might have changed, to reload:
+	for (int iType = 0; iType < ARRAYSIZE(reload); iType++)
+	{
+		if (reload[iType])
+		{
+			NotifyToReloadResourceType((ResourceType)iType);
+		}
+	}
+	return firstFailure;
+}
+
+void ShowWriteError(const sci::Status &status)
+{
+	if (!status)
+	{
+		SafeMessageBox(status.error().ToString(), MB_OK | MB_ICONWARNING);
+	}
 }
 
 //
@@ -493,85 +531,82 @@ ResourceSaveLocation CResourceMap::GetDefaultResourceSaveLocation()
 // and compressed length). So the blob is stale after this call: do not reuse it to,
 // for example, locate and delete the resource by header comparison. Re-read the
 // resource from the map instead. The blob is only valid for the length of this call.
-HRESULT CResourceMap::AppendResource(const ResourceBlob &resource)
+sci::Status CResourceMap::WriteResource(const ResourceBlob &resource)
 {
-	HRESULT hr;
 	if (_cDeferAppend)
 	{
-		// If resource appends are deferred, then just add it to a list.
-		_deferredResources.push_back(resource);
-		hr = S_OK;
-	}
-	else
-	{
-		if (_appServices && (resource.GetType() == ResourceType::View))
+		// If resource appends are deferred, then just add it to the queue.
+		for (ResourceBlob &queued : _deferredResources)
 		{
-			_appServices->SetRecentlyInteractedView(resource.GetNumber());
+			if (_IsSameQueuedResource(queued, resource))
+			{
+				queued = resource;
+				return sci::Ok();
+			}
 		}
+		_deferredResources.push_back(resource);
+		return sci::Ok();
+	}
 
-		// Enumerate resources and write the ones we have not already encountered.
+	if (_appServices && (resource.GetType() == ResourceType::View))
+	{
+		_appServices->SetRecentlyInteractedView(resource.GetNumber());
+	}
+
+	AppendBehavior appendBehavior = AppendBehavior::Append;
+	sci::Status status = sci::Guard(_DescribeWrite(resource), [&]() -> sci::Status
+	{
 		int mapContext = (resource.GetBase36() == NoBase36) ? -1 : resource.GetNumber();
 		std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, _gameFolderHelper, resource.GetSourceFlags(), ResourceSourceAccessFlags::ReadWrite, mapContext);
+		if (!resourceSource)
+		{
+			return sci::Fail(sci::ErrorCode::Unsupported, "no writer for this destination");
+		}
 		std::vector<const ResourceBlob*> blobs;
 		blobs.push_back(&resource);
-
-		AppendBehavior appendBehavior = AppendBehavior::Append;
-		hr = E_FAIL;
-		try
-		{
-			appendBehavior = resourceSource->AppendResources(blobs);
-			hr = S_OK;
-		}
-		catch (std::exception &e)
-		{
-			SafeMessageBox(e.what(), MB_OK | MB_ICONWARNING);
-		}
-
-		AssignName(resource);
-
-		if (SUCCEEDED(hr))
-		{
-			if (resource.GetType() == ResourceType::Script)
-			{
-				// We'll need to re-gen this:
-				_globalCompiledScriptLookups.reset(nullptr);
-			}
-
-			if (resource.GetType() == ResourceType::Palette)
-			{
-				_paletteListNeedsUpdate = true;
-				if (resource.GetNumber() == 999)
-				{
-					_pPalette999.reset(nullptr);
-				}
-			}
-
-			// pResource is only valid for the length of this call.  Nonetheless, call our syncs
-			for (auto &sync : _syncs)
-			{
-				sync->OnResourceAdded(&resource, appendBehavior);
-			}
-		}
-
-#if 0
-		if (FAILED(hr))
-		{
-			// Prepare error.
-			TCHAR szError[MAX_PATH];
-			szError[0] = 0;
-			FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, 0, HRESULT_CODE(hr), 0, szError, ARRAYSIZE(szError), nullptr);
-			if (hr == E_ACCESSDENIED)
-			{
-				StringCchCat(szError, ARRAYSIZE(szError), TEXT("\nThe file may be in use. Maybe the game is running?"));
-			}
-
-			TCHAR szMessage[MAX_PATH];
-			StringCchPrintf(szMessage, ARRAYSIZE(szMessage), TEXT("There was an error writing the resource: 0x%x\n%s"), hr, szError);
-			AfxMessageBox(szMessage, MB_OK | MB_ICONEXCLAMATION | MB_APPLMODAL, 0);
-		}
-#endif
+		appendBehavior = resourceSource->AppendResources(blobs);
+		return sci::Ok();
+	});
+	if (!status)
+	{
+		// A failed write must not change game.ini.
+		return status;
 	}
-	return hr;
+
+	AssignName(resource);
+
+	if (resource.GetType() == ResourceType::Script)
+	{
+		// We'll need to re-gen this:
+		_globalCompiledScriptLookups.reset(nullptr);
+	}
+
+	if (resource.GetType() == ResourceType::Palette)
+	{
+		_paletteListNeedsUpdate = true;
+		if (resource.GetNumber() == 999)
+		{
+			_pPalette999.reset(nullptr);
+		}
+	}
+
+	// pResource is only valid for the length of this call.  Nonetheless, call our syncs
+	for (auto &sync : _syncs)
+	{
+		sync->OnResourceAdded(&resource, appendBehavior);
+	}
+	return sci::Ok();
+}
+
+HRESULT CResourceMap::AppendResource(const ResourceBlob &resource)
+{
+	sci::Status status = WriteResource(resource);
+	if (!status)
+	{
+		ShowWriteError(status);
+		return E_FAIL;
+	}
+	return S_OK;
 }
 
 bool CResourceMap::AppendResource(const ResourceEntity &resource, int *pChecksum)

@@ -646,8 +646,7 @@ bool EnsureFolderExists(const std::string &folderName, bool throwException)
 		{
 			if (throwException)
 			{
-				std::string error = GetMessageFromLastError(folderName);
-				throw std::exception(error.c_str());
+				sci::ThrowLastError("Creating the folder " + folderName);
 			}
 			return false;
 		}
@@ -940,9 +939,7 @@ ScopedFile::ScopedFile(const std::string &filename, DWORD desiredAccess, DWORD s
 	hFile = CreateFile(filename.c_str(), desiredAccess, shareMode, nullptr, creationDisposition, FILE_ATTRIBUTE_NORMAL, nullptr);
 	if (hFile == INVALID_HANDLE_VALUE)
 	{
-		std::string details = "Opening ";
-		details += filename;
-		throw std::exception(GetMessageFromLastError(details).c_str());
+		sci::ThrowLastError("Opening " + filename);
 	}
 }
 
@@ -951,11 +948,14 @@ void ScopedFile::Write(const uint8_t *data, uint32_t length)
 	DWORD cbWritten = 0;
 	if (length > 0)
 	{
-		if (!WriteFile(hFile, data, length, &cbWritten, nullptr) || (cbWritten != length))
+		if (!WriteFile(hFile, data, length, &cbWritten, nullptr))
 		{
-			std::string details = "Writing to ";
-			details += filename;
-			throw std::exception(GetMessageFromLastError(details).c_str());
+			sci::ThrowLastError("Writing to " + filename);
+		}
+		if (cbWritten != length)
+		{
+			// WriteFile succeeded, so GetLastError has nothing to say.
+			throw sci::DataError(fmt::format("Writing to {0}: only {1} of {2} bytes were written", filename, cbWritten, length), sci::ErrorCode::Io);
 		}
 	}
 }
@@ -965,7 +965,7 @@ uint32_t ScopedFile::SeekToEnd()
 	uint32_t position = SetFilePointer(hFile, 0, nullptr, FILE_END);
 	if (position == INVALID_SET_FILE_POINTER)
 	{
-		throw std::exception("Can't seek to end");
+		sci::ThrowLastError("Seeking to the end of " + filename);
 	}
 	return position;
 }
@@ -976,7 +976,7 @@ uint32_t ScopedFile::GetLength()
 	uint32_t size = GetFileSize(hFile, &upperSize);
 	if (upperSize > 0)
 	{
-		throw std::exception("File too large.");
+		throw sci::DataError(filename + " is too large (4 GB or more)", sci::ErrorCode::Unsupported);
 	}
 	return size;
 }
@@ -990,11 +990,7 @@ void movefile(const std::string &from, const std::string &to)
 {
 	if (!MoveFile(from.c_str(), to.c_str()))
 	{
-		std::string details = "Moving ";
-		details += from;
-		details += " to ";
-		details += to;
-		throw std::exception(GetMessageFromLastError(details).c_str());
+		sci::ThrowLastError("Moving " + from + " to " + to);
 	}
 }
 
@@ -1007,11 +1003,7 @@ void replacefile(const std::string &from, const std::string &to)
 	// flush the file's data, so this is crash-atomic, not proof against power loss.
 	if (!MoveFileEx(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 	{
-		std::string details = "Replacing ";
-		details += to;
-		details += " with ";
-		details += from;
-		throw std::exception(GetMessageFromLastError(details).c_str());
+		sci::ThrowLastError("Replacing " + to + " with " + from);
 	}
 }
 
