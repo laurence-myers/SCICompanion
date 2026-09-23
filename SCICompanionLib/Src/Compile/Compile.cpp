@@ -2274,32 +2274,6 @@ vector<pair<BinaryOperator, BinaryOperator>> c_unsignedOps =
 	{ BinaryOperator::LessThan, BinaryOperator::UnsignedLessThan },
 };
 
-CodeResult _WriteFakeIfStatement(CompileContext &context, const BinaryOp &binary)
-{
-	// When the user writes:
-	// x = (a && b)
-	// then for (a && b) we do
-	// if (a && b)
-	// {
-	//	 1;
-	// } // else being 0 is implicit.
-	PropertyValue success;
-	success.SetValue(1);
-
-	{
-		// Put the result of the if into the accumulator - we'll push to stack as necessary.
-		COutputContext accContext(context, OC_Accumulator);
-		// We need to put this inside a ConditionalExpression for the code output to work.
-		// We can't move the BinaryOp into another syntax node, so we'll use WeakSyntaxNode as
-		// the bridge.
-		ConditionalExpression expression(make_unique<WeakSyntaxNode>(&binary));
-		// true -> give this meaning, otherwise the compiler will complain that the '1' value
-		// has no effect on code.  It actually does, because we're playing tricks.
-		_OutputCodeForIfStatement(context, expression, success, nullptr, true);
-	}
-	return CodeResult(PushToStackIfAppropriate(context, binary.GetLineNumber()), DataTypeBool);
-}
-
 // An n-ary operation is any operator that takes n operands.
 // Technically +, *, |, ^ and & all do this, but those are converted to nested
 // BinaryOp's before compilation. So all we deal with here are the comparison operators
@@ -2367,35 +2341,30 @@ CodeResult BinaryOp::OutputByteCode(CompileContext &context) const
 	{
 		if (Operator == BinaryOperator::LogicalAnd || Operator == BinaryOperator::LogicalOr)
 		{
-			// A logical and/or used for its value, not as a condition.
-			if (true)
+			// A logical and/or used for its value, not as a condition. Sierra
+			// semantics (MakeAnd and MakeOr in Sierra's sc): the value is the last
+			// operand evaluated by the short circuit, not a normalized 1 or 0.
+			// Sierra's own scripts rely on this (e.g. (Log 1 {x} (and i (i name:)))).
+			// Evaluate the expression as a condition, but resolve both the success
+			// and failure exits to the end of the expression, so whichever operand
+			// the short circuit stops on is left in the accumulator.
+			branch_block blockSuccess(context, BranchBlockIndex::Success);
+			branch_block blockFailure(context, BranchBlockIndex::Failure);
 			{
-				// Sierra semantics: the value is the last operand evaluated by the
-				// short circuit, not a normalized 1 or 0. Sierra's own scripts rely
-				// on this (e.g. (Log 1 {x} (and i (i name:)))). Evaluate the
-				// expression as a condition, but resolve both the success and
-				// failure exits to the end of the expression, so whichever operand
-				// the short circuit stops on is left in the accumulator.
-				branch_block blockSuccess(context, BranchBlockIndex::Success);
-				branch_block blockFailure(context, BranchBlockIndex::Failure);
+				declare_conditional isCondition(context, true);
+				if (Operator == BinaryOperator::LogicalAnd)
 				{
-					declare_conditional isCondition(context, true);
-					if (Operator == BinaryOperator::LogicalAnd)
-					{
-						_OutputByteCodeAnd(context);
-					}
-					else
-					{
-						_OutputByteCodeOr(context);
-					}
+					_OutputByteCodeAnd(context);
 				}
-				// Both exits land here, at the end of the expression.
-				blockFailure.leave();
-				blockSuccess.leave();
-				return CodeResult(PushToStackIfAppropriate(context, GetLineNumber()), DataTypeAny);
+				else
+				{
+					_OutputByteCodeOr(context);
+				}
 			}
-			// SCI Studio syntax: write an "if statement" that evaluates to 1 or 0.
-			return _WriteFakeIfStatement(context, *this);
+			// Both exits land here, at the end of the expression.
+			blockFailure.leave();
+			blockSuccess.leave();
+			return CodeResult(PushToStackIfAppropriate(context, GetLineNumber()), DataTypeAny);
 		}
 		else
 		{

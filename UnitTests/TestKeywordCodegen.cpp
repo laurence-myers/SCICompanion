@@ -136,6 +136,82 @@ namespace UnitTests
                 L"&exists emitted different bytecode than its (> argc N) expansion");
         }
 
+        // Compiles the keyword form and the hand-written asm form of the same
+        // procedure, and returns whether their bytes are equal.
+        void AssertSameBytes(const std::string &keyword, const std::string &manual, const wchar_t *what)
+        {
+            std::string error;
+            Assert::IsTrue(CompileSource(902, "kTest", keyword, error), W("the expression did not compile: " + error).c_str());
+            std::vector<uint8_t> keywordBytes = LoadCompiledBytes(902);
+            error.clear();
+            Assert::IsTrue(CompileSource(902, "kTest", manual, error), W("the asm form did not compile: " + error).c_str());
+            std::vector<uint8_t> manualBytes = LoadCompiledBytes(902);
+            Assert::IsTrue(keywordBytes == manualBytes, what);
+        }
+
+        // Plan step K1. An and/or used for its value gives the operand that
+        // decides it, as Sierra's sc does (MakeAnd, MakeOr): "a; bnt E; b; E:"
+        // for and, and bt for or. The old SCI Studio code gave 1 or 0 (an
+        // if/else with ldi 1 and ldi 0).
+        TEST_METHOD(ValueAndOr_GiveTheDecidingOperand)
+        {
+            _gameFolder = SetUpGameSCI11();
+            std::string keyword = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest a b &tmp t)\n"
+                "\t(= t (and a b))\n"
+                "\t(= t (or a b))\n"
+                "\t(return t)\n"
+                ")\n";
+            std::string manual = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest a b &tmp t)\n"
+                "\t(asm\n"
+                "\t\tlap a\n"
+                "\t\tbnt andEnd\n"
+                "\t\tlap b\n"
+                "\tandEnd:\n"
+                "\t\tsat t\n"
+                "\t\tlap a\n"
+                "\t\tbt orEnd\n"
+                "\t\tlap b\n"
+                "\torEnd:\n"
+                "\t\tsat t\n"
+                "\t)\n"
+                "\t(return t)\n"
+                ")\n";
+            AssertSameBytes(keyword, manual, L"a value and/or must compile to Sierra's short-circuit shape");
+        }
+
+        // In a condition, and/or branches to the if's else as before.
+        TEST_METHOD(ConditionAndOr_BranchToTheElse)
+        {
+            _gameFolder = SetUpGameSCI11();
+            std::string keyword = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest a b &tmp t)\n"
+                "\t(if (and a b)\n"
+                "\t\t(= t 1)\n"
+                "\t)\n"
+                "\t(return t)\n"
+                ")\n";
+            std::string manual = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest a b &tmp t)\n"
+                "\t(asm\n"
+                "\t\tlap a\n"
+                "\t\tbnt ifEnd\n"
+                "\t\tlap b\n"
+                "\t\tbnt ifEnd\n"
+                "\t\tldi 1\n"
+                "\t\tsat t\n"
+                "\tifEnd:\n"
+                "\t\tlat t\n"
+                "\t\tret\n"
+                "\t)\n"
+                ")\n";
+            AssertSameBytes(keyword, manual, L"an and in a condition must branch to the end of the if");
+        }
         // _file_ / _line_ are SCI2-only debug pseudo-opcodes. Using one in an
         // asm block in a non-SCI2 (here SCI1.1) game must be a compile error, not
         // an out-of-bounds read of the operand table that emits a corrupt opcode.

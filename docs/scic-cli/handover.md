@@ -6,8 +6,9 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: the F2 review, then K1. F1, A1, A2, B1, B2, B3a and B3b are
-  committed and reviewed, with their review fixes. F2 is committed.
+- Current step: the F2 review, then K2. F1, A1, A2, B1, B2, B3a and B3b are
+  committed and reviewed, with their review fixes. F2 and K1 are
+  committed.
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -40,7 +41,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | B3a Compile path on the session | done | `8fe055d0`, review fixes (the commit after `f646dd52`) | FIX: 1 should-fix, 6 nits, 1 question. Fixed: the compile-all tests fail on a `&getpoly` message (a missing polygon is only a message, so a wrong polygon folder passed every test); tests for the codepage set by Game Properties, for the table saves, and for a compile error with no class hints; no polygon file read when the script has no game folder; `CompileLog::SummarizeAndReportErrors` moved to the engine, and the GUI plays the error sound; "Ignoring class" is Info; `OutputScriptStrings.h` hygiene; stale plan references. |
 | B3b Decompile path on the session, `appState` check rule | done | `f646dd52`, review fixes (the commit after `56b487d5`) | FIX: 1 should-fix, 6 nits, 1 question. Fixed: a test that the decompiler reads `sci.sh` from the data folder (the real-game tools now resolve enum names; see "Decisions"); `Src\Util` in the `appState` rule (13 GUI files in the allowlist); `DecompileScript` declared in `DecompileScript.h`; `GetIncludeFolder` is const; `%zu` and Warning for two log lines; corrected documents and CI comment. Outside the branch: the whole-game dump writes `.sco` files into the game folder that it dumps (a separate task was proposed). |
 | F2 Engine errors as values | done | the commit after `637d1ab1` | next |
-| K1 `and`/`or` value semantics | not started | | |
+| K1 `and`/`or` value semantics | done | the commit after `84f58380` | next |
 | K2 `.sco` exports from the public block | not started | | |
 | K3 Species order from compiled scripts | not started | | |
 | K4 `#` in selector names | not started | | |
@@ -335,7 +336,15 @@ for each step, and a follow-up commit if the review finds a problem.
   (`AudioCacheResourceSource.cpp`, `CodeInspector.h`, `PhonemeDialog.cpp`,
   `LipSyncutil.cpp`, `TalkerToViewMap.cpp`, `Task.h`); they are not on the
   script paths.
+- K1: the fix was already in the branch base (`f5f7a01b`, 2026-09-12:
+  "Sierra semantics for a value-position and/or"). The plan's check on
+  `0dc1fef5` saw `_WriteFakeIfStatement` and missed the `if (true)` path
+  above it. K1 removed the unreachable old code, and added two byte-level
+  tests: the value form against the Sierra shape in `asm`, and the
+  condition form against its branch-to-the-end shape. The earlier test
+  (`Compiler_ValueAndOr`) is a decompile round trip; it did not pin the
+  bytes.
 ## Next action
 
-Run the F2 adversarial review (a worktree on the F2 commit) and fix any
-real finding. Then K1 (plan section 9).
+Read the F2 review (running) and fix any real finding. Run the K1
+review. Then K2 (plan section 9).
