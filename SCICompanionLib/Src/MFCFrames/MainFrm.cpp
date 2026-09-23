@@ -2097,31 +2097,50 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 	g_compileAppendTimer.Reset();
 
 	bool result = true;
-	sci::Status committed = sci::Ok();
 
 	// Clear out results
 	appState->ShowOutputPane(OutputPaneType::Compile);
 	appState->OutputClearResults(OutputPaneType::Compile);
+
+	CompileLog log;
+	std::vector<ScriptId> scripts = ScriptsToCompile(appState->GetResourceMap(), scriptsToRecompile);
+	if (!scripts.empty())
 	{
-		DeferResourceAppend defer(appState->GetResourceMap());
-		CNewCompileDialog dialog(scriptsToRecompile);
-		dialog.DoModal();
-		result = !dialog.HasErrors();
-		g_compileIOTimer.Start();
-		g_compileAppendTimer.Start();
-		committed = defer.Commit();
-		g_compileIOTimer.Stop();
-		g_compileAppendTimer.Stop();
+		// Plan step S2: one batch for the scripts. It saves the tables when a
+		// script compiled, and writes the resources in one commit, also after
+		// Cancel. It asks before a package save that a patch file would hide.
+		CompileOptions options;
+		options.askShadows = AskAboutShadowingPatches;
+		sci::Result<std::unique_ptr<CompileBatch>> batch = CompileBatch::Start(appState->GetSession(), scripts, options);
+		if (batch)
+		{
+			CNewCompileDialog dialog(**batch);
+			dialog.DoModal();
+			g_compileIOTimer.Start();
+			g_compileAppendTimer.Start();
+			CompileReport report = (*batch)->Finish();
+			g_compileIOTimer.Stop();
+			g_compileAppendTimer.Stop();
+			// The result for the caller (for example, the run after a compile):
+			// a script that did not compile, or a failed save, is an error.
+			// Cancel is not.
+			result = (report.FailedCount() == 0) && report.tables && report.commit;
+			log.ReportResult(CompileResult(fmt::format("{0} scripts compiled.", report.scripts.size())));
+			ReportCompileBatch(report, log, "There was a problem writing the compiled scripts: ");
+		}
+		else
+		{
+			result = false;
+			log.ReportResult(CompileResult("The compile did not start: " + batch.error().ToString(), CompileResult::CRT_Error));
+		}
+	}
+	else
+	{
+		log.ReportResult(CompileResult("0 scripts compiled."));
 	}
 
 	timer.Stop();
 
-	CompileLog log;
-	if (!committed)
-	{
-		result = false;
-		log.ReportResult(CompileResult("There was a problem writing the compiled scripts: " + committed.error().ToString(), CompileResult::CRT_Error));
-	}
 	log.ReportResult(CompileResult("--------------------------------"));
 	std::stringstream strMessage;
 	strMessage << "Time elapsed: " << fmt::format("{0:.2f}", (float)timer.GetElapsed()) << " seconds.";

@@ -1319,8 +1319,23 @@ GUI changes in this plan (all others are refactors with no visible change):
   error (before: the compile failed with no message). The error and
   warning counts of a compile are exact (before: a failed write after a
   single-script compile counted every error twice).
-- S2: the GUI asks before a package save that a patch file would hide.
-- S2: compile-all saves the tables only if one or more scripts compiled.
+- S2c: before a package save that a patch file would hide, the GUI asks:
+  Yes moves the patch files to `replaced-patches\<time>` in the game
+  folder after the save, No keeps them, Cancel stops and writes nothing.
+  It asks at the start of a compile, and before the write for a patch file
+  that the compile finds only then (a script's text). The compile output
+  lists the moved files.
+- S2c: compile-all saves the tables only if one or more scripts compiled
+  (before: always).
+- S2c: every compile message has a 1-based line. Some parser messages had
+  the 0-based line, one line early, and the text of a syntax error had it
+  too.
+- S2c: a compile that cannot start (for example, the tables do not load)
+  says why in the compile output (before: compile-all closed with no
+  message). A failed save of the class and selector tables is an error in
+  the compile output (before: a message box), so a compile before a run
+  asks whether to run the game anyway. The compile output also shows the
+  warnings of a patch-file write (plan section 5).
 - S3: the `_N` suffix of a duplicate automatic script name follows the
   script number, and a character that a file name or a `(use ...)`
   cannot have becomes `_`.

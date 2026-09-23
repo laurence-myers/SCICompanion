@@ -947,7 +947,9 @@ void CompileContext::_ReportThing(bool fError, const ISourceCodePosition *pPos, 
 	int line = pPos->GetLineNumber() + 1;
 	ScriptId scriptIdThing(_pErrorScript->GetPath().c_str());
 	StringCchPrintf(sz, ARRAYSIZE(sz), "%s: (%s) %s  Line: %d, col: %d", fError ? "Error" : "Warning", scriptIdThing.GetFileNameOrig().c_str(), szMessage, line, pPos->GetColumnNumber());
-	_results.ReportResult(CompileResult(sz, scriptIdThing, line, pPos->GetColumnNumber(), fError ? CompileResult::CRT_Error : CompileResult::CRT_Warning));
+	CompileResult result(sz, scriptIdThing, line, pPos->GetColumnNumber(), fError ? CompileResult::CRT_Error : CompileResult::CRT_Warning);
+	result.SetRawMessage(szMessage);
+	_results.ReportResult(result);
 }
 bool CompileContext::HasErrors() { return _fErrors; }
 

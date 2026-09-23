@@ -150,6 +150,11 @@ public:
 	bool IsWarning() const { return (_type == CRT_Warning); }
 	ScriptId GetScript() const { return _script; }
 	const std::string &GetMessage() const { return _message; }
+	// The message with no "Error: (file) ... Line: N, col: M" around it, for
+	// the diagnostics of the command line (plan step S2, P13). The message
+	// itself when nothing is around it.
+	const std::string &GetRawMessage() const { return _rawMessage.empty() ? _message : _rawMessage; }
+	void SetRawMessage(const std::string &rawMessage) { _rawMessage = rawMessage; }
 	int GetLineNumber() const { return _nLine; }
 	int GetColumn() const { return _nCol; }
 	BOOL CanGotoScript() const { return !_script.IsNone(); }
@@ -157,6 +162,7 @@ public:
 
 private:
 	std::string _message;
+	std::string _rawMessage;
 	ScriptId _script;
 	ResourceType _resourceType;
 	int _nLine;

@@ -11,6 +11,7 @@
 #include "CompileWrite.h"
 #include "Result.h"
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -37,6 +38,12 @@ struct CompileOptions
     // no .sco file is the last. The commit holds the last pass.
     int passes = 1;
     ShadowPolicy shadows = ShadowPolicy::Refuse;
+    // With ShadowPolicy::Refuse: when set, the batch asks it what to do with
+    // the patch files that would hide a package write, at the start and
+    // before the commit (for the files that it finds only then). Its answer
+    // is the policy from then on. Refuse stops the batch with Cancelled, and
+    // nothing is written. The GUI asks the user (plan step S2).
+    std::function<ShadowPolicy(const std::vector<std::string> &files)> askShadows;
 };
 
 // The result of one script of a batch.
@@ -49,6 +56,8 @@ struct ScriptOutcome
     // Internal (an exception in the engine).
     sci::Status status;
     std::vector<CompileResult> diagnostics;
+    // The sizes of the compiled script (the GUI shows them).
+    CompileStats stats;
 };
 
 struct CompileReport
@@ -106,7 +115,8 @@ public:
     // WriteRefused for the package of a game that keeps its resources in
     // patch files (SCI Companion does not read that package), or (with
     // ShadowPolicy::Refuse) when a patch file would hide the script, heap or
-    // vocab 996 or 997 in the package.
+    // vocab 996 or 997 in the package; Cancelled when askShadows answered
+    // Refuse.
     static sci::Result<std::unique_ptr<CompileBatch>> Start(GameSession &session, std::vector<ScriptId> scripts, const CompileOptions &options);
     // A batch that was not finished withdraws its queued writes.
     ~CompileBatch();
@@ -122,8 +132,8 @@ public:
     // Saves the tables when one or more scripts compiled, and commits the
     // queued writes, also after an abort, as the GUI's Cancel button does.
     // Before the commit, it checks the queued package writes again for patch
-    // files that would hide them (a text of a script's auto text). Call it
-    // once.
+    // files that would hide them (a text of a script's auto text), and asks
+    // askShadows about new files. Call it once.
     CompileReport Finish();
 
     size_t Count() const { return _scripts.size(); }
@@ -152,7 +162,8 @@ private:
     // The patch files that hide a package write (ShadowPolicy::Replace).
     std::vector<std::string> _shadowingPatches;
 
-    void _CheckQueuedWrites();
+    sci::Status _DecideAbout(const std::vector<std::string> &files, bool beforeTheCompile);
+    sci::Status _CheckQueuedWrites();
     void _MoveShadowingPatches();
     void _AddWarnings();
 };

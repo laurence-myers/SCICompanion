@@ -583,6 +583,104 @@ namespace UnitTests
             Assert::IsTrue(map == BytesOf(_copyFolder + "\\resource.map"), L"nothing is written");
         }
 
+        // S2c: the shadow check of an SCI1.1 game finds the patch file
+        // 997.voc (the acceptance test of plan row S2).
+        TEST_METHOD(ShadowingPatches_Sci11_Finds997Voc)
+        {
+            NoAppStateForBatch noAppState;
+            GameSession session(TestSessionOptions());
+            OpenCopy("\\TemplateGame\\SCI1.1", session);
+            const GameFolderHelper &helper = session.Helper();
+            std::unique_ptr<ResourceBlob> selectors = helper.MostRecentResource(ResourceType::Vocab, 997, ResourceEnumFlags::None);
+            Assert::IsTrue(selectors != nullptr);
+            std::vector<uint8_t> data(selectors->GetData(), selectors->GetData() + selectors->GetLength());
+            ResourceBlob patch(helper, nullptr, ResourceType::Vocab, data, helper.Version.DefaultVolumeFile, 997, NoBase36, helper.Version, ResourceSourceFlags::PatchFile);
+            Assert::IsTrue(session.ResourceMap().WriteResource(patch).has_value());
+            Assert::IsTrue(GameHasFile("997.voc"), L"setup: 997.voc");
+
+            auto started = CompileBatch::Start(session, { WriteScript(session, "S2Good904", 904, GoodText(904)) }, CompileOptions());
+            Assert::IsFalse(started.has_value());
+            Assert::IsTrue(started.error().code == sci::ErrorCode::WriteRefused, WideForBatch(started.error().ToString()).c_str());
+            Assert::IsTrue(started.error().message.find("997.voc") != std::string::npos, WideForBatch(started.error().message).c_str());
+        }
+
+        // S2c: askShadows answers for the patch files at the start (the GUI
+        // asks the user), and its answer is the policy from then on: the text
+        // patch file that the batch finds before the commit gets no second
+        // question. Refuse stops the batch with Cancelled.
+        TEST_METHOD(AskShadows_TheAnswerAtTheStartIsThePolicy)
+        {
+            NoAppStateForBatch noAppState;
+            for (ShadowPolicy answer : { ShadowPolicy::Refuse, ShadowPolicy::Replace, ShadowPolicy::Ignore })
+            {
+                GameSession session(TestSessionOptions());
+                OpenCopy("\\TemplateGame\\SCI0", session);
+                std::vector<ScriptId> scripts = { WriteScript(session, "S2Text", 904, TextScript) };
+                WritePatches(session);
+                WriteBytesToGame("text.904", { 0x80 | (uint8_t)ResourceType::Text, 0, 'x', 0 });
+                std::vector<uint8_t> map = BytesOf(_copyFolder + "\\resource.map");
+                std::vector<std::vector<std::string>> questions;
+                CompileOptions options;
+                options.askShadows = [&](const std::vector<std::string> &files) { questions.push_back(files); return answer; };
+                std::atomic<bool> abort(false);
+                TestCompileEvents events;
+                auto report = CompileScripts(session, scripts, options, abort, events);
+                Assert::AreEqual((size_t)1, questions.size(), L"one question, at the start");
+                Assert::AreEqual((size_t)2, questions[0].size(), L"script.904 and vocab.997");
+                if (answer == ShadowPolicy::Refuse)
+                {
+                    Assert::IsFalse(report.has_value());
+                    Assert::IsTrue(report.error().code == sci::ErrorCode::Cancelled, WideForBatch(report.error().ToString()).c_str());
+                    Assert::IsTrue(events.started.empty(), L"nothing is compiled");
+                    Assert::IsTrue(map == BytesOf(_copyFolder + "\\resource.map"), L"nothing is written");
+                }
+                else
+                {
+                    Assert::IsTrue(report.has_value(), WideForBatch(report ? std::string() : report.error().ToString()).c_str());
+                    Assert::IsTrue(report->Succeeded(), WideForBatch(Describe(*report)).c_str());
+                    Assert::IsFalse(map == BytesOf(_copyFolder + "\\resource.map"), L"the package is written");
+                    bool replace = (answer == ShadowPolicy::Replace);
+                    Assert::AreEqual(replace ? (size_t)3 : (size_t)0, report->movedPatches.size(), L"Replace also moves text.904");
+                    Assert::AreEqual(!replace, GameHasFile("text.904"));
+                    Assert::AreEqual(!replace, GameHasFile("script.904"));
+                }
+            }
+        }
+
+        // S2c: a patch file that the batch finds only before the commit (the
+        // script's auto text) gets its question then. Refuse writes nothing.
+        TEST_METHOD(AskShadows_BeforeTheCommit)
+        {
+            NoAppStateForBatch noAppState;
+            for (ShadowPolicy answer : { ShadowPolicy::Refuse, ShadowPolicy::Replace })
+            {
+                GameSession session(TestSessionOptions());
+                OpenCopy("\\TemplateGame\\SCI0", session);
+                std::vector<ScriptId> scripts = { WriteScript(session, "S2Text", 904, TextScript) };
+                WriteBytesToGame("text.904", { 0x80 | (uint8_t)ResourceType::Text, 0, 'x', 0 });
+                std::vector<uint8_t> map = BytesOf(_copyFolder + "\\resource.map");
+                std::vector<std::vector<std::string>> questions;
+                CompileOptions options;
+                options.askShadows = [&](const std::vector<std::string> &files) { questions.push_back(files); return answer; };
+                std::atomic<bool> abort(false);
+                TestCompileEvents events;
+                auto report = CompileScripts(session, scripts, options, abort, events);
+                Assert::IsTrue(report.has_value(), L"no question at the start: the start does not know the text");
+                Assert::AreEqual((size_t)1, questions.size());
+                Assert::IsTrue((questions[0].size() == 1) && (questions[0][0].find("text.904") != std::string::npos));
+                if (answer == ShadowPolicy::Refuse)
+                {
+                    Assert::IsTrue(!report->commit && (report->commit.error().code == sci::ErrorCode::Cancelled), WideForBatch(Describe(*report)).c_str());
+                    Assert::IsTrue(map == BytesOf(_copyFolder + "\\resource.map"), L"nothing is written");
+                }
+                else
+                {
+                    Assert::IsTrue(report->Succeeded(), WideForBatch(Describe(*report)).c_str());
+                    Assert::IsFalse(GameHasFile("text.904"), L"the text patch file is moved");
+                }
+            }
+        }
+
         // S2b: the warnings of a patch-file write (plan section 5).
         TEST_METHOD(PatchWrite_Warnings)
         {
@@ -602,6 +700,105 @@ namespace UnitTests
             }
             Assert::IsTrue(warnings.find("script.0904") != std::string::npos, WideForBatch(warnings).c_str());
             Assert::IsTrue(warnings.find("996 and 997") != std::string::npos, WideForBatch(warnings).c_str());
+        }
+
+        // S2c, plan P13: every diagnostic line is 1-based (some parser
+        // messages had 0-based lines), and a diagnostic has its raw message,
+        // with no "Error: (file) ... Line: N, col: M" around it, for the
+        // command line.
+        TEST_METHOD(Diagnostics_OneBasedLinesAndTheRawMessage)
+        {
+            NoAppStateForBatch noAppState;
+            GameSession session(TestSessionOptions());
+            OpenCopy("\\TemplateGame\\SCI0", session);
+            const char *text =
+                "(script# 905)\n"                   // 1
+                "(include sci.sh)\n"                // 2
+                "(include game.sh)\n"               // 3
+                "(use main)\n"                      // 4
+                "(public s2cProc 0)\n"              // 5
+                "(procedure (s2cProc a)\n"          // 6
+                "    (cond\n"                       // 7
+                "        (else 1)\n"                // 8
+                "        ((== a 1) 2)\n"            // 9
+                "    )\n"                           // 10
+                "    (return s2cUndeclared)\n"      // 11
+                ")\n";
+            std::atomic<bool> abort(false);
+            TestCompileEvents events;
+            auto report = CompileScripts(session, { WriteScript(session, "S2cLines", 905, text) }, ToPatchFiles(), abort, events);
+            Assert::IsTrue(report.has_value());
+            const CompileResult *elseMessage = nullptr;
+            const CompileResult *undeclared = nullptr;
+            for (const CompileResult &result : report->scripts[0].diagnostics)
+            {
+                if (result.GetMessage().find("else clause must be the last") != std::string::npos)
+                {
+                    elseMessage = &result;
+                }
+                if (result.IsError() && (result.GetMessage().find("s2cUndeclared") != std::string::npos))
+                {
+                    undeclared = &result;
+                }
+            }
+            Assert::IsNotNull(elseMessage, WideForBatch(Describe(*report)).c_str());
+            Assert::AreEqual(8, elseMessage->GetLineNumber(), L"the else clause is on line 8 (before: 7, 0-based)");
+            Assert::IsNotNull(undeclared, WideForBatch(Describe(*report)).c_str());
+            Assert::AreEqual(11, undeclared->GetLineNumber());
+            const std::string &raw = undeclared->GetRawMessage();
+            Assert::IsTrue((raw.find("s2cUndeclared") != std::string::npos) && (raw.find("Line:") == std::string::npos) && (raw.find("Error:") == std::string::npos),
+                WideForBatch(raw).c_str());
+            Assert::IsTrue(undeclared->GetMessage().find("Line: 11") != std::string::npos, L"the GUI text keeps its form");
+        }
+
+        // S2c, P13: the text of a syntax error has the 1-based line too (it
+        // had the 0-based line), and the error has a raw message.
+        TEST_METHOD(SyntaxError_OneBasedLineInTheTextAndTheRawMessage)
+        {
+            NoAppStateForBatch noAppState;
+            GameSession session(TestSessionOptions());
+            OpenCopy("\\TemplateGame\\SCI0", session);
+            const char *text =
+                "(script# 905)\n"                   // 1
+                "(include sci.sh)\n"                // 2
+                "(include game.sh)\n"               // 3
+                "(use main)\n"                      // 4
+                "(public s2cSyntax 0)\n"            // 5
+                "(procedure (s2cSyntax)\n"          // 6
+                "    (= )\n"                        // 7
+                ")\n";
+            std::atomic<bool> abort(false);
+            TestCompileEvents events;
+            auto report = CompileScripts(session, { WriteScript(session, "S2cSyntax", 905, text) }, ToPatchFiles(), abort, events);
+            Assert::IsTrue(report.has_value());
+            const CompileResult *syntaxError = nullptr;
+            for (const CompileResult &result : report->scripts[0].diagnostics)
+            {
+                if (result.IsError())
+                {
+                    syntaxError = &result;
+                    break;
+                }
+            }
+            Assert::IsNotNull(syntaxError, WideForBatch(Describe(*report)).c_str());
+            Assert::AreEqual(7, syntaxError->GetLineNumber(), WideForBatch(syntaxError->GetMessage()).c_str());
+            Assert::IsTrue(syntaxError->GetMessage().find("(7, ") != std::string::npos, WideForBatch(syntaxError->GetMessage()).c_str());
+            const std::string &raw = syntaxError->GetRawMessage();
+            Assert::IsTrue(!raw.empty() && (raw.find("Error:") == std::string::npos) && (raw.find("(7, ") == std::string::npos), WideForBatch(raw).c_str());
+        }
+
+        // S2c: each outcome has the sizes of its compiled script (the GUI
+        // shows them after a compile).
+        TEST_METHOD(Outcome_HasTheStats)
+        {
+            NoAppStateForBatch noAppState;
+            GameSession session(TestSessionOptions());
+            OpenCopy("\\TemplateGame\\SCI0", session);
+            std::atomic<bool> abort(false);
+            TestCompileEvents events;
+            auto report = CompileScripts(session, { WriteScript(session, "S2Good904", 904, GoodText(904)) }, ToPatchFiles(), abort, events);
+            Assert::IsTrue(report.has_value() && report->Succeeded());
+            Assert::IsTrue(report->scripts[0].stats.Code > 0, L"the compiled script has code");
         }
 
         // A script whose source file is missing gives NotFound, and an error

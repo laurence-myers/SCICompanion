@@ -25,6 +25,33 @@ namespace
         return text;
     }
 
+    // Into the game's package: not an output folder, not a dry run.
+    bool WritesThePackage(const GameFolderHelper &helper, const CompileWriteOptions &write)
+    {
+        return (helper.GetResourceSaveLocation(write.saveTo) == ResourceSaveLocation::Package) && write.outDir.empty() && write.writeResources;
+    }
+
+    // The patch files that would hide the package writes of these scripts:
+    // script N, heap N (SCI1.1), and vocab 996 and 997. Plan section 5: a
+    // patch file hides the package copy, in the game and in SCI Companion. A
+    // script's text is checked in Finish, when the batch knows which scripts
+    // write one.
+    sci::Result<std::vector<std::string>> ShadowingPatchesOf(const GameFolderHelper &helper, const std::vector<ScriptId> &scripts)
+    {
+        std::vector<ResourceKey> keys;
+        for (const ScriptId &script : scripts)
+        {
+            keys.push_back({ ResourceType::Script, script.GetResourceNumber() });
+            if (helper.Version.SeparateHeapResources)
+            {
+                keys.push_back({ ResourceType::Heap, script.GetResourceNumber() });
+            }
+        }
+        keys.push_back({ ResourceType::Vocab, (uint16_t)VocabClassTable });
+        keys.push_back({ ResourceType::Vocab, (uint16_t)VocabSelectorNames });
+        return FindShadowingPatches(helper, keys);
+    }
+
     size_t CountDiagnostics(const std::vector<CompileResult> &diagnostics, bool errors)
     {
         return (size_t)std::count_if(diagnostics.begin(), diagnostics.end(),
@@ -94,33 +121,13 @@ sci::Result<std::unique_ptr<CompileBatch>> CompileBatch::Start(GameSession &sess
         }
         const GameFolderHelper &helper = session.Helper();
         std::unique_ptr<CompileBatch> batch(new CompileBatch(session, std::move(scripts), options));
-        batch->_toPackage = (helper.GetResourceSaveLocation(options.write.saveTo) == ResourceSaveLocation::Package) &&
-            options.write.outDir.empty() && options.write.writeResources;
+        batch->_toPackage = WritesThePackage(helper, options.write);
         if (batch->_toPackage && (options.shadows != ShadowPolicy::Ignore))
         {
-            // Plan section 5: a patch file hides the package copy, in the game
-            // and in SCI Companion. The texts of the scripts are checked in
-            // Finish, when the batch knows which scripts write one.
-            std::vector<ResourceKey> keys;
-            for (const ScriptId &script : batch->_scripts)
-            {
-                keys.push_back({ ResourceType::Script, script.GetResourceNumber() });
-                if (helper.Version.SeparateHeapResources)
-                {
-                    keys.push_back({ ResourceType::Heap, script.GetResourceNumber() });
-                }
-            }
-            keys.push_back({ ResourceType::Vocab, (uint16_t)VocabClassTable });
-            keys.push_back({ ResourceType::Vocab, (uint16_t)VocabSelectorNames });
-            SCI_TRY_ASSIGN(std::vector<std::string> shadowing, FindShadowingPatches(helper, keys));
+            SCI_TRY_ASSIGN(std::vector<std::string> shadowing, ShadowingPatchesOf(helper, batch->_scripts));
             if (!shadowing.empty())
             {
-                if (options.shadows == ShadowPolicy::Refuse)
-                {
-                    return sci::Fail(sci::ErrorCode::WriteRefused, "these patch files would hide the package copies of the compiled resources: " +
-                        JoinPaths(shadowing) + ". Move them aside, or replace them (--replace-patches).");
-                }
-                batch->_shadowingPatches = shadowing;
+                SCI_TRY(batch->_DecideAbout(shadowing, true));
             }
         }
         SCI_TRY(batch->_tables.TryLoad(session.ResourceMap()));
@@ -185,6 +192,7 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
         CompileResults results(log, _session.Version());
         sci::Status compiled = CompileScriptFile(_session, results, log, _tables, *_headers, script, _options.write);
         objectFileChanged = results.ObjectFileChanged();
+        outcome.stats = results.Stats;
         returned = true;
         return compiled;
     });
@@ -217,13 +225,45 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
     return true;
 }
 
+// What to do with patch files that would hide a package write: the policy,
+// or the answer of options.askShadows (the answer is the policy from then
+// on). Replace keeps the files, to move them after the commit.
+sci::Status CompileBatch::_DecideAbout(const std::vector<std::string> &files, bool beforeTheCompile)
+{
+    bool asked = false;
+    if ((_options.shadows == ShadowPolicy::Refuse) && _options.askShadows)
+    {
+        _options.shadows = _options.askShadows(files);
+        asked = true;
+    }
+    if (_options.shadows == ShadowPolicy::Replace)
+    {
+        _shadowingPatches.insert(_shadowingPatches.end(), files.begin(), files.end());
+        return sci::Ok();
+    }
+    if (_options.shadows == ShadowPolicy::Ignore)
+    {
+        return sci::Ok();
+    }
+    std::string text = "these patch files would hide the package copies of the compiled resources: " + JoinPaths(files) + ".";
+    if (!beforeTheCompile)
+    {
+        text += " Nothing was written.";
+    }
+    if (asked)
+    {
+        return sci::Fail(sci::ErrorCode::Cancelled, text);
+    }
+    return sci::Fail(sci::ErrorCode::WriteRefused, text + " Move them aside, or replace them (--replace-patches).");
+}
+
 // Plan section 5: the batch checks the queued package writes again before
 // the commit. A script's auto text is known only after its compile.
-void CompileBatch::_CheckQueuedWrites()
+sci::Status CompileBatch::_CheckQueuedWrites()
 {
     if (!_toPackage || (_options.shadows == ShadowPolicy::Ignore))
     {
-        return;
+        return sci::Ok();
     }
     std::vector<ResourceKey> keys;
     for (const ResourceBlob *queued : _defer->Pending())
@@ -233,14 +273,9 @@ void CompileBatch::_CheckQueuedWrites()
             keys.push_back({ queued->GetType(), (uint16_t)queued->GetNumber() });
         }
     }
-    sci::Result<std::vector<std::string>> shadowing = FindShadowingPatches(_session.Helper(), keys);
-    if (!shadowing)
-    {
-        _report.commit = sci::Fail(shadowing.error());
-        return;
-    }
+    SCI_TRY_ASSIGN(std::vector<std::string> shadowing, FindShadowingPatches(_session.Helper(), keys));
     std::vector<std::string> added;
-    for (const std::string &file : *shadowing)
+    for (const std::string &file : shadowing)
     {
         if (std::find(_shadowingPatches.begin(), _shadowingPatches.end(), file) == _shadowingPatches.end())
         {
@@ -249,15 +284,9 @@ void CompileBatch::_CheckQueuedWrites()
     }
     if (added.empty())
     {
-        return;
+        return sci::Ok();
     }
-    if (_options.shadows == ShadowPolicy::Refuse)
-    {
-        _report.commit = sci::Fail(sci::ErrorCode::WriteRefused, "these patch files would hide the package copies of the compiled resources: " +
-            JoinPaths(added) + ". Nothing was written. Move them aside, or replace them (--replace-patches).");
-        return;
-    }
-    _shadowingPatches.insert(_shadowingPatches.end(), added.begin(), added.end());
+    return _DecideAbout(added, false);
 }
 
 // ShadowPolicy::Replace, after the package write: the patch files go to
@@ -365,7 +394,10 @@ CompileReport CompileBatch::Finish()
             _report.commit = joined;
             return _report;
         }
-        _CheckQueuedWrites();
+        _report.commit = sci::Guard("checking the queued writes for patch files", [&]() -> sci::Status
+        {
+            return _CheckQueuedWrites();
+        });
         if (!_report.commit)
         {
             // Nothing is written: the destructor withdraws the queued writes.

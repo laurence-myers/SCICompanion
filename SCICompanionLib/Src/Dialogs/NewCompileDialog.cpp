@@ -16,12 +16,12 @@
 
 #include "stdafx.h"
 #include "AppState.h"
-#include "ScriptOM.h"
 #include "NewCompileDialog.h"
 #include "WindowsUtil.h"
-#include "ScriptDocument.h"
 #include "DependencyTracker.h"
 #include "ClassBrowser.h"
+#include "ResourceMap.h"
+#include "format.h"
 #include <filesystem>
 #include <regex>
 
@@ -37,41 +37,38 @@ static char THIS_FILE[] = __FILE__;
 
 // CNewCompileDialog dialog
 
-CNewCompileDialog::CNewCompileDialog(const std::unordered_set<std::string> &scriptsToRecompile, CWnd* pParent /*=NULL*/)
-	: CExtResizableDialog(CNewCompileDialog::IDD, pParent), _headers(appState->GetResourceMap()), _scriptsToRecompile(scriptsToRecompile)
+CNewCompileDialog::CNewCompileDialog(CompileBatch &batch, CWnd* pParent /*=NULL*/)
+	: CExtResizableDialog(CNewCompileDialog::IDD, pParent), _batch(batch), _abort(false)
 {
-	_fResult = false;
-	_fAbort = false;
 	_fDone = false;
-	_anyErrors = false;
 }
 
 CNewCompileDialog::~CNewCompileDialog()
 {
 }
 
-bool CNewCompileDialog::HasErrors()
+void CNewCompileDialog::OnScriptStart(size_t index, size_t count, const ScriptId &script)
 {
-	return _anyErrors || _log.HasErrors();
+	_current = script;
+	m_wndProgress.SetPos((int)index);
+	// Update the edit control with the current scripts name.
+	m_wndDisplay.SetWindowText(script.GetTitle().c_str());
 }
 
+void CNewCompileDialog::OnScriptDone(const ScriptOutcome &outcome)
+{
+	if (outcome.status)
+	{
+		appState->GetDependencyTracker().ClearScript(_current);
+	}
+	// The compile is done.  Post the results.
+	std::vector<CompileResult> results = outcome.diagnostics;
+	appState->OutputAddBatch(OutputPaneType::Compile, results);
+}
 
 LRESULT CNewCompileDialog::CompileAll(WPARAM wParam, LPARAM lParam)
 {
 	ShowWindow(SW_SHOW);
-
-	m_wndProgress.SetPos(_nScript);
-
-	int nSuccessfulResults = 0;
-
-	// Clear out the results from previous compiles.
-	_log.Clear();
-	int scriptsSize = static_cast<int>(_scripts.size());
-	ASSERT(_nScript < scriptsSize);
-
-	ScriptId &scriptId = _scripts[_nScript];
-	// Update the edit control with the current scripts name.
-	m_wndDisplay.SetWindowText(scriptId.GetTitle().c_str());
 
 	// Pump paint and input so the display and progress controls repaint and the
 	// Cancel button stays responsive, but dispatch only this dialog's own
@@ -85,46 +82,33 @@ LRESULT CNewCompileDialog::CompileAll(WPARAM wParam, LPARAM lParam)
 		_fDone = true;
 		return 0;
 	}
-	if (_fAbort)
+
+	// One script of the batch. False after the last script, or when Cancel
+	// set the abort flag.
+	bool more = false;
 	{
-		_fDone = true;
-		OnCancel();
+		// The class browser's background reload parses the same scripts and
+		// reads the game, so hold its lock for the compile.
+		ClassBrowserLock lock(appState->GetClassBrowser());
+		lock.Lock();
+		more = _batch.Step(_abort, *this);
+	}
+
+	if (more)
+	{
+		PostMessage(UWM_STARTCOMPILE, 0, 0); // Start another compile
 	}
 	else
 	{
-		// Do a compile
-		GameSession &session = appState->GetSession();
-		CompileResults results(_log, session.Version());
+		_fDone = true;
+		if (_abort)
 		{
-			// The class browser's background reload parses the same scripts and
-			// reads the game, so hold its lock for the compile.
-			ClassBrowserLock lock(appState->GetClassBrowser());
-			lock.Lock();
-			if (NewCompileScript(session, results, _log, _tables, _headers, scriptId))
-			{
-				appState->GetDependencyTracker().ClearScript(scriptId);
-			}
-			// The log holds this script only (it is cleared before each
-			// script), and its counts are this script's (plan step S2, P11).
-			_anyErrors = _anyErrors || _log.HasErrors();
-		}
-
-		// The compile is done.  Post the results.
-		appState->OutputAddBatch(OutputPaneType::Compile, _log.Results());
-	}
-
-	if (!_fAbort)
-	{
-		_nScript++;
-		if (_nScript < (int)_scripts.size())
-		{
-			PostMessage(UWM_STARTCOMPILE, 0, 0); // Start another compile
+			OnCancel();
 		}
 		else
 		{
 			// Change the text to close:
 			SetDlgItemText(IDCANCEL, "Close");
-			_fDone = true;
 			// Actually, just close ourselves
 			PostMessage(WM_CLOSE, 0, 0);
 		}
@@ -147,98 +131,18 @@ BOOL CNewCompileDialog::OnInitDialog()
 {
 	BOOL fRet = __super::OnInitDialog();
 	ShowSizeGrip(FALSE);
-	try
-	{
-		_tables.Load(appState->GetResourceMap()); // REVIEW: clean up
-
-		if (_scriptsToRecompile.empty())
-		{
-			// Everything
-			appState->GetResourceMap().GetAllScripts(_scripts);
-		}
-		else
-		{
-			// Filtered
-			std::vector<ScriptId> scriptsTemp;
-			appState->GetResourceMap().GetAllScripts(scriptsTemp);
-			std::copy_if(scriptsTemp.begin(), scriptsTemp.end(), std::back_inserter(_scripts),
-				[&](const ScriptId &scriptId)
-			{
-				return _scriptsToRecompile.find(scriptId.GetTitleLower()) != _scriptsToRecompile.end();
-			}
-			);
-		}
-
-		if (_scripts.empty())
-		{
-			if (IDYES == AfxMessageBox("Error finding scripts to compile.\nDo you want to try scanning the src folder for scripts?", MB_YESNO | MB_APPLMODAL | MB_ICONEXCLAMATION))
-			{
-				path enumPath = appState->GetResourceMap().Helper().GetSrcFolder();
-				std::vector<std::string> filenames;
-				auto matchRSTRegex = std::regex("(\\w+)\\.sc$");
-				for (auto it = directory_iterator(enumPath); it != directory_iterator(); ++it)
-				{
-					const auto &file = it->path();
-					std::smatch sm;
-					std::string temp = file.filename().string();
-					if (!is_directory(file) && std::regex_search(temp, sm, matchRSTRegex) && (sm.size() > 1))
-					{
-						_scripts.push_back(ScriptId(file.string()));
-					}
-				}
-				if (_scripts.empty())
-				{
-					AfxMessageBox("Could not find any .sc files.", MB_OK | MB_ICONERROR);
-				}
-			}
-		}
-
-		_nScript = 0;
-		if (!_scripts.empty())
-		{
-			// Set the range of the progress control.
-			m_wndProgress.SetRange32(0, (int)_scripts.size());
-			PostMessage(UWM_STARTCOMPILE, 0, 0);
-		}
-		else
-		{
-			_fDone = true;
-			// Actually, just close ourselves
-			PostMessage(WM_CLOSE, 0, 0);
-		}
-	}
-	catch (std::exception)
-	{
-		_fDone = true;
-		// Actually, just close ourselves
-		PostMessage(WM_CLOSE, 0, 0);
-	}
+	// Set the range of the progress control.
+	m_wndProgress.SetRange32(0, (int)_batch.Count());
+	PostMessage(UWM_STARTCOMPILE, 0, 0);
 	return fRet;
 }
-
-void CNewCompileDialog::OnDestroy()
-{
-	// Do some reporting.
-	std::stringstream str;
-	str << _nScript << " scripts compiled.";
-	_log.ReportResult(str.str());
-	appState->OutputAddBatch(OutputPaneType::Compile, _log.Results());
-
-	_log.CalculateErrors();
-
-	// Save any tables...
-	_tables.Save(appState->GetResourceMap());
-
-	__super::OnDestroy();
-}
-
 
 void CNewCompileDialog::OnCancel()
 {
 	if (!_fDone)
 	{
 		// We're still doing stuff.  Signal ourself to close.
-		_fAbort = TRUE;
+		_abort = true;
 	}
 	else
 	{
@@ -248,8 +152,96 @@ void CNewCompileDialog::OnCancel()
 
 BEGIN_MESSAGE_MAP(CNewCompileDialog, CExtResizableDialog)
 	ON_MESSAGE(UWM_STARTCOMPILE, CompileAll)
-	ON_WM_DESTROY()
 END_MESSAGE_MAP()
 
 
 // CNewCompileDialog message handlers
+
+std::vector<ScriptId> ScriptsToCompile(CResourceMap &resourceMap, const std::unordered_set<std::string> &titles)
+{
+	std::vector<ScriptId> scripts;
+	std::vector<ScriptId> all;
+	resourceMap.GetAllScripts(all);
+	std::copy_if(all.begin(), all.end(), std::back_inserter(scripts),
+		[&](const ScriptId &scriptId)
+	{
+		return titles.empty() || (titles.find(scriptId.GetTitleLower()) != titles.end());
+	}
+	);
+
+	if (scripts.empty())
+	{
+		if (IDYES == AfxMessageBox("Error finding scripts to compile.\nDo you want to try scanning the src folder for scripts?", MB_YESNO | MB_APPLMODAL | MB_ICONEXCLAMATION))
+		{
+			path enumPath = resourceMap.Helper().GetSrcFolder();
+			auto matchRSTRegex = std::regex("(\\w+)\\.sc$");
+			std::error_code ec;
+			for (auto it = directory_iterator(enumPath, ec); !ec && (it != directory_iterator()); it.increment(ec))
+			{
+				const auto &file = it->path();
+				std::smatch sm;
+				std::string temp = file.filename().string();
+				std::error_code notADirectory;
+				if (!it->is_directory(notADirectory) && std::regex_search(temp, sm, matchRSTRegex) && (sm.size() > 1))
+				{
+					scripts.push_back(ScriptId(file.string()));
+				}
+			}
+			if (scripts.empty())
+			{
+				AfxMessageBox("Could not find any .sc files.", MB_OK | MB_ICONERROR);
+			}
+		}
+	}
+	return scripts;
+}
+
+ShadowPolicy AskAboutShadowingPatches(const std::vector<std::string> &files)
+{
+	const size_t shownFiles = 10;
+	std::string list;
+	for (size_t i = 0; (i < files.size()) && (i < shownFiles); i++)
+	{
+		list += files[i] + "\n";
+	}
+	if (files.size() > shownFiles)
+	{
+		list += fmt::format("(and {0} more)\n", files.size() - shownFiles);
+	}
+	std::string text = fmt::format(
+		"These patch files would hide the compiled resources in the package. The game and SCI Companion read a patch file before the package.\n\n"
+		"{0}\n"
+		"Yes: move the patch files to the folder replaced-patches in the game folder.\n"
+		"No: keep the patch files. The compiled resources in the package stay hidden.\n"
+		"Cancel: stop, and write nothing.",
+		list);
+	switch (AfxMessageBox(text.c_str(), MB_YESNOCANCEL | MB_ICONWARNING | MB_APPLMODAL))
+	{
+	case IDYES:
+		return ShadowPolicy::Replace;
+	case IDNO:
+		return ShadowPolicy::Ignore;
+	default:
+		return ShadowPolicy::Refuse;
+	}
+}
+
+void ReportCompileBatch(const CompileReport &report, ICompileLog &log, const std::string &writeProblem)
+{
+	if (!report.tables)
+	{
+		log.ReportResult(CompileResult("There was a problem saving the class and selector tables: " + report.tables.error().ToString(), CompileResult::CRT_Error));
+	}
+	if (!report.commit)
+	{
+		log.ReportResult(CompileResult(writeProblem + report.commit.error().ToString(), CompileResult::CRT_Error));
+	}
+	for (const std::string &moved : report.movedPatches)
+	{
+		log.ReportResult(CompileResult("Moved the patch file " + moved));
+	}
+	for (const std::string &warning : report.warnings)
+	{
+		log.ReportResult(CompileResult("Warning: " + warning, CompileResult::CRT_Warning));
+	}
+}

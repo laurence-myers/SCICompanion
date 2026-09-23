@@ -1373,7 +1373,7 @@ void _ReplaceIterationVariable(ICompileLog &log, Script &script, ForEachLoop &th
 			// This is us
 			if (lValue.HasIndexer())
 			{
-				log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), lValue.GetPosition().Line()));
+				log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), lValue.GetPosition().Line() + 1));
 			}
 			lValue.SetName(newIterationVariable);
 		}
@@ -1386,7 +1386,7 @@ void _ReplaceIterationVariable(ICompileLog &log, Script &script, ForEachLoop &th
 			// This is us
 			if (propValue.GetIndexer())
 			{
-				log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), propValue.GetPosition().Line()));
+				log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), propValue.GetPosition().Line() + 1));
 			}
 			propValue.SetValue(newIterationVariable, ValueType::Token);
 		}
@@ -1449,12 +1449,12 @@ void _ProcessForEach(ICompileLog &log, Script &script, FunctionBase &func, ForEa
 		}
 		else
 		{
-			log.ReportResult(CompileResult("The collection must be a temp or local array.", script.GetScriptId(), collection.GetPosition().Line()));
+			log.ReportResult(CompileResult("The collection must be a temp or local array.", script.GetScriptId(), collection.GetPosition().Line() + 1));
 		}
 	}
 	else
 	{
-		log.ReportResult(CompileResult("The collection must be a temp or local array!", script.GetScriptId(), theForEach.GetStatement1()->GetPosition().Line()));
+		log.ReportResult(CompileResult("The collection must be a temp or local array!", script.GetScriptId(), theForEach.GetStatement1()->GetPosition().Line() + 1));
 	}
 	// else it would be some statement...
 
@@ -1692,17 +1692,17 @@ void _ProcessGetPoly(ICompileLog &log, Script &script, FunctionBase &func, GetPo
 			}
 			else
 			{
-				log.ReportResult(CompileResult(fmt::format("Unknown polygon name {} in &getpoly.", cpv.GetStringValue()), script.GetScriptId(), cpv.GetPosition().Line()));
+				log.ReportResult(CompileResult(fmt::format("Unknown polygon name {} in &getpoly.", cpv.GetStringValue()), script.GetScriptId(), cpv.GetPosition().Line() + 1));
 			}
 		}
 		else
 		{
-			log.ReportResult(CompileResult("&getpoly must have a polygon name as a string parameter, without the P_ in front, or an empty string for Default.", script.GetScriptId(), cpv.GetPosition().Line()));
+			log.ReportResult(CompileResult("&getpoly must have a polygon name as a string parameter, without the P_ in front, or an empty string for Default.", script.GetScriptId(), cpv.GetPosition().Line() + 1));
 		}
 	}
 	else
 	{
-		log.ReportResult(CompileResult("&getpoly must have a polygon name as a string parameter, without the P_ in front, or an empty string for Default.", script.GetScriptId(), theGetPoly.GetLineNumber()));
+		log.ReportResult(CompileResult("&getpoly must have a polygon name as a string parameter, without the P_ in front, or an empty string for Default.", script.GetScriptId(), theGetPoly.GetLineNumber() + 1));
 	}
 }
 
@@ -1781,7 +1781,7 @@ void PostProcessScript(ICompileLog *pLog, Script &script)
 				{
 					if (pLog)
 					{
-						pLog->ReportResult(CompileResult("The else clause must be the last clause in a cond.", script.GetScriptId(), clause->GetPosition().Line()));
+						pLog->ReportResult(CompileResult("The else clause must be the last clause in a cond.", script.GetScriptId(), clause->GetPosition().Line() + 1));
 					}
 					break;
 				}
@@ -1912,42 +1912,48 @@ bool SCISyntaxParser::Parse(Script &script, streamIt &stream, std::unordered_set
 	{
 		// With regards to syntax errors - there can really only be one, because we can't
 		// recover afterwards.
-		std::string strError = "Error: (" + script.GetScriptId().GetFileNameOrig() + ") ";
-		strError += context.GetErrorText();
+		std::string rawError = context.GetErrorText();
 		streamIt errorPos = context.GetErrorPosition();
-
-		strError += fmt::format(" ({}, {})", errorPos.GetLineNumber(), errorPos.GetColumnNumber());
+		// Add one to line#, since editor lines are 1-based (plan step S2, P13:
+		// the text of the message had the 0-based line).
+		int errorLine = errorPos.GetLineNumber() + 1;
 
 		// We can maybe improve the error by extracting a token here and seeing if it's a keyword.
 		std::string maybeKeyword;
 		streamIt errorPosCopy = errorPos;
 		ExtractSomeToken(maybeKeyword, errorPosCopy);
+		std::string hint;
 		if (!maybeKeyword.empty())
 		{
 			if (std::find(SCIStatementKeywords.begin(), SCIStatementKeywords.end(), maybeKeyword) != SCIStatementKeywords.end())
 			{
-				strError += fmt::format(" (Statements must being with a parenthesis: \"({0}\").", maybeKeyword);
+				hint = fmt::format(" (Statements must being with a parenthesis: \"({0}\").", maybeKeyword);
 			}
 			else if (IsOperator(maybeKeyword, sciNameToBinaryOp) || IsOperator(maybeKeyword, sciNameToAssignmentOp) || IsOperator(maybeKeyword, sciNameToUnaryOp))
 			{
-				strError += fmt::format(" (Operator expressions must begin with a parenthesis: \"({0}\").", maybeKeyword);
+				hint = fmt::format(" (Operator expressions must begin with a parenthesis: \"({0}\").", maybeKeyword);
 			}
 			else if (maybeKeyword == "else")
 			{
-				strError += ": \"else\" cannot appear here.";
+				hint = ": \"else\" cannot appear here.";
 			}
 			// Maybe more?
 			else
 			{
-				strError += fmt::format(": \"{0}\"", maybeKeyword);
+				hint = fmt::format(": \"{0}\"", maybeKeyword);
 			}
 		}
+		std::string strError = "Error: (" + script.GetScriptId().GetFileNameOrig() + ") " + rawError;
+		strError += fmt::format(" ({}, {})", errorLine, errorPos.GetColumnNumber());
+		strError += hint;
 
 		ScriptId scriptId(script.GetPath().c_str());
 		if (pError)
 		{
-			// Add one to line#, since editor lines are 1-based
-			pError->ReportResult(CompileResult(strError, scriptId, errorPos.GetLineNumber() + 1, errorPos.GetColumnNumber(), CompileResult::CRT_Error));
+			CompileResult result(strError, scriptId, errorLine, errorPos.GetColumnNumber(), CompileResult::CRT_Error);
+			// For the command line: no "Error: (file)" and no position.
+			result.SetRawMessage(rawError + hint);
+			pError->ReportResult(result);
 		}
 	}
 	g_compileSyntaxParseTimer.Stop();

@@ -96,6 +96,27 @@ void CScriptDocument::OnUpdateIsScript(CCmdUI *pCmdUI)
 }
 
 const char c_szLine[] = "--------------------------------------------------------";
+
+namespace
+{
+	// The dependency tracker forgets a script that compiled.
+	class ClearCompiledScript : public ICompileEvents
+	{
+	public:
+		explicit ClearCompiledScript(const ScriptId &script) : _script(script) {}
+		void OnScriptDone(const ScriptOutcome &outcome) override
+		{
+			if (outcome.status)
+			{
+				appState->GetDependencyTracker().ClearScript(_script);
+			}
+		}
+
+	private:
+		ScriptId _script;
+	};
+}
+
 void CScriptDocument::OnCompile()
 {
 	if (_scriptId.IsHeader())
@@ -111,28 +132,43 @@ void CScriptDocument::OnCompile()
 		}
 
 		GameSession &session = appState->GetSession();
-		DeferResourceAppend defer(session.ResourceMap());
 		CompileLog log;
 		_ClearErrorCount();
-		CompileTables tables;
-		tables.Load(session.ResourceMap());
-		PrecompiledHeaders headers(session.ResourceMap());
-		CompileResults results(log, session.Version());
-		bool fSuccess = false;
+		// Plan step S2: a batch of one script. It saves the tables when the
+		// script compiled, and writes the resources in one commit. It asks
+		// before a package save that a patch file would hide.
+		CompileOptions options;
+		options.askShadows = AskAboutShadowingPatches;
+		sci::Result<std::unique_ptr<CompileBatch>> batch = CompileBatch::Start(session, { _scriptId }, options);
+		CompileReport report;
+		if (batch)
 		{
-			// The class browser's background reload parses the same scripts and
-			// reads the game, so hold its lock for the compile.
-			ClassBrowserLock lock(appState->GetClassBrowser());
-			lock.Lock();
-			fSuccess = NewCompileScript(session, results, log, tables, headers, _scriptId);
-			if (fSuccess)
+			std::atomic<bool> abort(false);
+			ClearCompiledScript events(_scriptId);
 			{
-				appState->GetDependencyTracker().ClearScript(_scriptId);
+				// The class browser's background reload parses the same scripts and
+				// reads the game, so hold its lock for the compile.
+				ClassBrowserLock lock(appState->GetClassBrowser());
+				lock.Lock();
+				while ((*batch)->Step(abort, events))
+				{
+				}
 			}
+			report = (*batch)->Finish();
 		}
-		if (fSuccess)
+		else
 		{
-			tables.Save(session.ResourceMap());
+			log.ReportResult(CompileResult("The compile did not start: " + batch.error().ToString(), CompileResult::CRT_Error));
+		}
+		bool fSuccess = !report.scripts.empty() && report.scripts[0].status.has_value();
+		CompileStats stats;
+		if (!report.scripts.empty())
+		{
+			for (const CompileResult &result : report.scripts[0].diagnostics)
+			{
+				log.ReportResult(result);
+			}
+			stats = report.scripts[0].stats;
 		}
 
 		// put a timestamp in.
@@ -154,20 +190,17 @@ void CScriptDocument::OnCompile()
 
 		string info = fmt::format(
 			"Object data: {0} bytes   Code: {1} bytes   Script vars: {2} bytes   Strings: {3} bytes	Saids: {4} bytes",
-			results.Stats.Objects,
-			results.Stats.Code,
-			results.Stats.Locals,
-			results.Stats.Strings,
-			results.Stats.Saids
+			stats.Objects,
+			stats.Code,
+			stats.Locals,
+			stats.Strings,
+			stats.Saids
 		);
 		log.ReportResult(CompileResult(info));
 
-		sci::Status committed = defer.Commit();
-		if (!committed)
-		{
-			log.ReportResult(CompileResult("There was a problem writing the compiled script: " + committed.error().ToString(), CompileResult::CRT_Error));
-			log.CalculateErrors();
-		}
+		ReportCompileBatch(report, log, "There was a problem writing the compiled script: ");
+		// The counts of every error and warning above.
+		log.CalculateErrors();
 		_DoErrorSummary(log);
 
 		appState->OutputResults(OutputPaneType::Compile, log.Results());

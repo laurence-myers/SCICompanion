@@ -76,6 +76,11 @@ modernizing the build. Broad highlights since the previous release:
   Decompile dialog names new scripts in script-number order, so the `_N`
   suffix of a duplicate name is stable, and a name is always a valid file
   name and `(use ...)` name.
+* **More accurate compile messages.** Every compile message gives the right
+  line (some parser messages were one line early), the error and warning
+  counts are exact, and a script file that cannot be read gives an error. A
+  compile that cannot start, or cannot save the class and selector tables,
+  says why in the compile output.
 * **Fewer crashes on bad or corrupt data.** The decompiler, compiler and
   resource loaders are hardened against malformed, truncated or crafted game
   files, so opening a damaged game no longer crashes the app. Damaged data is
@@ -93,7 +98,9 @@ modernizing the build. Broad highlights since the previous release:
   format), and a group of patch files replaces none of them when one cannot be
   written. A compile or decompile now also reports a failed write of its
   `.sco`, `.scd` or `.sc` file, and a compile that cannot write its output
-  fails.
+  fails. Before a compile writes into the game's package, it asks what to do
+  with patch files that would hide the new resources (the game reads a patch
+  file first), and it can move them aside to a `replaced-patches` folder.
 * **Removed legacy SCI Studio script syntax.** Scripts now use SCI Companion's
   Sierra-style syntax only.
 * **Modern build tools.** The project now builds with the Visual Studio 2022

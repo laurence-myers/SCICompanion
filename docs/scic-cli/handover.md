@@ -6,9 +6,9 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: S2c. F1, A1, A2, B1, B2, B3a, B3b, F2, K1 to K6 and S3 are committed and
-  reviewed, with their review fixes. S1 and S2a are committed; they are not
-  reviewed yet. The review of `bc827391` and `fe02c12a` is done, and its
+- Current step: S4. F1, A1, A2, B1, B2, B3a, B3b, F2, K1 to K6 and S3 are committed and
+  reviewed, with their review fixes. S1 and S2 (S2a, S2b, S2c) are
+  committed; they are not reviewed yet. The review of `bc827391` and `fe02c12a` is done, and its
   findings are fixed (the commit after `de2fb8dc`).
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
@@ -18,7 +18,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -50,7 +50,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | K6 No `vocab.000`; `/` in paths | done | `dcc0fdf7`, review fixes (the commit after `108cb227`) | FIX: 1 should-fix (the handover State, fixed in `f85fe77d`), 7 nits, 1 question. Fixed: the Said test counts one error for two Said strings, a vocab 900 test, the null vocabulary in the "Add as synonym of" dialog, the `ScriptId` folder keeps only `\`, stale text. Known gaps: see "Decisions" (a synonym with no vocabulary, a name with a slash, a `ScriptId` with no folder). Review of the fixes (`bc827391`): PASS with nits, fixed in the commit after `de2fb8dc`. |
 | S3 ScriptCatalog, script names without `game.ini` | done | S3a `f85fe77d`; S3b `108cb227`; review fixes (the commit after `fb14399f`) | FIX: S3a 1 should-fix (a `-` in a derived name), S3b 1 should-fix (one name conflict refused every script, with the wrong fix), nits and questions. Fixed: see "S3 review" in "Decisions". |
 | S1 Compile destination | done | the commit after `fe02c12a` | |
-| S2 CompileBatch | S2a and S2b done; S2c to do | S2a `fb14399f`; S2b: the commit after `8a322b32` | |
+| S2 CompileBatch | done | S2a `fb14399f`; S2b `f256c0d8`; S2c: the commit after `f256c0d8` | |
 | S4 DecompileRun | not started | | |
 | C1 CLI project, `script list` | not started | | |
 | C2 `script decompile`, `script sco` | not started | | |
@@ -750,8 +750,9 @@ for each step, and a follow-up commit if the review finds a problem.
   and `MakeResourceData`.
 - S2 is three commits: S2a (the batch engine: `CompileBatch`,
   `CompileScripts`, `CompileReport`), S2b (the passes, the shadow check,
-  the raw message and the 1-based lines of a diagnostic), and S2c (the GUI
-  on the batch, and its shadow question).
+  the warnings of a patch-file write), and S2c (the raw message and the
+  1-based lines of a diagnostic, the GUI on the batch, and its shadow
+  question).
 - S2a: `Src\Compile\CompileBatch.h/.cpp`. `CompileOptions` (the S1 write
   options and `failFast`), `ScriptOutcome` (number, name, `Status`,
   diagnostics), `CompileReport` (the scripts, `tables`, `commit`,
@@ -800,6 +801,33 @@ for each step, and a follow-up commit if the review finds a problem.
   for a compiled script or heap (`script.0904`: SCI Companion can load
   either file), and the tables as patch files in a package-mode game (they
   hide the GUI's later package saves of 996 and 997).
+- S2c: `CompileResult::GetRawMessage` is the message with no "Error: (file)"
+  and no position around it (the command line prints its own form); it is
+  the message itself when nothing is around it. `_ReportThing` and the
+  syntax error of `SCISyntaxParser::Parse` set it. Every line is 1-based:
+  eight parser sites added 1 (P13), and the text of a syntax error had the
+  0-based line too. `ScriptOutcome::stats` has the sizes of the compiled
+  script (the GUI's "Object data..." line).
+- S2c: `CompileOptions::askShadows` (a callback). With `Refuse`, the batch
+  asks it about the patch files that would hide a package write, at the
+  start and in `Finish` for the files that it finds only then; its answer
+  is the policy from then on, and `Refuse` gives `Cancelled` (nothing is
+  written). A command line can use it for an interactive question too.
+- S2c: the GUI on the batch. `CompileABunchOfScripts` (compile-all and the
+  compile before a run) gets the scripts (`ScriptsToCompile`, the old
+  dialog code), starts the batch, shows `CNewCompileDialog` (now only the
+  progress: one `Step` for each posted message, inside the class browser
+  lock, with an atomic abort flag for Cancel), and then calls `Finish`
+  outside the dialog, so the question before the commit is not inside a
+  window's destruction. `ScriptDocument::OnCompile` runs a batch of one
+  script. `AskAboutShadowingPatches` is the question (Yes Replace, No
+  Ignore, Cancel Refuse), and `ReportCompileBatch` writes the lines of the
+  table save, the commit, the moved files and the warnings. The result for
+  the run after a compile: every script compiled, and the tables and the
+  commit are Ok; Cancel is not an error (as before).
+- S2c known gaps: no test runs the GUI code (the dialog, the question, the
+  output lines); it was checked by inspection and by the build. Only one of
+  the eight parser sites (the `else` clause of a `cond`) has a test.
 - S2b known gaps: no test has a script that compiles in one pass and fails
   in a later one, so the withdrawal of an earlier pass is checked by
   inspection only. With an output folder, each pass writes its files at
@@ -808,7 +836,7 @@ for each step, and a follow-up commit if the review finds a problem.
 
 ## Next action
 
-Phase K and S3 are done, with the fixes of their reviews; S1 and S2a are
-done, and the fixes of every review so far are committed; S2b is done.
-Next: S2c and S4 (plan section 9), then a review of S1, S2, the S3 review fixes and
+Phase K and S3 are done, with the fixes of their reviews; S1 and S2 are
+done, and the fixes of every review so far are committed.
+Next: S4 (plan section 9), then a review of S1, S2, the S3 review fixes and
 the fixes of the review of `bc827391` and `fe02c12a`.

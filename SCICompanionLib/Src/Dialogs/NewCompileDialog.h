@@ -13,18 +13,28 @@
 ***************************************************************************/
 #pragma once
 
-#include "CompileContext.h"
+#include "CompileBatch.h"
+#include <atomic>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
-// CCompileDialog dialog
+class CResourceMap;
 
-class CNewCompileDialog : public CExtResizableDialog
+// The progress of a compile batch (plan step S2): one script for each
+// UWM_STARTCOMPILE message, so the window paints and Cancel works. The caller
+// starts the batch before the dialog and finishes it after the dialog.
+
+class CNewCompileDialog : public CExtResizableDialog, public ICompileEvents
 {
 public:
-	CNewCompileDialog(const std::unordered_set<std::string> &scriptsToRecompile, CWnd* pParent = NULL);   // standard constructor
+	CNewCompileDialog(CompileBatch &batch, CWnd* pParent = NULL);   // standard constructor
 	virtual ~CNewCompileDialog();
-	bool HasErrors();
-	bool GetAborted() { return _fAbort; }
 	virtual void OnCancel();
+
+	// ICompileEvents
+	void OnScriptStart(size_t index, size_t count, const ScriptId &script) override;
+	void OnScriptDone(const ScriptOutcome &outcome) override;
 
 // Dialog Data
 	enum { IDD = IDD_COMPILEDIALOG };
@@ -33,23 +43,29 @@ protected:
 	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV support
 	LRESULT CompileAll(WPARAM wParam, LPARAM lParam);
 	virtual BOOL OnInitDialog();
-	virtual void OnDestroy();
 	DECLARE_MESSAGE_MAP()
 
 	CExtProgressWnd m_wndProgress;
 	CExtEdit m_wndDisplay;
-	bool _fResult;
-	bool _fAbort;
+	CompileBatch &_batch;
+	std::atomic<bool> _abort;
 	bool _fDone;
-	bool _anyErrors;	// A script of the run had errors.
-	int _nScript;
-	std::vector<ScriptId> _scripts;
-	CompileTables _tables;
-	PrecompiledHeaders _headers;
-	CompileLog _log;
-
-	std::unordered_set<std::string> _scriptsToRecompile;
+	// The script that compiles now.
+	ScriptId _current;
 
 	// Visuals
 	CExtButton m_wndCancel;
 };
+
+// The scripts of game.ini, or the ones with these lower-case titles. When
+// there is none, it offers to scan the src folder for .sc files.
+std::vector<ScriptId> ScriptsToCompile(CResourceMap &resourceMap, const std::unordered_set<std::string> &titles);
+
+// Plan step S2: the GUI asks before a package save that a patch file would
+// hide. Yes: move the patch files aside (Replace). No: keep them (Ignore).
+// Cancel: stop, and write nothing (Refuse).
+ShadowPolicy AskAboutShadowingPatches(const std::vector<std::string> &files);
+
+// The lines of a finished batch after the lines of its scripts: the table
+// save, the commit, the moved patch files and the warnings.
+void ReportCompileBatch(const CompileReport &report, ICompileLog &log, const std::string &writeProblem);
