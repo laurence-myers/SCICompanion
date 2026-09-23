@@ -63,6 +63,10 @@ public:
     // Rule 4: gives each script in names that has no name yet its derived
     // name.
     void AddDerivedNames(const std::map<uint16_t, std::string> &names);
+    // A reset of the names (--reset-names, plan step S4): each script in
+    // names gets its derived name, also a script that has a name from rules
+    // 1 to 3.
+    void ReplaceNames(const std::map<uint16_t, std::string> &names);
 
     // Rule 5 when no rule gives a name: nNNN.
     std::string NameOf(uint16_t number) const;

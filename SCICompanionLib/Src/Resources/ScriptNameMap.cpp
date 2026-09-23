@@ -587,6 +587,17 @@ void ScriptNameMap::AddDerivedNames(const std::map<uint16_t, std::string> &names
     }
 }
 
+void ScriptNameMap::ReplaceNames(const std::map<uint16_t, std::string> &names)
+{
+    for (const auto &name : names)
+    {
+        if (!name.second.empty())
+        {
+            _entries[name.first] = { name.second, NameSource::Derived };
+        }
+    }
+}
+
 std::string ScriptNameMap::NameOf(uint16_t number) const
 {
     auto entry = _entries.find(number);

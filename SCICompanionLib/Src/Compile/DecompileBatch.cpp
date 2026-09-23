@@ -304,39 +304,41 @@ namespace
 class DecompileBatch::Item
 {
 public:
-	Item(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, uint16_t scriptNumber, IDecompilerResults &results, const DecompileOptions &options) :
+	Item(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, uint16_t scriptNumber, IDecompilerResults &results, const DecompileOptions &options,
+		IDecompileOutput *output) :
 		_config(config),
 		_scriptLookups(scriptLookups),
 		_resourceMap(resourceMap),
 		_helper(resourceMap.Helper()),
 		_number(scriptNumber),
 		_results(results),
-		_options(options)
+		_options(options),
+		_output(output)
 	{
 	}
 
 	uint16_t GetNumber() const { return _number; }
 	bool NeedsNamingRounds() const { return !!_skeleton; }
+	// The first .sc or .sco file of this script that could not be written.
+	const sci::Status &WriteStatus() const { return _writeStatus; }
 
 	// Pass 1. Decompiles the script, names it against the global names known
 	// so far, and writes it. Keeps its naming skeleton if it still refers to
 	// an unnamed global, and records what a later round could change in it.
 	// When this is script 0 and there is no Main.sco yet, the .sco built from
 	// the tree becomes mainSCO, as it does when script 0 is decompiled first on
-	// its own. Returns false if the script does not load; sets renames to the
-	// globals its naming found.
-	bool DecompileNameAndWrite(unique_ptr<CSCOFile> &mainSCO, vector<pair<string, string>> &renames)
+	// its own. Fails if the script does not load (before plan step S4, it was
+	// dropped with no message); sets renames to the globals its naming found.
+	// A file that cannot be written is in WriteStatus.
+	sci::Status DecompileNameAndWrite(unique_ptr<CSCOFile> &mainSCO, vector<pair<string, string>> &renames)
 	{
 		DecompileState state(_helper, _scriptLookups.GetSelectorTable());
-		if (!state.compiledScript.Load(_helper, _helper.Version, _number))
-		{
-			return false;
-		}
+		SCI_TRY(state.compiledScript.TryLoad(_helper, _helper.Version, _number));
 		_Decompile(state, _results);
 		if (_results.IsAborted())
 		{
 			// Only partly decompiled: not written.
-			return true;
+			return sci::Ok();
 		}
 		if ((_number == 0) && !mainSCO)
 		{
@@ -358,7 +360,7 @@ public:
 		_undeterminedGlobals = move(collector.UndeterminedGlobals);
 		_namesInUse = move(collector.Names);
 		_globalNamesWhenWritten = _GlobalNames(mainSCO.get());
-		return true;
+		return sci::Ok();
 	}
 
 	// The naming rounds, over the skeleton. mainSCO holds the global names
@@ -409,11 +411,14 @@ public:
 	{
 		_namer.reset();
 		_skeleton.reset();
+		// The files of this pass replace those of pass 1.
+		_writeStatus = sci::Ok();
 
 		DecompileState state(_helper, _scriptLookups.GetSelectorTable());
-		if (!state.compiledScript.Load(_helper, _helper.Version, _number))
+		sci::Status loaded = state.compiledScript.TryLoad(_helper, _helper.Version, _number);
+		if (!loaded)
 		{
-			throw sci::DataError("the script did not load the second time", sci::ErrorCode::Internal);
+			throw sci::DataError("the script did not load the second time: " + loaded.error().ToString(), sci::ErrorCode::Internal);
 		}
 		// The first decompile reported this script's progress and statistics.
 		PassThroughResults quiet(_results, true);
@@ -464,6 +469,16 @@ private:
 
 		ConvertToSCISyntaxHelper(*state.script, &_scriptLookups);
 
+		std::stringstream ss;
+		SourceCodeWriter out(ss, state.script.get());
+		state.script->OutputSourceCode(out);
+		if (_output)
+		{
+			// Plan step S4 (--stdout): the source, and no file.
+			_output->OnSource(_number, ss.str());
+			return renames;
+		}
+
 		// Decompiling always generates an SCO. Any pertinent info from the old SCO should be transfered
 		// to the new one based extracting info from the script.
 		unique_ptr<CSCOFile> scoFile = SCOFromScriptAndCompiledScript(*state.script, state.compiledScript);
@@ -471,13 +486,11 @@ private:
 		if (!wroteObjectFile)
 		{
 			_results.AddResult(DecompilerResultType::Error, wroteObjectFile.error().ToString());
+			_KeepFirstWriteError(wroteObjectFile);
 		}
 
 		// Dump it to the .sc file
 		// TODO: If it already exists, we might want to ask for confirmation.
-		std::stringstream ss;
-		SourceCodeWriter out(ss, state.script.get());
-		state.script->OutputSourceCode(out);
 		string sourceFilename = _helper.GetScriptFileName(_number);
 		sci::Status wroteSource = WriteTextToFile(sourceFilename, ss.str());
 		if (wroteSource)
@@ -487,8 +500,17 @@ private:
 		else
 		{
 			_results.AddResult(DecompilerResultType::Error, wroteSource.error().ToString());
+			_KeepFirstWriteError(wroteSource);
 		}
 		return renames;
+	}
+
+	void _KeepFirstWriteError(const sci::Status &written)
+	{
+		if (_writeStatus)
+		{
+			_writeStatus = written;
+		}
 	}
 
 	const IDecompilerConfig *_config;
@@ -498,6 +520,8 @@ private:
 	uint16_t _number;
 	IDecompilerResults &_results;
 	DecompileOptions _options; // Our own copy: the lookups point into DebugFunctionMatch.
+	IDecompileOutput *_output;
+	sci::Status _writeStatus;
 
 	// _namer points at _skeleton; members are destroyed in reverse order.
 	unique_ptr<Script> _skeleton;
@@ -509,8 +533,9 @@ private:
 	vector<string> _globalNamesWhenWritten;
 };
 
-DecompileBatch::DecompileBatch(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, IDecompilerResults &results, const DecompileOptions &options) :
-	_config(config), _scriptLookups(scriptLookups), _resourceMap(resourceMap), _helper(resourceMap.Helper()), _results(results), _options(options)
+DecompileBatch::DecompileBatch(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, IDecompilerResults &results, const DecompileOptions &options,
+	IDecompileOutput *output) :
+	_config(config), _scriptLookups(scriptLookups), _resourceMap(resourceMap), _helper(resourceMap.Helper()), _results(results), _options(options), _output(output)
 {
 }
 
@@ -563,6 +588,7 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 	_globalRenames.clear();
 	_written.clear();
 	_rewritten.clear();
+	_failed.clear();
 
 	MemoryUsage memoryAtStart = _GetMemoryUsage();
 
@@ -581,28 +607,27 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 			break;
 		}
 		_results.AddResult(DecompilerResultType::Important, fmt::format("Decompiling script {0}", scriptNumber));
-		unique_ptr<Item> item = make_unique<Item>(_config, _scriptLookups, _resourceMap, scriptNumber, _results, _options);
+		unique_ptr<Item> item = make_unique<Item>(_config, _scriptLookups, _resourceMap, scriptNumber, _results, _options, _output);
 		vector<pair<string, string>> renames;
-		try
+		// The exception boundary of the script (plan step S4). No context: the
+		// message and the report name the script.
+		sci::Status decompiled = sci::Guard("", [&]() -> sci::Status
 		{
-			if (!item->DecompileNameAndWrite(mainSCO, renames))
-			{
-				continue;
-			}
-		}
-		catch (std::exception &e)
+			return item->DecompileNameAndWrite(mainSCO, renames);
+		});
+		if (!decompiled)
 		{
-			_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed to decompile: {1}", scriptNumber, e.what()));
-			continue;
-		}
-		catch (...)
-		{
-			_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed to decompile.", scriptNumber));
+			_failed[scriptNumber] = decompiled.error();
+			_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed to decompile: {1}", scriptNumber, decompiled.error().ToString()));
 			continue;
 		}
 		if (_results.IsAborted())
 		{
 			break;
+		}
+		if (!item->WriteStatus())
+		{
+			_failed[scriptNumber] = item->WriteStatus().error();
 		}
 		_written.insert(scriptNumber);
 		_globalRenames.insert(_globalRenames.end(), renames.begin(), renames.end());
@@ -633,23 +658,26 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 				{
 					continue;
 				}
-				try
+				uint16_t number = item->GetNumber();
+				vector<pair<string, string>> renames;
+				sci::Status named = sci::Guard("", [&]() -> sci::Status
 				{
-					vector<pair<string, string>> renames = item->NameVariables(mainSCO.get());
+					renames = item->NameVariables(mainSCO.get());
+					return sci::Ok();
+				});
+				if (named)
+				{
 					if (!renames.empty())
 					{
 						namedSomething = true;
 						_globalRenames.insert(_globalRenames.end(), renames.begin(), renames.end());
 					}
 				}
-				catch (std::exception &e)
+				else
 				{
-					_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed while naming variables: {1}", item->GetNumber(), e.what()));
-					item.reset();
-				}
-				catch (...)
-				{
-					_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed while naming variables.", item->GetNumber()));
+					// The script stays as pass 1 wrote it.
+					_failed[number] = named.error();
+					_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed while naming variables: {1}", number, named.error().ToString()));
 					item.reset();
 				}
 			}
@@ -675,23 +703,31 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 			item.reset();
 			continue;
 		}
-		_results.AddResult(DecompilerResultType::Important, fmt::format("Decompiling script {0} again with the new global names", item->GetNumber()));
-		try
+		uint16_t number = item->GetNumber();
+		_results.AddResult(DecompilerResultType::Important, fmt::format("Decompiling script {0} again with the new global names", number));
+		vector<pair<string, string>> renames;
+		sci::Status rewritten = sci::Guard("", [&]() -> sci::Status
 		{
-			vector<pair<string, string>> renames = item->DecompileAndRewrite(mainSCO.get());
-			if (!_results.IsAborted())
+			renames = item->DecompileAndRewrite(mainSCO.get());
+			return sci::Ok();
+		});
+		if (!rewritten)
+		{
+			// The file on disk is what pass 1 wrote.
+			_failed[number] = rewritten.error();
+			_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed to write again: {1}", number, rewritten.error().ToString()));
+		}
+		else if (!_results.IsAborted())
+		{
+			_rewritten.insert(number);
+			_globalRenames.insert(_globalRenames.end(), renames.begin(), renames.end());
+			// The files of pass 2 replace those of pass 1, and so does their
+			// write status.
+			_failed.erase(number);
+			if (!item->WriteStatus())
 			{
-				_rewritten.insert(item->GetNumber());
-				_globalRenames.insert(_globalRenames.end(), renames.begin(), renames.end());
+				_failed[number] = item->WriteStatus().error();
 			}
-		}
-		catch (std::exception &e)
-		{
-			_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed to write again: {1}", item->GetNumber(), e.what()));
-		}
-		catch (...)
-		{
-			_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed to write again.", item->GetNumber()));
 		}
 		item.reset();
 	}
@@ -707,7 +743,7 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 		// Otherwise main's .sco on disk gets the names now, so the scripts
 		// written here agree with it.
 		bool mainWrittenLast = (_rewritten.find(0) != _rewritten.end());
-		if (mainSCO && !mainWrittenLast)
+		if (mainSCO && !mainWrittenLast && !_output)
 		{
 			_results.AddResult(DecompilerResultType::Important, "Updating global variables in script 0");
 			sci::Status wroteMain = SaveSCOFile(_helper, *mainSCO);

@@ -48,6 +48,13 @@ sci::Result<std::map<uint16_t, std::string>> DeriveScriptNames(GameSession &sess
 // call it before a worker thread reads the names (S4). The GUI sets no map.
 sci::Status AddDerivedScriptNames(GameSession &session);
 
+// --reset-names (plan section 4.4): gives every compiled script its derived
+// name, also a script that has a name from rules 1 to 3, as the Decompile
+// dialog's "Reset filenames" does. Returns the .sc and .sco files that keep
+// an old name. It replaces the session's map with no lock, as
+// AddDerivedScriptNames does.
+sci::Result<std::vector<std::string>> ResetScriptNames(GameSession &session);
+
 // Plan section 4.3: each script of the game, in number order. That is each
 // script resource, and each script that has only a source file, a .sco file
 // or a game.ini entry. When a compiled script has no name from rules 1 to 3,

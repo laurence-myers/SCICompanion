@@ -6,9 +6,10 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: S4. F1, A1, A2, B1, B2, B3a, B3b, F2, K1 to K6 and S3 are committed and
-  reviewed, with their review fixes. S1 and S2 (S2a, S2b, S2c) are
-  committed; they are not reviewed yet. The review of `bc827391` and `fe02c12a` is done, and its
+- Current step: S4 (S4a committed; S4b to do). F1, A1, A2, B1, B2,
+  B3a, B3b, F2, K1 to K6 and S3 are committed and reviewed, with their
+  review fixes. S1, S2 (S2a, S2b, S2c) and S4a are committed; the reviews of
+  S1, S2 and of the fix commits `de2fb8dc` and `8a322b32` are running. The review of `bc827391` and `fe02c12a` is done, and its
   findings are fixed (the commit after `de2fb8dc`).
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
@@ -18,7 +19,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -51,7 +52,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | S3 ScriptCatalog, script names without `game.ini` | done | S3a `f85fe77d`; S3b `108cb227`; review fixes (the commit after `fb14399f`) | FIX: S3a 1 should-fix (a `-` in a derived name), S3b 1 should-fix (one name conflict refused every script, with the wrong fix), nits and questions. Fixed: see "S3 review" in "Decisions". |
 | S1 Compile destination | done | the commit after `fe02c12a` | |
 | S2 CompileBatch | done | S2a `fb14399f`; S2b `f256c0d8`; S2c: the commit after `f256c0d8` | |
-| S4 DecompileRun | not started | | |
+| S4 DecompileRun | S4a done; S4b to do | S4a: the commit after `2ca7e418` | |
 | C1 CLI project, `script list` | not started | | |
 | C2 `script decompile`, `script sco` | not started | | |
 | C3 `script compile` | not started | | |
@@ -833,10 +834,57 @@ for each step, and a follow-up commit if the review finds a problem.
   inspection only. With an output folder, each pass writes its files at
   once, so a script that fails in the last pass keeps the file of an
   earlier pass.
+- S4 is two commits: S4a (the run, `DecompileRun`, and
+  `GenerateObjectFiles` for `script sco`) and S4b (the Decompile dialog on
+  the run, and the removal of the library's `theApp`, P16).
+- S4a: `Src\Compile\DecompileRun.h/.cpp`. `RunDecompile(session, scripts,
+  options, results, output)` prepares the src folder, gives the names
+  (`NameAssignment`: Missing adds the derived names, All is
+  `--reset-names`, None for the GUI, which names with `game.ini`), loads
+  the lookups and the config, runs the batch, then the stale loop (the
+  scripts that the run did not decompile and whose `.sc` uses a renamed
+  global by its old name: in `stale`, or with `updateStale` decompiled in a
+  new batch, until none is stale), and writes the names into `game.ini`
+  (`GameIniNames`: Update writes only into a `game.ini` that exists, Create
+  also creates it, None never writes). `DecompileReport`: an outcome with a
+  `Status` for each script (Cancelled when the run stopped before it), the
+  renames, the stale scripts, the statistics (a counting wrapper of the
+  results), `cancelled`, warnings, and the `game.ini` status.
+  `PrepareDecompileFolder` is a plain copy that never overwrites a file.
+  `WriteScriptNamesToGameIni` skips a default name (`nNNN`) and a name that
+  `game.ini` has.
+- S4a: `DecompileBatch` changes. An output (`IDecompileOutput`, for
+  `--stdout`) gets the source and no file is written (not the `.sc`, the
+  `.sco` or main's `.sco`); the run gives the output the last source of
+  each script that decompiled, in number order. `GetFailedScripts` has the
+  error of each failed script: a script that does not load (`TryLoad`;
+  before, it was dropped with no message), an exception (each pass is
+  inside an exception boundary with no context, because the message names
+  the script), or the first `.sc` or `.sco` write error (before, a message
+  only, and the script counted as written). Pass 2 replaces the write
+  status of pass 1.
+- S4a: `ResetScriptNames` (`ScriptCatalog`) gives every compiled script
+  its derived name (`ScriptNameMap::ReplaceNames`) and returns the files
+  that keep an old name (the run's warnings).
+- S4a: `GenerateObjectFiles(session, scripts)` (plan section 4.6) parses
+  each source file (the path of the `ScriptId`), loads the compiled script
+  (its number), and writes the `.sco` next to the source with
+  `SCOFromScriptAndCompiledScript`; the `.sco` gets the number of the
+  compiled script (a warning when the source declares another literal
+  number). No source file, or no compiled script: skipped, with the
+  reason. A syntax error: `Compile`, with the diagnostics, and no `.sco`.
+  A test deletes every `.sco` of the SCI0 template, makes them from the
+  sources, and compiles every script with no error.
+- S4a known gaps: with an output, the config reads the game's
+  `src\Decompiler.ini` only (no copy is made), so a game with no `src`
+  folder decompiles with the default config. The run loads the lookups for
+  each run (the dialog kept them). The stale check reads every `.sc` of the
+  game that the run did not decompile, once for each group.
 
 ## Next action
 
-Phase K and S3 are done, with the fixes of their reviews; S1 and S2 are
-done, and the fixes of every review so far are committed.
-Next: S4 (plan section 9), then a review of S1, S2, the S3 review fixes and
-the fixes of the review of `bc827391` and `fe02c12a`.
+Phase K and S3 are done, with the fixes of their reviews; S1, S2 and S4a
+are done. The reviews of S1 and S2a, of S2b and S2c, and of `de2fb8dc` and
+`8a322b32` are running (three agents, isolated worktrees).
+Next: S4b (plan section 9), the fixes of those reviews, and a review of
+S4.

@@ -1,0 +1,129 @@
+#pragma once
+
+// The decompile of scripts as one run (plan step S4; plan sections 3.3, 3.4,
+// 4.4 and 6.5): the src folder, the names of every script, the batch with a
+// status for each script, the stale scripts, the statistics, and the names in
+// game.ini. The command line and the GUI's Decompile dialog use it.
+
+#include "DecompileBatch.h"
+#include "CompileInterfaces.h"
+#include "Result.h"
+#include <cstdint>
+#include <map>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
+class GameSession;
+class GameFolderHelper;
+class IDecompilerResults;
+
+// The names of the scripts before the run (plan section 3.4).
+enum class NameAssignment
+{
+    Missing,    // a compiled script with no name gets its derived name (rule 4)
+    All,        // every compiled script gets its derived name (--reset-names)
+    None,       // the names stay as they are (the GUI names with game.ini)
+};
+
+// The names in game.ini after the run (--game-ini).
+enum class GameIniNames
+{
+    Update,     // when game.ini exists: an entry for each written script whose name it does not have
+    Create,     // the same, and create game.ini when it does not exist
+    None,       // never write game.ini
+};
+
+struct DecompileRunOptions
+{
+    DecompileOptions engine;
+    NameAssignment names = NameAssignment::Missing;
+    GameIniNames gameIni = GameIniNames::Update;
+    // After a run on some of the scripts: decompile the stale scripts too,
+    // and again until no script is stale.
+    bool updateStale = false;
+};
+
+struct DecompileStats
+{
+    int functions = 0;          // decompiled to source
+    int fallbacks = 0;          // fell back to asm
+    int functionBytes = 0;
+    int fallbackBytes = 0;
+};
+
+struct DecompileOutcome
+{
+    uint16_t number = 0;
+    std::string name;
+    // Ok: the files of the script were written (or its source went to the
+    // output). Else why the script failed; Cancelled when the run stopped
+    // before it.
+    sci::Status status;
+};
+
+struct DecompileReport
+{
+    // The scripts of the run in number order, then each group of stale
+    // scripts that updateStale decompiled.
+    std::vector<DecompileOutcome> scripts;
+    // The globals that the run named: (standard name, new name).
+    std::vector<std::pair<std::string, std::string>> globalRenames;
+    // The scripts that the run did not decompile, and that use a renamed
+    // global by its old name. Empty with updateStale.
+    std::set<uint16_t> stale;
+    DecompileStats stats;
+    bool cancelled = false;
+    // For example, the files that keep an old name after a reset of the
+    // names, or a Decompiler.ini that could not be read.
+    std::vector<std::string> warnings;
+    // The write of the names into game.ini.
+    sci::Status gameIni;
+
+    size_t WrittenCount() const;
+    size_t FailedCount() const;
+    // Every script was written, the run was not cancelled, and game.ini is
+    // Ok.
+    bool Succeeded() const;
+};
+
+// Decompiles the scripts. Fails only when the run cannot start (for example,
+// the src folder cannot be made, or the compiled scripts cannot be read); the
+// report has the status of each script. With output, the source of each
+// script that decompiled goes to it at the end, in number order, and nothing
+// is written: no .sc, no .sco, no src folder, no game.ini.
+sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<uint16_t> &scripts, const DecompileRunOptions &options,
+    IDecompilerResults &results, IDecompileOutput *output = nullptr);
+
+// Makes the src folder and, when src\Decompiler.ini does not exist, copies
+// the files of decompilerFolder into it. It never overwrites a file, and it
+// copies nothing when decompilerFolder does not exist.
+sci::Status PrepareDecompileFolder(const GameFolderHelper &helper, const std::string &decompilerFolder);
+
+// Plan section 4.4 (--game-ini): an entry in game.ini [Script] for each of
+// the names that game.ini does not have (the default name nNNN needs none).
+// Update writes only into a game.ini that exists; nothing else creates it
+// (plan section 3.4).
+sci::Status WriteScriptNamesToGameIni(const GameFolderHelper &helper, const std::map<uint16_t, std::string> &names, GameIniNames mode);
+
+struct ObjectFileOutcome
+{
+    uint16_t number = 0;
+    std::string name;
+    // Ok: the .sco file was written, or the script was skipped. Compile: the
+    // source has syntax errors (in diagnostics). Else why the script failed.
+    sci::Status status;
+    // Why the script was skipped: it has no source file, or the game has no
+    // compiled script for it. Empty when it was not skipped.
+    std::string skipped;
+    std::vector<CompileResult> diagnostics;
+};
+
+// Plan section 4.6 (script sco): for each script, the .sco file from its
+// source file (the path of the ScriptId) and the game's compiled script
+// (the number of the ScriptId), with the code of the decompiler
+// (SCOFromScriptAndCompiledScript). The .sco goes next to the source file,
+// with its name. It does not compile, and it changes no resource. Source from
+// another tool gets the .sco files that a compile needs for each (use ...).
+sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &session, const std::vector<ScriptId> &scripts);

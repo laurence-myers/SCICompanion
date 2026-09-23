@@ -564,6 +564,40 @@ sci::Status AddDerivedScriptNames(GameSession &session)
     });
 }
 
+sci::Result<std::vector<std::string>> ResetScriptNames(GameSession &session)
+{
+    return sci::Guard("resetting the script names", [&]() -> sci::Result<std::vector<std::string>>
+    {
+        const GameFolderHelper &helper = session.Helper();
+        std::shared_ptr<const ScriptNameMap> current = helper.ScriptNames;
+        if (!current)
+        {
+            return sci::Fail(sci::ErrorCode::Internal, "the session has no script names");
+        }
+        SCI_TRY_ASSIGN(auto derived, DeriveScriptNames(session, true));
+        std::vector<std::string> oldFiles;
+        for (const auto &name : derived)
+        {
+            std::string old = current->NameOf(name.first);
+            if (_stricmp(old.c_str(), name.second.c_str()) != 0)
+            {
+                for (const std::string &file : { helper.GetScriptFileName(old), helper.GetScriptObjectFileName(old) })
+                {
+                    std::error_code ec;
+                    if (fs::exists(file, ec))
+                    {
+                        oldFiles.push_back(file);
+                    }
+                }
+            }
+        }
+        ScriptNameMap names = *current;
+        names.ReplaceNames(derived);
+        session.ResourceMap().SetScriptNames(std::make_shared<const ScriptNameMap>(std::move(names)));
+        return oldFiles;
+    });
+}
+
 sci::Result<std::vector<ScriptRow>> ListScripts(GameSession &session, bool alwaysDerive)
 {
     return sci::Guard("listing the scripts", [&]() -> sci::Result<std::vector<ScriptRow>>

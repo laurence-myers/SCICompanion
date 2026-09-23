@@ -1,5 +1,14 @@
 #pragma once
 
+#include "Result.h"
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace sci { class Script; }
 class IDecompilerConfig;
 class IDecompilerResults;
@@ -14,6 +23,17 @@ struct DecompileOptions
 	std::string DebugFunctionMatch;
 	bool DecompileAsm = false;
 	bool SubstituteTextTuples = false;
+};
+
+// Instead of the files: the source of each script (the command line's
+// --stdout; plan step S4). With it, the batch writes no .sc and no .sco file,
+// and not main's .sco. A script that the batch decompiles again (pass 2)
+// gives its source again; the last one counts.
+class IDecompileOutput
+{
+public:
+	virtual ~IDecompileOutput() = default;
+	virtual void OnSource(uint16_t scriptNumber, const std::string &source) = 0;
 };
 
 // Decompiles a set of scripts and writes their .sc and .sco files.
@@ -44,7 +64,8 @@ class DecompileBatch
 public:
 	// The resource map gives the game (its helper), the text resources and
 	// vocab.000.
-	DecompileBatch(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, IDecompilerResults &results, const DecompileOptions &options = DecompileOptions());
+	DecompileBatch(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, IDecompilerResults &results, const DecompileOptions &options = DecompileOptions(),
+		IDecompileOutput *output = nullptr);
 	~DecompileBatch();
 	DecompileBatch(const DecompileBatch &) = delete;
 	DecompileBatch &operator=(const DecompileBatch &) = delete;
@@ -54,7 +75,7 @@ public:
 	// script 0 is in the batch, whose own .sco then carries the names).
 	// An abort stops the batch where it is; the scripts already written stay.
 	// A script that fails to decompile is reported and dropped, and the rest
-	// go on.
+	// go on. Each script runs inside an exception boundary (plan step S4).
 	void Run(const std::set<uint16_t> &scriptNumbers);
 
 	// The globals this run named: (standard name, new name).
@@ -64,6 +85,11 @@ public:
 	// Of those, the scripts decompiled and written a second time because a
 	// later naming round changed something they can see.
 	const std::set<uint16_t> &GetRewrittenScripts() const { return _rewritten; }
+	// The scripts that failed, and why: the compiled script did not load, an
+	// exception in the decompiler or the naming, or a .sc or .sco file that
+	// could not be written (the first error of the script). A script can be
+	// in GetWrittenScripts too: a file of it was written.
+	const std::map<uint16_t, sci::Error> &GetFailedScripts() const { return _failed; }
 
 private:
 	class Item;
@@ -74,10 +100,12 @@ private:
 	const GameFolderHelper &_helper;
 	IDecompilerResults &_results;
 	DecompileOptions _options;
+	IDecompileOutput *_output;
 
 	std::vector<std::pair<std::string, std::string>> _globalRenames;
 	std::set<uint16_t> _written;
 	std::set<uint16_t> _rewritten;
+	std::map<uint16_t, sci::Error> _failed;
 };
 
 // The naming skeleton of a decompiled script: what the variable namer reads

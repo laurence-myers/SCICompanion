@@ -123,6 +123,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Src\Compile\DecompileRun.cpp">
+      <Filter>Source Files\Compile</Filter>
+    </ClCompile>
     <ClCompile Include="Src\Compile\CompileBatch.cpp">
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
@@ -947,6 +950,9 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Src\Compile\DecompileRun.h">
+      <Filter>Header Files\Compile</Filter>
+    </ClInclude>
     <ClInclude Include="Src\Compile\CompileBatch.h">
       <Filter>Header Files\Compile</Filter>
     </ClInclude>
