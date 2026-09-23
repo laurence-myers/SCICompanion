@@ -62,6 +62,31 @@ namespace
             ParseScriptNumber(text.substr(dash + 1), last) && (first <= last);
     }
 
+    bool AllDigits(const std::string &text)
+    {
+        return !text.empty() && std::all_of(text.begin(), text.end(), [](char ch) { return (ch >= '0') && (ch <= '9'); });
+    }
+
+    // Why a selector that has the form of a number or a range is not one;
+    // "" when it does not have that form (S3 review: "200-100" and "65536"
+    // said "no script has this name").
+    std::string WhyNotANumber(const std::string &text)
+    {
+        size_t dash = text.find('-');
+        bool isRange = (dash != std::string::npos) && AllDigits(text.substr(0, dash)) && AllDigits(text.substr(dash + 1));
+        if (!AllDigits(text) && !isRange)
+        {
+            return std::string();
+        }
+        uint16_t first;
+        uint16_t last;
+        if (!isRange || !ParseScriptNumber(text.substr(0, dash), first) || !ParseScriptNumber(text.substr(dash + 1), last))
+        {
+            return "a script number is 0 to 65535";
+        }
+        return "the first number of a range must not be larger than the second";
+    }
+
     bool LooksLikePath(const std::string &text)
     {
         return (text.find('\\') != std::string::npos) || (text.find('/') != std::string::npos) ||
@@ -85,17 +110,30 @@ namespace
         return fs::is_regular_file(path, ec);
     }
 
-    // The patch files of one resource type in the game folder, by number, as
-    // the patch file source finds them: the file name matches the type's
-    // patterns and gives a number, and the file's first byte is the type.
-    std::map<uint16_t, std::vector<std::string>> PatchFilesOf(const GameFolderHelper &helper, ResourceType type)
+    using PatchKey = std::pair<ResourceType, uint16_t>;
+
+    // The patch files of the game folder, by type and number, as the patch
+    // file source finds them when it reads these types together
+    // (PatchFilesResourceSource::ReadNextEntry): the file name matches a name
+    // pattern of one of the types and gives a number, the file has 2 bytes or
+    // more, and its first byte gives its type. So 105.hep with a script's
+    // type byte is script 105 when scripts and heaps are read together, and a
+    // 1-byte 101.scr is no resource (S3 review).
+    std::map<PatchKey, std::vector<std::string>> PatchFilesOf(const GameFolderHelper &helper, const std::set<ResourceType> &types)
     {
-        std::map<uint16_t, std::vector<std::string>> files;
-        if (helper.GameFolder.empty() || ((int)type < 0) || ((int)type >= (int)ResourceType::Max))
+        std::map<PatchKey, std::vector<std::string>> files;
+        std::string spec;
+        for (ResourceType type : types)
+        {
+            if (((int)type >= 0) && ((int)type < (int)ResourceType::Max))
+            {
+                spec += (spec.empty() ? "" : ";") + std::string(g_szResourceSpecByType[(int)type]);
+            }
+        }
+        if (helper.GameFolder.empty() || spec.empty())
         {
             return files;
         }
-        const char *spec = g_szResourceSpecByType[(int)type];
         WIN32_FIND_DATAA findData;
         HANDLE find = FindFirstFileA((helper.GameFolder + "\\*.*").c_str(), &findData);
         if (find == INVALID_HANDLE_VALUE)
@@ -104,7 +142,7 @@ namespace
         }
         do
         {
-            if ((findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || !PathMatchSpecA(findData.cFileName, spec))
+            if ((findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || !PathMatchSpecA(findData.cFileName, spec.c_str()))
             {
                 continue;
             }
@@ -115,10 +153,14 @@ namespace
             }
             std::string path = helper.GameFolder + "\\" + findData.cFileName;
             std::ifstream file(path, std::ios::binary);
-            char first = 0;
-            if (file.read(&first, 1) && ((((unsigned char)first) & 0x7f) == (unsigned char)type))
+            char header[2] = {};
+            if (file.read(header, sizeof(header)))
             {
-                files[(uint16_t)number].push_back(path);
+                ResourceType type = (ResourceType)(((unsigned char)header[0]) & 0x7f);
+                if (types.find(type) != types.end())
+                {
+                    files[PatchKey(type, (uint16_t)number)].push_back(path);
+                }
             }
         } while (FindNextFileA(find, &findData));
         FindClose(find);
@@ -166,7 +208,14 @@ namespace
             }
         }
 
-        std::map<uint16_t, std::vector<std::string>> patchFiles = PatchFilesOf(helper, ResourceType::Script);
+        // The types that the container read, as the patch file source reads
+        // them together.
+        std::set<ResourceType> patchTypes = { ResourceType::Script };
+        if (types != ResourceTypeFlags::Script)
+        {
+            patchTypes.insert(ResourceType::Heap);
+        }
+        std::map<PatchKey, std::vector<std::string>> patchFiles = PatchFilesOf(helper, patchTypes);
         std::map<uint16_t, CompiledInfo> scripts;
         for (auto &script : scriptBlobs)
         {
@@ -174,7 +223,7 @@ namespace
             const ResourceBlob &blob = *script.second;
             if (blob.GetSourceFlags() == ResourceSourceFlags::PatchFile)
             {
-                auto patch = patchFiles.find(script.first);
+                auto patch = patchFiles.find(PatchKey(ResourceType::Script, script.first));
                 std::string file = (patch != patchFiles.end()) ? fs::path(patch->second[0]).filename().string() :
                     GetFileNameFor(ResourceType::Script, script.first, NoBase36, helper.Version);
                 info.location = file + " (patch)";
@@ -206,14 +255,28 @@ namespace
         return scripts;
     }
 
-    sci::Status CheckNoConflict(const ScriptNameMap &names, SelectorMode mode)
+    // The name conflicts of the chosen scripts, for a mode that writes (the
+    // list shows every script). S3 review: before, any conflict refused every
+    // script, with one fix for all kinds of conflict.
+    std::vector<std::string> ConflictsOfChosen(const ScriptNameMap &names, SelectorMode mode, const std::set<uint16_t> &numbers)
     {
-        if ((mode == SelectorMode::List) || names.Conflicts().empty())
+        std::vector<std::string> texts;
+        if (mode == SelectorMode::List)
         {
-            return sci::Ok();
+            return texts;
         }
-        return sci::Fail(sci::ErrorCode::Usage, "The script names have a conflict. Remove or rename a file, then run again:\n  " +
-            JoinText(names.Conflicts(), "\n  "));
+        std::set<const NameConflict *> seen;
+        for (uint16_t number : numbers)
+        {
+            for (const NameConflict *conflict : names.ConflictsOf(number))
+            {
+                if (seen.insert(conflict).second)
+                {
+                    texts.push_back(conflict->text);
+                }
+            }
+        }
+        return texts;
     }
 
     // Compile keeps the order of game.ini [Script], then number order.
@@ -367,7 +430,13 @@ namespace
         {
             if (!_derivedRead)
             {
-                _derived = DeriveScriptNames(_session, false);
+                sci::Result<std::map<uint16_t, std::string>> derived = DeriveScriptNames(_session, false);
+                if (!derived)
+                {
+                    // The callers run inside an exception boundary.
+                    throw sci::DataError(derived.error());
+                }
+                _derived = std::move(*derived);
                 _derivedRead = true;
             }
             return _derived;
@@ -392,6 +461,9 @@ namespace
             std::error_code ec;
             given = fs::exists(inGame, ec) ? inGame : fs::absolute(given, ec);
         }
+        // src\..\src\X.sc and src/X.sc name the same file as src\X.sc (S3 review).
+        given = given.lexically_normal();
+        given.make_preferred();
         std::string extension = UpperText(given.extension().string());
         if ((extension == ".SH") || (extension == ".SHM") || (extension == ".SHP"))
         {
@@ -438,37 +510,41 @@ namespace
     }
 }
 
-std::map<uint16_t, std::string> DeriveScriptNames(GameSession &session, bool all, std::map<uint16_t, std::string> *errors)
+sci::Result<std::map<uint16_t, std::string>> DeriveScriptNames(GameSession &session, bool all, std::map<uint16_t, std::string> *errors)
 {
-    const ScriptNameMap *names = session.Helper().ScriptNames.get();
-    std::vector<ScriptObjectsForNaming> toName;
-    for (auto &compiled : ReadCompiledScripts(session, true))
+    // No exception leaves a service (plan section 6.2; S3 review).
+    return sci::Guard("deriving the script names", [&]() -> sci::Result<std::map<uint16_t, std::string>>
     {
-        if (!compiled.second.loaded)
+        const ScriptNameMap *names = session.Helper().ScriptNames.get();
+        std::vector<ScriptObjectsForNaming> toName;
+        for (auto &compiled : ReadCompiledScripts(session, true))
         {
-            if (errors)
+            if (!compiled.second.loaded)
             {
-                (*errors)[compiled.first] = compiled.second.error;
+                if (errors)
+                {
+                    (*errors)[compiled.first] = compiled.second.error;
+                }
+                continue;
             }
-            continue;
-        }
-        if (all || !HasFileName(names, compiled.first))
-        {
-            toName.push_back(std::move(compiled.second.objects));
-        }
-    }
-    std::vector<std::string> used;
-    if (!all && names)
-    {
-        for (const auto &entry : names->Entries())
-        {
-            if (HasFileName(names, entry.first))
+            if (all || !HasFileName(names, compiled.first))
             {
-                used.push_back(entry.second.name);
+                toName.push_back(std::move(compiled.second.objects));
             }
         }
-    }
-    return SuggestScriptNames(std::move(toName), used);
+        std::vector<std::string> used;
+        if (!all && names)
+        {
+            for (const auto &entry : names->Entries())
+            {
+                if (HasFileName(names, entry.first))
+                {
+                    used.push_back(entry.second.name);
+                }
+            }
+        }
+        return SuggestScriptNames(std::move(toName), used);
+    });
 }
 
 sci::Status AddDerivedScriptNames(GameSession &session)
@@ -481,7 +557,8 @@ sci::Status AddDerivedScriptNames(GameSession &session)
             return sci::Fail(sci::ErrorCode::Internal, "the session has no script names");
         }
         ScriptNameMap names = *current;
-        names.AddDerivedNames(DeriveScriptNames(session, false));
+        SCI_TRY_ASSIGN(auto derived, DeriveScriptNames(session, false));
+        names.AddDerivedNames(derived);
         session.ResourceMap().SetScriptNames(std::make_shared<const ScriptNameMap>(std::move(names)));
         return sci::Ok();
     });
@@ -508,11 +585,11 @@ sci::Result<std::vector<ScriptRow>> ListScripts(GameSession &session, bool alway
         std::map<uint16_t, std::string> errors;
         if (someUnnamed || alwaysDerive)
         {
-            derived = DeriveScriptNames(session, false, &errors);
+            SCI_TRY_ASSIGN(derived, DeriveScriptNames(session, false, &errors));
         }
         if (alwaysDerive)
         {
-            derivedAll = DeriveScriptNames(session, true);
+            SCI_TRY_ASSIGN(derivedAll, DeriveScriptNames(session, true));
         }
 
         std::set<uint16_t> numbers;
@@ -572,19 +649,42 @@ sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const 
         {
             return sci::Fail(sci::ErrorCode::Internal, "the session has no script names");
         }
-        SCI_TRY(CheckNoConflict(*helper.ScriptNames, mode));
         Selection selection(session, mode);
         std::set<uint16_t> chosen;
         std::map<uint16_t, std::string> givenPaths;
         std::vector<std::string> bad;
+        // A script in a name conflict gives the conflict and its fix, before
+        // any other reason (S3 review): a mode that writes refuses only the
+        // scripts in a conflict.
+        std::set<const NameConflict *> reported;
+        auto inConflict = [&](uint16_t number) -> bool
+        {
+            if (mode == SelectorMode::List)
+            {
+                return false;
+            }
+            std::vector<const NameConflict *> conflicts = helper.ScriptNames->ConflictsOf(number);
+            for (const NameConflict *conflict : conflicts)
+            {
+                if (reported.insert(conflict).second)
+                {
+                    bad.push_back(conflict->text);
+                }
+            }
+            return !conflicts.empty();
+        };
         for (const std::string &selector : selectors)
         {
             std::string why;
             uint16_t first;
             uint16_t last;
+            uint16_t named;
             if (ParseScriptNumber(selector, first))
             {
-                if (selection.Takes(first, why))
+                if (inConflict(first))
+                {
+                }
+                else if (selection.Takes(first, why))
                 {
                     chosen.insert(first);
                 }
@@ -599,7 +699,15 @@ sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const 
                 for (uint16_t number : selection.Known())
                 {
                     std::string skipped;
-                    if ((number >= first) && (number <= last) && selection.Takes(number, skipped))
+                    if ((number < first) || (number > last))
+                    {
+                        continue;
+                    }
+                    if (inConflict(number))
+                    {
+                        count++;
+                    }
+                    else if (selection.Takes(number, skipped))
                     {
                         chosen.insert(number);
                         count++;
@@ -610,7 +718,13 @@ sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const 
                     bad.push_back(selector + ": no script in this range");
                 }
             }
-            else if (LooksLikePath(selector))
+            else if (!(why = WhyNotANumber(selector)).empty())
+            {
+                bad.push_back(selector + ": " + why);
+            }
+            // A script name can have a '.' (game.ini: n993=gamefile.sh), so a
+            // name wins over a path (S3 review).
+            else if (LooksLikePath(selector) && !selection.NumberOfName(selector, named))
             {
                 uint16_t number;
                 std::string path;
@@ -622,10 +736,18 @@ sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const 
                 {
                     bad.push_back(selector + ": " + why);
                 }
-                else
+                else if (!inConflict(number))
                 {
-                    chosen.insert(number);
-                    givenPaths[number] = path;
+                    auto given = givenPaths.find(number);
+                    if ((given != givenPaths.end()) && (given->second != path))
+                    {
+                        bad.push_back(fmt::format("{0}: script {1} is also {2}", selector, number, given->second));
+                    }
+                    else
+                    {
+                        chosen.insert(number);
+                        givenPaths[number] = path;
+                    }
                 }
             }
             else
@@ -634,6 +756,9 @@ sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const 
                 if (!selection.NumberOfName(selector, number))
                 {
                     bad.push_back(selector + ": no script has this name");
+                }
+                else if (inConflict(number))
+                {
                 }
                 else if (selection.Takes(number, why))
                 {
@@ -662,14 +787,18 @@ sci::Result<ScriptSelection> SelectAllScripts(GameSession &session, SelectorMode
         {
             return sci::Fail(sci::ErrorCode::Internal, "the session has no script names");
         }
-        SCI_TRY(CheckNoConflict(*helper.ScriptNames, mode));
         Selection selection(session, mode);
         std::set<uint16_t> chosen;
         std::vector<std::string> warnings;
         for (uint16_t number : selection.Known())
         {
             std::string why;
-            if (selection.Takes(number, why))
+            std::vector<std::string> conflicts = ConflictsOfChosen(*helper.ScriptNames, mode, { number });
+            if (!conflicts.empty())
+            {
+                warnings.push_back(fmt::format("script {0} is left out: {1}", number, conflicts[0]));
+            }
+            else if (selection.Takes(number, why))
             {
                 chosen.insert(number);
             }
@@ -688,20 +817,19 @@ sci::Result<std::vector<std::string>> FindShadowingPatches(const GameFolderHelpe
 {
     return sci::Guard("finding the patch files", [&]() -> sci::Result<std::vector<std::string>>
     {
-        std::map<ResourceType, std::set<uint16_t>> wanted;
+        std::set<ResourceType> types;
+        std::set<PatchKey> wanted;
         for (const ResourceKey &key : resources)
         {
-            wanted[key.type].insert(key.number);
+            types.insert(key.type);
+            wanted.insert(PatchKey(key.type, key.number));
         }
         std::vector<std::string> files;
-        for (const auto &type : wanted)
+        for (const auto &patch : PatchFilesOf(helper, types))
         {
-            for (const auto &patch : PatchFilesOf(helper, type.first))
+            if (wanted.find(patch.first) != wanted.end())
             {
-                if (type.second.find(patch.first) != type.second.end())
-                {
-                    files.insert(files.end(), patch.second.begin(), patch.second.end());
-                }
+                files.insert(files.end(), patch.second.begin(), patch.second.end());
             }
         }
         std::sort(files.begin(), files.end());

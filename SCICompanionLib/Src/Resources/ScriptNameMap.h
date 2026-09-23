@@ -33,6 +33,15 @@ enum class NameSource
 // "game.ini", "source", "sco", "derived" or "default".
 const char *NameSourceText(NameSource source);
 
+// Two files that give one script its name, or one name for two scripts (S3
+// review: a conflict now names its scripts, so a command refuses only those
+// scripts).
+struct NameConflict
+{
+    std::vector<uint16_t> numbers;  // the scripts in the conflict
+    std::string text;               // what is wrong, and how to fix it
+};
+
 class ScriptNameMap
 {
 public:
@@ -44,9 +53,11 @@ public:
 
     // Rules 1 to 3. Two src\*.sc files (or two src\*.sco files) that give
     // one script its name, or one name for two scripts, are not an error
-    // here: the map leaves those scripts out, and Conflicts() describes the
-    // problem. A command that compiles or decompiles refuses to start while
-    // there is a conflict.
+    // here: Conflicts() describes each problem. The map gives no name from
+    // two files; two scripts with one name keep it. A command that compiles
+    // or decompiles refuses the scripts in a conflict. game.ini gives a name
+    // only with the key that the GUI reads (n007, not n7 or n0007), and
+    // without the quotes around it.
     static sci::Result<ScriptNameMap> Build(const GameFolderHelper &helper);
 
     // Rule 4: gives each script in names that has no name yet its derived
@@ -63,17 +74,20 @@ public:
     const std::map<uint16_t, Entry> &Entries() const { return _entries; }
     // The script numbers of game.ini [Script], in the order of the file.
     const std::vector<uint16_t> &GameIniOrder() const { return _gameIniOrder; }
-    const std::vector<std::string> &Conflicts() const { return _conflicts; }
+    const std::vector<NameConflict> &Conflicts() const { return _conflicts; }
+    // The conflicts that name the script.
+    std::vector<const NameConflict *> ConflictsOf(uint16_t number) const;
 
 private:
     std::map<uint16_t, Entry> _entries;
     std::vector<uint16_t> _gameIniOrder;
-    std::vector<std::string> _conflicts;
+    std::vector<NameConflict> _conflicts;
 };
 
 // The number that a source file declares with (script# X), where X is a
 // number, or a define of the file or of src\*.sh. False when the scan cannot
-// read one (for example, X is a define of an include outside src\).
+// read one (for example, X is a define of an include outside src\). It does
+// not throw.
 bool ReadDeclaredScriptNumber(const GameFolderHelper &helper, const std::string &sourcePath, uint16_t &number);
 
 // The objects of a compiled script that the naming rule reads, in the order
@@ -93,8 +107,10 @@ struct ScriptObjectsForNaming
 // The decompiler's naming rule (rule 4). Script 0 is "Main". Another script
 // gets the name of its first class (a class named "Game" wins), or else of
 // its first public instance; a script with neither gets no name. A character
-// that a name cannot have (a name has only letters, digits, '_' and '-')
-// becomes '_', and a name that starts with a digit gets a '_' before it. The
+// that a name cannot have (a name has only letters, digits and '_': the
+// parser takes no '-' in (use ...), S3 review) becomes '_', a name that
+// starts with a digit gets a '_' before it, and a Windows device name (CON,
+// NUL, COM1...) gets a '_' after it. The
 // scripts go in number order. When an earlier script, or reservedNames, has
 // the name already (ignoring case), the script gets the name with "_N" after
 // it, where N is its number (and "_2", "_3"... after that in the rare case

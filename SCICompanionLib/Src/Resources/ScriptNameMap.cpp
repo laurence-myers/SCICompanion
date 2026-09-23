@@ -20,6 +20,43 @@ namespace
         return text;
     }
 
+    // A name as Windows compares file names: without case, also for the
+    // letters outside ASCII ("Über" and "über" are one file; S3 review). The
+    // key is the invariant upper case of the name, in UTF-8.
+    std::string NameKey(const std::string &name)
+    {
+        int wideLength = name.empty() ? 0 : MultiByteToWideChar(CP_ACP, 0, name.data(), (int)name.size(), nullptr, 0);
+        if (wideLength <= 0)
+        {
+            return Upper(name);
+        }
+        std::wstring wide(wideLength, L'\0');
+        MultiByteToWideChar(CP_ACP, 0, name.data(), (int)name.size(), &wide[0], wideLength);
+        int upperLength = LCMapStringW(LOCALE_INVARIANT, LCMAP_UPPERCASE, wide.data(), wideLength, nullptr, 0);
+        if (upperLength <= 0)
+        {
+            return Upper(name);
+        }
+        std::wstring upper(upperLength, L'\0');
+        LCMapStringW(LOCALE_INVARIANT, LCMAP_UPPERCASE, wide.data(), wideLength, &upper[0], upperLength);
+        int keyLength = WideCharToMultiByte(CP_UTF8, 0, upper.data(), upperLength, nullptr, 0, nullptr, nullptr);
+        std::string key(keyLength, '\0');
+        WideCharToMultiByte(CP_UTF8, 0, upper.data(), upperLength, &key[0], keyLength, nullptr, nullptr);
+        return key;
+    }
+
+    // CON, PRN, AUX, NUL, COM0 to COM9 and LPT0 to LPT9: Windows opens the
+    // device for such a file name, with any extension.
+    bool IsDeviceName(const std::string &name)
+    {
+        std::string upper = Upper(name);
+        if ((upper == "CON") || (upper == "PRN") || (upper == "AUX") || (upper == "NUL"))
+        {
+            return true;
+        }
+        return (upper.size() == 4) && ((upper.compare(0, 3, "COM") == 0) || (upper.compare(0, 3, "LPT") == 0)) && std::isdigit((unsigned char)upper[3]);
+    }
+
     std::string Trim(const std::string &text)
     {
         size_t start = text.find_first_not_of(" \t");
@@ -275,12 +312,17 @@ namespace
             }
             std::string key = Trim(text.substr(0, equals));
             std::string value = Trim(text.substr(equals + 1));
-            if ((value.size() >= 2) && (value.front() == '"') && (value.back() == '"'))
+            // GetPrivateProfileString takes off double or single quotes.
+            if ((value.size() >= 2) && ((value.front() == '"') || (value.front() == '\'')) && (value.back() == value.front()))
             {
                 value = value.substr(1, value.size() - 2);
             }
+            // Only the key that the GUI reads for the number (n007; not n7 or
+            // n0007): GetPrivateProfileString finds a key by its text (S3
+            // review).
             uint16_t number;
-            if ((key.size() < 2) || ((key[0] != 'n') && (key[0] != 'N')) || (key[1] == '$') || !ParseNumber(key.substr(1), number) || value.empty())
+            if ((key.size() < 2) || ((key[0] != 'n') && (key[0] != 'N')) || (key[1] == '$') || !ParseNumber(key.substr(1), number) ||
+                (Upper(key) != Upper(DefaultName(number))) || value.empty())
             {
                 continue;
             }
@@ -306,7 +348,9 @@ namespace
         return text;
     }
 
-    // A name for a file and for (use Name): letters, digits, '_' and '-'.
+    // A name for a file and for (use Name): letters, digits and '_'. The
+    // parser takes no '-' in (use Name) (FilenameP; S3 review: LSL6's
+    // "Voice-Over_Announcer"). A device name gets a '_' after it.
     std::string CleanName(const std::string &name)
     {
         std::string clean;
@@ -316,7 +360,11 @@ namespace
         }
         for (char ch : name)
         {
-            clean.push_back((std::isalnum((unsigned char)ch) || (ch == '_') || (ch == '-')) ? ch : '_');
+            clean.push_back((std::isalnum((unsigned char)ch) || (ch == '_')) ? ch : '_');
+        }
+        if (IsDeviceName(clean))
+        {
+            clean += "_";
         }
         return clean;
     }
@@ -324,22 +372,39 @@ namespace
 
 bool ReadDeclaredScriptNumber(const GameFolderHelper &helper, const std::string &sourcePath, uint16_t &number)
 {
-    std::map<std::string, uint16_t> defines;
-    std::error_code ec;
-    fs::path srcFolder = helper.GetSrcFolder();
-    if (!srcFolder.empty() && fs::is_directory(srcFolder, ec))
+    // An exception (out of memory, a path that the file system refuses) is
+    // "cannot read one": plan section 6.2, no exception leaves a service
+    // (S3 review).
+    sci::Result<uint16_t> declared = sci::Guard("reading the script number of " + sourcePath, [&]() -> sci::Result<uint16_t>
     {
-        for (fs::directory_iterator it(srcFolder, ec), end; !ec && (it != end); it.increment(ec))
+        std::map<std::string, uint16_t> defines;
+        std::error_code ec;
+        fs::path srcFolder = helper.GetSrcFolder();
+        if (!srcFolder.empty() && fs::is_directory(srcFolder, ec))
         {
-            std::string text;
-            if (it->is_regular_file(ec) && (Upper(it->path().extension().string()) == ".SH") && ReadFileText(it->path(), text))
+            for (fs::directory_iterator it(srcFolder, ec), end; !ec && (it != end); it.increment(ec))
             {
-                ReadNumberDefines(CodeOnly(text), defines);
+                std::string text;
+                if (it->is_regular_file(ec) && (Upper(it->path().extension().string()) == ".SH") && ReadFileText(it->path(), text))
+                {
+                    ReadNumberDefines(CodeOnly(text), defines);
+                }
             }
         }
+        std::string text;
+        uint16_t value;
+        if (ReadFileText(fs::path(sourcePath), text) && ReadScriptNumber(text, defines, value))
+        {
+            return value;
+        }
+        return sci::Fail(sci::ErrorCode::NotFound, "the file declares no script number that can be read");
+    });
+    if (!declared)
+    {
+        return false;
     }
-    std::string text;
-    return ReadFileText(fs::path(sourcePath), text) && ReadScriptNumber(text, defines, number);
+    number = *declared;
+    return true;
 }
 
 const char *NameSourceText(NameSource source)
@@ -449,8 +514,8 @@ sci::Result<ScriptNameMap> ScriptNameMap::Build(const GameFolderHelper &helper)
         }
         if (source.second.size() > 1)
         {
-            map._conflicts.push_back(fmt::format("script {0} is declared by more than one file in src: {1}.sc",
-                source.first, Join(source.second, ".sc, ")));
+            map._conflicts.push_back({ { source.first }, fmt::format("script {0} is declared by more than one file in src: {1}.sc. "
+                "Keep one of the files, or change the (script# ...) of the others.", source.first, Join(source.second, ".sc, ")) });
             conflicted.insert(source.first);
             continue;
         }
@@ -464,8 +529,8 @@ sci::Result<ScriptNameMap> ScriptNameMap::Build(const GameFolderHelper &helper)
         }
         if (objectFile.second.size() > 1)
         {
-            map._conflicts.push_back(fmt::format("script {0} has more than one object file in src: {1}.sco",
-                objectFile.first, Join(objectFile.second, ".sco, ")));
+            map._conflicts.push_back({ { objectFile.first }, fmt::format("script {0} has more than one object file in src: {1}.sco. "
+                "Delete the object files that are out of date; a compile writes a new one.", objectFile.first, Join(objectFile.second, ".sco, ")) });
             continue;
         }
         map._entries[objectFile.first] = { objectFile.second[0], NameSource::Sco };
@@ -475,22 +540,40 @@ sci::Result<ScriptNameMap> ScriptNameMap::Build(const GameFolderHelper &helper)
     std::map<std::string, std::vector<uint16_t>> numbersOfName;
     for (const auto &entry : map._entries)
     {
-        numbersOfName[Upper(entry.second.name)].push_back(entry.first);
+        numbersOfName[NameKey(entry.second.name)].push_back(entry.first);
     }
     for (const auto &name : numbersOfName)
     {
         if (name.second.size() > 1)
         {
             std::vector<std::string> numbers;
+            bool allGameIni = true;
             for (uint16_t number : name.second)
             {
-                numbers.push_back(fmt::format("{0} ({1})", number, NameSourceText(map._entries[number].source)));
+                NameSource source = map._entries[number].source;
+                numbers.push_back(fmt::format("{0} ({1})", number, NameSourceText(source)));
+                allGameIni = allGameIni && (source == NameSource::GameIni);
             }
-            map._conflicts.push_back(fmt::format("the name {0} is the name of scripts {1}",
-                map._entries[name.second[0]].name, Join(numbers, ", ")));
+            const char *fix = allGameIni ? "Give one of them another name in game.ini [Script]." :
+                "Give one of them another name: in game.ini [Script] for a game.ini name, or rename its file in src.";
+            map._conflicts.push_back({ name.second, fmt::format("the name {0} is the name of scripts {1}. {2}",
+                map._entries[name.second[0]].name, Join(numbers, ", "), fix) });
         }
     }
     return map;
+}
+
+std::vector<const NameConflict *> ScriptNameMap::ConflictsOf(uint16_t number) const
+{
+    std::vector<const NameConflict *> conflicts;
+    for (const NameConflict &conflict : _conflicts)
+    {
+        if (std::find(conflict.numbers.begin(), conflict.numbers.end(), number) != conflict.numbers.end())
+        {
+            conflicts.push_back(&conflict);
+        }
+    }
+    return conflicts;
 }
 
 void ScriptNameMap::AddDerivedNames(const std::map<uint16_t, std::string> &names)
@@ -518,15 +601,16 @@ NameSource ScriptNameMap::SourceOf(uint16_t number) const
 
 bool ScriptNameMap::NumberOf(const std::string &name, uint16_t &number) const
 {
-    std::string upper = Upper(name);
+    std::string key = NameKey(name);
     for (const auto &entry : _entries)
     {
-        if (Upper(entry.second.name) == upper)
+        if (NameKey(entry.second.name) == key)
         {
             number = entry.first;
             return true;
         }
     }
+    std::string upper = Upper(name);
     // Rule 5: nNNN names a script that no other rule names.
     uint16_t defaultNumber;
     if ((upper.size() >= 2) && (upper[0] == 'N') && (upper[1] != '$') && ParseNumber(upper.substr(1), defaultNumber) &&
@@ -544,7 +628,7 @@ std::map<uint16_t, std::string> SuggestScriptNames(std::vector<ScriptObjectsForN
     std::set<std::string> used;
     for (const std::string &name : reservedNames)
     {
-        used.insert(Upper(name));
+        used.insert(NameKey(name));
     }
     std::map<uint16_t, std::string> names;
     for (const ScriptObjectsForNaming &script : scripts)
@@ -583,16 +667,16 @@ std::map<uint16_t, std::string> SuggestScriptNames(std::vector<ScriptObjectsForN
         name = CleanName(name);
         // Ignore case: Windows file names do. A suffixed name can be taken
         // too; then a second suffix makes it free.
-        if (used.find(Upper(name)) != used.end())
+        if (used.find(NameKey(name)) != used.end())
         {
             std::string suffixed = fmt::format("{0}_{1}", name, script.number);
             name = suffixed;
-            for (int extra = 2; used.find(Upper(name)) != used.end(); extra++)
+            for (int extra = 2; used.find(NameKey(name)) != used.end(); extra++)
             {
                 name = fmt::format("{0}_{1}", suffixed, extra);
             }
         }
-        used.insert(Upper(name));
+        used.insert(NameKey(name));
         names[script.number] = name;
     }
     return names;

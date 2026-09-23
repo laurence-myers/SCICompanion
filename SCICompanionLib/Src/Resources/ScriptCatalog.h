@@ -40,11 +40,12 @@ struct ScriptRow
 // rules 1 to 3, with the names of rules 1 to 3 counted as used. With all: for
 // every compiled script, as "reset the names" gives them. A script that
 // cannot be read gets no name, and its error goes to errors.
-std::map<uint16_t, std::string> DeriveScriptNames(GameSession &session, bool all, std::map<uint16_t, std::string> *errors = nullptr);
+sci::Result<std::map<uint16_t, std::string>> DeriveScriptNames(GameSession &session, bool all, std::map<uint16_t, std::string> *errors = nullptr);
 
 // Gives the session's names the derived name of each compiled script that
 // has no name (rule 4): the decompiler needs a name for every script before
-// it writes a (use ...) line.
+// it writes a (use ...) line. It replaces the session's map with no lock:
+// call it before a worker thread reads the names (S4). The GUI sets no map.
 sci::Status AddDerivedScriptNames(GameSession &session);
 
 // Plan section 4.3: each script of the game, in number order. That is each
@@ -75,12 +76,16 @@ struct ScriptSelection
 // Decompile also take a derived name), or for Compile a path to a file in
 // src\ (not a header). The result has no duplicates. Compile keeps the order
 // of game.ini [Script], then number order; the others use number order.
-// Every bad selector is in one Usage error. A mode that writes (Decompile,
-// Compile, Sco) is a Usage error while the script names have a conflict.
+// Every bad selector is in one Usage error. A selector that is the name of a
+// script is a name, also with a '.' in it; two paths for one script number
+// are an error. A mode that writes (Decompile, Compile, Sco) refuses a
+// selected script that is in a name conflict, with the conflict and its fix
+// (S3 review: before, any conflict refused every script).
 sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const std::vector<std::string> &selectors, SelectorMode mode);
 
 // --all: every script that the mode takes, in the same order. For Compile,
-// a named script with no source file is left out, with a warning.
+// a named script with no source file is left out, with a warning. For the
+// modes that write, a script in a name conflict is left out, with a warning.
 sci::Result<ScriptSelection> SelectAllScripts(GameSession &session, SelectorMode mode);
 
 struct ResourceKey
@@ -91,5 +96,8 @@ struct ResourceKey
 
 // Plan section 5: the patch files in the game folder that would hide a
 // package copy of these resources, with a standard name (110.scr) or
-// another one (0110.scr). Full paths, in order.
+// another one (0110.scr). Full paths, in order. As the patch-file reader
+// sees them: a file whose name matches a name pattern of one of the types,
+// that has 2 bytes or more, and whose first byte gives its type (so 105.hep
+// with a script's type byte is script 105).
 sci::Result<std::vector<std::string>> FindShadowingPatches(const GameFolderHelper &helper, const std::vector<ResourceKey> &resources);

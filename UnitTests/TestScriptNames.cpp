@@ -156,10 +156,20 @@ namespace UnitTests
                 Script(1, { Class("Door door") }),
                 Script(2, { Class("3dRoom") }),
                 Script(3, { Class("what?#") }),
+                Script(4, { Class("Voice-Over") }),
+                Script(5, { Class("Con") }),
+                Script(6, { Class("lpt1") }),
+                Script(7, { Class("Console") }),
             });
             Assert::AreEqual(std::string("Door_door"), names[1]);
             Assert::AreEqual(std::string("_3dRoom"), names[2]);
             Assert::AreEqual(std::string("what__"), names[3]);
+            // S3 review: the parser takes no '-' in (use Voice-Over).
+            Assert::AreEqual(std::string("Voice_Over"), names[4]);
+            // S3 review: Windows opens a device for CON.sc or LPT1.sc.
+            Assert::AreEqual(std::string("Con_"), names[5]);
+            Assert::AreEqual(std::string("lpt1_"), names[6]);
+            Assert::AreEqual(std::string("Console"), names[7]);
         }
     };
 
@@ -215,7 +225,7 @@ namespace UnitTests
 
                 sci::Result<ScriptNameMap> map = BuildForCopy();
                 Assert::IsTrue(map.has_value());
-                Assert::IsTrue(map->Conflicts().empty(), WideName(map->Conflicts().empty() ? std::string() : map->Conflicts()[0]).c_str());
+                Assert::IsTrue(map->Conflicts().empty(), WideName(map->Conflicts().empty() ? std::string() : map->Conflicts()[0].text).c_str());
                 std::string differences;
                 int fromSource = 0;
                 for (const auto &script : reference)
@@ -279,8 +289,11 @@ namespace UnitTests
             sci::Result<ScriptNameMap> map = BuildForCopy();
             Assert::IsTrue(map.has_value());
             Assert::AreEqual(size_t(1), map->Conflicts().size());
-            const std::string &conflict = map->Conflicts()[0];
+            const std::string &conflict = map->Conflicts()[0].text;
             Assert::IsTrue((conflict.find("Title2.sc") != std::string::npos) && (conflict.find("TitleScreen.sc") != std::string::npos), WideName(conflict).c_str());
+            // S3 review: the conflict names its script, and says how to fix it.
+            Assert::IsTrue(map->Conflicts()[0].numbers == std::vector<uint16_t>({ 100 }));
+            Assert::IsTrue(conflict.find("Keep one of the files") != std::string::npos, WideName(conflict).c_str());
             Assert::AreEqual(std::string("n100"), map->NameOf(100), L"neither file names the script");
         }
 
@@ -292,7 +305,90 @@ namespace UnitTests
             sci::Result<ScriptNameMap> map = BuildForCopy();
             Assert::IsTrue(map.has_value());
             Assert::AreEqual(size_t(1), map->Conflicts().size());
-            Assert::IsTrue(map->Conflicts()[0].find("scripts 0 (game.ini), 900 (game.ini)") != std::string::npos, WideName(map->Conflicts()[0]).c_str());
+            const std::string &conflict = map->Conflicts()[0].text;
+            Assert::IsTrue(conflict.find("scripts 0 (game.ini), 900 (game.ini)") != std::string::npos, WideName(conflict).c_str());
+            Assert::IsTrue(conflict.find("in game.ini [Script]") != std::string::npos, WideName(conflict).c_str());
+            Assert::IsTrue(map->Conflicts()[0].numbers == std::vector<uint16_t>({ 0, 900 }));
+            Assert::AreEqual(size_t(1), map->ConflictsOf(900).size());
+            Assert::AreEqual(size_t(0), map->ConflictsOf(100).size());
+        }
+
+        // S3 review: game.ini gives a name only with the key that the GUI
+        // reads (n007: GetPrivateProfileString finds a key by its text), and
+        // without single or double quotes, as the GUI reads it.
+        TEST_METHOD(GameIni_TheKeyAndTheValueAsTheGuiReadsThem)
+        {
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            std::string ini = _copyFolder + "\\game.ini";
+            WritePrivateProfileStringA("Script", "n7", "S3Short", ini.c_str());
+            WritePrivateProfileStringA("Script", "n0780", "S3Padded", ini.c_str());
+            WritePrivateProfileStringA("Script", "n779", "'S3Quoted'", ini.c_str());
+
+            sci::Result<ScriptNameMap> map = BuildForCopy();
+            Assert::IsTrue(map.has_value());
+            Assert::AreNotEqual(std::string("S3Short"), map->NameOf(7), L"n7 is not the key of script 7");
+            Assert::AreNotEqual(std::string("S3Padded"), map->NameOf(780), L"n0780 is not the key of script 780");
+            Assert::AreEqual(std::string("S3Quoted"), map->NameOf(779));
+        }
+
+        // S3 review: rule 5 takes only the standard form of the default name.
+        TEST_METHOD(DefaultName_OnlyTheStandardForm)
+        {
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            sci::Result<ScriptNameMap> map = BuildForCopy();
+            Assert::IsTrue(map.has_value());
+            uint16_t number = 0;
+            Assert::IsTrue(map->NumberOf("n7777", number) && (number == 7777));
+            Assert::IsTrue(map->NumberOf("N7777", number) && (number == 7777), L"ignoring case");
+            Assert::IsFalse(map->NumberOf("n07777", number));
+            Assert::IsFalse(map->NumberOf("n1", number), L"the default name of script 1 is n001");
+        }
+
+        // S3 review: two .sco files for one script (rule 3) are a conflict.
+        TEST_METHOD(TwoObjectFilesForOneScript_IsAConflict)
+        {
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            std::filesystem::remove(_copyFolder + "\\game.ini");
+            std::filesystem::remove(SrcFile("TitleScreen.sc"));
+            std::filesystem::copy_file(SrcFile("TitleScreen.sco"), SrcFile("Title2.sco"));
+
+            sci::Result<ScriptNameMap> map = BuildForCopy();
+            Assert::IsTrue(map.has_value());
+            Assert::AreEqual(size_t(1), map->Conflicts().size());
+            const std::string &conflict = map->Conflicts()[0].text;
+            Assert::IsTrue(conflict.find("object file") != std::string::npos, WideName(conflict).c_str());
+            Assert::IsTrue(map->Conflicts()[0].numbers == std::vector<uint16_t>({ 100 }));
+            Assert::AreEqual(std::string("n100"), map->NameOf(100), L"neither file names the script");
+        }
+
+        // S3 review: a script can declare its number with its own define.
+        TEST_METHOD(ScriptDeclaration_WithTheScriptsOwnDefine)
+        {
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            {
+                std::ofstream file(SrcFile("S3OwnDefine.sc").c_str(), std::ios::binary);
+                file << "(define S3_OWN_NUMBER 7777)\n(script# S3_OWN_NUMBER)\n";
+            }
+            sci::Result<ScriptNameMap> map = BuildForCopy();
+            Assert::IsTrue(map.has_value());
+            Assert::AreEqual(std::string("S3OwnDefine"), map->NameOf(7777));
+            Assert::IsTrue(map->SourceOf(7777) == NameSource::Source);
+        }
+
+        // S3 review: Windows file names ignore the case of letters outside
+        // ASCII too, so "Über" and "über" are one file: a conflict.
+        TEST_METHOD(NamesThatDifferOnlyInTheCaseOfALetterOutsideAscii_AreAConflict)
+        {
+            Assert::AreEqual(1252u, GetACP(), L"setup: the test writes code page 1252 names");
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            std::string ini = _copyFolder + "\\game.ini";
+            WritePrivateProfileStringA("Script", "n777", "\xDC" "ber", ini.c_str());
+            WritePrivateProfileStringA("Script", "n778", "\xFC" "ber", ini.c_str());
+
+            sci::Result<ScriptNameMap> map = BuildForCopy();
+            Assert::IsTrue(map.has_value());
+            Assert::AreEqual(size_t(1), map->Conflicts().size());
+            Assert::IsTrue(map->Conflicts()[0].numbers == std::vector<uint16_t>({ 777, 778 }));
         }
 
         // The old [Script] readers used a buffer of 20000 characters, and a

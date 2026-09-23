@@ -271,9 +271,12 @@ namespace UnitTests
             Assert::AreEqual((int)second, (int)NumbersOf(*decompile)[0], L"decompile: number order");
         }
 
-        // While the names have a conflict, the modes that write refuse to
-        // start; the list works.
-        TEST_METHOD(Selectors_Conflict_RefusesTheModesThatWrite)
+        // A mode that writes refuses a script in a name conflict, with the
+        // conflict and its fix; the other scripts work, --all leaves the
+        // script out with a warning, and the list works. S3 review: before,
+        // one conflict refused every script (three real projects have two
+        // game.ini names that differ only in case).
+        TEST_METHOD(Selectors_Conflict_RefusesOnlyItsScripts)
         {
             NoAppStateForCatalog noAppState;
             _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
@@ -281,12 +284,114 @@ namespace UnitTests
             std::filesystem::copy_file(SrcFile("TitleScreen.sc"), SrcFile("Title2.sc"));
             GameSession &session = Reopen();
 
-            sci::Result<ScriptSelection> compile = ResolveScriptSelectors(session, { "0" }, SelectorMode::Compile);
-            Assert::IsFalse(compile.has_value());
-            Assert::IsTrue(compile.error().code == sci::ErrorCode::Usage);
-            Assert::IsTrue(compile.error().message.find("Title2.sc") != std::string::npos, WideCatalog(compile.error().message).c_str());
-            Assert::IsFalse(SelectAllScripts(session, SelectorMode::Decompile).has_value());
-            Assert::IsTrue(ResolveScriptSelectors(session, { "0" }, SelectorMode::List).has_value());
+            sci::Result<ScriptSelection> conflicted = ResolveScriptSelectors(session, { "100" }, SelectorMode::Compile);
+            Assert::IsFalse(conflicted.has_value());
+            Assert::IsTrue(conflicted.error().code == sci::ErrorCode::Usage);
+            Assert::IsTrue(conflicted.error().message.find("Title2.sc") != std::string::npos, WideCatalog(conflicted.error().message).c_str());
+            Assert::IsTrue(conflicted.error().message.find("Keep one of the files") != std::string::npos, WideCatalog(conflicted.error().message).c_str());
+
+            sci::Result<ScriptSelection> other = ResolveScriptSelectors(session, { "0" }, SelectorMode::Compile);
+            Assert::IsTrue(other.has_value(), WideCatalog(other ? std::string() : other.error().ToString()).c_str());
+
+            sci::Result<ScriptSelection> all = SelectAllScripts(session, SelectorMode::Decompile);
+            Assert::IsTrue(all.has_value(), WideCatalog(all ? std::string() : all.error().ToString()).c_str());
+            std::vector<uint16_t> numbers = NumbersOf(*all);
+            Assert::IsTrue(std::find(numbers.begin(), numbers.end(), (uint16_t)100) == numbers.end(), L"--all leaves out script 100");
+            Assert::IsTrue(std::find(numbers.begin(), numbers.end(), (uint16_t)0) != numbers.end());
+            Assert::AreEqual(size_t(1), all->warnings.size());
+            Assert::IsTrue(all->warnings[0].find("script 100") != std::string::npos, WideCatalog(all->warnings[0]).c_str());
+
+            Assert::IsTrue(ResolveScriptSelectors(session, { "100" }, SelectorMode::List).has_value());
+        }
+
+        // S3 review: a script name can have a '.' (real games have
+        // n993=gamefile.sh), so a name wins over a path.
+        TEST_METHOD(Selectors_ANameWithADot_IsAName)
+        {
+            NoAppStateForCatalog noAppState;
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            WritePrivateProfileStringA("Script", "n7777", "my.script", (_copyFolder + "\\game.ini").c_str());
+            GameSession &session = Reopen();
+            sci::Result<ScriptSelection> selected = ResolveScriptSelectors(session, { "my.script" }, SelectorMode::List);
+            Assert::IsTrue(selected.has_value(), WideCatalog(selected ? std::string() : selected.error().ToString()).c_str());
+            Assert::AreEqual(7777, (int)NumbersOf(*selected)[0]);
+        }
+
+        // S3 review: two paths for one script number are an error (before,
+        // the second path replaced the first with no message); a path is
+        // normal (no "..", only '\').
+        TEST_METHOD(Selectors_TwoPathsForOneScript_AndANormalPath)
+        {
+            NoAppStateForCatalog noAppState;
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            std::filesystem::copy_file(SrcFile("TitleScreen.sc"), SrcFile("Title2.sc"));
+            GameSession &session = Reopen();
+
+            sci::Result<ScriptSelection> two = ResolveScriptSelectors(session, { "src\\TitleScreen.sc", "src\\Title2.sc" }, SelectorMode::Compile);
+            Assert::IsFalse(two.has_value());
+            Assert::IsTrue(two.error().message.find("script 100 is also") != std::string::npos, WideCatalog(two.error().message).c_str());
+
+            sci::Result<ScriptSelection> normal = ResolveScriptSelectors(session, { "src\\..\\src/TitleScreen.sc" }, SelectorMode::Compile);
+            Assert::IsTrue(normal.has_value(), WideCatalog(normal ? std::string() : normal.error().ToString()).c_str());
+            Assert::AreEqual(0, _stricmp((_copyFolder + "\\src\\TitleScreen.sc").c_str(), normal->scripts[0].GetFullPath().c_str()), WideCatalog(normal->scripts[0].GetFullPath()).c_str());
+        }
+
+        // S3 review: a number or a range that is not valid says why (before:
+        // "no script has this name").
+        TEST_METHOD(Selectors_ABadNumberOrRange_SaysWhy)
+        {
+            NoAppStateForCatalog noAppState;
+            GameSession &session = Open();
+            sci::Result<ScriptSelection> selected = ResolveScriptSelectors(session, { "200-100", "65536", "0-65536" }, SelectorMode::List);
+            Assert::IsFalse(selected.has_value());
+            const std::string &message = selected.error().message;
+            Assert::IsTrue(message.find("200-100: the first number of a range must not be larger than the second") != std::string::npos, WideCatalog(message).c_str());
+            Assert::IsTrue(message.find("65536: a script number is 0 to 65535") != std::string::npos, WideCatalog(message).c_str());
+            Assert::IsTrue(message.find("0-65536: a script number is 0 to 65535") != std::string::npos, WideCatalog(message).c_str());
+            Assert::IsTrue(message.find("no script has this name") == std::string::npos, WideCatalog(message).c_str());
+        }
+
+        // S3 review: a compile path must be a file in src\.
+        TEST_METHOD(Selectors_APathOutsideSrc_IsRefused)
+        {
+            NoAppStateForCatalog noAppState;
+            GameSession &session = Open();
+            std::filesystem::copy_file(SrcFile("TitleScreen.sc"), _copyFolder + "\\TitleScreen.sc");
+            sci::Result<ScriptSelection> selected = ResolveScriptSelectors(session, { "TitleScreen.sc" }, SelectorMode::Compile);
+            Assert::IsFalse(selected.has_value());
+            Assert::IsTrue(selected.error().message.find("the file is not in") != std::string::npos, WideCatalog(selected.error().message).c_str());
+        }
+
+        // S3 review: the derived names (rule 4) count the names of rules 1
+        // to 3 as used; list and decompile take a derived name, compile does
+        // not; and AddDerivedScriptNames gives them to the session.
+        TEST_METHOD(DerivedNames_UsedNamesSelectorsAndTheSession)
+        {
+            NoAppStateForCatalog noAppState;
+            GameSession &session = Open(false, { "TitleScreen.sc", "TitleScreen.sco" });
+            sci::Result<std::map<uint16_t, std::string>> derived = DeriveScriptNames(session, false);
+            Assert::IsTrue(derived.has_value());
+            std::string name = derived->at(100);
+            Assert::IsFalse(name.empty());
+
+            // A file that takes the derived name for another script.
+            {
+                std::ofstream file(SrcFile(name + ".sc").c_str(), std::ios::binary);
+                file << "(script# 7777)\n";
+            }
+            GameSession &reopened = Reopen();
+            sci::Result<std::map<uint16_t, std::string>> again = DeriveScriptNames(reopened, false);
+            Assert::IsTrue(again.has_value());
+            Assert::AreEqual(name + "_100", again->at(100), L"a name of rules 1 to 3 is used");
+
+            sci::Result<ScriptSelection> decompile = ResolveScriptSelectors(reopened, { name + "_100" }, SelectorMode::Decompile);
+            Assert::IsTrue(decompile.has_value(), WideCatalog(decompile ? std::string() : decompile.error().ToString()).c_str());
+            Assert::AreEqual(100, (int)NumbersOf(*decompile)[0]);
+            Assert::IsFalse(ResolveScriptSelectors(reopened, { name + "_100" }, SelectorMode::Compile).has_value(), L"compile takes no derived name");
+
+            Assert::IsTrue(AddDerivedScriptNames(reopened).has_value());
+            Assert::IsTrue(reopened.Helper().ScriptNames->SourceOf(100) == NameSource::Derived);
+            Assert::AreEqual(name + "_100", reopened.Helper().ScriptNames->NameOf(100));
         }
 
         // --all for compile with no game.ini: every src\*.sc that declares a
@@ -349,6 +454,32 @@ namespace UnitTests
             Assert::IsTrue(files.has_value());
             std::vector<std::string> expected = { _copyFolder + "\\0100.scr", _copyFolder + "\\100.hep", _copyFolder + "\\100.scr", _copyFolder + "\\996.voc" };
             std::sort(expected.begin(), expected.end());
+            std::string actual;
+            for (const std::string &file : *files)
+            {
+                actual += file + "\n";
+            }
+            Assert::IsTrue(expected == *files, WideCatalog(actual).c_str());
+        }
+
+        // S3 review: the shadow check sees the patch files as the patch file
+        // reader does: a 1-byte file is no resource, and 105.hep with a
+        // script's type byte is script 105 when scripts and heaps are read
+        // together.
+        TEST_METHOD(ShadowingPatches_AsThePatchReaderSeesThem)
+        {
+            NoAppStateForCatalog noAppState;
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            uint8_t script = 0x80 | (uint8_t)ResourceType::Script;
+            WriteBytes(_copyFolder + "\\103.scr", { script });
+            WriteBytes(_copyFolder + "\\105.hep", { script, 0, 1, 2 });
+            GameFolderHelper helper;
+            helper.GameFolder = _copyFolder;
+
+            sci::Result<std::vector<std::string>> files = FindShadowingPatches(helper, {
+                { ResourceType::Script, 103 }, { ResourceType::Script, 105 }, { ResourceType::Heap, 105 } });
+            Assert::IsTrue(files.has_value());
+            std::vector<std::string> expected = { _copyFolder + "\\105.hep" };
             std::string actual;
             for (const std::string &file : *files)
             {

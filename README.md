@@ -72,7 +72,10 @@ modernizing the build. Broad highlights since the previous release:
   and follows the "golden" decompilations from
   [sluicebox's SCI tools](https://github.com/sluicebox/sci-tools) much more
   closely (control-flow shapes, expressions and comparisons). Names keep a
-  `#` as the game has it (for example `river#1`, before `river_1`).
+  `#` as the game has it (for example `river#1`, before `river_1`). The
+  Decompile dialog names new scripts in script-number order, so the `_N`
+  suffix of a duplicate name is stable, and a name is always a valid file
+  name and `(use ...)` name.
 * **Fewer crashes on bad or corrupt data.** The decompiler, compiler and
   resource loaders are hardened against malformed, truncated or crafted game
   files, so opening a damaged game no longer crashes the app. Damaged data is

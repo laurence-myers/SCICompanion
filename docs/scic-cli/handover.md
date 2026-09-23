@@ -6,11 +6,11 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: S2b. F1, A1, A2, B1, B2, B3a, B3b, F2 and K1 to K6 are
-  committed and reviewed, with their review fixes. S3 (S3a, S3b) and S1 are
-  committed. Two reviews are running: S3a and S3b; and the K5 and K6 review
-  fixes (`bc827391`) with the fixes of the second review of F2 and K1 to
-  K4 (the commit after `bc827391`).
+- Current step: the fixes of the review of `bc827391` and `fe02c12a`, then
+  S2b. F1, A1, A2, B1, B2, B3a, B3b, F2, K1 to K6 and S3 are committed and
+  reviewed, with their review fixes. S1 and S2a are committed; they are not
+  reviewed yet. The review of `bc827391` (PASS, nits) and `fe02c12a` (FIX:
+  a zeroed SCI1.1 header looks like a valid empty resource) is done.
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -19,7 +19,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -49,7 +49,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | K4 `#` in selector names | done | `b7385d13`, review fixes `ebb6ff7d` | FIX: 1 should-fix (a `#` property read in a method still got `_`; KQ6 script 710). Fixed in `CleanTokenSCI`. Review of the fixes: PASS; the plan's GUI text, a README note and a wider known gap, in the commit after `bc827391`. |
 | K5 `proc<N>_<M>` for a missing script | done | `78490d24`; test fix `2aee01b1`; review fixes (the commit after `108cb227`) | PASS with 6 nits; the test commit PASS. Fixed: tests for an `asm` `calle` and for the name as a value (an undeclared name again), a leading zero is not a procedure, `__proc0_<M>` compiles to `callb`, the README text, the handover and plan text. |
 | K6 No `vocab.000`; `/` in paths | done | `dcc0fdf7`, review fixes (the commit after `108cb227`) | FIX: 1 should-fix (the handover State, fixed in `f85fe77d`), 7 nits, 1 question. Fixed: the Said test counts one error for two Said strings, a vocab 900 test, the null vocabulary in the "Add as synonym of" dialog, the `ScriptId` folder keeps only `\`, stale text. Known gaps: see "Decisions" (a synonym with no vocabulary, a name with a slash, a `ScriptId` with no folder). |
-| S3 ScriptCatalog, script names without `game.ini` | done | S3a `f85fe77d`; S3b `108cb227` | running |
+| S3 ScriptCatalog, script names without `game.ini` | done | S3a `f85fe77d`; S3b `108cb227`; review fixes (the commit after `fb14399f`) | FIX: S3a 1 should-fix (a `-` in a derived name), S3b 1 should-fix (one name conflict refused every script, with the wrong fix), nits and questions. Fixed: see "S3 review" in "Decisions". |
 | S1 Compile destination | done | the commit after `fe02c12a` | |
 | S2 CompileBatch | S2a done; S2b, S2c to do | S2a: the commit after `a9561fcc` | |
 | S4 DecompileRun | not started | | |
@@ -662,6 +662,39 @@ for each step, and a follow-up commit if the review finds a problem.
   with the rules of the patch file source: the type's name patterns, a
   number from the name, and the type in the first byte. It finds a
   standard name (`110.scr`) and another one (`0110.scr`).
+- S3 review (S3a FIX, S3b FIX, one should-fix each): a derived name had
+  `-`, which `(use ...)` cannot take (`FilenameP`; LSL6 script 1823
+  `Voice-Over_Announcer`): it is `_` now. A Windows device name (`CON`,
+  `NUL`, `COM1`, `LPT1`...) gets a `_` after it: Windows opens the device
+  for `CON.sc`. Names compare as Windows file names do, also outside ASCII
+  (`LCMapStringW` with `LOCALE_INVARIANT`; `Über` and `über` are one
+  file). `game.ini` gives a name only with the key that the GUI reads
+  (`n007`, not `n7` or `n0007`), without single or double quotes.
+- S3 review: a conflict is a `NameConflict` with its scripts and a fix
+  for its kind (two `.sc` files: keep one; two `.sco` files: delete the
+  old ones; one name for two scripts: rename one in `game.ini [Script]` or
+  rename its file). A mode that writes refuses only a selected script in a
+  conflict, and gives the conflict first; `--all` leaves the script out
+  with a warning. Before, one conflict refused every script, with one fix
+  for all kinds. Three real projects have two `game.ini` names that differ
+  only in case (Codename ICEMAN `subMarine`/`Submarine`, Camelot
+  `thief`/`Thief`, a QfG1 `- dev` copy).
+- S3 review: a selector that is a script name is a name, also with a `.`
+  (`n993=gamefile.sh` in 9 real folders). Two paths for one script number
+  are an error (before: the second replaced the first). `200-100` and
+  `65536` say why. A path is normal (`lexically_normal`, `\` only).
+  `FindShadowingPatches` reads the folder as the patch-file reader does:
+  the name patterns of all the types, 2 bytes or more, the type from the
+  first byte (`105.hep` with a script type byte is script 105).
+  `DeriveScriptNames` returns a `Result`, and `ReadDeclaredScriptNumber`
+  catches its exceptions (plan 6.2).
+- S3 review questions: a path selector takes the number that the name map
+  gives the file's name, and the compile writes the number that the file
+  declares, with a warning, as the GUI does (kept). With `alwaysDerive`,
+  the Name column is the name that `list` and `decompile` use now, and
+  the Derived column is what a reset gives, so they can differ (`Door_10`
+  and `Door`): intended. `AddDerivedScriptNames` replaces the map with no
+  lock: S4 must call it before a worker thread starts.
 - S1: `CompileWriteOptions` (`Src\Compile\CompileWrite.h/.cpp`): `saveTo`
   (Default, Package or Patch; Default reads `game.ini`, as the GUI does),
   `outDir`, `raw`, `writeResources`, `writeObjectFile` and
@@ -726,6 +759,7 @@ for each step, and a follow-up commit if the review finds a problem.
 
 ## Next action
 
-Phase K is done (K1 to K6), with the fixes of its reviews, and S3 is done
-(S3a, S3b), and S1 is done. Two reviews are running (see "State"); fix
-their findings. Then S2 and S4 (plan section 9), and a review of S1.
+Phase K and S3 are done, with the fixes of their reviews; S1 and S2a are
+done. Fix the findings of the review of `bc827391` and `fe02c12a` (see
+"State"). Then S2b, S2c and S4 (plan section 9), and a review of S1 and
+S2.
