@@ -1,9 +1,4 @@
-	if ((formatted == 0) && (lpMsgBuf != nullptr))
-	{
-		// Not documented to happen; free rather than leak if it ever does.
-		LocalFree(lpMsgBuf);
-		lpMsgBuf = nullptr;
-	}/***************************************************************************
+/***************************************************************************
 	Copyright (c) 2020 Philip Fortier
 
 	This program is free software; you can redistribute it and/or
@@ -904,8 +899,10 @@ std::string GetMessageFromLastError(const std::string &details)
 		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
 		(LPTSTR)&lpMsgBuf,
 		0, NULL);
-	if ((formatted == 0) || (lpMsgBuf == nullptr))
+	if ((formatted == 0) && (lpMsgBuf != nullptr))
 	{
+		// Not documented to happen; free rather than leak if it ever does.
+		LocalFree(lpMsgBuf);
 		lpMsgBuf = nullptr;
 	}
 	LPCTSTR systemText = lpMsgBuf ? (LPCTSTR)lpMsgBuf : TEXT("(no system message)");
