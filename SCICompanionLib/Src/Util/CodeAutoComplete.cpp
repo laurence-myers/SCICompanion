@@ -549,7 +549,8 @@ void AutoCompleteThread2::_DoWork()
 
 						// Figure out the result
 						std::unique_ptr<AutoCompleteResult> result = GetAutoCompleteResult(word, _scriptNumber, _context, _parsedCustomHeaders);
-						result->OriginalLimit = _limiter.GetLimit();
+						TextPos limit = _limiter.GetLimit();
+						result->OriginalLimit = CPoint(limit.column, limit.line);
 						result->OriginalLimit.x -= word.length();
 						result->OriginalLimit.x = max(result->OriginalLimit.x, 0);
 						_ac._SetResult(move(result), _id);

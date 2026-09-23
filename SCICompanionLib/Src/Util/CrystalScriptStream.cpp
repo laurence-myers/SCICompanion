@@ -29,38 +29,59 @@ CPoint GetNaturalLimit(CCrystalTextBuffer *pBuffer)
 	return limit;
 }
 
+ReadOnlyTextBuffer::ReadOnlyTextBuffer(const ScriptText &text)
+{
+	static const std::string emptyLine;
+	int lineCount = (int)text.lines.size();
+	auto lineAt = [&](int nLine) -> const std::string & { return (nLine < lineCount) ? text.lines[nLine] : emptyLine; };
+	TextPos limit;
+	limit.line = (lineCount > 0) ? (lineCount - 1) : 0;
+	limit.column = (int)lineAt(limit.line).size();
+	_Init([&](int nLine) { return (int)lineAt(nLine).size(); }, [&](int nLine) { return lineAt(nLine).c_str(); }, limit, 0);
+}
+
 ReadOnlyTextBuffer::ReadOnlyTextBuffer(CCrystalTextBuffer *pBuffer) : ReadOnlyTextBuffer(pBuffer, GetNaturalLimit(pBuffer), 0) {}
 
 ReadOnlyTextBuffer::ReadOnlyTextBuffer(CCrystalTextBuffer *pBuffer, CPoint limit, int extraSpace)
 {
+	TextPos textLimit;
+	textLimit.line = limit.y;
+	textLimit.column = limit.x;
+	_Init([pBuffer](int nLine) { return pBuffer->GetLineLength(nLine); }, [pBuffer](int nLine) { return pBuffer->GetLineChars(nLine); }, textLimit, extraSpace);
+}
+
+void ReadOnlyTextBuffer::_Init(const std::function<int(int)> &lineLength, const std::function<PCTSTR(int)> &lineChars, TextPos limit, int extraSpace)
+{
 	_limit = limit;
 	_extraSpace = extraSpace;
 
-	int lineCountMinusOne = limit.y;
+	int lineCountMinusOne = limit.line;
 	_lineCount = lineCountMinusOne + 1;
 	int totalCharCount = 0;
 	for (int i = 0; i < lineCountMinusOne; i++)
 	{
-		int charCount = pBuffer->GetLineLength(i);
+		int charCount = lineLength(i);
 		totalCharCount += charCount;
 	}
-	totalCharCount += limit.x;
+	totalCharCount += limit.column;
 
 	int start = 0;
 	_text.reserve(totalCharCount + extraSpace);
 	_lineStartsAndLengths = std::make_unique<StartAndLength[]>(_lineCount);
 	for (int i = 0; i < lineCountMinusOne; i++)
 	{
-		int charCount = pBuffer->GetLineLength(i);
-		std::copy(pBuffer->GetLineChars(i), pBuffer->GetLineChars(i) + charCount, std::back_inserter(_text));
+		int charCount = lineLength(i);
+		PCTSTR chars = lineChars(i);
+		std::copy(chars, chars + charCount, std::back_inserter(_text));
 		_lineStartsAndLengths[i].Start = start;
 		_lineStartsAndLengths[i].Length = charCount;
 		start += charCount;
 	}
-	assert(pBuffer->GetLineLength(lineCountMinusOne) >= limit.x);
-	std::copy(pBuffer->GetLineChars(lineCountMinusOne), pBuffer->GetLineChars(lineCountMinusOne) + limit.x, std::back_inserter(_text));
+	assert(lineLength(lineCountMinusOne) >= limit.column);
+	PCTSTR lastChars = lineChars(lineCountMinusOne);
+	std::copy(lastChars, lastChars + limit.column, std::back_inserter(_text));
 	_lineStartsAndLengths[lineCountMinusOne].Start = start;
-	_lineStartsAndLengths[lineCountMinusOne].Length = limit.x;
+	_lineStartsAndLengths[lineCountMinusOne].Length = limit.column;
 }
 
 void ReadOnlyTextBuffer::Extend(const std::string &extraChars)
@@ -70,7 +91,7 @@ void ReadOnlyTextBuffer::Extend(const std::string &extraChars)
 		std::copy(extraChars.begin(), extraChars.end(), std::back_inserter(_text));
 		_lineStartsAndLengths[_lineCount - 1].Length += extraChars.length();
 		_extraSpace -= extraChars.length();
-		_limit.x += extraChars.length();
+		_limit.column += (int)extraChars.length();
 	}
 }
 
@@ -85,6 +106,13 @@ PCTSTR ReadOnlyTextBuffer::GetLineChars(int nLine)
 		return &_text[_lineStartsAndLengths[nLine].Start];
 	}
 	return nullptr;
+}
+
+CScriptStreamLimiter::CScriptStreamLimiter(const ScriptText &text)
+{
+	_pBuffer = std::make_unique<ReadOnlyTextBuffer>(text);
+	_pCallback = nullptr;
+	_fCancel = false;
 }
 
 CScriptStreamLimiter::CScriptStreamLimiter(CCrystalTextBuffer *pBuffer)
@@ -125,9 +153,9 @@ std::string CScriptStreamLimiter::GetLookAhead(int nLine, int nChar, int cChars)
 // For autocomplete
 std::string CScriptStreamLimiter::GetLastWord()
 {
-	CPoint pt = _pBuffer->GetLimit();
-	PCSTR pszLine = _pBuffer->GetLineChars(pt.y);
-	int nChar = pt.x - 1;
+	TextPos pt = _pBuffer->GetLimit();
+	PCSTR pszLine = _pBuffer->GetLineChars(pt.line);
+	int nChar = pt.column - 1;
 	std::string word;
 	while (nChar > 0)
 	{

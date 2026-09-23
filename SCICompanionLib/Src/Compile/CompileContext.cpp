@@ -26,7 +26,6 @@
 #include <unordered_map>
 #include "Text.h"
 #include "ResourceEntity.h"
-#include "CCrystalTextBuffer.h"
 #include "CrystalScriptStream.h"
 #include "PMachine.h"
 #include "StringUtil.h"
@@ -1200,10 +1199,10 @@ void PrecompiledHeaders::Update(CompileContext &context, Script &script)
 				{
 					// It's a header we have not yet encountered. Parse it.
 					ScriptId scriptId(_resourceMap.GetIncludePath(*curHeaderIt));
-					CCrystalTextBuffer buffer;
-					if (buffer.LoadFromFile(scriptId.GetFullPath().c_str()))
+					sci::Result<ScriptText> text = LoadScriptText(scriptId.GetFullPath());
+					if (text)
 					{
-						CScriptStreamLimiter limiter(&buffer);
+						CScriptStreamLimiter limiter(*text);
 						CCrystalScriptStream stream(&limiter);
 						unique_ptr<Script> pNewHeader = std::make_unique<Script>(scriptId);
 						if (SyntaxParser_Parse(*pNewHeader, stream, PreProcessorDefinesFromSCIVersion(context.GetVersion()), &context))
@@ -1228,7 +1227,6 @@ void PrecompiledHeaders::Update(CompileContext &context, Script &script)
 							ss << "Parsing errors while loading " << scriptId.GetFullPath() << ".";
 							context.ReportResult(CompileResult(ss.str(), CompileResult::CRT_Error));
 						}
-						buffer.FreeAll();
 					}
 					else
 					{

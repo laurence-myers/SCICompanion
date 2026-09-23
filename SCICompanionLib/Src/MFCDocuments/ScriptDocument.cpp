@@ -190,11 +190,10 @@ std::unique_ptr<sci::Script> SimpleCompile(CompileLog &log, ScriptId &scriptId, 
 {
 	std::unique_ptr<sci::Script> script = make_unique<sci::Script>();
 	script->SetScriptId(scriptId);
-	// Make a new buffer.
-	CCrystalTextBuffer buffer;
-	if (buffer.LoadFromFile(scriptId.GetFullPath().c_str()))
+	sci::Result<ScriptText> text = LoadScriptText(scriptId.GetFullPath());
+	if (text)
 	{
-		CScriptStreamLimiter limiter(&buffer);
+		CScriptStreamLimiter limiter(*text);
 		CCrystalScriptStream stream(&limiter);
 		if (SyntaxParser_Parse(*script, stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), &log, addCommentsToOM))
 		{
@@ -202,7 +201,6 @@ std::unique_ptr<sci::Script> SimpleCompile(CompileLog &log, ScriptId &scriptId, 
 		}
 	}
 	log.CalculateErrors();
-	buffer.FreeAll();
 	return script;
 }
 
@@ -214,13 +212,12 @@ bool NewCompileScript(CompileResults &results, CompileLog &log, CompileTables &t
 
 	g_compileIOTimer.Start();
 
-	// Make a new buffer.
-	CCrystalTextBuffer buffer;
-	if (buffer.LoadFromFile(script.GetFullPath().c_str()))
+	sci::Result<ScriptText> text = LoadScriptText(script.GetFullPath());
+	if (text)
 	{
 		g_compileIOTimer.Stop();
 
-		CScriptStreamLimiter limiter(&buffer);
+		CScriptStreamLimiter limiter(*text);
 		CCrystalScriptStream stream(&limiter);
 
 		std::unique_ptr<sci::Script> pScript = std::make_unique<sci::Script>(script);
@@ -297,7 +294,6 @@ bool NewCompileScript(CompileResults &results, CompileLog &log, CompileTables &t
 			}
 		}
 		log.CalculateErrors();
-		buffer.FreeAll();
 	}
 	return fRet;
 }
@@ -447,16 +443,15 @@ void CScriptDocument::OnViewScriptResource()
 
 unique_ptr<sci::Script> _ParseScript(ScriptId id)
 {
-	CCrystalTextBuffer buffer;
-	if (buffer.LoadFromFile(id.GetFullPath().c_str()))
+	sci::Result<ScriptText> text = LoadScriptText(id.GetFullPath());
+	if (text)
 	{
-		CScriptStreamLimiter limiter(&buffer);
+		CScriptStreamLimiter limiter(*text);
 		CCrystalScriptStream stream(&limiter);
 
 		std::unique_ptr<sci::Script> pScript = std::make_unique<sci::Script>(id);
 		CompileLog log;
 		bool result = SyntaxParser_Parse(*pScript, stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), &log);
-		buffer.FreeAll();
 		if (result)
 		{
 			return pScript;

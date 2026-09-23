@@ -6,14 +6,14 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: B2 (next). F1, A1, A2 and B1 are committed. F1 and A1
-  are reviewed, with their review fixes. The A2 review (which also covers
-  the A1 review fixes, `258ce43c`) and the B1 review run in the
+- Current step: B3 (next). F1, A1, A2, B1 and B2 are committed. F1 and
+  A1 are reviewed, with their review fixes. The reviews of A2 (which also
+  covers the A1 review fixes, `258ce43c`), B1 and B2 run in the
   background.
 - Baseline on `0dc1fef5`: the Release build passes; the unit suite passes
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
-  After B1: 264.
+  After B1: 264. After B2: 269.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
   (`getenv`) and C4267 in the UnitTests helpers (`DecompileHelper.cpp`,
@@ -32,7 +32,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | A1 Deferred writes | done | `1c4d1c6f`, review fixes `258ce43c` | FIX: 3 should-fix, 5 nits. Fixed: savepoints (an abandoned inner batch withdraws its resources and puts back what it replaced), the audio repackage stops on a failed map save, every queued type reloads, guards around the context text and the notifications, tests on SCI1.1 and for mixed destinations and a read-only volume, the plan row. Moved to A2: the audio cache writer swallows its errors and saves its audio map through the GUI wrapper. Already fixed by `b499f9ac`: the last-error capture in `util.cpp`. |
 | A2 Patch writer, size check | done | the commit after `258ce43c` | running (also reviews `258ce43c`) |
 | B1 GameSession, core log | done | the commit after `7432a479` | running |
-| B2 Script text loader | not started | | |
+| B2 Script text loader | done | the commit after `13a786ac` | running |
 | B3 Engine on the session | not started | | |
 | F2 Engine errors as values | not started | | |
 | K1 `and`/`or` value semantics | not started | | |
@@ -72,6 +72,9 @@ for each step, and a follow-up commit if the review finds a problem.
 
 ## Gotchas
 
+- Do not put a copyright notice (or the GPL header block) in a new file.
+  This is your rule (2026-09-23). Vendored third-party sources keep their
+  own notices.
 - `sed -i` in Git Bash rewrites a CRLF file with LF endings. Edit project
   files with the Edit tool or with PowerShell (`[IO.File]::ReadAllText`,
   keep the BOM). A new file from a tool that writes LF needs the CRLF
@@ -133,8 +136,19 @@ for each step, and a follow-up commit if the review finds a problem.
   permissive; F2 can add a check.
 - The test helper `CopyGameFromModuleFolder` copies a template without an
   `AppState`, for tests that must run with `appState == nullptr`.
+- B2: the editor's line rule is odder than the plan said (plan section
+  2.8 now has it): a CR-only file is one line, "LF CR" is a style, and a
+  NUL ends a line. `SplitScriptText` copies it exactly.
+- B2 moved the engine's loads (`NewCompileScript`, `SimpleCompile`,
+  `_ParseScript`, the header loads, `DecompilerConfig`) to
+  `LoadScriptText`. The GUI (`InsertObject`, `MainFrm`, `ClassBrowser`,
+  the editor, autocomplete) keeps `CCrystalTextBuffer`.
+  `CrystalScriptStream.h` still includes `CCrystalTextBuffer.h` for the
+  GUI constructors; phase E can split it.
+- Known gap for S2: `NewCompileScript` returns false with no log line
+  when it cannot read the script file (as before B2).
 
 ## Next action
 
-Read the A2 and B1 reviews and fix any real finding. Then B2 (plan
+Read the A2, B1 and B2 reviews and fix any real finding. Then B3 (plan
 section 9).

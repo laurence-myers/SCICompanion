@@ -41,6 +41,9 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="TestScriptText.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestGameSession.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
