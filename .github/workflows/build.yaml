@@ -68,6 +68,7 @@ jobs:
 
     # The toolset and SDK come from the project files.
     - name: Build
+      id: build
       run: |
         msbuild SCICompanion.sln /m /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }}
         mkdir artifacts
@@ -96,6 +97,41 @@ jobs:
       shell: pwsh
       timeout-minutes: 10
       run: .\UnitTests\RunTests.ps1 -Configuration ${{ matrix.configuration }} -Integration -BlameHang
+
+    # Smoke test of the command-line tool (docs/scic-cli/plan.md, step C4).
+    # Run the built scic.exe as a user does, on two copies of the SCI1.1
+    # template in the runner's temp folder: the template as it ships, and a
+    # game that SCI Companion never opened (no game.ini, no src\). Each
+    # command must exit with 0, and the second game must not get a game.ini.
+    # The step runs also when a test step failed, so that its result shows.
+    - name: Smoke test scic.exe
+      if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+      shell: pwsh
+      timeout-minutes: 5
+      run: |
+        $scic = (Resolve-Path "${{ matrix.configuration }}\scic.exe").Path
+        $template = "${{ matrix.configuration }}\TemplateGame\SCI1.1"
+        function Invoke-Scic {
+          Write-Host "> scic $args"
+          & $scic @args
+          if ($LASTEXITCODE -ne 0) { throw "scic $($args -join ' ') exited with $LASTEXITCODE." }
+        }
+        Invoke-Scic --version
+
+        $root = Join-Path $env:RUNNER_TEMP "scic-smoke"
+        New-Item -ItemType Directory -Force $root | Out-Null
+        $shipped = Join-Path $root "SCI1.1"
+        $neverOpened = Join-Path $root "SCI1.1-never-opened"
+        Copy-Item $template $shipped -Recurse
+        Copy-Item $template $neverOpened -Recurse
+        Remove-Item (Join-Path $neverOpened "game.ini")
+        Remove-Item (Join-Path $neverOpened "src") -Recurse
+        foreach ($game in @($shipped, $neverOpened)) {
+          Invoke-Scic script list $game
+          Invoke-Scic script decompile $game --all
+          Invoke-Scic script compile $game --all
+        }
+        if (Test-Path (Join-Path $neverOpened "game.ini")) { throw "scic created game.ini in a game that had none." }
 
     # Show a pass/fail table in the run summary, so a failure is visible without
     # downloading the .trx artifact. Runs even when a test step failed. (B8 of #76.)

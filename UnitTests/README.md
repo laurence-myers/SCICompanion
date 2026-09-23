@@ -31,6 +31,8 @@ game, the include headers, and the decompiler config there. The test
 post-build copies the fixtures to `Release\TestFiles`.
 
 GitHub Actions builds the solution and runs `RunTests.ps1` in `build.yaml`.
+A smoke step then runs `scic.exe` on the SCI1.1 template (see "Command-line
+tool tests").
 
 ## Test levels
 
@@ -254,6 +256,41 @@ small script that uses the keyword and decompiles it; since the decompiler only
 understands standard opcodes, a clean decompile with no assembly fallback and no
 trace of the keyword is the proof. `&exists` additionally asserts byte-for-byte
 equality with its `(> argc N)` expansion. These run in the default filter.
+
+## Command-line tool tests
+
+The tests of `scic.exe` (plan section 10 in `docs\scic-cli\plan.md`) need no
+game data other than the template games.
+
+- `TestCli.cpp` runs the command line in the test process: `cli::RunCli`
+  with a `cli::StringConsole` that keeps stdout and stderr. Each test first
+  copies a template game to a temp folder (`CopyGameFromModuleFolder`), and
+  some tests delete its `game.ini` and `src\`, as in a game that SCI
+  Companion never opened. The tests check the exit code, the output and
+  the files: a dry run compares a snapshot of the game folder, and a
+  compile to the package gives the same bytes as patch files and as the
+  GUI's compile.
+- `TestDecompileRun.cpp` and `TestCompileBatch.cpp` test the services under
+  the commands (`DecompileRun`, `CompileBatch`), with event hooks that throw
+  at a chosen point.
+- `TestCliIntegration.cpp` starts `Release\scic.exe` as a child process
+  (`IntegrationHarness::RunChildReadStdout`, with a timeout). It is an
+  integration test: run it with `RunTests.ps1 -Integration`.
+- CI (`build.yaml`, "Smoke test scic.exe") runs `scic script list`,
+  `script decompile --all` and `script compile --all` on two copies of the
+  SCI1.1 template: as it ships, and with no `game.ini` and no `src\`. Each
+  command must exit with 0.
+- `Tools\CliCorpusSweep.ps1` (local use) runs the same three commands on
+  copies of a game library, and writes a CSV of the exit codes, error
+  counts, error codes and times:
+
+  ```
+  .\UnitTests\Tools\CliCorpusSweep.ps1 -Source 'F:\Games\Sierra', 'F:\games\gog' -Exclude '* - dev*'
+  ```
+
+  It copies the files of each game folder (not its subfolders) to a temp
+  run folder, and it only reads the source folders. It exits with 1 when a
+  command crashed, ended with exit code 1, or timed out.
 
 ## Other tests
 

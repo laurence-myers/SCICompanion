@@ -26,7 +26,8 @@ MSBuild.exe SCICompanion.sln -m -p:Configuration=Release -p:Platform=Win32
 ```
 
 The unit tests live in the `UnitTests` project. Run them with
-`UnitTests\RunTests.ps1` after building.
+`UnitTests\RunTests.ps1` after building. The build also makes the
+command-line tool, `Release\scic.exe`; `scic help` shows its commands.
 
 ## Licence
 

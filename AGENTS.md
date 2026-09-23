@@ -8,7 +8,10 @@ this before making changes.
 SCI Companion — a Windows MFC IDE for Sierra SCI games (SCI0–SCI1.1): compiler,
 decompiler, and resource editors. Most of the code is in `SCICompanionLib\Src`;
 the `SCICompanion` project is a thin `.exe` wrapper over `SCICompanionLib`.
-Tests are in `UnitTests`.
+The `SCICompanionCli` project is a thin wrapper too: it builds `scic.exe`,
+the command-line tool (`scic script list`, `decompile`, `sco` and
+`compile`), whose code is in `SCICompanionLib\Src\Cli`. Its design is in
+`docs\scic-cli\plan.md`. Tests are in `UnitTests`.
 
 ## Building
 
@@ -24,6 +27,11 @@ Tests are in `UnitTests`.
 - **Debug | Win32 does not build locally** (a vendored dependency has no
   Debug|Win32 configuration, among other issues). Use Release for local builds
   and CI.
+- The build puts `SCICompanion.exe`, `scic.exe` and `UnitTests.dll` in
+  `Release\`. The app's post-build copies the data that they need next to
+  them (`include\`, `Decompiler\`, `TemplateGame\`). `scic.exe` reads
+  `include\` and `Decompiler\` from its own folder; `--data-dir` or
+  `SCIC_DATA_DIR` gives another folder.
 
 ## Testing
 
@@ -38,6 +46,13 @@ Tests are in `UnitTests`.
 
 - Integration tests are those whose test-class name contains `Integration`; the
   default run excludes them, so it never spawns a thread or a process.
+- The command-line tool: `TestCli` runs `cli::RunCli` in the test process,
+  with a console that keeps the output, on a temp copy of a template game.
+  `TestCliIntegration` (an integration test) starts `Release\scic.exe`. CI
+  also has a smoke step that runs `scic script list`, `script decompile
+  --all` and `script compile --all` on copies of the SCI1.1 template.
+  `UnitTests\Tools\CliCorpusSweep.ps1` runs the same commands on copies of
+  a local game library (local use only). See `UnitTests\README.md`.
 - Read pass/fail counts from `TestResults\UnitTests.trx` (or
   `IntegrationTests.trx`) — the `<Counters>` element under
   `TestRun/ResultSummary`. The full unit suite takes a few minutes.
@@ -73,6 +88,33 @@ Tests are in `UnitTests`.
   update it too (a unit test checks that it equals `SCICompanionLib.rc`).
 - **The About-box credits** are built in `AppState::GetAboutText()`
   (`SCICompanionLib\Src\Util\AppState.cpp`), not in the `.rc`.
+
+## Failure handling
+
+The engine and the command-line tool follow the failure-handling model of
+`docs\scic-cli\plan.md` (section 6). In short:
+
+- Return an error as a value: `sci::Result<T>`, or `sci::Status` when there
+  is no value (`SCICompanionLib\Src\Core\Result.h`). Make it with
+  `sci::Fail(code, message)`, and pass it on with `SCI_TRY` and
+  `SCI_TRY_ASSIGN`. A discarded `Result` is a build error (`/we4834`, in
+  `Directory.Build.props`). Do not call `.value()`: test the result first.
+- Compile errors and decompiler warnings are diagnostics: data about the
+  input, not a failure of the call.
+- `sci::Guard(context, fn)` is the exception boundary. It turns an exception
+  that escapes `fn` into an error (`Internal`, or the code of a
+  `sci::DataError`), so that a batch goes on with the next script. Call it
+  the "exception boundary".
+- Do not add an empty `catch (...)`, or a `throw std::exception(...)` (throw
+  `sci::DataError`, or return a `Result`). In `Src\Core`, `Src\Compile` and
+  `Src\Resources`, do not add an `AfxMessageBox`; in those folders and in
+  `Src\Util`, do not use the GUI object `appState` (take the session, the
+  resource map or the helper as a parameter). The CI check
+  `UnitTests\Tools\CheckFailureHandling.ps1` fails on a new site. Its
+  allowlist holds the old sites; when you remove old sites, run the check
+  with `-Update` and commit the allowlist.
+- The exit codes of `scic.exe` are in plan section 8 (`ExitCodeForReport` in
+  `SCICompanionLib\Src\Cli\ExitCodes.cpp`).
 
 ## Vendored code
 
