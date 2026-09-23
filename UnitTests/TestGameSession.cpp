@@ -18,6 +18,7 @@
 #include "DecompilerCore.h"
 #include "DecompileHelper.h"
 #include "OutputCodeHelper.h"
+#include <fstream>
 #include <set>
 #include <filesystem>
 #include <mutex>
@@ -314,6 +315,42 @@ namespace UnitTests
                 _copyFolder.clear();
             }
         }
+        static std::string ErrorsOf(CompileLog &log)
+        {
+            std::string errors;
+            for (const CompileResult &result : log.Results())
+            {
+                if (result.IsError())
+                {
+                    errors += result.GetMessage() + "\n";
+                }
+            }
+            return errors;
+        }
+
+        // Writes the script text to src\<name>.sc of the session's game, and
+        // compiles it as the resource number. A successful compile saves the
+        // tables.
+        static bool CompileNewScript(GameSession &session, const std::string &name, uint16_t number, const char *text, CompileLog &log)
+        {
+            std::string path = session.Helper().GetScriptFileName(name);
+            {
+                std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
+                file << text;
+            }
+            ScriptId scriptId(path.c_str());
+            scriptId.SetResourceNumber(number);
+            CompileTables tables;
+            Assert::IsTrue(tables.Load(session.ResourceMap()), L"the vocab tables must load");
+            PrecompiledHeaders headers(session.ResourceMap());
+            CompileResults results(log, session.Version());
+            bool compiled = NewCompileScript(session, results, log, tables, headers, scriptId);
+            if (compiled)
+            {
+                tables.Save(session.ResourceMap());
+            }
+            return compiled;
+        }
 
     public:
         TEST_METHOD_CLEANUP(CleanUp)
@@ -358,10 +395,12 @@ namespace UnitTests
                     }
                     tables.Save(session.ResourceMap());
 
+                    // A polygon that the compile cannot find is only a message, so
+                    // look for it too: the SCI1.1 template's rooms use &getpoly.
                     std::string errors;
                     for (const CompileResult &result : log.Results())
                     {
-                        if (result.IsError())
+                        if (result.IsError() || (result.GetMessage().find("&getpoly") != std::string::npos))
                         {
                             errors += result.GetMessage() + "\n";
                         }
@@ -399,7 +438,86 @@ namespace UnitTests
                 Assert::AreEqual(dosText, Dos2Win(dosText), L"a 1252 game keeps its text");
             }
         }
-    };
+        TEST_METHOD(TextCodepage_FollowsTheGamePropertiesChange)
+        {
+            NoAppState noAppState;
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
+            GameSession session;
+            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            Assert::AreEqual(437, GetTextCodepage());
+
+            // The Game Properties dialog saves the language through the helper.
+            session.Helper().SetCodepage(1252);
+
+            Assert::AreEqual(1252, GetTextCodepage(), L"the change must take effect at once");
+            Assert::AreEqual(1252, session.Helper().GetCodepage(), L"game.ini must keep the change");
+        }
+
+        // A script that adds a class, a property and a method: the compile saves
+        // the class table (vocab 996) and the selector table (vocab 997).
+        TEST_METHOD(Compile_NewClass_SavesTheTablesWithNoAppState)
+        {
+            NoAppState noAppState;
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
+            SessionOptions options;
+            options.dataFolder = GetTestModuleDirectory();
+            GameSession session(options);
+            Assert::IsTrue(session.Open(_copyFolder).has_value());
+
+            const char *text =
+                "(script# 950)\n"
+                "(include sci.sh)\n"
+                "(include game.sh)\n"
+                "(use main)\n"
+                "(use obj)\n"
+                "(class HeadlessClass of Obj\n"
+                "    (properties\n"
+                "        headlessProp 0\n"
+                "    )\n"
+                "    (method (headlessMethod)\n"
+                "        (return headlessProp)\n"
+                "    )\n"
+                ")\n";
+            CompileLog log;
+            bool compiled = CompileNewScript(session, "HeadlessClass", 950, text, log);
+            Assert::IsTrue(compiled, Wide(ErrorsOf(log)).c_str());
+
+            SelectorTable selectors;
+            Assert::IsTrue(selectors.Load(session.Helper()));
+            uint16_t selector;
+            Assert::IsTrue(selectors.ReverseLookup("headlessProp", selector), L"the new property must be in the saved selector table");
+            Assert::IsTrue(selectors.ReverseLookup("headlessMethod", selector), L"the new method must be in the saved selector table");
+            SpeciesTable species;
+            Assert::IsTrue(species.Load(session.Helper()));
+            SpeciesIndex speciesIndex;
+            Assert::IsTrue(species.GetSpeciesIndex(950, 0, speciesIndex), L"the new class must be in the saved class table");
+        }
+
+        // A compile error with no class hints: the error names the identifier,
+        // and the compile does not crash.
+        TEST_METHOD(Compile_UndefinedName_ReportsAnErrorWithNoAppState)
+        {
+            NoAppState noAppState;
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
+            SessionOptions options;
+            options.dataFolder = GetTestModuleDirectory();
+            GameSession session(options);
+            Assert::IsTrue(session.Open(_copyFolder).has_value());
+
+            const char *text =
+                "(script# 951)\n"
+                "(include sci.sh)\n"
+                "(include game.sh)\n"
+                "(use main)\n"
+                "(procedure (HeadlessProc)\n"
+                "    (return headlessUndefinedName)\n"
+                ")\n";
+            CompileLog log;
+            Assert::IsFalse(CompileNewScript(session, "HeadlessBad", 951, text, log), L"a script with an error must not compile");
+            Assert::IsTrue(log.HasErrors());
+            std::string errors = ErrorsOf(log);
+            Assert::IsTrue(errors.find("headlessUndefinedName") != std::string::npos, Wide(errors).c_str());
+        }    };
 
     // Plan step B3b. Before it, the decompile read the text resources,
     // vocab.000, the version and the class lookups through appState, and

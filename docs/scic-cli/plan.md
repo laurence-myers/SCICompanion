@@ -147,6 +147,7 @@ Entry points:
   between scripts.
 - The work for each script: `NewCompileScript(results, log, tables, headers, scriptId)`
   (`ScriptDocument.cpp:221-315`). It has no UI, but it is in a GUI document file.
+  B3a moved it to `Src\Compile\CompileScript.cpp`.
 
 The sequence, for one script or for many:
 
@@ -247,7 +248,7 @@ plain in-memory sink. The message text already has a GUI prefix
   (`GameFolderHelper.cpp:296-322`). If it is missing, the GUI saves to the
   package.
 - The compile output always uses this setting. This applies to the script
-  and the heap (`ScriptDocument.cpp:278,283`), vocab 996 and 997
+  and the heap (`ScriptDocument.cpp:278,283`; since B3a, `CompileScript.cpp`), vocab 996 and 997
   (`Vocab99x.cpp:800,1099`), and the text resource (through
   `AppendResource(ResourceEntity&)`, `ResourceMap.cpp:611-615`). A caller
   cannot choose.
@@ -289,7 +290,7 @@ plain in-memory sink. The message text already has a GUI prefix
 | # | Problem | Where | Effect on a CLI |
 |---|---|---|---|
 | P1 | The code that drives compile-all and decompile is in dialogs. | `NewCompileDialog.cpp`, `MainFrm.cpp:2075`, `DecompileDialog.cpp` | Must move into the library. |
-| P2 | A caller cannot choose the package or patch files. | `ScriptDocument.cpp:278,283`, `Vocab99x.cpp:800,1099`, `ResourceMap.cpp:611-615` | Needs a parameter. |
+| P2 | A caller cannot choose the package or patch files. | `ScriptDocument.cpp:278,283` (since B3a, `CompileScript.cpp`), `Vocab99x.cpp:800,1099`, `ResourceMap.cpp:611-615` | Needs a parameter. |
 | P3 | `EndDeferAppend` always returns `S_OK`. Write errors go only to a message box. | `ResourceMap.cpp:280-347` | Wrong exit code; silent loss. |
 | P4 | A nested `DeferResourceAppend` loses the outer queue. The inner destructor calls `AbandonAppend` after `Commit`. | `Src\Resources\ResourceMap.h:197-229`, `ResourceMap.cpp:268-279` | Silent loss if code nests batches. |
 | P5 | Names go into `game.ini` even when the write failed. | `ResourceMap.cpp:324-330`, `:530` | Wrong state after an error. |
@@ -302,7 +303,7 @@ plain in-memory sink. The message text already has a GUI prefix
 | P12 | `SetGameFolder` throws `CUserException*` with no text. | `ResourceMap.cpp:1288-1293` | Poor "cannot open" message. |
 | P13 | The diagnostic text has a GUI prefix. Some parser errors use 0-based lines: `LineCol::Line()` is 0-based (`Src\Util\sci.h:303`), and `SCISyntaxParser.cpp:1376, 1389, 1452, 1457, 1675, 1680, 1685, 1764` do not add 1. | `CompileContext.cpp:819-830`, `Src\Compile\SCISyntaxParser.cpp` | Editors cannot jump to the right line. |
 | P14 | Script names are chosen in hash-table order, not by number. The `_N` suffix does not follow the number. | `DecompileDialog.cpp:727-780`, `Vocab99x.cpp:907` | `list` and `decompile` must share one ordered rule. |
-| P15 | The 3-argument `DecompileScript(helper, n, results)` passes a null config, which is then used. | `ScriptDocument.cpp:344-355` | Dead code. It crashes if called. |
+| P15 | The 3-argument `DecompileScript(helper, n, results)` passes a null config, which is then used. | `ScriptDocument.cpp:344-355` (B3b removed it) | Dead code. It crashes if called. |
 | P16 | The library has a leftover DLL-template `theApp` object. | `SCICompanionLib\SCICompanionLib.cpp:67` | A second `CWinApp` if a CLI links it. |
 | P17 | `_fTrackHeaderFiles` is read before it is set. Worse, `DependencyTracker` takes the value by value and keeps a reference to that parameter, so every later read is undefined. | `AppState.cpp:82` and `:108`, `DependencyTracker.cpp:20` | Undefined value. |
 | P18 | The engine reaches the game through the global GUI object `appState`. | section 2.8 | The CLI needs `AppState`, or the engine must change. |
@@ -342,6 +343,7 @@ plain in-memory sink. The message text already has a GUI prefix
 - The class browser helps the compiler only with error hints ("did you
   forget a `use`?", `CompileContext.cpp:845-888`). The compile is correct
   without it. `NewCompileScript` takes its lock (`ScriptDocument.cpp:224`).
+  Since B3a, the GUI callers take the lock around the compile.
 - The parser stream already copies the text. `CScriptStreamLimiter` builds a
   `ReadOnlyTextBuffer` (a `std::vector<char>` and line offsets) from a
   `CCrystalTextBuffer` (`Src\Util\CrystalScriptStream.cpp:34-64`). Only
@@ -372,7 +374,7 @@ Counts are for the engine folders (`Src\Compile`, `Src\Resources`,
 
 - There are about 85 `catch` sites in the whole library, and 24 are
   `catch (...)`. Some swallow the failure with no report:
-  - `Resources\Text.cpp:209`: a text resource that fails part way keeps the
+  - `TextReadFrom` (`Resources\Text.cpp`): a text resource that fails part way keeps the
     texts read so far, with no message.
   - `Dialogs\DecompileDialog.cpp:866`: the decompile worker swallows every
     exception, including a failure to load the lookups or the config.
@@ -380,7 +382,8 @@ Counts are for the engine folders (`Src\Compile`, `Src\Resources`,
     default value, with no note.
   - `Resources\AudioCacheResourceSource.cpp:453, 470`.
 - Some return values are ignored: P9, P10, the compile's `AppendResource`
-  results (`ScriptDocument.cpp:278, 283`, `Vocab99x.cpp:800, 1099`).
+  results (`ScriptDocument.cpp:278, 283`, since B3a in `CompileScript.cpp`;
+  `Vocab99x.cpp:800, 1099`).
 - A batch cannot report partial success: `EndDeferAppend` always returns
   `S_OK` (P3), and the dialogs count results in window messages.
 
@@ -1222,7 +1225,7 @@ days, L is 3 to 5 days.
 | B2 | Script text with no CrystalEdit: `ReadOnlyTextBuffer(const ScriptText &)` and `CScriptStreamLimiter(const ScriptText &)`, `LoadScriptText(path)` returning `Result<ScriptText>` and `SplitScriptText(contents)` with the line-ending rule of section 2.8 (`Src\Util\ScriptText.h`), and a small `TextPos` in place of `CPoint` in the stream. The engine call sites use it: the compile, `SimpleCompile`, the header loads (`CompileContext.cpp:1204`) and `DecompilerConfig`. The editor keeps its buffer. | P20 | For every `.sc` and `.sh` file in both templates, and for crafted files (LF only, CR only, mixed, no final line break), the lines from both loaders are equal. A naive splitter fails the mixed case (the negative check). A missing file gives `NotFound`. | S |
 | B3a | The compile path takes the session: `CompileTables::Load` and `Save` take the resource map, `CompileResults` takes the version, `CompileContext` and `GenerateScriptResource` take the session, and `NewCompileScript` and `SimpleCompile` move to `Src\Compile\CompileScript.cpp` (`SimpleCompile` takes the version or the defines). Also the vocab 996/997 tables and the class table (`Vocab99x.cpp`, which logs through `CoreLog`), the text codepage (`Text.cpp`: a process-wide setting that the game open sets from `game.ini`), the polygon folder (`Script::SetPolyFolder`, read by `SCISyntaxParser.cpp`), `ValidateSaid` and `ExtractScriptStrings`. The class browser becomes an optional `IClassHints` on the session, and takes its own lock. `SessionOptions::warnOnUnusedInstances`: `AppState::GetSession` copies the GUI setting into it. The GUI callers clear the dependency tracker after a compile. | P18 (compile) | Compile all of both templates with `appState == nullptr` (fails when one compile site reads `appState`: a null dereference). The codepage comes from `game.ini` with no `AppState` (fails when the open does not set it). The existing golden suites (bytecode oracle, decompile snapshots) do not change. | M |
 | B3b | The decompile path takes the resource map: `DecompileBatch`, `DecompileScript` and `FixDuplicateObjectNames` (moved out of `ScriptDocument.cpp` to `Src\Compile\DecompileScript.cpp`; the 3-argument `DecompileScript` goes), and `CreateDecompilerConfig` (it reads `sci.sh` and `keys.sh` from the include folder of the data folder). `ConvertToSCISyntaxHelper` gets an overload that loads its class lookups from a helper; with no lookups, the formatter no longer loads them through `appState`. `DecompilerFallback` reads the version from its lookups. The engine's `LogInfo` calls (`DecompilerFallback`, `Disassembler`, `PaletteOperations`, `Sound`, `View`) go to `CoreLog`. A check-script rule, `appstate-in-engine`: no `appState` in `Src\Core`, `Src\Compile` or `Src\Resources`, with an allowlist for the audio-cache sites and the GUI flags of the pic code. | P15, P18 (decompile), P19 | Decompile all of both templates with `appState == nullptr`, in a batch and one script at a time with the asm output (fails when one decompile site reads `appState`: a null dereference). The check script fails on a new `appState` in an engine folder. The golden suites do not change. | M |
-| F2 | Engine errors as values at the boundary. `sci::DataError` (standard C++, with an `ErrorCode`) replaces the 52 `throw std::exception("…")`. `Result` forms of the reads that the services use: `CreateResourceFromResourceData`, `CompiledScript::Load`, `GlobalCompiledScriptLookups::Load`, `CompileTables::Load`; a decompression failure reaches the caller as `Format`, not only as a log line. The silent swallows on the script paths go: `Text.cpp:209` (a partial read is a `Format` error), `DecompileDialog.cpp:866` (the worker reports through the service), `VersionDetectionHelper.cpp:902, 925` (a failed probe keeps the default and logs why). | P21 | A truncated script resource gives `Format` with the resource number (fails before: generic text, or nothing). A truncated text resource gives a `Format` error (fails before: a silent partial read). The golden suites do not change. | M |
+| F2 | Engine errors as values at the boundary. `sci::DataError` (standard C++, with an `ErrorCode`) replaces the 52 `throw std::exception("…")`. `Result` forms of the reads that the services use: `CreateResourceFromResourceData`, `CompiledScript::Load`, `GlobalCompiledScriptLookups::Load`, `CompileTables::Load`; a decompression failure reaches the caller as `Format`, not only as a log line. The silent swallows on the script paths go: `TextReadFrom` in `Text.cpp` (a partial read is a `Format` error), `DecompileDialog.cpp:866` (the worker reports through the service), `VersionDetectionHelper.cpp:902, 925` (a failed probe keeps the default and logs why). | P21 | A truncated script resource gives `Format` with the resource number (fails before: generic text, or nothing). A truncated text resource gives a `Format` error (fails before: a silent partial read). The golden suites do not change. | M |
 
 ### Phase K: compiler fixes found in `scicompile` (section 14)
 
@@ -1497,7 +1500,7 @@ Must not:
 | Topic | Location |
 |---|---|
 | Compile one script (GUI) | `Src\MFCDocuments\ScriptDocument.cpp:123-199` |
-| Compile a script (engine) | `Src\MFCDocuments\ScriptDocument.cpp:221-315` |
+| Compile a script (engine) | `Src\Compile\CompileScript.cpp` (`NewCompileScript`) |
 | Compile all (dialog) | `Src\Dialogs\NewCompileDialog.cpp`, `Src\MFCFrames\MainFrm.cpp:2075-2139` |
 | Compile tables | `Src\Compile\CompileContext.cpp:82-94`; `Src\Resources\Vocab99x.cpp:747-802, 1086-1101` |
 | Decompile batch | `Src\Compile\DecompileBatch.h`, `.cpp:547-702` |
@@ -1510,7 +1513,7 @@ Must not:
 | Parser input | `Src\Util\CrystalScriptStream.h`, `.cpp:34-64`; `Src\CrystalEdit\CCrystalTextBuffer.cpp:289-397` |
 | Stream error mode | `Src\Util\Stream.h:86-133`; `Src\Resources\ResourceEntity.cpp:77` |
 | Decompiler exception containment | `Src\Compile\ControlFlowGraph.cpp:2862`; `Src\Compile\DecompilerNew.cpp:3734, 3755` |
-| Silent swallows | `Src\Resources\Text.cpp:209`; `Src\Dialogs\DecompileDialog.cpp:866`; `Src\Resources\VersionDetectionHelper.cpp:902, 925` |
+| Silent swallows | `TextReadFrom` in `Src\Resources\Text.cpp`; `Src\Dialogs\DecompileDialog.cpp:866`; `Src\Resources\VersionDetectionHelper.cpp:902, 925` |
 | Precompiled header | `SCICompanionLib\stdafx.h` |
 | Headless test set-up | `UnitTests\Helper.cpp:53-128`; `UnitTests\DecompileHelper.cpp:132-222, 544-593` |
 | Rewrite plan: CLI names and exit codes; error policy | The .NET rewrite plan (outside this repository), Appendix A1 section 5.3; section 5.22 |

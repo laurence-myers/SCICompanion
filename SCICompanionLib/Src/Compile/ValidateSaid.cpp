@@ -375,6 +375,6 @@ void ValidateSaids(CResourceMap &resourceMap, CompileLog &log, const Vocab000 &v
 		wordClass >>= 1;
 	}
 
-	//ListMostPopularOfType(log, vocab000, WordClass::ImperativeVerb, saidsUsedInScripts);
+	//ListMostPopularOfType(log, mainVocab, vocab000, WordClass::ImperativeVerb, saidsUsedInScripts);
 	ListMostPopularVerbs(log, mainVocab, rootsUsedInScripts);
 }

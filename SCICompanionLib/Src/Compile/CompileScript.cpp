@@ -23,6 +23,13 @@ bool CompileLog::HasErrors()
 	return _cErrors > 0;
 }
 
+void CompileLog::SummarizeAndReportErrors()
+{
+	stringstream summaryMessage;
+	summaryMessage << _cErrors << " errors, " << _cWarnings << " warnings.";
+	ReportResult(CompileResult(summaryMessage.str()));
+}
+
 void CompileLog::CalculateErrors()
 {
 	// Calculate errors;

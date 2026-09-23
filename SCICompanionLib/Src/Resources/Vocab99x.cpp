@@ -965,7 +965,7 @@ bool GlobalClassTable::_Create(const SpeciesTable &speciesTable, const GameFolde
 						{
 							// Some games have scripts with classed defined in them which aren't in the global class table.
 							// These are probably leftovers that were never removed from the game (e.g. script 997 in KQ5CD)
-							CoreLogFormat(LogLevel::Warning, "Ignoring class %s since it's not in the class table.", compiledObject->GetName().c_str());
+							CoreLogFormat(LogLevel::Info, "Ignoring class %s since it's not in the class table.", compiledObject->GetName().c_str());
 						}
 					}
 				}

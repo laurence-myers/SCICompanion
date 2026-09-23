@@ -216,6 +216,13 @@ namespace UnitTests
                 NewCompileScript(appState->GetSession(), results, log, tables, headers, script);
             }
             Assert::IsFalse(log.HasErrors());
+            // A polygon that the compile cannot find is only a message, so look
+            // for it too: the SCI1.1 template's rooms use &getpoly.
+            for (const CompileResult &result : log.Results())
+            {
+                const std::string &message = result.GetMessage();
+                Assert::IsTrue(message.find("&getpoly") == std::string::npos, std::wstring(message.begin(), message.end()).c_str());
+            }
         }
 
         void _DoIt()

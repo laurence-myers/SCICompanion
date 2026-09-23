@@ -46,20 +46,7 @@
 
 using namespace std;
 
-// CompileLog::HasErrors and CalculateErrors are in CompileScript.cpp. This
-// one plays a sound, so it stays with the GUI.
-void CompileLog::SummarizeAndReportErrors()
-{
-	stringstream summaryMessage;
-	summaryMessage << _cErrors << " errors, " << _cWarnings << " warnings.";
-	ReportResult(CompileResult(summaryMessage.str()));
-
-	if (_cErrors && appState->_fPlayCompileErrorSound)
-	{
-		// Play a sound.
-		PlaySound((LPCSTR)SND_ALIAS_SYSTEMEXCLAMATION, NULL, SND_ALIAS_ID | SND_ASYNC);
-	}
-}
+// The CompileLog functions are in CompileScript.cpp.
 
 // CScriptDocument
 
@@ -356,9 +343,14 @@ void CScriptDocument::OnUpdateLineCount(CCmdUI *pCmdUI)
 	pCmdUI->SetText(fmt::format("{0} lines.", _buffer.GetLineCount()).c_str());
 }
 
-void CScriptDocument::_DoErrorSummary(ICompileLog &log)
+void CScriptDocument::_DoErrorSummary(CompileLog &log)
 {
 	log.SummarizeAndReportErrors();
+	if (log.HasErrors() && appState->_fPlayCompileErrorSound)
+	{
+		// Play a sound.
+		PlaySound((LPCSTR)SND_ALIAS_SYSTEMEXCLAMATION, NULL, SND_ALIAS_ID | SND_ASYNC);
+	}
 }
 
 void CScriptDocument::_ClearErrorCount()

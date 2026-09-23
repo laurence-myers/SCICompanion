@@ -1603,7 +1603,8 @@ void _ProcessForEaches(ICompileLog &log, Script &script)
 }
 
 // The game's polygon folder: the one that the compile gave the script, else
-// "poly" next to the script's folder (the scripts are in <game>\src).
+// "poly" next to the script's folder (the scripts are in <game>\src). Empty
+// when the script's path has no parent folder.
 std::string _PolyFolderFor(const Script &script)
 {
 	if (!script.GetPolyFolder().empty())
@@ -1631,7 +1632,10 @@ void _ProcessGetPoly(ICompileLog &log, Script &script, FunctionBase &func, GetPo
 				ourPolyName = "";
 			
 			//TODO: Load polygon data for current script, find ourPolyName, and USE THAT BITCH
-			auto polyComponent = CreatePolygonComponent(_PolyFolderFor(script), ourScriptNum);
+			// With no polygon folder, there is no polygon file to read (and an
+			// empty folder would read the root of the drive).
+			std::string polyFolder = _PolyFolderFor(script);
+			std::unique_ptr<PolygonComponent> polyComponent = polyFolder.empty() ? std::make_unique<PolygonComponent>(polyFolder, -1) : CreatePolygonComponent(polyFolder, ourScriptNum);
 
 			const SCIPolygon *ourPolygon = nullptr;
 			for (const SCIPolygon &poly : polyComponent->Polygons())

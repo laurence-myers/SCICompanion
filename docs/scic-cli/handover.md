@@ -6,9 +6,9 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: the B3a and B3b reviews, then F2. F1, A1, A2, B1 and B2
-  are committed and reviewed, with their review fixes. B3a (the compile
-  path) and B3b (the decompile path) are committed.
+- Current step: the B3b review, then F2. F1, A1, A2, B1, B2 and B3a are
+  committed and reviewed, with their review fixes. B3b (the decompile
+  path) is committed; its review is running.
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -17,7 +17,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -38,7 +38,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | A2 Patch writer, size check | done | `7432a479`, review fixes (the commit after `3be03ff1`) | FIX: 1 should-fix, 6 nits (it also reviewed `258ce43c`). Fixed: the patch writer checks every existing target (read-only, locked) before the first rename and removes the `.bak` files left after a failed rename; a repackage inside an open batch is refused; the audio cache is marked out of date before its map save; `PerformChecks` runs inside the exception boundary; the size error names the resource and no longer says "A Audio"; the plan's statements on atomic commits and on the old audio cache behaviour; README "What's new". Left as known gaps (below): `Cancelled` for check failures that are not a choice, and a rename that fails after the checks. |
 | B1 GameSession, core log | done | `13a786ac`, review fixes (the commit after `d1221472`) | FIX: 2 should-fix, 8 nits. Fixed: only a GUI `AppState` installs itself as the log sink, and it removes itself with a compare-exchange (`RemoveCoreLogSink`); `Open("")` is a Usage error; `TryOpen` is inside the exception boundary as a whole; `AppState::Write` deletes MFC exceptions; `LogInfo` uses `CoreLogFormatV`, with `_Printf_format_string_`; three format-string bugs (`Vocab99x.cpp` `%d` for a name, two dialogs that used the error text as the format, and leaked their `COleException`); the grammar load uses `std::call_once`; the headless `SafeMessageBox` gives the safe answer for every button set; test hygiene. Left: see "Decisions" (the GUI open path and the B3 guard test). |
 | B2 Script text loader | done | `3be03ff1`, review fixes (the commit after `af7cdb5f`) | FIX: 1 should-fix, 1 nit. No difference from the editor in about 46,000 files (a differential probe), 723 parses and 5 compiles. Fixed: `LoadScriptText` names the file for a thrown failure and refuses a file over 64 MB (`Unsupported`); tests at the exact 32 KB edge of the style rule, and a stream walk; the exception boundary reports an MFC `CMemoryException` as "out of memory" (an F1 gap the review found). |
-| B3a Compile path on the session | done | `8fe055d0` | running |
+| B3a Compile path on the session | done | `8fe055d0`, review fixes (the commit after `f646dd52`) | FIX: 1 should-fix, 6 nits, 1 question. Fixed: the compile-all tests fail on a `&getpoly` message (a missing polygon is only a message, so a wrong polygon folder passed every test); tests for the codepage set by Game Properties, for the table saves, and for a compile error with no class hints; no polygon file read when the script has no game folder; `CompileLog::SummarizeAndReportErrors` moved to the engine, and the GUI plays the error sound; "Ignoring class" is Info; `OutputScriptStrings.h` hygiene; stale plan references. |
 | B3b Decompile path on the session, `appState` check rule | done | the commit after `8fe055d0` | next |
 | F2 Engine errors as values | not started | | |
 | K1 `and`/`or` value semantics | not started | | |
@@ -70,7 +70,9 @@ for each step, and a follow-up commit if the review finds a problem.
    break it), confirm it fails, then restore. Put the break on a path that
    the test runs. After you restore a file from a copy, set its write time
    to now: `Copy-Item` keeps the old time, so MSBuild does not rebuild,
-   and the binary keeps the break.
+   and the binary keeps the break. The break must use the value that it
+   reads (for example, in a condition): the Release build removes a read
+   with no effect, such as `appState->GetResourceMap().Helper();`.
 5. Run `.\UnitTests\Tools\CheckFailureHandling.ps1` (after F1).
 6. Commit the step with this file updated. Message: `<type>(scic): <step> <summary>`.
 7. Adversarial review: one subagent in an isolated git worktree, told the
@@ -84,6 +86,12 @@ for each step, and a follow-up commit if the review finds a problem.
 - Do not put a copyright notice (or the GPL header block) in a new file.
   This is your rule (2026-09-23). Vendored third-party sources keep their
   own notices.
+- PowerShell unrolls `@(@('old', 'new'))` into `@('old', 'new')`. An
+  edit loop over such a pair list then replaces single characters (on
+  2026-09-23 this replaced every tab in two files). Build the edit list
+  from objects (`[pscustomobject]@{ Old = ...; New = ... }`), check that
+  each anchor matches exactly once before the first write, and keep a
+  backup.
 - `sed -i` in Git Bash rewrites a CRLF file with LF endings. Edit project
   files with the Edit tool or with PowerShell (`[IO.File]::ReadAllText`,
   keep the BOM). A new file from a tool that writes LF needs the CRLF
@@ -212,8 +220,10 @@ for each step, and a follow-up commit if the review finds a problem.
   the Preferences dialog takes effect at the next compile, as before.
 - B3a: the compile gives the script its polygon folder
   (`Script::SetPolyFolder`). Other parses (the class browser,
-  autocomplete, `SimpleCompile`) use `poly` next to the script's folder.
-  For a script in `<game>\src`, that is the same folder as before.
+  `SimpleCompile`) use `poly` next to the script's folder. For a script in
+  `<game>\src`, that is the same folder as before. A script path with no
+  parent folder reads no polygon file (B3a review; before the fix, it read
+  the root of the drive). `ScriptId` splits a path only on `\` (K6).
 - B3a: the polygon loader parses a `.shp` file with no defines (before:
   the defines of the game's version). The defines only choose `#if` and
   `#ifdef` code, which the polygon writer never writes, so the result is
@@ -223,9 +233,16 @@ for each step, and a follow-up commit if the review finds a problem.
   map. `SelectorTable::Save`, `SpeciesTable::Save` and
   `SpeciesTable::PurgeOldClasses` take the resource map. `GlobalClassTable`
   uses the helper that its `Load` gets.
-- B3a: the five `Vocab99x.cpp` log lines are warnings now
+- B3a: four of the five `Vocab99x.cpp` log lines are warnings now
   (`CoreLogFormat(LogLevel::Warning, ...)`), as the codec lines are since
-  B1. In the GUI's log file, they get a `warning:` prefix.
+  B1. In the GUI's log file, they get a `warning:` prefix. "Ignoring
+  class" is Info (B3a review): it runs at each open of a game with
+  leftover classes (KQ5CD), once for each class.
+- B3a review: `CompileLog::SummarizeAndReportErrors` is in the engine
+  (`CompileScript.cpp`). The GUI's `_DoErrorSummary` plays the error
+  sound.
+- B3a review: a compile that cannot find a polygon (`&getpoly`) reports a
+  message, not an error. The compile-all tests fail on such a message.
 - B3a: the `NoDbugStr` path (`CompileContext::Helper()`, used only for a
   `DbugStr` kernel call in `Compile.cpp`) has no test; it is
   inspection-verified. The templates do not call `DbugStr`.
@@ -268,6 +285,5 @@ for each step, and a follow-up commit if the review finds a problem.
   `Sync.cpp`, `Vocab000.cpp`). B3b removed it from the `Src\Compile` files.
 ## Next action
 
-Read the B3a review (running) and fix any real finding. Run the B3b
-adversarial review (a worktree on the B3b commit) and fix any real
-finding. Then F2 (plan section 9).
+Read the B3b review (running) and fix any real finding. Then F2 (plan
+section 9).
