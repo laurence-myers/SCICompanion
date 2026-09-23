@@ -113,10 +113,16 @@ for each step, and a follow-up commit if the review finds a problem.
   volume or the map, it leaves `resource.map.bak` and `resource.00N.bak`
   behind. The game stays consistent, because the writer only appends to a
   volume and replaces the map last.
-- A2: `sci::DataError` can carry a whole `sci::Error`, and the exception boundary
-  gives it back unchanged. Code inside an exception boundary that cannot return a
-  `Result` (for example `AppendResources`, which returns `AppendBehavior`)
-  throws `DataError(status.error())`.
+- A2: `sci::DataError` can carry a whole `sci::Error`, and the exception
+  boundary (`sci::Guard`) gives it back unchanged. Code inside an
+  exception boundary that cannot return a `Result` (for example
+  `AppendResources`, which returns `AppendBehavior`) throws
+  `DataError(status.error())`.
+- Terminology: `sci::Guard` is the "exception boundary" (your correction,
+  2026-09-23). Use that term in code, documents and commit messages.
+- Terminology: code broken on purpose to show that a test catches the
+  fault is a "negative check" (AGENTS.md). Do not use the word "mutant";
+  write this rule into every review-subagent prompt.
 - A2: `ResourceBlob.h` now uses `sci::Status`, so it includes `Result.h`
   itself: two precompiled headers include `ResourceBlob.h` before
   `Result.h`.

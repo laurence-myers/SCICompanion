@@ -113,8 +113,8 @@ namespace UnitTests
         }
 
         // Code that cannot return a Result throws DataError(error) for a failed
-        // one. The exception boundary gives back the whole error: code, location and
-        // context, with its own context line added outside.
+        // one. The exception boundary gives back the whole error: code,
+        // location and context, with its own context line added outside.
         TEST_METHOD(Guard_DataErrorWithAnError_KeepsTheWholeError)
         {
             Status status = Guard("writing 2 resources to patch files", []() -> Status

@@ -518,8 +518,8 @@ void AudioCacheResourceSource::RemoveEntries(int number, const std::vector<uint3
 
 AppendBehavior AudioCacheResourceSource::AppendResources(const std::vector<const ResourceBlob*> &blobs)
 {
-	// A failure throws to the caller: the resource map's exception boundary gives it
-	// back from WriteResource or the batch's Commit.
+	// A failure throws to the caller: the resource map's exception boundary
+	// gives it back from WriteResource or the batch's Commit.
 	std::unique_ptr<ResourceEntity> audioMap = _PrepareForAddOrRemove();
 	AudioMapComponent &audioMapComponent = audioMap->GetComponent<AudioMapComponent>();
 

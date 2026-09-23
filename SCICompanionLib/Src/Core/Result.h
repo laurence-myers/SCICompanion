@@ -34,8 +34,8 @@ namespace sci
 }
 
 // A wrong access to a Result (*r on an error, r.error() on a value) is a bug.
-// Check it in Release too, instead of undefined behaviour. The exception boundary
-// reports the InvariantViolation as an Internal error. This file must be the
+// Check it in Release too, instead of undefined behaviour. The exception
+// boundary reports the InvariantViolation as an Internal error. This file must be the
 // first to include tl/expected.hpp (it is in the precompiled headers), or
 // tl's own TL_ASSERT (assert, off in Release) would silently win.
 #ifdef TL_ASSERT
@@ -115,13 +115,13 @@ namespace sci
         return result;
     }
 
-    // Bad data found deep in a reader. Deep code throws it; the exception boundary turns
-    // it into an Error with its code.
+    // Bad data found deep in a reader. Deep code throws it; the exception
+    // boundary turns it into an Error with its code.
     //
-    // Code inside an exception boundary that cannot return a Result (for example, a
-    // virtual that returns something else) throws DataError(error) for a
-    // failed Result. The exception boundary gives back that Error, with its location
-    // and context, and adds its own context line.
+    // Code inside an exception boundary that cannot return a Result (for
+    // example, a virtual that returns something else) throws
+    // DataError(error) for a failed Result. The boundary gives back that
+    // Error, with its location and context, and adds its own context line.
     class DataError : public std::runtime_error
     {
     public:

@@ -42,8 +42,8 @@
     (`resource.map` and a volume). `--to patch` selects patch files explicitly.
 - Failures are values. A new `sci::Result<T>` (on tl::expected) carries a
   structured `sci::Error` across every boundary that the CLI and the
-  services use. An exception boundary turns any exception that escapes
-  the old code into an `Error`. No exception leaves a service. Batches
+  services use. An exception boundary (`sci::Guard`) turns any exception
+  that escapes the old code into an `Error`. No exception leaves a service. Batches
   return a report with a status for each script, so partial success is
   explicit.
 - The CLI does not need `game.ini`. It takes script names from `game.ini`
@@ -880,12 +880,13 @@ Yes, at every boundary that the CLI and the services use. It gives:
 - a report of partial success after a compile or decompile;
 - no failure that disappears in a `catch (...)`, a closed log file or an
   ignored return value (section 2.9);
-- no exception that ends the process, because the exception boundary (section 6.3)
-  turns it into an `Error`;
+- no exception that ends the process, because the exception boundary
+  (section 6.3) turns it into an `Error`;
 - the same error text in the CLI and in the GUI.
 
 This plan does not rewrite the whole engine. Some deep code keeps its
-exceptions inside an exception boundary, where a change gives no gain (section 6.4).
+exceptions inside an exception boundary, where a change gives no gain
+(section 6.4).
 This is the same policy as the .NET rewrite plan (section 5.22): known
 failures are values, and exceptions are for bugs.
 
@@ -999,7 +1000,7 @@ Rules:
 | MFC `CException*` (the text from `GetErrorMessage`, then `Delete()`) | `Io` for `CFileException`, else `Internal` |
 | anything else (`...`) | `Internal` |
 
-- The exception boundary sits at each public service entry and around each item of a
+- A `Guard` sits at each public service entry and around each item of a
   batch (each script). `RunCli` has one more `Guard` around the whole
   command (exit 1).
 - The MFC case is in one `.cpp` file (a rethrow-and-catch helper), so
@@ -1021,8 +1022,8 @@ These stay as they are, inside an exception boundary:
   (`ResourceEntity.cpp:77`). The boundary is `CreateResourceFromResourceData`,
   which gets a `Result` form in PR F2. The GUI can still use the
   default-resource fallback, but as an explicit choice.
-- Third-party code that throws (cpptoml, CppFormat, the STL). The exception boundary
-  contains it.
+- Third-party code that throws (cpptoml, CppFormat, the STL). The exception
+  boundary contains it.
 
 These go away on the script paths (PR F2): the Microsoft-only
 `std::exception("…")` throws, the silent `catch (...)` blocks, and the
@@ -1202,7 +1203,7 @@ days, L is 3 to 5 days.
 
 | PR | Change | Test (negative check) | Size |
 |---|---|---|---|
-| F1 | Vendor tl::expected v1.3.1 (`Src\tl-expected\`, `COPYING`, notice in `SCICompanion\Files\Licenses`). `Src\Core\Result.h`: `ErrorCode`, `ErrorLocation`, `Error`, `Result`, `Status`, `Fail`, `SCI_TRY`, `SCI_TRY_ASSIGN`, `WithContext`, `FromHResult`, `FromLastError`, `InvariantViolation`, `TL_ASSERT`. `Src\Core\Result.cpp`: the exception boundary's exception mapping (section 6.3). Include through the precompiled header. `/we4834` for our projects. The CI check script and its allowlist (section 6.8). | `Guard` maps each exception kind to its code (`DataError`, `bad_alloc`, `std::exception`, `CException*`, `CFileException*`, `...`). `SCI_TRY` returns early. A wrong access throws `InvariantViolation` in Release (fails before `TL_ASSERT` is defined). | M |
+| F1 | Vendor tl::expected v1.3.1 (`Src\tl-expected\`, `COPYING`, notice in `SCICompanion\Files\Licenses`). `Src\Core\Result.h`: `ErrorCode`, `ErrorLocation`, `Error`, `Result`, `Status`, `Fail`, `SCI_TRY`, `SCI_TRY_ASSIGN`, `WithContext`, `FromHResult`, `FromLastError`, `InvariantViolation`, `TL_ASSERT`. `Src\Core\Result.cpp`: the exception boundary's mapping (section 6.3). Include through the precompiled header. `/we4834` for our projects. The CI check script and its allowlist (section 6.8). | `Guard` maps each exception kind to its code (`DataError`, `bad_alloc`, `std::exception`, `CException*`, `CFileException*`, `...`). `SCI_TRY` returns early. A wrong access throws `InvariantViolation` in Release (fails before `TL_ASSERT` is defined). | M |
 
 ### Phase A: safety fixes
 
@@ -1306,7 +1307,7 @@ GUI changes in this plan (all others are refactors with no visible change):
   - A guard test runs `script list`, `decompile --all` and `compile --all`
     on both templates with `appState == nullptr`. It fails if any engine or
     service code uses `appState` again.
-  - Exception boundary tests: each exception kind maps to its code, and a batch goes
+  - Exception-boundary tests: each exception kind maps to its code, and a batch goes
     on after one item throws (fault injection through a test hook).
   - Failure tests: a truncated script, a truncated heap, a read-only `src\`,
     a read-only volume, and a locked patch file. Each gives the right
