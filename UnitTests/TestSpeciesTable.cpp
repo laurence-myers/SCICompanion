@@ -149,8 +149,8 @@ namespace UnitTests
             char folders[16384] = {};
             if (!GetEnvironmentVariableA("SCICOMP_SPECIES_GAME", folders, ARRAYSIZE(folders)))
             {
-                Logger::WriteMessage(L"Skipped: set SCICOMP_SPECIES_GAME to a game folder.");
-                return;
+                // An opt-in test fails when its input is missing (#79).
+                Assert::Fail(L"SCICOMP_SPECIES_GAME is not set. Set it to a game folder, or to several separated by ';'; this opt-in test must not pass without running.");
             }
             NoAppStateForSpecies noAppState;
             std::string mismatches;

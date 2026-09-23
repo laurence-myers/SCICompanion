@@ -41,6 +41,18 @@ struct RebuildStats
 	size_t TotalSize;
 };
 
+// The header of an empty resource (for example, a text with no strings): it
+// is in the volume, and its sizes are 0. ReadResourceHeader throws it as a
+// DataError, as before, so a reader that needs the data still fails. The
+// resource iterator catches it apart from a header that is not in the
+// volume, and gives an empty blob with no Corrupted flag (review of the F2
+// review fixes: the first fix marked a valid empty resource).
+class EmptyResourceError : public sci::DataError
+{
+public:
+	EmptyResourceError() : sci::DataError("the resource is empty") {}
+};
+
 typedef ResourceHeaderAgnostic(*ReadResourceHeaderFunc)(sci::istream &byteStream, SCIVersion version, ResourceSourceFlags sourceFlags, uint16_t packageHint);
 typedef void(*WriteResourceHeaderFunc)(sci::ostream &byteStream, const ResourceHeaderAgnostic &header);
 
@@ -56,6 +68,10 @@ ResourceHeaderAgnostic ReadResourceHeader(sci::istream &byteStream, SCIVersion v
 		throw sci::DataError("corrupted resource!");
 	}
 	ResourceHeaderAgnostic rhAgnostic = rh.ToAgnostic(version, sourceFlags, packageHint);
+	if ((rhAgnostic.cbCompressed == 0) && (rhAgnostic.cbDecompressed == 0))
+	{
+		throw EmptyResourceError();
+	}
 	if ((rhAgnostic.cbCompressed == 0) || (rhAgnostic.cbDecompressed == 0))
 	{
 		throw sci::DataError("corrupted resource!");

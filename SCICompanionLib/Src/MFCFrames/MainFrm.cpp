@@ -2023,7 +2023,8 @@ void CMainFrame::OnRebuildClassTable()
 	if (IDYES == AfxMessageBox("Rebuilding the class table will purge old deleted classes from the class table.\nAfterwards, you will need to compile all. Go ahead?", MB_APPLMODAL | MB_ICONQUESTION | MB_YESNO))
 	{
 		SpeciesTable speciesTable;
-		if (speciesTable.Load(appState->GetResourceMap().Helper()))
+		// The purge reads only the script of each species (K3).
+		if (speciesTable.Load(appState->GetResourceMap().Helper(), false))
 		{
 			speciesTable.PurgeOldClasses(appState->GetResourceMap());
 		}

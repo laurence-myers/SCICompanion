@@ -205,7 +205,8 @@ namespace sci
 			error.message = "Read past end of stream.";
 			if (!_sourceName.empty())
 			{
-				// A failed read puts the index back at the start of the read.
+				// The start of a failed read (the read puts the index back),
+				// or the target of a seek past the end.
 				error.where.resource = _sourceName;
 				error.where.offset = _iIndex;
 			}

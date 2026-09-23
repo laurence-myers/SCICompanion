@@ -1245,7 +1245,7 @@ void SpeciesTable::PurgeOldClasses(CResourceMap &resourceMap)
 		_direct.clear();
 		_wNewSpeciesIndex = 0;
 		_fDirty = false;
-		this->Load(helper);
+		this->Load(helper, false);   // No caller reads the species order after a purge (K3).
 	}
 }
 

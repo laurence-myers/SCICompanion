@@ -527,7 +527,8 @@ void VocabPreviewer::SetResource(const ResourceBlob &blob)
 		case 996: // species table
 		{
 			SpeciesTable species;
-			if (species.Load(appState->GetResourceMap().Helper()))
+			// The preview shows only the script of each species (K3).
+			if (species.Load(appState->GetResourceMap().Helper(), false))
 			{
 				_Populate(species.GetNames());
 				fSuccess = true;

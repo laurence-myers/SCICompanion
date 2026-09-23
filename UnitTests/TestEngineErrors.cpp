@@ -441,6 +441,58 @@ namespace UnitTests
             Assert::AreEqual(std::string("text 5"), checked.error().where.resource);
         }
 
+        // Review of the F2 review fixes: the same for compressed data, which
+        // the blob reads on another path.
+        TEST_METHOD(ShortReadOfCompressedData_MarksTheBlobDamaged)
+        {
+            ResourceHeaderAgnostic header;
+            header.Type = ResourceType::Text;
+            header.Number = 5;
+            header.PackageHint = 1;
+            header.CompressionMethod = 1;   // LZW in SCI0
+            header.cbCompressed = 100;
+            header.cbDecompressed = 200;
+            header.Version = sciVersion0;
+            header.SourceFlags = ResourceSourceFlags::ResourceMap;
+            std::vector<uint8_t> tenBytes(10, 0);
+            sci::istream stream(tenBytes.data(), (uint32_t)tenBytes.size());
+            ResourceBlob blob;
+            // Delay the decompression, so that only the read can set the flag.
+            blob.CreateFromPackageBits("", header, stream, true);
+
+            Assert::IsTrue(IsFlagSet(blob.GetStatusFlags(), ResourceLoadStatusFlags::Corrupted), L"a short read of compressed data marks the blob");
+        }
+
+        // Review of the F2 review fixes: an empty resource in the package (a
+        // text with no strings) is valid. The header reader throws for its
+        // sizes of 0 as for a header that is not in the volume, so the first
+        // fix marked it "Corrupt", and TryCreate refused it.
+        TEST_METHOD(EmptyPackageResource_LoadsWithNoFlag)
+        {
+            NoAppStateInScope noAppState;
+            for (const char *templateFolder : { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" })
+            {
+                RemoveCopy();
+                _copyFolder = CopyGameFromModuleFolder(templateFolder);
+                GameSession session;
+                Assert::IsTrue(session.Open(_copyFolder).has_value());
+                const GameFolderHelper &helper = session.Helper();
+                std::vector<uint8_t> noData;
+                ResourceBlob empty(helper, nullptr, ResourceType::Text, noData, helper.Version.DefaultVolumeFile, 555, NoBase36, helper.Version, ResourceSourceFlags::ResourceMap);
+                sci::Status written = session.ResourceMap().WriteResource(empty);
+                Assert::IsTrue(written.has_value(), WideText(written ? std::string() : written.error().ToString()).c_str());
+
+                std::unique_ptr<ResourceBlob> blob = helper.MostRecentResource(ResourceType::Text, 555, ResourceEnumFlags::None);
+                Assert::IsTrue(blob != nullptr, WideText(std::string("no text 555 in ") + templateFolder).c_str());
+                Assert::IsTrue(blob->GetSourceFlags() == ResourceSourceFlags::ResourceMap, L"setup: text 555 is in the package");
+                Assert::AreEqual(0, (int)blob->GetLength(), L"setup: text 555 is empty");
+                Assert::IsFalse(IsFlagSet(blob->GetStatusFlags(), ResourceLoadStatusFlags::Corrupted),
+                    WideText(std::string("an empty resource is not damaged: ") + templateFolder).c_str());
+                auto created = TryCreateResourceFromResourceData(*blob);
+                Assert::IsTrue(created.has_value(), WideText(created ? std::string() : created.error().ToString()).c_str());
+            }
+        }
+
         // F2 review: a map entry whose header is past the end of its volume.
         // Before, the iterator gave an empty blob with no flag, which was the
         // same as an empty resource.

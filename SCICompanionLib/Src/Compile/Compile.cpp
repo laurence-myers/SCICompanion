@@ -839,10 +839,10 @@ CodeResult SingleStatementVectorOutputHelper(const SyntaxNodeVector &statements,
 }
 
 // The code of an if statement. pFailure (the else) is optional.
-CodeResult _OutputCodeForIfStatement(CompileContext &context, const SyntaxNode &condition, const SyntaxNode &success, const SyntaxNode *pFailure, bool fMeaning)
+CodeResult _OutputCodeForIfStatement(CompileContext &context, const SyntaxNode &condition, const SyntaxNode &success, const SyntaxNode *pFailure)
 {
 	declare_conditional isCondition(context, false);
-	change_meaning meaning(context, fMeaning);
+	change_meaning meaning(context, true);
 	// Begin two branch blocks.
 	branch_block blockTrue(context, BranchBlockIndex::Success);
 	branch_block blockFalse(context, BranchBlockIndex::Failure);
@@ -2666,7 +2666,7 @@ CodeResult IfStatement::OutputByteCode(CompileContext &context) const
 	// Put result in accumulator.
 	{
 		COutputContext accContext(context, OC_Accumulator);
-		result = _OutputCodeForIfStatement(context, *_innerCondition.get(), *_statement1, _statement2.get(), true);
+		result = _OutputCodeForIfStatement(context, *_innerCondition.get(), *_statement1, _statement2.get());
 	}
 	WORD wBytes = PushToStackIfAppropriate(context, GetLineNumber());
 	return CodeResult(wBytes, result.GetType());

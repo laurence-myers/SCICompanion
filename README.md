@@ -71,7 +71,8 @@ modernizing the build. Broad highlights since the previous release:
 * **Improved decompilation output.** The reconstructed source is more idiomatic
   and follows the "golden" decompilations from
   [sluicebox's SCI tools](https://github.com/sluicebox/sci-tools) much more
-  closely (control-flow shapes, expressions and comparisons).
+  closely (control-flow shapes, expressions and comparisons). Names keep a
+  `#` as the game has it (for example `river#1`, before `river_1`).
 * **Fewer crashes on bad or corrupt data.** The decompiler, compiler and
   resource loaders are hardened against malformed, truncated or crafted game
   files, so opening a damaged game no longer crashes the app. Damaged data is

@@ -208,7 +208,9 @@ namespace UnitTests
         // the source and the compiled script has the exports of the .sco that
         // the compiler writes. Before K2, Main of the SCI1.1 template gave
         // AimToward@7, Die@8 and AddToScore@9: its public block is not in
-        // definition order.
+        // definition order. No template public block is out of slot order or
+        // has a name in two slots, so this test does not pin the slot sort;
+        // PublicBlock_NameInSeveralSlots_IsInSlotOrder does.
         TEST_METHOD(TemplateScripts_ScoExportsEqualTheCompilersSco)
         {
             CompareScoExportsOfEveryScript("SCI0");

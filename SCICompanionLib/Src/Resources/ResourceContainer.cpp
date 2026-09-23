@@ -113,17 +113,28 @@ sci::istream ResourceContainer::ResourceIterator::_GetResourceHeaderAndPackage(R
 	}
 
 	sci::istream temp;
+	bool noData = false;
 	try
 	{
 		temp = (*_container->_mapAndVolumes)[_state.mapIndex]->GetHeaderAndPositionedStream(_currentEntry, rh);
 	}
+	catch (const EmptyResourceError &)
+	{
+		// A header with sizes 0: an empty resource, not a damaged one.
+		noData = true;
+	}
 	catch (std::exception)
 	{
-		// An empty resource, which the caller marks as corrupt.
+		// No header at the map's offset (or no volume): the caller marks the
+		// empty resource as corrupt.
+		noData = true;
 		if (headerUnreadable)
 		{
 			*headerUnreadable = true;
 		}
+	}
+	if (noData)
+	{
 		rh.Type = _currentEntry.Type;
 		rh.cbCompressed = 0;
 		rh.cbDecompressed = 0;
