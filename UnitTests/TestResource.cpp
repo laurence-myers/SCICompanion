@@ -646,4 +646,55 @@ namespace UnitTests
                 L"the template must contain at least one compressed resource to cover the delayed path");
         }
     };
+
+    // Version detection decides which audio volume(s) a game has. It looked for
+    // resource.aud only in the game root, while the audio is read from the root
+    // or an AUDIO subfolder (GetAudioVolumePath). Freddy Pharkas keeps
+    // RESOURCE.AUD under AUDIO and RESOURCE.SFX in the root, so detection saw
+    // only the .sfx, and every speech resource was read from it at offsets that
+    // belong to the .aud: a zero sample rate, no samples, and no error. (#182)
+    TEST_CLASS(TestAudioVolumeDetection)
+    {
+        std::string _gameFolder;
+
+    public:
+        TEST_METHOD_CLEANUP(CleanUpAudioVolumeDetection)
+        {
+            if (!_gameFolder.empty())
+            {
+                CleanUpGame(_gameFolder);
+                _gameFolder.clear();
+            }
+        }
+
+        void _CheckSubfolder(const wchar_t *subfolder)
+        {
+            namespace fs = std::filesystem;
+            _gameFolder = SetUpGameSCI11();
+            // The template keeps both volumes in the root.
+            Assert::IsTrue(appState->GetVersion().AudioVolumeName == AudioVolumeName::Both,
+                L"the SCI1.1 template has resource.aud and resource.sfx in its root");
+
+            // Move the .aud under the subfolder and re-open the game.
+            fs::path root(_gameFolder);
+            std::error_code ec;
+            fs::create_directories(root / subfolder, ec);
+            fs::rename(root / L"resource.aud", root / subfolder / L"resource.aud", ec);
+            Assert::IsFalse(static_cast<bool>(ec), L"moving resource.aud under the subfolder failed");
+            appState->GetResourceMap().SetGameFolder(_gameFolder);
+
+            Assert::IsTrue(appState->GetVersion().AudioVolumeName == AudioVolumeName::Both,
+                (std::wstring(L"a resource.aud in the ") + subfolder + L" subfolder must count, with the .sfx in the root").c_str());
+        }
+
+        TEST_METHOD(SniffVersion_FindsAudInAudioSubfolder) // Freddy Pharkas
+        {
+            _CheckSubfolder(L"AUDIO");
+        }
+
+        TEST_METHOD(SniffVersion_FindsAudInAudSubfolder) // Gabriel Knight, Larry 6
+        {
+            _CheckSubfolder(L"AUD");
+        }
+    };
 }

@@ -305,8 +305,10 @@ void AudioWaveformUI::_DrawWaveform(CDC *pDC, LPRECT prc)
 			dcMem.SelectObject(hOld);
 		}
 
-		// If we have lipsync data, draw those phonemes now.
-		long ms = _audioComponent->GetLength() * 1000 / _audioComponent->Frequency / blockAlign;
+		// If we have lipsync data, draw those phonemes now. An audio component
+		// with a zero sample rate (nothing loaded) has no timeline to draw
+		// them on; dividing by it crashed the dialog before it appeared.
+		long ms = (_audioComponent->Frequency != 0) ? (_audioComponent->GetLength() * 1000 / _audioComponent->Frequency / blockAlign) : 0;
 		int colorIndex = 0;
 		dcMem.SetTextColor(RGB(0, 0, 0));
 		dcMem.SetBkMode(TRANSPARENT);
@@ -316,6 +318,10 @@ void AudioWaveformUI::_DrawWaveform(CDC *pDC, LPRECT prc)
 		int xLastEnds[4] = { 0, 0, 0, 0 };
 		for (auto &phoneme : _rawLipSyncData)
 		{
+			if (ms == 0)
+			{
+				break; // No timeline to place the phonemes on.
+			}
 			// To start with, just draw them.
 			int xStart = phoneme.start * width / ms;
 			int xEnd = phoneme.stop * width / ms;

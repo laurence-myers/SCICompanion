@@ -29,6 +29,9 @@ std::string _NameFromFilename(PCSTR pszFilename);
 void AddWaveFileToGame(const std::string &filename);
 AudioVolumeName GetVolumeToUse(SCIVersion version, uint32_t base36Number);
 std::string GetAudioVolumePath(const std::string &gameFolder, bool bak, AudioVolumeName volumeToUse, ResourceSourceFlags *sourceFlags = nullptr);
+// The folders an audio volume (or a loose audio map) can be in: the game folder
+// first, then the subfolders some CD talkie games use (AUDIO, AUD).
+std::vector<std::string> GetAudioVolumeFolders(const std::string &gameFolder);
 bool IsWaveFile(PCSTR pszFileName);
 void WriteWaveFile(const std::string &filename, const AudioComponent &audio, const AudioProcessingSettings *audioProcessingSettings = nullptr);
 bool HasWaveHeader(const std::string &filename);

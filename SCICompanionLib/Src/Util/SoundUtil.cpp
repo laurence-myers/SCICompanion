@@ -352,6 +352,15 @@ void WriteWaveFile(const std::string &filename, const AudioComponent &audio, con
 	file.Write(out.GetInternalPointer(), out.GetDataSize());
 }
 
+std::vector<std::string> GetAudioVolumeFolders(const std::string &gameFolder)
+{
+	// Some SCI1.1 CD talkie games keep their speech volume (RESOURCE.AUD), and
+	// often their per-room audio maps, in a subfolder rather than the game root:
+	// AUDIO for Freddy Pharkas, AUD for Gabriel Knight and Larry 6. The root
+	// comes first, so a volume there wins. (#182)
+	return { gameFolder, gameFolder + "\\AUDIO", gameFolder + "\\AUD" };
+}
+
 std::string GetAudioVolumePath(const std::string &gameFolder, bool bak, AudioVolumeName volumeToUse, ResourceSourceFlags *sourceFlags)
 {
 	ResourceSourceFlags sourceFlagsTemp = (volumeToUse == AudioVolumeName::Aud) ? ResourceSourceFlags::Aud : ResourceSourceFlags::Sfx;
@@ -366,10 +375,8 @@ std::string GetAudioVolumePath(const std::string &gameFolder, bool bak, AudioVol
 		*sourceFlags = sourceFlagsTemp;
 	}
 
-	// Look in the game folder, then in an AUDIO subfolder. Some SCI1.1 CD talkie
-	// games keep their speech volume (RESOURCE.AUD) and per-room audio maps in an
-	// AUDIO subfolder rather than the game root -- for example Freddy Pharkas. (#182)
-	for (const std::string &folder : { gameFolder, gameFolder + "\\AUDIO" })
+	// Look in the game folder, then in its audio subfolders. (#182)
+	for (const std::string &folder : GetAudioVolumeFolders(gameFolder))
 	{
 		std::string fullPath = folder + "\\" + volumeName;
 		WIN32_FIND_DATA fd = { 0 };
