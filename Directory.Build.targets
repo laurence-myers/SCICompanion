@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Solution-wide build targets. -->
+<Project>
+
+  <!--
+    The vcpkg targets install the packages of vcpkg.json and add their
+    include folder (see Directory.Build.props). Without vcpkg the build
+    stops here with an error, not later with a missing header.
+  -->
+  <Import Condition="'$(VcpkgPropsImported)' == 'true'"
+          Project="$(ScicVcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.targets" />
+  <Target Name="ScicCheckVcpkg" BeforeTargets="PrepareForBuild"
+          Condition="!$(MSBuildProjectName.StartsWith('ProfUISLIB')) and '$(VcpkgPropsImported)' != 'true'">
+    <Error Text="vcpkg was not found at '$(ScicVcpkgRoot)'. Install the vcpkg component of Visual Studio (C++ core features), or set VCPKG_ROOT to a vcpkg folder." />
+  </Target>
+
+</Project>

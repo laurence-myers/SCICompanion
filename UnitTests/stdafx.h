@@ -115,6 +115,7 @@ struct delete_map_value
 #include "StlUtil.h"
 #include "ResourceBlob.h"
 #include "PicCommands.h"
+#include "Result.h"
 
 // Headers for CppUnitTest
 // This must come after all the AFX stuff, because:

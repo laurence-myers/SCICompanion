@@ -199,3 +199,6 @@ Bin_1000/
 /SCICompanion.VC.VC.opendb
 /SCICompanion.VC.db
 *.idb
+
+# vcpkg (manifest mode) installs the packages of vcpkg.json here.
+vcpkg_installed/

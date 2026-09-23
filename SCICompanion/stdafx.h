@@ -110,3 +110,4 @@ struct delete_map_value
 #include "StlUtil.h"
 #include "ResourceBlob.h"
 #include "PicCommands.h"
+#include "Result.h"

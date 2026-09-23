@@ -18,6 +18,7 @@ uses:
   - Annosoft-LipSync-license.txt - the Annosoft LipSync SDK
   - CrystalEdit-notice.txt    - the Crystal Edit text editor component
   - Prof-UIS-license.txt      - the Prof-UIS UI framework (freeware EULA)
+  - tl-expected-COPYING.txt   - tl::expected (CC0 1.0, public domain dedication)
 
 Prof-UIS is freeware for non-commercial use and its notices must not be
 removed; see Prof-UIS-license.txt for the full terms.

@@ -6,10 +6,12 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: F1 (implemented, not yet committed; the negative checks
-  and the full unit run are next).
+- Current step: A1 (next). F1 is committed; its review is the next check.
 - Baseline on `0dc1fef5`: the Release build passes; the unit suite passes
-  217 of 217 tests in about 4 minutes.
+  217 of 217 tests in about 4 minutes. After F1: 237 of 237.
+- A full rebuild shows 48 old warnings (C4996, C5033, C4267, C4018), all in
+  third-party code (GIFLIB, CrystalEdit, a Windows SDK header). A new
+  warning in our files is a regression.
 
 ## Progress
 
@@ -18,7 +20,7 @@ for each step, and a follow-up commit if the review finds a problem.
 
 | Step | Status | Commit | Review |
 |---|---|---|---|
-| F1 Result foundation | implemented, checking | | |
+| F1 Result foundation | done | `feat(scic): F1` (the commit after `949638b5`) | pending |
 | A1 Deferred writes | not started | | |
 | A2 Patch writer, size check | not started | | |
 | B1 GameSession, core log | not started | | |
@@ -79,6 +81,4 @@ for each step, and a follow-up commit if the review finds a problem.
 
 ## Next action
 
-Finish F1: the negative check for `TL_ASSERT` (build without the override;
-`WrongAccess_ThrowsInvariantViolation` must fail), the full unit run, then
-commit and review.
+Review F1, fix any real finding, then start A1 (plan section 9, phase A).
