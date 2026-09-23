@@ -94,27 +94,7 @@ sci::Status WriteStagedOutputFiles(const GameFolderHelper &helper, const Compile
     // shares read and write (WriteBytesToFile), a patch file nothing.
     for (const StagedOutputFile &file : files)
     {
-        std::string path = OutputPathOf(helper, options, file.type, file.number);
-        DWORD attributes = GetFileAttributesA(path.c_str());
-        if (attributes == INVALID_FILE_ATTRIBUTES)
-        {
-            continue;
-        }
-        if (attributes & FILE_ATTRIBUTE_DIRECTORY)
-        {
-            return sci::Fail(sci::ErrorCode::Io, "Writing " + path + ": a folder has this name");
-        }
-        if (attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))
-        {
-            return sci::Fail(sci::ErrorCode::Io, "Writing " + path + ": the file is hidden or a system file, which the write cannot replace");
-        }
-        DWORD share = options.raw ? (FILE_SHARE_READ | FILE_SHARE_WRITE) : 0;
-        HANDLE handle = CreateFileA(path.c_str(), GENERIC_WRITE, share, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (handle == INVALID_HANDLE_VALUE)
-        {
-            return sci::Fail(sci::FromWin32(GetLastError(), "Writing " + path));
-        }
-        CloseHandle(handle);
+        SCI_TRY(CheckFileCanBeReplaced(OutputPathOf(helper, options, file.type, file.number), options.raw ? (FILE_SHARE_READ | FILE_SHARE_WRITE) : 0));
     }
     for (const StagedOutputFile &file : files)
     {

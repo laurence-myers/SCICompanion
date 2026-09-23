@@ -2875,7 +2875,7 @@ bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 
 		if (showFile)
 		{
-			_decompilerResults.AddResult(DecompilerResultType::Warning, _contextName + " graph (raw):\n" + CFGVisualize(_contextName + "_raw", discoveredControlStructures));
+			_decompilerResults.AddResult(DecompilerResultType::Debug, _contextName + " graph (raw):\n" + CFGVisualize(_contextName + "_raw", discoveredControlStructures));
 		}
 
 		// Yeah, we're calculating dominators a second time here, but that's ok.
@@ -2915,7 +2915,7 @@ bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 
 		if (showFile)
 		{
-			_decompilerResults.AddResult(DecompilerResultType::Warning, _contextName + " graph (after loops):\n" + CFGVisualize(_contextName + "_loop", discoveredControlStructures));
+			_decompilerResults.AddResult(DecompilerResultType::Debug, _contextName + " graph (after loops):\n" + CFGVisualize(_contextName + "_loop", discoveredControlStructures));
 		}
 
 		if (!_decompilerResults.IsAborted())
@@ -2942,7 +2942,7 @@ bool ControlFlowGraph::Generate(code_pos start, code_pos end)
 		}
 		if (_debug)
 		{
-			_decompilerResults.AddResult(DecompilerResultType::Warning, _DumpStructures());
+			_decompilerResults.AddResult(DecompilerResultType::Debug, _DumpStructures());
 		}
 		return false;
 	}

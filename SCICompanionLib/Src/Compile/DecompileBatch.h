@@ -12,6 +12,7 @@
 namespace sci { class Script; }
 class IDecompilerConfig;
 class IDecompilerResults;
+class CSCOFile;
 class GlobalCompiledScriptLookups;
 class GameFolderHelper;
 class CResourceMap;
@@ -97,6 +98,18 @@ public:
 	// The scripts that needed a second write with the new global names, and
 	// that an abort stopped before it: their files still use the old names.
 	const std::set<uint16_t> &GetSkippedRewrites() const { return _skippedRewrites; }
+	// A global gained a name that script 0's own .sco does not carry: the
+	// batch wrote main's .sco with the names (with an output, a batch that
+	// writes files would write it; review of 11106215).
+	bool MainObjectFileNeeded() const { return _mainObjectFileNeeded; }
+
+	// With an output (a dry run of several groups): the main .sco that Run
+	// starts from instead of the file (null: the file), and the one that it
+	// ended with, so that the next group sees the names of this one, as it
+	// reads them from the file after a run that writes (review of
+	// 11106215).
+	void SetMainObjectFile(std::unique_ptr<CSCOFile> mainSCO);
+	std::unique_ptr<CSCOFile> TakeMainObjectFile();
 
 private:
 	class Item;
@@ -115,6 +128,8 @@ private:
 	std::map<uint16_t, sci::Error> _failed;
 	sci::Status _mainObjectFile;
 	std::set<uint16_t> _skippedRewrites;
+	bool _mainObjectFileNeeded = false;
+	std::unique_ptr<CSCOFile> _mainSCO;
 };
 
 // The naming skeleton of a decompiled script: what the variable namer reads
@@ -132,5 +147,7 @@ bool ContainsIdentifier(const std::string &text, const std::string &identifier);
 // Of the candidate scripts, those whose .sc file on disk refers to any of the
 // renamed globals by its old (standard) name. They were decompiled before the
 // global was named and need decompiling again. A script with no source file is
-// never stale.
-std::set<uint16_t> FindScriptsReferencingGlobals(const GameFolderHelper &helper, const std::set<uint16_t> &candidates, const std::vector<std::pair<std::string, std::string>> &renames);
+// never stale. A script in sources is read from there, not from its file (a
+// dry run: the source that a run that writes would have written).
+std::set<uint16_t> FindScriptsReferencingGlobals(const GameFolderHelper &helper, const std::set<uint16_t> &candidates, const std::vector<std::pair<std::string, std::string>> &renames,
+	const std::map<uint16_t, std::string> *sources = nullptr);

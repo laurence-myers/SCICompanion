@@ -10,6 +10,7 @@
 #include "DecompilerResults.h"
 #include "format.h"
 #include <algorithm>
+#include <atomic>
 #include <set>
 
 namespace cli
@@ -190,12 +191,15 @@ namespace cli
             }
             else
             {
-                output.Diagnostic(level, fmt::format("{0}({1},{2}): {3} : {4}", script.GetFullPath(), result.GetLineNumber(), result.GetColumn() + 1, kind, result.GetRawMessage()));
+                // The path as it was given: GetFullPath has the folder in lower
+                // case (review of 11106215).
+                output.Diagnostic(level, fmt::format("{0}({1},{2}): {3} : {4}", script.GetFullPathOrig(), result.GetLineNumber(), result.GetColumn() + 1, kind, result.GetRawMessage()));
             }
         }
 
         // The messages of the decompiler: an error or a warning as it comes,
-        // and the progress with --verbose. Ctrl+C stops the run.
+        // a debug dump plainly, and the progress with --verbose. Ctrl+C stops
+        // the run.
         class CliDecompileResults : public IDecompilerResults
         {
         public:
@@ -206,19 +210,35 @@ namespace cli
                 switch (type)
                 {
                 case DecompilerResultType::Error:
+                    _errors++;
                     _output.Error(message);
                     break;
                 case DecompilerResultType::Warning:
                     _output.Warning(message);
                     break;
+                case DecompilerResultType::Debug:
+                    _output.Dump(message);
+                    break;
                 default:
-                    // The batch starts each script with this message: the
-                    // crash line names the script (plan section 6.6).
-                    if (message.rfind("Decompiling script ", 0) == 0)
+                    // The crash line names what the run does (plan section
+                    // 6.6): the batch starts each script, the naming and the
+                    // write of main's .sco with these messages, and the run its
+                    // later steps (review of 11106215: the item stayed the last
+                    // script).
+                    for (const auto &step : StepItems())
                     {
-                        SetCurrentItem("decompiling script " + message.substr(19));
+                        if (message.rfind(step.first, 0) == 0)
+                        {
+                            SetCurrentItem(step.second.empty() ? ("decompiling script " + message.substr(step.first.size())) : step.second);
+                            break;
+                        }
                     }
-                    _output.Detail(message);
+                    // The summary has a line for each file (review of
+                    // 11106215: with --verbose, a file had two lines).
+                    if (message.rfind("Generated ", 0) != 0)
+                    {
+                        _output.Detail(message);
+                    }
                     break;
                 }
             }
@@ -226,27 +246,41 @@ namespace cli
             void InformStats(bool functionSuccessful, int byteCount) override {}
             void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override {}
 
+            // The errors that the decompiler reported.
+            size_t Errors() const { return _errors.load(); }
+
         private:
+            // The start of a message, and the item of the crash line ("":
+            // "decompiling script " and the rest of the message).
+            static const std::vector<std::pair<std::string, std::string>> &StepItems()
+            {
+                static const std::vector<std::pair<std::string, std::string>> items = {
+                    { "Decompiling script ", "" },
+                    { "Naming variables", "naming the variables of the decompiled scripts" },
+                    { "Updating global variables in script 0", "writing main's .sco" },
+                    { "Finding the stale scripts", "finding the stale scripts" },
+                    { "Writing the script names into game.ini", "writing game.ini" },
+                };
+                return items;
+            }
+
             CliOutput &_output;
+            std::atomic<size_t> _errors{ 0 };
         };
 
-        // --stdout: the source of the script to stdout. --dry-run: no source.
+        // --stdout: the source of the script to stdout.
         class CliDecompileOutput : public IDecompileOutput
         {
         public:
-            CliDecompileOutput(CliOutput &output, bool print) : _output(output), _print(print) {}
+            explicit CliDecompileOutput(CliOutput &output) : _output(output) {}
 
             void OnSource(uint16_t scriptNumber, const std::string &source) override
             {
-                if (_print)
-                {
-                    _output.Result(source);
-                }
+                _output.Result(source);
             }
 
         private:
             CliOutput &_output;
-            bool _print;
         };
 
         GameIniNames GameIniNamesOf(const std::string &text)
@@ -289,6 +323,19 @@ namespace cli
                     failed.push_back(ScriptText(outcome.number, outcome.name));
                 }
             }
+            // The other files: the src folder's decompiler files, main's .sco
+            // and game.ini (review of 11106215: a dry run did not list them).
+            for (const std::string &file : report.files)
+            {
+                if (dryRun)
+                {
+                    output.Message("would write " + file);
+                }
+                else
+                {
+                    output.Detail("wrote " + file);
+                }
+            }
             std::string summary = fmt::format("{0} {1} of {2} scripts.", (dryRun || toStdout) ? "Decompiled" : "Decompiled and wrote", written, report.scripts.size());
             if (!failed.empty())
             {
@@ -325,7 +372,8 @@ namespace cli
                 {
                     stale.push_back(ScriptText(number, helper.GetScriptTitle(number)));
                 }
-                output.Warning(fmt::format("these scripts use a global of the run by its old name: {0}; decompile them again, or give --update-stale", ListText(stale)));
+                output.Warning(fmt::format(dryRun ? "after the run, these scripts would use a global of the run by its old name: {0}; decompile them too, or give --update-stale" :
+                    "these scripts use a global of the run by its old name: {0}; decompile them again, or give --update-stale", ListText(stale)));
             }
             if (!report.gameIni)
             {
@@ -357,14 +405,16 @@ namespace cli
         run.names = options.resetNames ? NameAssignment::All : NameAssignment::Missing;
         run.gameIni = GameIniNamesOf(options.gameIni);
         run.updateStale = options.updateStale;
-        CliDecompileResults results(output);
         // With --stdout or --dry-run, the run writes nothing: no .sc, .sco,
-        // src folder or game.ini.
-        bool writes = !options.toStdout && !common.dryRun;
-        CliDecompileOutput sources(output, options.toStdout);
-        SCI_TRY_ASSIGN(DecompileReport report, RunDecompile(session, numbers, run, results, writes ? nullptr : &sources));
-        PrintDecompileReport(report, session.Helper(), common.dryRun && !options.toStdout, options.toStdout, output);
-        return ExitCodeForReport(report);
+        // src folder or game.ini. A dry run does the other steps of a run in
+        // memory (review of 11106215).
+        run.dryRun = common.dryRun && !options.toStdout;
+        CliDecompileResults results(output);
+        CliDecompileOutput sources(output);
+        SCI_TRY_ASSIGN(DecompileReport report, RunDecompile(session, numbers, run, results, options.toStdout ? &sources : nullptr));
+        SetCurrentItem("printing the report");
+        PrintDecompileReport(report, session.Helper(), run.dryRun, options.toStdout, output);
+        return ExitCodeForReport(report, results.Errors());
     }
 
     sci::Result<ExitCode> RunScriptSco(GameSession &session, const ScriptScoOptions &options, const CommonOptions &common, CliOutput &output)
@@ -373,10 +423,17 @@ namespace cli
         ObjectFileOptions objectFileOptions;
         objectFileOptions.dryRun = common.dryRun;
         objectFileOptions.abort = &CancelFlag();
+        // The crash line names the script (review of 11106215).
+        objectFileOptions.onScript = [](const ScriptId &script)
+        {
+            SetCurrentItem("making the .sco of script " + ScriptText(script.GetResourceNumber(), script.GetTitle()));
+        };
         SCI_TRY_ASSIGN(std::vector<ObjectFileOutcome> outcomes, GenerateObjectFiles(session, selection.scripts, objectFileOptions));
+        SetCurrentItem("printing the report");
 
         ReportFacts facts;
         size_t made = 0;
+        size_t unchanged = 0;
         size_t skipped = 0;
         size_t notReached = 0;
         std::vector<std::string> failed;
@@ -413,7 +470,7 @@ namespace cli
                 skipped++;
                 output.Message(fmt::format("skipped {0}: {1}", ScriptText(outcome.number, outcome.name), outcome.skipped));
             }
-            else
+            else if (outcome.changed)
             {
                 made++;
                 if (common.dryRun)
@@ -425,8 +482,16 @@ namespace cli
                     output.Detail("wrote " + outcome.path);
                 }
             }
+            else
+            {
+                // The file has these bytes: a run writes nothing (review of
+                // 11106215: a dry run said "would write").
+                unchanged++;
+                output.Detail(outcome.path + (common.dryRun ? " would not change" : " did not change"));
+            }
         }
-        std::string summary = fmt::format("{0} {1} .sco files; {2} scripts skipped.", common.dryRun ? "Made (and did not write)" : "Wrote", made, skipped);
+        std::string summary = fmt::format("{0} {1} .sco files ({2} {3}); {4} scripts skipped.", common.dryRun ? "Would write" : "Wrote", made,
+            unchanged, common.dryRun ? "would not change" : "did not change", skipped);
         if (!failed.empty())
         {
             summary += fmt::format(" Failed: {0}.", ListText(failed));

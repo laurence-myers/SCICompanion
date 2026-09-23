@@ -155,16 +155,18 @@ namespace
     // The public block, as the compiler checks it (Script::PreScan in
     // Compile.cpp): a slot used twice, or a name that no class, instance or
     // procedure of the source has, is an error (plan step C2: the .sco
-    // builder took both, and the compile of the script then failed). A
-    // block whose slots differ from the slots that the compiled script
-    // exports is a warning (found at the K2 review: the SCI1.1 template's
-    // Main and DebugHandler export slots that their sources do not list).
+    // builder took both, and the compile of the script then failed). So is
+    // a name whose definition is not public: PostProcessScript makes a
+    // definition public from the public block of its own file, so a
+    // procedure or instance of an include that is not a header is public
+    // only when the include lists it (review of 11106215). A block whose
+    // slots differ from the slots that the compiled script exports is a
+    // warning (found at the K2 review: the SCI1.1 template's Main and
+    // DebugHandler export slots that their sources do not list), also when
+    // the source has no block (review of 11106215: the .sco then had no
+    // export, with no message).
     sci::Status CheckPublicBlock(const sci::Script &parsed, const ScriptId &script, uint16_t number, const CompiledScript &compiled, std::vector<CompileResult> &diagnostics)
     {
-        if (parsed.GetExports().empty())
-        {
-            return sci::Ok();
-        }
         std::set<int> slots;
         bool errors = false;
         for (const auto &entry : parsed.GetExports())
@@ -174,11 +176,18 @@ namespace
                 diagnostics.push_back(DiagnosticAt(script, *entry, true, fmt::format("Export slot {0} has already been used.", entry->Slot)));
                 errors = true;
             }
-            bool defined = std::any_of(parsed.GetClasses().begin(), parsed.GetClasses().end(), [&](const auto &object) { return object->GetName() == entry->Name; }) ||
-                std::any_of(parsed.GetProcedures().begin(), parsed.GetProcedures().end(), [&](const auto &procedure) { return procedure->GetName() == entry->Name; });
-            if (!defined)
+            auto object = std::find_if(parsed.GetClasses().begin(), parsed.GetClasses().end(), [&](const auto &candidate) { return candidate->GetName() == entry->Name; });
+            auto procedure = std::find_if(parsed.GetProcedures().begin(), parsed.GetProcedures().end(), [&](const auto &candidate) { return candidate->GetName() == entry->Name; });
+            if ((object == parsed.GetClasses().end()) && (procedure == parsed.GetProcedures().end()))
             {
                 diagnostics.push_back(DiagnosticAt(script, *entry, true, fmt::format("Unknown export {0} in slot {1}.", entry->Name, entry->Slot)));
+                errors = true;
+            }
+            else if ((object != parsed.GetClasses().end()) ? !(*object)->IsPublic() : !(*procedure)->IsPublic())
+            {
+                // The compiler gives the position of the definition, which can
+                // be in the include; this one is in the script.
+                diagnostics.push_back(DiagnosticAt(script, *entry, true, fmt::format("{0} needs to be marked public in order to be exported.", entry->Name)));
                 errors = true;
             }
         }
@@ -199,10 +208,54 @@ namespace
         }
         if (compiledSlots != slots)
         {
-            diagnostics.push_back(DiagnosticAt(script, *parsed.GetExports().front(), false,
-                fmt::format("The public block has the slots {0}, and compiled script {1} exports the slots {2}.", SlotsText(slots), number, SlotsText(compiledSlots))));
+            if (parsed.GetExports().empty())
+            {
+                // No entry to point at: the start of the file.
+                std::string message = fmt::format("The source has no public block, and compiled script {0} exports the slots {1}.", number, SlotsText(compiledSlots));
+                CompileResult result(fmt::format("Warning: ({0}) {1}  Line: 1, col: 0", script.GetFileNameOrig(), message), script, 1, 0, CompileResult::CRT_Warning);
+                result.SetRawMessage(message);
+                diagnostics.push_back(result);
+            }
+            else
+            {
+                diagnostics.push_back(DiagnosticAt(script, *parsed.GetExports().front(), false,
+                    fmt::format("The public block has the slots {0}, and compiled script {1} exports the slots {2}.", SlotsText(slots), number, SlotsText(compiledSlots))));
+            }
         }
         return sci::Ok();
+    }
+
+    // The decompiler files that the preparation of src copies: (from, to).
+    // None when src\Decompiler.ini exists, or when the folder of the data
+    // is not there. It never lists a file that src has.
+    sci::Result<std::vector<std::pair<fs::path, fs::path>>> DecompilerFilesToCopy(const fs::path &src, const std::string &decompilerFolder)
+    {
+        std::vector<std::pair<fs::path, fs::path>> copies;
+        std::error_code ec;
+        if (fs::exists(src / "Decompiler.ini", ec) || !fs::is_directory(decompilerFolder, ec))
+        {
+            return copies;
+        }
+        for (fs::directory_iterator it(decompilerFolder, ec), end; !ec && (it != end); it.increment(ec))
+        {
+            std::error_code fileError;
+            if (!it->is_regular_file(fileError))
+            {
+                continue;
+            }
+            fs::path target = src / it->path().filename();
+            if (fs::exists(target, fileError))
+            {
+                // Never overwrite a file of the game.
+                continue;
+            }
+            copies.emplace_back(it->path(), target);
+        }
+        if (ec)
+        {
+            return sci::Fail(sci::ErrorCode::Io, fmt::format("could not read the folder {0}: {1}", decompilerFolder, ec.message()));
+        }
+        return copies;
     }
 
     // A guard for the stale loop: each group names a global that no group
@@ -237,67 +290,56 @@ sci::Status PrepareDecompileFolder(const GameFolderHelper &helper, const std::st
         {
             return sci::Fail(sci::ErrorCode::Io, fmt::format("could not make the folder {0}: {1}", src.string(), ec.message()));
         }
-        if (fs::exists(src / "Decompiler.ini", ec) || !fs::is_directory(decompilerFolder, ec))
-        {
-            return sci::Ok();
-        }
         // A plain copy of the files (before plan step S4, the GUI used the
         // shell, with a window).
-        for (fs::directory_iterator it(decompilerFolder, ec), end; !ec && (it != end); it.increment(ec))
+        SCI_TRY_ASSIGN(auto copies, DecompilerFilesToCopy(src, decompilerFolder));
+        for (const auto &copy : copies)
         {
             std::error_code fileError;
-            if (!it->is_regular_file(fileError))
-            {
-                continue;
-            }
-            fs::path target = src / it->path().filename();
-            if (fs::exists(target, fileError))
-            {
-                // Never overwrite a file of the game.
-                continue;
-            }
-            fs::copy_file(it->path(), target, fs::copy_options::none, fileError);
+            fs::copy_file(copy.first, copy.second, fs::copy_options::none, fileError);
             if (fileError)
             {
-                return sci::Fail(sci::ErrorCode::Io, fmt::format("could not copy {0} to {1}: {2}", it->path().string(), target.string(), fileError.message()));
+                return sci::Fail(sci::ErrorCode::Io, fmt::format("could not copy {0} to {1}: {2}", copy.first.string(), copy.second.string(), fileError.message()));
             }
-        }
-        if (ec)
-        {
-            return sci::Fail(sci::ErrorCode::Io, fmt::format("could not read the folder {0}: {1}", decompilerFolder, ec.message()));
         }
         return sci::Ok();
     });
+}
+
+
+std::vector<std::pair<std::string, std::string>> GameIniEntriesToWrite(const GameFolderHelper &helper, const std::map<uint16_t, std::string> &names, GameIniNames mode)
+{
+    std::vector<std::pair<std::string, std::string>> entries;
+    std::error_code ec;
+    if ((mode == GameIniNames::None) || ((mode == GameIniNames::Update) && !fs::exists(helper.GetGameIniFileName(), ec)))
+    {
+        // Plan section 3.4: nothing creates game.ini, except Create.
+        return entries;
+    }
+    for (const auto &name : names)
+    {
+        std::string key = default_reskey(name.first, NoBase36);
+        if (name.second.empty() || (_stricmp(key.c_str(), name.second.c_str()) == 0))
+        {
+            // The default name needs no entry.
+            continue;
+        }
+        if (helper.GetIniString("Script", key) != name.second)
+        {
+            entries.emplace_back(key, name.second);
+        }
+    }
+    return entries;
 }
 
 sci::Status WriteScriptNamesToGameIni(const GameFolderHelper &helper, const std::map<uint16_t, std::string> &names, GameIniNames mode)
 {
     return sci::Guard("writing the script names into game.ini", [&]() -> sci::Status
     {
-        if (mode == GameIniNames::None)
-        {
-            return sci::Ok();
-        }
         std::string iniFile = helper.GetGameIniFileName();
-        std::error_code ec;
-        if ((mode == GameIniNames::Update) && !fs::exists(iniFile, ec))
+        for (const auto &entry : GameIniEntriesToWrite(helper, names, mode))
         {
-            // Plan section 3.4: nothing creates game.ini, except Create.
-            return sci::Ok();
-        }
-        for (const auto &name : names)
-        {
-            std::string key = default_reskey(name.first, NoBase36);
-            if (name.second.empty() || (_stricmp(key.c_str(), name.second.c_str()) == 0))
-            {
-                // The default name needs no entry.
-                continue;
-            }
-            if (helper.GetIniString("Script", key) == name.second)
-            {
-                continue;
-            }
-            if (!WritePrivateProfileString("Script", key.c_str(), name.second.c_str(), iniFile.c_str()))
+            if (!WritePrivateProfileString("Script", entry.first.c_str(), entry.second.c_str(), iniFile.c_str()))
             {
                 return sci::Fail(sci::FromWin32(GetLastError(), "writing " + iniFile));
             }
@@ -314,11 +356,33 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         const GameFolderHelper &helper = session.Helper();
         CResourceMap &resourceMap = session.ResourceMap();
         DecompileReport report;
+        // With an output (--stdout), the run only decompiles. A dry run
+        // decompiles in memory too, but does the other steps (review of
+        // 11106215).
+        bool dryRun = options.dryRun && !output;
+        bool inMemory = dryRun || output;
 
-        // With an output, nothing is written: not even the src folder.
+        // With an output, nothing is written: not even the src folder. The
+        // report lists the files that the preparation copies (a dry run:
+        // would copy).
         if (!output)
         {
-            SCI_TRY(PrepareDecompileFolder(helper, resourceMap.GetDecompilerFolder()));
+            sci::Result<std::vector<std::pair<fs::path, fs::path>>> copies = DecompilerFilesToCopy(helper.GetSrcFolder(), resourceMap.GetDecompilerFolder());
+            if (dryRun)
+            {
+                SCI_TRY(copies);
+            }
+            else
+            {
+                SCI_TRY(PrepareDecompileFolder(helper, resourceMap.GetDecompilerFolder()));
+            }
+            if (copies)
+            {
+                for (const auto &copy : *copies)
+                {
+                    report.files.push_back(copy.second.string());
+                }
+            }
         }
 
         // Plan section 3.4: every script needs its name first, because the
@@ -332,11 +396,16 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         }
         if (options.names == NameAssignment::All)
         {
-            SCI_TRY_ASSIGN(std::vector<std::string> warnings, ResetScriptNames(session, scripts));
-            for (const std::string &warning : warnings)
+            SCI_TRY_ASSIGN(std::vector<std::string> warnings, ResetScriptNames(session, scripts, dryRun));
+            // With an output, no file is written, so the old files do not
+            // matter (review of 11106215).
+            if (!output)
             {
-                report.warnings.push_back(warning);
-                results.AddResult(DecompilerResultType::Warning, warning);
+                for (const std::string &warning : warnings)
+                {
+                    report.warnings.push_back(warning);
+                    results.AddResult(DecompilerResultType::Warning, warning);
+                }
             }
         }
 
@@ -379,10 +448,19 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         // took the name out of game.ini).
         std::map<uint16_t, std::string> writtenNames;
         std::set<std::pair<std::string, std::string>> knownRenames;
+        // A dry run: the main .sco of the group before, which a run that
+        // writes reads from the file.
+        std::unique_ptr<CSCOFile> carriedMain;
+        // A group wrote (a dry run: would write) main's .sco with the new names.
+        bool mainWritten = false;
         std::set<uint16_t> toDo = scripts;
         for (int group = 1; !toDo.empty(); group++)
         {
-            DecompileBatch batch(config.get(), lookups, resourceMap, counting, options.engine, output ? &sources : nullptr);
+            DecompileBatch batch(config.get(), lookups, resourceMap, counting, options.engine, inMemory ? &sources : nullptr);
+            if (carriedMain)
+            {
+                batch.SetMainObjectFile(std::move(carriedMain));
+            }
             // Each script has its own exception boundary in the batch; this one
             // keeps the report of the scripts that were written when the batch
             // itself throws (S4 review).
@@ -430,6 +508,11 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             {
                 report.mainObjectFile = batch.GetMainObjectFileStatus();
             }
+            mainWritten = mainWritten || (batch.MainObjectFileNeeded() && batch.GetMainObjectFileStatus().has_value());
+            if (dryRun)
+            {
+                carriedMain = batch.TakeMainObjectFile();
+            }
             // The renames that this group found first.
             std::vector<std::pair<std::string, std::string>> groupRenames;
             for (const auto &rename : batch.GetGlobalRenames())
@@ -458,8 +541,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             }
             if (output || groupRenames.empty())
             {
-                // Nothing was written, or no global has a new name: no script
-                // is stale.
+                // --stdout, or no global has a new name: no script is stale.
                 break;
             }
             // Plan section 4.4: the scripts that still use a global of this
@@ -475,9 +557,11 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
                 }
             }
             std::set<uint16_t> stale;
+            results.AddResult(DecompilerResultType::Update, "Finding the stale scripts");
             sci::Status checked = sci::Guard("finding the stale scripts", [&]() -> sci::Status
             {
-                stale = FindScriptsReferencingGlobals(helper, candidates, groupRenames);
+                // A dry run reads the sources of the run from memory.
+                stale = FindScriptsReferencingGlobals(helper, candidates, groupRenames, dryRun ? &sources.sources : nullptr);
                 return sci::Ok();
             });
             if (!checked)
@@ -514,7 +598,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             }
             sci::Status checked = sci::Guard("finding the stale scripts", [&]() -> sci::Status
             {
-                std::set<uint16_t> stale = FindScriptsReferencingGlobals(helper, candidates, report.globalRenames);
+                std::set<uint16_t> stale = FindScriptsReferencingGlobals(helper, candidates, report.globalRenames, dryRun ? &sources.sources : nullptr);
                 report.stale.insert(stale.begin(), stale.end());
                 return sci::Ok();
             });
@@ -559,7 +643,24 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             {
                 names[written.first] = written.second;
             }
-            report.gameIni = WriteScriptNamesToGameIni(helper, names, options.gameIni);
+            // Main's .sco, unless script 0 wrote it (its line has it).
+            auto mainOutcome = outcomeIndex.find(0);
+            if (mainWritten && ((mainOutcome == outcomeIndex.end()) || !report.scripts[mainOutcome->second].status))
+            {
+                report.files.push_back(helper.GetScriptObjectFileName(helper.GetScriptTitle(0)));
+            }
+            if (!GameIniEntriesToWrite(helper, names, options.gameIni).empty())
+            {
+                if (!dryRun)
+                {
+                    results.AddResult(DecompilerResultType::Update, "Writing the script names into game.ini");
+                    report.gameIni = WriteScriptNamesToGameIni(helper, names, options.gameIni);
+                }
+                if (report.gameIni)
+                {
+                    report.files.push_back(helper.GetGameIniFileName());
+                }
+            }
         }
         return report;
     });
@@ -585,6 +686,10 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
             }
             outcome.status = sci::Guard("", [&]() -> sci::Status
             {
+                if (options.onScript)
+                {
+                    options.onScript(script);
+                }
                 std::error_code ec;
                 if (!fs::exists(script.GetFullPath(), ec))
                 {
@@ -655,9 +760,13 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
                 }
                 if (options.dryRun)
                 {
+                    // What the write would do: nothing for the same bytes, else
+                    // a write that must open the file (review of 11106215: a
+                    // dry run said "would write" for both).
+                    SCI_TRY_ASSIGN(outcome.changed, SCOFileWouldChange(helper, *objectFile, script));
                     return sci::Ok();
                 }
-                return SaveSCOFile(helper, *objectFile, script);
+                return SaveSCOFile(helper, *objectFile, script, &outcome.changed);
             });
             outcomes.push_back(std::move(outcome));
         }

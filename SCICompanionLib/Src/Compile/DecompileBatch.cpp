@@ -541,6 +541,16 @@ DecompileBatch::DecompileBatch(const IDecompilerConfig *config, GlobalCompiledSc
 
 DecompileBatch::~DecompileBatch() {}
 
+void DecompileBatch::SetMainObjectFile(std::unique_ptr<CSCOFile> mainSCO)
+{
+	_mainSCO = move(mainSCO);
+}
+
+std::unique_ptr<CSCOFile> DecompileBatch::TakeMainObjectFile()
+{
+	return move(_mainSCO);
+}
+
 // Report the process working set at each phase, so a whole-game decompile
 // shows what the batch costs and where the peak is.
 namespace
@@ -591,13 +601,14 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 	_failed.clear();
 	_mainObjectFile = sci::Ok();
 	_skippedRewrites.clear();
+	_mainObjectFileNeeded = false;
 
 	MemoryUsage memoryAtStart = _GetMemoryUsage();
 
 	// mainSCO is declared before the items so it outlives them: each item's
 	// namer keeps a pointer to it. If script 0 is in the batch and there is no
 	// Main.sco yet, its decompile supplies it.
-	unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(_helper, 0, _scriptLookups.GetSelectorTable());
+	unique_ptr<CSCOFile> mainSCO = _mainSCO ? move(_mainSCO) : GetExistingSCOFromScriptNumber(_helper, 0, _scriptLookups.GetSelectorTable());
 	vector<unique_ptr<Item>> items;
 
 	// Pass 1: decompile, name and write each script, one tree at a time.
@@ -758,7 +769,8 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 		// Otherwise main's .sco on disk gets the names now, so the scripts
 		// written here agree with it.
 		bool mainWrittenLast = (_rewritten.find(0) != _rewritten.end());
-		if (mainSCO && !mainWrittenLast && !_output)
+		_mainObjectFileNeeded = mainSCO && !mainWrittenLast;
+		if (_mainObjectFileNeeded && !_output)
 		{
 			_results.AddResult(DecompilerResultType::Important, "Updating global variables in script 0");
 			sci::Status wroteMain = SaveSCOFile(_helper, *mainSCO);
@@ -768,6 +780,12 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 				_mainObjectFile = wroteMain;
 			}
 		}
+	}
+	// With an output, the next group of a dry run starts from it
+	// (SetMainObjectFile). A batch that writes reads the file again.
+	if (_output)
+	{
+		_mainSCO = move(mainSCO);
 	}
 }
 
@@ -797,7 +815,8 @@ bool ContainsIdentifier(const string &text, const string &identifier)
 	return false;
 }
 
-set<uint16_t> FindScriptsReferencingGlobals(const GameFolderHelper &helper, const set<uint16_t> &candidates, const vector<pair<string, string>> &renames)
+set<uint16_t> FindScriptsReferencingGlobals(const GameFolderHelper &helper, const set<uint16_t> &candidates, const vector<pair<string, string>> &renames,
+	const map<uint16_t, string> *sources)
 {
 	set<uint16_t> stale;
 	if (renames.empty())
@@ -806,17 +825,26 @@ set<uint16_t> FindScriptsReferencingGlobals(const GameFolderHelper &helper, cons
 	}
 	for (uint16_t scriptNumber : candidates)
 	{
-		string filename = helper.GetScriptFileName(scriptNumber);
-		if (filename.empty())
+		string text;
+		auto source = sources ? sources->find(scriptNumber) : map<uint16_t, string>::const_iterator();
+		if (sources && (source != sources->end()))
 		{
-			continue;
+			text = source->second;
 		}
-		ifstream file(filename.c_str(), ios::in | ios::binary);
-		if (!file)
+		else
 		{
-			continue;
+			string filename = helper.GetScriptFileName(scriptNumber);
+			if (filename.empty())
+			{
+				continue;
+			}
+			ifstream file(filename.c_str(), ios::in | ios::binary);
+			if (!file)
+			{
+				continue;
+			}
+			text.assign(istreambuf_iterator<char>(file), istreambuf_iterator<char>());
 		}
-		string text((istreambuf_iterator<char>(file)), istreambuf_iterator<char>());
 		for (const auto &rename : renames)
 		{
 			if (ContainsIdentifier(text, rename.first))

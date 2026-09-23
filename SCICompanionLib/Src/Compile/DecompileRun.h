@@ -10,6 +10,7 @@
 #include "Result.h"
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -52,6 +53,15 @@ struct DecompileRunOptions
     // and again until a group names no new global. A script of an earlier
     // group can be stale again.
     bool updateStale = false;
+    // Decompile in memory and write nothing (--dry-run), but do the steps
+    // of a run that writes: the stale scripts (read from the sources in
+    // memory), the groups of updateStale (each starts from the main .sco
+    // of the group before), and the list of the files that the run would
+    // write (review of 11106215: before, a dry run skipped the stale step,
+    // main's .sco, game.ini and the src folder). A later script of the run
+    // still reads the .sco files that are on disk, so a source can differ
+    // a little from the source of a run that writes. Ignored with an output.
+    bool dryRun = false;
 };
 
 struct DecompileStats
@@ -97,6 +107,11 @@ struct DecompileReport
     sci::Status mainObjectFile;
     // The write of the names into game.ini.
     sci::Status gameIni;
+    // The files that the run wrote, or with dryRun would write, other than
+    // the .sc and .sco of each script in scripts: the src folder and the
+    // decompiler files that the run copies into it, main's .sco with the
+    // new global names, and game.ini. Empty with an output.
+    std::vector<std::string> files;
 
     size_t WrittenCount() const;
     size_t FailedCount() const;
@@ -109,7 +124,9 @@ struct DecompileReport
 // the src folder cannot be made, or the compiled scripts cannot be read); the
 // report has the status of each script. With output, the source of each
 // script that decompiled goes to it at the end, in number order, and nothing
-// is written: no .sc, no .sco, no src folder, no game.ini.
+// is written: no .sc, no .sco, no src folder, no game.ini; the run finds no
+// stale script (--stdout), and a reset of the names gives no warning about
+// the old files.
 sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<uint16_t> &scripts, const DecompileRunOptions &options,
     IDecompilerResults &results, IDecompileOutput *output = nullptr);
 
@@ -125,6 +142,11 @@ sci::Status PrepareDecompileFolder(const GameFolderHelper &helper, const std::st
 // only when a name needs an entry.
 sci::Status WriteScriptNamesToGameIni(const GameFolderHelper &helper, const std::map<uint16_t, std::string> &names, GameIniNames mode);
 
+// The [Script] entries (key, name) that WriteScriptNamesToGameIni would
+// write for the mode: none when the mode would not write game.ini (a dry
+// run).
+std::vector<std::pair<std::string, std::string>> GameIniEntriesToWrite(const GameFolderHelper &helper, const std::map<uint16_t, std::string> &names, GameIniNames mode);
+
 struct ObjectFileOutcome
 {
     uint16_t number = 0;
@@ -132,8 +154,14 @@ struct ObjectFileOutcome
     // Ok: the .sco file was written (or, with dryRun, made), or the script
     // was skipped. Compile: the source has syntax errors, or its public
     // block has errors (in diagnostics). Cancelled: the abort flag stopped
-    // the run before this script. Else why the script failed.
+    // the run before this script. Else why the script failed; with dryRun,
+    // Io when a .sco that would change cannot be opened for writing, as the
+    // write would fail (review of 11106215).
     sci::Status status;
+    // The .sco file has new bytes: it was written, or with dryRun would be.
+    // False when the file already has these bytes: nothing is written
+    // (SaveSCOFile).
+    bool changed = false;
     // Why the script was skipped: it has no source file, or the game has no
     // compiled script for it. Empty when it was not skipped.
     std::string skipped;
@@ -148,6 +176,8 @@ struct ObjectFileOptions
     bool dryRun = false;
     // Set between two scripts: the rest are Cancelled (Ctrl+C).
     const std::atomic<bool> *abort = nullptr;
+    // Before each script (the command line names it in its crash line).
+    std::function<void(const ScriptId &script)> onScript;
 };
 
 // Plan section 4.6 (script sco): for each script, the .sco file from its
@@ -159,10 +189,14 @@ struct ObjectFileOptions
 // and the compiled script have different numbers of classes). The public
 // block is checked as the compiler checks it: a slot used twice, or a name
 // with no class, instance or procedure in the source, fails the script
-// (C2); a public block whose slots differ from the slots that the compiled
-// script exports is a warning. The .sco goes to src\<title of the
-// ScriptId>.sco. It does not compile, and it changes no resource. Source
-// from another tool gets the .sco files that a compile needs for each
-// (use ...).
+// (C2), and so does a name of a procedure or instance of an include that
+// is not a header, unless the include's own public block lists it (the
+// compiler: "needs to be marked public"; review of 11106215). A public
+// block whose slots differ from the slots that the compiled script
+// exports is a warning, also when the source has no public block (review
+// of 11106215: before, all exports went with no message). The .sco goes to
+// src\<title of the ScriptId>.sco. It does not compile, and it changes no
+// resource. Source from another tool gets the .sco files that a compile
+// needs for each (use ...).
 sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &session, const std::vector<ScriptId> &scripts,
     const ObjectFileOptions &options = ObjectFileOptions());

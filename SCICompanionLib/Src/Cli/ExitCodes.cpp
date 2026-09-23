@@ -125,9 +125,10 @@ namespace cli
         return ExitCodeForFacts(facts);
     }
 
-    ExitCode ExitCodeForReport(const DecompileReport &report)
+    ExitCode ExitCodeForReport(const DecompileReport &report, size_t decompilerErrors)
     {
         ReportFacts facts;
+        facts.otherFailures = (decompilerErrors > 0);
         for (const DecompileOutcome &outcome : report.scripts)
         {
             AddStatus(facts, outcome.status);

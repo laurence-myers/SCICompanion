@@ -734,6 +734,11 @@ std::string ScriptId::GetFullPath() const
 	return fullPath;
 }
 
+std::string ScriptId::GetFullPathOrig() const
+{
+	return _strFolderOrig + "\\" + _strFileNameOrig;
+}
+
 bool ScriptId::IsHeader() const
 {
 	PCSTR pszExt = PathFindExtension(_strFileName.c_str());
@@ -761,6 +766,7 @@ void ScriptId::_Init(PCTSTR pszFullFileName, WORD wScriptNum)
 		_strFolder = str.Left(iIndexBS);
 		_strFileName = str.Right(str.GetLength() - iIndexBS - 1);
 
+		_strFolderOrig = _strFolder;
 		_strFileNameOrig = _strFileName;
 		_MakeLower();
 	}
@@ -782,6 +788,8 @@ ScriptId::ScriptId(PCTSTR pszFileName, PCTSTR pszFolder)
 	_strFileName = pszFileName;
 	_strFolder = pszFolder;
 	std::replace(_strFolder.begin(), _strFolder.end(), '/', '\\'); // As in _Init.
+	_strFolderOrig = _strFolder;
+	_strFileNameOrig = _strFileName;
 	_MakeLower();
 	_wScriptNum = InvalidResourceNumber;
 }
@@ -789,6 +797,7 @@ ScriptId::ScriptId(PCTSTR pszFileName, PCTSTR pszFolder)
 ScriptId::ScriptId(const ScriptId &src)
 {
 	_strFolder = src.GetFolder();
+	_strFolderOrig = src._strFolderOrig;
 	_strFileName = src.GetFileName();
 	_strFileNameOrig = src._strFileNameOrig;
 	_MakeLower();
@@ -798,6 +807,7 @@ ScriptId::ScriptId(const ScriptId &src)
 ScriptId& ScriptId::operator=(const ScriptId& src)
 {
 	_strFolder = src.GetFolder();
+	_strFolderOrig = src._strFolderOrig;
 	_strFileName = src.GetFileName();
 	_strFileNameOrig = src._strFileNameOrig;
 	_MakeLower();

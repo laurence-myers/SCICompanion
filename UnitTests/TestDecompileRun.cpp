@@ -818,6 +818,58 @@ namespace UnitTests
                 warnings += warning + "\n";
             }
             Assert::IsTrue(warnings.find("Controls.sc keeps its old name: script 979 is now MenuBar_979") != std::string::npos, WideForRun(warnings).c_str());
+            // It also goes to the results, when it is found (review of
+            // 11106215: no test had it).
+            bool inResults = false;
+            for (const std::string &problem : results.problems)
+            {
+                inResults = inResults || (problem.find("Controls.sc keeps its old name") != std::string::npos);
+            }
+            Assert::IsTrue(inResults, L"the warning goes to the results");
+        }
+
+        // Review of 11106215: a dry run writes nothing, and its report lists
+        // the files that a run writes besides the scripts' own: the decompiler
+        // files of src and game.ini. A reset says "would keep". Before, a dry
+        // run (then an output) listed no other file.
+        TEST_METHOD(DryRun_ListsTheOtherFilesAndWritesNothing)
+        {
+            NoAppStateForRun noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0", false);
+            std::map<std::string, uintmax_t> before;
+            for (const auto &entry : fs::recursive_directory_iterator(_copyFolder))
+            {
+                before[entry.path().string()] = entry.is_regular_file() ? entry.file_size() : 0;
+            }
+            std::string gameIni = ReadAllText(GameFile("game.ini"));
+            GameSession session(TestSessionOptions());
+            Open(session);
+            RunResults results;
+            DecompileRunOptions options;
+            options.names = NameAssignment::All;
+            options.dryRun = true;
+            auto report = RunDecompile(session, { 979 }, options, results);
+            Assert::IsTrue(report.has_value() && report->Succeeded(), report ? WideForRun(DescribeRun(*report)).c_str() : L"no report");
+            std::map<std::string, uintmax_t> after;
+            for (const auto &entry : fs::recursive_directory_iterator(_copyFolder))
+            {
+                after[entry.path().string()] = entry.is_regular_file() ? entry.file_size() : 0;
+            }
+            Assert::IsTrue(before == after, L"a dry run writes no file");
+            Assert::AreEqual(gameIni, ReadAllText(GameFile("game.ini")), L"nor game.ini");
+            std::string files;
+            for (const std::string &file : report->files)
+            {
+                files += file + "\n";
+            }
+            Assert::IsTrue(files.find("\\src\\Decompiler.ini\n") != std::string::npos, WideForRun(files).c_str());
+            Assert::IsTrue(files.find("\\game.ini\n") != std::string::npos, WideForRun("n979=MenuBar_979: " + files).c_str());
+            std::string warnings;
+            for (const std::string &warning : report->warnings)
+            {
+                warnings += warning + "\n";
+            }
+            Assert::IsTrue(warnings.find("Controls.sc would keep its old name: script 979 would be MenuBar_979") != std::string::npos, WideForRun(warnings).c_str());
         }
 
         // Review of c6584ca7: a reset name is never the title of the source of

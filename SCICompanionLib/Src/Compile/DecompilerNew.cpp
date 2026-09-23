@@ -3698,7 +3698,7 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 		{
 			std::stringstream ss;
 			mainChunk->Print(ss, 0);
-			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, debugTrackName + " chunks (raw):\n" + ss.str());
+			lookups.DecompileResults().AddResult(DecompilerResultType::Debug, debugTrackName + " chunks (raw):\n" + ss.str());
 		}
 
 		_LookForRestsAndMaybeLiftOutAssignments(mainChunk.get(), mainChunk.get(), lookups);
@@ -3721,7 +3721,7 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 		{
 			std::stringstream ss;
 			mainChunk->Print(ss, 0);
-			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, debugTrackName + " chunks (final):\n" + ss.str());
+			lookups.DecompileResults().AddResult(DecompilerResultType::Debug, debugTrackName + " chunks (final):\n" + ss.str());
 		}
 
 		// Now fill it in
@@ -3737,7 +3737,7 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 		{
 			std::stringstream ss;
 			mainChunk->Print(ss, 0);
-			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, debugTrackName + " chunks (at failure):\n" + ss.str());
+			lookups.DecompileResults().AddResult(DecompilerResultType::Debug, debugTrackName + " chunks (at failure):\n" + ss.str());
 		}
 
 		string message;
@@ -3762,7 +3762,7 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 		{
 			std::stringstream ss;
 			mainChunk->Print(ss, 0);
-			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, debugTrackName + " chunks (at failure):\n" + ss.str());
+			lookups.DecompileResults().AddResult(DecompilerResultType::Debug, debugTrackName + " chunks (at failure):\n" + ss.str());
 		}
 		lookups.DecompileResults().AddResult(DecompilerResultType::Warning, fmt::format("{0}: {1}", messagePrefix, e.what()));
 		return false;

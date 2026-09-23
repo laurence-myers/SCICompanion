@@ -726,9 +726,14 @@ Steps:
    `--update-stale`, decompile them too. Repeat until a group names no
    new global. A script of an earlier group can become stale again, when
    a later group names a global that it uses (S4 review).
-7. Print the report: each failed script with its error, then the totals
-   (scripts written and failed, function and byte success rates, asm
-   fallbacks, globals renamed).
+7. Print the report: the errors and warnings of the decompiler as they
+   come, the files (with `-v`; a dry run lists them always), then the
+   totals (scripts written and failed, with the failed scripts by
+   number and name, function and byte success rates, asm fallbacks,
+   globals renamed) and the stale scripts. An error of the decompiler
+   in a script that it wrote (a function whose code it cannot find) is
+   exit 6 (review of `37ee979b`: before, it printed `error` and the
+   exit code was 0).
 
 Individual and bulk:
 
@@ -747,11 +752,11 @@ Options:
 | `--game-ini update\|create\|none` | `update` (default): when `game.ini` exists, add or correct the `[Script]` entry of each written script, so the GUI finds the files. When `game.ini` has no `[Script]` entry, write the name of every script, as the Decompile dialog does before its first run (S4 review: entries for only some scripts stop the dialog's naming). `create`: the same, and create `game.ini` when it is missing and a name needs an entry. `none`: never write `game.ini`. Without `game.ini`, the names come back on the next run from the files in `src\` (section 3.4). |
 | `--reset-names` | Use the derived name for each selected script, also for a script that has a name; with `--all`, for every script (the dialog's "Reset filenames"). A reset name is never the name of another script (also not the current name of another selected script), or the title of a file in `src\` that another script has (or that no script has): it gets the `_N` suffix of the naming rule then (S4 review: before, a reset of script 979 of the SCI0 template wrote over `menubar.sc`, the source of script 997; review of `d01ea1e0`: two selected scripts could get one name). A script that gets no derived name keeps its name. The old files keep their old names, and a warning lists them. |
 | `--update-stale` | After an individual run, also decompile the stale scripts. |
-| `--stdout` | One script only. Print the source to stdout and write nothing: no `.sc`, `.sco`, `game.ini` or `src\`. The `(use ...)` lines use the names of section 3.4, as a file run does. |
-| `--dry-run` | Decompile in memory, write nothing (as `--stdout`), and list the `.sc` and `.sco` files that a run would write (C2). |
+| `--stdout` | One script only. Print the source to stdout and write nothing: no `.sc`, `.sco`, `game.ini` or `src\`. The `(use ...)` lines use the names of section 3.4, as a file run does. No stale step; `--reset-names` gives no warning about the old files. |
+| `--dry-run` | Decompile in memory and write nothing, but do the other steps of a run: the stale scripts (with `--update-stale`, the later groups, each from the main `.sco` of the group before), and a list of each file that a run would write: the `.sc` and `.sco` of each script, the decompiler files of `src\`, main's `.sco`, and `game.ini` (review of `37ee979b`: before, only the `.sc` and `.sco` of the chosen scripts, and no stale step). `--reset-names` says "would keep". A later script of the run still reads the `.sco` files on disk, so a source can differ a little from the source of a run. |
 | `--text-tuples` | Replace text resource tuples with strings (a dialog option). |
 | `--asm-only` | Disassemble only (the dialog's "Disassemble only"). |
-| `--debug-control-flow`, `--debug-instructions`, `--debug-filter <name>` | Decompiler debug output (dialog options). |
+| `--debug-control-flow`, `--debug-instructions`, `--debug-filter <name>` | Decompiler debug output (dialog options). The dumps print plainly to stderr, also with `--quiet` (review of `37ee979b`: before, each was a warning). |
 
 Exit codes: section 8.
 
@@ -855,16 +860,27 @@ every script uses another one.
   code that the decompiler uses (`SCOFromScriptAndCompiledScript`, with the
   PR K2 fix).
 - It does not compile and does not change a resource.
-- A script with no source file or no compiled resource is skipped and
-  listed. A parse error is a failure of that script (exit 6).
+- With `--all`, a script with a source file and no compiled resource,
+  or with a name in `game.ini` and no source file, is skipped and
+  listed (review of `37ee979b`: before, `--all` left it out with no
+  message). A named script like that is a usage error (exit 2). A
+  parse error is a failure of that script (exit 6).
 - The public block is checked as the compiler checks it (C2): a slot
   used twice, or a name that no class, instance or procedure of the
-  source has, fails the script (exit 6). A public block whose slots
-  differ from the slots that the compiled script exports is a warning
-  (the shipped SCI1.1 template's `Main` and `DebugHandler`). The
-  diagnostics use the MSBuild format (section 4.5).
-- `--dry-run` makes the `.sco` files in memory, lists them, and writes
-  none.
+  source has, fails the script (exit 6); so does a name whose
+  definition is not public, as a procedure or instance of an include
+  that is not a header, unless the include's own public block lists
+  it (the compiler: "needs to be marked public"; review of
+  `37ee979b`). A public block whose slots differ from the slots that
+  the compiled script exports is a warning (the shipped SCI1.1
+  template's `Main` and `DebugHandler`), also when the source has no
+  block (review of `37ee979b`: the `.sco` then had no export, with no
+  message). The diagnostics use the MSBuild format (section 4.5).
+- `--dry-run` makes the `.sco` files in memory, lists the ones that
+  would change, and writes none. A `.sco` that has the bytes already
+  "would not change" (a run does not write it), and one that would
+  change and cannot be written fails as the write would (exit 9;
+  review of `37ee979b`).
 - Then run `scic script compile --all`.
 
 ## 5. Where compiled output goes
@@ -1219,7 +1235,7 @@ section 5.3, which section 5.22 uses), plus code 9.
 | 2 | Usage error: bad option, unknown script, header file given to `compile` |
 | 3 | Cannot open the game or start the batch, or the data folder is missing |
 | 5 | Compile errors |
-| 6 | Partial failure: some scripts failed for a reason that is not a compile error |
+| 6 | Partial failure: some scripts failed for a reason that is not a compile error, or the decompiler reported an error in a script that it wrote |
 | 7 | Cancelled |
 | 8 | Write refused (`WriteRefused`): for example, a patch file would hide a package write, or a script of the commit used the new `.sco` of a script that the commit does not write (section 4.5) |
 | 9 | Write failed: the commit, the tables, a move, `game.ini` or main's `.sco` failed (any code but `Internal`, `WriteRefused` and `Cancelled`), or a file write of a script failed (`Io`; a `.scd` that cannot be written is a warning) |
@@ -1294,7 +1310,7 @@ back, not on the commit before K1.)
 | PR | Change | Test | Size |
 |---|---|---|---|
 | C1 | The `SCICompanionCli` project: `scic.exe`, console subsystem, static MFC for now, Release\|Win32, references to the library and Prof-UIS, `.sln` rows, a VERSIONINFO `.rc`. `Src\Cli\`: the command groups and arguments (vendored CLI11, BSD-3 licence, notice in `SCICompanion\Files\Licenses`), console, the exit-code mapping (section 8), the host (section 7) with the crash settings, Ctrl+C. Commands: `help`, `--version`, `script list`. Found at C1: CLI11 is 2.0.0, from a local copy (a download needs the user's permission). The version of `scic.exe` is in `Src\Cli\CliVersion.h`, which its `.rc` reads; a test checks it against `SCICompanionLib.rc`, and AGENTS.md lists the file. C1 review fixes: `--log` gets every message, whatever `-q` and `-v` say, and it refuses to overwrite a file of the game; a failed write step gives 9 with any code but `Internal`, `WriteRefused` and `Cancelled`; `abort()`, `std::terminate()`, a bad CRT parameter and a pure call give one line and exit 1; an empty game folder and an empty `--data-dir` give 2; `SCIC_DATA_DIR` has no length limit; Ctrl+C during `list` gives 7; `scic help help` works; the build copies `Files\Licenses` next to the programs, so the release has the licence notices. | In-process `RunCli`: `script list` on both templates (text and tsv), usage errors (exit 2), a bad folder (exit 3), a missing data folder (exit 3), and `list` writes nothing (the folder snapshot stays equal). A unit test for each row of the exit-code mapping. Integration: `scic.exe script list` through `IntegrationHarness::RunChildReadStdout` (`UnitTests\IntegrationHarness.h:126`). | M |
-| C2 | `scic script decompile` (section 4.4) and `scic script sco` (section 4.6). `script sco` reports a public block that the compiler refuses (a slot listed twice, a name with no definition; the `.sco` builder accepts them: a question of the review of the K2 fixes), and warns when the source's public block and the compiled export table disagree (found at the K2 review: the SCI1.1 template's `Main` and `DebugHandler` export names that their sources do not list). Found at C2: the decompiler's messages print as they come (errors and warnings; the progress with `-v`), then a summary (scripts written and failed, the function and byte rates, the globals named, the stale scripts, a `game.ini` error); every warning of the run report also goes to the results. `--dry-run` decompiles in memory and lists the files. `GenerateObjectFiles` takes `ObjectFileOptions` (a dry run, the Ctrl+C flag). | A template copy with no `game.ini` and no `src\` (a game SCI Companion never opened): `decompile --all` writes the derived names and creates no `game.ini`; a second run finds the same names. Individual and `--all` runs on template copies. `--stdout` and `--dry-run` write nothing. The stale report and `--update-stale`. Exit 6 when one script fails (a truncated script in a copy). | M |
+| C2 | `scic script decompile` (section 4.4) and `scic script sco` (section 4.6). `script sco` reports a public block that the compiler refuses (a slot listed twice, a name with no definition; the `.sco` builder accepts them: a question of the review of the K2 fixes), and warns when the source's public block and the compiled export table disagree (found at the K2 review: the SCI1.1 template's `Main` and `DebugHandler` export names that their sources do not list). Found at C2: the decompiler's messages print as they come (errors and warnings; the progress with `-v`), then a summary (scripts written and failed, the function and byte rates, the globals named, the stale scripts, a `game.ini` error); every warning of the run report also goes to the results. `--dry-run` decompiles in memory and lists the files. `GenerateObjectFiles` takes `ObjectFileOptions` (a dry run, the Ctrl+C flag). Review of `37ee979b`: a dry run does the steps of a run in memory (`DecompileRunOptions::dryRun`: the stale scripts, `--update-stale`, main's `.sco`, `game.ini`, the `src\` files; `DecompileReport::files`); `sco` warns for a source with no public block, refuses an export that is not public (an include's procedure), lists the skipped scripts of `--all`, and its dry run checks each `.sco` (`changed`, exit 9); the MSBuild path keeps its case (`ScriptId::GetFullPathOrig`); the debug dumps are `DecompilerResultType::Debug`; a decompiler error in a written script is exit 6; the crash line follows the steps. | A template copy with no `game.ini` and no `src\` (a game SCI Companion never opened): `decompile --all` writes the derived names and creates no `game.ini`; a second run finds the same names. Individual and `--all` runs on template copies. `--stdout` and `--dry-run` write nothing. The stale report and `--update-stale`. Exit 6 when one script fails (a truncated script in a copy). | M |
 | C3 | `scic script compile` (sections 4.5 and 5). | `compile --all` on a template copy with no `game.ini` compiles every `src\*.sc`. The default writes patch files and leaves `resource.map` byte-equal. `--to package` writes the package. The script bytes are equal for both destinations, and equal to the GUI path (S2). The shadow refusal (exit 8) and `--replace-patches`. The patch-mode refusal. `--dry-run` writes nothing. Exit 5 with one broken script, and the others are written. Round trip: `decompile --all`, then `compile --all`, with 0 errors (as `RecompileAllDecompiledScripts`, `UnitTests\DecompileHelper.cpp:544-593`). | M |
 | C4 | CI and documents: a smoke step in `build.yaml` (copy `Release\TemplateGame\SCI1.1` to a temp folder, then run `script list`, `script decompile --all` and `script compile --all`). README "What's new": a "Command-line tool" item. AGENTS.md: the CLI build and tests, and the failure-handling rules (C1 added the version file) (section 6.2). `UnitTests\README.md`. `UnitTests\Tools\CliCorpusSweep.ps1` (local use). | CI passes. | S |
 
@@ -1378,6 +1394,11 @@ GUI changes in this plan (all others are refactors with no visible change):
   were warnings).
 - Review of `73be520f`: a script whose `.sco` cannot be written leaves
   no new debug file (before: the debug file was written first).
+- Review of `37ee979b`: the Decompile dialog shows the dumps of its
+  debug options as plain text (before: each was a WARNING). The
+  decompiler's "Invalid branch target." comes only when its second try
+  to find the code of a function fails too (before: also when the
+  second try worked).
 - S2c: compile-all shows the diagnostics of the last script once
   (before: twice).
 - S2c: before a package save that a patch file would hide, the GUI asks:

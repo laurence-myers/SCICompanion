@@ -58,9 +58,10 @@ sci::Status AddDerivedScriptNames(GameSession &session);
 // that no script has): the naming rule's "_N" suffix is added then (S4
 // review, review of c49c8143). A script that cannot be read, or that has no
 // class and no public instance, keeps its name.
-// Returns a warning for each .sc and .sco file that keeps an old name. It
+// Returns a warning for each .sc and .sco file that keeps an old name (with
+// dryRun, "would keep": a run that writes nothing; review of 11106215). It
 // replaces the session's map with no lock, as AddDerivedScriptNames does.
-sci::Result<std::vector<std::string>> ResetScriptNames(GameSession &session, const std::set<uint16_t> &numbers);
+sci::Result<std::vector<std::string>> ResetScriptNames(GameSession &session, const std::set<uint16_t> &numbers, bool dryRun = false);
 
 // Plan section 4.3: each script of the game, in number order. That is each
 // script resource, and each script that has only a source file, a .sco file

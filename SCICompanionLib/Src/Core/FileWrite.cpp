@@ -42,6 +42,30 @@ sci::Status WriteBytesToFile(const std::string &path, const std::vector<uint8_t>
     return WriteBytesToFile(path, data.data(), data.size());
 }
 
+sci::Status CheckFileCanBeReplaced(const std::string &path, unsigned long shareMode)
+{
+    DWORD attributes = GetFileAttributesA(path.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES)
+    {
+        return sci::Ok();
+    }
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY)
+    {
+        return sci::Fail(sci::ErrorCode::Io, "Writing " + path + ": a folder has this name");
+    }
+    if (attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))
+    {
+        return sci::Fail(sci::ErrorCode::Io, "Writing " + path + ": the file is hidden or a system file, which the write cannot replace");
+    }
+    HANDLE handle = CreateFileA(path.c_str(), GENERIC_WRITE, shareMode, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE)
+    {
+        return sci::Fail(sci::FromWin32(GetLastError(), "Writing " + path));
+    }
+    CloseHandle(handle);
+    return sci::Ok();
+}
+
 sci::Status WriteTextToFile(const std::string &path, const std::string &text)
 {
     std::string crlf;

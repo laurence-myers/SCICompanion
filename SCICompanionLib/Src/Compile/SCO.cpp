@@ -638,25 +638,47 @@ sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco)
 	return SaveSCOFile(helper, sco, script);
 }
 
+namespace
+{
+	// The file already has these bytes.
+	bool HasBytes(const std::string &path, const vector<BYTE> &bytes)
+	{
+		std::ifstream existing(path, std::ios::binary);
+		if (!existing)
+		{
+			return false;
+		}
+		vector<BYTE> before((std::istreambuf_iterator<char>(existing)), std::istreambuf_iterator<char>());
+		return before == bytes;
+	}
+}
+
+sci::Result<bool> SCOFileWouldChange(const GameFolderHelper &helper, const CSCOFile &sco, ScriptId script)
+{
+	vector<BYTE> scoOutput;
+	sco.Save(scoOutput);
+	std::string path = helper.GetScriptObjectFileName(script.GetTitle());
+	if (HasBytes(path, scoOutput))
+	{
+		return false;
+	}
+	// WriteBytesToFile shares read and write.
+	SCI_TRY(CheckFileCanBeReplaced(path, FILE_SHARE_READ | FILE_SHARE_WRITE));
+	return true;
+}
+
 sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco, ScriptId script, bool *changed)
 {
 	vector<BYTE> scoOutput;
 	sco.Save(scoOutput);
 	std::string path = helper.GetScriptObjectFileName(script.GetTitle());
+	if (HasBytes(path, scoOutput))
 	{
-		std::ifstream existing(path, std::ios::binary);
-		if (existing)
+		if (changed)
 		{
-			vector<BYTE> before((std::istreambuf_iterator<char>(existing)), std::istreambuf_iterator<char>());
-			if (before == scoOutput)
-			{
-				if (changed)
-				{
-					*changed = false;
-				}
-				return sci::Ok();
-			}
+			*changed = false;
 		}
+		return sci::Ok();
 	}
 	// Changed only when the new file was written: a .sco that cannot be
 	// written is not a change that needs another pass (review of 4247f34c).

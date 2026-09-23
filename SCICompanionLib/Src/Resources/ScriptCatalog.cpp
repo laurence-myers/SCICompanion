@@ -362,6 +362,12 @@ namespace
             return numbers;
         }
 
+        // src\<name>.sc exists.
+        bool HasSource(uint16_t number)
+        {
+            return FileExists(_helper.GetScriptFileName(NameOf(number)));
+        }
+
         // True when the mode takes the script; otherwise why is the reason.
         bool Takes(uint16_t number, std::string &why)
         {
@@ -646,7 +652,7 @@ sci::Status AddDerivedScriptNames(GameSession &session)
     });
 }
 
-sci::Result<std::vector<std::string>> ResetScriptNames(GameSession &session, const std::set<uint16_t> &numbers)
+sci::Result<std::vector<std::string>> ResetScriptNames(GameSession &session, const std::set<uint16_t> &numbers, bool dryRun)
 {
     return sci::Guard("resetting the script names", [&]() -> sci::Result<std::vector<std::string>>
     {
@@ -679,7 +685,8 @@ sci::Result<std::vector<std::string>> ResetScriptNames(GameSession &session, con
                     std::error_code ec;
                     if (fs::exists(file, ec))
                     {
-                        warnings.push_back(fmt::format("{0} keeps its old name: script {1} is now {2}", file, name.first, name.second));
+                        warnings.push_back(fmt::format(dryRun ? "{0} would keep its old name: script {1} would be {2}" : "{0} keeps its old name: script {1} is now {2}",
+                            file, name.first, name.second));
                     }
                 }
             }
@@ -950,6 +957,14 @@ sci::Result<ScriptSelection> SelectAllScripts(GameSession &session, SelectorMode
             }
             else if (selection.Takes(number, why))
             {
+                chosen.insert(number);
+            }
+            else if ((mode == SelectorMode::Sco) && (selection.HasSource(number) || HasFileName(helper.ScriptNames.get(), number)))
+            {
+                // Plan section 4.6: a source with no compiled script, or a
+                // name with no source, is skipped and listed; the .sco run
+                // gives the reason (review of 11106215: before, --all left it
+                // out with no message).
                 chosen.insert(number);
             }
             else if ((mode == SelectorMode::Compile) && HasFileName(helper.ScriptNames.get(), number))

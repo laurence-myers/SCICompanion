@@ -25,6 +25,8 @@ namespace cli
     // The item that this thread works on now, for the crash line. An empty
     // text removes it.
     void SetCurrentItem(const std::string &item);
+    // The item of this thread (a test reads it).
+    std::string CurrentItem();
 
     // Ctrl+C (and Ctrl+Break) sets the cancel flag; a second one ends the
     // process at once, with exit code 7.

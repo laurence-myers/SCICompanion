@@ -267,7 +267,13 @@ const BYTE *_ConvertToInstructions(DecompileLookups &lookups, std::list<scii> &c
 		}
 		else
 		{
-			lookups.DecompileResults().AddResult(DecompilerResultType::Error, "Invalid branch target.");
+			// The first try (abortOnError) fails with no message: the caller
+			// tries again with a tighter bound (review of 11106215: the error
+			// came also when the second try worked).
+			if (!abortOnError)
+			{
+				lookups.DecompileResults().AddResult(DecompilerResultType::Error, "Invalid branch target.");
+			}
 			return nullptr;
 		}
 	}
@@ -1341,7 +1347,7 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 				{
 					OutputSourceCode_SCI(*proc, writer);
 				}
-				lookups.DecompileResults().AddResult(DecompilerResultType::Warning, "Before AST passes:\n" + ss.str());
+				lookups.DecompileResults().AddResult(DecompilerResultType::Debug, "Before AST passes:\n" + ss.str());
 			}
 			AstPassOptions astOptions;
 			RunDecompilerAstPasses(func, astOptions, &lookups.DecompileResults());

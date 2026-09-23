@@ -428,6 +428,10 @@ public:
 	
 	// Returns the complete path, for loading/saving, etc...
 	std::string GetFullPath() const;
+	// The complete path as it was given, not lower-cased: for a message
+	// that names the file (review of 11106215: the MSBuild diagnostics of
+	// scic had the folder in lower case).
+	std::string GetFullPathOrig() const;
 
 	// Set the path w/o changing the resource number.
 	void SetFullPath(const std::string &fullPath);
@@ -446,6 +450,7 @@ private:
 	void _Init(PCTSTR pszFullFileName, WORD wScriptNum = InvalidResourceNumber);
 
 	std::string _strFolder;
+	std::string _strFolderOrig;     // Not lower-cased
 	std::string _strFileName;
 	std::string _strFileNameOrig;   // Not lower-cased
 	WORD _wScriptNum;

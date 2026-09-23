@@ -42,5 +42,8 @@ namespace cli
     // The highest code that applies: 1 > 9 > 8 > 7 > 5 > 6 > 0.
     ExitCode ExitCodeForFacts(const ReportFacts &facts);
     ExitCode ExitCodeForReport(const CompileReport &report);
-    ExitCode ExitCodeForReport(const DecompileReport &report);
+    // decompilerErrors: the errors that the decompiler reported. One in a
+    // script that it wrote (a function whose code it cannot find) makes a
+    // run with no failed script a partial failure (6; review of 11106215).
+    ExitCode ExitCodeForReport(const DecompileReport &report, size_t decompilerErrors = 0);
 }

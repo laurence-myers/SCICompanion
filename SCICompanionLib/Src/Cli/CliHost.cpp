@@ -133,6 +133,11 @@ namespace cli
         strncpy_s(t_currentItem, item.c_str(), _TRUNCATE);
     }
 
+    std::string CurrentItem()
+    {
+        return t_currentItem;
+    }
+
     void InstallCancelHandler()
     {
         SetConsoleCtrlHandler(CancelHandler, TRUE);

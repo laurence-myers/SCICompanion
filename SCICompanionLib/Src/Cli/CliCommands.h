@@ -54,6 +54,10 @@ namespace cli
         void Detail(const std::string &text) { _Write(text + "\n", _options.verbose && !_options.quiet, false); }
         // Help and lists of commands, to stdout.
         void Help(const std::string &text) { _Write(text, true, true); }
+        // A debug dump that an option asked for, to stderr, always, with no
+        // "scic:" prefix (review of 11106215: the dumps were warnings, and
+        // --quiet hid them).
+        void Dump(const std::string &text) { _Write(text + "\n", true, false); }
         // A compiler diagnostic in the MSBuild format (plan section 4.5), to
         // stderr: an error always, a warning unless --quiet, a message with
         // --verbose only.
@@ -124,9 +128,12 @@ namespace cli
     // Decompiles the scripts (RunDecompile) and prints the report: the
     // messages of the decompiler as they come, then the summary. --stdout
     // prints the source and writes nothing; --dry-run writes nothing and
-    // lists the files that a run would write. The exit code of the report
-    // (plan section 8). Fails when the run cannot start: a bad selector,
-    // or --stdout with more than one script (Usage).
+    // lists the files that a run would write, with the stale scripts
+    // (DecompileRunOptions::dryRun). The exit code of the report (plan
+    // section 8); an error of the decompiler in a script that it wrote
+    // (a function whose code it cannot find) is 6. Fails when the run
+    // cannot start: a bad selector, or --stdout with more than one script
+    // (Usage).
     sci::Result<ExitCode> RunScriptDecompile(GameSession &session, const ScriptDecompileOptions &options, const CommonOptions &common, CliOutput &output);
 
     // scic script sco (plan section 4.6).
@@ -138,9 +145,12 @@ namespace cli
     };
 
     // Makes the .sco files (GenerateObjectFiles) and prints each script
-    // that was skipped or failed, then the summary. The exit code: 6 when a
-    // script failed (also for a syntax error, plan section 4.6), 9 when a
-    // .sco could not be written, 7 after Ctrl+C, 1 for a bug. Fails for a
+    // that was skipped or failed, then the summary. With --all, a script
+    // with a source file and no compiled script, or with a name in
+    // game.ini and no source file, is skipped and listed (review of
+    // 11106215). The exit code: 6 when a script failed (also for a syntax
+    // error, plan section 4.6), 9 when a .sco could not be written (a dry
+    // run: when it could not be), 7 after Ctrl+C, 1 for a bug. Fails for a
     // bad selector (Usage).
     sci::Result<ExitCode> RunScriptSco(GameSession &session, const ScriptScoOptions &options, const CommonOptions &common, CliOutput &output);
 }
