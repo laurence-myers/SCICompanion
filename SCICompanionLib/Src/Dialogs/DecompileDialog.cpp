@@ -139,6 +139,11 @@ void DecompileDialog::DoDataExchange(CDataExchange* pDX)
 
 		_InitScriptList();
 		_PopulateScripts();
+		// A whole-game decompile is the common case, and the batch names the
+		// globals across everything it is given, so start with every script
+		// selected.
+		_SelectAll(true);
+		m_wndSelectAll.SetCheck(BST_CHECKED);
 		initialized = true;
 	}
 }
