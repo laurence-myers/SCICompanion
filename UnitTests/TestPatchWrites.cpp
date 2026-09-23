@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -120,7 +121,70 @@ namespace UnitTests
             Assert::AreEqual(std::string("unsupported"), std::string(sci::ErrorCodeName(failed.error().code)));
             std::string message = failed.error().ToString();
             Assert::IsTrue(message.find(std::to_string(MaxResourceSize)) != std::string::npos, std::wstring(message.begin(), message.end()).c_str());
+            Assert::IsTrue(message.find("Text 913") != std::string::npos, L"the error must name the resource");
             Assert::AreEqual(std::string("(missing)"), ReadPatchText(913));
+        }
+
+        TEST_METHOD(ReadOnlyTarget_ReplacesNoPatchFile)
+        {
+            CResourceMap &rm = appState->GetResourceMap();
+            const GameFolderHelper &helper = rm.Helper();
+            Assert::IsTrue(rm.WriteResource(MakeText(helper, 920, Bytes("old920"))).has_value());
+            Assert::IsTrue(rm.WriteResource(MakeText(helper, 921, Bytes("old921"))).has_value());
+            SetFileAttributesA(PatchPath(921).c_str(), FILE_ATTRIBUTE_READONLY);
+            _readOnlyFiles.push_back(PatchPath(921));
+
+            sci::Status committed = sci::Ok();
+            {
+                DeferResourceAppend batch(rm);
+                Assert::IsTrue(rm.WriteResource(MakeText(helper, 920, Bytes("new920"))).has_value());
+                Assert::IsTrue(rm.WriteResource(MakeText(helper, 921, Bytes("new921"))).has_value());
+                committed = batch.Commit();
+            }
+
+            Assert::IsFalse(committed.has_value(), L"a read-only target must stop the batch");
+            Assert::AreEqual(std::string("io"), std::string(sci::ErrorCodeName(committed.error().code)));
+            std::string message = committed.error().ToString();
+            std::string name = GetFileNameFor(ResourceType::Text, 921, NoBase36, helper.Version);
+            Assert::IsTrue(message.find(name) != std::string::npos, std::wstring(message.begin(), message.end()).c_str());
+            Assert::AreEqual(std::string("old920"), ReadPatchText(920), L"no patch file of the batch may be replaced");
+            Assert::AreEqual(std::string("old921"), ReadPatchText(921));
+            Assert::IsFalse(AnyBakFile(), L"no .bak file may be left behind");
+        }
+
+        TEST_METHOD(AudioCacheWrite_FailedMapSave_MarksTheCacheOutOfDate)
+        {
+            // Audio needs an SCI1.1 game.
+            CleanUpGame(_gameFolder);
+            _gameFolder = SetUpGameSCI11();
+            CResourceMap &rm = appState->GetResourceMap();
+            const GameFolderHelper &helper = rm.Helper();
+            int mapNumber = helper.Version.AudioMapResourceNumber;
+            std::string upToDatePath = _gameFolder + "\\audiocache\\uptodate.bin";
+            auto upToDateMaps = [&]()
+            {
+                std::set<int> maps;
+                std::ifstream file(upToDatePath, std::ios::binary);
+                int number;
+                while (file.read(reinterpret_cast<char*>(&number), sizeof(number)))
+                {
+                    maps.insert(number);
+                }
+                return maps;
+            };
+            ResourceBlob audio(helper, nullptr, ResourceType::Audio, std::vector<uint8_t>(64, 0x80), 0, 5, NoBase36, helper.Version, ResourceSourceFlags::AudioCache);
+            Assert::IsTrue(rm.WriteResource(audio).has_value());
+            rm.RepackageAudio(true);
+            Assert::AreEqual(size_t(1), upToDateMaps().count(mapNumber), L"the repackage marks the cache map up to date");
+
+            std::string cacheMap = _gameFolder + "\\audiocache\\" + GetFileNameFor(ResourceType::AudioMap, mapNumber, NoBase36, helper.Version);
+            SetFileAttributesA(cacheMap.c_str(), FILE_ATTRIBUTE_READONLY);
+            _readOnlyFiles.push_back(cacheMap);
+            Assert::IsFalse(rm.WriteResource(audio).has_value());
+
+            // The new audio file is in the cache, so the next repackage must
+            // rebuild from it.
+            Assert::AreEqual(size_t(0), upToDateMaps().count(mapNumber), L"after the failed save, the cache map must be out of date");
         }
 
         TEST_METHOD(AudioCacheWrite_FailedMapSave_ReturnsTheError)

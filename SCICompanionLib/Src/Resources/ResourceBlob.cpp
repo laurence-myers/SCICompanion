@@ -82,7 +82,7 @@ sci::Status CheckResourceSize(const SCIVersion &version, DWORD cb, ResourceType 
 		return sci::Ok();
 	}
 	return sci::Fail(sci::ErrorCode::Unsupported,
-		fmt::format("A {0} resource can have at most {1} bytes in this game's format; this one has {2} bytes",
+		fmt::format("{0} resources can have at most {1} bytes in this game's format; this one has {2} bytes",
 			GetResourceTypeTitle(type), MaxResourceSizeFor(version, type), cb));
 }
 

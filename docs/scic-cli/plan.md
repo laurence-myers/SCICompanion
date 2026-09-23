@@ -1062,10 +1062,14 @@ struct DecompileReport
   shadow check refuses.
 - Each script has its own `Status`. One failure does not stop the others
   (unless `--fail-fast`).
-- The `commit` status covers the resource writes of all scripts. If it
-  fails, no resource of the batch is in the game (the package rename or the
-  patch renames did not happen). The `.sco` files were already written;
-  the report says so.
+- The `commit` status covers the resource writes of all scripts. Each
+  destination (the package, the patch files, the audio cache) is written
+  as one unit: the patch writer writes every `.bak` file and checks every
+  target before it renames any. A failed destination does not undo another
+  destination that was written, and a rename that fails after the checks
+  (for example, another program locks the file at that moment) can leave
+  a mix. The report names what failed. The `.sco` files were already
+  written; the report says so.
 - The same report drives the GUI output pane, the CLI summary, the exit
   code (section 8) and, later, `--json`.
 
@@ -1204,7 +1208,7 @@ days, L is 3 to 5 days.
 | PR | Change | Fixes | Test (negative check) | Size |
 |---|---|---|---|---|
 | A1 | `DeferResourceAppend`: `Commit` returns a `Status` with the first write error. A nested batch keeps the outer queue (the destructor abandons only a batch that was not committed). An abandoned inner batch withdraws what it queued and puts back the queued copies that it replaced, so S2 can drop one script's partial output. Names are assigned only for resources that were written. A resource queued twice replaces the earlier copy. The batch shows its queued resources, for the final shadow check. New `WriteResource(const ResourceBlob&)` returns a `Status` and shows no UI; `AppendResource` stays as the GUI form, which shows the error. The audio repackage stops, and keeps the old audio volumes, when its audio maps cannot be saved. | P3, P4, P5, P6 | A nested batch writes all its resources (fails before). An abandoned inner batch writes nothing (fails before). A commit to a read-only map or volume returns an `Io` error and changes neither file (fails before: `S_OK`). A failed audio map save keeps `resource.aud` (fails before). Both templates. | S |
-| A2 | Patch writer: check the size and the result of `SaveToHandle`. On failure, delete the `.bak` files and return the error. Write all `.bak` files, then do the renames. `CheckResourceSize` (in place of `ValidateResourceSize`) returns a `Status` that quotes the limit of the game's format, and shows no dialog. New `WriteResource(const ResourceEntity&)` returns a `Status` (`Cancelled` when the entity's own checks fail); `AppendResource` for an entity stays as the GUI form, which shows the error text. The audio cache writer lets its errors reach the caller and saves its audio map through `WriteResource` (from the A1 review). `DataError` can carry a whole `Error`, for code inside an exception boundary that cannot return a `Result`. | P7, P9 | An oversize resource saved to a patch file: the old file stays and an error comes back (fails before). A batch with one oversize patch file replaces none of its patch files (fails before). A headless oversize entity save returns `Unsupported` and opens no window. A failed save of the audio cache's map returns `Io` (fails before: success). | S |
+| A2 | Patch writer: check the size and the result of `SaveToHandle`. On failure, delete the `.bak` files and return the error. Write all `.bak` files, then check that every existing target can be replaced (not read-only, not locked), then do the renames; if a rename still fails, delete the `.bak` files that are left (A2 review). `CheckResourceSize` (in place of `ValidateResourceSize`) returns a `Status` that quotes the limit of the game's format, and shows no dialog. New `WriteResource(const ResourceEntity&)` returns a `Status` (`Cancelled` when the entity's own checks fail); `AppendResource` for an entity stays as the GUI form, which shows the error text. The audio cache writer lets its errors reach the caller and saves its audio map through `WriteResource` (from the A1 review). `DataError` can carry a whole `Error`, for code inside an exception boundary that cannot return a `Result`. | P7, P9 | An oversize resource saved to a patch file: the old file stays and an error comes back (fails before). A batch with one oversize patch file replaces none of its patch files (fails before). A headless oversize entity save returns `Unsupported` and opens no window. A failed save of the audio cache's map returns `Io` (fails before: success). | S |
 
 ### Phase B: decouple the script engine from `AppState` and CrystalEdit
 
@@ -1274,8 +1278,12 @@ GUI changes in this plan (all others are refactors with no visible change):
 - A2: the "resource too big" message comes from the returned error, not
   from a message box inside the resource map. It quotes the limit of the
   game's format (before, always the SCI0 limit).
-- A2: a failed save of audio into the audio cache shows its error. Before,
-  it was silent.
+- A2: a failed save into the audio cache shows the real error. Before, a
+  failed save of the cache's audio map showed a message box and then
+  reported success, and other failures in that writer were silent.
+- A1 and A2: a failed save reports its error and keeps the old files
+  (the audio repackage keeps the old audio volumes; a batch of patch
+  files replaces none of them when one cannot be written or replaced).
 - F2 and S4: the Decompile dialog shows failures that it swallowed before.
 - S2: the GUI asks before a package save that a patch file would hide.
 - S2: compile-all saves the tables only if one or more scripts compiled.

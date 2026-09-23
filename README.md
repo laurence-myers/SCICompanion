@@ -74,7 +74,10 @@ modernizing the build. Broad highlights since the previous release:
 * **Fixed use-after-free bugs and memory leaks** across the editors and dialogs.
 * **Fixed other crash conditions** surfaced by static analysis and sanitizers.
 * **Safer saving.** Writing game resources is now atomic, so an interrupted or
-  failed save no longer corrupts or loses a resource or volume file.
+  failed save no longer corrupts or loses a resource or volume file. A failed
+  save now says what went wrong (for example, the size limit of the game's
+  format), and a group of patch files replaces none of them when one cannot be
+  written.
 * **Removed legacy SCI Studio script syntax.** Scripts now use SCI Companion's
   Sierra-style syntax only.
 * **Modern build tools.** The project now builds with the Visual Studio 2022

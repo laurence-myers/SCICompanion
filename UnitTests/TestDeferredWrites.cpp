@@ -337,6 +337,10 @@ namespace UnitTests
             }
             std::vector<char> audBefore = ReadBytes(aud);
             std::vector<char> sfxBefore = ReadBytes(sfx);
+            std::vector<char> mapBefore = ReadBytes(MapPath());
+            std::string upToDate = _gameFolder + "\\audiocache\\uptodate.bin";
+            bool upToDateExisted = FileExists(upToDate);
+            std::vector<char> upToDateBefore = ReadBytes(upToDate);
             MakeReadOnly(MapPath());
 
             rm.RepackageAudio(true);
@@ -345,6 +349,38 @@ namespace UnitTests
             Assert::IsTrue(sfxBefore == ReadBytes(sfx), L"the audio maps were not saved, so resource.sfx must not change");
             Assert::IsFalse(FileExists(GetAudioVolumePath(_gameFolder, true, AudioVolumeName::Aud)), L"the new resource.aud must be deleted");
             Assert::IsFalse(FileExists(GetAudioVolumePath(_gameFolder, true, AudioVolumeName::Sfx)), L"the new resource.sfx must be deleted");
+            Assert::IsTrue(mapBefore == ReadBytes(MapPath()), L"resource.map must not change");
+            Assert::AreEqual(upToDateExisted, FileExists(upToDate));
+            Assert::IsTrue(upToDateBefore == ReadBytes(upToDate), L"the cache must stay out of date, so the next repackage tries again");
+        }
+
+        TEST_METHOD(RepackageAudio_InsideABatch_IsRefused)
+        {
+            // In a batch, the audio maps would only be queued while the
+            // volumes are replaced at once.
+            _gameFolder = SetUpGameSCI11();
+            CResourceMap &rm = appState->GetResourceMap();
+            std::string aud = GetAudioVolumePath(_gameFolder, false, AudioVolumeName::Aud);
+            std::string sfx = GetAudioVolumePath(_gameFolder, false, AudioVolumeName::Sfx);
+            for (const std::string &volume : { aud, sfx })
+            {
+                std::ofstream file(volume, std::ios::binary | std::ios::app);
+                file << "KEEP-THIS-VOLUME";
+            }
+            std::vector<char> audBefore = ReadBytes(aud);
+            std::vector<char> sfxBefore = ReadBytes(sfx);
+            std::vector<char> mapBefore = ReadBytes(MapPath());
+
+            {
+                DeferResourceAppend batch(rm);
+                rm.RepackageAudio(true);
+                Assert::AreEqual(size_t(0), batch.Pending().size(), L"no audio map may be queued");
+                // No Commit: the batch is abandoned.
+            }
+
+            Assert::IsTrue(audBefore == ReadBytes(aud), L"resource.aud must not change");
+            Assert::IsTrue(sfxBefore == ReadBytes(sfx), L"resource.sfx must not change");
+            Assert::IsTrue(mapBefore == ReadBytes(MapPath()), L"resource.map must not change");
         }
     };
 }

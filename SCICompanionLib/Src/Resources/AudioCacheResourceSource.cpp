@@ -543,6 +543,15 @@ AppendBehavior AudioCacheResourceSource::AppendResources(const std::vector<const
 		SaveAudioBlobToFiles(*blobToBeSaved, _cacheSubFolderForEnum);
 	}
 
+	// This is no longer up-to-date. Mark it before the map save: the audio
+	// files are already in the cache, so the next repackage must rebuild it
+	// also when the map save fails.
+	{
+		UpToDateResources upToDate(_cacheFolder);
+		upToDate.MarkDirty(audioMap->ResourceNumber);
+		upToDate.Save();
+	}
+
 	// And finally, serialize the audiomap and save it. We *should* just be able to go through the resource map again,
 	// and it should route it to the "patch files" resource source, under the audiocache folder.
 	assert(IsFlagSet(audioMap->SourceFlags, ResourceSourceFlags::AudioMapCache));
@@ -551,11 +560,6 @@ AppendBehavior AudioCacheResourceSource::AppendResources(const std::vector<const
 	{
 		throw sci::DataError(mapSaved.error());
 	}
-
-	// This is no longer up-to-date.
-	UpToDateResources upToDate(_cacheFolder);
-	upToDate.MarkDirty(audioMap->ResourceNumber);
-	upToDate.Save();
 
 	return AppendBehavior::Replace;
 }
@@ -688,6 +692,14 @@ static void _DiscardNewAudioVolume(std::ofstream &stream, const std::string &gam
 
 void AudioCacheResourceSource::RebuildResources(bool force, ResourceSource &source, std::map<ResourceType, RebuildStats> &stats)
 {
+	if (_resourceMap && _resourceMap->IsDeferring())
+	{
+		// In an open batch, the audio maps would only be queued while the
+		// volumes are replaced at once, so the two could disagree.
+		ShowWriteError(sci::Fail(sci::ErrorCode::Internal, "The audio cannot be repackaged while resource writes are deferred"));
+		return;
+	}
+
 	UpToDateResources upToDate(_cacheFolder);
 
 	// 1) Find all the audio maps. We'll use the message resources to do this. This is so we don't include audio that no longer

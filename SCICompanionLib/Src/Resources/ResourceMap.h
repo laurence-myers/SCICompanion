@@ -166,6 +166,9 @@ public:
 
 	void RepackageAudio(bool force = false);
 
+	// True while a DeferResourceAppend batch is open: writes only queue.
+	bool IsDeferring() const { return !_deferLevels.empty(); }
+
 private:
 	void _SniffSCIVersion();
 	sci::Status _OpenGameFolder(const std::string &gameFolder);

@@ -152,14 +152,48 @@ void PatchFilesResourceSource::RemoveEntry(const ResourceMapEntryAgnostic &mapEn
 	deletefile(fullPath);
 }
 
+namespace
+{
+	// Throws if the rename in AppendResources cannot replace this existing
+	// file: MoveFileEx fails for a read-only file, and for a file that another
+	// program holds open without delete sharing.
+	void _CheckCanReplace(const std::string &path)
+	{
+		DWORD attributes = GetFileAttributesA(path.c_str());
+		if (attributes == INVALID_FILE_ATTRIBUTES)
+		{
+			return; // A new file: nothing to replace.
+		}
+		if (attributes & FILE_ATTRIBUTE_READONLY)
+		{
+			sci::Error error;
+			error.code = sci::ErrorCode::Io;
+			error.message = "The file is read-only, so it cannot be replaced";
+			error.where.file = path;
+			throw sci::DataError(std::move(error));
+		}
+		ScopedHandle handle;
+		handle.hFile = CreateFileA(path.c_str(), DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (handle.hFile == INVALID_HANDLE_VALUE)
+		{
+			DWORD lastError = GetLastError();
+			sci::Error error = sci::FromWin32(lastError, "Replacing " + path);
+			error.where.file = path;
+			throw sci::DataError(std::move(error));
+		}
+	}
+}
+
 AppendBehavior PatchFilesResourceSource::AppendResources(const std::vector<const ResourceBlob*> &blobs)
 {
-	// Write every resource to a .bak file first, then replace the targets. A
-	// failure while writing then leaves every old patch file as it was, and
-	// removes the .bak files: a batch that failed part way used to leave, for
-	// example, a new .scr next to an old .hep. Each replace is atomic, so no
-	// patch file is ever left half written. (A failure during the replace step
-	// itself can still leave a mix; that needs a failing rename.)
+	// Write every resource to a .bak file first, and check that every existing
+	// target can be replaced; only then replace the targets. A failure before
+	// the renames leaves every old patch file as it was, and removes the .bak
+	// files: a batch that failed part way used to leave, for example, a new
+	// .scr next to an old .hep. Each replace is atomic, so no patch file is
+	// ever left half written. A rename can still fail after the checks (if
+	// another program locks the file at that moment); then the renames before
+	// it stay done, and the .bak files that are left are removed.
 	std::vector<std::pair<std::string, std::string>> written; // .bak, target
 	std::string currentBak;
 	try
@@ -192,6 +226,11 @@ AppendBehavior PatchFilesResourceSource::AppendResources(const std::vector<const
 			written.emplace_back(currentBak, fullPath);
 			currentBak.clear();
 		}
+
+		for (const auto &bakAndTarget : written)
+		{
+			_CheckCanReplace(bakAndTarget.second);
+		}
 	}
 	catch (...)
 	{
@@ -206,9 +245,22 @@ AppendBehavior PatchFilesResourceSource::AppendResources(const std::vector<const
 		throw;
 	}
 
-	for (const auto &bakAndTarget : written)
+	for (size_t i = 0; i < written.size(); i++)
 	{
-		replacefile(bakAndTarget.first, bakAndTarget.second);
+		try
+		{
+			replacefile(written[i].first, written[i].second);
+		}
+		catch (...)
+		{
+			// The renames before this one stay done; remove the .bak files
+			// that are left.
+			for (size_t j = i; j < written.size(); j++)
+			{
+				DeleteFileA(written[j].first.c_str());
+			}
+			throw;
+		}
 	}
 	return AppendBehavior::Replace;
 }

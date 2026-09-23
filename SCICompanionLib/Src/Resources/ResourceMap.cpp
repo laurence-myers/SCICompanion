@@ -729,21 +729,24 @@ bool CResourceMap::AppendResource(const ResourceEntity &resource, int *pChecksum
 
 sci::Status CResourceMap::WriteResource(const ResourceEntity &resource, int packageNumber, int resourceNumber, const std::string &name, uint32_t base36Number, int *pChecksum)
 {
-	if (!resource.PerformChecks())
-	{
-		// The check has already told the user why (some checks ask).
-		return sci::Fail(sci::ErrorCode::Cancelled, "the resource did not pass its checks");
-	}
-
 	ResourceBlob data;
 	std::string context = fmt::format("preparing {0} {1}", GetResourceTypeTitle(resource.GetType()), resourceNumber);
 	SCI_TRY(sci::Guard(context, [&]() -> sci::Status
 	{
+		if (!resource.PerformChecks())
+		{
+			// The check has already told the user why: a message, or a
+			// question that the user answered "no" (with no GUI, the answer
+			// is always "no"). Some checks are not a choice, for example
+			// duplicate message tuples; they give Cancelled too.
+			return sci::Fail(sci::ErrorCode::Cancelled, "the resource did not pass its checks");
+		}
+
 		sci::ostream serial;
 		resource.WriteTo(serial, true, resourceNumber, data.GetPropertyBag());
 		// The maximum resource size grows with the SCI version, as the map and
 		// package size and offset fields widened. Audio has its own map format.
-		SCI_TRY(CheckResourceSize(Helper().Version, serial.tellp(), resource.GetType()));
+		SCI_TRY(sci::WithContext(CheckResourceSize(Helper().Version, serial.tellp(), resource.GetType()), context));
 
 		sci::istream readStream = istream_from_ostream(serial);
 		ResourceSourceFlags sourceFlags = resource.SourceFlags;
