@@ -1336,6 +1336,17 @@ GUI changes in this plan (all others are refactors with no visible change):
   the compile output (before: a message box), so a compile before a run
   asks whether to run the game anyway. The compile output also shows the
   warnings of a patch-file write (plan section 5).
+- S4: a script that does not load shows an error in the Decompile dialog
+  (before: it was dropped with no message).
+- S4b: the Decompile dialog prepares the src folder with a plain copy of
+  the Decompiler folder that never overwrites a file (before: the shell
+  copied it, and could ask to replace a file of the game), and it shows a
+  copy that failed.
+- S4b: the Decompile dialog reads the class, selector and kernel tables
+  again for each decompile (before: once for each dialog, so it did not
+  see a compile between two decompiles), and it stops with an error when
+  a table cannot be read (before: it decompiled with the tables that it
+  could read).
 - S3: the `_N` suffix of a duplicate automatic script name follows the
   script number, and a character that a file name or a `(use ...)`
   cannot have becomes `_`.

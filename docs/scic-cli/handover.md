@@ -6,10 +6,10 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: S4 (S4a committed; S4b to do). F1, A1, A2, B1, B2,
-  B3a, B3b, F2, K1 to K6 and S3 are committed and reviewed, with their
-  review fixes. S1, S2 (S2a, S2b, S2c) and S4a are committed; the reviews of
-  S1, S2 and of the fix commits `de2fb8dc` and `8a322b32` are running. The review of `bc827391` and `fe02c12a` is done, and its
+- Current step: C1. F1, A1, A2, B1, B2, B3a, B3b, F2, K1 to K6 and S3 are
+  committed and reviewed, with their review fixes. S1, S2 (S2a, S2b, S2c)
+  and S4 (S4a, S4b) are committed; the reviews of S1, S2 and of the fix
+  commits `de2fb8dc` and `8a322b32` are running, and S4 is not reviewed. The review of `bc827391` and `fe02c12a` is done, and its
   findings are fixed (the commit after `de2fb8dc`).
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
@@ -52,7 +52,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | S3 ScriptCatalog, script names without `game.ini` | done | S3a `f85fe77d`; S3b `108cb227`; review fixes (the commit after `fb14399f`) | FIX: S3a 1 should-fix (a `-` in a derived name), S3b 1 should-fix (one name conflict refused every script, with the wrong fix), nits and questions. Fixed: see "S3 review" in "Decisions". |
 | S1 Compile destination | done | the commit after `fe02c12a` | |
 | S2 CompileBatch | done | S2a `fb14399f`; S2b `f256c0d8`; S2c: the commit after `f256c0d8` | |
-| S4 DecompileRun | S4a done; S4b to do | S4a: the commit after `2ca7e418` | |
+| S4 DecompileRun | done | S4a `152f4e56`; S4b: the commit after `152f4e56` | |
 | C1 CLI project, `script list` | not started | | |
 | C2 `script decompile`, `script sco` | not started | | |
 | C3 `script compile` | not started | | |
@@ -875,6 +875,21 @@ for each step, and a follow-up commit if the review finds a problem.
   reason. A syntax error: `Compile`, with the diagnostics, and no `.sco`.
   A test deletes every `.sco` of the SCI0 template, makes them from the
   sources, and compiles every script with no error.
+- S4b: the Decompile dialog runs `RunDecompile` on its worker thread, with
+  `NameAssignment::None` and `GameIniNames::None` (the dialog names the
+  scripts in `game.ini` itself, and asks about the stale scripts, as
+  before), and prints the statistics of the report. It prepares the src
+  folder with `PrepareDecompileFolder` when it opens. It no longer keeps
+  the lookups and the config: the run loads them for each decompile, with
+  `TryLoad` (a table that cannot be read stops the decompile; before, the
+  dialog ignored the result of `Load`). `DecompilerDialogResults` no longer
+  counts the statistics.
+- S4b: the library's leftover DLL-template `CWinApp` (`theApp`, P16) is
+  gone: `SCICompanionLib.cpp` and `SCICompanionLib.h` are deleted. Nothing
+  referred to them, so the linker never took that object; the command line
+  can now link the library with no second `CWinApp`.
+- S4b known gaps: no test runs the dialog code; it was checked by
+  inspection and by the build.
 - S4a known gaps: with an output, the config reads the game's
   `src\Decompiler.ini` only (no copy is made), so a game with no `src`
   folder decompiles with the default config. The run loads the lookups for
@@ -883,8 +898,8 @@ for each step, and a follow-up commit if the review finds a problem.
 
 ## Next action
 
-Phase K and S3 are done, with the fixes of their reviews; S1, S2 and S4a
+Phase K and S3 are done, with the fixes of their reviews; S1, S2 and S4
 are done. The reviews of S1 and S2a, of S2b and S2c, and of `de2fb8dc` and
 `8a322b32` are running (three agents, isolated worktrees).
-Next: S4b (plan section 9), the fixes of those reviews, and a review of
-S4.
+Next: the fixes of those reviews, a review of S4 (S4a and S4b), then C1
+(plan section 9).

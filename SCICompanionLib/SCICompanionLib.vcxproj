@@ -345,7 +345,6 @@
     <ClCompile Include="Src\Util\ClipboardUtil.cpp" />
     <ClCompile Include="Src\Util\CodecAlt.cpp" />
     <ClCompile Include="Src\Resources\Sound.cpp" />
-    <ClCompile Include="SCICompanionLib.cpp" />
     <ClCompile Include="Src\Resources\PicOperations.cpp" />
     <ClCompile Include="Src\Util\CodecDCL-freesci.cpp" />
     <ClCompile Include="Src\Util\CodecDCL.cpp" />
@@ -537,7 +536,6 @@
     <ClInclude Include="Resource.h" />
     <ClInclude Include="Src\Resources\Sound.h" />
     <ClInclude Include="Src\MFCDocuments\ResourceEntityDocument.h" />
-    <ClInclude Include="SCICompanionLib.h" />
     <ClInclude Include="Src\Resources\PicOperations.h" />
     <ClInclude Include="Src\Util\CObjectWrap.h" />
     <ClInclude Include="Src\Util\CodecDecompressor.h" />

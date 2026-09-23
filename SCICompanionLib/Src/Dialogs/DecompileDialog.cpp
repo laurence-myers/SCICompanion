@@ -16,12 +16,12 @@
 #include "DecompileDialog.h"
 #include "CompiledScript.h"
 #include "DecompilerCore.h"
-#include "DecompileBatch.h"
+#include "DecompileRun.h"
 #include "SCO.h"
 #include "DecompilerResults.h"
 #include "GameFolderHelper.h"
+#include "GameSession.h"
 #include "ScriptNameMap.h"
-#include "DecompilerConfig.h"
 #include "format.h"
 #include "ResourceContainer.h"
 
@@ -47,12 +47,12 @@ DecompileDialog::DecompileDialog(CWnd* pParent /*=NULL*/)
 
 DecompileDialog::~DecompileDialog()
 {
-	// Join the worker before any member is torn down. The worker holds _lookups
-	// (by reference) and _decompilerConfig (by pointer) across the whole
-	// DecompileScript call, but those members are declared after _future, so member
-	// destruction would free them before _future's own blocking dtor joins the
-	// worker -- a use-after-free. Abort first so the wait is short, then wait here,
-	// while every member the worker uses is still alive. (#53)
+	// Join the worker before any member is torn down. The worker uses
+	// _decompileResults and the options of the dialog while the run goes on,
+	// so member destruction must not free them before _future's own blocking
+	// dtor joins the worker -- a use-after-free. Abort first so the wait is
+	// short, then wait here, while every member the worker uses is still
+	// alive. (#53)
 	if (_decompileResults)
 	{
 		_decompileResults->SetAborted();
@@ -121,21 +121,14 @@ void DecompileDialog::DoDataExchange(CDataExchange* pDX)
 
 	if (!initialized)
 	{
-		// Ensure we have a src directory
-		string sourceFolder = _helper.GetSrcFolder();
-		if (!EnsureFolderExists(sourceFolder, false))
+		// The src folder, and the files of the Decompiler folder when
+		// src\Decompiler.ini does not exist (plan step S4: a plain copy that
+		// never overwrites a file; before, the shell copied them, and could
+		// ask to replace a file of the game).
+		sci::Status prepared = PrepareDecompileFolder(_helper, appState->GetResourceMap().GetDecompilerFolder());
+		if (!prepared)
 		{
-			std::string error = GetMessageFromLastError(sourceFolder);
-			AfxMessageBox(error.c_str(), MB_OK | MB_APPLMODAL);
-		}
-
-		// Ensure we have a decompiler.ini
-		string decompilerIniFile = sourceFolder + "\\Decompiler.ini";
-		if (!PathFileExists(decompilerIniFile.c_str()))
-		{
-			string decompilerFolderContents = appState->GetResourceMap().GetDecompilerFolder();
-			decompilerFolderContents += "\\*.*";
-			CopyFilesOver(GetSafeHwnd(), decompilerFolderContents, sourceFolder);
+			AfxMessageBox(prepared.error().ToString().c_str(), MB_OK | MB_APPLMODAL);
 		}
 
 		_InitScriptList();
@@ -778,90 +771,56 @@ void DecompileDialog::OnCancel()
 
 void DecompileDialog::s_DecompileThreadWorker(DecompileDialog *pThis)
 {
-	try
+	// Plan step S4: the run of the command line. The dialog names the scripts
+	// in game.ini itself (_AssignFilenames), and asks about the stale scripts,
+	// so the run does neither.
+	DecompileRunOptions options;
+	options.engine.DebugControlFlow = pThis->_debugControlFlow;
+	options.engine.DebugInstructionConsumption = pThis->_debugInstConsumption;
+	options.engine.DebugFunctionMatch = (PCSTR)pThis->_debugFunctionMatch;
+	options.engine.DecompileAsm = pThis->_debugAsm;
+	options.engine.SubstituteTextTuples = pThis->_substituteTextTuples;
+	options.names = NameAssignment::None;
+	options.gameIni = GameIniNames::None;
+	set<uint16_t> scriptNumbers = pThis->_scriptNumbers;
+	DecompilerDialogResults &results = *pThis->_decompileResults;
+
+	results.AddResult(DecompilerResultType::Update, "Creating script lookups...");
+	DecompileStats stats;
+	sci::Result<DecompileReport> report = RunDecompile(appState->GetSession(), scriptNumbers, options, results);
+	if (report)
 	{
-		set<uint16_t> scriptNumbers = pThis->_scriptNumbers;
-		GameFolderHelper helper = pThis->_helper;
-
-		if (!pThis->_lookups)
+		// Found on the worker, so the UI thread does not read every source
+		// file of the game.
+		results.SetStaleScripts(report->stale);
+		stats = report->stats;
+		if (report->cancelled)
 		{
-			pThis->_decompileResults->AddResult(DecompilerResultType::Update, "Creating script lookups...");
-			pThis->_lookups = make_unique<GlobalCompiledScriptLookups>();
-			pThis->_lookups->Load(helper);
-			pThis->_decompileResults->AddResult(DecompilerResultType::Update, "Loading decompiler.ini...");
-		}
-
-		// Prime the selector table (it's const to all our callees, and it needs to cache selector names)
-		uint16_t wDummy;
-		pThis->_lookups->GetSelectorTable().ReverseLookup("", wDummy);
-
-		// Redo this one each time
-		pThis->_decompilerConfig = CreateDecompilerConfig(appState->GetResourceMap(), pThis->_lookups->GetSelectorTable());
-		if (!pThis->_decompilerConfig->error.empty())
-		{
-			string errorMessage = "Decompiler.ini: ";
-			errorMessage += pThis->_decompilerConfig->error;
-			pThis->_decompileResults->AddResult(DecompilerResultType::Warning, errorMessage);
-		}
-
-		if (pThis->_lookups)
-		{
-			// Decompile every script once, then name the globals across all of
-			// them, then write. See DecompileBatch.
-			DecompileOptions options;
-			options.DebugControlFlow = pThis->_debugControlFlow;
-			options.DebugInstructionConsumption = pThis->_debugInstConsumption;
-			options.DebugFunctionMatch = (PCSTR)pThis->_debugFunctionMatch;
-			options.DecompileAsm = pThis->_debugAsm;
-			options.SubstituteTextTuples = pThis->_substituteTextTuples;
-			DecompileBatch batch(pThis->_decompilerConfig.get(), *pThis->_lookups, appState->GetResourceMap(), *pThis->_decompileResults, options);
-			batch.Run(scriptNumbers);
-
-			// Which scripts this batch did not write still use a renamed global
-			// by its old name? Found here, on the worker, so the UI thread does
-			// not read every source file of the game.
-			if (!batch.GetGlobalRenames().empty())
-			{
-				set<uint16_t> candidates;
-				for (CompiledScript *script : pThis->_lookups->GetGlobalClassTable().GetAllScripts())
-				{
-					uint16_t scriptNumber = script->GetScriptNumber();
-					if (batch.GetWrittenScripts().find(scriptNumber) == batch.GetWrittenScripts().end())
-					{
-						candidates.insert(scriptNumber);
-					}
-				}
-				pThis->_decompileResults->SetStaleScripts(FindScriptsReferencingGlobals(helper, candidates, batch.GetGlobalRenames()));
-			}
-			if (pThis->_decompileResults->IsAborted())
-			{
-				pThis->_decompileResults->AddResult(DecompilerResultType::Warning, "Decompile aborted");
-			}
+			results.AddResult(DecompilerResultType::Warning, "Decompile aborted");
 		}
 	}
-	catch (...)
+	else
 	{
 		// Show the failure in the results; the stats below still run.
-		sci::Error error = sci::ErrorFromCurrentException("decompiling");
-		pThis->_decompileResults->AddResult(DecompilerResultType::Error, error.ToString());
+		results.AddResult(DecompilerResultType::Error, report.error().ToString());
 	}
 
 	// Stats reporting
-	int divisor = max(1, (pThis->_decompileResults->_successCount + pThis->_decompileResults->_fallbackCount));	 // avoid / by zero
-	int successPercentage = pThis->_decompileResults->_successCount * 100 / divisor;
-	int divisorBytes = max(1, (pThis->_decompileResults->_successBytes + pThis->_decompileResults->_fallbackBytes));	 // avoid / by zero
-	int successBytesPercentage = pThis->_decompileResults->_successBytes * 100 / divisorBytes;
-	pThis->_decompileResults->AddResult(DecompilerResultType::Important,
-		fmt::format("Decompiled {0} of {1} functions successfully ({2}%).", pThis->_decompileResults->_successCount, (pThis->_decompileResults->_successCount + pThis->_decompileResults->_fallbackCount), successPercentage)
+	int divisor = max(1, (stats.functions + stats.fallbacks));	 // avoid / by zero
+	int successPercentage = stats.functions * 100 / divisor;
+	int divisorBytes = max(1, (stats.functionBytes + stats.fallbackBytes));	 // avoid / by zero
+	int successBytesPercentage = stats.functionBytes * 100 / divisorBytes;
+	results.AddResult(DecompilerResultType::Important,
+		fmt::format("Decompiled {0} of {1} functions successfully ({2}%).", stats.functions, (stats.functions + stats.fallbacks), successPercentage)
 		);
 
-	pThis->_decompileResults->AddResult(DecompilerResultType::Important,
+	results.AddResult(DecompilerResultType::Important,
 		fmt::format("Overall bytecount success rate: {0}%.", successBytesPercentage)
 		);
 
-	if (pThis->_decompileResults->_fallbackCount)
+	if (stats.fallbacks)
 	{
-		pThis->_decompileResults->AddResult(DecompilerResultType::Important, "Fell back to assembly for the remaining functions.");
+		results.AddResult(DecompilerResultType::Important, "Fell back to assembly for the remaining functions.");
 	}
 }
 
@@ -877,19 +836,6 @@ void DecompilerDialogResults::AddResult(DecompilerResultType type, const std::st
 	}
 }
 
-void DecompilerDialogResults::InformStats(bool functionSuccessful, int byteCount)
-{
-	if (functionSuccessful)
-	{
-		_successCount++;
-		_successBytes += byteCount;
-	}
-	else
-	{
-		_fallbackCount++;
-		_fallbackBytes += byteCount;
-	}
-}
 
 LRESULT DecompileDialog::UpdateStatus(WPARAM wParam, LPARAM lParam)
 {

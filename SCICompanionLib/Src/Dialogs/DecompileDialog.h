@@ -19,14 +19,14 @@
 #include <atomic>
 
 class CSCOFile;
-class IDecompilerConfig;
 
 class DecompilerDialogResults : public IDecompilerResults
 {
 public:
-	DecompilerDialogResults(HWND hwnd) : _aborted(false), _hwnd(hwnd), _successCount(0), _fallbackCount(0), _successBytes(0), _fallbackBytes(0), _globalsUpdated(false) {}
+	DecompilerDialogResults(HWND hwnd) : _aborted(false), _hwnd(hwnd), _globalsUpdated(false) {}
 	void AddResult(DecompilerResultType type, const std::string &message) override;
-	void InformStats(bool functionSuccessful, int byteCount) override;
+	// The run counts the statistics (DecompileReport::stats).
+	void InformStats(bool functionSuccessful, int byteCount) override {}
 	bool IsAborted() override { return _aborted; }
 	void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &mainDirtyRenames) { _globalsUpdated = mainDirtyRenames; };
 
@@ -39,12 +39,6 @@ public:
 	// worker is done.
 	void SetStaleScripts(const std::set<uint16_t> &staleScripts) { _staleScripts = staleScripts; }
 	const std::set<uint16_t> &GetStaleScripts() const { return _staleScripts; }
-
-	// Stats
-	int _successCount;
-	int _fallbackCount;
-	int _successBytes;
-	int _fallbackBytes;
 
 private:
 	// Written by the UI thread (SetAborted) and read by the worker thread
@@ -132,8 +126,6 @@ private:
 	bool _debugAsm;
 	bool _substituteTextTuples;
 	CString _debugFunctionMatch;
-	std::unique_ptr<GlobalCompiledScriptLookups> _lookups;
-	std::unique_ptr<IDecompilerConfig> _decompilerConfig;
 	void _AssignFilenames();
 
 	bool _syncSelection;

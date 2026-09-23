@@ -101,6 +101,8 @@ modernizing the build. Broad highlights since the previous release:
   fails. Before a compile writes into the game's package, it asks what to do
   with patch files that would hide the new resources (the game reads a patch
   file first), and it can move them aside to a `replaced-patches` folder.
+  When the Decompile dialog prepares the `src` folder, it copies the
+  decompiler files with no prompt and never overwrites a file of the game.
 * **Removed legacy SCI Studio script syntax.** Scripts now use SCI Companion's
   Sierra-style syntax only.
 * **Modern build tools.** The project now builds with the Visual Studio 2022
