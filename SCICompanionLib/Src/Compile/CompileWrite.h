@@ -63,7 +63,11 @@ sci::Status WriteCompiledResource(CResourceMap &resourceMap, const CompileWriteO
 // Writes the staged files into the output folder of the options, in order.
 // Every file that is there already must open for writing first, so that a
 // read-only, hidden or system file, a folder with the file's name, or a
-// file that another program holds, fails the write before the first file.
-// A write that fails after that check (a full disk) leaves the files
-// before it.
+// file that another program holds, fails the write before the first file;
+// so does a path that is too long (review of 944de1df). A write that fails
+// after that check (a full disk) leaves the files before it.
 sci::Status WriteStagedOutputFiles(const GameFolderHelper &helper, const CompileWriteOptions &options, const std::vector<StagedOutputFile> &files);
+
+// The check of WriteStagedOutputFiles before its first write, with no write
+// (a dry run; review of 944de1df).
+sci::Status CheckStagedOutputFiles(const GameFolderHelper &helper, const CompileWriteOptions &options, const std::vector<StagedOutputFile> &files);

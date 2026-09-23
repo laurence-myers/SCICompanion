@@ -63,9 +63,11 @@ struct ScriptOutcome
     // withdrawn, and its files for an output folder are dropped (they wait
     // for the commit; review of 5f545221). Its .sco is the last write that
     // can fail it, so it leaves no new .sco from this pass; a .sco from an
-    // earlier pass stays, and the commit then writes nothing when a script
-    // of the commit uses it (review of 4247f34c). The debug file comes
-    // after the .sco, and one that cannot be written is a warning.
+    // earlier pass stays until Finish, which writes nothing when a script
+    // of the commit uses it (review of 4247f34c), and then puts back the
+    // .sco of each script that the commit does not write (review of
+    // 944de1df). The debug file comes after the .sco, and one that cannot
+    // be written is a warning; it is not put back.
     sci::Status status;
     std::vector<CompileResult> diagnostics;
     // The sizes of the compiled script (the GUI shows them).
@@ -85,14 +87,24 @@ struct CompileReport
     // With ShadowPolicy::Replace: Ok, or an Io error that names each patch
     // file that could not move (it still hides the package write).
     sci::Status moves;
+    // The .sco files that the batch changed for a script that the commit
+    // does not write (all of them when the commit is refused or fails, or
+    // in a dry run) go back to their bytes from before the batch: Ok, or
+    // an Io error that names each file that could not go back (it
+    // describes a script that the game does not have; review of 944de1df).
+    sci::Status objectFiles;
+    // The .sco files that went back.
+    std::vector<std::string> restoredObjectFiles;
     // The abort flag stopped the batch.
     bool cancelled = false;
     // failFast stopped the batch after a script that failed.
     bool stopped = false;
     // The passes that ran.
     int passes = 0;
-    // The last pass that options.passes allows changed a .sco file, so a
-    // script that uses it can still be out of date.
+    // The last pass that ran changed a .sco file, and no pass came after
+    // it (the limit of options.passes, an abort, or failFast), so a script
+    // of the commit that uses it can still be out of date (review of
+    // 944de1df: an abort gave no sign of it).
     bool passLimit = false;
     // Patch files with another name for a written resource, and patch
     // tables that hide later package saves of the GUI.
@@ -106,8 +118,8 @@ struct CompileReport
     // The error and warning diagnostics of all scripts.
     size_t ErrorCount() const;
     size_t WarningCount() const;
-    // Every script compiled, and the tables, the commit and the moves are
-    // Ok.
+    // Every script compiled, and the tables, the commit, the moves and the
+    // .sco files are Ok.
     bool Succeeded() const;
 };
 
@@ -141,7 +153,8 @@ public:
     // vocab 996 or 997 in the package; Cancelled when askShadows answered
     // Refuse.
     static sci::Result<std::unique_ptr<CompileBatch>> Start(GameSession &session, std::vector<ScriptId> scripts, const CompileOptions &options);
-    // A batch that was not finished withdraws its queued writes.
+    // A batch that was not finished withdraws its queued writes, and puts
+    // back the .sco files that it changed.
     ~CompileBatch();
     CompileBatch(const CompileBatch &) = delete;
     CompileBatch &operator=(const CompileBatch &) = delete;
@@ -167,7 +180,9 @@ public:
     // asks nothing. With Replace, it moves only the patch files that hide a
     // resource that the commit wrote (a dry run moves none). With an output
     // folder, the commit writes the files of the tables, then those of the
-    // scripts that compiled (WriteStagedOutputFiles). Call it once.
+    // scripts that compiled (WriteStagedOutputFiles; a dry run checks them
+    // only). Then it puts back the .sco files of the scripts that the
+    // commit does not write (report.objectFiles). Call it once.
     CompileReport Finish();
 
     size_t Count() const { return _scripts.size(); }
@@ -203,8 +218,23 @@ private:
     // with the scripts whose .sco files each one read (review of
     // 4247f34c).
     std::map<uint16_t, std::set<uint16_t>> _passObjectFileUses;
-    // The scripts whose .sco files the batch changed, in any pass.
-    std::set<uint16_t> _changedObjectFiles;
+    // The scripts whose .sco files the batch changed, in any pass, by their
+    // compiled number, with their index in _scripts.
+    std::map<uint16_t, size_t> _changedObjectFiles;
+    // The titles of the scripts by their compiled number, for the texts.
+    std::map<uint16_t, std::string> _compiledTitles;
+    // The .sco of each script (by its index) as it was before the batch,
+    // read before its first compile (review of 944de1df).
+    struct ObjectFileBefore
+    {
+        bool captured = false;
+        std::string path;
+        bool existed = false;
+        // It existed, and could not be read: it is not put back.
+        bool unreadable = false;
+        std::vector<uint8_t> bytes;
+    };
+    std::vector<ObjectFileBefore> _objectFilesBefore;
     // The patch files that the policy or askShadows answered for, so the
     // check before the commit asks only about new ones.
     std::vector<std::string> _shadowingPatches;
@@ -214,6 +244,10 @@ private:
 
     sci::Status _DecideAbout(const std::vector<std::string> &files, bool beforeTheCompile);
     sci::Status _CheckObjectFileUses() const;
+    std::string _LabelOf(uint16_t number) const;
+    void _CaptureObjectFile(size_t index, const ScriptId &script);
+    void _Commit();
+    sci::Status _RestoreObjectFiles(bool committed);
     sci::Status _CheckQueuedWrites(const std::vector<StagedOutputFile> &tableFiles);
     void _MoveShadowingPatches();
     void _AddWarnings();

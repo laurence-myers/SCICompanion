@@ -20,7 +20,8 @@ sci::Status WriteTextToFile(const std::string &path, const std::string &text);
 
 // Whether a write that replaces the file (CREATE_ALWAYS and
 // FILE_ATTRIBUTE_NORMAL, as WriteBytesToFile and a patch file) can do it,
-// before the write: Ok when the file does not exist; Io for a folder with
+// before the write: Io for a path of MAX_PATH characters or more; Ok when
+// the file does not exist; Io for a folder with
 // its name, for a hidden or system file (which such a write cannot
 // replace), and for a file that does not open for writing with this
 // sharing (read-only, or another program holds it). WriteBytesToFile

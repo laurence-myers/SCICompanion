@@ -121,6 +121,7 @@ namespace cli
         AddWriteStatus(facts, report.tables);
         AddWriteStatus(facts, report.commit);
         AddWriteStatus(facts, report.moves);
+        AddWriteStatus(facts, report.objectFiles);
         facts.cancelled = facts.cancelled || report.cancelled;
         return ExitCodeForFacts(facts);
     }

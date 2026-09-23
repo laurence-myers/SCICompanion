@@ -83,7 +83,7 @@ sci::Status WriteCompiledResource(CResourceMap &resourceMap, const CompileWriteO
     return WriteOutputFile(helper, options, type, number, data);
 }
 
-sci::Status WriteStagedOutputFiles(const GameFolderHelper &helper, const CompileWriteOptions &options, const std::vector<StagedOutputFile> &files)
+sci::Status CheckStagedOutputFiles(const GameFolderHelper &helper, const CompileWriteOptions &options, const std::vector<StagedOutputFile> &files)
 {
     // Every file that is there already must open for writing, so that a
     // read-only file, or a file that another program holds, fails the
@@ -96,6 +96,12 @@ sci::Status WriteStagedOutputFiles(const GameFolderHelper &helper, const Compile
     {
         SCI_TRY(CheckFileCanBeReplaced(OutputPathOf(helper, options, file.type, file.number), options.raw ? (FILE_SHARE_READ | FILE_SHARE_WRITE) : 0));
     }
+    return sci::Ok();
+}
+
+sci::Status WriteStagedOutputFiles(const GameFolderHelper &helper, const CompileWriteOptions &options, const std::vector<StagedOutputFile> &files)
+{
+    SCI_TRY(CheckStagedOutputFiles(helper, options, files));
     for (const StagedOutputFile &file : files)
     {
         SCI_TRY(WriteOutputFile(helper, options, file.type, file.number, file.data));

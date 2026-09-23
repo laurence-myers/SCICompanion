@@ -154,6 +154,16 @@ void ReportCompileBatch(const CompileReport &report, ICompileLog &log, const std
     {
         log.ReportResult(CompileResult("Error: " + report.moves.error().ToString(), CompileResult::CRT_Error));
     }
+    // The .sco files of the scripts that were not written went back to
+    // their state before the compile (review of 944de1df).
+    for (const std::string &restored : report.restoredObjectFiles)
+    {
+        log.ReportResult(CompileResult("Put back " + restored + ": its script was not written"));
+    }
+    if (!report.objectFiles)
+    {
+        log.ReportResult(CompileResult("Error: " + report.objectFiles.error().ToString(), CompileResult::CRT_Error));
+    }
     for (const std::string &warning : report.warnings)
     {
         log.ReportResult(CompileResult("Warning: " + warning, CompileResult::CRT_Warning));

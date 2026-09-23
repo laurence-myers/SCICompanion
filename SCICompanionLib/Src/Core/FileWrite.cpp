@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "FileWrite.h"
+#include "format.h"
 
 sci::Status WriteBytesToFile(const std::string &path, const void *data, size_t size)
 {
@@ -44,6 +45,12 @@ sci::Status WriteBytesToFile(const std::string &path, const std::vector<uint8_t>
 
 sci::Status CheckFileCanBeReplaced(const std::string &path, unsigned long shareMode)
 {
+    // The write opens the path with no "\\?\" prefix (review of 944de1df:
+    // a file of 260 characters passed the check, and its write failed).
+    if (path.size() >= MAX_PATH)
+    {
+        return sci::Fail(sci::ErrorCode::Io, fmt::format("Writing {0}: the path has {1} characters, and a write takes at most {2}", path, path.size(), MAX_PATH - 1));
+    }
     DWORD attributes = GetFileAttributesA(path.c_str());
     if (attributes == INVALID_FILE_ATTRIBUTES)
     {
