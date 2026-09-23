@@ -421,9 +421,32 @@ for each step, and a follow-up commit if the review finds a problem.
   block covers every export. Only a script with no block uses the old
   pairing in definition order. The compiler does not use this function
   (it builds its `.sco` from the compile); the decompiler and the planned
-  `script sco` do. So a decompile now writes the right slots for a script
-  whose public procedures are defined out of slot order (the case that
-  `scicompile` found: KQ5 `Interface.sc`).
+  `script sco` do. The case that `scicompile` found (KQ5 `Interface.sc`:
+  public procedures defined out of slot order) comes from a source of
+  another tool, so it matters for `script sco`. (Corrected at the K2
+  review: the first text said that it changes a decompile.)
+- K2 review: in a decompile, the decompiler writes the public procedures
+  in slot order, so their slots do not change. What K2 changes there is
+  the object exports: an instance exported out of definition order, and
+  one instance in several slots. The review decompiled 12 GOG games with
+  and without K2: 137 of 2,683 `.sco` files differ, and no procedure
+  name differs (examples: KQ5 script 202 had `cedric@1` and now has
+  `stdWalkIn@1`; SQ5 script 209 now lists `viewPortTalker` at slots 14,
+  16 and 18). So the `.sco` files of a GUI decompile change.
+- K2 review: the block's entries are now in slot order, as the compiler
+  writes them. `GetExportIndex` gives the first entry of a name, so for
+  `(public foo 5 foo 0)` the block order gave slot 5 and the compiler's
+  `.sco` gives 0. `TemplateScripts_ScoExportsEqualTheCompilersSco`
+  compiles every script of both templates and compares the built `.sco`
+  exports with the compiler's `.sco` (fails before K2: SCI1.1 `Main`).
+- Known gap (K2 review): the shipped SCI1.1 template is out of date. The
+  compiled `Main` has 15 exports (`AddPolygonsToRoom@13`,
+  `CreateNewPolygon@14`), but `Main.sc` lists 13, and the compiled
+  `DebugHandler` exports `dInvD@1`, which its source does not. So "the
+  block covers every export" is true only for a source and its own
+  compile. `script sco` (C2) should warn when the block and the compiled
+  export table disagree; before K2 such exports were also dropped with no
+  message. Refreshing the template is a separate issue.
 - K3: `SpeciesTable::Load` orders each script's species as the classes
   are in the script's compiled resource: first the species that the table
   gives the script, in the compiled order; then the table's other species

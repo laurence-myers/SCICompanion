@@ -737,9 +737,18 @@ unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const Script &script, const 
 	// slot, and a call went to the wrong procedure).
 	if (!script.GetExports().empty())
 	{
+		// In slot order, as the compiler writes its .sco: GetExportIndex gives
+		// the first entry of a name, so a name in several slots must give its
+		// lowest slot here too.
+		std::vector<std::pair<uint16_t, std::string>> slots;
 		for (const auto &entry : script.GetExports())
 		{
-			sco->GetExports().emplace_back(entry->Name, (uint16_t)entry->Slot);
+			slots.emplace_back((uint16_t)entry->Slot, entry->Name);
+		}
+		std::stable_sort(slots.begin(), slots.end(), [](const std::pair<uint16_t, std::string> &a, const std::pair<uint16_t, std::string> &b) { return a.first < b.first; });
+		for (const auto &slot : slots)
+		{
+			sco->GetExports().emplace_back(slot.second, slot.first);
 		}
 		return sco;
 	}

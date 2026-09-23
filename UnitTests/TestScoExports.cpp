@@ -178,5 +178,139 @@ namespace UnitTests
             Assert::AreEqual(0, slots["procB"], L"procB is in slot 0");
             Assert::AreEqual(1, slots["procA"], L"procA is in slot 1");
         }
+
+        // K2 review: a name in several slots. The compiler writes its .sco in
+        // slot order, and a lookup by name gives the first entry. Before, the
+        // block order (procA 2 first) gave procA the slot 2, and the
+        // compiler's .sco gives it 0.
+        TEST_METHOD(PublicBlock_NameInSeveralSlots_IsInSlotOrder)
+        {
+            const char *source =
+                "(script# 950)\n"
+                "(include sci.sh)\n"
+                "(include game.sh)\n"
+                "(public\n"
+                "    procA 2\n"
+                "    procB 1\n"
+                "    procA 0\n"
+                ")\n"
+                "(procedure (procA)\n"
+                "    (return 1)\n"
+                ")\n"
+                "(procedure (procB)\n"
+                "    (return 2)\n"
+                ")\n";
+            std::string differences = CompareScoExports(950, "SeveralSlots", source);
+            Assert::IsTrue(differences.empty(), std::wstring(differences.begin(), differences.end()).c_str());
+        }
+
+        // K2 review: for each script of both templates, the .sco built from
+        // the source and the compiled script has the exports of the .sco that
+        // the compiler writes. Before K2, Main of the SCI1.1 template gave
+        // AimToward@7, Die@8 and AddToScore@9: its public block is not in
+        // definition order.
+        TEST_METHOD(TemplateScripts_ScoExportsEqualTheCompilersSco)
+        {
+            CompareScoExportsOfEveryScript("SCI0");
+            CleanUpGame(_gameFolder);
+            _gameFolder = SetUpGameSCI11();
+            CompareScoExportsOfEveryScript("SCI1.1");
+        }
+
+    private:
+        static std::string ExportsText(const CSCOFile &sco)
+        {
+            std::string text;
+            for (const CSCOPublicExport &publicExport : sco.GetExports())
+            {
+                text += publicExport.GetName() + "@" + std::to_string(publicExport.GetIndex()) + " ";
+            }
+            return text;
+        }
+
+        // The exports of the .sco that the compiler wrote, and of the .sco built
+        // from the source and the compiled script. Empty when they are equal.
+        static std::string CompareWithTheCompilersSco(const ScriptId &scriptId, const GlobalCompiledScriptLookups &lookups)
+        {
+            CResourceMap &resourceMap = appState->GetResourceMap();
+            const GameFolderHelper &helper = resourceMap.Helper();
+            uint16_t number = scriptId.GetResourceNumber();
+            std::unique_ptr<CSCOFile> written = GetExistingSCOFromScriptNumber(helper, number, lookups.GetSelectorTable());
+            CompileLog log;
+            ScriptId source = scriptId;
+            std::unique_ptr<sci::Script> script = SimpleCompile(resourceMap.GetSCIVersion(), log, source);
+            CompiledScript compiledScript(number);
+            if (!written || !script || !compiledScript.Load(helper, helper.Version, number))
+            {
+                return scriptId.GetTitle() + ": the .sco, the source or the compiled script did not load\n";
+            }
+            std::unique_ptr<CSCOFile> built = SCOFromScriptAndCompiledScript(*script, compiledScript);
+            std::string writtenText = ExportsText(*written);
+            std::string builtText = ExportsText(*built);
+            if (writtenText == builtText)
+            {
+                return std::string();
+            }
+            return scriptId.GetTitle() + ": the compiler wrote \"" + writtenText + "\", built \"" + builtText + "\"\n";
+        }
+
+        static std::string CompareScoExports(uint16_t number, const std::string &name, const std::string &source)
+        {
+            CResourceMap &resourceMap = appState->GetResourceMap();
+            std::string path = resourceMap.Helper().GetScriptFileName(name);
+            {
+                std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
+                file << source;
+            }
+            std::string error;
+            bool compiled = CompileFixture(number, name, &error);
+            if (!compiled)
+            {
+                return name + " did not compile: " + error + "\n";
+            }
+            GlobalCompiledScriptLookups lookups;
+            lookups.Load(resourceMap.Helper());
+            ScriptId scriptId(path.c_str());
+            scriptId.SetResourceNumber(number);
+            return CompareWithTheCompilersSco(scriptId, lookups);
+        }
+
+        void CompareScoExportsOfEveryScript(const std::string &templateName)
+        {
+            CResourceMap &resourceMap = appState->GetResourceMap();
+            std::vector<ScriptId> scripts;
+            resourceMap.GetAllScripts(scripts);
+
+            // Compile every script first, so that each .sco is the compiler's.
+            std::string differences;
+            std::vector<ScriptId> compiledScripts;
+            for (ScriptId &scriptId : scripts)
+            {
+                if (!PathFileExists(scriptId.GetFullPath().c_str()))
+                {
+                    continue;
+                }
+                std::string error;
+                bool compiled = CompileFixture(scriptId.GetResourceNumber(), scriptId.GetTitle(), &error);
+                if (compiled)
+                {
+                    compiledScripts.push_back(scriptId);
+                }
+                else
+                {
+                    differences += scriptId.GetTitle() + " did not compile: " + error + "\n";
+                }
+            }
+
+            GlobalCompiledScriptLookups lookups;
+            Assert::IsTrue(lookups.Load(resourceMap.Helper()));
+            for (const ScriptId &scriptId : compiledScripts)
+            {
+                differences += CompareWithTheCompilersSco(scriptId, lookups);
+            }
+            std::wstring wideName(templateName.begin(), templateName.end());
+            Assert::IsTrue(compiledScripts.size() > 20, (L"too few scripts in the " + wideName + L" template").c_str());
+            Assert::IsTrue(differences.empty(), (wideName + L":\n" + std::wstring(differences.begin(), differences.end())).c_str());
+        }
     };
 }
