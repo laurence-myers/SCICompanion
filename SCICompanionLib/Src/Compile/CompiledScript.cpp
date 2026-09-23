@@ -69,25 +69,47 @@ bool CompiledScript::Load(const GameFolderHelper &helper, SCIVersion version, in
 
 sci::Status CompiledScript::TryLoad(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber)
 {
+	std::unique_ptr<ResourceBlob> scriptBlob;
+	std::unique_ptr<ResourceBlob> heapBlob;
+	// The context does not name the resource: the location does.
+	sci::Status found = sci::Guard("the script could not be read", [&]() -> sci::Status
+	{
+		scriptBlob = helper.MostRecentResource(ResourceType::Script, iScriptNumber, ResourceEnumFlags::None);
+		if (!scriptBlob)
+		{
+			return sci::Fail(sci::ErrorCode::NotFound, "the script is missing");
+		}
+		if (version.SeparateHeapResources)
+		{
+			heapBlob = helper.MostRecentResource(ResourceType::Heap, iScriptNumber, ResourceEnumFlags::None);
+		}
+		return sci::Ok();
+	});
+	if (!found)
+	{
+		if (found.error().where.resource.empty())
+		{
+			found.error().where.resource = DescribeResource(ResourceType::Script, iScriptNumber);
+		}
+		return found;
+	}
+	return TryLoad(helper, version, iScriptNumber, *scriptBlob, heapBlob.get());
+}
+
+sci::Status CompiledScript::TryLoad(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber, const ResourceBlob &scriptBlob, const ResourceBlob *heapBlob)
+{
 	std::string resource = DescribeResource(ResourceType::Script, iScriptNumber);
 	// The context does not name the resource: the location does.
 	sci::Status loaded = sci::Guard("the script could not be read", [&]() -> sci::Status
 	{
 		_version = version;
 		_wScript = (uint16_t)iScriptNumber;
-		std::unique_ptr<ResourceBlob> scriptBlob = helper.MostRecentResource(ResourceType::Script, iScriptNumber, ResourceEnumFlags::None);
-		if (!scriptBlob)
-		{
-			return sci::Fail(sci::ErrorCode::NotFound, "the script is missing");
-		}
-		SCI_TRY(CheckResourceData(*scriptBlob));
-		sci::istream scriptStream = scriptBlob->GetReadStream();
+		SCI_TRY(CheckResourceData(scriptBlob));
+		sci::istream scriptStream = scriptBlob.GetReadStream();
 		scriptStream.setThrowExceptions(true);
-		std::unique_ptr<ResourceBlob> heapBlob;
 		std::unique_ptr<sci::istream> heapStream;
 		if (version.SeparateHeapResources)
 		{
-			heapBlob = helper.MostRecentResource(ResourceType::Heap, iScriptNumber, ResourceEnumFlags::None);
 			if (!heapBlob)
 			{
 				sci::ErrorLocation where;

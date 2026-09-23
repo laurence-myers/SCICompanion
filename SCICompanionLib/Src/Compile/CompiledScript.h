@@ -29,6 +29,7 @@ namespace sci
 }
 class DecompileLookups;
 class GameFolderHelper;
+class ResourceBlob;
 class SelectorTable;
 
 //
@@ -228,6 +229,9 @@ public:
 	// with the resource in the location. A read past the end of the data is an
 	// error here, not a zero.
 	sci::Status TryLoad(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber);
+	// The same, from the script and heap resources that the caller found (a loop
+	// over the game's scripts finds them all in one pass, which is faster).
+	sci::Status TryLoad(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber, const ResourceBlob &scriptBlob, const ResourceBlob *heapBlob);
 	std::vector<std::unique_ptr<CompiledObject>> &GetObjects() { return _objects; }
 	const std::vector<std::unique_ptr<CompiledObject>> &GetObjects() const { return _objects; }
 	uint16_t GetScriptNumber() const { return _wScript; }

@@ -151,6 +151,7 @@ public:
 
 private:
 	bool _Create(sci::istream &byteStream);
+	void _AlignToCompiledScripts(const GameFolderHelper &helper);
 
 	typedef std::unordered_map<uint16_t, std::vector<uint16_t> > species_map;
 

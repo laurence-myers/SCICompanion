@@ -6,9 +6,9 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: the F2, K1 and K2 reviews, then K3. F1, A1, A2, B1, B2,
-  B3a and B3b are committed and reviewed, with their review fixes. F2, K1
-  and K2 are committed.
+- Current step: the F2, K1, K2 and K3 reviews, then K4. F1, A1, A2, B1,
+  B2, B3a and B3b are committed and reviewed, with their review fixes. F2,
+  K1, K2 and K3 are committed.
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -17,7 +17,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`).
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -42,8 +42,8 @@ for each step, and a follow-up commit if the review finds a problem.
 | B3b Decompile path on the session, `appState` check rule | done | `f646dd52`, review fixes (the commit after `56b487d5`) | FIX: 1 should-fix, 6 nits, 1 question. Fixed: a test that the decompiler reads `sci.sh` from the data folder (the real-game tools now resolve enum names; see "Decisions"); `Src\Util` in the `appState` rule (13 GUI files in the allowlist); `DecompileScript` declared in `DecompileScript.h`; `GetIncludeFolder` is const; `%zu` and Warning for two log lines; corrected documents and CI comment. Outside the branch: the whole-game dump writes `.sco` files into the game folder that it dumps (a separate task was proposed). |
 | F2 Engine errors as values | done | the commit after `637d1ab1` | next |
 | K1 `and`/`or` value semantics | done | `cdf8759d` | running |
-| K2 `.sco` exports from the public block | done | the commit after `cdf8759d` | next |
-| K3 Species order from compiled scripts | not started | | |
+| K2 `.sco` exports from the public block | done | `c6f42341` | next |
+| K3 Species order from compiled scripts | done | the commit after `c6f42341` | next |
 | K4 `#` in selector names | not started | | |
 | K5 `proc<N>_<M>` for a missing script | not started | | |
 | K6 No `vocab.000`; `/` in paths | not started | | |
@@ -354,7 +354,27 @@ for each step, and a follow-up commit if the review finds a problem.
   `script sco` do. So a decompile now writes the right slots for a script
   whose public procedures are defined out of slot order (the case that
   `scicompile` found: KQ5 `Interface.sc`).
+- K3: `SpeciesTable::Load` orders each script's species as the classes
+  are in the script's compiled resource: first the species that the table
+  gives the script, in the compiled order; then the table's other species
+  for the script, in number order. A compiled class whose species the table
+  gives to another script (or to none) is left out: to give its position
+  that species would give a new class there the species of another
+  script's class. So a script with such a leftover class keeps the old
+  positional numbering (61 scripts in the 30 GOG game folders; a known
+  gap). SCI Companion's own compiles give each class its species in
+  number order, so the templates and fan games do not change.
+- K3: a lookup of each script (`MostRecentResource`) costs about 15 ms,
+  so the first version made `SpeciesTable::Load` take 300 to 700 ms on the
+  big games (the GUI loads it for each compile). The scripts and heaps are
+  now found in one pass, and `CompiledScript::TryLoad` has a form that
+  takes the blobs: 15 to 31 ms.
+- K3: `OptIn_SpeciesOrder_RealGame` (`SCICOMP_SPECIES_GAME`, one folder or
+  several separated by `;`) checks every script without a leftover class.
+  It passes on the 30 GOG game folders; before K3, LB2 script 0 (two
+  classes swapped) and The Colonel's Bequest script 999 (five classes
+  shifted) failed.
 ## Next action
 
 Read the F2 and K1 reviews (running) and fix any real finding. Run the
-K2 review. Then K3 (plan section 9).
+K2 and K3 reviews. Then K4 (plan section 9).

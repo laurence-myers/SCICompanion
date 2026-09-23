@@ -41,6 +41,9 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="TestSpeciesTable.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestEngineErrors.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

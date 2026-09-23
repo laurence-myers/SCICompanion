@@ -1089,6 +1089,77 @@ std::vector<uint16_t> GlobalClassTable::GetSubclassesOf(uint16_t baseClass)
 	return subclasses;
 }
 
+// vocab.996 gives the script of each species, so _map lists a script's
+// species in number order. The compiler and the .sco number a script's
+// classes in the order of its source; for a decompiled script, that is the
+// order of the compiled script. A game can have its classes in another order
+// (LB2 script 0), and then a recompile gave two classes each other's species.
+// So each script's list starts with the species that the table gives the
+// script, in the order of the script's compiled classes; the table's other
+// species for the script follow, in number order (The Colonel's Bequest has a
+// species for script 999 that script 999 does not have). A compiled class
+// whose species the table does not give the script (a leftover class) is
+// left out: to give it that species would give a new class there the species
+// of another script's class. A script that does not load keeps its order.
+void SpeciesTable::_AlignToCompiledScripts(const GameFolderHelper &helper)
+{
+	// Find the scripts and their heaps in one pass: a lookup for each script
+	// is slow.
+	unordered_map<uint16_t, pair<unique_ptr<ResourceBlob>, unique_ptr<ResourceBlob>>> scriptsAndHeaps;
+	auto container = helper.Resources(ResourceTypeFlags::Script | ResourceTypeFlags::Heap, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+	for (auto &resource : *container)
+	{
+		pair<unique_ptr<ResourceBlob>, unique_ptr<ResourceBlob>> &scriptAndHeap = scriptsAndHeaps[(uint16_t)resource->GetNumber()];
+		if (resource->GetType() == ResourceType::Script)
+		{
+			scriptAndHeap.first = move(resource);
+		}
+		else
+		{
+			scriptAndHeap.second = move(resource);
+		}
+	}
+
+	for (auto &scriptAndSpecies : _map)
+	{
+		vector<uint16_t> &species = scriptAndSpecies.second;
+		if (species.size() < 2)
+		{
+			continue;   // Nothing to order.
+		}
+		auto found = scriptsAndHeaps.find(scriptAndSpecies.first);
+		if ((found == scriptsAndHeaps.end()) || !found->second.first)
+		{
+			continue;
+		}
+		CompiledScript compiledScript(scriptAndSpecies.first);
+		if (!compiledScript.TryLoad(helper, helper.Version, scriptAndSpecies.first, *found->second.first, found->second.second.get()))
+		{
+			continue;
+		}
+		unordered_set<uint16_t> inTable(species.begin(), species.end());
+		vector<uint16_t> ordered;
+		unordered_set<uint16_t> placed;
+		for (const auto &object : compiledScript.GetObjects())
+		{
+			uint16_t objectSpecies = object->GetSpecies();
+			if (!object->IsInstance() && inTable.count(objectSpecies) && !placed.count(objectSpecies))
+			{
+				ordered.push_back(objectSpecies);
+				placed.insert(objectSpecies);
+			}
+		}
+		for (uint16_t tableSpecies : species)
+		{
+			if (!placed.count(tableSpecies))
+			{
+				ordered.push_back(tableSpecies);
+			}
+		}
+		species = ordered;
+	}
+}
+
 bool SpeciesTable::Load(const GameFolderHelper &helper)
 {
 	bool fRet = false;
@@ -1096,6 +1167,10 @@ bool SpeciesTable::Load(const GameFolderHelper &helper)
 	if (blob)
 	{
 		fRet = _Create(blob->GetReadStream());
+	}
+	if (fRet)
+	{
+		_AlignToCompiledScripts(helper);
 	}
 	if (!fRet)
 	{
