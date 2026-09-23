@@ -6,7 +6,7 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: S2b. F1, A1, A2, B1, B2, B3a, B3b, F2, K1 to K6 and S3 are committed and
+- Current step: S2c. F1, A1, A2, B1, B2, B3a, B3b, F2, K1 to K6 and S3 are committed and
   reviewed, with their review fixes. S1 and S2a are committed; they are not
   reviewed yet. The review of `bc827391` and `fe02c12a` is done, and its
   findings are fixed (the commit after `de2fb8dc`).
@@ -18,7 +18,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -50,7 +50,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | K6 No `vocab.000`; `/` in paths | done | `dcc0fdf7`, review fixes (the commit after `108cb227`) | FIX: 1 should-fix (the handover State, fixed in `f85fe77d`), 7 nits, 1 question. Fixed: the Said test counts one error for two Said strings, a vocab 900 test, the null vocabulary in the "Add as synonym of" dialog, the `ScriptId` folder keeps only `\`, stale text. Known gaps: see "Decisions" (a synonym with no vocabulary, a name with a slash, a `ScriptId` with no folder). Review of the fixes (`bc827391`): PASS with nits, fixed in the commit after `de2fb8dc`. |
 | S3 ScriptCatalog, script names without `game.ini` | done | S3a `f85fe77d`; S3b `108cb227`; review fixes (the commit after `fb14399f`) | FIX: S3a 1 should-fix (a `-` in a derived name), S3b 1 should-fix (one name conflict refused every script, with the wrong fix), nits and questions. Fixed: see "S3 review" in "Decisions". |
 | S1 Compile destination | done | the commit after `fe02c12a` | |
-| S2 CompileBatch | S2a done; S2b, S2c to do | S2a: the commit after `a9561fcc` | |
+| S2 CompileBatch | S2a and S2b done; S2c to do | S2a `fb14399f`; S2b: the commit after `8a322b32` | |
 | S4 DecompileRun | not started | | |
 | C1 CLI project, `script list` | not started | | |
 | C2 `script decompile`, `script sco` | not started | | |
@@ -777,10 +777,38 @@ for each step, and a follow-up commit if the review finds a problem.
   commit (P11). The compile dialog clears its log before each script, so it
   keeps `_anyErrors` for `HasErrors` (its result for the caller, for
   example the run after a compile-all).
+- S2b: the passes of plan section 4.5. `CompileOptions::passes` (default 1)
+  is the largest number; a pass that changes no `.sco` file is the last.
+  Each pass runs in its own nested `DeferResourceAppend` level, and a pass
+  that another pass follows is withdrawn, so the commit holds the last
+  pass. The report has the last pass, and `passes` counts them;
+  `ICompileEvents::OnPassStart`. `SaveSCOFile` writes a `.sco` file only
+  when its bytes change (`CompileResults::ObjectFileChanged`). Nothing reads
+  a `.sco` file time (the class browser times only headers), so the GUI
+  does not change.
+- S2b: the shadow check of plan section 5. `ShadowPolicy`: Refuse (the
+  default), Replace, Ignore. For a package write (the resolved destination,
+  no output folder, not a dry run), `Start` checks script N, heap N
+  (SCI1.1) and vocab 996 and 997 (`FindShadowingPatches`): Refuse gives
+  `WriteRefused` with the files. `Finish` checks the queued package writes
+  again before the commit, because a script's auto text is known only then;
+  with Refuse, a new file gives a `WriteRefused` commit status, and nothing
+  is written. With Replace, the files move after a successful commit to
+  `<game>\replaced-patches\<yyyymmdd-hhmmss>` (`movedPatches`; a file that
+  does not move is a warning).
+- S2b: the warnings of a patch-file write: a patch file with another name
+  for a compiled script or heap (`script.0904`: SCI Companion can load
+  either file), and the tables as patch files in a package-mode game (they
+  hide the GUI's later package saves of 996 and 997).
+- S2b known gaps: no test has a script that compiles in one pass and fails
+  in a later one, so the withdrawal of an earlier pass is checked by
+  inspection only. With an output folder, each pass writes its files at
+  once, so a script that fails in the last pass keeps the file of an
+  earlier pass.
 
 ## Next action
 
 Phase K and S3 are done, with the fixes of their reviews; S1 and S2a are
-done, and the fixes of every review so far are committed. Next: S2b, S2c
-and S4 (plan section 9), then a review of S1, S2, the S3 review fixes and
+done, and the fixes of every review so far are committed; S2b is done.
+Next: S2c and S4 (plan section 9), then a review of S1, S2, the S3 review fixes and
 the fixes of the review of `bc827391` and `fe02c12a`.

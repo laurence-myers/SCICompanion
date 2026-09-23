@@ -555,6 +555,10 @@ public:
 	ResourceEntity &GetTextResource() { return *_text; }
 	TextComponent &GetTextComponent();
 	void SetAutoTextNumber(uint16_t autoTextNumber);
+	// The compile wrote a .sco file whose bytes differ from the file before
+	// (plan step S2: a pass that changes no .sco file ends the passes).
+	bool ObjectFileChanged() const { return _objectFileChanged; }
+	void SetObjectFileChanged(bool changed) { _objectFileChanged = changed; }
 	CompileStats Stats;
 
 private:
@@ -565,6 +569,7 @@ private:
 	CSCOFile _sco;
 	ICompileLog &_log;
 	std::unique_ptr<ResourceEntity> _text;
+	bool _objectFileChanged = false;
 };
 
 

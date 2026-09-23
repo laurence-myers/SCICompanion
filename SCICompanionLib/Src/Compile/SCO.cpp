@@ -17,6 +17,8 @@
 #include "CompiledScript.h"
 #include "GameFolderHelper.h"
 #include "FileWrite.h"
+#include <fstream>
+#include <iterator>
 
 using namespace std;
 using namespace sci;
@@ -636,11 +638,31 @@ sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco)
 	return SaveSCOFile(helper, sco, script);
 }
 
-sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco, ScriptId script)
+sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco, ScriptId script, bool *changed)
 {
 	vector<BYTE> scoOutput;
 	sco.Save(scoOutput);
-	return WriteBytesToFile(helper.GetScriptObjectFileName(script.GetTitle()), scoOutput);
+	std::string path = helper.GetScriptObjectFileName(script.GetTitle());
+	{
+		std::ifstream existing(path, std::ios::binary);
+		if (existing)
+		{
+			vector<BYTE> before((std::istreambuf_iterator<char>(existing)), std::istreambuf_iterator<char>());
+			if (before == scoOutput)
+			{
+				if (changed)
+				{
+					*changed = false;
+				}
+				return sci::Ok();
+			}
+		}
+	}
+	if (changed)
+	{
+		*changed = true;
+	}
+	return WriteBytesToFile(path, scoOutput);
 }
 
 unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const Script &script, const CompiledScript &compiledScript)

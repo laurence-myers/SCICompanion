@@ -167,7 +167,9 @@ sci::Status CompileScriptFile(GameSession &session, CompileResults &results, Com
 				g_compileObjFileTimer.Start();
 				if (options.writeObjectFile)
 				{
-					check(SaveSCOFile(helper, results.GetSCO(), script));
+					bool changed = false;
+					check(SaveSCOFile(helper, results.GetSCO(), script, &changed));
+					results.SetObjectFileChanged(changed);
 				}
 				g_compileObjFileTimer.Stop();
 				g_compileDebugSymbolTimer.Start();

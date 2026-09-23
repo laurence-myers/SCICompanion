@@ -1,12 +1,30 @@
 #include "stdafx.h"
 #include "CompileBatch.h"
 #include "GameSession.h"
+#include "GameFolderHelper.h"
 #include "ResourceMap.h"
+#include "ResourceBlob.h"
+#include "ResourceUtil.h"
+#include "ScriptCatalog.h"
 #include "CoreLog.h"
 #include "format.h"
+#include <algorithm>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 namespace
 {
+    std::string JoinPaths(const std::vector<std::string> &paths)
+    {
+        std::string text;
+        for (const std::string &path : paths)
+        {
+            text += (text.empty() ? "" : ", ") + path;
+        }
+        return text;
+    }
+
     size_t CountDiagnostics(const std::vector<CompileResult> &diagnostics, bool errors)
     {
         return (size_t)std::count_if(diagnostics.begin(), diagnostics.end(),
@@ -74,19 +92,78 @@ sci::Result<std::unique_ptr<CompileBatch>> CompileBatch::Start(GameSession &sess
                     "this game keeps its resources in patch files (SaveToPatchFiles in game.ini), so SCI Companion does not read its package; compile to patch files");
             }
         }
+        const GameFolderHelper &helper = session.Helper();
         std::unique_ptr<CompileBatch> batch(new CompileBatch(session, std::move(scripts), options));
+        batch->_toPackage = (helper.GetResourceSaveLocation(options.write.saveTo) == ResourceSaveLocation::Package) &&
+            options.write.outDir.empty() && options.write.writeResources;
+        if (batch->_toPackage && (options.shadows != ShadowPolicy::Ignore))
+        {
+            // Plan section 5: a patch file hides the package copy, in the game
+            // and in SCI Companion. The texts of the scripts are checked in
+            // Finish, when the batch knows which scripts write one.
+            std::vector<ResourceKey> keys;
+            for (const ScriptId &script : batch->_scripts)
+            {
+                keys.push_back({ ResourceType::Script, script.GetResourceNumber() });
+                if (helper.Version.SeparateHeapResources)
+                {
+                    keys.push_back({ ResourceType::Heap, script.GetResourceNumber() });
+                }
+            }
+            keys.push_back({ ResourceType::Vocab, (uint16_t)VocabClassTable });
+            keys.push_back({ ResourceType::Vocab, (uint16_t)VocabSelectorNames });
+            SCI_TRY_ASSIGN(std::vector<std::string> shadowing, FindShadowingPatches(helper, keys));
+            if (!shadowing.empty())
+            {
+                if (options.shadows == ShadowPolicy::Refuse)
+                {
+                    return sci::Fail(sci::ErrorCode::WriteRefused, "these patch files would hide the package copies of the compiled resources: " +
+                        JoinPaths(shadowing) + ". Move them aside, or replace them (--replace-patches).");
+                }
+                batch->_shadowingPatches = shadowing;
+            }
+        }
         SCI_TRY(batch->_tables.TryLoad(session.ResourceMap()));
         batch->_headers = std::make_unique<PrecompiledHeaders>(session.ResourceMap());
         batch->_defer = std::make_unique<DeferResourceAppend>(session.ResourceMap());
+        batch->_passDefer = std::make_unique<DeferResourceAppend>(session.ResourceMap());
         return std::move(batch);
     });
 }
 
 bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
 {
-    if (_finished || _report.cancelled || _report.stopped || (_next >= _scripts.size()))
+    if (_finished || _report.cancelled || _report.stopped)
     {
         return false;
+    }
+    if (_next >= _scripts.size())
+    {
+        // The end of a pass. Another pass when a .sco file changed (plan
+        // section 4.5): the scripts that use it are right only then.
+        if (_scripts.empty() || !_passChangedObjectFile || (_pass >= _options.passes))
+        {
+            return false;
+        }
+        // The next pass writes every script again; the writes of this pass
+        // go, so the commit holds the last pass.
+        _passDefer.reset();
+        _passDefer = std::make_unique<DeferResourceAppend>(_session.ResourceMap());
+        _pass++;
+        _next = 0;
+        _passChangedObjectFile = false;
+        _anyCompiled = false;
+        _report.scripts.clear();
+        int pass = _pass;
+        sci::Status notified = sci::Guard("reporting a new pass", [&]() -> sci::Status
+        {
+            events.OnPassStart(pass);
+            return sci::Ok();
+        });
+        if (!notified)
+        {
+            CoreLog(LogLevel::Warning, notified.error().ToString());
+        }
     }
     if (abort.load())
     {
@@ -101,15 +178,18 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
     outcome.name = script.GetTitle();
     CompileLog log;
     bool returned = false;
+    bool objectFileChanged = false;
     outcome.status = sci::Guard(fmt::format("compiling {0}", script.GetFileNameOrig()), [&]() -> sci::Status
     {
         events.OnScriptStart(index, _scripts.size(), script);
         CompileResults results(log, _session.Version());
         sci::Status compiled = CompileScriptFile(_session, results, log, _tables, *_headers, script, _options.write);
+        objectFileChanged = results.ObjectFileChanged();
         returned = true;
         return compiled;
     });
     outcome.diagnostics = log.Results();
+    _passChangedObjectFile = _passChangedObjectFile || objectFileChanged;
     if (outcome.status)
     {
         _anyCompiled = true;
@@ -137,11 +217,141 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
     return true;
 }
 
+// Plan section 5: the batch checks the queued package writes again before
+// the commit. A script's auto text is known only after its compile.
+void CompileBatch::_CheckQueuedWrites()
+{
+    if (!_toPackage || (_options.shadows == ShadowPolicy::Ignore))
+    {
+        return;
+    }
+    std::vector<ResourceKey> keys;
+    for (const ResourceBlob *queued : _defer->Pending())
+    {
+        if (queued->GetSourceFlags() == ResourceSourceFlags::ResourceMap)
+        {
+            keys.push_back({ queued->GetType(), (uint16_t)queued->GetNumber() });
+        }
+    }
+    sci::Result<std::vector<std::string>> shadowing = FindShadowingPatches(_session.Helper(), keys);
+    if (!shadowing)
+    {
+        _report.commit = sci::Fail(shadowing.error());
+        return;
+    }
+    std::vector<std::string> added;
+    for (const std::string &file : *shadowing)
+    {
+        if (std::find(_shadowingPatches.begin(), _shadowingPatches.end(), file) == _shadowingPatches.end())
+        {
+            added.push_back(file);
+        }
+    }
+    if (added.empty())
+    {
+        return;
+    }
+    if (_options.shadows == ShadowPolicy::Refuse)
+    {
+        _report.commit = sci::Fail(sci::ErrorCode::WriteRefused, "these patch files would hide the package copies of the compiled resources: " +
+            JoinPaths(added) + ". Nothing was written. Move them aside, or replace them (--replace-patches).");
+        return;
+    }
+    _shadowingPatches.insert(_shadowingPatches.end(), added.begin(), added.end());
+}
+
+// ShadowPolicy::Replace, after the package write: the patch files go to
+// <game>\replaced-patches\<time>. A file that does not move is a warning; the
+// package has the resources already.
+void CompileBatch::_MoveShadowingPatches()
+{
+    if (_shadowingPatches.empty())
+    {
+        return;
+    }
+    const GameFolderHelper &helper = _session.Helper();
+    SYSTEMTIME now;
+    GetLocalTime(&now);
+    fs::path folder = fs::path(helper.GameFolder) / "replaced-patches" /
+        fmt::format("{0:04}{1:02}{2:02}-{3:02}{4:02}{5:02}", now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute, now.wSecond);
+    std::error_code ec;
+    fs::create_directories(folder, ec);
+    for (const std::string &file : _shadowingPatches)
+    {
+        fs::path target = folder / fs::path(file).filename();
+        std::error_code moved;
+        fs::rename(file, target, moved);
+        if (moved)
+        {
+            _report.warnings.push_back(fmt::format("could not move the patch file {0}: {1}", file, moved.message()));
+        }
+        else
+        {
+            _report.movedPatches.push_back(file + " -> " + target.string());
+        }
+    }
+}
+
+// Plan section 5: the warnings of a patch-file write.
+void CompileBatch::_AddWarnings()
+{
+    const GameFolderHelper &helper = _session.Helper();
+    bool toPatchFiles = (helper.GetResourceSaveLocation(_options.write.saveTo) == ResourceSaveLocation::Patch) &&
+        _options.write.outDir.empty() && _options.write.writeResources;
+    if (!toPatchFiles)
+    {
+        return;
+    }
+    // A patch file with another name for a resource that the batch wrote:
+    // SCI Companion can load either file.
+    std::vector<ResourceKey> keys;
+    for (const ScriptOutcome &outcome : _report.scripts)
+    {
+        if (outcome.status)
+        {
+            keys.push_back({ ResourceType::Script, outcome.number });
+            if (helper.Version.SeparateHeapResources)
+            {
+                keys.push_back({ ResourceType::Heap, outcome.number });
+            }
+        }
+    }
+    sci::Result<std::vector<std::string>> files = FindShadowingPatches(helper, keys);
+    if (files)
+    {
+        for (const std::string &file : *files)
+        {
+            int number = ResourceNumberFromFileName(fs::path(file).filename().string().c_str());
+            std::string standard = (number < 0) ? std::string() : GetFileNameFor(ResourceType::Script, number, NoBase36, helper.Version);
+            std::string standardHeap = (number < 0) ? std::string() : GetFileNameFor(ResourceType::Heap, number, NoBase36, helper.Version);
+            std::string name = fs::path(file).filename().string();
+            if ((_stricmp(name.c_str(), standard.c_str()) != 0) && (_stricmp(name.c_str(), standardHeap.c_str()) != 0))
+            {
+                _report.warnings.push_back(fmt::format("{0} is a patch file with another name for a compiled resource; SCI Companion can load either file", file));
+            }
+        }
+    }
+    // Patch tables in a package-mode game hide the GUI's later package saves
+    // of the tables.
+    if (_anyCompiled && (helper.GetResourceSaveLocation(ResourceSaveLocation::Default) == ResourceSaveLocation::Package) &&
+        (_tables.Species().IsDirty() || _tables.Selectors().IsDirty()))
+    {
+        _report.warnings.push_back("the class and selector tables were written as patch files (996 and 997); in this game, which keeps its resources "
+            "in the package, they hide the package copies that SCI Companion saves later");
+    }
+}
+
 CompileReport CompileBatch::Finish()
 {
     if (!_finished)
     {
         _finished = true;
+        _report.passes = _pass;
+        // The last pass joins the batch.
+        sci::Status joined = sci::Guard("closing the last pass", [&]() -> sci::Status
+        {
+            return _passDefer->Commit();
+        });
         // The table rule: save only when a script compiled (plan section 4.5).
         if (_anyCompiled)
         {
@@ -150,14 +360,29 @@ CompileReport CompileBatch::Finish()
                 return _tables.Save(_session.ResourceMap(), _options.write);
             });
         }
+        if (!joined)
+        {
+            _report.commit = joined;
+            return _report;
+        }
+        _CheckQueuedWrites();
+        if (!_report.commit)
+        {
+            // Nothing is written: the destructor withdraws the queued writes.
+            return _report;
+        }
         _report.commit = sci::Guard("writing the compiled resources", [&]() -> sci::Status
         {
             return _defer->Commit();
         });
+        if (_report.commit)
+        {
+            _MoveShadowingPatches();
+            _AddWarnings();
+        }
     }
     return _report;
 }
-
 sci::Result<CompileReport> CompileScripts(GameSession &session, std::vector<ScriptId> scripts, const CompileOptions &options,
     const std::atomic<bool> &abort, ICompileEvents &events)
 {

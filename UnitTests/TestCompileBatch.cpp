@@ -3,6 +3,7 @@
 #include "AppState.h"
 #include "GameSession.h"
 #include "ResourceMap.h"
+#include "ResourceContainer.h"
 #include "GameFolderHelper.h"
 #include "CompileInterfaces.h"
 #include "CompileContext.h"
@@ -74,6 +75,12 @@ namespace
         std::atomic<bool> *abortAfterFirst = nullptr;
         std::vector<size_t> started;
         size_t done = 0;
+        int passesStarted = 0;
+
+        void OnPassStart(int pass) override
+        {
+            passesStarted++;
+        }
 
         void OnScriptStart(size_t index, size_t count, const ScriptId &script) override
         {
@@ -113,6 +120,42 @@ namespace
         "(public s2Bad 0)\n"
         "(procedure (s2Bad)\n"
         "    (return (+ s2UndeclaredOne s2UndeclaredTwo))\n"
+        ")\n";
+
+    // S2b, the passes: S2PassB uses the class of S2PassA.
+    const char *PassAText =
+        "(script# 904)\n"
+        "(include sci.sh)\n"
+        "(include game.sh)\n"
+        "(use main)\n"
+        "(use obj)\n"
+        "(class S2PassBase of Obj\n"
+        "    (properties\n"
+        "        s2PassSize 0\n"
+        "    )\n"
+        ")\n";
+    const char *PassBText =
+        "(script# 906)\n"
+        "(include sci.sh)\n"
+        "(include game.sh)\n"
+        "(use main)\n"
+        "(use S2PassA)\n"
+        "(class S2PassDerived of S2PassBase\n"
+        "    (properties\n"
+        "        s2PassColor 1\n"
+        "    )\n"
+        ")\n";
+
+    // A string of the script's auto text (text 904).
+    const char *TextScript =
+        "(script# 904)\n"
+        "(text# 904)\n"
+        "(include sci.sh)\n"
+        "(include game.sh)\n"
+        "(use main)\n"
+        "(public s2Text 0)\n"
+        "(procedure (s2Text)\n"
+        "    (StrLen \"s2 text\")\n"
         ")\n";
 
     // A new class, so the compile adds a species and selectors to the tables,
@@ -184,6 +227,26 @@ namespace UnitTests
         bool GameHasFile(const std::string &name)
         {
             return fs::exists(fs::path(_copyFolder) / name);
+        }
+
+        void WriteBytesToGame(const std::string &name, const std::vector<uint8_t> &bytes)
+        {
+            std::ofstream file((fs::path(_copyFolder) / name).string(), std::ios::binary | std::ios::trunc);
+            file.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+        }
+
+        // Patch files that would hide a package write of script 904 and of
+        // vocab 997 (a copy of the package's table, so the tables load).
+        void WritePatches(GameSession &session)
+        {
+            WriteBytesToGame("script.904", { 0x80 | (uint8_t)ResourceType::Script, 0, 1, 2 });
+            const GameFolderHelper &helper = session.Helper();
+            std::unique_ptr<ResourceBlob> selectors = helper.MostRecentResource(ResourceType::Vocab, 997, ResourceEnumFlags::None);
+            Assert::IsTrue(selectors != nullptr);
+            std::vector<uint8_t> data(selectors->GetData(), selectors->GetData() + selectors->GetLength());
+            ResourceBlob patch(helper, nullptr, ResourceType::Vocab, data, helper.Version.DefaultVolumeFile, 997, NoBase36, helper.Version, ResourceSourceFlags::PatchFile);
+            Assert::IsTrue(session.ResourceMap().WriteResource(patch).has_value());
+            Assert::IsTrue(GameHasFile("vocab.997"), L"setup: vocab.997");
         }
 
         static SessionOptions TestSessionOptions()
@@ -394,6 +457,151 @@ namespace UnitTests
             Assert::IsFalse(refused.has_value());
             Assert::IsTrue(refused.error().code == sci::ErrorCode::WriteRefused, WideForBatch(refused.error().ToString()).c_str());
             Assert::IsFalse(session.ResourceMap().IsDeferring(), L"a batch that did not start opens no deferred writes");
+        }
+
+        // S2b, the passes of plan section 4.5: script 906 uses script 904,
+        // which has no .sco file yet. Pass 1 fails 906 and writes S2PassA.sco;
+        // pass 2 compiles 906; pass 3 changes no .sco file and is the last.
+        // The commit holds the last pass. With one pass, 906 fails.
+        TEST_METHOD(Passes_UntilNoObjectFileChanges)
+        {
+            NoAppStateForBatch noAppState;
+            for (int passes : { 1, 5 })
+            {
+                GameSession session(TestSessionOptions());
+                OpenCopy("\\TemplateGame\\SCI0", session);
+                std::vector<ScriptId> scripts = {
+                    WriteScript(session, "S2PassB", 906, PassBText),
+                    WriteScript(session, "S2PassA", 904, PassAText),
+                };
+                CompileOptions options = ToPatchFiles();
+                options.passes = passes;
+                std::atomic<bool> abort(false);
+                TestCompileEvents events;
+                auto report = CompileScripts(session, scripts, options, abort, events);
+                Assert::IsTrue(report.has_value());
+                if (passes == 1)
+                {
+                    Assert::AreEqual(1, report->passes);
+                    Assert::IsFalse(report->scripts[0].status.has_value(), L"one pass: 906 has no S2PassA.sco yet");
+                    Assert::IsTrue(report->scripts[1].status.has_value());
+                    Assert::IsFalse(GameHasFile("script.906"));
+                }
+                else
+                {
+                    Assert::AreEqual(3, report->passes, WideForBatch(Describe(*report)).c_str());
+                    Assert::AreEqual(2, events.passesStarted, L"OnPassStart for passes 2 and 3");
+                    Assert::IsTrue(report->Succeeded(), WideForBatch(Describe(*report)).c_str());
+                    Assert::AreEqual((size_t)2, report->scripts.size(), L"the report has the last pass");
+                    Assert::IsTrue(GameHasFile("script.904") && GameHasFile("script.906"), L"the commit holds the last pass");
+                }
+            }
+        }
+
+        // S2b: a .sco file is written only when its bytes change, so a pass
+        // can see that nothing changed.
+        TEST_METHOD(ObjectFile_IsWrittenOnlyWhenItChanges)
+        {
+            NoAppStateForBatch noAppState;
+            GameSession session(TestSessionOptions());
+            OpenCopy("\\TemplateGame\\SCI0", session);
+            std::vector<ScriptId> scripts = { WriteScript(session, "S2PassA", 904, PassAText) };
+            std::atomic<bool> abort(false);
+            TestCompileEvents events;
+            Assert::IsTrue(CompileScripts(session, scripts, ToPatchFiles(), abort, events)->Succeeded());
+            fs::path sco = session.Helper().GetScriptObjectFileName("S2PassA");
+            fs::file_time_type old = fs::last_write_time(sco) - std::chrono::hours(24 * 365);
+            fs::last_write_time(sco, old);
+
+            Assert::IsTrue(CompileScripts(session, scripts, ToPatchFiles(), abort, events)->Succeeded());
+            Assert::IsTrue(fs::last_write_time(sco) == old, L"the .sco file has the same bytes, so it must not be written again");
+        }
+
+        // S2b, the shadow check of plan section 5: a patch file that would
+        // hide a package write refuses the batch.
+        TEST_METHOD(ShadowingPatches_RefuseTheBatch)
+        {
+            NoAppStateForBatch noAppState;
+            GameSession session(TestSessionOptions());
+            OpenCopy("\\TemplateGame\\SCI0", session);
+            std::vector<ScriptId> scripts = { WriteScript(session, "S2PassA", 904, PassAText) };
+            WritePatches(session);
+            std::vector<uint8_t> map = BytesOf(_copyFolder + "\\resource.map");
+
+            auto started = CompileBatch::Start(session, scripts, CompileOptions());
+            Assert::IsFalse(started.has_value());
+            Assert::IsTrue(started.error().code == sci::ErrorCode::WriteRefused, WideForBatch(started.error().ToString()).c_str());
+            Assert::IsTrue(started.error().message.find("script.904") != std::string::npos, WideForBatch(started.error().message).c_str());
+            Assert::IsTrue(started.error().message.find("vocab.997") != std::string::npos, WideForBatch(started.error().message).c_str());
+            Assert::IsTrue(map == BytesOf(_copyFolder + "\\resource.map"));
+        }
+
+        // S2b: with Replace, the package is written, and the patch files move
+        // to replaced-patches\<time>.
+        TEST_METHOD(ShadowingPatches_Replace_MovesThemAfterTheCommit)
+        {
+            NoAppStateForBatch noAppState;
+            GameSession session(TestSessionOptions());
+            OpenCopy("\\TemplateGame\\SCI0", session);
+            std::vector<ScriptId> scripts = { WriteScript(session, "S2PassA", 904, PassAText) };
+            WritePatches(session);
+            CompileOptions options;
+            options.shadows = ShadowPolicy::Replace;
+            std::atomic<bool> abort(false);
+            TestCompileEvents events;
+            auto report = CompileScripts(session, scripts, options, abort, events);
+            Assert::IsTrue(report.has_value(), WideForBatch(report ? std::string() : report.error().ToString()).c_str());
+            Assert::IsTrue(report->Succeeded(), WideForBatch(Describe(*report)).c_str());
+            Assert::AreEqual((size_t)2, report->movedPatches.size());
+            Assert::IsFalse(GameHasFile("script.904") || GameHasFile("vocab.997"), L"the patch files are moved");
+            Assert::IsTrue(fs::exists(fs::path(_copyFolder) / "replaced-patches"));
+
+            GameSession reopened(TestSessionOptions());
+            Assert::IsTrue(reopened.Open(_copyFolder).has_value());
+            std::unique_ptr<ResourceBlob> script = reopened.Helper().MostRecentResource(ResourceType::Script, 904, ResourceEnumFlags::None);
+            Assert::IsTrue(script && (script->GetSourceFlags() == ResourceSourceFlags::ResourceMap), L"the package has script 904");
+        }
+
+        // S2b: the batch checks the queued package writes again before the
+        // commit: a script's auto text is known only after its compile.
+        TEST_METHOD(ShadowingPatches_TheQueuedTextIsCheckedBeforeTheCommit)
+        {
+            NoAppStateForBatch noAppState;
+            GameSession session(TestSessionOptions());
+            OpenCopy("\\TemplateGame\\SCI0", session);
+            std::vector<ScriptId> scripts = { WriteScript(session, "S2Text", 904, TextScript) };
+            WriteBytesToGame("text.904", { 0x80 | (uint8_t)ResourceType::Text, 0, 'x', 0 });
+            std::vector<uint8_t> map = BytesOf(_copyFolder + "\\resource.map");
+            std::atomic<bool> abort(false);
+            TestCompileEvents events;
+            auto report = CompileScripts(session, scripts, CompileOptions(), abort, events);
+            Assert::IsTrue(report.has_value(), L"the start does not know the text yet");
+            Assert::IsTrue(report->scripts[0].status.has_value(), WideForBatch(Describe(*report)).c_str());
+            Assert::IsFalse(report->commit.has_value());
+            Assert::IsTrue(report->commit.error().code == sci::ErrorCode::WriteRefused, WideForBatch(Describe(*report)).c_str());
+            Assert::IsTrue(report->commit.error().message.find("text.904") != std::string::npos, WideForBatch(Describe(*report)).c_str());
+            Assert::IsTrue(map == BytesOf(_copyFolder + "\\resource.map"), L"nothing is written");
+        }
+
+        // S2b: the warnings of a patch-file write (plan section 5).
+        TEST_METHOD(PatchWrite_Warnings)
+        {
+            NoAppStateForBatch noAppState;
+            GameSession session(TestSessionOptions());
+            OpenCopy("\\TemplateGame\\SCI0", session);
+            std::vector<ScriptId> scripts = { WriteScript(session, "S2PassA", 904, PassAText) };
+            WriteBytesToGame("script.0904", { 0x80 | (uint8_t)ResourceType::Script, 0, 1, 2 });
+            std::atomic<bool> abort(false);
+            TestCompileEvents events;
+            auto report = CompileScripts(session, scripts, ToPatchFiles(), abort, events);
+            Assert::IsTrue(report.has_value() && report->Succeeded(), report ? WideForBatch(Describe(*report)).c_str() : L"");
+            std::string warnings;
+            for (const std::string &warning : report->warnings)
+            {
+                warnings += warning + "\n";
+            }
+            Assert::IsTrue(warnings.find("script.0904") != std::string::npos, WideForBatch(warnings).c_str());
+            Assert::IsTrue(warnings.find("996 and 997") != std::string::npos, WideForBatch(warnings).c_str());
         }
 
         // A script whose source file is missing gives NotFound, and an error

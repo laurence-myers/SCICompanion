@@ -18,12 +18,25 @@
 class GameSession;
 class DeferResourceAppend;
 
+// What a package write does about patch files that would hide it (plan
+// section 5: SCI Companion and the game read a patch file first).
+enum class ShadowPolicy
+{
+    Refuse,     // the batch does not start, or does not commit (WriteRefused)
+    Replace,    // after the commit, move them to the folder replaced-patches\<time> of the game
+    Ignore,     // write the package anyway
+};
+
 struct CompileOptions
 {
     // Where the output goes (plan step S1). Default: the game's setting.
     CompileWriteOptions write;
     // Stop after the first script that does not compile.
     bool failFast = false;
+    // The largest number of passes (plan section 4.5): a pass that changes
+    // no .sco file is the last. The commit holds the last pass.
+    int passes = 1;
+    ShadowPolicy shadows = ShadowPolicy::Refuse;
 };
 
 // The result of one script of a batch.
@@ -51,6 +64,14 @@ struct CompileReport
     bool cancelled = false;
     // failFast stopped the batch after a script that failed.
     bool stopped = false;
+    // The passes that ran.
+    int passes = 0;
+    // Patch files with another name for a written resource, and patch
+    // tables that hide later package saves of the GUI.
+    std::vector<std::string> warnings;
+    // With ShadowPolicy::Replace: the patch files that the batch moved, as
+    // "old -> new".
+    std::vector<std::string> movedPatches;
 
     size_t CompiledCount() const;
     size_t FailedCount() const;
@@ -72,6 +93,8 @@ public:
     virtual void OnScriptStart(size_t index, size_t count, const ScriptId &script) {}
     // After a script compiled or failed.
     virtual void OnScriptDone(const ScriptOutcome &outcome) {}
+    // Before the second pass and each later one.
+    virtual void OnPassStart(int pass) {}
 };
 
 class CompileBatch
@@ -81,7 +104,9 @@ public:
     // one batch of resource writes. Fails when the batch cannot start: the
     // tables do not load; Usage for an output folder with the package;
     // WriteRefused for the package of a game that keeps its resources in
-    // patch files (SCI Companion does not read that package).
+    // patch files (SCI Companion does not read that package), or (with
+    // ShadowPolicy::Refuse) when a patch file would hide the script, heap or
+    // vocab 996 or 997 in the package.
     static sci::Result<std::unique_ptr<CompileBatch>> Start(GameSession &session, std::vector<ScriptId> scripts, const CompileOptions &options);
     // A batch that was not finished withdraws its queued writes.
     ~CompileBatch();
@@ -90,11 +115,15 @@ public:
 
     // Compiles the next script. False when no script is left, when the
     // abort flag is set (the report is then cancelled), or when failFast
-    // stopped the batch.
+    // stopped the batch. After the last script of a pass that changed a .sco
+    // file, it starts the next pass (if options.passes allows): the writes of
+    // the pass before are withdrawn, and the report has the new pass only.
     bool Step(const std::atomic<bool> &abort, ICompileEvents &events);
     // Saves the tables when one or more scripts compiled, and commits the
     // queued writes, also after an abort, as the GUI's Cancel button does.
-    // Call it once.
+    // Before the commit, it checks the queued package writes again for patch
+    // files that would hide them (a text of a script's auto text). Call it
+    // once.
     CompileReport Finish();
 
     size_t Count() const { return _scripts.size(); }
@@ -108,11 +137,24 @@ private:
     CompileOptions _options;
     CompileTables _tables;
     std::unique_ptr<PrecompiledHeaders> _headers;
+    // The batch, then the level of the current pass inside it (declared in
+    // this order, so a pass level closes before the batch).
     std::unique_ptr<DeferResourceAppend> _defer;
+    std::unique_ptr<DeferResourceAppend> _passDefer;
     CompileReport _report;
     size_t _next = 0;
+    int _pass = 1;
+    bool _passChangedObjectFile = false;
     bool _anyCompiled = false;
     bool _finished = false;
+    // Writes into the game's package (not an output folder, not a dry run).
+    bool _toPackage = false;
+    // The patch files that hide a package write (ShadowPolicy::Replace).
+    std::vector<std::string> _shadowingPatches;
+
+    void _CheckQueuedWrites();
+    void _MoveShadowingPatches();
+    void _AddWarnings();
 };
 
 // Start, Step until done, Finish. Fails only when the batch cannot start;
