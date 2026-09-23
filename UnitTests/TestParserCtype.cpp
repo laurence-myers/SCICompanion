@@ -16,6 +16,10 @@
 #include "ScriptOM.h"
 #include "AstPassHelper.h"
 #include "Helper.h"
+#include "DecompileHelper.h"
+#include "AppState.h"
+#include "ResourceMap.h"
+#include <fstream>
 #include <string>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -115,6 +119,12 @@ namespace UnitTests
     {
         std::string _gameFolder;
 
+        static void WriteText(const std::string &path, const std::string &text)
+        {
+            std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
+            file << text;
+        }
+
     public:
         TEST_METHOD_INITIALIZE(Setup)
         {
@@ -155,6 +165,45 @@ namespace UnitTests
             Assert::IsTrue(text.find("dungeon# 0") != std::string::npos, wideText.c_str());
             Assert::IsTrue(text.find("dungeon#:") != std::string::npos, wideText.c_str());
             Assert::IsTrue(text.find("dungeon_") == std::string::npos, wideText.c_str());
+        }
+
+        // K4 review: a method that reads, sets and increments its # property
+        // uses the name as a token, not as a selector. The formatter wrote
+        // "dungeon_" there, so the decompiled KQ6 script 710 did not compile
+        // ("Undeclared identifier 'dungeon_'").
+        TEST_METHOD(HashPropertyInAMethod_DecompilesAndRecompiles)
+        {
+            std::string source =
+                "(script# 950)\n"
+                "(use obj)\n"
+                "(class HashTest of Obj\n"
+                "    (properties\n"
+                "        dungeon# 0\n"
+                "    )\n"
+                "    (method (look &tmp t)\n"
+                "        (= t dungeon#)\n"
+                "        (= dungeon# 5)\n"
+                "        (++ dungeon#)\n"
+                "        (return (+ t dungeon#))\n"
+                "    )\n"
+                ")\n";
+            std::string path = appState->GetResourceMap().Helper().GetScriptFileName("HashTest");
+            WriteText(path, source);
+            // Compile first: the text of the assert must not read error in
+            // the same call.
+            std::string error;
+            bool compiled = CompileFixture(950, "HashTest", &error);
+            Assert::IsTrue(compiled, (L"the source did not compile: " + std::wstring(error.begin(), error.end())).c_str());
+
+            DecompileOutput decompiled = DecompileToText(950);
+            std::wstring wideText(decompiled.text.begin(), decompiled.text.end());
+            Assert::IsTrue(decompiled.text.find("dungeon_") == std::string::npos, wideText.c_str());
+            Assert::IsTrue(decompiled.text.find("dungeon#") != std::string::npos, wideText.c_str());
+
+            WriteText(path, decompiled.text);
+            error.clear();
+            compiled = CompileFixture(950, "HashTest", &error);
+            Assert::IsTrue(compiled, (L"the decompiled text did not compile: " + std::wstring(error.begin(), error.end()) + L"\n" + wideText).c_str());
         }
 
         // A # cannot start a name: that is a selector literal (#look).

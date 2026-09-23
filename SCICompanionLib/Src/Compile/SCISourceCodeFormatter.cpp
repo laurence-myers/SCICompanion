@@ -177,6 +177,9 @@ using namespace std;
 // For now, however, we'll keep track of the places that need this by having this dummy function.
 // Actually, we can use it to convert paramTotal to argc.
 // Oh... in the SCI0 template game there is an object with a space in its name. Let's replace though with _
+// A # after the first character stays, as the parser takes it: KQ6 names
+// selector 879 "dungeon#", and "dungeon_" compiles to a new selector (plan
+// step K4). A name must not become a keyword that ends in #.
 std::string CleanTokenSCI(const std::string &src)
 {
 	if (src == "paramTotal")
@@ -195,37 +198,21 @@ std::string CleanTokenSCI(const std::string &src)
 		}
 	}
 
-	std::transform(src.begin(), src.end(), std::back_inserter(output), [](char ch)
+	for (size_t i = 0; i < src.size(); i++)
 	{
+		char ch = src[i];
 		// Replace unwanted chars with underscores.
-		if (!std::isalnum((unsigned char)ch) && (ch != '-') && (ch != '_'))
-		{
-			ch = '_';
-		}
-		return ch;
+		bool keep = std::isalnum((unsigned char)ch) || (ch == '-') || (ch == '_') || ((ch == '#') && (i > 0));
+		output.push_back(keep ? ch : '_');
 	}
-	);
 
-	return output;
-}
-
-// A selector name: as CleanTokenSCI, but a # after the first character stays,
-// as the parser takes it (KQ6 names selector 879 "dungeon#"). "dungeon_" would
-// compile to a new selector.
-std::string CleanSelectorSCI(const std::string &src)
-{
-	std::string output = CleanTokenSCI(src);
-	// CleanTokenSCI keeps the length, or puts a _ in front. (It changes
-	// "paramTotal" to "argc", which has no #.)
-	if (output.size() >= src.size())
+	static const char *const hashKeywords[] = { "class#", "file#", "script#", "super#", "text#" };
+	for (const char *keyword : hashKeywords)
 	{
-		size_t offset = output.size() - src.size();
-		for (size_t i = 1; i < src.size(); i++)
+		if (output == keyword)
 		{
-			if (src[i] == '#')
-			{
-				output[offset + i] = '#';
-			}
+			std::replace(output.begin(), output.end(), '#', '_');
+			break;
 		}
 	}
 	return output;
@@ -1072,7 +1059,7 @@ public:
 		_MaybeNewLineIndent();
 		// Always inline
 		GO_INLINE;
-		out.out << CleanSelectorSCI(classProp.GetName());
+		out.out << CleanTokenSCI(classProp.GetName());
 		classProp.GetStatement1()->Accept(*this);
 	}
 
@@ -1214,7 +1201,7 @@ public:
 	{
 		_MaybeNewLineIndent();
 
-		out.out << CleanSelectorSCI(sendParam.GetSelectorName()) << ":";
+		out.out << CleanTokenSCI(sendParam.GetSelectorName()) << ":";
 
 		if (!sendParam.GetSelectorParams().empty())
 		{

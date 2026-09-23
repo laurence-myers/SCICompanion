@@ -448,10 +448,21 @@ for each step, and a follow-up commit if the review finds a problem.
   of selectors. So a `#` after the first character is now accepted in any
   name. `script#` stays a keyword, and a `#` at the start is still a
   selector literal (`#look`). A name written as `x#y` with no space is now
-  one name; the formatter always writes a space between items. The
-  formatter keeps the `#` only in property names and send selectors
-  (`CleanSelectorSCI`); class names and other tokens still get `_`, as
-  before.
+  one name; the formatter always writes a space between items.
+- K4 review: the first K4 kept the `#` only in property declarations and
+  send selectors (`CleanSelectorSCI`). A method that reads, sets or
+  increments its own property writes the name as a token, which still
+  got `_`: the decompiled KQ6 script 710 gave "Undeclared identifier
+  'dungeon_'". Now `CleanTokenSCI` keeps a `#` after the first character
+  in every name (a token, an assignment, `++`, the asm fallback, a class
+  name), unless the name would be a keyword that ends in `#` (`class#`,
+  `file#`, `script#`, `super#`, `text#`: then `_`, as before).
+  `CleanSelectorSCI` is gone. The test compiles a class that uses
+  `dungeon#` in a method, decompiles it and compiles the decompiled text.
+- Known gaps (K4 review): a keyword followed by `#` is a name (`(if#)`
+  parses as a procedure call, `else#` as a name), so such a typo gives a
+  later, less clear error. The syntax colouring (`ScriptView.cpp`) shows
+  `#dungeon#` as `#dungeon` and `#`.
 - K5: `LookupProc` gives the new `ProcedureMissingScript` for a
   `proc<N>_<M>` that no kernel, local, main or `.sco` name resolves, when
   the game has no script N. The call is `calle N M`, with the warning
