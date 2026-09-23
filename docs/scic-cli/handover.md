@@ -19,7 +19,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412. After the fixes of the review of `de2fb8dc` and `8a322b32`: 418.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -387,8 +387,10 @@ for each step, and a follow-up commit if the review finds a problem.
   resource today. The test runs the package step of the rebuild (the
   source's `RebuildResources`). The whole GUI command (`RebuildResources`
   in `ResourceMap.cpp`) stopped with an access violation in a headless
-  test on a copy of the SCI1.1 template, after or in its audio-cache step;
-  not investigated (the CLI does not rebuild resources).
+  test on a copy of the SCI1.1 template, after or in its audio-cache step.
+  The review of `8a322b32` found the likely cause by inspection:
+  `ResourceMapOperations.cpp:85` uses the null `appState`, for any game
+  with an audio volume. Not fixed (the CLI does not rebuild resources).
 - F2 (GUI change): `TextReadFrom` no longer swallows a read failure. A
   text resource whose last string has no NUL now opens as a default
   resource marked "Resource load failed", instead of showing the strings
@@ -635,9 +637,10 @@ for each step, and a follow-up commit if the review finds a problem.
 - S3a: a conflict is not an error of `Build`: two `.sc` files (or two
   `.sco` files) that would name one script, or one name for two scripts
   (their files would be one file). `Conflicts()` lists them, and the map
-  leaves a script with two files out. S3b makes the commands that write
-  refuse to start while there is a conflict. When `game.ini` names a
-  script, its other files do not matter (no conflict).
+  leaves a script with two files out. The commands that write refuse the
+  scripts in a conflict (S3 review), and `--all` leaves them out with a
+  warning. When `game.ini` names a script, its other files do not matter
+  (no conflict).
 - S3a: `GameFolderHelper::GetScriptTitle(n)` is the map's name when the
   map is set, else the `game.ini` name, else `nNNN`.
   `GetScriptFileName(n)`, `GetScriptObjectFileName(n)`, the 2-argument
@@ -677,9 +680,8 @@ for each step, and a follow-up commit if the review finds a problem.
   set) and warnings. The modes are List, Decompile, Compile and Sco. A
   path selector (Compile only) is taken first from the game folder, then
   from the current folder, and must be a `.sc` file in `<game>\src`. The
-  modes that write refuse to start while the names have a conflict
-  (`Usage`, with each conflict). Every bad selector is in one `Usage`
-  error.
+  modes that write refuse a selected script in a conflict (`Usage`, with
+  the conflict; S3 review). Every bad selector is in one `Usage` error.
 - S3b: `FindShadowingPatches(helper, resources)` scans the game folder
   with the rules of the patch file source: the type's name patterns, a
   number from the name, and the type in the first byte. It finds a
@@ -687,8 +689,9 @@ for each step, and a follow-up commit if the review finds a problem.
 - S3 review (S3a FIX, S3b FIX, one should-fix each): a derived name had
   `-`, which `(use ...)` cannot take (`FilenameP`; LSL6 script 1823
   `Voice-Over_Announcer`): it is `_` now. A Windows device name (`CON`,
-  `NUL`, `COM1`, `LPT1`...) gets a `_` after it: Windows opens the device
-  for `CON.sc`. Names compare as Windows file names do, also outside ASCII
+  `NUL`, `COM1`, `LPT1`...) gets a `_` after it: Windows 10 and older open
+  the device for `CON.sc` (Windows 11 makes an ordinary file; the `_` does
+  no harm). Names compare as Windows file names do, also outside ASCII
   (`LCMapStringW` with `LOCALE_INVARIANT`; `Über` and `über` are one
   file). `game.ini` gives a name only with the key that the GUI reads
   (`n007`, not `n7` or `n0007`), without single or double quotes.
@@ -717,6 +720,34 @@ for each step, and a follow-up commit if the review finds a problem.
   the Derived column is what a reset gives, so they can differ (`Door_10`
   and `Door`): intended. `AddDerivedScriptNames` replaces the map with no
   lock: S4 must call it before a worker thread starts.
+- Review of `de2fb8dc` (FIX, three should-fix) and of `8a322b32` (FIX, two
+  should-fix), fixed in the commit after `d588e499`:
+  - A conflict keeps its file titles (`NameConflict::names`). `--all`,
+    a range and `list` see a script that is only in a conflict (before, a
+    conflict of a script that the game has not compiled was not seen), and
+    a name selector finds it by the title of one of its files
+    (`ConflictNumberOf`).
+  - A derived name takes no file title of `src` (`FileTitles`), so a
+    decompile does not write over the file of a script in a conflict, or
+    of any other file.
+  - A file name in `src` with a character that the ANSI code page does not
+    have is skipped (`SkippedFiles`, shown with `?`); before, it stopped
+    the open of the game.
+  - A number, a range or a name and a path for one script are an error
+    ("script N is also"); one file in two spellings is one script.
+  - The package header: an empty resource numbered 32768 or more matches
+    its map entry (the header's number is signed), and an empty header
+    with no type mark (0x80 in SCI1 to SCI2) is damage: a zeroed header of
+    view 0 matched its map entry.
+  - Answers: a range with a conflicted script fails the command, as any
+    selector does, while `--all` leaves the script out with a warning
+    (intended: a range is an explicit selection). A script that uses a
+    script in a name conflict compiles with the `.sco` that both names
+    share, with no warning (not changed).
+  - Known gaps: an SCI2.1 header has no type mark, so its zeroed header of
+    view 0 still reads as a valid empty resource. Damage that sets only the
+    two sizes to 0 reads as a valid empty resource; the header cannot show
+    it. `SkippedFiles` is not shown yet (C1 prints it).
 - S1: `CompileWriteOptions` (`Src\Compile\CompileWrite.h/.cpp`): `saveTo`
   (Default, Package or Patch; Default reads `game.ini`, as the GUI does),
   `outDir`, `raw`, `writeResources`, `writeObjectFile` and

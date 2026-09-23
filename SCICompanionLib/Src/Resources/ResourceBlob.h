@@ -147,6 +147,8 @@ struct RESOURCEHEADER_SCI0
 	uint16_t iMethod;		   // Compression method.
 
 	ResourceType GetType() { return (ResourceType)iType; }
+	// The SCI0 header has no mark on its type.
+	bool HasTypeMark() const { return true; }
 
 	ResourceHeaderAgnostic ToAgnostic(const SCIVersion &version, ResourceSourceFlags sourceFlags, uint16_t packageHint)
 	{
@@ -270,6 +272,10 @@ struct RESOURCEHEADERBASE
 	{
 		return (std::numeric_limits<_TDataSizeSize>::max)();
 	}
+
+	// The type byte has the mark of its format (0x80 in SCI1 to SCI2). A
+	// zeroed header has none.
+	bool HasTypeMark() const { return (TypeAdornment == 0) || ((bType & TypeAdornment) == TypeAdornment); }
 
 	ResourceHeaderAgnostic ToAgnostic(SCIVersion version, ResourceSourceFlags sourceFlags, int packageHint)
 	{

@@ -72,6 +72,13 @@ ResourceHeaderAgnostic ReadResourceHeader(sci::istream &byteStream, SCIVersion v
 	ResourceHeaderAgnostic rhAgnostic = rh.ToAgnostic(version, sourceFlags, packageHint);
 	if ((rhAgnostic.cbCompressed == 0) && (rhAgnostic.cbDecompressed == 0))
 	{
+		// A zeroed SCI1 to SCI2 header reads as view 0 with sizes of 0. Its
+		// type byte has no 0x80 mark, so it is damage, not an empty resource
+		// (review of dafb7179). An SCI2.1 header has no mark.
+		if (!rh.HasTypeMark())
+		{
+			throw sci::DataError("corrupted resource!");
+		}
 		throw EmptyResourceError(rhAgnostic);
 	}
 	if ((rhAgnostic.cbCompressed == 0) || (rhAgnostic.cbDecompressed == 0))
@@ -571,7 +578,9 @@ private:
 		}
 		catch (const EmptyResourceError &empty)
 		{
-			if ((empty.header.Type != mapEntry.Type) || (empty.header.Number != mapEntry.Number))
+			// The header's number is signed; a number of 32768 or more must
+			// match too (review of dafb7179).
+			if ((empty.header.Type != mapEntry.Type) || ((uint16_t)empty.header.Number != mapEntry.Number))
 			{
 				throw sci::DataError("corrupted resource!");
 			}

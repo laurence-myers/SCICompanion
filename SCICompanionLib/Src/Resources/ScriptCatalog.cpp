@@ -110,6 +110,13 @@ namespace
         return fs::is_regular_file(path, ec);
     }
 
+    // One file, also when the two names differ in case (review of 7f41aa43).
+    bool SamePath(const std::string &a, const std::string &b)
+    {
+        std::error_code ec;
+        return (_stricmp(a.c_str(), b.c_str()) == 0) || fs::equivalent(a, b, ec);
+    }
+
     using PatchKey = std::pair<ResourceType, uint16_t>;
 
     // The patch files of the game folder, by type and number, as the patch
@@ -334,7 +341,9 @@ namespace
             return _names->NameOf(number);
         }
 
-        // Every script that the list shows: compiled, or with a name.
+        // Every script that the list shows: compiled, with a name, or in a
+        // conflict (review of 7f41aa43: a conflict keeps its script out of the
+        // names, and --all and a range did not see it).
         std::set<uint16_t> Known() const
         {
             std::set<uint16_t> numbers;
@@ -345,6 +354,10 @@ namespace
             for (const auto &entry : _names->Entries())
             {
                 numbers.insert(entry.first);
+            }
+            for (const NameConflict &conflict : _names->Conflicts())
+            {
+                numbers.insert(conflict.numbers.begin(), conflict.numbers.end());
             }
             return numbers;
         }
@@ -412,7 +425,7 @@ namespace
                     }
                 }
             }
-            if (_names->NumberOf(name, found))
+            if (_names->NumberOf(name, found) || _names->ConflictNumberOf(name, found))
             {
                 number = found;
                 return true;
@@ -542,6 +555,9 @@ sci::Result<std::map<uint16_t, std::string>> DeriveScriptNames(GameSession &sess
                     used.push_back(entry.second.name);
                 }
             }
+            // Also the file of a script in a conflict, and any other file in
+            // src: a decompile must not write over it (review of 7f41aa43).
+            used.insert(used.end(), names->FileTitles().begin(), names->FileTitles().end());
         }
         return SuggestScriptNames(std::move(toName), used);
     });
@@ -635,6 +651,10 @@ sci::Result<std::vector<ScriptRow>> ListScripts(GameSession &session, bool alway
         {
             numbers.insert(entry.first);
         }
+        for (const NameConflict &conflict : names->Conflicts())
+        {
+            numbers.insert(conflict.numbers.begin(), conflict.numbers.end());
+        }
         std::vector<ScriptRow> rows;
         for (uint16_t number : numbers)
         {
@@ -686,6 +706,8 @@ sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const 
         Selection selection(session, mode);
         std::set<uint16_t> chosen;
         std::map<uint16_t, std::string> givenPaths;
+        // The scripts that a number, a range or a name chose.
+        std::set<uint16_t> byNumberOrName;
         std::vector<std::string> bad;
         // A script in a name conflict gives the conflict and its fix, before
         // any other reason (S3 review): a mode that writes refuses only the
@@ -721,6 +743,7 @@ sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const 
                 else if (selection.Takes(first, why))
                 {
                     chosen.insert(first);
+                    byNumberOrName.insert(first);
                 }
                 else
                 {
@@ -744,6 +767,7 @@ sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const 
                     else if (selection.Takes(number, skipped))
                     {
                         chosen.insert(number);
+                        byNumberOrName.insert(number);
                         count++;
                     }
                 }
@@ -773,7 +797,7 @@ sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const 
                 else if (!inConflict(number))
                 {
                     auto given = givenPaths.find(number);
-                    if ((given != givenPaths.end()) && (given->second != path))
+                    if ((given != givenPaths.end()) && !SamePath(given->second, path))
                     {
                         bad.push_back(fmt::format("{0}: script {1} is also {2}", selector, number, given->second));
                     }
@@ -797,10 +821,25 @@ sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const 
                 else if (selection.Takes(number, why))
                 {
                     chosen.insert(number);
+                    byNumberOrName.insert(number);
                 }
                 else
                 {
                     bad.push_back(selector + ": " + why);
+                }
+            }
+        }
+        // A number, a range or a name, and a path, for one script: the path
+        // took the place of the script's own file with no message (review of
+        // 7f41aa43).
+        for (const auto &given : givenPaths)
+        {
+            if (byNumberOrName.find(given.first) != byNumberOrName.end())
+            {
+                std::string own = helper.GetScriptFileName(selection.NameOf(given.first));
+                if (!SamePath(own, given.second))
+                {
+                    bad.push_back(fmt::format("{0}: script {1} is also {2}", given.second, given.first, own));
                 }
             }
         }

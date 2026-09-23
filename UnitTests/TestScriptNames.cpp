@@ -379,7 +379,13 @@ namespace UnitTests
         // ASCII too, so "Über" and "über" are one file: a conflict.
         TEST_METHOD(NamesThatDifferOnlyInTheCaseOfALetterOutsideAscii_AreAConflict)
         {
-            Assert::AreEqual(1252u, GetACP(), L"setup: the test writes code page 1252 names");
+            if (GetACP() != 1252)
+            {
+                // The names are code page 1252 bytes (review of 7f41aa43: the
+                // test failed on another code page; it skips there).
+                Logger::WriteMessage(L"skipped: the ANSI code page is not 1252");
+                return;
+            }
             _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
             std::string ini = _copyFolder + "\\game.ini";
             WritePrivateProfileStringA("Script", "n777", "\xDC" "ber", ini.c_str());

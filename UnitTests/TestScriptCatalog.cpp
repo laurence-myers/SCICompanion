@@ -336,6 +336,109 @@ namespace UnitTests
             Assert::AreEqual(0, _stricmp((_copyFolder + "\\src\\TitleScreen.sc").c_str(), normal->scripts[0].GetFullPath().c_str()), WideCatalog(normal->scripts[0].GetFullPath()).c_str());
         }
 
+        // Review of 7f41aa43: two files that declare a script that the game
+        // has not compiled are a conflict too. --all, a range and the name of
+        // one of the files show it, and list has the script. Before, they did
+        // not see the script.
+        TEST_METHOD(Conflict_OfAnUncompiledScript_IsShown)
+        {
+            NoAppStateForCatalog noAppState;
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            for (const char *name : { "S3NewRoomA.sc", "S3NewRoomB.sc" })
+            {
+                std::ofstream file(SrcFile(name).c_str(), std::ios::binary);
+                file << "(script# 7777)\n";
+            }
+            GameSession &session = Reopen();
+
+            sci::Result<ScriptSelection> all = SelectAllScripts(session, SelectorMode::Compile);
+            Assert::IsTrue(all.has_value(), WideCatalog(all ? std::string() : all.error().ToString()).c_str());
+            std::string warnings;
+            for (const std::string &warning : all->warnings)
+            {
+                warnings += warning + "\n";
+            }
+            Assert::IsTrue(warnings.find("script 7777 is left out") != std::string::npos, WideCatalog(warnings).c_str());
+            for (const char *selector : { "7000-8000", "S3NewRoomA" })
+            {
+                sci::Result<ScriptSelection> selected = ResolveScriptSelectors(session, { selector }, SelectorMode::Compile);
+                Assert::IsFalse(selected.has_value(), WideCatalog(selector).c_str());
+                Assert::IsTrue(selected.error().message.find("S3NewRoomB.sc") != std::string::npos, WideCatalog(selected.error().message).c_str());
+            }
+            sci::Result<std::vector<ScriptRow>> rows = ListScripts(session, false);
+            Assert::IsTrue(rows.has_value() && (RowOf(*rows, 7777) != nullptr), L"list has the script");
+        }
+
+        // Review of 7f41aa43: a derived name takes no file title of src,
+        // also not the file of a script in a conflict. A decompile writes the
+        // file of the derived name, so it wrote over that file.
+        TEST_METHOD(DerivedNames_TakeNoFileOfAConflict)
+        {
+            NoAppStateForCatalog noAppState;
+            GameSession &session = Open(false, { "TitleScreen.sc", "TitleScreen.sco" });
+            sci::Result<std::map<uint16_t, std::string>> derived = DeriveScriptNames(session, false);
+            Assert::IsTrue(derived.has_value());
+            std::string name = derived->at(100);
+            for (const std::string &file : { name + ".sc", std::string("S3Other7777.sc") })
+            {
+                std::ofstream out(SrcFile(file).c_str(), std::ios::binary);
+                out << "(script# 7777)\n";
+            }
+            GameSession &reopened = Reopen();
+            Assert::AreEqual(size_t(1), reopened.Helper().ScriptNames->Conflicts().size(), L"setup: the two files are a conflict");
+            sci::Result<std::map<uint16_t, std::string>> again = DeriveScriptNames(reopened, false);
+            Assert::IsTrue(again.has_value());
+            Assert::AreNotEqual(name, again->at(100), L"the derived name must not be the file of the conflict");
+        }
+
+        // Review of 7f41aa43: a file name with a character that the ANSI
+        // code page does not have stopped the open of the game. The map skips
+        // the file and reports it.
+        TEST_METHOD(FileNameOutsideTheCodePage_IsSkipped)
+        {
+            NoAppStateForCatalog noAppState;
+            BOOL usedDefault = FALSE;
+            char narrow[8] = {};
+            WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, L"\u03A9", 1, narrow, (int)sizeof(narrow), nullptr, &usedDefault);
+            if (!usedDefault)
+            {
+                Logger::WriteMessage(L"skipped: the ANSI code page has the Greek capital omega");
+                return;
+            }
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            {
+                std::ofstream file(std::filesystem::path(_copyFolder) / L"src" / L"S3\u03A9mega.sc", std::ios::binary);
+                file << "(script# 7777)\n";
+            }
+            GameSession &session = Reopen();
+            const ScriptNameMap &names = *session.Helper().ScriptNames;
+            Assert::AreEqual(size_t(1), names.SkippedFiles().size());
+            Assert::IsTrue(names.SkippedFiles()[0].find("mega.sc") != std::string::npos, WideCatalog(names.SkippedFiles()[0]).c_str());
+            Assert::AreEqual(std::string("TitleScreen"), names.NameOf(100), L"the other names are there");
+        }
+
+        // Review of 7f41aa43: a number and a path for one script are an error
+        // (before, the path took the place of the script's own file with no
+        // message); one file in two spellings is one script (before, an
+        // error).
+        TEST_METHOD(Selectors_NumberAndPathForOneScript_AndTwoSpellings)
+        {
+            NoAppStateForCatalog noAppState;
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            {
+                std::ofstream file(SrcFile("S3Old100.sc").c_str(), std::ios::binary);
+                file << "(script# 100)\n";
+            }
+            GameSession &session = Reopen();
+            sci::Result<ScriptSelection> both = ResolveScriptSelectors(session, { "100", "src\\S3Old100.sc" }, SelectorMode::Compile);
+            Assert::IsFalse(both.has_value());
+            Assert::IsTrue(both.error().message.find("script 100 is also") != std::string::npos, WideCatalog(both.error().message).c_str());
+
+            sci::Result<ScriptSelection> spellings = ResolveScriptSelectors(session, { "src\\TitleScreen.sc", "src\\titlescreen.sc" }, SelectorMode::Compile);
+            Assert::IsTrue(spellings.has_value(), WideCatalog(spellings ? std::string() : spellings.error().ToString()).c_str());
+            Assert::AreEqual(size_t(1), spellings->scripts.size());
+        }
+
         // S3 review: a number or a range that is not valid says why (before:
         // "no script has this name").
         TEST_METHOD(Selectors_ABadNumberOrRange_SaysWhy)

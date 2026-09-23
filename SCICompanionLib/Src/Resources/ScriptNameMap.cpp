@@ -45,6 +45,51 @@ namespace
         return key;
     }
 
+    // The file name of the path in the ANSI code page. False when the name
+    // has a character that the code page does not have; shown then has the
+    // name with '?' for it. (Review of 7f41aa43: path::string() threw for
+    // such a name, and the open of the game failed.)
+    bool NarrowName(const fs::path &path, std::string &name, std::string &shown)
+    {
+        std::wstring wide = path.filename().wstring();
+        name.clear();
+        shown.clear();
+        if (wide.empty())
+        {
+            return true;
+        }
+        BOOL usedDefault = FALSE;
+        int length = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide.data(), (int)wide.size(), nullptr, 0, nullptr, &usedDefault);
+        if (length <= 0)
+        {
+            return false;
+        }
+        std::string narrow(length, '\0');
+        WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide.data(), (int)wide.size(), &narrow[0], length, nullptr, nullptr);
+        if (usedDefault)
+        {
+            shown = narrow;
+            return false;
+        }
+        name = narrow;
+        shown = narrow;
+        return true;
+    }
+
+    // The extension of a file name, in upper case: "rm110.sc" gives ".SC".
+    std::string UpperExtension(const std::string &fileName)
+    {
+        size_t dot = fileName.find_last_of('.');
+        return (dot == std::string::npos) ? std::string() : Upper(fileName.substr(dot));
+    }
+
+    // The title of a file name: "rm110.sc" gives "rm110".
+    std::string Title(const std::string &fileName)
+    {
+        size_t dot = fileName.find_last_of('.');
+        return (dot == std::string::npos) ? fileName : fileName.substr(0, dot);
+    }
+
     // CON, PRN, AUX, NUL, COM0 to COM9 and LPT0 to LPT9: Windows opens the
     // device for such a file name, with any extension.
     bool IsDeviceName(const std::string &name)
@@ -385,7 +430,9 @@ bool ReadDeclaredScriptNumber(const GameFolderHelper &helper, const std::string 
             for (fs::directory_iterator it(srcFolder, ec), end; !ec && (it != end); it.increment(ec))
             {
                 std::string text;
-                if (it->is_regular_file(ec) && (Upper(it->path().extension().string()) == ".SH") && ReadFileText(it->path(), text))
+                std::string fileName;
+                std::string shown;
+                if (it->is_regular_file(ec) && NarrowName(it->path(), fileName, shown) && (UpperExtension(fileName) == ".SH") && ReadFileText(it->path(), text))
                 {
                     ReadNumberDefines(CodeOnly(text), defines);
                 }
@@ -455,7 +502,18 @@ sci::Result<ScriptNameMap> ScriptNameMap::Build(const GameFolderHelper &helper)
             {
                 continue;
             }
-            std::string extension = Upper(it->path().extension().string());
+            std::string fileName;
+            std::string shown;
+            if (!NarrowName(it->path(), fileName, shown))
+            {
+                std::string extension = UpperExtension(shown);
+                if ((extension == ".SH") || (extension == ".SC") || (extension == ".SCO"))
+                {
+                    map._skippedFiles.push_back("src\\" + shown);
+                }
+                continue;
+            }
+            std::string extension = UpperExtension(fileName);
             if (extension == ".SH")
             {
                 headers.push_back(it->path());
@@ -463,12 +521,15 @@ sci::Result<ScriptNameMap> ScriptNameMap::Build(const GameFolderHelper &helper)
             else if (extension == ".SC")
             {
                 sources.push_back(it->path());
+                map._fileTitles.push_back(Title(fileName));
             }
             else if (extension == ".SCO")
             {
                 objectFiles.push_back(it->path());
+                map._fileTitles.push_back(Title(fileName));
             }
         }
+        std::sort(map._skippedFiles.begin(), map._skippedFiles.end());
         std::sort(headers.begin(), headers.end());
         std::sort(sources.begin(), sources.end());
         std::sort(objectFiles.begin(), objectFiles.end());
@@ -488,17 +549,21 @@ sci::Result<ScriptNameMap> ScriptNameMap::Build(const GameFolderHelper &helper)
         {
             std::string text;
             uint16_t number;
-            if (ReadFileText(source, text) && ReadScriptNumber(text, defines, number))
+            std::string fileName;
+            std::string shown;
+            if (ReadFileText(source, text) && ReadScriptNumber(text, defines, number) && NarrowName(source, fileName, shown))
             {
-                sourceTitles[number].push_back(source.stem().string());
+                sourceTitles[number].push_back(Title(fileName));
             }
         }
         for (const fs::path &objectFile : objectFiles)
         {
             uint16_t number;
-            if (ReadScoScriptNumber(objectFile, number))
+            std::string fileName;
+            std::string shown;
+            if (ReadScoScriptNumber(objectFile, number) && NarrowName(objectFile, fileName, shown))
             {
-                scoTitles[number].push_back(objectFile.stem().string());
+                scoTitles[number].push_back(Title(fileName));
             }
         }
     }
@@ -514,7 +579,7 @@ sci::Result<ScriptNameMap> ScriptNameMap::Build(const GameFolderHelper &helper)
         }
         if (source.second.size() > 1)
         {
-            map._conflicts.push_back({ { source.first }, fmt::format("script {0} is declared by more than one file in src: {1}.sc. "
+            map._conflicts.push_back({ { source.first }, source.second, fmt::format("script {0} is declared by more than one file in src: {1}.sc. "
                 "Keep one of the files, or change the (script# ...) of the others.", source.first, Join(source.second, ".sc, ")) });
             conflicted.insert(source.first);
             continue;
@@ -529,7 +594,7 @@ sci::Result<ScriptNameMap> ScriptNameMap::Build(const GameFolderHelper &helper)
         }
         if (objectFile.second.size() > 1)
         {
-            map._conflicts.push_back({ { objectFile.first }, fmt::format("script {0} has more than one object file in src: {1}.sco. "
+            map._conflicts.push_back({ { objectFile.first }, objectFile.second, fmt::format("script {0} has more than one object file in src: {1}.sco. "
                 "Delete the object files that are out of date; a compile writes a new one.", objectFile.first, Join(objectFile.second, ".sco, ")) });
             continue;
         }
@@ -556,7 +621,7 @@ sci::Result<ScriptNameMap> ScriptNameMap::Build(const GameFolderHelper &helper)
             }
             const char *fix = allGameIni ? "Give one of them another name in game.ini [Script]." :
                 "Give one of them another name: in game.ini [Script] for a game.ini name, or rename its file in src.";
-            map._conflicts.push_back({ name.second, fmt::format("the name {0} is the name of scripts {1}. {2}",
+            map._conflicts.push_back({ name.second, { map._entries[name.second[0]].name }, fmt::format("the name {0} is the name of scripts {1}. {2}",
                 map._entries[name.second[0]].name, Join(numbers, ", "), fix) });
         }
     }
@@ -574,6 +639,23 @@ std::vector<const NameConflict *> ScriptNameMap::ConflictsOf(uint16_t number) co
         }
     }
     return conflicts;
+}
+
+bool ScriptNameMap::ConflictNumberOf(const std::string &name, uint16_t &number) const
+{
+    std::string key = NameKey(name);
+    for (const NameConflict &conflict : _conflicts)
+    {
+        for (const std::string &conflictName : conflict.names)
+        {
+            if (!conflict.numbers.empty() && (NameKey(conflictName) == key))
+            {
+                number = conflict.numbers[0];
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 void ScriptNameMap::AddDerivedNames(const std::map<uint16_t, std::string> &names)

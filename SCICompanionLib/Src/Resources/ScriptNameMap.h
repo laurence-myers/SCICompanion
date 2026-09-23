@@ -39,6 +39,7 @@ const char *NameSourceText(NameSource source);
 struct NameConflict
 {
     std::vector<uint16_t> numbers;  // the scripts in the conflict
+    std::vector<std::string> names; // the file titles, or the name, in the conflict
     std::string text;               // what is wrong, and how to fix it
 };
 
@@ -81,11 +82,25 @@ public:
     const std::vector<NameConflict> &Conflicts() const { return _conflicts; }
     // The conflicts that name the script.
     std::vector<const NameConflict *> ConflictsOf(uint16_t number) const;
+    // The script of a conflict with this file title or name, ignoring case
+    // (review of 7f41aa43: a conflict keeps its script out of the names, and a
+    // selector must still find it).
+    bool ConflictNumberOf(const std::string &name, uint16_t &number) const;
+    // The title of each .sc and .sco file in src. A derived name takes none of
+    // them, so a decompile does not write over the file of another script
+    // (review of 7f41aa43).
+    const std::vector<std::string> &FileTitles() const { return _fileTitles; }
+    // The files in src whose names have a character that the ANSI code page
+    // does not have (shown with '?'). The map skips them (review of
+    // 7f41aa43: before, one such file stopped the open of the game).
+    const std::vector<std::string> &SkippedFiles() const { return _skippedFiles; }
 
 private:
     std::map<uint16_t, Entry> _entries;
     std::vector<uint16_t> _gameIniOrder;
     std::vector<NameConflict> _conflicts;
+    std::vector<std::string> _fileTitles;
+    std::vector<std::string> _skippedFiles;
 };
 
 // The number that a source file declares with (script# X), where X is a

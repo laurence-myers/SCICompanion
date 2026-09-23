@@ -67,11 +67,11 @@ namespace UnitTests
         }
 
         // In a copy of the SCI1.1 template, sets count bytes of the package
-        // header of text 10 to 0, from byte first of the header (9 bytes:
-        // the type with 0x80, the number, the compressed and the full size,
-        // the method). True when the blob of text 10 is then Corrupted and
-        // TryCreate refuses it.
-        bool DamagedTextHeader(size_t count, size_t first = 0)
+        // header of the resource to 0, from byte first of the header (9
+        // bytes: the type with 0x80, the number, the compressed and the full
+        // size, the method). True when the blob of the resource is then
+        // Corrupted and TryCreate refuses it.
+        bool DamagedHeader(ResourceType type, uint16_t number, size_t count, size_t first = 0)
         {
             NoAppStateInScope noAppState;
             RemoveCopy();
@@ -80,9 +80,10 @@ namespace UnitTests
             {
                 GameSession session;
                 Assert::IsTrue(session.Open(_copyFolder).has_value());
-                std::unique_ptr<ResourceBlob> text = session.Helper().MostRecentResource(ResourceType::Text, 10, ResourceEnumFlags::None);
-                Assert::IsTrue(text != nullptr, L"setup: the SCI1.1 template has text 10");
-                size = text->GetHeader().cbDecompressed;
+                std::unique_ptr<ResourceBlob> blob = session.Helper().MostRecentResource(type, number, ResourceEnumFlags::None);
+                Assert::IsTrue(blob != nullptr, L"setup: the SCI1.1 template has the resource");
+                Assert::IsTrue(blob->GetSourceFlags() == ResourceSourceFlags::ResourceMap, L"setup: the resource is in the package");
+                size = blob->GetHeader().cbDecompressed;
             }
             std::string volumePath = _copyFolder + "\\resource.000";
             std::vector<uint8_t> volume;
@@ -94,14 +95,14 @@ namespace UnitTests
             int matches = 0;
             for (size_t i = 0; (i + 9) <= volume.size(); i++)
             {
-                if ((volume[i] == (0x80 | (int)ResourceType::Text)) && (volume[i + 1] == 10) && (volume[i + 2] == 0) &&
+                if ((volume[i] == (0x80 | (int)type)) && (volume[i + 1] == (number & 0xff)) && (volume[i + 2] == (number >> 8)) &&
                     (volume[i + 5] == (size & 0xff)) && (volume[i + 6] == ((size >> 8) & 0xff)))
                 {
                     header = i;
                     matches++;
                 }
             }
-            Assert::AreEqual(1, matches, L"setup: the header of text 10 must be found once");
+            Assert::AreEqual(1, matches, L"setup: the header of the resource must be found once");
             std::fill(volume.begin() + header + first, volume.begin() + header + first + count, (uint8_t)0);
             {
                 std::ofstream file(volumePath, std::ios::binary | std::ios::trunc);
@@ -110,9 +111,9 @@ namespace UnitTests
 
             GameSession session;
             Assert::IsTrue(session.Open(_copyFolder).has_value());
-            std::unique_ptr<ResourceBlob> text = session.Helper().MostRecentResource(ResourceType::Text, 10, ResourceEnumFlags::None);
-            Assert::IsTrue(text != nullptr);
-            return IsFlagSet(text->GetStatusFlags(), ResourceLoadStatusFlags::Corrupted) && !TryCreateResourceFromResourceData(*text).has_value();
+            std::unique_ptr<ResourceBlob> blob = session.Helper().MostRecentResource(type, number, ResourceEnumFlags::None);
+            Assert::IsTrue(blob != nullptr);
+            return IsFlagSet(blob->GetStatusFlags(), ResourceLoadStatusFlags::Corrupted) && !TryCreateResourceFromResourceData(*blob).has_value();
         }
 
     public:
@@ -554,13 +555,52 @@ namespace UnitTests
         // resource.
         TEST_METHOD(ZeroedPackageHeader_IsDamaged)
         {
-            Assert::IsTrue(DamagedTextHeader(9), L"a zeroed header must mark the blob Corrupted");
+            Assert::IsTrue(DamagedHeader(ResourceType::Text, 10, 9), L"a zeroed header must mark the blob Corrupted");
+        }
+
+        // Review of dafb7179: a zeroed header reads as view 0 with sizes of
+        // 0, so for view 0 itself (the first header of the SCI1.1 template's
+        // resource.000) the type and the number match the map entry. Its
+        // type byte has no 0x80 mark, so it is damage. Before, it was a
+        // valid empty view, and a rebuild dropped the data of view 0.
+        TEST_METHOD(ZeroedHeaderOfView0_IsDamaged)
+        {
+            Assert::IsTrue(DamagedHeader(ResourceType::View, 0, 9), L"a zeroed header of view 0 must mark the blob Corrupted");
         }
 
         // A header with only one size of 0 is damaged too.
         TEST_METHOD(PackageHeaderWithOneSizeOfZero_IsDamaged)
         {
-            Assert::IsTrue(DamagedTextHeader(2, 3), L"a header with a compressed size of 0 must mark the blob Corrupted");
+            Assert::IsTrue(DamagedHeader(ResourceType::Text, 10, 2, 3), L"a header with a compressed size of 0 must mark the blob Corrupted");
+        }
+
+        // Review of dafb7179: the number of a package header is signed, so a
+        // valid empty resource numbered 32768 or more did not match its map
+        // entry. It was marked "Corrupt", and a rebuild dropped it.
+        TEST_METHOD(EmptyPackageResource_HighNumber_IsKept)
+        {
+            NoAppStateInScope noAppState;
+            RemoveCopy();
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            {
+                GameSession session;
+                Assert::IsTrue(session.Open(_copyFolder).has_value());
+                const GameFolderHelper &helper = session.Helper();
+                std::vector<uint8_t> noData;
+                ResourceBlob empty(helper, nullptr, ResourceType::Text, noData, helper.Version.DefaultVolumeFile, 40000, NoBase36, helper.Version, ResourceSourceFlags::ResourceMap);
+                Assert::IsTrue(session.ResourceMap().WriteResource(empty).has_value());
+                std::unique_ptr<ResourceBlob> blob = helper.MostRecentResource(ResourceType::Text, 40000, ResourceEnumFlags::None);
+                Assert::IsTrue(blob != nullptr, L"setup: text 40000");
+                Assert::IsFalse(IsFlagSet(blob->GetStatusFlags(), ResourceLoadStatusFlags::Corrupted), L"an empty resource numbered 40000 is not damaged");
+                std::unique_ptr<ResourceSource> package = CreateResourceSource(ResourceTypeFlags::All, helper, ResourceSourceFlags::ResourceMap, ResourceSourceAccessFlags::ReadWrite);
+                std::map<ResourceType, RebuildStats> stats;
+                package->RebuildResources(true, *package, stats);
+            }
+            GameSession session;
+            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            std::unique_ptr<ResourceBlob> blob = session.Helper().MostRecentResource(ResourceType::Text, 40000, ResourceEnumFlags::None);
+            Assert::IsTrue(blob != nullptr, L"the rebuild keeps text 40000");
+            Assert::IsFalse(IsFlagSet(blob->GetStatusFlags(), ResourceLoadStatusFlags::Corrupted));
         }
 
         // Review of the F2 review fixes (second): a rebuild dropped an empty
