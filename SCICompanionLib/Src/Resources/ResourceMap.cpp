@@ -218,7 +218,6 @@ CResourceMap::CResourceMap(ISCIAppServices *appServices, ResourceRecency *resour
 	_paletteListNeedsUpdate = true;
 	_skipVersionSniffOnce = false;
 	_pVocab000 = nullptr;
-	_cDeferAppend = 0;
 	_gameFolderHelper.Version = sciVersion0;	// By default
 	_deferredResources.reserve(300);			// So we don't need to resize much it when adding
 	_emptyPalette = std::make_unique<PaletteComponent>();
@@ -228,7 +227,7 @@ CResourceMap::CResourceMap(ISCIAppServices *appServices, ResourceRecency *resour
 CResourceMap::~CResourceMap()
 {
 	assert(_syncs.empty()); // They should remove themselves.
-	assert(_cDeferAppend == 0);
+	assert(_deferLevels.empty());
 }
 
 //
@@ -260,31 +259,84 @@ void CResourceMap::AssignName(ResourceType type, int iResourceNumber, uint32_t b
 	}
 }
 
+bool CResourceMap::DeferLevel::HasReplaced(size_t index) const
+{
+	return std::any_of(replaced.begin(), replaced.end(),
+		[index](const std::pair<size_t, std::unique_ptr<ResourceBlob>> &entry) { return entry.first == index; });
+}
+
 void CResourceMap::BeginDeferAppend()
 {
-	ASSERT((_cDeferAppend > 0) || _deferredResources.empty());
-	++_cDeferAppend;
+	ASSERT(!_deferLevels.empty() || _deferredResources.empty());
+	DeferLevel level;
+	level.queuedAtStart = _deferredResources.size();
+	_deferLevels.push_back(std::move(level));
 }
+
 void CResourceMap::AbandonAppend()
 {
-	// Abandon all the resources we were piling up.
-	if (_cDeferAppend)
+	// Withdraw what this level queued, and put back the copies from before
+	// this level that it replaced. For the outermost level, the queue is then
+	// empty. Nothing here allocates: this runs in a destructor.
+	if (_deferLevels.empty())
 	{
-		--_cDeferAppend;
-		if (_cDeferAppend == 0)
+		return;
+	}
+	DeferLevel &level = _deferLevels.back();
+	// The queue is never shorter than a level's start; check it anyway.
+	size_t start = (level.queuedAtStart < _deferredResources.size()) ? level.queuedAtStart : _deferredResources.size();
+	_deferredResources.erase(_deferredResources.begin() + start, _deferredResources.end());
+	for (auto &replaced : level.replaced)
+	{
+		if (replaced.first < _deferredResources.size())
 		{
-			_deferredResources.clear();
+			_deferredResources[replaced.first] = std::move(replaced.second);
 		}
 	}
+	_deferLevels.pop_back();
 }
+
 namespace
 {
-	// "text 901 to the patch file 901.tex", "script 110 to the resource package"
+	// "the resource package", "the audio cache", ...
+	std::string _DescribeDestination(ResourceSourceFlags sourceFlags)
+	{
+		if (IsFlagSet(sourceFlags, ResourceSourceFlags::AudioCache) || IsFlagSet(sourceFlags, ResourceSourceFlags::AudioMapCache))
+		{
+			return "the audio cache";
+		}
+		if (IsFlagSet(sourceFlags, ResourceSourceFlags::PatchFile))
+		{
+			return "patch files";
+		}
+		if (IsFlagSet(sourceFlags, ResourceSourceFlags::MessageMap))
+		{
+			return "the message package";
+		}
+		if (IsFlagSet(sourceFlags, ResourceSourceFlags::Aud) || IsFlagSet(sourceFlags, ResourceSourceFlags::Sfx))
+		{
+			return "the audio volume";
+		}
+		return "the resource package";
+	}
+
+	// "writing Text 901 to the patch file 901.tex", "writing Script 110 to the resource package"
 	std::string _DescribeWrite(const ResourceBlob &blob)
 	{
-		std::string destination = IsFlagSet(blob.GetSourceFlags(), ResourceSourceFlags::PatchFile) ?
-			("the patch file " + GetFileNameFor(blob)) : std::string("the resource package");
+		std::string destination = (blob.GetSourceFlags() == ResourceSourceFlags::PatchFile) ?
+			("the patch file " + GetFileNameFor(blob)) : _DescribeDestination(blob.GetSourceFlags());
 		return fmt::format("writing {0} {1} to {2}", GetResourceInfo(blob.GetType()).pszTitleDefault, blob.GetNumber(), destination);
+	}
+
+	// One resource as _DescribeWrite does; more as "writing 3 resources to
+	// patch files". The error message names the file that failed.
+	std::string _DescribeBucket(const std::vector<const ResourceBlob*> &blobs)
+	{
+		if (blobs.size() == 1)
+		{
+			return _DescribeWrite(*blobs[0]);
+		}
+		return fmt::format("writing {0} resources to {1}", blobs.size(), _DescribeDestination(blobs[0]->GetSourceFlags()));
 	}
 
 	// The same resource for the same destination: a second copy in one batch
@@ -299,79 +351,123 @@ namespace
 
 sci::Status CResourceMap::EndDeferAppend()
 {
-	if (_cDeferAppend == 0)
+	if (_deferLevels.empty())
 	{
 		return sci::Ok();
 	}
-	--_cDeferAppend;
-	if ((_cDeferAppend != 0) || _deferredResources.empty())
+	DeferLevel level = std::move(_deferLevels.back());
+	_deferLevels.pop_back();
+	if (!_deferLevels.empty())
 	{
-		// An inner batch: the outermost Commit writes the queue.
-		return sci::Ok();
+		// An inner batch: the outermost Commit writes the queue. If the outer
+		// level is abandoned, it must still put back the copies that this
+		// level replaced and that were queued before the outer level opened.
+		return sci::Guard("closing a nested resource batch", [&]() -> sci::Status
+		{
+			DeferLevel &outer = _deferLevels.back();
+			for (auto &replaced : level.replaced)
+			{
+				if ((replaced.first < outer.queuedAtStart) && !outer.HasReplaced(replaced.first))
+				{
+					outer.replaced.push_back(std::move(replaced));
+				}
+			}
+			return sci::Ok();
+		});
 	}
 
 	// Take the queue first, so a failure below cannot leave it behind.
-	std::vector<ResourceBlob> queued;
+	std::vector<std::unique_ptr<ResourceBlob>> queued;
 	queued.swap(_deferredResources);
-
-	// Bucketize the resources by resource source and map context. Each bucket
-	// is one rewrite of its destination.
-	std::map<uint64_t, std::vector<const ResourceBlob*>> keyToIndices;
-	for (const ResourceBlob &blob : queued)
+	if (queued.empty())
 	{
-		uint32_t mapContext = (uint32_t)((blob.GetBase36() == NoBase36) ? -1 : blob.GetNumber());
-		uint64_t bucketKey = (uint64_t)blob.GetSourceFlags() | (((uint64_t)mapContext) << 32);
-		keyToIndices[bucketKey].push_back(&blob);
+		return sci::Ok();
 	}
 
 	sci::Status firstFailure = sci::Ok();
 	std::vector<const ResourceBlob*> written;
-	for (auto &pair : keyToIndices)
+	sci::Status writeStatus = sci::Guard("writing the queued resources", [&]() -> sci::Status
 	{
-		std::vector<const ResourceBlob*> &blobsForThisSource = pair.second;
-		ResourceSourceFlags sourceFlags = blobsForThisSource[0]->GetSourceFlags();
-		int mapContext = (blobsForThisSource[0]->GetBase36() == NoBase36) ? -1 : blobsForThisSource[0]->GetNumber();
-		std::string context = _DescribeWrite(*blobsForThisSource[0]);
-		if (blobsForThisSource.size() > 1)
+		// Bucketize the resources by resource source and map context. Each
+		// bucket is one rewrite of its destination.
+		std::map<uint64_t, std::vector<const ResourceBlob*>> keyToIndices;
+		for (const auto &blob : queued)
 		{
-			context += fmt::format(" (and {0} more)", blobsForThisSource.size() - 1);
+			uint32_t mapContext = (uint32_t)((blob->GetBase36() == NoBase36) ? -1 : blob->GetNumber());
+			uint64_t bucketKey = (uint64_t)blob->GetSourceFlags() | (((uint64_t)mapContext) << 32);
+			keyToIndices[bucketKey].push_back(blob.get());
 		}
 
-		sci::Status status = sci::Guard(context, [&]() -> sci::Status
+		for (auto &pair : keyToIndices)
 		{
-			std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, _gameFolderHelper, sourceFlags, ResourceSourceAccessFlags::ReadWrite, mapContext);
-			if (!resourceSource)
+			std::vector<const ResourceBlob*> &blobsForThisSource = pair.second;
+			ResourceSourceFlags sourceFlags = blobsForThisSource[0]->GetSourceFlags();
+			int mapContext = (blobsForThisSource[0]->GetBase36() == NoBase36) ? -1 : blobsForThisSource[0]->GetNumber();
+			sci::Status status = sci::Guard(_DescribeBucket(blobsForThisSource), [&]() -> sci::Status
 			{
-				return sci::Fail(sci::ErrorCode::Unsupported, "no writer for this destination");
+				std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, _gameFolderHelper, sourceFlags, ResourceSourceAccessFlags::ReadWrite, mapContext);
+				if (!resourceSource)
+				{
+					return sci::Fail(sci::ErrorCode::Unsupported, "no writer for this destination");
+				}
+				resourceSource->AppendResources(blobsForThisSource);
+				return sci::Ok();
+			});
+			if (status)
+			{
+				written.insert(written.end(), blobsForThisSource.begin(), blobsForThisSource.end());
 			}
-			resourceSource->AppendResources(blobsForThisSource);
-			return sci::Ok();
-		});
-		if (status)
-		{
-			written.insert(written.end(), blobsForThisSource.begin(), blobsForThisSource.end());
+			else if (firstFailure)
+			{
+				firstFailure = status;
+			}
 		}
-		else if (firstFailure)
-		{
-			firstFailure = status;
-		}
+		return sci::Ok();
+	});
+	if (!writeStatus && firstFailure)
+	{
+		firstFailure = writeStatus;
 	}
 
 	// Name only what was written; a failed write must not change game.ini.
-	bool reload[NumResourceTypes] = {};
-	for (const ResourceBlob *blob : written)
+	sci::Status nameStatus = sci::Guard("naming the written resources in game.ini", [&]() -> sci::Status
 	{
-		AssignName(*blob);
-		reload[(int)blob->GetType()] = true;
+		for (const ResourceBlob *blob : written)
+		{
+			AssignName(*blob);
+		}
+		return sci::Ok();
+	});
+	if (!nameStatus && firstFailure)
+	{
+		firstFailure = nameStatus;
 	}
 
-	// Tell the views that might have changed, to reload:
-	for (int iType = 0; iType < ARRAYSIZE(reload); iType++)
+	// Tell the views to reload every queued type, also after a failure: a
+	// destination that failed can be partly written.
+	sci::Status reloadStatus = sci::Guard("reloading the resource views", [&]() -> sci::Status
 	{
-		if (reload[iType])
+		bool reload[NumResourceTypes] = {};
+		for (const auto &blob : queued)
 		{
-			NotifyToReloadResourceType((ResourceType)iType);
+			int type = (int)blob->GetType();
+			if ((type >= 0) && (type < NumResourceTypes))
+			{
+				reload[type] = true;
+			}
 		}
+		for (int iType = 0; iType < ARRAYSIZE(reload); iType++)
+		{
+			if (reload[iType])
+			{
+				NotifyToReloadResourceType((ResourceType)iType);
+			}
+		}
+		return sci::Ok();
+	});
+	if (!reloadStatus && firstFailure)
+	{
+		firstFailure = reloadStatus;
 	}
 	return firstFailure;
 }
@@ -533,39 +629,48 @@ ResourceSaveLocation CResourceMap::GetDefaultResourceSaveLocation()
 // resource from the map instead. The blob is only valid for the length of this call.
 sci::Status CResourceMap::WriteResource(const ResourceBlob &resource)
 {
-	if (_cDeferAppend)
+	if (!_deferLevels.empty())
 	{
 		// If resource appends are deferred, then just add it to the queue.
-		for (ResourceBlob &queued : _deferredResources)
+		return sci::Guard("queuing a resource write", [&]() -> sci::Status
 		{
-			if (_IsSameQueuedResource(queued, resource))
+			DeferLevel &level = _deferLevels.back();
+			std::unique_ptr<ResourceBlob> copy = std::make_unique<ResourceBlob>(resource);
+			for (size_t i = 0; i < _deferredResources.size(); i++)
 			{
-				queued = resource;
-				return sci::Ok();
+				if (_IsSameQueuedResource(*_deferredResources[i], resource))
+				{
+					// Keep a copy that was queued before this level, so that
+					// abandoning this level can put it back.
+					if ((i < level.queuedAtStart) && !level.HasReplaced(i))
+					{
+						level.replaced.emplace_back(i, std::move(_deferredResources[i]));
+					}
+					_deferredResources[i] = std::move(copy);
+					return sci::Ok();
+				}
 			}
-		}
-		_deferredResources.push_back(resource);
-		return sci::Ok();
-	}
-
-	if (_appServices && (resource.GetType() == ResourceType::View))
-	{
-		_appServices->SetRecentlyInteractedView(resource.GetNumber());
+			_deferredResources.push_back(std::move(copy));
+			return sci::Ok();
+		});
 	}
 
 	AppendBehavior appendBehavior = AppendBehavior::Append;
-	sci::Status status = sci::Guard(_DescribeWrite(resource), [&]() -> sci::Status
+	sci::Status status = sci::Guard("writing a resource", [&]() -> sci::Status
 	{
-		int mapContext = (resource.GetBase36() == NoBase36) ? -1 : resource.GetNumber();
-		std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, _gameFolderHelper, resource.GetSourceFlags(), ResourceSourceAccessFlags::ReadWrite, mapContext);
-		if (!resourceSource)
+		return sci::Guard(_DescribeWrite(resource), [&]() -> sci::Status
 		{
-			return sci::Fail(sci::ErrorCode::Unsupported, "no writer for this destination");
-		}
-		std::vector<const ResourceBlob*> blobs;
-		blobs.push_back(&resource);
-		appendBehavior = resourceSource->AppendResources(blobs);
-		return sci::Ok();
+			int mapContext = (resource.GetBase36() == NoBase36) ? -1 : resource.GetNumber();
+			std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, _gameFolderHelper, resource.GetSourceFlags(), ResourceSourceAccessFlags::ReadWrite, mapContext);
+			if (!resourceSource)
+			{
+				return sci::Fail(sci::ErrorCode::Unsupported, "no writer for this destination");
+			}
+			std::vector<const ResourceBlob*> blobs;
+			blobs.push_back(&resource);
+			appendBehavior = resourceSource->AppendResources(blobs);
+			return sci::Ok();
+		});
 	});
 	if (!status)
 	{
@@ -573,29 +678,37 @@ sci::Status CResourceMap::WriteResource(const ResourceBlob &resource)
 		return status;
 	}
 
-	AssignName(resource);
-
-	if (resource.GetType() == ResourceType::Script)
+	return sci::Guard("naming the written resource and updating the views", [&]() -> sci::Status
 	{
-		// We'll need to re-gen this:
-		_globalCompiledScriptLookups.reset(nullptr);
-	}
-
-	if (resource.GetType() == ResourceType::Palette)
-	{
-		_paletteListNeedsUpdate = true;
-		if (resource.GetNumber() == 999)
+		if (_appServices && (resource.GetType() == ResourceType::View))
 		{
-			_pPalette999.reset(nullptr);
+			_appServices->SetRecentlyInteractedView(resource.GetNumber());
 		}
-	}
 
-	// pResource is only valid for the length of this call.  Nonetheless, call our syncs
-	for (auto &sync : _syncs)
-	{
-		sync->OnResourceAdded(&resource, appendBehavior);
-	}
-	return sci::Ok();
+		AssignName(resource);
+
+		if (resource.GetType() == ResourceType::Script)
+		{
+			// We'll need to re-gen this:
+			_globalCompiledScriptLookups.reset(nullptr);
+		}
+
+		if (resource.GetType() == ResourceType::Palette)
+		{
+			_paletteListNeedsUpdate = true;
+			if (resource.GetNumber() == 999)
+			{
+				_pPalette999.reset(nullptr);
+			}
+		}
+
+		// pResource is only valid for the length of this call.  Nonetheless, call our syncs
+		for (auto &sync : _syncs)
+		{
+			sync->OnResourceAdded(&resource, appendBehavior);
+		}
+		return sci::Ok();
+	});
 }
 
 HRESULT CResourceMap::AppendResource(const ResourceBlob &resource)

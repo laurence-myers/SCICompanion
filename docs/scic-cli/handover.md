@@ -6,10 +6,13 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: A2 (next). F1 and A1 are committed; their reviews run in
-  the background.
+- Current step: A2. F1 and A1 are committed and reviewed, with their
+  review fixes. The A2 work in progress was put in a local `git stash`
+  ("A2 WIP") while the A1 review fixes were committed; if this commit is
+  the branch head, pop that stash first.
 - Baseline on `0dc1fef5`: the Release build passes; the unit suite passes
-  217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242.
+  217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
+  the F1 review fixes: 243. After the A1 review fixes: 248.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
   (`getenv`) and C4267 in the UnitTests helpers (`DecompileHelper.cpp`,
@@ -25,7 +28,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | Step | Status | Commit | Review |
 |---|---|---|---|
 | F1 Result foundation | done | `04361133`, review fixes `b499f9ac` | FIX: 2 should-fix, 8 nits; fixed except the Gdiplus `Status`/`Ok` name overlap in `RoomExplorerView.cpp` (latent, not used) |
-| A1 Deferred writes | done | `1c4d1c6f` | running |
+| A1 Deferred writes | done | `1c4d1c6f`, review fixes (the commit after `cb6f55a7`) | FIX: 3 should-fix, 5 nits. Fixed: savepoints (an abandoned inner batch withdraws its resources and puts back what it replaced), the audio repackage stops on a failed map save, every queued type reloads, guards around the context text and the notifications, tests on SCI1.1 and for mixed destinations and a read-only volume, the plan row. Moved to A2: the audio cache writer swallows its errors and saves its audio map through the GUI wrapper. Already fixed by `b499f9ac`: the last-error capture in `util.cpp`. |
 | A2 Patch writer, size check | not started | | |
 | B1 GameSession, core log | not started | | |
 | B2 Script text loader | not started | | |
@@ -70,7 +73,8 @@ for each step, and a follow-up commit if the review finds a problem.
 
 - `sed -i` in Git Bash rewrites a CRLF file with LF endings. Edit project
   files with the Edit tool or with PowerShell (`[IO.File]::ReadAllText`,
-  keep the BOM).
+  keep the BOM). A new file from a tool that writes LF needs the CRLF
+  conversion in AGENTS.md.
 - Every project reads `Directory.Build.props`. `/we4834` (a discarded
   `Result` is an error) applies to our projects, not to Prof-UIS.
 - `tl-expected\tl\expected.hpp` is vendored unchanged (LF endings, SHA-256
@@ -91,12 +95,22 @@ for each step, and a follow-up commit if the review finds a problem.
 - `util.cpp` on `master` starts with a stray code fragment (from commit
   `136c9ba1`) that only compiles because MSVC skips everything before
   `#include "stdafx.h"`. It was meant to free the buffer in
-  `GetMessageFromLastError`. A small separate commit moves it there.
+  `GetMessageFromLastError`. Commit `cb6f55a7` moves it there.
 - A1 keeps `HRESULT CResourceMap::AppendResource(const ResourceBlob&)` for
   the GUI (it shows the error text) and adds `sci::Status WriteResource`
   (no UI) for the engine and the services.
+- A1 review: the deferred queue holds `std::unique_ptr<ResourceBlob>`, so
+  that an abandon (in a destructor) can put a replaced copy back without a
+  copy that could throw. `Pending()` returns pointers.
+- Known gap, not in any step yet: when the package writer cannot replace a
+  volume or the map, it leaves `resource.map.bak` and `resource.00N.bak`
+  behind. The game stays consistent, because the writer only appends to a
+  volume and replaces the map last.
 
 ## Next action
 
-Read the F1 and A1 reviews and fix any real finding. Then plan revision 5
-(the CLI must work without `game.ini`; see "Decisions"), then A2.
+Pop the "A2 WIP" stash and merge it with the A1 review fixes (both change
+`ResourceMap.cpp` and `ResourceMap.h`). Then finish A2 (plan section 9),
+with the A1 review finding moved to it: `AudioCacheResourceSource::AppendResources`
+must not swallow errors, and must save its audio map through
+`WriteResource`, not the GUI `AppendResource`.

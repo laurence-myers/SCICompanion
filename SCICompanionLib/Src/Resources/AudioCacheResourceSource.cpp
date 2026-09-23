@@ -673,6 +673,17 @@ std::ostream *_ChooseBakOutputStream(SCIVersion version, const std::string &game
 	return toUse;
 }
 
+// Closes a new audio volume from _ChooseBakOutputStream and deletes it.
+static void _DiscardNewAudioVolume(std::ofstream &stream, const std::string &gameFolder, AudioVolumeName volumeName)
+{
+	if (stream.is_open())
+	{
+		stream.exceptions(std::ios_base::goodbit);
+		stream.close();
+		DeleteFileA(GetAudioVolumePath(gameFolder, true, volumeName).c_str());
+	}
+}
+
 void AudioCacheResourceSource::RebuildResources(bool force, ResourceSource &source, std::map<ResourceType, RebuildStats> &stats)
 {
 	UpToDateResources upToDate(_cacheFolder);
@@ -759,14 +770,38 @@ void AudioCacheResourceSource::RebuildResources(bool force, ResourceSource &sour
 		}
 
 		// 5) If that's good, then save the audio maps *TO THE RESOURCE MAP*
+		bool mapsSaved = true;
 		{
 			DeferResourceAppend defer(*_resourceMap);
 			for (auto &audioMap : audioMaps)
 			{
 				audioMap.second->SourceFlags = ResourceSourceFlags::ResourceMap;
-				_resourceMap->AppendResource(*audioMap.second);
+				if (!_resourceMap->AppendResource(*audioMap.second))
+				{
+					// AppendResource showed why. Leaving the scope abandons
+					// the batch, so no map is saved.
+					mapsSaved = false;
+					break;
+				}
 			}
-			ShowWriteError(defer.Commit());
+			if (mapsSaved)
+			{
+				sci::Status committed = defer.Commit();
+				if (!committed)
+				{
+					ShowWriteError(committed);
+					mapsSaved = false;
+				}
+			}
+		}
+		if (!mapsSaved)
+		{
+			// The game's audio maps still point into the old audio volumes, so
+			// keep those and delete the new ones. The cache stays out of date,
+			// so the next repackage tries again.
+			_DiscardNewAudioVolume(audStream, _gameFolder, AudioVolumeName::Aud);
+			_DiscardNewAudioVolume(sfxStream, _gameFolder, AudioVolumeName::Sfx);
+			return;
 		}
 
 		// 6) And then if that's good, then replace the audio files.

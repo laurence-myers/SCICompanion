@@ -183,8 +183,19 @@ private:
 	std::unique_ptr<GlobalCompiledScriptLookups> _globalCompiledScriptLookups;
 
 	// Defer appending resources when you are appending a lot (E.g. during compiling).
-	BOOL _cDeferAppend;
-	std::vector<ResourceBlob> _deferredResources;
+	// One level for each open DeferResourceAppend batch, the outermost first.
+	struct DeferLevel
+	{
+		size_t queuedAtStart = 0;	// The queue length when the level opened.
+		// The queued copies from before this level that this level replaced,
+		// with their queue index. Abandoning the level puts them back.
+		std::vector<std::pair<size_t, std::unique_ptr<ResourceBlob>>> replaced;
+		bool HasReplaced(size_t index) const;
+	};
+	std::vector<DeferLevel> _deferLevels;
+	// Pointers, so that to put back a replaced copy cannot throw (an abandon
+	// runs in a destructor).
+	std::vector<std::unique_ptr<ResourceBlob>> _deferredResources;
 
 	GameFolderHelper _gameFolderHelper;
 
@@ -202,9 +213,10 @@ private:
 // Defer the actual writing of resources so it happens in one big batch at the end.
 //
 // Batches nest. Only the outermost Commit writes; an inner Commit only closes
-// the inner batch and keeps the queue for the outer one. A batch that is
-// destroyed without a Commit abandons its level; the outermost level then
-// discards the queue.
+// the inner batch and keeps its resources for the outer one. A batch that is
+// destroyed without a Commit abandons its level: the resources that it queued
+// are withdrawn, and the queued copies that it replaced come back. For the
+// outermost batch, that discards the whole queue.
 //
 class DeferResourceAppend
 {
@@ -233,7 +245,15 @@ public:
 	}
 
 	// The resources queued so far, by this batch and by any batch around it.
-	const std::vector<ResourceBlob> &Pending() const { return _map._deferredResources; }
+	std::vector<const ResourceBlob*> Pending() const
+	{
+		std::vector<const ResourceBlob*> pending;
+		for (const auto &queued : _map._deferredResources)
+		{
+			pending.push_back(queued.get());
+		}
+		return pending;
+	}
 
 	~DeferResourceAppend()
 	{
