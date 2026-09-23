@@ -684,6 +684,7 @@ void DecompileDialog::OnBnClickedDecompile()
 		{
 			_decompileResults = make_unique<DecompilerDialogResults>(this->GetSafeHwnd());
 			_SyncButtonState();
+			_session = &appState->GetSession();
 			try
 			{
 				_future = std::make_unique<std::future<void>>(std::async(std::launch::async, s_DecompileThreadWorker, this));
@@ -787,12 +788,14 @@ void DecompileDialog::s_DecompileThreadWorker(DecompileDialog *pThis)
 
 	results.AddResult(DecompilerResultType::Update, "Creating script lookups...");
 	DecompileStats stats;
-	sci::Result<DecompileReport> report = RunDecompile(appState->GetSession(), scriptNumbers, options, results);
+	sci::Result<DecompileReport> report = RunDecompile(*pThis->_session, scriptNumbers, options, results);
 	if (report)
 	{
 		// Found on the worker, so the UI thread does not read every source
-		// file of the game.
-		results.SetStaleScripts(report->stale);
+		// file of the game. After a Cancel, the dialog offers no stale
+		// script: a new run would start at once (the report lists the
+		// scripts that the abort kept from a second write).
+		results.SetStaleScripts(report->cancelled ? std::set<uint16_t>() : report->stale);
 		stats = report->stats;
 		if (report->cancelled)
 		{

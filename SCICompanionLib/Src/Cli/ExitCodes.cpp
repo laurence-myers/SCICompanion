@@ -109,6 +109,7 @@ namespace cli
         {
             AddStatus(facts, outcome.status);
         }
+        AddStatus(facts, report.mainObjectFile);
         AddStatus(facts, report.gameIni);
         facts.cancelled = facts.cancelled || report.cancelled;
         return ExitCodeForFacts(facts);

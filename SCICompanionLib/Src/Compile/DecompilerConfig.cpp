@@ -55,12 +55,11 @@ unique_ptr<Script> GetDefinesScript(const GameFolderHelper &helper, const std::s
 class DecompilerConfig : public IDecompilerConfig
 {
 public:
-	DecompilerConfig(const GameFolderHelper &helper, const std::string &includeFolder, const SelectorTable &selectorTable) : _selectorTable(selectorTable)
+	DecompilerConfig(const GameFolderHelper &helper, const std::string &includeFolder, const std::string &decompilerIniPath, const SelectorTable &selectorTable) : _selectorTable(selectorTable)
 	{
 		unique_ptr<Script> definesScript = GetDefinesScript(helper, includeFolder, "sci.sh");
 		unique_ptr<Script> keysScript = GetDefinesScript(helper, includeFolder, "keys.sh");
 
-		string decompilerIniPath = helper.GetSrcFolder() + "\\Decompiler.ini";
 		try
 		{
 			_table = make_unique<table>(parse_file(decompilerIniPath));
@@ -384,6 +383,11 @@ private:
 
 std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(const CResourceMap &resourceMap, const SelectorTable &selectorTable)
 {
+	return CreateDecompilerConfig(resourceMap, selectorTable, resourceMap.Helper().GetSrcFolder() + "\\Decompiler.ini");
+}
+
+std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(const CResourceMap &resourceMap, const SelectorTable &selectorTable, const std::string &decompilerIniPath)
+{
 	// The include folder follows the data folder of the resource map.
-	return make_unique<DecompilerConfig>(resourceMap.Helper(), resourceMap.GetIncludeFolder(), selectorTable);
+	return make_unique<DecompilerConfig>(resourceMap.Helper(), resourceMap.GetIncludeFolder(), decompilerIniPath, selectorTable);
 }

@@ -133,6 +133,9 @@ struct ScriptObjectsForNaming
 // scripts go in number order. When an earlier script, or reservedNames, has
 // the name already (ignoring case), the script gets the name with "_N" after
 // it, where N is its number (and "_2", "_3"... after that in the rare case
-// that the suffixed name is taken too).
+// that the suffixed name is taken too). A name in ownedNames is taken for
+// every script but its owner (S4 review: the title of a file in src that a
+// script has, so that a reset does not give another script that file).
 std::map<uint16_t, std::string> SuggestScriptNames(std::vector<ScriptObjectsForNaming> scripts,
-    const std::vector<std::string> &reservedNames = std::vector<std::string>());
+    const std::vector<std::string> &reservedNames = std::vector<std::string>(),
+    const std::map<std::string, uint16_t> &ownedNames = std::map<std::string, uint16_t>());

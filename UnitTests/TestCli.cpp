@@ -190,6 +190,9 @@ namespace UnitTests
             Assert::AreEqual(6, (int)cli::ExitCodeForReport(decompiled));
             decompiled.gameIni = sci::Fail(sci::ErrorCode::Io, "game.ini is read-only");
             Assert::AreEqual(9, (int)cli::ExitCodeForReport(decompiled));
+            DecompileReport mainFailed;
+            mainFailed.mainObjectFile = sci::Fail(sci::ErrorCode::Io, "Main.sco is read-only");
+            Assert::AreEqual(9, (int)cli::ExitCodeForReport(mainFailed), L"the write of main's .sco (S4 review)");
         }
 
         // script list on both templates, as text and as tsv (plan section 4.3).

@@ -19,6 +19,7 @@
 #include <atomic>
 
 class CSCOFile;
+class GameSession;
 
 class DecompilerDialogResults : public IDecompilerResults
 {
@@ -119,6 +120,9 @@ private:
 	LRESULT UpdateStatus(WPARAM wParam, LPARAM lParam);
 	std::unique_ptr<DecompilerDialogResults> _decompileResults;
 	std::unique_ptr<std::future<void>> _future;
+	// The session of the worker, taken on the UI thread: AppState::GetSession
+	// writes a session option (S4 review).
+	GameSession *_session = nullptr;
 
 	std::set<uint16_t> _scriptNumbers;
 	bool _debugControlFlow;

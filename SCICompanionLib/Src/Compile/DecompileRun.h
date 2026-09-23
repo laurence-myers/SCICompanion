@@ -19,19 +19,25 @@ class GameSession;
 class GameFolderHelper;
 class IDecompilerResults;
 
-// The names of the scripts before the run (plan section 3.4).
+// The names of the scripts before the run (plan section 3.4). Missing and
+// All need a session with a script-name map (GameSession::Open installs one).
 enum class NameAssignment
 {
     Missing,    // a compiled script with no name gets its derived name (rule 4)
-    All,        // every compiled script gets its derived name (--reset-names)
+    All,        // as Missing, then each script of the run gets its derived name (--reset-names; ResetScriptNames)
     None,       // the names stay as they are (the GUI names with game.ini)
 };
 
-// The names in game.ini after the run (--game-ini).
+// The names in game.ini after the run (--game-ini). The entries are the names
+// of the written scripts; when game.ini has no [Script] entry, the names of
+// every script (as the Decompile dialog gives them before its first run). A
+// name that game.ini has with another value is replaced (after a reset of
+// the names, the GUI then finds the new files). The default name nNNN gets no
+// entry.
 enum class GameIniNames
 {
-    Update,     // when game.ini exists: an entry for each written script whose name it does not have
-    Create,     // the same, and create game.ini when it does not exist
+    Update,     // write the entries when game.ini exists
+    Create,     // the same, and create game.ini when it does not exist and an entry is needed
     None,       // never write game.ini
 };
 
@@ -41,7 +47,8 @@ struct DecompileRunOptions
     NameAssignment names = NameAssignment::Missing;
     GameIniNames gameIni = GameIniNames::Update;
     // After a run on some of the scripts: decompile the stale scripts too,
-    // and again until no script is stale.
+    // and again until a group names no new global. A script of an earlier
+    // group can be stale again.
     bool updateStale = false;
 };
 
@@ -65,26 +72,32 @@ struct DecompileOutcome
 
 struct DecompileReport
 {
-    // The scripts of the run in number order, then each group of stale
-    // scripts that updateStale decompiled.
+    // The scripts of the run in number order, then the new scripts of each
+    // group of stale scripts that updateStale decompiled. A script that a
+    // later group decompiles again has one outcome: the last.
     std::vector<DecompileOutcome> scripts;
     // The globals that the run named: (standard name, new name).
     std::vector<std::pair<std::string, std::string>> globalRenames;
-    // The scripts that the run did not decompile, and that use a renamed
-    // global by its old name. Empty with updateStale.
+    // The scripts that use a global of the run by its old name: without
+    // updateStale, the scripts that the run did not decompile; after an
+    // abort, also the written scripts that the abort kept from a second
+    // write with the new names.
     std::set<uint16_t> stale;
     DecompileStats stats;
     bool cancelled = false;
     // For example, the files that keep an old name after a reset of the
     // names, or a Decompiler.ini that could not be read.
     std::vector<std::string> warnings;
+    // The write of main's .sco with the new global names (S4 review: before,
+    // a failure was a message only).
+    sci::Status mainObjectFile;
     // The write of the names into game.ini.
     sci::Status gameIni;
 
     size_t WrittenCount() const;
     size_t FailedCount() const;
-    // Every script was written, the run was not cancelled, and game.ini is
-    // Ok.
+    // Every script was written, the run was not cancelled, and main's .sco
+    // and game.ini are Ok.
     bool Succeeded() const;
 };
 
@@ -102,9 +115,10 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
 sci::Status PrepareDecompileFolder(const GameFolderHelper &helper, const std::string &decompilerFolder);
 
 // Plan section 4.4 (--game-ini): an entry in game.ini [Script] for each of
-// the names that game.ini does not have (the default name nNNN needs none).
-// Update writes only into a game.ini that exists; nothing else creates it
-// (plan section 3.4).
+// the names that game.ini does not have, or has with another value (the
+// default name nNNN needs none). Update writes only into a game.ini that
+// exists; nothing else creates it (plan section 3.4), and Create creates it
+// only when a name needs an entry.
 sci::Status WriteScriptNamesToGameIni(const GameFolderHelper &helper, const std::map<uint16_t, std::string> &names, GameIniNames mode);
 
 struct ObjectFileOutcome
@@ -123,7 +137,11 @@ struct ObjectFileOutcome
 // Plan section 4.6 (script sco): for each script, the .sco file from its
 // source file (the path of the ScriptId) and the game's compiled script
 // (the number of the ScriptId), with the code of the decompiler
-// (SCOFromScriptAndCompiledScript). The .sco goes next to the source file,
-// with its name. It does not compile, and it changes no resource. Source from
-// another tool gets the .sco files that a compile needs for each (use ...).
+// (SCOFromScriptAndCompiledScript). As the compiler does, the source gets
+// its includes that are not headers (the locals of a .shp file), and each
+// class gets its name in the source (S4 review; a warning when the source
+// and the compiled script have different numbers of classes). The .sco goes
+// to src\<title of the ScriptId>.sco. It does not compile, and it changes no
+// resource. Source from another tool gets the .sco files that a compile
+// needs for each (use ...).
 sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &session, const std::vector<ScriptId> &scripts);

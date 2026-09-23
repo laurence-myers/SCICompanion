@@ -90,6 +90,13 @@ public:
 	// could not be written (the first error of the script). A script can be
 	// in GetWrittenScripts too: a file of it was written.
 	const std::map<uint16_t, sci::Error> &GetFailedScripts() const { return _failed; }
+	// The write of main's .sco with the new global names at the end of the
+	// run: Ok, also when it was not needed (S4 review: before, a failure was
+	// a message only).
+	const sci::Status &GetMainObjectFileStatus() const { return _mainObjectFile; }
+	// The scripts that needed a second write with the new global names, and
+	// that an abort stopped before it: their files still use the old names.
+	const std::set<uint16_t> &GetSkippedRewrites() const { return _skippedRewrites; }
 
 private:
 	class Item;
@@ -106,6 +113,8 @@ private:
 	std::set<uint16_t> _written;
 	std::set<uint16_t> _rewritten;
 	std::map<uint16_t, sci::Error> _failed;
+	sci::Status _mainObjectFile;
+	std::set<uint16_t> _skippedRewrites;
 };
 
 // The naming skeleton of a decompiled script: what the variable namer reads

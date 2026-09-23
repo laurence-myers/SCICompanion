@@ -72,6 +72,62 @@ namespace
 
         std::map<uint16_t, std::string> sources;
     };
+
+    // The includes of a script, as the compiler reads them
+    // (PrecompiledHeaders::Update): an include that is not a header (.sh and
+    // .shm are headers; a .shp polygon file has locals) is merged into the
+    // script, and the includes of a header are read too. The .sco then has
+    // the locals of the compiler's .sco (S4 review: before, rm110 of the
+    // SCI1.1 template had none of the 11 of 110.shp).
+    sci::Status MergeIncludedScripts(sci::Script &script, CResourceMap &resourceMap, const SCIVersion &version, CompileLog &log)
+    {
+        std::set<std::string> seen;
+        std::set<std::string> toRead(script.GetIncludes().begin(), script.GetIncludes().end());
+        while (!toRead.empty())
+        {
+            std::set<std::string> next;
+            for (const std::string &name : toRead)
+            {
+                if (!seen.insert(name).second)
+                {
+                    continue;
+                }
+                ScriptId includeId(resourceMap.GetIncludePath(name));
+                SCI_TRY_ASSIGN(ScriptText text, LoadScriptText(includeId.GetFullPath()));
+                CScriptStreamLimiter limiter(text);
+                CCrystalScriptStream stream(&limiter);
+                sci::Script included(includeId);
+                if (!SyntaxParser_Parse(included, stream, PreProcessorDefinesFromSCIVersion(version), &log))
+                {
+                    sci::ErrorLocation where;
+                    where.file = includeId.GetFullPath();
+                    return sci::Fail(sci::ErrorCode::Compile, "the include " + name + " has syntax errors", where);
+                }
+                if (included.IsHeader())
+                {
+                    next.insert(included.GetIncludes().begin(), included.GetIncludes().end());
+                }
+                else
+                {
+                    MergeScripts(script, included);
+                }
+            }
+            toRead.clear();
+            for (const std::string &name : next)
+            {
+                if (seen.find(name) == seen.end())
+                {
+                    toRead.insert(name);
+                }
+            }
+        }
+        return sci::Ok();
+    }
+
+    // A guard for the stale loop: each group names a global that no group
+    // named before, so the loop ends; this stops only a loop that a bug made
+    // endless.
+    const int MaxStaleGroups = 100;
 }
 
 size_t DecompileReport::WrittenCount() const
@@ -86,7 +142,7 @@ size_t DecompileReport::FailedCount() const
 
 bool DecompileReport::Succeeded() const
 {
-    return !cancelled && (FailedCount() == 0) && gameIni.has_value();
+    return !cancelled && (FailedCount() == 0) && mainObjectFile.has_value() && gameIni.has_value();
 }
 
 sci::Status PrepareDecompileFolder(const GameFolderHelper &helper, const std::string &decompilerFolder)
@@ -187,18 +243,16 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         // Plan section 3.4: every script needs its name first, because the
         // decompiler writes a (use Name) line for each script that it uses.
         // Missing and All change the session's names (the command line); the
-        // GUI passes None, and names with game.ini.
-        if (options.names == NameAssignment::Missing)
+        // GUI passes None, and names with game.ini. All resets only the
+        // names of the chosen scripts (S4 review).
+        if ((options.names == NameAssignment::Missing) || (options.names == NameAssignment::All))
         {
             SCI_TRY(AddDerivedScriptNames(session));
         }
-        else if (options.names == NameAssignment::All)
+        if (options.names == NameAssignment::All)
         {
-            SCI_TRY_ASSIGN(std::vector<std::string> oldFiles, ResetScriptNames(session));
-            for (const std::string &file : oldFiles)
-            {
-                report.warnings.push_back(fmt::format("{0} keeps its old name, which the reset names do not use", file));
-            }
+            SCI_TRY_ASSIGN(std::vector<std::string> warnings, ResetScriptNames(session, scripts));
+            report.warnings.insert(report.warnings.end(), warnings.begin(), warnings.end());
         }
 
         GlobalCompiledScriptLookups lookups;
@@ -207,7 +261,21 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         // its names.
         uint16_t unused;
         lookups.GetSelectorTable().ReverseLookup("", unused);
-        std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(resourceMap, lookups.GetSelectorTable());
+        // The game's src\Decompiler.ini, else the one of the data folder: a run
+        // that writes no src folder (--stdout) then gives the source that a
+        // file run gives (S4 review: before, it used the default settings,
+        // with other global and parameter names).
+        std::string iniPath = helper.GetSrcFolder() + "\\Decompiler.ini";
+        std::error_code ec;
+        if (!fs::exists(iniPath, ec))
+        {
+            std::string dataIniPath = (fs::path(resourceMap.GetDecompilerFolder()) / "Decompiler.ini").string();
+            if (fs::exists(dataIniPath, ec))
+            {
+                iniPath = dataIniPath;
+            }
+        }
+        std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(resourceMap, lookups.GetSelectorTable(), iniPath);
         if (!config->error.empty())
         {
             std::string warning = "Decompiler.ini: " + config->error;
@@ -217,15 +285,24 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
 
         CountingResults counting(results, report.stats);
         LastSources sources;
-        std::set<uint16_t> attempted;
+        // The outcome of each script in report.scripts: a script that a later
+        // group decompiles again gets the outcome of that group.
+        std::map<uint16_t, size_t> outcomeIndex;
+        std::set<std::pair<std::string, std::string>> knownRenames;
         std::set<uint16_t> toDo = scripts;
-        while (!toDo.empty())
+        for (int group = 1; !toDo.empty(); group++)
         {
             DecompileBatch batch(config.get(), lookups, resourceMap, counting, options.engine, output ? &sources : nullptr);
-            batch.Run(toDo);
+            // Each script has its own exception boundary in the batch; this one
+            // keeps the report of the scripts that were written when the batch
+            // itself throws (S4 review).
+            sci::Status ran = sci::Guard("", [&]() -> sci::Status
+            {
+                batch.Run(toDo);
+                return sci::Ok();
+            });
             for (uint16_t number : toDo)
             {
-                attempted.insert(number);
                 DecompileOutcome outcome;
                 outcome.number = number;
                 outcome.name = helper.GetScriptTitle(number);
@@ -236,35 +313,79 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
                 }
                 else if (batch.GetWrittenScripts().find(number) == batch.GetWrittenScripts().end())
                 {
-                    outcome.status = sci::Fail(sci::ErrorCode::Cancelled, "the run stopped before this script");
+                    outcome.status = ran ? sci::Status(sci::Fail(sci::ErrorCode::Cancelled, "the run stopped before this script")) : ran;
                 }
-                report.scripts.push_back(std::move(outcome));
+                auto index = outcomeIndex.find(number);
+                if (index == outcomeIndex.end())
+                {
+                    outcomeIndex[number] = report.scripts.size();
+                    report.scripts.push_back(std::move(outcome));
+                }
+                else
+                {
+                    report.scripts[index->second] = std::move(outcome);
+                }
             }
-            report.globalRenames.insert(report.globalRenames.end(), batch.GetGlobalRenames().begin(), batch.GetGlobalRenames().end());
+            if (report.mainObjectFile && !batch.GetMainObjectFileStatus())
+            {
+                report.mainObjectFile = batch.GetMainObjectFileStatus();
+            }
+            // The renames that this group found first.
+            std::vector<std::pair<std::string, std::string>> groupRenames;
+            for (const auto &rename : batch.GetGlobalRenames())
+            {
+                if (knownRenames.insert(rename).second)
+                {
+                    groupRenames.push_back(rename);
+                }
+            }
+            report.globalRenames.insert(report.globalRenames.end(), groupRenames.begin(), groupRenames.end());
+            if (!ran)
+            {
+                break;
+            }
             if (counting.IsAborted())
             {
                 report.cancelled = true;
+                // Written, but with the old names of globals that the run named.
+                report.stale.insert(batch.GetSkippedRewrites().begin(), batch.GetSkippedRewrites().end());
                 break;
             }
-            if (output || report.globalRenames.empty())
+            if (output || groupRenames.empty())
             {
                 // Nothing was written, or no global has a new name: no script
                 // is stale.
                 break;
             }
-            // Plan section 4.4: the scripts that the run did not decompile, and
-            // that still use a renamed global by its old name.
+            // Plan section 4.4: the scripts that still use a global of this
+            // group by its old name. That is every other script, also a script
+            // of an earlier group (S4 review: a later group can name a global
+            // that an earlier script uses).
             std::set<uint16_t> candidates;
             for (CompiledScript *compiled : lookups.GetGlobalClassTable().GetAllScripts())
             {
-                if (attempted.find(compiled->GetScriptNumber()) == attempted.end())
+                if (toDo.find(compiled->GetScriptNumber()) == toDo.end())
                 {
                     candidates.insert(compiled->GetScriptNumber());
                 }
             }
-            std::set<uint16_t> stale = FindScriptsReferencingGlobals(helper, candidates, report.globalRenames);
-            if (!options.updateStale)
+            std::set<uint16_t> stale;
+            sci::Status checked = sci::Guard("finding the stale scripts", [&]() -> sci::Status
             {
+                stale = FindScriptsReferencingGlobals(helper, candidates, groupRenames);
+                return sci::Ok();
+            });
+            if (!checked)
+            {
+                report.warnings.push_back(checked.error().ToString());
+                break;
+            }
+            if (!options.updateStale || (group >= MaxStaleGroups))
+            {
+                if (options.updateStale && !stale.empty())
+                {
+                    report.warnings.push_back(fmt::format("the run stopped after {0} groups of stale scripts", group));
+                }
                 report.stale = std::move(stale);
                 break;
             }
@@ -284,15 +405,26 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         }
         else
         {
-            std::map<uint16_t, std::string> written;
+            std::map<uint16_t, std::string> names;
+            // The Decompile dialog names every script before its first run,
+            // when game.ini has no [Script] entry; entries for only the
+            // written scripts would stop that (S4 review). So the run gives
+            // every name then.
+            if (!helper.DoesSectionExistWithEntries("Script") && helper.ScriptNames)
+            {
+                for (const auto &entry : helper.ScriptNames->Entries())
+                {
+                    names[entry.first] = entry.second.name;
+                }
+            }
             for (const DecompileOutcome &outcome : report.scripts)
             {
                 if (outcome.status)
                 {
-                    written[outcome.number] = outcome.name;
+                    names[outcome.number] = outcome.name;
                 }
             }
-            report.gameIni = WriteScriptNamesToGameIni(helper, written, options.gameIni);
+            report.gameIni = WriteScriptNamesToGameIni(helper, names, options.gameIni);
         }
         return report;
     });
@@ -334,6 +466,7 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
                 parsed.SetPolyFolder(helper.GetPolyFolder());
                 CompileLog log;
                 bool syntaxOk = SyntaxParser_Parse(parsed, stream, PreProcessorDefinesFromSCIVersion(helper.Version), &log);
+                sci::Status merged = syntaxOk ? MergeIncludedScripts(parsed, session.ResourceMap(), helper.Version, log) : sci::Ok();
                 outcome.diagnostics = log.Results();
                 if (!syntaxOk)
                 {
@@ -341,6 +474,7 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
                     where.file = script.GetFullPath();
                     return sci::Fail(sci::ErrorCode::Compile, "the source has syntax errors", where);
                 }
+                SCI_TRY(merged);
                 if (parsed.GetScriptNumberDefine().empty() && (parsed.GetScriptNumber() != outcome.number))
                 {
                     outcome.diagnostics.push_back(CompileResult(fmt::format("{0} declares script {1}; the .sco is for script {2}",
@@ -350,6 +484,32 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
                 std::unique_ptr<CSCOFile> objectFile = SCOFromScriptAndCompiledScript(parsed, compiled);
                 // The pair must agree: the .sco describes the compiled script.
                 objectFile->SetScriptNumber(outcome.number);
+                // The class names of the source, as the compiler writes them:
+                // the name string in the compiled script can be another name
+                // (S4 review: the SCI1.1 template's (class Block ... (properties
+                // name {Blk}))). The compiler writes the classes in source
+                // order, so the positions agree.
+                std::vector<std::string> sourceClasses;
+                for (const auto &classDefinition : parsed.GetClasses())
+                {
+                    if (!classDefinition->IsInstance())
+                    {
+                        sourceClasses.push_back(classDefinition->GetName());
+                    }
+                }
+                std::vector<CSCOObjectClass> &classes = objectFile->GetObjects();
+                if (sourceClasses.size() == classes.size())
+                {
+                    for (size_t i = 0; i < classes.size(); i++)
+                    {
+                        classes[i].SetName(sourceClasses[i]);
+                    }
+                }
+                else
+                {
+                    outcome.diagnostics.push_back(CompileResult(fmt::format("{0} has {1} classes, and compiled script {2} has {3}; the .sco uses the names of the compiled script",
+                        script.GetFileNameOrig(), sourceClasses.size(), outcome.number, classes.size()), CompileResult::CRT_Warning));
+                }
                 return SaveSCOFile(helper, *objectFile, script);
             });
             outcomes.push_back(std::move(outcome));

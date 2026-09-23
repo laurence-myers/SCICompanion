@@ -715,7 +715,8 @@ bool ScriptNameMap::NumberOf(const std::string &name, uint16_t &number) const
     return false;
 }
 
-std::map<uint16_t, std::string> SuggestScriptNames(std::vector<ScriptObjectsForNaming> scripts, const std::vector<std::string> &reservedNames)
+std::map<uint16_t, std::string> SuggestScriptNames(std::vector<ScriptObjectsForNaming> scripts, const std::vector<std::string> &reservedNames,
+    const std::map<std::string, uint16_t> &ownedNames)
 {
     std::sort(scripts.begin(), scripts.end(), [](const ScriptObjectsForNaming &a, const ScriptObjectsForNaming &b) { return a.number < b.number; });
     std::set<std::string> used;
@@ -723,6 +724,17 @@ std::map<uint16_t, std::string> SuggestScriptNames(std::vector<ScriptObjectsForN
     {
         used.insert(NameKey(name));
     }
+    std::map<std::string, uint16_t> owners;
+    for (const auto &owned : ownedNames)
+    {
+        owners[NameKey(owned.first)] = owned.second;
+    }
+    auto taken = [&](const std::string &name, uint16_t number)
+    {
+        std::string key = NameKey(name);
+        auto owner = owners.find(key);
+        return (used.find(key) != used.end()) || ((owner != owners.end()) && (owner->second != number));
+    };
     std::map<uint16_t, std::string> names;
     for (const ScriptObjectsForNaming &script : scripts)
     {
@@ -760,11 +772,11 @@ std::map<uint16_t, std::string> SuggestScriptNames(std::vector<ScriptObjectsForN
         name = CleanName(name);
         // Ignore case: Windows file names do. A suffixed name can be taken
         // too; then a second suffix makes it free.
-        if (used.find(NameKey(name)) != used.end())
+        if (taken(name, script.number))
         {
             std::string suffixed = fmt::format("{0}_{1}", name, script.number);
             name = suffixed;
-            for (int extra = 2; used.find(NameKey(name)) != used.end(); extra++)
+            for (int extra = 2; taken(name, script.number); extra++)
             {
                 name = fmt::format("{0}_{1}", suffixed, extra);
             }

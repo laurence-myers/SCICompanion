@@ -523,6 +523,65 @@ namespace
     }
 }
 
+namespace
+{
+    // The derived names of a reset (S4 review). The scripts in chosen get
+    // their derived names; every other script keeps its name, and no chosen
+    // script takes it. The title of a file in src belongs to the script that
+    // has that name: a chosen script can keep the title of its own file, but
+    // no script takes the file of another script (before, a reset of script
+    // 979 of the SCI0 template gave it "MenuBar", and the run wrote over
+    // menubar.sc, the source of script 997). A file that no script has keeps
+    // its title from every script.
+    std::map<uint16_t, std::string> ResetNamesOf(const ScriptNameMap *names, std::vector<ScriptObjectsForNaming> toName, const std::set<uint16_t> &chosen)
+    {
+        std::vector<std::string> reserved;
+        std::map<std::string, uint16_t> owned;
+        if (names)
+        {
+            for (const auto &entry : names->Entries())
+            {
+                if (chosen.find(entry.first) == chosen.end())
+                {
+                    reserved.push_back(entry.second.name);
+                }
+            }
+            for (const std::string &title : names->FileTitles())
+            {
+                uint16_t owner;
+                if (names->NumberOf(title, owner) && (chosen.find(owner) != chosen.end()))
+                {
+                    owned[title] = owner;
+                }
+                else
+                {
+                    reserved.push_back(title);
+                }
+            }
+        }
+        return SuggestScriptNames(std::move(toName), reserved, owned);
+    }
+
+    // The compiled scripts that can be read, for the naming rule. The error
+    // of each script that cannot be read goes to errors.
+    std::map<uint16_t, ScriptObjectsForNaming> ReadForNaming(GameSession &session, std::map<uint16_t, std::string> *errors)
+    {
+        std::map<uint16_t, ScriptObjectsForNaming> scripts;
+        for (auto &compiled : ReadCompiledScripts(session, true))
+        {
+            if (compiled.second.loaded)
+            {
+                scripts[compiled.first] = std::move(compiled.second.objects);
+            }
+            else if (errors)
+            {
+                (*errors)[compiled.first] = compiled.second.error;
+            }
+        }
+        return scripts;
+    }
+}
+
 sci::Result<std::map<uint16_t, std::string>> DeriveScriptNames(GameSession &session, bool all, std::map<uint16_t, std::string> *errors)
 {
     // No exception leaves a service (plan section 6.2; S3 review).
@@ -530,23 +589,22 @@ sci::Result<std::map<uint16_t, std::string>> DeriveScriptNames(GameSession &sess
     {
         const ScriptNameMap *names = session.Helper().ScriptNames.get();
         std::vector<ScriptObjectsForNaming> toName;
-        for (auto &compiled : ReadCompiledScripts(session, true))
+        std::set<uint16_t> chosen;
+        for (auto &compiled : ReadForNaming(session, errors))
         {
-            if (!compiled.second.loaded)
-            {
-                if (errors)
-                {
-                    (*errors)[compiled.first] = compiled.second.error;
-                }
-                continue;
-            }
             if (all || !HasFileName(names, compiled.first))
             {
-                toName.push_back(std::move(compiled.second.objects));
+                chosen.insert(compiled.first);
+                toName.push_back(std::move(compiled.second));
             }
         }
+        if (all)
+        {
+            // The names of a reset of every script.
+            return ResetNamesOf(names, std::move(toName), chosen);
+        }
         std::vector<std::string> used;
-        if (!all && names)
+        if (names)
         {
             for (const auto &entry : names->Entries())
             {
@@ -580,7 +638,7 @@ sci::Status AddDerivedScriptNames(GameSession &session)
     });
 }
 
-sci::Result<std::vector<std::string>> ResetScriptNames(GameSession &session)
+sci::Result<std::vector<std::string>> ResetScriptNames(GameSession &session, const std::set<uint16_t> &numbers)
 {
     return sci::Guard("resetting the script names", [&]() -> sci::Result<std::vector<std::string>>
     {
@@ -590,8 +648,19 @@ sci::Result<std::vector<std::string>> ResetScriptNames(GameSession &session)
         {
             return sci::Fail(sci::ErrorCode::Internal, "the session has no script names");
         }
-        SCI_TRY_ASSIGN(auto derived, DeriveScriptNames(session, true));
-        std::vector<std::string> oldFiles;
+        // S4 review: only the chosen scripts. Before, every script got its
+        // derived name in memory, but game.ini got only the names of the
+        // scripts that the run wrote, so a later run used the old names.
+        std::vector<ScriptObjectsForNaming> toName;
+        for (auto &compiled : ReadForNaming(session, nullptr))
+        {
+            if (numbers.find(compiled.first) != numbers.end())
+            {
+                toName.push_back(std::move(compiled.second));
+            }
+        }
+        std::map<uint16_t, std::string> derived = ResetNamesOf(current.get(), std::move(toName), numbers);
+        std::vector<std::string> warnings;
         for (const auto &name : derived)
         {
             std::string old = current->NameOf(name.first);
@@ -602,7 +671,7 @@ sci::Result<std::vector<std::string>> ResetScriptNames(GameSession &session)
                     std::error_code ec;
                     if (fs::exists(file, ec))
                     {
-                        oldFiles.push_back(file);
+                        warnings.push_back(fmt::format("{0} keeps its old name: script {1} is now {2}", file, name.first, name.second));
                     }
                 }
             }
@@ -610,7 +679,7 @@ sci::Result<std::vector<std::string>> ResetScriptNames(GameSession &session)
         ScriptNameMap names = *current;
         names.ReplaceNames(derived);
         session.ResourceMap().SetScriptNames(std::make_shared<const ScriptNameMap>(std::move(names)));
-        return oldFiles;
+        return warnings;
     });
 }
 

@@ -62,7 +62,7 @@ public:
 	std::string GetGameIniFileName() const;
 	std::string GetIniString(const std::string &sectionName, const std::string &keyName, PCSTR pszDefault = "") const;
 	bool GetIniBool(const std::string &sectionName, const std::string &keyName, bool value = false) const;
-	bool DoesSectionExistWithEntries(const std::string &sectionName);
+	bool DoesSectionExistWithEntries(const std::string &sectionName) const;
 	static std::string GetIncludeFolder();
 	static std::string GetHelpFolder();
 	void SetIniString(const std::string &sectionName, const std::string &keyName, const std::string &value) const;

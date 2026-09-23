@@ -184,7 +184,7 @@ bool GameFolderHelper::GetIniBool(const std::string &sectionName, const std::str
 	return GetIniString(sectionName, keyName, value ? TrueValue.c_str() : FalseValue.c_str()) == TrueValue;
 }
 
-bool GameFolderHelper::DoesSectionExistWithEntries(const std::string &sectionName)
+bool GameFolderHelper::DoesSectionExistWithEntries(const std::string &sectionName) const
 {
 	char sz[200];
 	return (GetPrivateProfileSection(sectionName.c_str(), sz, (DWORD)ARRAYSIZE(sz), GetGameIniFileName().c_str()) > 0);

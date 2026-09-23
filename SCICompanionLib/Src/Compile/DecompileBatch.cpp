@@ -589,6 +589,8 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 	_written.clear();
 	_rewritten.clear();
 	_failed.clear();
+	_mainObjectFile = sci::Ok();
+	_skippedRewrites.clear();
 
 	MemoryUsage memoryAtStart = _GetMemoryUsage();
 
@@ -687,7 +689,8 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 
 	// Pass 2: the scripts a later round changed something in are decompiled
 	// and written again, one at a time. An abort stops the pass; what is on
-	// disk is what pass 1 wrote, or pass 2 where it got that far.
+	// disk is what pass 1 wrote, or pass 2 where it got that far. The scripts
+	// that it did not write again are in _skippedRewrites.
 	for (auto &item : items)
 	{
 		if (!item)
@@ -696,7 +699,14 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 		}
 		if (_results.IsAborted())
 		{
-			break;
+			// Its files keep the old global names (S4 review: the report
+			// did not show these scripts).
+			if (item->NeedsRewrite(mainSCO.get()))
+			{
+				_skippedRewrites.insert(item->GetNumber());
+			}
+			item.reset();
+			continue;
 		}
 		if (!item->NeedsRewrite(mainSCO.get()))
 		{
@@ -729,6 +739,11 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 				_failed[number] = item->WriteStatus().error();
 			}
 		}
+		else
+		{
+			// The abort came during its second decompile: nothing was written.
+			_skippedRewrites.insert(number);
+		}
 		item.reset();
 	}
 	items.clear();
@@ -750,6 +765,7 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 			if (!wroteMain)
 			{
 				_results.AddResult(DecompilerResultType::Error, wroteMain.error().ToString());
+				_mainObjectFile = wroteMain;
 			}
 		}
 	}
