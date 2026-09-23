@@ -24,18 +24,20 @@ struct DecompileOptions
 // decompiled before a name was found with the old name, so the whole game had
 // to be decompiled again, and again, until a pass named nothing new.
 //
-// This finds the names for the whole batch before it writes anything, and
-// keeps one script's syntax tree in memory at a time:
+// This keeps one script's syntax tree in memory at a time, and decompiles a
+// script a second time only when it has to:
 //
-//  1. Decompile each script, keep only its naming skeleton (see
-//     BuildNamingSkeleton), and let the tree go.
-//  2. Run the (cheap) naming pass over all the skeletons, round after round,
-//     until a round names no more globals.
-//  3. Decompile each script again, name it against the now-complete global
-//     names, finish it, and write it.
+//  1. Decompile each script, name it against the global names known so far,
+//     and write it. If it still refers to a global by its standard name
+//     (globalN), keep its naming skeleton (see BuildNamingSkeleton); either
+//     way, let the tree go.
+//  2. Run the (cheap) naming pass over the skeletons, round after round, until
+//     a round names no more globals.
+//  3. Decompile and write again only the scripts a later round changed
+//     something in: a global they referred to as globalN gained a name, or a
+//     global gained a name they already use for something else.
 //
-// The scripts are decompiled twice, so the batch takes about twice as long as
-// one pass, but its memory is that of one script plus the skeletons.
+// With the game's globals already named, no script is decompiled twice.
 class DecompileBatch
 {
 public:
@@ -47,15 +49,18 @@ public:
 	// Decompiles the scripts, names their variables together, and writes each
 	// one's .sc and .sco, plus main's .sco when a global gained a name (unless
 	// script 0 is in the batch, whose own .sco then carries the names).
-	// An abort before the writing pass writes nothing; an abort during it
-	// leaves the scripts already written. A script that fails to decompile is
-	// reported and dropped, and the rest go on.
+	// An abort stops the batch where it is; the scripts already written stay.
+	// A script that fails to decompile is reported and dropped, and the rest
+	// go on.
 	void Run(const std::set<uint16_t> &scriptNumbers);
 
 	// The globals this run named: (standard name, new name).
 	const std::vector<std::pair<std::string, std::string>> &GetGlobalRenames() const { return _globalRenames; }
 	// The scripts whose files this run wrote.
 	const std::set<uint16_t> &GetWrittenScripts() const { return _written; }
+	// Of those, the scripts decompiled and written a second time because a
+	// later naming round changed something they can see.
+	const std::set<uint16_t> &GetRewrittenScripts() const { return _rewritten; }
 
 private:
 	class Item;
@@ -68,6 +73,7 @@ private:
 
 	std::vector<std::pair<std::string, std::string>> _globalRenames;
 	std::set<uint16_t> _written;
+	std::set<uint16_t> _rewritten;
 };
 
 // The naming skeleton of a decompiled script: what the variable namer reads

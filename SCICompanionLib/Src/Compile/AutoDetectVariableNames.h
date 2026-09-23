@@ -55,6 +55,10 @@ private:
 	std::unique_ptr<RenameContext> _context;
 };
 
+// True for a global still in its standard form, "globalN": one no script has
+// named yet.
+bool _IsUndeterminedGlobalScope(const std::string &suggestion);
+
 // For the decompiler. One-shot: names the script's variables in place, and
 // returns the globals it named in mainDirty (see VariableNamer).
 void AutoDetectVariableNames(sci::Script &script, const IDecompilerConfig *config, CSCOFile *mainSCO, CSCOFile *scriptSCO, std::vector<std::pair<std::string, std::string>> &mainDirty);

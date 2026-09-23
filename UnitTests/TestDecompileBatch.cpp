@@ -126,6 +126,11 @@ namespace UnitTests
 
             Assert::AreEqual(2, (int)batch.GetWrittenScripts().size(), L"both scripts should be written");
             Assert::AreEqual(0, results.fallbacks, L"the fixtures should not fall back");
+            // Script 950 was written before global5 had a name, so it goes
+            // again; script 951 named global5 itself and refers to no other
+            // unnamed global, so it does not.
+            Assert::AreEqual(1, (int)batch.GetRewrittenScripts().size(), L"only script 950 should be decompiled a second time");
+            Assert::IsTrue(batch.GetRewrittenScripts().count(950) == 1, L"script 950 should be decompiled a second time");
 
             bool named3 = false;
             bool named5 = false;
@@ -323,7 +328,7 @@ namespace UnitTests
             {
                 DecompileBatch batch(config.get(), lookups, helper, results);
                 batch.Run(numbers);
-                results.lines.push_back(fmt::format("Wrote {0} of {1} scripts; {2} globals named", batch.GetWrittenScripts().size(), numbers.size(), batch.GetGlobalRenames().size()));
+                results.lines.push_back(fmt::format("Wrote {0} of {1} scripts, {2} of them twice; {3} globals named", batch.GetWrittenScripts().size(), numbers.size(), batch.GetRewrittenScripts().size(), batch.GetGlobalRenames().size()));
             }
             results.lines.push_back(fmt::format("Elapsed: {0} s", (GetTickCount64() - start) / 1000));
 
