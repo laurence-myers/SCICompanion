@@ -8,9 +8,11 @@
                                throw sci::DataError or return a sci::Result instead
       afxmessagebox-in-engine  AfxMessageBox in Src\Core, Src\Compile or Src\Resources;
                                return a sci::Result and let the GUI show it
-      appstate-in-engine       the GUI object appState in Src\Core, Src\Compile or
-                               Src\Resources; take the session, the resource map or
-                               the helper as a parameter (plan section 3.2)
+      appstate-in-engine       the GUI object appState in Src\Core, Src\Compile,
+                               Src\Resources or Src\Util; take the session, the
+                               resource map or the helper as a parameter (plan
+                               section 3.2). Src\Util also holds GUI code, so
+                               its GUI files are in the allowlist.
 
     The sites that existed before the rules are in CheckFailureHandling.allow.txt,
     one line per file: "<rule> <path> <count>". A file must have exactly its
@@ -36,7 +38,7 @@ $rules = @(
     @{ Name = "empty-catch-all"; Pattern = 'catch\s*\(\s*\.\.\.\s*\)\s*\{(?:\s|;|//[^\n]*|/\*[\s\S]*?\*/)*\}'; Folders = $null },
     @{ Name = "throw-std-exception"; Pattern = 'throw\s+std::exception\s*\('; Folders = $null },
     @{ Name = "afxmessagebox-in-engine"; Pattern = '\bAfxMessageBox\s*\('; Folders = @("Core", "Compile", "Resources") },
-    @{ Name = "appstate-in-engine"; Pattern = '\bappState\b'; Folders = @("Core", "Compile", "Resources") }
+    @{ Name = "appstate-in-engine"; Pattern = '\bappState\b'; Folders = @("Core", "Compile", "Resources", "Util") }
 )
 
 $found = @{}
@@ -92,7 +94,7 @@ foreach ($key in $allowed.Keys) {
 $lower | ForEach-Object { $_ }
 if ($failures.Count -gt 0) {
     $failures | ForEach-Object { $_ }
-    "Failure-handling check FAILED: $($failures.Count) new site(s). See docs/scic-cli/plan.md, section 6."
+    "Failure-handling check FAILED: $($failures.Count) new site(s). See the rules at the top of this script, and docs/scic-cli/plan.md (section 6; section 3.2 for appState)."
     exit 1
 }
 if ($lower.Count -gt 0) {

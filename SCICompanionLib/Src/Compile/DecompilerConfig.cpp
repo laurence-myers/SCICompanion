@@ -382,7 +382,7 @@ private:
 	const SelectorTable &_selectorTable;
 };
 
-std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(CResourceMap &resourceMap, const SelectorTable &selectorTable)
+std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(const CResourceMap &resourceMap, const SelectorTable &selectorTable)
 {
 	// The include folder follows the data folder of the resource map.
 	return make_unique<DecompilerConfig>(resourceMap.Helper(), resourceMap.GetIncludeFolder(), selectorTable);

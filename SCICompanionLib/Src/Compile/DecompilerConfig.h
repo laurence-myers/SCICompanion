@@ -44,6 +44,8 @@ public:
 };
 
 // Reads Decompiler.ini from the game's src folder, and sci.sh and keys.sh from
-// the include folder of the resource map. A failure is in the result's error.
-std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(CResourceMap &resourceMap, const SelectorTable &selectorTable);
+// the include folder of the resource map (its data folder). A Decompiler.ini
+// that cannot be read or parsed is in the result's error. A missing sci.sh or
+// keys.sh is not reported: the enum names are then lost.
+std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(const CResourceMap &resourceMap, const SelectorTable &selectorTable);
 

@@ -116,7 +116,7 @@ public:
 	TalkerToViewMap &GetTalkerToViewMap();
 
 	std::string GetGameFolder() const;
-	std::string GetIncludeFolder();
+	std::string GetIncludeFolder() const;
 	std::string GetIncludePath(const std::string &includeFileName);
 	std::string GetTemplateFolder();
 	std::string GetSamplesFolder();

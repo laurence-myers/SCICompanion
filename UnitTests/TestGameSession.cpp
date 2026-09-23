@@ -16,10 +16,12 @@
 #include "DecompilerConfig.h"
 #include "DecompileBatch.h"
 #include "DecompilerCore.h"
+#include "DecompileScript.h"
 #include "DecompileHelper.h"
 #include "OutputCodeHelper.h"
 #include <fstream>
 #include <set>
+#include <sstream>
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -613,5 +615,40 @@ namespace UnitTests
                 }
             });
         }
-    };
+
+        // The decompiler reads sci.sh and keys.sh from the data folder of the
+        // session. Before B3b, it read them from the folder of the running
+        // program (in the tests, the test host, which has no include folder).
+        // With the shipped Decompiler.ini, script 12 of the SCI1.1 template
+        // gets palFIND_COLOR from sci.sh; with no sci.sh, it gets 5.
+        TEST_METHOD(DecompilerConfig_ReadsTheHeadersFromTheDataFolder)
+        {
+            NoAppState noAppState;
+            CaptureLogSink sink;
+            ScopedCoreLogSink scoped(sink);
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            std::error_code ec;
+            std::filesystem::copy_file(GetTestModuleDirectory() + "\\Decompiler\\Decompiler.ini", _copyFolder + "\\src\\Decompiler.ini", ec);
+            Assert::IsFalse(static_cast<bool>(ec), L"copying Decompiler.ini failed");
+
+            SessionOptions options;
+            options.dataFolder = GetTestModuleDirectory();
+            GameSession session(options);
+            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            GlobalCompiledScriptLookups lookups;
+            Assert::IsTrue(lookups.Load(session.Helper()), L"the lookups must load");
+            uint16_t dummy;
+            lookups.GetSelectorTable().ReverseLookup("", dummy);
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(session.ResourceMap(), lookups.GetSelectorTable());
+            Assert::IsTrue(config->error.empty(), Wide(config->error).c_str());
+
+            CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+            Assert::IsTrue(compiled.Load(session.Helper(), session.Version(), 12), L"script 12 must load");
+            TestDecompilerResults results;
+            std::unique_ptr<sci::Script> script = DecompileScript(config.get(), lookups, session.ResourceMap(), 12, compiled, results);
+            std::stringstream text;
+            sci::SourceCodeWriter out(text, script.get());
+            script->OutputSourceCode(out);
+            Assert::IsTrue(text.str().find("palFIND_COLOR") != std::string::npos, L"the enum from sci.sh must name the value");
+        }    };
 }

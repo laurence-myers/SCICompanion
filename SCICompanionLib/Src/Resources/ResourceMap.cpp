@@ -932,7 +932,7 @@ std::string CResourceMap::GetGameFolder() const
 //
 // Gets the include folder that has read-only headers
 //
-std::string CResourceMap::GetIncludeFolder()
+std::string CResourceMap::GetIncludeFolder() const
 {
 	if (_dataFolder.empty())
 	{

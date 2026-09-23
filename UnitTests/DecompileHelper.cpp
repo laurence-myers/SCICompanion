@@ -22,6 +22,7 @@
 #include "CompileContext.h"
 #include "ScriptOMAll.h"
 #include "DecompilerCore.h"
+#include "DecompileScript.h"
 #include "DecompilerConfig.h"
 #include "ResourceContainer.h"
 #include "format.h"

@@ -604,7 +604,7 @@ void PostReadProcessing(ResourceEntity &resource, RasterComponent &raster)
 		Loop &loop = raster.Loops[i];
 		if (loop.Cels.size() == 0)
 		{
-			CoreLogFormat(LogLevel::Info, "Empty loop found: view: %d, loop %d.", resource.ResourceNumber, i);
+			CoreLogFormat(LogLevel::Warning, "Empty loop found: view: %d, loop %zu.", resource.ResourceNumber, i);
 			// Make degenerate
 			loop.Cels.push_back(Cel());
 			CreateDegenerate(loop.Cels[0], loop.Cels[0].TransparentColor);
