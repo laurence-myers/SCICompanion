@@ -1955,7 +1955,9 @@ bool SCISyntaxParser::Parse(Script &script, streamIt &stream, std::unordered_set
 		strError += fmt::format(" ({}, {})", errorLine, errorPos.GetColumnNumber());
 		strError += hint;
 
-		ScriptId scriptId(script.GetPath().c_str());
+		// The script's own id keeps the case of its path (review of 0046b54a:
+		// GetPath() has the folder in lower case).
+		ScriptId scriptId = script.GetScriptId();
 		if (pError)
 		{
 			CompileResult result(strError, scriptId, errorLine, errorPos.GetColumnNumber(), CompileResult::CRT_Error);
@@ -1990,7 +1992,9 @@ bool SCISyntaxParser::ParseHeader(Script &script, streamIt &stream, std::unorder
 	{
 		std::string strError = context.GetErrorText();
 		streamIt errorPos = context.GetErrorPosition();
-		ScriptId scriptId(script.GetPath().c_str());
+		// The script's own id keeps the case of its path (review of 0046b54a:
+		// GetPath() has the folder in lower case).
+		ScriptId scriptId = script.GetScriptId();
 		if (pError)
 		{
 			pError->ReportResult(CompileResult(strError, scriptId, errorPos.GetLineNumber() + 1, errorPos.GetColumnNumber(), CompileResult::CRT_Error));

@@ -6,9 +6,10 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: C4 (the commit after `8fc8e984`) is committed and needs
-  its review. C3 (`fd65ff87`) and the fixes of the review of `837f9f9b`
-  (`8fc8e984`) are under review. F1, A1, A2, B1, B2, B3a, B3b,
+- Current step: the fixes of the review of C3 (the commit after
+  `34c1ba40`) need their review. The reviews of C4 (`34c1ba40`: FIX)
+  and of `8fc8e984` (PASS with nits) are done; the fixes of the review
+  of C4 come next. F1, A1, A2, B1, B2, B3a, B3b,
   F2, K1 to K6, S3, S1, S2 (S2a, S2b, S2c), S4 (S4a, S4b), C1 and C2
   are committed and reviewed, with their review fixes: the S1 and S2
   fixes `98d884c7`, the fixes of its review `73be520f`, and the fixes
@@ -30,7 +31,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412. After the fixes of the review of `de2fb8dc` and `8a322b32`: 418. After the fixes of the reviews of S1 and S2: 429. After C1: 440. After the S4 review fixes: 454. After the fixes of the review of `7d26d9d6` and `98d884c7`: 460. After the C1 review fixes: 462. After C2: 470. After the fixes of the review of `d01ea1e0`: 475. After the fixes of the review of `73be520f`: 482. After the C2 review fixes: 492. After the fixes of the review of `4e7117ae`: 498. After the fixes of the review of `a0c27a61`: 501. After C3: 512. After the fixes of the review of `837f9f9b`: 515. After C4: 515 (C4 adds no unit test).
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412. After the fixes of the review of `de2fb8dc` and `8a322b32`: 418. After the fixes of the reviews of S1 and S2: 429. After C1: 440. After the S4 review fixes: 454. After the fixes of the review of `7d26d9d6` and `98d884c7`: 460. After the C1 review fixes: 462. After C2: 470. After the fixes of the review of `d01ea1e0`: 475. After the fixes of the review of `73be520f`: 482. After the C2 review fixes: 492. After the fixes of the review of `4e7117ae`: 498. After the fixes of the review of `a0c27a61`: 501. After C3: 512. After the fixes of the review of `837f9f9b`: 515. After C4: 515 (C4 adds no unit test). After the fixes of the review of `fd65ff87`: 524.
   The integration suite has 23 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -63,11 +64,11 @@ for each step, and a follow-up commit if the review finds a problem.
 | S3 ScriptCatalog, script names without `game.ini` | done | S3a `f85fe77d`; S3b `108cb227`; review fixes (the commit after `fb14399f`) | FIX: S3a 1 should-fix (a `-` in a derived name), S3b 1 should-fix (one name conflict refused every script, with the wrong fix), nits and questions. Fixed: see "S3 review" in "Decisions". |
 | S1 Compile destination | done | `a9561fcc`; review fixes `98d884c7` | FIX: 1 should-fix (a script that failed after its resources were queued was written without its tables), nits. Fixed with the S2 review fixes. |
 | S2 CompileBatch | done | S2a `fb14399f`; S2b `f256c0d8`; S2c `2ca7e418`; review fixes `98d884c7`; fixes of its review `73be520f` | S2a FIX (the same should-fix as S1), S2b FIX (Replace moved patch files of resources that the commit did not write), S2c FIX (the GUI reached it; the scan of src could throw). Fixed: see "S1 and S2 reviews". Review of the fixes: FIX (2 should-fix); fixed, see "Review of 7d26d9d6 and 98d884c7". Review of `73be520f`: FIX (1 should-fix); fixed in `a0c27a61`, see "Review of the compile-batch fixes". Review of `a0c27a61`: FIX (1 should-fix); fixed in `ccadff0c`, see "Review of a0c27a61". Review of `ccadff0c`: PASS with 7 nits (see "Review of ccadff0c"). |
-| S4 DecompileRun | done | S4a `152f4e56`; S4b `d588e499`; review fixes `d01ea1e0`; fixes of its review `4e7117ae` | S4a FIX: 6 should-fix, nits. S4b PASS with nits. Fixed: see "S4 review". Review of the fixes: FIX (2 should-fix); fixed, see "Review of the S4 fixes". Review of `4e7117ae`: FIX (1 should-fix); fixed in `837f9f9b`, see "Review of the S4 fixes, second round". Review of `837f9f9b`: FIX (1 should-fix, older); fixed in `8fc8e984`, see "Review of 837f9f9b"; the review of `8fc8e984` is running. |
+| S4 DecompileRun | done | S4a `152f4e56`; S4b `d588e499`; review fixes `d01ea1e0`; fixes of its review `4e7117ae` | S4a FIX: 6 should-fix, nits. S4b PASS with nits. Fixed: see "S4 review". Review of the fixes: FIX (2 should-fix); fixed, see "Review of the S4 fixes". Review of `4e7117ae`: FIX (1 should-fix); fixed in `837f9f9b`, see "Review of the S4 fixes, second round". Review of `837f9f9b`: FIX (1 should-fix, older); fixed in `8fc8e984`, see "Review of 837f9f9b". Review of `8fc8e984`: PASS with 6 nits and 1 question (see "Review of 8fc8e984"). |
 | C1 CLI project, `script list` | done | `68e6f43e`; review fixes `6b1bfe64` | FIX: 3 should-fix, nits. Fixed: see "C1 review". Review of the fixes: PASS with 9 nits (see "Review of the C1 fixes"). |
 | C2 `script decompile`, `script sco` | done | `37ee979b`; review fixes `3cf3e33f` | FIX: 2 should-fix, 7 nits, 2 questions. Fixed: see "C2 review". Review of the fixes: PASS with 5 nits (see "Review of the C2 fixes"). |
-| C3 `script compile` | done | `fd65ff87` | running |
-| C4 CI and documents | done | the commit after `8fc8e984` | not yet |
+| C3 `script compile` | done | `fd65ff87`; review fixes (the commit after `34c1ba40`) | FIX: 3 should-fix, 8 nits, 1 question. Fixed: see "Review of fd65ff87". |
+| C4 CI and documents | done | `34c1ba40` | FIX: 2 should-fix (the sweep script), 9 nits, 1 question; see "Review of 34c1ba40". The fixes are the next step. |
 | E1 Core library (optional) | not started | | |
 
 ## How to work a step
@@ -1287,10 +1288,112 @@ for each step, and a follow-up commit if the review finds a problem.
 - C3 known gaps: the SCI0 template does not round-trip (decompile
   `--all`, then compile `--all`): the decompiled `Obj.sc` names two
   procedures `EqualsAny` and none `proc999_2` (a decompiler naming
-  problem; a separate task was offered). The SCI1.1 template
+  problem; a separate task was offered), and `SysWindow.sc` declares
+  `local9` twice (review of `fd65ff87`). The SCI1.1 template
   round-trips with 0 errors (a test). The diagnostics print at the end,
   not as they come (a script that failed only in an earlier pass has
   no error). The debug files do not go back after a refused commit.
+  One error in `game.sh` gives its error lines once for each script of
+  `--all` (the header cache keeps only the headers that parsed); an
+  error in an include that is not a header names the including script
+  and the line of the include (both older).
+- Review of fd65ff87 (C3, 2026-09-24): FIX, 3 should-fix, 8 nits, 1
+  question. (S1) An error of an include (a header that does not parse,
+  a file that is not there) came through `CompileContext::ReportResult`,
+  which did not set the error flag: the script was written, and the exit
+  code was 0 ("(4 errors" in the summary). (S2) `--out-dir ""` wrote into
+  the game. (S3) A parser message with a line (`CRT_Message`, for
+  example "The else clause must be the last clause in a cond.", where
+  the parser drops code) printed with `-v` only. Nits: a syntax error
+  printed the folder in lower case (the parser built its `ScriptId` from
+  `GetPath()`); a relative game folder gave relative paths, which the VS
+  Code matcher cannot open; `--to patch --into-volume` wrote the
+  package; the error of a script that failed for another reason printed
+  twice (the log line and the status line); texts ("1 scripts were not
+  compiled", "(0 warnings)" after batch warnings, no batch warnings in a
+  dry run, "a run would write them" with 0 compiled, no list of the
+  `src\` files); test gaps (a dry run that writes a `.sco` failed no
+  test, the report lines, `ScriptOutcome::objectFileChanged` never
+  read); the crash line kept the item of the last script during the
+  writes; older: one `game.sh` error with `--all` gives an error for
+  each script, an include that is not a header names the including
+  script, `FormatMessage` left a line break after "Unable to open", and
+  SysWindow also fails the SCI0 round trip. Question: which break did
+  build A of C3 use for "the dry run's .sco"? Answer:
+  `writeObjectFile = !common.dryRun || common.dryRun`, and
+  `Compile_DryRun_WritesNothing` passed with it (the SCI0 template's
+  `.sco` files do not change), so the C3 message was wrong there.
+  The fixes (the commit after `34c1ba40`): (S1) `ReportResult` sets the
+  error flag for an error, so the script fails with `Compile` (exit 5)
+  and is not written, in `scic` and in the GUI; a missing include says
+  "The include file X is not in the include folder or in src.", and a
+  read error names the include. (S2) An empty `--out-dir` is a usage
+  error (2). (S3) `DiagnosticLevel::Info`: a message with a script and
+  a line prints as `path(line,col): info : text` unless `-q`; a message
+  with no line stays with `-v`. Nits: the parser uses the script's own
+  `ScriptId`; `AbsolutePath` (`GetFullPathNameA`) for the game folder
+  (before `Open`) and `--out-dir` (this also closes the relative-path
+  part of the length nit of the review of `ccadff0c`); `--into-volume`
+  with `--to patch` is a usage error (`ScriptCompileOptions::toGiven`);
+  a failure whose error is in the script's diagnostics prints once;
+  "1 script was not compiled" (also for decompile and sco); the summary
+  counts the batch warnings and the pass warning; a dry run gives the
+  batch warnings ("would be written" for the tables); "Compiled 0 of N
+  scripts, and a run would write none"; `ScriptOutcome::objectFileChanged`
+  is gone; `ICompileEvents::OnFinish` (from `CompileScripts`) lets the
+  CLI name the writes in the crash line, and it names the selection and
+  the start too; `cli::RecordCurrentItems` (a test hook) records the
+  items; `FormatMessage` text loses its line break. Left: the `src\`
+  files are not in the list (plan 4.5 says so); the text and table lines
+  of the report have no test (inspection); the older `game.sh` and
+  include-location gaps (see "C3 known gaps").
+- Review of 8fc8e984 (the fixes of the review of `837f9f9b`,
+  2026-09-24): PASS with 6 nits and 1 question, for a later commit.
+  (F1) A batch that throws after a naming, outside the exception
+  boundary of a script (for example at "Updating global variables in
+  script 0"), does not write main's `.sco`: a written script then uses
+  a name that main's `.sco` does not have, and the summary still prints
+  "Globals named" (7 of 23 fault points of a run of {957, 959, 960});
+  the new comment "the same after a batch that threw" is false for the
+  group that threw (fix: catch around the passes, write main's `.sco`
+  when there are renames and no output, throw again; a test). (F2) No
+  test covers the batch part of `Succeeded()` or of the exit code
+  (add `batch = Fail(Internal)` to `ExitCodes_FromTheReports`, and a
+  batch that throws after its scripts were written). (F3) The owner
+  rule depends on the spelling of the file title (`owned` is
+  case-sensitive: `MENUBAR.sc` gives `MenuBar_979`; key it by
+  `NameKey`). (F4, partly older) The stale check after a group skips
+  the failed scripts of the group, and a failed script can now change
+  main's `.sco`: its own old file then uses the old name and is not
+  listed (add them to the candidates). (F5) A throw in any namer loses
+  names, not only in the naming rounds (take the renames from the
+  difference of main's global names between the start and the write).
+  (F6) `--stdout` after Ctrl+C says "Decompiled 1 of 1 scripts" (say
+  that no source printed). (F7) Texts: the `stale` comment and
+  "(Internal)" (a `DataError` keeps its code). Question: with
+  `--stdout`, a batch that throws after pass 1 prints the source, with
+  exit 1; intended? Probes: the scratch folder `review-7f2e`.
+- Review of 34c1ba40 (C4, 2026-09-24): FIX, 2 should-fix, 9 nits, 1
+  question. (1) `CliCorpusSweep.ps1` does not count every crash: a
+  fast-fail (for example 0xC0000409), exit code 4, or `[internal]` on a
+  warning line is not a bug for it (count each exit code that is not 0,
+  2, 3, 5, 6, 7, 8 or 9). (2) A relative `-Work` resolves against the
+  process folder, not the PowerShell location (use
+  `GetUnresolvedProviderPathFromPSPath`). Nits: the overlap check
+  compares text (a junction or `subst` alias passes); a UNC source
+  fails (`.ProviderPath`); `-Depth 3` misses `Castle of Dr. Brain
+  (1991)\SIERRA\BRAIN\EGA`; "the script commands read only the game
+  folder" is wrong in four places (`GameSession::Open` reads `AUDIO\`
+  and `AUD\` for the audio version; an A/B test on LSL6 gave equal
+  results, so the copy is right and only the text is wrong); the sweep
+  compiles after a decompile that crashed or timed out, writes the CSV
+  only at the end, and one exception loses every row; the smoke step
+  never compiles the shipped sources (the decompile replaces them
+  first); the step checks exit codes only ("No script to compile."
+  exits with 0); AGENTS.md leaves out `Io` for a `CFileException` and
+  the `Objects\` folder. Question: a failed smoke step skips "Upload
+  Artifacts", as a failed test step does; intended? Evidence: the
+  scratch folder `c4review`.
 - C4: CI and documents. `build.yaml`: a step "Smoke test scic.exe" in
   the build job, after the integration tests. It copies
   `Release\TemplateGame\SCI1.1` twice into `RUNNER_TEMP` (as it ships,
@@ -1613,10 +1716,10 @@ for each step, and a follow-up commit if the review finds a problem.
 
 ## Next action
 
-The reviews of C3 (`fd65ff87`) and of `8fc8e984` (the fixes of the
-review of `837f9f9b`) are running in isolated worktrees, and C4 (the
-commit after `8fc8e984`) needs its review. Then: fix what the reviews
-find; record the results of the full corpus sweep; one commit for the
-nits of the reviews of the C1 fixes, of the C2 fixes (`3cf3e33f`) and
-of `ccadff0c`; then the optional E1 (plan section 9), or stop before
-it. Push and PRs only with the user's approval.
+The fixes of the review of C3 (the commit after `34c1ba40`) need their
+review. Next: the fixes of the review of C4 (`34c1ba40`; see "Review
+of 34c1ba40"); record the results of the full corpus sweep; commits
+for the nits of the reviews of the C1 fixes, of the C2 fixes
+(`3cf3e33f`), of `ccadff0c` and of `8fc8e984`; then the optional E1
+(plan section 9), or stop before it. Push and PRs only with the user's
+approval.

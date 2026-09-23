@@ -239,11 +239,11 @@ namespace cli
         compile->add_option("game-folder", compileOptions.gameFolder, "The game folder.")->required();
         compile->add_option("scripts", compileOptions.selectors, "Numbers, ranges (100-199), names or .sc files. Or give --all.");
         compile->add_flag("--all", compileOptions.all, "Every script that has a source file.");
-        compile->add_option("--to", compileOptions.to, "patch (default): patch files in the game folder; package: the resource package.")
+        CLI::Option *toOption = compile->add_option("--to", compileOptions.to, "patch (default): patch files in the game folder; package: the resource package.")
             ->check(CLI::IsMember({ "patch", "package" }));
         compile->add_flag("--into-volume", compileOptions.intoVolume, "The same as --to package.");
         compile->add_flag("--replace-patches", compileOptions.replacePatches, "With --to package: move the patch files that would hide the new resources to replaced-patches\\<time>.");
-        compile->add_option("--out-dir", compileOptions.outDir, "Write the patch files into this folder; the game's resources do not change (its .sco files do).");
+        CLI::Option *outDirOption = compile->add_option("--out-dir", compileOptions.outDir, "Write the patch files into this folder; the game's resources do not change (its .sco files do).");
         compile->add_flag("--raw", compileOptions.raw, "With --out-dir: the plain resource data, as script.110.bin.");
         CLI::Option *passesOption = compile->add_option("--passes", compileOptions.passes, "With --all: the most passes (default 5). A pass that changes no .sco file is the last.")
             ->check(CLI::Range(1, 100));
@@ -277,6 +277,15 @@ namespace cli
             return (int)ExitCode::Usage;
         }
         compileOptions.passesGiven = (passesOption->count() > 0);
+        compileOptions.toGiven = (toOption->count() > 0);
+        if ((outDirOption->count() > 0) && compileOptions.outDir.empty())
+        {
+            // Review of 0046b54a: an empty --out-dir (for example an unset
+            // variable in a build script) wrote into the game, as with no
+            // --out-dir.
+            output.Error("--out-dir needs a folder");
+            return (int)ExitCode::Usage;
+        }
         // Plan section 4.2: decompile, sco and compile take --all or one or
         // more scripts, not both and not neither.
         for (const auto &command : { std::make_pair(decompile, std::make_pair(decompileOptions.all, !decompileOptions.selectors.empty())),
@@ -377,7 +386,10 @@ namespace cli
         SessionOptions sessionOptions;
         sessionOptions.dataFolder = dataFolder;
         GameSession session(sessionOptions);
-        sci::Status opened = session.Open(gameFolder);
+        // An absolute folder: the paths of the report are then absolute, as
+        // the VS Code problem matcher needs (review of 0046b54a: "scic script
+        // compile . rm001" printed ".\src\rm001.sc(25,31): error").
+        sci::Status opened = session.Open(AbsolutePath(gameFolder));
         if (!opened)
         {
             // Plan section 8: 3, but 2 for a usage error (C1 review: an

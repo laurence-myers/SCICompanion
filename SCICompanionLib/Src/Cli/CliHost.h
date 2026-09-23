@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <string>
+#include <vector>
 
 namespace cli
 {
@@ -27,6 +28,9 @@ namespace cli
     void SetCurrentItem(const std::string &item);
     // The item of this thread (a test reads it).
     std::string CurrentItem();
+    // A test hook: each item that this thread sets after this call goes
+    // into items, in order (nullptr stops it).
+    void RecordCurrentItems(std::vector<std::string> *items);
 
     // Ctrl+C (and Ctrl+Break) sets the cancel flag; a second one ends the
     // process at once, with exit code 7.

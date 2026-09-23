@@ -300,7 +300,6 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
     });
     outcome.diagnostics = log.Results();
     bool objectFileChanged = results && results->ObjectFileChanged();
-    outcome.objectFileChanged = objectFileChanged;
     uint16_t compiledNumber = results ? results->GetScriptNumber() : InvalidResourceNumber;
     std::set<uint16_t> usedObjectFiles = results ? results->LoadedObjectFiles() : std::set<uint16_t>();
     if (compiledNumber != InvalidResourceNumber)
@@ -629,8 +628,10 @@ void CompileBatch::_MoveShadowingPatches()
 void CompileBatch::_AddWarnings()
 {
     const GameFolderHelper &helper = _session.Helper();
+    // A dry run gives the same warnings (review of 0046b54a: it gave none).
+    bool dryRun = !_options.write.writeResources;
     bool toPatchFiles = (helper.GetResourceSaveLocation(_options.write.saveTo) == ResourceSaveLocation::Patch) &&
-        _options.write.outDir.empty() && _options.write.writeResources;
+        _options.write.outDir.empty();
     if (!toPatchFiles)
     {
         return;
@@ -669,8 +670,9 @@ void CompileBatch::_AddWarnings()
     if (_anyCompiled && (helper.GetResourceSaveLocation(ResourceSaveLocation::Default) == ResourceSaveLocation::Package) &&
         (_tables.Species().IsDirty() || _tables.Selectors().IsDirty()))
     {
-        _report.warnings.push_back("the class and selector tables were written as patch files (996 and 997); in this game, which keeps its resources "
-            "in the package, they hide the package copies that SCI Companion saves later");
+        _report.warnings.push_back(std::string(dryRun ? "the class and selector tables would be written" : "the class and selector tables were written") +
+            " as patch files (996 and 997); in this game, which keeps its resources in the package, they hide the package copies that SCI Companion "
+            "saves later");
     }
 }
 
@@ -802,6 +804,15 @@ sci::Result<CompileReport> CompileScripts(GameSession &session, std::vector<Scri
     SCI_TRY_ASSIGN(std::unique_ptr<CompileBatch> batch, CompileBatch::Start(session, std::move(scripts), options));
     while (batch->Step(abort, events))
     {
+    }
+    sci::Status told = sci::Guard("before the writes of the compile", [&]() -> sci::Status
+    {
+        events.OnFinish();
+        return sci::Ok();
+    });
+    if (!told)
+    {
+        CoreLog(LogLevel::Warning, told.error().ToString());
     }
     return batch->Finish();
 }

@@ -15,6 +15,7 @@ namespace cli
         // The text of the item, for the crash filter. A fixed buffer: the
         // filter must not allocate.
         thread_local char t_currentItem[256] = {};
+        thread_local std::vector<std::string> *t_recordedItems = nullptr;
 
         // Writes with WriteFile only: the process state is not known.
         void WriteToStderr(const char *text, size_t length)
@@ -131,6 +132,15 @@ namespace cli
     void SetCurrentItem(const std::string &item)
     {
         strncpy_s(t_currentItem, item.c_str(), _TRUNCATE);
+        if (t_recordedItems && !item.empty())
+        {
+            t_recordedItems->push_back(item);
+        }
+    }
+
+    void RecordCurrentItems(std::vector<std::string> *items)
+    {
+        t_recordedItems = items;
     }
 
     std::string CurrentItem()

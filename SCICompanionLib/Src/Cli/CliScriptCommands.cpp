@@ -96,6 +96,17 @@ namespace cli
         }
     }
 
+    std::string AbsolutePath(const std::string &path)
+    {
+        if (path.empty())
+        {
+            return path;
+        }
+        char buffer[MAX_PATH * 4];
+        DWORD length = GetFullPathNameA(path.c_str(), ARRAYSIZE(buffer), buffer, nullptr);
+        return ((length > 0) && (length < ARRAYSIZE(buffer))) ? std::string(buffer, length) : path;
+    }
+
     sci::Result<ExitCode> RunScriptList(GameSession &session, const ScriptListOptions &options, CliOutput &output)
     {
         const GameFolderHelper &helper = session.Helper();
@@ -159,6 +170,12 @@ namespace cli
             return text;
         }
 
+        // "1 script was", "2 scripts were".
+        std::string WasWereText(size_t count, const char *word)
+        {
+            return fmt::format("{0} {1}{2}", count, word, (count == 1) ? " was" : "s were");
+        }
+
         std::set<uint16_t> NumbersOf(const ScriptSelection &selection)
         {
             std::set<uint16_t> numbers;
@@ -184,13 +201,20 @@ namespace cli
 
         // A compiler diagnostic in the MSBuild format (plan section 4.5):
         // "path(line,col): error : message", with a 1-based column. One with
-        // no source file has no position.
+        // no source file has no position. A message with a position is an
+        // "info" line, shown unless --quiet (review of 0046b54a: it showed
+        // with --verbose only, so "The else clause must be the last clause in
+        // a cond." did not show, and the parser had dropped code). A message
+        // with no position (for example the summary of a compile) shows with
+        // --verbose only.
         void PrintDiagnostic(const CompileResult &result, CliOutput &output)
         {
-            DiagnosticLevel level = result.IsError() ? DiagnosticLevel::Error : (result.IsWarning() ? DiagnosticLevel::Warning : DiagnosticLevel::Message);
-            const char *kind = result.IsError() ? "error" : (result.IsWarning() ? "warning" : "message");
             ScriptId script = result.GetScript();
-            if (script.IsNone() || (result.GetLineNumber() <= 0))
+            bool positioned = !script.IsNone() && (result.GetLineNumber() > 0);
+            DiagnosticLevel level = result.IsError() ? DiagnosticLevel::Error : (result.IsWarning() ? DiagnosticLevel::Warning :
+                (positioned ? DiagnosticLevel::Info : DiagnosticLevel::Message));
+            const char *kind = result.IsError() ? "error" : (result.IsWarning() ? "warning" : (positioned ? "info" : "message"));
+            if (!positioned)
             {
                 output.Diagnostic(level, fmt::format("scic: {0}: {1}", kind, result.GetRawMessage()));
             }
@@ -348,7 +372,7 @@ namespace cli
             }
             if (report.cancelled)
             {
-                summary += fmt::format(" Stopped by Ctrl+C: {0} scripts were not decompiled.", notReached);
+                summary += fmt::format(" Stopped by Ctrl+C: {0} not decompiled.", WasWereText(notReached, "script"));
             }
             output.Message(summary);
 
@@ -506,7 +530,7 @@ namespace cli
         }
         if (notReached > 0)
         {
-            summary += fmt::format(" Stopped by Ctrl+C: {0} scripts were not done.", notReached);
+            summary += fmt::format(" Stopped by Ctrl+C: {0} not done.", WasWereText(notReached, "script"));
         }
         output.Message(summary);
         return ExitCodeForFacts(facts);
@@ -530,6 +554,10 @@ namespace cli
             void OnPassStart(int pass) override
             {
                 _output.Detail(fmt::format("Pass {0}: a .sco file changed, so every script compiles again.", pass));
+            }
+            void OnFinish() override
+            {
+                SetCurrentItem("writing the compiled resources");
             }
 
         private:
@@ -620,10 +648,19 @@ namespace cli
                 else
                 {
                     failed.push_back(ScriptText(outcome.number, outcome.name));
-                    // A compile error is in the diagnostics.
-                    if (outcome.status.error().code != sci::ErrorCode::Compile)
+                    // A compile error is in the diagnostics, and so is the
+                    // error of a read, a write or an exception: the compile or
+                    // the batch logs it (review of 0046b54a: it printed twice).
+                    // Another failure prints here.
+                    std::string error = outcome.status.error().ToString();
+                    bool inTheDiagnostics = (outcome.status.error().code == sci::ErrorCode::Compile) ||
+                        std::any_of(outcome.diagnostics.begin(), outcome.diagnostics.end(), [&error](const CompileResult &diagnostic)
+                        {
+                            return diagnostic.IsError() && (diagnostic.GetRawMessage().find(error) != std::string::npos);
+                        });
+                    if (!inTheDiagnostics)
                     {
-                        output.Error(ScriptText(outcome.number, outcome.name) + ": " + outcome.status.error().ToString());
+                        output.Error(ScriptText(outcome.number, outcome.name) + ": " + error);
                     }
                 }
             }
@@ -672,10 +709,16 @@ namespace cli
             size_t compiled = report.CompiledCount();
             size_t notReached = scriptCount - report.scripts.size();
             std::string destination = DestinationText(helper, write);
-            std::string summary = dryRun ? fmt::format("Compiled {0} of {1} scripts; a run would write them {2}", compiled, scriptCount, destination) :
+            // With no compiled script, nothing is written (review of
+            // 0046b54a: a dry run said "a run would write them").
+            std::string summary = (compiled == 0) ? fmt::format("Compiled 0 of {0} scripts, and {1} none", scriptCount, dryRun ? "a run would write" : "wrote") :
+                (dryRun ? fmt::format("Compiled {0} of {1} scripts; a run would write them {2}", compiled, scriptCount, destination) :
                 (report.commit ? fmt::format("Compiled and wrote {0} of {1} scripts {2}", compiled, scriptCount, destination) :
-                fmt::format("Compiled {0} of {1} scripts, and wrote none", compiled, scriptCount));
-            summary += fmt::format(" ({0}, {1}{2}).", CountText(report.ErrorCount(), "error"), CountText(report.WarningCount(), "warning"),
+                fmt::format("Compiled {0} of {1} scripts, and wrote none", compiled, scriptCount)));
+            // The warnings of the scripts, and the warnings of the batch that
+            // printed above (review of 0046b54a: "(0 warnings)" after them).
+            size_t warnings = report.WarningCount() + report.warnings.size() + (report.passLimit ? 1 : 0);
+            summary += fmt::format(" ({0}, {1}{2}).", CountText(report.ErrorCount(), "error"), CountText(warnings, "warning"),
                 (report.passes > 1) ? fmt::format(", {0} passes", report.passes) : std::string());
             if (!failed.empty())
             {
@@ -683,11 +726,11 @@ namespace cli
             }
             if (report.cancelled)
             {
-                summary += fmt::format(" Stopped by Ctrl+C: {0} scripts were not compiled.", notReached);
+                summary += fmt::format(" Stopped by Ctrl+C: {0} not compiled.", WasWereText(notReached, "script"));
             }
             if (report.stopped)
             {
-                summary += fmt::format(" --fail-fast stopped the run: {0} scripts were not compiled.", notReached);
+                summary += fmt::format(" --fail-fast stopped the run: {0} not compiled.", WasWereText(notReached, "script"));
             }
             output.Message(summary);
         }
@@ -695,6 +738,11 @@ namespace cli
 
     sci::Result<ExitCode> RunScriptCompile(GameSession &session, const ScriptCompileOptions &options, const CommonOptions &common, CliOutput &output)
     {
+        if (options.intoVolume && options.toGiven && (options.to != "package"))
+        {
+            // Review of 0046b54a: --to patch --into-volume wrote the package.
+            return sci::Fail(sci::ErrorCode::Usage, "--into-volume is --to package, so it does not go with --to patch");
+        }
         bool toPackage = options.intoVolume || (options.to == "package");
         if (options.replacePatches && !toPackage)
         {
@@ -704,6 +752,8 @@ namespace cli
         {
             return sci::Fail(sci::ErrorCode::Usage, "--passes goes with --all: a compile of named scripts is one pass");
         }
+        // The step of the crash line (review of 0046b54a).
+        SetCurrentItem("selecting the scripts");
         SCI_TRY_ASSIGN(ScriptSelection selection, Select(session, options.all, options.selectors, SelectorMode::Compile, output));
         if (selection.scripts.empty())
         {
@@ -716,7 +766,10 @@ namespace cli
         // Plan section 5: patch files unless --to package, whatever the
         // game's setting.
         compile.write.saveTo = toPackage ? ResourceSaveLocation::Package : ResourceSaveLocation::Patch;
-        compile.write.outDir = options.outDir;
+        // An absolute folder (review of 0046b54a and of 5ca73807: a relative
+        // folder gave relative paths, and a path that passed the length check
+        // was too long for the write).
+        compile.write.outDir = AbsolutePath(options.outDir);
         compile.write.raw = options.raw;
         // --dry-run: no resource, table, .sco or .scd.
         compile.write.writeResources = !common.dryRun;
@@ -726,6 +779,7 @@ namespace cli
         compile.passes = options.all ? options.passes : 1;
         compile.shadows = options.replacePatches ? ShadowPolicy::Replace : ShadowPolicy::Refuse;
         CliCompileEvents events(output);
+        SetCurrentItem("starting the compile");
         SCI_TRY_ASSIGN(CompileReport report, CompileScripts(session, selection.scripts, compile, CancelFlag(), events));
         SetCurrentItem("printing the report");
         PrintCompileReport(report, selection.scripts.size(), session.Helper(), compile.write, common.dryRun, options.all, output);

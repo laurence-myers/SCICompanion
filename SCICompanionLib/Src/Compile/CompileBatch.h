@@ -76,9 +76,6 @@ struct ScriptOutcome
     // write): its script, its heap, and its auto text when it changed. Empty
     // for a script that failed. Plan section 6.5 (C3).
     std::vector<WrittenResource> written;
-    // The compile wrote a new src\<name>.sco (Finish can put it back:
-    // CompileReport::restoredObjectFiles).
-    bool objectFileChanged = false;
 };
 
 struct CompileReport
@@ -146,6 +143,10 @@ public:
     virtual void OnScriptDone(const ScriptOutcome &outcome) {}
     // Before the second pass and each later one.
     virtual void OnPassStart(int pass) {}
+    // Before Finish, when CompileScripts runs the batch: the commit, the
+    // tables, and the .sco files that go back (the command line names the
+    // step in its crash line; review of 0046b54a).
+    virtual void OnFinish() {}
 };
 
 class CompileBatch

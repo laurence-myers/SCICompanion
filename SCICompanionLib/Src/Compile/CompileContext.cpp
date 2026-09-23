@@ -173,8 +173,16 @@ void CompileContext::_LoadSCO(const std::string &name, bool fErrorIfNotFound)
 	}
 	else if (fErrorIfNotFound)
 	{
-		char szError[200];
-		FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, 0, GetLastError(), 0, szError, ARRAYSIZE(szError), nullptr);
+		DWORD lastError = GetLastError();
+		char szError[200] = {};
+		FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, 0, lastError, 0, szError, ARRAYSIZE(szError), nullptr);
+		// FormatMessage ends the text with a line break (review of 0046b54a: a
+		// blank line came after the diagnostic).
+		size_t length = strlen(szError);
+		while ((length > 0) && ((szError[length - 1] == '\r') || (szError[length - 1] == '\n') || (szError[length - 1] == ' ')))
+		{
+			szError[--length] = 0;
+		}
 		ReportError(_pErrorScript, "Unable to open '%s': %s", scoFileName.c_str(), szError);
 	}
 }
@@ -914,6 +922,13 @@ sci::Script *CompileContext::SetErrorContext(sci::Script *pScript)
 }
 void CompileContext::ReportResult(const CompileResult &result)
 {
+	// An error that comes this way (an include that does not parse or load)
+	// fails the compile too, as an error of the script does (review of
+	// 0046b54a: before, the script was written, and scic exited with 0).
+	if (result.IsError())
+	{
+		_fErrors = true;
+	}
 	_results.ReportResult(result);
 }
 void CompileContext::ReportWarning(const ISourceCodePosition *pPos, const char *pszFormat, ...)
@@ -1318,7 +1333,8 @@ void PrecompiledHeaders::Update(CompileContext &context, Script &script)
 				if (encounteredIt == nonHeadersEncountered.end())
 				{
 					// It's a header we have not yet encountered. Parse it.
-					ScriptId scriptId(_resourceMap.GetIncludePath(*curHeaderIt));
+					std::string includePath = _resourceMap.GetIncludePath(*curHeaderIt);
+					ScriptId scriptId(includePath);
 					sci::Result<ScriptText> text = LoadScriptText(scriptId.GetFullPath());
 					if (text)
 					{
@@ -1344,14 +1360,23 @@ void PrecompiledHeaders::Update(CompileContext &context, Script &script)
 						else
 						{
 							std::stringstream ss;
-							ss << "Parsing errors while loading " << scriptId.GetFullPath() << ".";
+							ss << "Parsing errors while loading " << scriptId.GetFullPathOrig() << ".";
 							context.ReportResult(CompileResult(ss.str(), CompileResult::CRT_Error));
 						}
 					}
 					else
 					{
 						std::stringstream ss;
-						ss << "Unable to load " << scriptId.GetFullPath() << ".";
+						// Name the include as the script wrote it: a file that was not
+						// found has no path (review of 0046b54a: "Unable to load \.").
+						if (includePath.empty())
+						{
+							ss << "The include file " << *curHeaderIt << " is not in the include folder or in src.";
+						}
+						else
+						{
+							ss << "Unable to load the include file " << *curHeaderIt << ": " << text.error().message;
+						}
 						context.ReportResult(CompileResult(ss.str(), CompileResult::CRT_Error));
 					}
 				}

@@ -28,6 +28,11 @@ namespace cli
     {
         Error,
         Warning,
+        // A message with a script and a line (for example "The else clause
+        // must be the last clause in a cond."): shown unless --quiet, as the
+        // GUI shows it (review of 0046b54a).
+        Info,
+        // A message with no line: with --verbose only.
         Message,
     };
 
@@ -59,11 +64,11 @@ namespace cli
         // --quiet hid them).
         void Dump(const std::string &text) { _Write(text + "\n", true, false); }
         // A compiler diagnostic in the MSBuild format (plan section 4.5), to
-        // stderr: an error always, a warning unless --quiet, a message with
-        // --verbose only.
+        // stderr: an error always, a warning or an info line unless --quiet,
+        // a message with --verbose only.
         void Diagnostic(DiagnosticLevel level, const std::string &text)
         {
-            bool show = (level == DiagnosticLevel::Error) || ((level == DiagnosticLevel::Warning) && !_options.quiet) ||
+            bool show = (level == DiagnosticLevel::Error) || (((level == DiagnosticLevel::Warning) || (level == DiagnosticLevel::Info)) && !_options.quiet) ||
                 ((level == DiagnosticLevel::Message) && _options.verbose && !_options.quiet);
             _Write(text + "\n", show, false);
         }
@@ -161,6 +166,7 @@ namespace cli
         std::vector<std::string> selectors;
         bool all = false;
         std::string to = "patch";   // patch or package
+        bool toGiven = false;
         bool intoVolume = false;    // another spelling of --to package
         bool replacePatches = false;
         std::string outDir;
@@ -178,4 +184,9 @@ namespace cli
     // write. The exit code of the report (plan section 8). Fails when the
     // batch cannot start (the code of ExitCodeForStartError: 2, 3, 7 or 8).
     sci::Result<ExitCode> RunScriptCompile(GameSession &session, const ScriptCompileOptions &options, const CommonOptions &common, CliOutput &output);
+
+    // The full path of a folder or a file, from GetFullPathName: a relative
+    // path starts at the current folder, and the case of the path stays. An
+    // empty path, or one that GetFullPathName cannot take, stays as it is.
+    std::string AbsolutePath(const std::string &path);
 }
