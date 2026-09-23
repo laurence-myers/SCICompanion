@@ -40,13 +40,15 @@ for the third-party components it uses are under
 This release focuses on the compiler and decompiler, on stability, and on
 modernizing the build. Broad highlights since the previous release:
 
-* **A command-line tool, `scic.exe`.** It comes next to `SCICompanion.exe`.
-  `scic script list <game folder>` shows each script of a game: its number,
-  its name and where the name comes from, where the game keeps it, and
-  whether its source and `.sco` files exist. It works also on a game that
-  SCI Companion never opened (with no `game.ini`), and it writes nothing.
-  `scic help` shows the commands, and the exit code tells a build script
-  what happened.
+* **A command-line tool, `scic.exe`.** It comes next to `SCICompanion.exe`,
+  and it works also on a game that SCI Companion never opened (with no
+  `game.ini`). `scic script list <game folder>` shows each script of a game:
+  its number, its name and where the name comes from, where the game keeps
+  it, and whether its source and `.sco` files exist. `scic script decompile`
+  decompiles scripts as the Decompile dialog does, or prints one script's
+  source (`--stdout`). `scic script sco` makes the `.sco` files from source
+  that another tool wrote. `scic help` shows the commands, `--dry-run`
+  writes nothing, and the exit code tells a build script what happened.
 * **Eliminated most `asm` fallbacks in the decompiler.** When the decompiler
   could not reconstruct a function's control flow it used to give up and emit
   raw `asm` disassembly. It now rebuilds the control flow into real source, so

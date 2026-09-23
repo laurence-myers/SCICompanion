@@ -6,14 +6,17 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: C2. F1, A1, A2, B1, B2, B3a, B3b, F2, K1 to K6, S3, S1,
-  S2 (S2a, S2b, S2c), S4 (S4a, S4b) and C1 are committed and reviewed,
-  with their review fixes: the S1 and S2 fixes `98d884c7` and the fixes
-  of its review `73be520f`; the S4 fixes `d01ea1e0`; the C1 fixes (the
-  commit after `73be520f`). The reviews of `d01ea1e0` and `73be520f` are
-  running, and the C1 fixes need their own review. The fixes of the
-  reviews of `bc827391` and `fe02c12a` (`8a322b32`), and of `de2fb8dc`
-  and `8a322b32` (`7d26d9d6`), are committed.
+- Current step: the fixes of the review of `d01ea1e0` (see "Review of
+  the S4 fixes"), then C3. F1, A1, A2, B1, B2, B3a, B3b, F2, K1 to K6,
+  S3, S1, S2 (S2a, S2b, S2c), S4 (S4a, S4b), C1 and C2 are committed,
+  and all but C2 are reviewed, with their review fixes: the S1 and S2
+  fixes `98d884c7` and the fixes of its review `73be520f`; the S4
+  fixes `d01ea1e0`, whose review found 2 should-fix; the C1 fixes
+  `6b1bfe64`. The review of `73be520f` found 1 should-fix (see "Review
+  of the compile-batch fixes"). The review of `6b1bfe64` is running,
+  and C2 (the commit after `6b1bfe64`) needs its review. The fixes of
+  the reviews of `bc827391` and `fe02c12a` (`8a322b32`), and of
+  `de2fb8dc` and `8a322b32` (`7d26d9d6`), are committed.
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -22,8 +25,8 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412. After the fixes of the review of `de2fb8dc` and `8a322b32`: 418. After the fixes of the reviews of S1 and S2: 429. After C1: 440. After the S4 review fixes: 454. After the fixes of the review of `7d26d9d6` and `98d884c7`: 460. After the C1 review fixes: 462.
-  The integration suite has 22 tests.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412. After the fixes of the review of `de2fb8dc` and `8a322b32`: 418. After the fixes of the reviews of S1 and S2: 429. After C1: 440. After the S4 review fixes: 454. After the fixes of the review of `7d26d9d6` and `98d884c7`: 460. After the C1 review fixes: 462. After C2: 470.
+  The integration suite has 23 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
   (`getenv`) and C4267 in the UnitTests helpers (`DecompileHelper.cpp`,
@@ -54,10 +57,10 @@ for each step, and a follow-up commit if the review finds a problem.
 | K6 No `vocab.000`; `/` in paths | done | `dcc0fdf7`, review fixes (the commit after `108cb227`) | FIX: 1 should-fix (the handover State, fixed in `f85fe77d`), 7 nits, 1 question. Fixed: the Said test counts one error for two Said strings, a vocab 900 test, the null vocabulary in the "Add as synonym of" dialog, the `ScriptId` folder keeps only `\`, stale text. Known gaps: see "Decisions" (a synonym with no vocabulary, a name with a slash, a `ScriptId` with no folder). Review of the fixes (`bc827391`): PASS with nits, fixed in the commit after `de2fb8dc`. |
 | S3 ScriptCatalog, script names without `game.ini` | done | S3a `f85fe77d`; S3b `108cb227`; review fixes (the commit after `fb14399f`) | FIX: S3a 1 should-fix (a `-` in a derived name), S3b 1 should-fix (one name conflict refused every script, with the wrong fix), nits and questions. Fixed: see "S3 review" in "Decisions". |
 | S1 Compile destination | done | `a9561fcc`; review fixes `98d884c7` | FIX: 1 should-fix (a script that failed after its resources were queued was written without its tables), nits. Fixed with the S2 review fixes. |
-| S2 CompileBatch | done | S2a `fb14399f`; S2b `f256c0d8`; S2c `2ca7e418`; review fixes `98d884c7`; fixes of its review `73be520f` | S2a FIX (the same should-fix as S1), S2b FIX (Replace moved patch files of resources that the commit did not write), S2c FIX (the GUI reached it; the scan of src could throw). Fixed: see "S1 and S2 reviews". Review of the fixes: FIX (2 should-fix); fixed, see "Review of 7d26d9d6 and 98d884c7". |
-| S4 DecompileRun | done | S4a `152f4e56`; S4b `d588e499`; review fixes (the commit after `68e6f43e`) | S4a FIX: 6 should-fix, nits. S4b PASS with nits. Fixed: see "S4 review". |
-| C1 CLI project, `script list` | done | `68e6f43e`; review fixes (the commit after `73be520f`) | FIX: 3 should-fix, nits. Fixed: see "C1 review". |
-| C2 `script decompile`, `script sco` | not started | | |
+| S2 CompileBatch | done | S2a `fb14399f`; S2b `f256c0d8`; S2c `2ca7e418`; review fixes `98d884c7`; fixes of its review `73be520f` | S2a FIX (the same should-fix as S1), S2b FIX (Replace moved patch files of resources that the commit did not write), S2c FIX (the GUI reached it; the scan of src could throw). Fixed: see "S1 and S2 reviews". Review of the fixes: FIX (2 should-fix); fixed, see "Review of 7d26d9d6 and 98d884c7". Review of `73be520f`: FIX (1 should-fix, see "Review of the compile-batch fixes"). |
+| S4 DecompileRun | done | S4a `152f4e56`; S4b `d588e499`; review fixes `d01ea1e0` | S4a FIX: 6 should-fix, nits. S4b PASS with nits. Fixed: see "S4 review". Review of the fixes: FIX (2 should-fix, see "Review of the S4 fixes"); the fixes are the next step. |
+| C1 CLI project, `script list` | done | `68e6f43e`; review fixes `6b1bfe64` | FIX: 3 should-fix, nits. Fixed: see "C1 review". Review of the fixes: running. |
+| C2 `script decompile`, `script sco` | done | the commit after `6b1bfe64` | not yet |
 | C3 `script compile` | not started | | |
 | C4 CI and documents | not started | | |
 | E1 Core library (optional) | not started | | |
@@ -1161,11 +1164,96 @@ for each step, and a follow-up commit if the review finds a problem.
   files (older than C1; CLI11's BSD-3 notice must go with the binary).
   Question: a derived name is not a selector when the script has a
   `game.ini` name (`--derived` shows `ndebug_log` for 972).
+- Review of the S4 fixes (`d01ea1e0`, 2026-09-24): FIX. Should-fix, for
+  the next commit:
+  1. A reset can still give two scripts one name: a chosen script that
+     gets no derived name (unreadable, or no class and no public
+     instance) keeps its old name, and `ResetNamesOf` does not reserve
+     it. SCI0 probe: `n974=OldDoor` with `door.*` renamed, `n978=Door`;
+     a reset of {974, 978} names both `Door`, and 978 writes over the new
+     `Door.sc` of 974. Also a chosen script that gets a new name and
+     then fails keeps its old `game.ini` entry, and another chosen script
+     can take that old name. Fix: reserve the current name of each
+     chosen script that gets no derived name; keep the old names of the
+     failed ones reserved (or write all reset names).
+  2. After an abort, the report loses scripts: the "last outcome"
+     rule turns a written script of an earlier group into Cancelled
+     (so it loses its `game.ini` entry), and `stale` misses scripts that
+     still use an old global name (Main.sco still gets the names;
+     `DecompileBatch.cpp` has no abort check there). Fix: keep an
+     earlier written outcome; put the scripts of a later group that the
+     abort did not reach into `stale`; write `game.ini` names for every
+     script that any group wrote; after an abort, run the stale check
+     or say that it did not run; no stale insert with an output.
+  Nits: a test of the owner rule (a reset of {979, 997}); the "every
+  name" write copies a name conflict into `game.ini` (skip the scripts
+  of a `NameConflict`); a missing include says "Opening \" with no name
+  (`GetIncludePath` returns ""); the `--derived` column is not always
+  the reset (an unreadable script, a conflict); no tests for the
+  exception boundaries around `batch.Run` and the stale check, the
+  100-group guard, and the include errors of `MergeIncludedScripts`.
+- C2: `scic script decompile <game> (<scripts> | --all)` with
+  `--game-ini update|create|none`, `--reset-names`, `--update-stale`,
+  `--stdout`, `--text-tuples`, `--asm-only`, `--debug-control-flow`,
+  `--debug-instructions`, `--debug-filter <name>` (plan 4.4), on
+  `RunDecompile`. `scic script sco <game> (<scripts> | --all)` (plan
+  4.6) on `GenerateObjectFiles`. Both take `--all` or scripts, not both
+  and not neither (2); `--stdout` takes one script (2).
+- C2 output: the decompiler's messages print as they come
+  (`CliDecompileResults`: an error as `scic: error:`, a warning as
+  `scic: warning:`, the rest with `-v`; the crash line names the
+  script), then the summary (`PrintDecompileReport`: "Decompiled and
+  wrote N of M scripts.", the failed scripts, Ctrl+C, the function and
+  byte rates, the globals named, the stale scripts as a warning, a
+  `game.ini` error). Every warning of the run report also goes to the
+  results now, and so does a batch that throws, so each prints once.
+  `--stdout` prints the source to stdout (the summary goes to stderr);
+  `--dry-run` runs with an output that prints nothing and lists the
+  files that a run would write. The exit code is `ExitCodeForReport`.
+- C2, `script sco`: a compiler diagnostic prints in the MSBuild format
+  of plan 4.5 (`path(line,col): error : message`, a 1-based column;
+  `CliOutput::Diagnostic`). `GenerateObjectFiles` takes
+  `ObjectFileOptions` (`dryRun`, `abort`) and fills `path`, and checks
+  the public block as `Script::PreScan` does (a slot used twice, a name
+  with no class, instance or procedure: Compile, exit 6); a block whose
+  slots differ from the compiled export table is a warning (the shipped
+  SCI1.1 template's Main and DebugHandler; after a compile of the
+  template they agree). The exit code: 6 for a failed script (also a
+  syntax error, plan 4.6), 9 for a write, 7 for Ctrl+C, 1 for a bug.
+- C2 known gaps: the summary lists the failed scripts by number (their
+  errors printed when they happened). A decompile warning has no script
+  in its text (the progress line with `-v` gives it).
+- Review of the compile-batch fixes (`73be520f`, 2026-09-24): FIX.
+  Should-fix, for a later commit (before C3, which reaches it):
+  1. A later pass still writes a script that compiled against the new
+     `.sco` of a script that the commit does not write: a new pass
+     withdraws the writes of the pass before, but its `.sco` files stay.
+     Scenario (SCI0, patch files, 5 passes): Y and X both compile in
+     pass 1; in pass 2 Y fails against the new `.sco` of X, and X
+     compiles against the pass-1 `.sco` of Y; the game gets the new X
+     and the old Y (an export that X calls is missing). An abort in pass
+     2 gives the same mix with no failed script. Older than
+     `73be520f` (S2b); the GUI uses one pass. Fix: withdraw each script
+     that loaded the `.sco` of a script whose writes are not in the
+     commit, or write nothing when a script fails or the batch stops in
+     pass 2 or later; correct the texts ("leaves no new .sco" is true
+     only inside one pass).
+  Nits: a dry run does not check the auto text before the commit (it
+  queues nothing); a hidden or system file in the output folder passes
+  the check before the first write (the write then fails after the
+  tables); the check opens raw files with no sharing, but the raw write
+  shares read and write (a regression); the `.scd` before the `.sco`
+  leaves a new `.scd` for a script whose `.sco` fails (write the `.sco`
+  first, then the `.scd` as a warning); a `.sco` that cannot be written
+  counts as changed (5 passes for nothing); stale texts (`moves` "the
+  first patch file", "a warning"); tests for the tables-first order, a
+  locked file or a directory in the output folder. Question: a dry run
+  with `askShadows` asks "Yes: move" and then moves nothing.
 
 ## Next action
 
-Phases K and S and step C1 are done, with the fixes of their reviews.
-The reviews of `d01ea1e0` (the S4 fixes) and `73be520f` (the fixes of
-the review of `7d26d9d6` and `98d884c7`) are running in isolated
-worktrees, and the C1 fixes need their own review. Next: C2 (plan
-section 9: `scic script decompile` and `scic script sco`).
+C2 is committed; it needs its review. The review of `6b1bfe64` is
+running in an isolated worktree. Next: the fixes of the review of
+`d01ea1e0` (see "Review of the S4 fixes" in "Decisions"), then the
+fixes of the review of `73be520f` ("Review of the compile-batch
+fixes"), then C3 (plan section 9: `scic script compile`).

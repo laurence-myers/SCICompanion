@@ -8,6 +8,7 @@
 #include "DecompileBatch.h"
 #include "CompileInterfaces.h"
 #include "Result.h"
+#include <atomic>
 #include <cstdint>
 #include <map>
 #include <set>
@@ -86,7 +87,8 @@ struct DecompileReport
     DecompileStats stats;
     bool cancelled = false;
     // For example, the files that keep an old name after a reset of the
-    // names, or a Decompiler.ini that could not be read.
+    // names, or a Decompiler.ini that could not be read. Each also went to
+    // the results as a warning, when it was found.
     std::vector<std::string> warnings;
     // The write of main's .sco with the new global names (S4 review: before,
     // a failure was a message only).
@@ -125,13 +127,25 @@ struct ObjectFileOutcome
 {
     uint16_t number = 0;
     std::string name;
-    // Ok: the .sco file was written, or the script was skipped. Compile: the
-    // source has syntax errors (in diagnostics). Else why the script failed.
+    // Ok: the .sco file was written (or, with dryRun, made), or the script
+    // was skipped. Compile: the source has syntax errors, or its public
+    // block has errors (in diagnostics). Cancelled: the abort flag stopped
+    // the run before this script. Else why the script failed.
     sci::Status status;
     // Why the script was skipped: it has no source file, or the game has no
     // compiled script for it. Empty when it was not skipped.
     std::string skipped;
+    // The .sco file that was written (or, with dryRun, would be).
+    std::string path;
     std::vector<CompileResult> diagnostics;
+};
+
+struct ObjectFileOptions
+{
+    // Make each .sco, and write none (--dry-run).
+    bool dryRun = false;
+    // Set between two scripts: the rest are Cancelled (Ctrl+C).
+    const std::atomic<bool> *abort = nullptr;
 };
 
 // Plan section 4.6 (script sco): for each script, the .sco file from its
@@ -140,8 +154,13 @@ struct ObjectFileOutcome
 // (SCOFromScriptAndCompiledScript). As the compiler does, the source gets
 // its includes that are not headers (the locals of a .shp file), and each
 // class gets its name in the source (S4 review; a warning when the source
-// and the compiled script have different numbers of classes). The .sco goes
-// to src\<title of the ScriptId>.sco. It does not compile, and it changes no
-// resource. Source from another tool gets the .sco files that a compile
-// needs for each (use ...).
-sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &session, const std::vector<ScriptId> &scripts);
+// and the compiled script have different numbers of classes). The public
+// block is checked as the compiler checks it: a slot used twice, or a name
+// with no class, instance or procedure in the source, fails the script
+// (C2); a public block whose slots differ from the slots that the compiled
+// script exports is a warning. The .sco goes to src\<title of the
+// ScriptId>.sco. It does not compile, and it changes no resource. Source
+// from another tool gets the .sco files that a compile needs for each
+// (use ...).
+sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &session, const std::vector<ScriptId> &scripts,
+    const ObjectFileOptions &options = ObjectFileOptions());

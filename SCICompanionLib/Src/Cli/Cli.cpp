@@ -175,8 +175,10 @@ namespace cli
         bool version = false;
         std::vector<std::string> helpTopic;
         ScriptListOptions listOptions;
+        ScriptDecompileOptions decompileOptions;
+        ScriptScoOptions scoOptions;
 
-        CLI::App app("scic: the command line of SCI Companion. Commands: script list. \"scic help <group> <command>\" shows a command.", "scic");
+        CLI::App app("scic: the command line of SCI Companion. Commands: script list, script decompile, script sco. \"scic help <group> <command>\" shows a command.", "scic");
         // "/games/sq3" is a path, not an option.
         app.allow_windows_style_options(false);
         // One command: the words after it are its own (for example the topic of
@@ -193,7 +195,7 @@ namespace cli
         // The words after "help" are its topic, not commands to run.
         help->prefix_command();
 
-        CLI::App *script = app.add_subcommand("script", "The script commands: list.");
+        CLI::App *script = app.add_subcommand("script", "The script commands: list, decompile, sco.");
         script->fallthrough();
         script->require_subcommand(0, 1);
         script->footer(CommonFooter);
@@ -205,6 +207,30 @@ namespace cli
         list->add_option("scripts", listOptions.selectors, "Numbers, ranges (100-199) or names. Default: every script.");
         list->add_option("--format", listOptions.format, "text (default) or tsv.")->check(CLI::IsMember({ "text", "tsv" }));
         list->add_flag("--derived", listOptions.derived, "Add the derived name of each script.");
+
+        CLI::App *decompile = script->add_subcommand("decompile", "Decompile scripts into src\\<name>.sc and src\\<name>.sco, as the Decompile dialog does.");
+        decompile->fallthrough();
+        decompile->footer(CommonFooter);
+        decompile->add_option("game-folder", decompileOptions.gameFolder, "The game folder.")->required();
+        decompile->add_option("scripts", decompileOptions.selectors, "Numbers, ranges (100-199) or names. Or give --all.");
+        decompile->add_flag("--all", decompileOptions.all, "Every script of the game.");
+        decompile->add_option("--game-ini", decompileOptions.gameIni, "update (default): write the names into game.ini when it exists; create: also create it; none: never write it.")
+            ->check(CLI::IsMember({ "update", "create", "none" }));
+        decompile->add_flag("--reset-names", decompileOptions.resetNames, "Give each script its derived name, also a script that has a name.");
+        decompile->add_flag("--update-stale", decompileOptions.updateStale, "Also decompile the scripts that use a renamed global by its old name.");
+        decompile->add_flag("--stdout", decompileOptions.toStdout, "One script: print its source, and write nothing.");
+        decompile->add_flag("--text-tuples", decompileOptions.textTuples, "Replace text resource tuples with strings.");
+        decompile->add_flag("--asm-only", decompileOptions.asmOnly, "Disassemble only.");
+        decompile->add_flag("--debug-control-flow", decompileOptions.debugControlFlow, "Show the control flow (decompiler debug output).");
+        decompile->add_flag("--debug-instructions", decompileOptions.debugInstructions, "Show the use of the instructions (decompiler debug output).");
+        decompile->add_option("--debug-filter", decompileOptions.debugFilter, "The debug output only for this function.");
+
+        CLI::App *sco = script->add_subcommand("sco", "Make src\\<name>.sco from src\\<name>.sc and the compiled script, for source from another tool.");
+        sco->fallthrough();
+        sco->footer(CommonFooter);
+        sco->add_option("game-folder", scoOptions.gameFolder, "The game folder.")->required();
+        sco->add_option("scripts", scoOptions.selectors, "Numbers, ranges (100-199) or names. Or give --all.");
+        sco->add_flag("--all", scoOptions.all, "Every script with a source file and a compiled script.");
 
         CliOutput output(console, common);
         try
@@ -232,10 +258,28 @@ namespace cli
             output.Error("--data-dir needs a folder");
             return (int)ExitCode::Usage;
         }
+        // Plan section 4.2: decompile and sco take --all or one or more
+        // scripts, not both and not neither.
+        for (const auto &command : { std::make_pair(decompile, std::make_pair(decompileOptions.all, !decompileOptions.selectors.empty())),
+            std::make_pair(sco, std::make_pair(scoOptions.all, !scoOptions.selectors.empty())) })
+        {
+            if (command.first->parsed() && (command.second.first == command.second.second))
+            {
+                output.Error(command.second.first ? "give --all or scripts, not both" : "give --all, or one or more scripts");
+                return (int)ExitCode::Usage;
+            }
+        }
+        if (decompile->parsed() && decompileOptions.toStdout && decompileOptions.all)
+        {
+            output.Error("--stdout takes one script, not --all");
+            return (int)ExitCode::Usage;
+        }
+        // The game folder of the command.
+        std::string gameFolder = decompile->parsed() ? decompileOptions.gameFolder : (sco->parsed() ? scoOptions.gameFolder : listOptions.gameFolder);
         std::unique_ptr<LogFile> logFile;
         if (!common.logFile.empty())
         {
-            std::string gameFile = GameFileOf(common.logFile, listOptions.gameFolder);
+            std::string gameFile = GameFileOf(common.logFile, gameFolder);
             if (!gameFile.empty())
             {
                 output.Error("--log would overwrite " + gameFile + ", a file of the game; give another log file");
@@ -291,7 +335,7 @@ namespace cli
             console.Err(HelpOf(&app, "scic"));
             return (int)ExitCode::Usage;
         }
-        if (!list->parsed())
+        if (!list->parsed() && !decompile->parsed() && !sco->parsed())
         {
             // Plan section 4.1: "scic script" lists the script commands.
             logged.Help(HelpOf(script, "scic script"));
@@ -312,7 +356,7 @@ namespace cli
         SessionOptions sessionOptions;
         sessionOptions.dataFolder = dataFolder;
         GameSession session(sessionOptions);
-        sci::Status opened = session.Open(listOptions.gameFolder);
+        sci::Status opened = session.Open(gameFolder);
         if (!opened)
         {
             // Plan section 8: 3, but 2 for a usage error (C1 review: an
@@ -323,6 +367,14 @@ namespace cli
 
         sci::Result<ExitCode> ran = sci::Guard("running the command", [&]() -> sci::Result<ExitCode>
         {
+            if (decompile->parsed())
+            {
+                return RunScriptDecompile(session, decompileOptions, common, logged);
+            }
+            if (sco->parsed())
+            {
+                return RunScriptSco(session, scoOptions, common, logged);
+            }
             return RunScriptList(session, listOptions, logged);
         });
         if (!ran)

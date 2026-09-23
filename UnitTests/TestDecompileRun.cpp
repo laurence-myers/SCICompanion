@@ -592,6 +592,10 @@ namespace UnitTests
                 Assert::IsTrue(selection.has_value() && (selection->scripts.size() > 20), L"setup: the scripts with a source");
                 auto outcomes = GenerateObjectFiles(session, selection->scripts);
                 Assert::IsTrue(outcomes.has_value(), WideForRun(outcomes ? std::string() : outcomes.error().ToString()).c_str());
+                // No diagnostic: the compile above made each export table from
+                // its public block. (The shipped SCI1.1 template's Main and
+                // DebugHandler export slots that their sources do not list;
+                // TestCli::Sco_BothTemplates sees those warnings.)
                 for (const ObjectFileOutcome &outcome : *outcomes)
                 {
                     std::string warnings;

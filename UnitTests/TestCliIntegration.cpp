@@ -35,6 +35,27 @@ namespace UnitTests
             Assert::AreEqual(2UL, usage.exitCode, L"a usage error is exit code 2");
         }
 
+        // Plan step C2: script decompile --stdout prints the source to the
+        // stdout of scic.exe, and writes nothing.
+        BEGIN_TEST_METHOD_ATTRIBUTE(ScicExe_DecompileToStdout)
+            TEST_METHOD_ATTRIBUTE(L"TestCategory", L"Integration")
+        END_TEST_METHOD_ATTRIBUTE()
+        TEST_METHOD(ScicExe_DecompileToStdout)
+        {
+            std::string scic = GetTestModuleDirectory() + "\\scic.exe";
+            Assert::IsTrue(fs::exists(scic), L"setup: scic.exe is next to the tests");
+            std::string game = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
+            std::error_code ec;
+            fs::remove_all(fs::path(game) / "src", ec);
+            ChildOutput out = RunChildReadStdout("\"" + scic + "\" script decompile \"" + game + "\" door --stdout", 60000);
+            bool wroteNothing = !fs::exists(fs::path(game) / "src");
+            fs::remove_all(game, ec);
+            Assert::IsTrue(out.launched && out.reachedEof, L"scic.exe runs and ends");
+            Assert::AreEqual(0UL, out.exitCode);
+            Assert::IsTrue(out.text.find("(script# 974)") != std::string::npos, std::wstring(out.text.begin(), out.text.end()).c_str());
+            Assert::IsTrue(wroteNothing, L"no src folder");
+        }
+
         // The crash handling (plan section 6.6): one line and exit code 1.
         // C1 review: before, abort() and std::terminate() ended the process
         // with exit code 3 and no line, and a bad parameter to a C runtime

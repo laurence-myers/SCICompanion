@@ -24,6 +24,13 @@ namespace cli
         bool dryRun = false;
     };
 
+    enum class DiagnosticLevel
+    {
+        Error,
+        Warning,
+        Message,
+    };
+
     // What a command writes: a result to stdout; an error, a warning, a
     // message and a detail to stderr, as the verbosity allows. The log file
     // (--log) gets every message (plan sections 4.1 and 7). One lock covers
@@ -47,6 +54,15 @@ namespace cli
         void Detail(const std::string &text) { _Write(text + "\n", _options.verbose && !_options.quiet, false); }
         // Help and lists of commands, to stdout.
         void Help(const std::string &text) { _Write(text, true, true); }
+        // A compiler diagnostic in the MSBuild format (plan section 4.5), to
+        // stderr: an error always, a warning unless --quiet, a message with
+        // --verbose only.
+        void Diagnostic(DiagnosticLevel level, const std::string &text)
+        {
+            bool show = (level == DiagnosticLevel::Error) || ((level == DiagnosticLevel::Warning) && !_options.quiet) ||
+                ((level == DiagnosticLevel::Message) && _options.verbose && !_options.quiet);
+            _Write(text + "\n", show, false);
+        }
 
     private:
         void _Write(const std::string &text, bool toConsole, bool toStdout)
@@ -87,4 +103,44 @@ namespace cli
     // Prints the scripts. Success, or PartialFailure when a compiled script
     // that it read cannot be read. Fails for a bad selector (Usage).
     sci::Result<ExitCode> RunScriptList(GameSession &session, const ScriptListOptions &options, CliOutput &output);
+
+    // scic script decompile (plan section 4.4).
+    struct ScriptDecompileOptions
+    {
+        std::string gameFolder;
+        std::vector<std::string> selectors;
+        bool all = false;
+        std::string gameIni = "update";     // update, create or none
+        bool resetNames = false;
+        bool updateStale = false;
+        bool toStdout = false;
+        bool textTuples = false;
+        bool asmOnly = false;
+        bool debugControlFlow = false;
+        bool debugInstructions = false;
+        std::string debugFilter;
+    };
+
+    // Decompiles the scripts (RunDecompile) and prints the report: the
+    // messages of the decompiler as they come, then the summary. --stdout
+    // prints the source and writes nothing; --dry-run writes nothing and
+    // lists the files that a run would write. The exit code of the report
+    // (plan section 8). Fails when the run cannot start: a bad selector,
+    // or --stdout with more than one script (Usage).
+    sci::Result<ExitCode> RunScriptDecompile(GameSession &session, const ScriptDecompileOptions &options, const CommonOptions &common, CliOutput &output);
+
+    // scic script sco (plan section 4.6).
+    struct ScriptScoOptions
+    {
+        std::string gameFolder;
+        std::vector<std::string> selectors;
+        bool all = false;
+    };
+
+    // Makes the .sco files (GenerateObjectFiles) and prints each script
+    // that was skipped or failed, then the summary. The exit code: 6 when a
+    // script failed (also for a syntax error, plan section 4.6), 9 when a
+    // .sco could not be written, 7 after Ctrl+C, 1 for a bug. Fails for a
+    // bad selector (Usage).
+    sci::Result<ExitCode> RunScriptSco(GameSession &session, const ScriptScoOptions &options, const CommonOptions &common, CliOutput &output);
 }

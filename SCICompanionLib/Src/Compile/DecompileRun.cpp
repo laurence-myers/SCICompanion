@@ -124,6 +124,80 @@ namespace
         return sci::Ok();
     }
 
+    // A diagnostic at a node of the source, in the form of the compiler's
+    // (CompileContext::_ReportThing): a 1-based line, and the raw message.
+    CompileResult DiagnosticAt(const ScriptId &script, const ISourceCodePosition &position, bool error, const std::string &message)
+    {
+        int line = position.GetLineNumber() + 1;
+        CompileResult result(fmt::format("{0}: ({1}) {2}  Line: {3}, col: {4}", error ? "Error" : "Warning", script.GetFileNameOrig(), message, line, position.GetColumnNumber()),
+            script, line, position.GetColumnNumber(), error ? CompileResult::CRT_Error : CompileResult::CRT_Warning);
+        result.SetRawMessage(message);
+        return result;
+    }
+
+    std::string SlotsText(const std::set<int> &slots)
+    {
+        std::string text;
+        for (int slot : slots)
+        {
+            text += (text.empty() ? "" : " ") + std::to_string(slot);
+        }
+        return text.empty() ? std::string("none") : text;
+    }
+
+    // The public block, as the compiler checks it (Script::PreScan in
+    // Compile.cpp): a slot used twice, or a name that no class, instance or
+    // procedure of the source has, is an error (plan step C2: the .sco
+    // builder took both, and the compile of the script then failed). A
+    // block whose slots differ from the slots that the compiled script
+    // exports is a warning (found at the K2 review: the SCI1.1 template's
+    // Main and DebugHandler export slots that their sources do not list).
+    sci::Status CheckPublicBlock(const sci::Script &parsed, const ScriptId &script, uint16_t number, const CompiledScript &compiled, std::vector<CompileResult> &diagnostics)
+    {
+        if (parsed.GetExports().empty())
+        {
+            return sci::Ok();
+        }
+        std::set<int> slots;
+        bool errors = false;
+        for (const auto &entry : parsed.GetExports())
+        {
+            if (!slots.insert(entry->Slot).second)
+            {
+                diagnostics.push_back(DiagnosticAt(script, *entry, true, fmt::format("Export slot {0} has already been used.", entry->Slot)));
+                errors = true;
+            }
+            bool defined = std::any_of(parsed.GetClasses().begin(), parsed.GetClasses().end(), [&](const auto &object) { return object->GetName() == entry->Name; }) ||
+                std::any_of(parsed.GetProcedures().begin(), parsed.GetProcedures().end(), [&](const auto &procedure) { return procedure->GetName() == entry->Name; });
+            if (!defined)
+            {
+                diagnostics.push_back(DiagnosticAt(script, *entry, true, fmt::format("Unknown export {0} in slot {1}.", entry->Name, entry->Slot)));
+                errors = true;
+            }
+        }
+        if (errors)
+        {
+            sci::ErrorLocation where;
+            where.file = script.GetFullPath();
+            return sci::Fail(sci::ErrorCode::Compile, "the public block has errors", where);
+        }
+        std::set<int> compiledSlots;
+        std::vector<uint16_t> exports = compiled.GetExports();
+        for (size_t slot = 0; slot < exports.size(); slot++)
+        {
+            if (exports[slot] != 0)
+            {
+                compiledSlots.insert((int)slot);
+            }
+        }
+        if (compiledSlots != slots)
+        {
+            diagnostics.push_back(DiagnosticAt(script, *parsed.GetExports().front(), false,
+                fmt::format("The public block has the slots {0}, and compiled script {1} exports the slots {2}.", SlotsText(slots), number, SlotsText(compiledSlots))));
+        }
+        return sci::Ok();
+    }
+
     // A guard for the stale loop: each group names a global that no group
     // named before, so the loop ends; this stops only a loop that a bug made
     // endless.
@@ -252,7 +326,11 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         if (options.names == NameAssignment::All)
         {
             SCI_TRY_ASSIGN(std::vector<std::string> warnings, ResetScriptNames(session, scripts));
-            report.warnings.insert(report.warnings.end(), warnings.begin(), warnings.end());
+            for (const std::string &warning : warnings)
+            {
+                report.warnings.push_back(warning);
+                results.AddResult(DecompilerResultType::Warning, warning);
+            }
         }
 
         GlobalCompiledScriptLookups lookups;
@@ -342,6 +420,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             report.globalRenames.insert(report.globalRenames.end(), groupRenames.begin(), groupRenames.end());
             if (!ran)
             {
+                results.AddResult(DecompilerResultType::Error, ran.error().ToString());
                 break;
             }
             if (counting.IsAborted())
@@ -378,6 +457,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             if (!checked)
             {
                 report.warnings.push_back(checked.error().ToString());
+                results.AddResult(DecompilerResultType::Warning, checked.error().ToString());
                 break;
             }
             if (!options.updateStale || (group >= MaxStaleGroups))
@@ -385,6 +465,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
                 if (options.updateStale && !stale.empty())
                 {
                     report.warnings.push_back(fmt::format("the run stopped after {0} groups of stale scripts", group));
+                    results.AddResult(DecompilerResultType::Warning, report.warnings.back());
                 }
                 report.stale = std::move(stale);
                 break;
@@ -430,7 +511,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
     });
 }
 
-sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &session, const std::vector<ScriptId> &scripts)
+sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &session, const std::vector<ScriptId> &scripts, const ObjectFileOptions &options)
 {
     return sci::Guard("making the .sco files", [&]() -> sci::Result<std::vector<ObjectFileOutcome>>
     {
@@ -441,6 +522,13 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
             ObjectFileOutcome outcome;
             outcome.number = script.GetResourceNumber();
             outcome.name = script.GetTitle();
+            outcome.path = helper.GetScriptObjectFileName(script.GetTitle());
+            if (options.abort && options.abort->load())
+            {
+                outcome.status = sci::Fail(sci::ErrorCode::Cancelled, "the run stopped before this script");
+                outcomes.push_back(std::move(outcome));
+                continue;
+            }
             outcome.status = sci::Guard("", [&]() -> sci::Status
             {
                 std::error_code ec;
@@ -480,6 +568,7 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
                     outcome.diagnostics.push_back(CompileResult(fmt::format("{0} declares script {1}; the .sco is for script {2}",
                         script.GetFileNameOrig(), parsed.GetScriptNumber(), outcome.number), CompileResult::CRT_Warning));
                 }
+                SCI_TRY(CheckPublicBlock(parsed, script, outcome.number, compiled, outcome.diagnostics));
 
                 std::unique_ptr<CSCOFile> objectFile = SCOFromScriptAndCompiledScript(parsed, compiled);
                 // The pair must agree: the .sco describes the compiled script.
@@ -509,6 +598,10 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
                 {
                     outcome.diagnostics.push_back(CompileResult(fmt::format("{0} has {1} classes, and compiled script {2} has {3}; the .sco uses the names of the compiled script",
                         script.GetFileNameOrig(), sourceClasses.size(), outcome.number, classes.size()), CompileResult::CRT_Warning));
+                }
+                if (options.dryRun)
+                {
+                    return sci::Ok();
                 }
                 return SaveSCOFile(helper, *objectFile, script);
             });

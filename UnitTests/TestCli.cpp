@@ -9,11 +9,16 @@
 #include "CompileInterfaces.h"
 #include "CompileContext.h"
 #include "CompileBatch.h"
+#include "CompiledScript.h"
 #include "DecompileRun.h"
+#include "GameSession.h"
+#include "SCO.h"
 #include "Helper.h"
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -74,8 +79,8 @@ namespace
 
 namespace UnitTests
 {
-    // Plan step C1: scic.exe's command line (plan sections 4, 7 and 8), run
-    // in this process through RunCli.
+    // Plan steps C1 and C2: scic.exe's command line (plan sections 4, 7 and
+    // 8), run in this process through RunCli.
     TEST_CLASS(TestCli)
     {
         std::string _copyFolder;
@@ -117,9 +122,89 @@ namespace UnitTests
             std::string line;
             while (std::getline(stream, line))
             {
+                if (!line.empty() && (line.back() == '\r'))
+                {
+                    line.pop_back();
+                }
                 lines.push_back(line);
             }
             return lines;
+        }
+
+        // The names of the files in src with this extension.
+        static std::set<std::string> FilesOf(const std::string &game, const char *extension)
+        {
+            std::set<std::string> names;
+            std::error_code ec;
+            for (fs::directory_iterator it(fs::path(game) / "src", ec), end; !ec && (it != end); it.increment(ec))
+            {
+                if (_stricmp(it->path().extension().string().c_str(), extension) == 0)
+                {
+                    names.insert(it->path().filename().string());
+                }
+            }
+            return names;
+        }
+
+        static std::set<std::string> SourcesOf(const std::string &game)
+        {
+            return FilesOf(game, ".sc");
+        }
+
+        static size_t CountObjectFiles(const std::string &game)
+        {
+            return FilesOf(game, ".sco").size();
+        }
+
+        static size_t RemoveObjectFiles(const std::string &game)
+        {
+            std::set<std::string> objectFiles = FilesOf(game, ".sco");
+            for (const std::string &name : objectFiles)
+            {
+                fs::remove(fs::path(game) / "src" / name);
+            }
+            return objectFiles.size();
+        }
+
+        // The SCI1.1 template with the two scripts of TestDecompileBatch as
+        // scripts 959 and 960 (as TestDecompileRun does): 959 uses global5,
+        // and a decompile of 960 names it. Slot 5 of Main.sco gets its
+        // standard name first.
+        void PrepareStaleFixtures()
+        {
+            CopyTemplate("\\TemplateGame\\SCI1.1");
+            SessionOptions sessionOptions;
+            sessionOptions.dataFolder = GetTestModuleDirectory();
+            {
+                GameSession session(sessionOptions);
+                Assert::IsTrue(session.Open(_copyFolder).has_value(), L"setup: the copy must open");
+                GlobalCompiledScriptLookups lookups;
+                Assert::IsTrue(lookups.TryLoad(session.Helper()).has_value());
+                std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(session.Helper(), 0, lookups.GetSelectorTable());
+                Assert::IsNotNull(mainSCO.get(), L"setup: Main.sco");
+                mainSCO->GetVariables()[5].SetName("global5");
+                Assert::IsTrue(SaveSCOFile(session.Helper(), *mainSCO).has_value());
+            }
+            for (const auto &fixture : std::vector<std::pair<std::string, std::string>>{ { "BatchGlobalsA", "959" }, { "BatchGlobalsB", "960" } })
+            {
+                std::string text = ReadFileText(GetTestFileDirectory("Decompile\\SCI1.1") + "\\" + fixture.first + ".sc");
+                std::string declared = (fixture.first == "BatchGlobalsA") ? "(script# 950)" : "(script# 951)";
+                size_t at = text.find(declared);
+                Assert::IsTrue(at != std::string::npos, L"setup: the fixture declares its number");
+                text.replace(at, declared.size(), "(script# " + fixture.second + ")");
+                std::ofstream file((fs::path(_copyFolder) / "src" / (fixture.first + ".sc")).string(), std::ios::binary | std::ios::trunc);
+                file << text;
+            }
+            GameSession session(sessionOptions);
+            Assert::IsTrue(session.Open(_copyFolder).has_value(), L"setup: the copy must open");
+            ScriptId a((fs::path(_copyFolder) / "src" / "BatchGlobalsA.sc").string().c_str());
+            a.SetResourceNumber(959);
+            ScriptId b((fs::path(_copyFolder) / "src" / "BatchGlobalsB.sc").string().c_str());
+            b.SetResourceNumber(960);
+            std::atomic<bool> abort(false);
+            ICompileEvents events;
+            auto compiled = CompileScripts(session, { a, b }, CompileOptions(), abort, events);
+            Assert::IsTrue(compiled.has_value() && compiled->Succeeded(), L"setup: the fixtures must compile");
         }
 
     public:
@@ -305,6 +390,15 @@ namespace UnitTests
                 { "help", "nosuchtopic" },
                 { "script", "list", "" },
                 { "script", "list", _copyFolder, "--log", map },
+                // Plan section 4.2: --all or scripts, not both and not neither.
+                { "script", "decompile", _copyFolder },
+                { "script", "decompile", _copyFolder, "974", "--all" },
+                { "script", "decompile", _copyFolder, "--all", "--stdout" },
+                { "script", "decompile", _copyFolder, "0", "974", "--stdout" },
+                { "script", "decompile", _copyFolder, "974", "--game-ini", "xml" },
+                { "script", "decompile", _copyFolder, "s1nosuchscript" },
+                { "script", "sco", _copyFolder },
+                { "script", "sco", _copyFolder, "rm001", "--all" },
             };
             for (const std::vector<std::string> &args : cases)
             {
@@ -490,6 +584,177 @@ namespace UnitTests
             code = Run({ "script", "list", _copyFolder, "--log", _copyFolder + "\\NoSuchFolder\\log.txt" }, noLog);
             Assert::AreEqual(3, code, L"a log file that cannot open");
             Assert::IsTrue(noLog.err.find("cannot open the log file") != std::string::npos, WideForCli(noLog.err).c_str());
+        }
+
+        // Plan step C2 and its test row: a game that SCI Companion never
+        // opened (no game.ini, no src). decompile --all writes the derived
+        // names and creates no game.ini; a second run finds the same names.
+        TEST_METHOD(Decompile_ABareGame_DerivedNamesAndNoGameIni)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0", true);
+            cli::StringConsole first;
+            int code = Run({ "script", "decompile", _copyFolder, "--all" }, first);
+            Assert::AreEqual(0, code, WideForCli(first.err).c_str());
+            Assert::IsFalse(fs::exists(fs::path(_copyFolder) / "game.ini"), L"no game.ini");
+            std::set<std::string> sources = SourcesOf(_copyFolder);
+            Assert::IsTrue((sources.count("Door.sc") == 1) && (sources.count("Main.sc") == 1) && (sources.size() > 25), WideForCli(first.err).c_str());
+            Assert::IsTrue(first.err.find("Decompiled and wrote") != std::string::npos, WideForCli(first.err).c_str());
+
+            cli::StringConsole second;
+            code = Run({ "script", "decompile", _copyFolder, "--all" }, second);
+            Assert::AreEqual(0, code, WideForCli(second.err).c_str());
+            Assert::IsTrue(sources == SourcesOf(_copyFolder), L"the second run finds the same names");
+        }
+
+        // An individual run writes src\<name>.sc of the script; the summary
+        // counts it.
+        TEST_METHOD(Decompile_OneScript)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            std::string door = (fs::path(_copyFolder) / "src" / "door.sc").string();
+            fs::remove(door);
+            cli::StringConsole console;
+            int code = Run({ "script", "decompile", _copyFolder, "door" }, console);
+            Assert::AreEqual(0, code, WideForCli(console.err).c_str());
+            Assert::IsTrue(ReadFileText(door).find("(script# 974)") != std::string::npos, L"src\\door.sc");
+            Assert::IsTrue(console.err.find("Decompiled and wrote 1 of 1 scripts.") != std::string::npos, WideForCli(console.err).c_str());
+        }
+
+        // --stdout prints the source of one script, and --dry-run lists the
+        // files; neither writes a file (no src folder, no game.ini).
+        TEST_METHOD(Decompile_StdoutAndDryRun_WriteNothing)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0", true);
+            auto before = Snapshot(_copyFolder);
+            cli::StringConsole toStdout;
+            int code = Run({ "script", "decompile", _copyFolder, "974", "--stdout", "--game-ini", "create" }, toStdout);
+            Assert::AreEqual(0, code, WideForCli(toStdout.err).c_str());
+            Assert::IsTrue(toStdout.out.find("(script# 974)") != std::string::npos, WideForCli(toStdout.out).c_str());
+            Assert::IsTrue(before == Snapshot(_copyFolder), L"--stdout writes nothing");
+
+            cli::StringConsole dryRun;
+            code = Run({ "script", "decompile", _copyFolder, "--all", "--dry-run" }, dryRun);
+            Assert::AreEqual(0, code, WideForCli(dryRun.err).c_str());
+            Assert::IsTrue(dryRun.out.empty(), L"no source on stdout");
+            Assert::IsTrue(dryRun.err.find("would write") != std::string::npos, WideForCli(dryRun.err).c_str());
+            Assert::IsTrue(before == Snapshot(_copyFolder), L"--dry-run writes nothing");
+        }
+
+        // A run on some scripts reports the stale scripts; --update-stale
+        // decompiles them too.
+        TEST_METHOD(Decompile_StaleScripts_ReportedOrUpdated)
+        {
+            NoAppStateForCli noAppState;
+            PrepareStaleFixtures();
+            cli::StringConsole reported;
+            int code = Run({ "script", "decompile", _copyFolder, "960" }, reported);
+            Assert::AreEqual(0, code, WideForCli(reported.err).c_str());
+            Assert::IsTrue((reported.err.find("by its old name") != std::string::npos) && (reported.err.find("959") != std::string::npos), WideForCli(reported.err).c_str());
+
+            PrepareStaleFixtures();
+            cli::StringConsole updated;
+            code = Run({ "script", "decompile", _copyFolder, "960", "--update-stale" }, updated);
+            Assert::AreEqual(0, code, WideForCli(updated.err).c_str());
+            Assert::IsTrue(updated.err.find("by its old name") == std::string::npos, WideForCli(updated.err).c_str());
+            // 959 is decompiled too (and a later group can make another
+            // script stale, which the run then decompiles as well).
+            std::string first = ReadFileText((fs::path(_copyFolder) / "src" / "BatchGlobalsA.sc").string());
+            Assert::IsFalse(ContainsIdentifier(first, "global5"), WideForCli(updated.err + "\n" + first).c_str());
+        }
+
+        // Plan section 8: a script that fails (a truncated script in a copy)
+        // is exit code 6, and the others are written.
+        TEST_METHOD(Decompile_OneScriptFails_ExitsWith6)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            {
+                std::ofstream patch((fs::path(_copyFolder) / "script.905").string(), std::ios::binary);
+                const char bytes[] = { (char)(0x80 | 2), 0, 5, 0, 1 };
+                patch.write(bytes, sizeof(bytes));
+            }
+            cli::StringConsole console;
+            int code = Run({ "script", "decompile", _copyFolder, "905", "974" }, console);
+            Assert::AreEqual(6, code, WideForCli(console.err).c_str());
+            Assert::IsTrue(console.err.find("Failed: 905") != std::string::npos, WideForCli(console.err).c_str());
+            Assert::IsTrue(console.err.find("Decompiled and wrote 1 of 2 scripts.") != std::string::npos, WideForCli(console.err).c_str());
+        }
+
+        // Plan section 4.6: script sco makes the .sco files of both templates
+        // from their sources. The SCI1.1 template's Main and DebugHandler
+        // get a warning in the MSBuild format: their compiled scripts export
+        // slots that their public blocks do not list.
+        TEST_METHOD(Sco_BothTemplates)
+        {
+            NoAppStateForCli noAppState;
+            for (const char *templateFolder : { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" })
+            {
+                CopyTemplate(templateFolder);
+                size_t removed = RemoveObjectFiles(_copyFolder);
+                Assert::IsTrue(removed > 20, L"setup: the .sco files");
+                cli::StringConsole console;
+                int code = Run({ "script", "sco", _copyFolder, "--all" }, console);
+                Assert::AreEqual(0, code, WideForCli(console.err).c_str());
+                Assert::AreEqual(removed, CountObjectFiles(_copyFolder), WideForCli(console.err).c_str());
+                bool sci11 = (std::string(templateFolder) == "\\TemplateGame\\SCI1.1");
+                size_t warnings = 0;
+                for (const std::string &line : Lines(console.err))
+                {
+                    if (line.find(": warning : The public block has the slots") != std::string::npos)
+                    {
+                        warnings++;
+                        Assert::IsTrue((line.find("Main.sc(") != std::string::npos) || (line.find("DebugHandler.sc(") != std::string::npos), WideForCli(line).c_str());
+                    }
+                }
+                Assert::AreEqual(sci11 ? (size_t)2 : (size_t)0, warnings, WideForCli(console.err).c_str());
+            }
+        }
+
+        // Plan step C2: a public block that the compiler refuses, and a
+        // syntax error, fail the script (exit code 6), in the MSBuild format,
+        // and write no .sco. Before, the .sco builder took the public block.
+        TEST_METHOD(Sco_ThePublicBlockAndSyntaxErrors_ExitWith6)
+        {
+            NoAppStateForCli noAppState;
+            struct Case { const char *replacement; const char *error; };
+            for (const Case &broken : { Case{ "rm001 0 rm001 0", ": error : Export slot 0 has already been used." }, Case{ "rm001 0 s2NoSuch 1", ": error : Unknown export s2NoSuch in slot 1." },
+                Case{ "rm001 0) (procedure (s2Broken) (= ", ": error : " } })
+            {
+                CopyTemplate("\\TemplateGame\\SCI0");
+                std::string source = (fs::path(_copyFolder) / "src" / "rm001.sc").string();
+                std::string text = ReadFileText(source);
+                size_t at = text.find("rm001 0");
+                Assert::IsTrue(at != std::string::npos, L"setup: the public block of rm001");
+                text.replace(at, 7, broken.replacement);
+                {
+                    std::ofstream file(source, std::ios::binary | std::ios::trunc);
+                    file << text;
+                }
+                std::string objectFile = (fs::path(_copyFolder) / "src" / "rm001.sco").string();
+                std::string objectBefore = ReadFileText(objectFile);
+                cli::StringConsole console;
+                int code = Run({ "script", "sco", _copyFolder, "rm001" }, console);
+                Assert::AreEqual(6, code, WideForCli(console.err).c_str());
+                Assert::IsTrue((console.err.find("rm001.sc(") != std::string::npos) && (console.err.find(broken.error) != std::string::npos), WideForCli(console.err).c_str());
+                Assert::AreEqual(objectBefore, ReadFileText(objectFile), L"no .sco for a script that failed");
+            }
+        }
+
+        // --dry-run makes the .sco files, lists them, and writes none.
+        TEST_METHOD(Sco_DryRun_WritesNothing)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            RemoveObjectFiles(_copyFolder);
+            auto before = Snapshot(_copyFolder);
+            cli::StringConsole console;
+            int code = Run({ "script", "sco", _copyFolder, "--all", "--dry-run" }, console);
+            Assert::AreEqual(0, code, WideForCli(console.err).c_str());
+            Assert::IsTrue(console.err.find("would write") != std::string::npos, WideForCli(console.err).c_str());
+            Assert::IsTrue(before == Snapshot(_copyFolder), L"--dry-run writes nothing");
         }
     };
 }
