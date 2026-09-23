@@ -1258,7 +1258,10 @@ CodeResult PropertyValueBase::OutputByteCode(CompileContext &context) const
 						// we'll look up the "undeclared identifier" here, and see if it's a function name.
 						WORD wScript, wIndex;
 						string classOwner;
-						if (ProcedureUnknown != context.LookupProc(_stringValue, wScript, wIndex, classOwner))
+						ProcedureType procType = context.LookupProc(_stringValue, wScript, wIndex, classOwner);
+						// A proc<N>_<M> of a missing script (plan step K5) is a procedure
+						// only in a call: as a value it is an undeclared name.
+						if ((procType != ProcedureUnknown) && (procType != ProcedureMissingScript))
 						{
 							context.ReportError(this, "The '(' character must immediately follow the function call '%s'.", _stringValue.c_str());
 						}

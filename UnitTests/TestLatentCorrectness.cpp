@@ -101,7 +101,8 @@ namespace UnitTests
 
         // Plan step K6: ScriptId split a path only at a '\', so "src/rm110.sc"
         // gave the file name "src/rm110.sc" and no folder. A '/' also splits
-        // now, and the last separator of either kind wins.
+        // now, and the last separator of either kind wins. The folder keeps
+        // only '\' (K6 review), so both forms of a path are equal.
         TEST_METHOD(ScriptId_SplitsAPathAtEitherSlash)
         {
             ScriptId forward(std::string("src/rm110.sc"));
@@ -114,11 +115,16 @@ namespace UnitTests
 
             ScriptId back(std::string("C:/Game/src\\rm110.sc"));
             Assert::AreEqual(std::string("rm110.sc"), back.GetFileName());
-            Assert::AreEqual(std::string("c:/game/src"), back.GetFolder());
+            Assert::AreEqual(std::string("c:\\game\\src"), back.GetFolder());
 
             ScriptId bare(std::string("rm110.sc"));
             Assert::AreEqual(std::string("rm110.sc"), bare.GetFileName());
             Assert::AreEqual(std::string(""), bare.GetFolder());
+
+            ScriptId backslashes(std::string("C:\\Game\\src\\rm110.sc"));
+            Assert::IsTrue(ScriptId(std::string("C:/Game/src/rm110.sc")) == backslashes, L"the '/' form of a path must equal its '\\' form");
+            Assert::IsTrue(ScriptId("rm110.sc", "C:/Game/src") == backslashes, L"a folder given with '/' must equal its '\\' form");
+            Assert::IsFalse(ScriptId(std::string("C:/Game/src/rm110.sc")) < backslashes, L"the two forms must sort as one");
         }
 
         // AppState::GetGameName built a std::string from an uninitialised buffer

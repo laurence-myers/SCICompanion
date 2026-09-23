@@ -96,8 +96,9 @@ sci::Status CompileTables::TryLoad(CResourceMap &resourceMap)
 		const GameFolderHelper &helper = resourceMap.Helper();
 		SCI_TRY(CheckVocabTables(helper));
 		// The steps of Load, one at a time, so that a failure names its table.
-		// A missing or bad vocab.000 is not an error here: GetVocab000 gives a
-		// default, and only a Said string needs it (K6).
+		// A missing vocab.000 is not an error here: GetVocab000 gives null,
+		// and only a Said string needs the vocabulary; its compile reports
+		// the missing resource (K6).
 		_pVocab = resourceMap.GetVocab000();
 		sci::ErrorLocation where;
 		if (!_kernels.Load(helper))
@@ -644,10 +645,12 @@ const std::string UndeclaredKernelPrefix = "kernel_";
 const std::string NonExistantExportPrefix = "__proc";
 const std::string MissingScriptProcPrefix = "proc";
 
-// Reads a decimal number of 1 to 5 digits that fits in 16 bits.
+// Reads a decimal number of 1 to 5 digits that fits in 16 bits, with no
+// leading zero: the decompiler writes none, so "proc0911_0" is a typo.
 static bool _ParseProcNumber(const std::string &text, uint16_t &value)
 {
-	if (text.empty() || (text.size() > 5) || !std::all_of(text.begin(), text.end(), [](char ch) { return (ch >= '0') && (ch <= '9'); }))
+	if (text.empty() || (text.size() > 5) || ((text.size() > 1) && (text[0] == '0')) ||
+		!std::all_of(text.begin(), text.end(), [](char ch) { return (ch >= '0') && (ch <= '9'); }))
 	{
 		return false;
 	}
@@ -740,7 +743,10 @@ ProcedureType CompileContext::LookupProc(const string &str, WORD &wScript, WORD 
 			uint16_t scriptNumber, exportNumber;
 			if (_ParseScriptAndExport(str.substr(NonExistantExportPrefix.length()), scriptNumber, exportNumber))
 			{
-				type = ProcedureExternal;
+				// A callb to a missing export of main decompiles to __proc0_M;
+				// it compiles back to callb (K5 review: calle 0 M is two bytes
+				// longer).
+				type = (scriptNumber == 0) ? ProcedureMain : ProcedureExternal;
 				wIndex = exportNumber;
 				wScript = scriptNumber;
 			}

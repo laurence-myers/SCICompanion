@@ -753,13 +753,11 @@ void ScriptId::_Init(PCTSTR pszFullFileName, WORD wScriptNum)
 		//_strFolder = fullPath.parent_path();
 		// Sigh Microsoft... std::tr2::sys doesn't work with UNC shares...
 		CString str = pszFullFileName;
-		// A path can use '\' or '/', as "src/rm110.sc" (plan step K6).
+		// A path can use '\' or '/', as "src/rm110.sc" (plan step K6). The
+		// folder keeps only '\', so == gives one answer for both forms of a
+		// path (K6 review).
+		str.Replace('/', '\\');
 		int iIndexBS = str.ReverseFind('\\');
-		int iIndexSlash = str.ReverseFind('/');
-		if (iIndexSlash > iIndexBS)
-		{
-			iIndexBS = iIndexSlash;
-		}
 		_strFolder = str.Left(iIndexBS);
 		_strFileName = str.Right(str.GetLength() - iIndexBS - 1);
 
@@ -783,6 +781,7 @@ ScriptId::ScriptId(PCTSTR pszFileName, PCTSTR pszFolder)
 	assert(StrChr(pszFileName, '\\') == nullptr); // Ensure file and path are not mixed up.
 	_strFileName = pszFileName;
 	_strFolder = pszFolder;
+	std::replace(_strFolder.begin(), _strFolder.end(), '/', '\\'); // As in _Init.
 	_MakeLower();
 	_wScriptNum = InvalidResourceNumber;
 }

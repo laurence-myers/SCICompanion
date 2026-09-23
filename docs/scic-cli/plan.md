@@ -1322,9 +1322,10 @@ GUI changes in this plan (all others are refactors with no visible change):
   recompiles to the same call (before: `calle 0` and a wrong export).
 - K6: a `Said` string in a game with no vocabulary resource gives a
   compile error (before: a crash).
+- K6 review: the script editor's "Add as synonym of" dialog opens in a
+  game with no vocabulary resource, with no words to suggest (before: a
+  crash).
 - K4: the decompiler writes selector names with `#` as they are.
-- K5: a call into a script that the game does not have compiles, with a
-  warning.
 
 ## 10. Testing
 

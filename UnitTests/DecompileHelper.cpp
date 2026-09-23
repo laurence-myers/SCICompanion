@@ -131,7 +131,7 @@ void AddFixtureScript(const std::string &fixtureName)
         ToWString("Could not copy fixture: " + src).c_str());
 }
 
-bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::string *outError, std::vector<std::string> *outWarnings)
+bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::string *outError, std::vector<std::string> *outWarnings, std::vector<std::string> *outErrors)
 {
     CResourceMap &rm = appState->GetResourceMap();
     rm.AssignName(ResourceType::Script, scriptNumber, NoBase36, fixtureName.c_str());
@@ -169,6 +169,16 @@ bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::
             if (r.IsWarning())
             {
                 outWarnings->push_back(r.GetMessage());
+            }
+        }
+    }
+    if (outErrors)
+    {
+        for (const CompileResult &r : log.Results())
+        {
+            if (r.IsError())
+            {
+                outErrors->push_back(r.GetMessage());
             }
         }
     }

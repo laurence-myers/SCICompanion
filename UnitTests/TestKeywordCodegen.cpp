@@ -20,6 +20,7 @@
 #include "ResourceMap.h"
 #include "ResourceContainer.h"
 #include "CompiledScript.h"
+#include "WordEnumString.h"
 #include "format.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -55,16 +56,28 @@ namespace UnitTests
 
     // Writes source into the game's src folder as <name>.sc and compiles it as
     // the given resource number. Returns the compiler's success; on failure the
-    // first error message is put in outError. The warnings go to outWarnings
-    // when it is not null.
-    static bool CompileSource(uint16_t number, const std::string &name, const std::string &source, std::string &outError, std::vector<std::string> *outWarnings = nullptr)
+    // first error message is put in outError. The warnings go to outWarnings,
+    // and every error to outErrors, when they are not null.
+    static bool CompileSource(uint16_t number, const std::string &name, const std::string &source, std::string &outError, std::vector<std::string> *outWarnings = nullptr,
+        std::vector<std::string> *outErrors = nullptr)
     {
         std::string path = appState->GetResourceMap().Helper().GetScriptFileName(name);
         {
             std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
             file << source;
         }
-        return CompileFixture(number, name, &outError, outWarnings);
+        return CompileFixture(number, name, &outError, outWarnings, outErrors);
+    }
+
+    // The messages, one on each line, for an assert text.
+    static std::string JoinLines(const std::vector<std::string> &lines)
+    {
+        std::string text;
+        for (const std::string &line : lines)
+        {
+            text += line + "\n";
+        }
+        return text;
     }
 
     // Loads the compiled script resource and returns its raw bytes.
@@ -330,6 +343,36 @@ namespace UnitTests
             resourceMap.ClearVocab000();
             Assert::IsTrue(nullptr == resourceMap.GetVocab000(), L"setup: no vocabulary");
 
+            // Two Said strings: the error comes once for the compile, not once
+            // for each Said string or word (K6 review).
+            std::string source = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest)\n"
+                "\t(if (Said 'look/door')\n"
+                "\t\t(return 1)\n"
+                "\t)\n"
+                "\t(if (Said 'open/door')\n"
+                "\t\t(return 2)\n"
+                "\t)\n"
+                "\t(return 0)\n"
+                ")\n";
+            std::string error;
+            std::vector<std::string> errors;
+            bool compiled = CompileSource(902, "kTest", source, error, nullptr, &errors);
+            Assert::IsFalse(compiled, L"a Said string needs the vocabulary");
+            Assert::AreEqual((size_t)1, errors.size(), W("expected one error, got:\n" + JoinLines(errors)).c_str());
+            Assert::IsTrue(errors[0].find("vocab 0") != npos, W("expected an error that names vocab 0, got: " + errors[0]).c_str());
+        }
+
+        // K6 review: the main vocabulary of an SCI1.1 game with no vocab 0 is
+        // vocab 900, and the error names it. The SCI1.1 template has neither.
+        TEST_METHOD(SaidWithNoVocabulary_SCI11_NamesVocab900)
+        {
+            _gameFolder = SetUpGameSCI11();
+            CResourceMap &resourceMap = appState->GetResourceMap();
+            Assert::AreEqual(900, (int)resourceMap.Helper().Version.MainVocabResource, L"setup: the main vocabulary is vocab 900");
+            Assert::IsTrue(nullptr == resourceMap.GetVocab000(), L"setup: no vocabulary");
+
             std::string source = Header() +
                 "(public\n\tkTest 0\n)\n"
                 "(procedure (kTest)\n"
@@ -341,7 +384,26 @@ namespace UnitTests
             std::string error;
             bool compiled = CompileSource(902, "kTest", source, error);
             Assert::IsFalse(compiled, L"a Said string needs the vocabulary");
-            Assert::IsTrue(error.find("vocab 0") != npos, W("expected an error that names vocab 0, got: " + error).c_str());
+            Assert::IsTrue(error.find("vocab 900") != npos, W("expected an error that names vocab 900, got: " + error).c_str());
+        }
+
+        // K6 review: the auto-complete word list of the script editor's "Add
+        // as synonym of" dialog read the vocabulary through a null pointer in
+        // a game with none.
+        TEST_METHOD(WordList_GameWithNoVocabulary_IsEmpty)
+        {
+            _gameFolder = SetUpGameSCI11();
+            Assert::IsTrue(nullptr == appState->GetResourceMap().GetVocab000(), L"setup: no vocabulary");
+
+            IEnumString *words = nullptr;
+            HRESULT hr = CWordEnumString_CreateInstance(IID_IEnumString, (void **)&words);
+            Assert::IsTrue(SUCCEEDED(hr) && (words != nullptr), L"the word list was not made");
+            LPOLESTR word = nullptr;
+            ULONG fetched = 0;
+            hr = words->Next(1, &word, &fetched);
+            words->Release();
+            Assert::AreEqual(0, (int)fetched, L"a game with no vocabulary has no words");
+            Assert::IsTrue(hr == S_FALSE, L"Next must give S_FALSE when no word is left");
         }
 
         // K5: when the game has script N, an unresolved proc<N>_<M> stays an
@@ -377,6 +439,91 @@ namespace UnitTests
                 "\t(proc911_0 5)\n"
                 ")\n";
             AssertSameBytes(escaped, plain, L"__proc911_0 must compile to calle 911 0");
+        }
+
+        // K5 review: an asm calle of proc<N>_<M> of a missing script compiles
+        // too, with the warning, to the bytes of the call. The asm fallback of
+        // the decompiler writes this form (DecompilerFallback.cpp).
+        TEST_METHOD(MissingScriptProc_InAsm_CompilesToCalleWithAWarning)
+        {
+            _gameFolder = SetUpGameSCI11();
+            std::string call = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest)\n"
+                "\t(proc911_0)\n"
+                ")\n";
+            std::string manual = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest)\n"
+                "\t(asm\n"
+                "\t\tpush0\n"
+                "\t\tcalle proc911_0, 0\n"
+                "\t)\n"
+                ")\n";
+            std::string error;
+            std::vector<std::string> warnings;
+            bool compiled = CompileSource(902, "kTest", manual, error, &warnings);
+            Assert::IsTrue(compiled, W("the asm calle did not compile: " + error).c_str());
+            Assert::IsTrue(JoinLines(warnings).find("no script 911") != npos, W("expected a warning about script 911, got:\n" + JoinLines(warnings)).c_str());
+            AssertSameBytes(call, manual, L"the asm calle must give the bytes of the call");
+        }
+
+        // K5 review: proc<N>_<M> of a missing script is a procedure only in a
+        // call. As a value it is an undeclared name, as before K5, and not
+        // "The '(' character must immediately follow the function call".
+        TEST_METHOD(MissingScriptProc_AsAValue_IsAnUndeclaredName)
+        {
+            _gameFolder = SetUpGameSCI11();
+            std::string source = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest &tmp t)\n"
+                "\t(= t proc911_0)\n"
+                "\t(return t)\n"
+                ")\n";
+            std::string error;
+            bool compiled = CompileSource(902, "kTest", source, error);
+            Assert::IsFalse(compiled, L"proc911_0 is not a value");
+            Assert::IsTrue(error.find("Undeclared identifier") != npos, W("expected an undeclared-identifier error, got: " + error).c_str());
+        }
+
+        // K5 review: the decompiler writes no leading zero, so a number with
+        // one is a typo, and the name stays an error.
+        TEST_METHOD(MissingScriptProc_LeadingZero_StaysAnError)
+        {
+            _gameFolder = SetUpGameSCI11();
+            for (const std::string name : { "proc0911_0", "proc911_00" })
+            {
+                std::string source = Header() +
+                    "(public\n\tkTest 0\n)\n"
+                    "(procedure (kTest)\n"
+                    "\t(" + name + " 5)\n"
+                    ")\n";
+                std::string error;
+                bool compiled = CompileSource(902, "kTest", source, error);
+                Assert::IsFalse(compiled, W(name + " must not compile").c_str());
+                Assert::IsTrue(error.find(name) != npos, W("expected an error for " + name + ", got: " + error).c_str());
+            }
+        }
+
+        // K5 review: the decompiler writes a callb to an export that main does
+        // not have as __proc0_<M>. It compiles back to callb, as a call of a
+        // main procedure by its name does (before: calle 0 M, which is two
+        // bytes longer).
+        TEST_METHOD(UnderscoreProc_OfMain_CompilesToCallb)
+        {
+            _gameFolder = SetUpGameSCI11();
+            auto Source = [](const std::string &body) {
+                return Header() +
+                    "(use Main)\n"
+                    "(public\n\tkTest 0\n)\n"
+                    "(procedure (kTest)\n" + body + ")\n";
+            };
+            // Export 1 of the template's main script is Btest.
+            AssertSameBytes(Source("\t(__proc0_1 5)\n"), Source("\t(Btest 5)\n"), L"__proc0_1 must compile to the callb of (Btest 5)");
+            // Main has no export 99; the call is a callb all the same.
+            AssertSameBytes(Source("\t(__proc0_99 5)\n"),
+                Source("\t(asm\n\t\tpush1\n\t\tpushi 5\n\t\tcallb __proc0_99, 2\n\t)\n"),
+                L"__proc0_99 must compile to callb 99");
         }
         // _file_ / _line_ are SCI2-only debug pseudo-opcodes. Using one in an
         // asm block in a non-SCI2 (here SCI1.1) game must be a compile error, not

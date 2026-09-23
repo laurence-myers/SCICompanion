@@ -6,11 +6,10 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: the fixes of the K5 and K6 reviews, then S1. F1, A1, A2,
-  B1, B2, B3a, B3b, F2 and K1 to K4 are committed and reviewed, with their
-  review fixes. K5 and K6 are committed and reviewed. S3 (S3a, S3b) is
-  committed. One review is running: the five review-fix commits of F2 and
-  K1 to K4.
+- Current step: the fixes of the review of the five review-fix commits
+  (F2, K1 to K4), then S1. F1, A1, A2, B1, B2, B3a, B3b, F2 and K1 to K6
+  are committed and reviewed, with their review fixes. S3 (S3a, S3b) is
+  committed; its review is not done.
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -19,7 +18,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -47,8 +46,8 @@ for each step, and a follow-up commit if the review finds a problem.
 | K2 `.sco` exports from the public block | done | `c6f42341`, review fixes `4356cd87` | PASS with nits. Fixed: slot order, a template-wide `.sco` test, the real decompile effect in the docs. Review of the fixes running. |
 | K3 Species order from compiled scripts | done | `746518e5`, review fixes `1fad4b57` | PASS with nits. Fixed: `GlobalClassTable` skips the alignment, one log line per mismatch, a no-heap test, the numbers. Review of the fixes running. |
 | K4 `#` in selector names | done | `b7385d13`, review fixes `ebb6ff7d` | FIX: 1 should-fix (a `#` property read in a method still got `_`; KQ6 script 710). Fixed in `CleanTokenSCI`. Review of the fixes running. |
-| K5 `proc<N>_<M>` for a missing script | done | `78490d24`; test fix `2aee01b1` | running |
-| K6 No `vocab.000`; `/` in paths | done | `dcc0fdf7` | running |
+| K5 `proc<N>_<M>` for a missing script | done | `78490d24`; test fix `2aee01b1`; review fixes (the commit after `108cb227`) | PASS with 6 nits; the test commit PASS. Fixed: tests for an `asm` `calle` and for the name as a value (an undeclared name again), a leading zero is not a procedure, `__proc0_<M>` compiles to `callb`, the README text, the handover and plan text. |
+| K6 No `vocab.000`; `/` in paths | done | `dcc0fdf7`, review fixes (the commit after `108cb227`) | FIX: 1 should-fix (the handover State, fixed in `f85fe77d`), 7 nits, 1 question. Fixed: the Said test counts one error for two Said strings, a vocab 900 test, the null vocabulary in the "Add as synonym of" dialog, the `ScriptId` folder keeps only `\`, stale text. Known gaps: see "Decisions" (a synonym with no vocabulary, a name with a slash, a `ScriptId` with no folder). |
 | S3 ScriptCatalog, script names without `game.ini` | done | S3a `f85fe77d`; S3b: the commit after `f85fe77d` | |
 | S1 Compile destination | not started | | |
 | S2 CompileBatch | not started | | |
@@ -226,7 +225,8 @@ for each step, and a follow-up commit if the review finds a problem.
   `SimpleCompile`) use `poly` next to the script's folder. For a script in
   `<game>\src`, that is the same folder as before. A script path with no
   parent folder reads no polygon file (B3a review; before the fix, it read
-  the root of the drive). `ScriptId` splits a path only on `\` (K6).
+  the root of the drive). `ScriptId` splits a path at the last `\` or
+  `/` (K6).
 - B3a: the polygon loader parses a `.shp` file with no defines (before:
   the defines of the game's version). The defines only choose `#if` and
   `#ifdef` code, which the polygon writer never writes, so the result is
@@ -345,7 +345,8 @@ for each step, and a follow-up commit if the review finds a problem.
 - F2 review: `GlobalCompiledScriptLookups::TryLoad` and
   `CompileTables::TryLoad` load one table at a time. A failure names the
   table and its vocab resource ("the selector table is not valid", vocab
-  997). A missing or bad vocab.000 stays a default (K6).
+  997). A missing vocab.000 is not an error there: `GetVocab000` gives
+  null, and a Said string reports it (K6).
 - F2 review: `CheckResourceData` finds two more kinds of damage. The
   iterator marks a blob `Corrupted` when the map points to a header that
   is not in the volume (before: an empty blob with no flag).
@@ -513,7 +514,11 @@ for each step, and a follow-up commit if the review finds a problem.
   fails if the game runs it." (in a procedure call and in an `asm`
   `calle`). The game's script list is read once for each compile, and
   only for such a name. When the game has script N, the name stays an
-  "Unknown procedure" error.
+  error: "Unknown procedure" in a call, and "Procedure type does not
+  match call type." in an `asm` `calle`. K5 review: as a value (`(= t
+  proc911_0)`) the name is an undeclared name, as before K5; and a number
+  with a leading zero (`proc0911_0`) is not a procedure, because the
+  decompiler writes none.
 - K5: the decompiler writes `__proc<N>_<M>` for a call to an export that
   is not in the game (`_GetPossiblyMissingPublicProcedureName`), and
   `proc<N>_<M>` for an export with no name. The old parse of `__proc`
@@ -521,7 +526,11 @@ for each step, and a follow-up commit if the review finds a problem.
   `(__proc911_0 ...)` recompiled to `calle 0 11`. The parse of both forms
   now takes 1 to 5 digits on each side of the `_` (at most 65535); a name
   with other characters there is not a procedure. A `__proc` call gives
-  no warning: the decompiler writes it on purpose.
+  no warning: the decompiler writes it on purpose. K5 review:
+  `__proc0_<M>` (the decompiler's name for a `callb` to an export that
+  main does not have) compiles to `callb`, as a call of a main procedure
+  by its name does. Before, it gave `calle 0 M`, two bytes longer, so the
+  round trip was not byte-exact.
 - Test lesson (K5): `Assert::IsTrue(CompileSource(..., error), W("..." +
   error).c_str())` shows an empty error when the compile fails. MSVC
   evaluates the arguments right to left, so the text is made before the
@@ -536,10 +545,21 @@ for each step, and a follow-up commit if the review finds a problem.
   vocabulary resource (vocab 0), so a Said string cannot be compiled."
   The number is the game's `MainVocabResource` (0, or 900 when the game
   has no vocab 0 at the open). A synonym in such a game gives "'x' is not
-  in the vocabulary." for each word: no crash, but not one error.
+  in the vocabulary." for each word: no crash, but not one error. K6
+  review: the test has two Said strings and counts one error, and an
+  SCI1.1 test names vocab 900. The auto-complete word list of the script
+  editor's "Add as synonym of" dialog (`WordEnumString.cpp`) read the
+  null vocabulary too; it now gives no words.
 - K6: `ScriptId` splits a path at the last `\` or `/`, so "src/rm110.sc"
   gives the folder "src" and the file "rm110.sc". Before, it gave no
-  folder and the whole text as the file name.
+  folder and the whole text as the file name. K6 review: the folder keeps
+  only `\`, so `==` and `<` give one answer for both forms of a path.
+- Known gaps (K6 review): a script name in `game.ini` with `\` or `/`
+  is not supported. The GUI never writes one; for a hand-edited
+  `n110=sub/rm110`, K6 changed the title to `rm110`, so its `.sco` file
+  moves. `ScriptId("rm110.sc").GetFullPath()` gives `\rm110.sc`, the
+  root of the drive (older than K6). The selectors of S3b give a path with
+  a folder, so the CLI does not make such a `ScriptId`.
 - S3 is two commits: S3a (the script-name map, the naming rule, the
   dialog) and S3b (`ListScripts`, the selectors, the shadow check).
 - S3a: `ScriptNameMap` (`Src\Resources\ScriptNameMap.h/.cpp`) has plan
@@ -611,7 +631,8 @@ for each step, and a follow-up commit if the review finds a problem.
 
 ## Next action
 
-Phase K is done (K1 to K6), and S3 is done (S3a, S3b). The reviews of K5,
-the test commit and K6 are done; fix their findings. The review of the five
-review-fix commits (F2, K1, K2, K3, K4) is running; fix its findings. Then
-S1, S2, S4 (plan section 9), and a review of S3a and S3b.
+Phase K is done (K1 to K6), with the fixes of its reviews, and S3 is done
+(S3a, S3b). The review of the five review-fix commits (F2, K1 to K4) is
+done: F2 FIX (a valid empty package resource is marked "Corrupt"), K1 to
+K4 PASS with nits. Fix its findings. Then review S3a, S3b, the K5 and K6
+review fixes and that fix. Then S1, S2, S4 (plan section 9).
