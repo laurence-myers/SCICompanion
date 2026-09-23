@@ -728,8 +728,24 @@ unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const Script &script, const 
 		scoObjects.push_back(newSCOObject);
 	}
 
-	// Now public procedures and instances. Get their names from the script first.
-	// We assume the ordering in the script corresponds to the ordering in the compiled script.
+	// Now public procedures and instances. A (public name N ...) block gives each
+	// export its slot, and the compiler uses the same slots: record them as they
+	// are, a name that is in several slots included (the decompiler names a
+	// "calle script slot" call from it). Pairing the names with the export table
+	// in definition order is wrong when the source defines them in another
+	// order (KQ5 Interface.sc: every public procedure name moved to another
+	// slot, and a call went to the wrong procedure).
+	if (!script.GetExports().empty())
+	{
+		for (const auto &entry : script.GetExports())
+		{
+			sco->GetExports().emplace_back(entry->Name, (uint16_t)entry->Slot);
+		}
+		return sco;
+	}
+
+	// With no public block, get the names from the script, and pair them with
+	// the export table in definition order.
 	uint16_t exportIndex = 0;
 	vector<string> publicInstanceNames;
 	for (const auto &classDef : script.GetClasses())

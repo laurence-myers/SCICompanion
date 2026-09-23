@@ -6,9 +6,9 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: the F2 review, then K2. F1, A1, A2, B1, B2, B3a and B3b are
-  committed and reviewed, with their review fixes. F2 and K1 are
-  committed.
+- Current step: the F2, K1 and K2 reviews, then K3. F1, A1, A2, B1, B2,
+  B3a and B3b are committed and reviewed, with their review fixes. F2, K1
+  and K2 are committed.
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -17,7 +17,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -41,8 +41,8 @@ for each step, and a follow-up commit if the review finds a problem.
 | B3a Compile path on the session | done | `8fe055d0`, review fixes (the commit after `f646dd52`) | FIX: 1 should-fix, 6 nits, 1 question. Fixed: the compile-all tests fail on a `&getpoly` message (a missing polygon is only a message, so a wrong polygon folder passed every test); tests for the codepage set by Game Properties, for the table saves, and for a compile error with no class hints; no polygon file read when the script has no game folder; `CompileLog::SummarizeAndReportErrors` moved to the engine, and the GUI plays the error sound; "Ignoring class" is Info; `OutputScriptStrings.h` hygiene; stale plan references. |
 | B3b Decompile path on the session, `appState` check rule | done | `f646dd52`, review fixes (the commit after `56b487d5`) | FIX: 1 should-fix, 6 nits, 1 question. Fixed: a test that the decompiler reads `sci.sh` from the data folder (the real-game tools now resolve enum names; see "Decisions"); `Src\Util` in the `appState` rule (13 GUI files in the allowlist); `DecompileScript` declared in `DecompileScript.h`; `GetIncludeFolder` is const; `%zu` and Warning for two log lines; corrected documents and CI comment. Outside the branch: the whole-game dump writes `.sco` files into the game folder that it dumps (a separate task was proposed). |
 | F2 Engine errors as values | done | the commit after `637d1ab1` | next |
-| K1 `and`/`or` value semantics | done | the commit after `84f58380` | next |
-| K2 `.sco` exports from the public block | not started | | |
+| K1 `and`/`or` value semantics | done | `cdf8759d` | running |
+| K2 `.sco` exports from the public block | done | the commit after `cdf8759d` | next |
 | K3 Species order from compiled scripts | not started | | |
 | K4 `#` in selector names | not started | | |
 | K5 `proc<N>_<M>` for a missing script | not started | | |
@@ -344,7 +344,17 @@ for each step, and a follow-up commit if the review finds a problem.
   condition form against its branch-to-the-end shape. The earlier test
   (`Compiler_ValueAndOr`) is a decompile round trip; it did not pin the
   bytes.
+- K2: `SCOFromScriptAndCompiledScript` records the `(public name N ...)`
+  slots as they are, a name that is in several slots included, and
+  returns. In Sierra syntax, a procedure or instance is public only when
+  its name is in the block (`SCISyntaxParser.cpp`, `IsExport`), so the
+  block covers every export. Only a script with no block uses the old
+  pairing in definition order. The compiler does not use this function
+  (it builds its `.sco` from the compile); the decompiler and the planned
+  `script sco` do. So a decompile now writes the right slots for a script
+  whose public procedures are defined out of slot order (the case that
+  `scicompile` found: KQ5 `Interface.sc`).
 ## Next action
 
-Read the F2 review (running) and fix any real finding. Run the K1
-review. Then K2 (plan section 9).
+Read the F2 and K1 reviews (running) and fix any real finding. Run the
+K2 review. Then K3 (plan section 9).

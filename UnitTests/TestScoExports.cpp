@@ -22,6 +22,11 @@
 #include "SCO.h"
 #include "Helper.h"
 #include "Stream.h"
+#include "CompileInterfaces.h"
+#include "CompileContext.h"
+#include "DecompileHelper.h"
+#include <fstream>
+#include <map>
 #include <memory>
 #include <string>
 
@@ -119,6 +124,56 @@ namespace UnitTests
                 Assert::AreNotEqual(std::string("ClassNotInCompiledScript"), sco->GetObjects()[i].GetName());
             }
             Assert::AreEqual((size_t)0, sco->GetExports().size(), L"procedure exports with no public procedure name in the AST must be skipped");
+        }
+
+        // Plan step K2. The (public name N ...) block gives each export its
+        // slot. procA is defined first but is in slot 1. Before K2, the .sco
+        // paired the names with the export table in definition order, so procA
+        // got slot 0 and procB slot 1, and a call by name went to the wrong
+        // procedure (KQ5 Interface.sc).
+        TEST_METHOD(PublicBlock_ProceduresDefinedOutOfSlotOrder_KeepTheirSlots)
+        {
+            CResourceMap &resourceMap = appState->GetResourceMap();
+            const std::string name = "SlotOrder";
+            const char *source =
+                "(script# 950)\n"
+                "(include sci.sh)\n"
+                "(include game.sh)\n"
+                "(public\n"
+                "    procB 0\n"
+                "    procA 1\n"
+                ")\n"
+                "(procedure (procA)\n"
+                "    (return 1)\n"
+                ")\n"
+                "(procedure (procB)\n"
+                "    (return 2)\n"
+                ")\n";
+            std::string path = resourceMap.Helper().GetScriptFileName(name);
+            {
+                std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
+                file << source;
+            }
+            std::string error;
+            Assert::IsTrue(CompileFixture(950, name, &error), std::wstring(error.begin(), error.end()).c_str());
+
+            ScriptId scriptId(path.c_str());
+            scriptId.SetResourceNumber(950);
+            CompileLog log;
+            std::unique_ptr<sci::Script> script = SimpleCompile(resourceMap.GetSCIVersion(), log, scriptId);
+            CompiledScript compiled(950);
+            Assert::IsTrue(compiled.Load(resourceMap.Helper(), resourceMap.Helper().Version, 950), L"the compiled script must load");
+
+            std::unique_ptr<CSCOFile> sco = SCOFromScriptAndCompiledScript(*script, compiled);
+
+            std::map<std::string, int> slots;
+            for (const CSCOPublicExport &publicExport : sco->GetExports())
+            {
+                slots[publicExport.GetName()] = publicExport.GetIndex();
+            }
+            Assert::AreEqual(size_t(2), slots.size());
+            Assert::AreEqual(0, slots["procB"], L"procB is in slot 0");
+            Assert::AreEqual(1, slots["procA"], L"procA is in slot 1");
         }
     };
 }
