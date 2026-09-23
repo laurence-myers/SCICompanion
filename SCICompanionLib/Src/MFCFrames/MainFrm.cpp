@@ -2118,7 +2118,6 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 			dialog.DoModal();
 			// Finish times its write (the timers).
 			CompileReport report = (*batch)->Finish();
-			bool stopped = !report.commit && (report.commit.error().code == sci::ErrorCode::Cancelled);
 			if (report.commit)
 			{
 				// The scripts are written: they are no longer out of date
@@ -2130,15 +2129,19 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 				}
 			}
 			// The result for the caller (for example, the run after a compile):
-			// a script that did not compile, or a failed save, is an error.
-			// Cancel is not, in the dialog or in the question.
-			result = (report.FailedCount() == 0) && report.tables && (report.commit || stopped) && report.moves;
+			// false for a script that did not compile, a failed save, or Cancel
+			// (in the dialog, the scripts after it did not compile; in the
+			// question, nothing was written), so a run asks whether to run the
+			// game anyway (review of 5f545221: before, Cancel ran the game with
+			// the old scripts at once). The line for Cancel is still a message,
+			// not an error.
+			result = !report.cancelled && (report.FailedCount() == 0) && report.tables && report.commit && report.moves;
 			log.ReportResult(CompileResult(fmt::format("{0} scripts compiled.", report.scripts.size())));
 			ReportCompileBatch(report, log, "There was a problem writing the compiled scripts: ");
 		}
 		else
 		{
-			result = (batch.error().code == sci::ErrorCode::Cancelled);
+			result = false;
 			log.ReportResult(StartFailureLine(batch.error()));
 		}
 	}

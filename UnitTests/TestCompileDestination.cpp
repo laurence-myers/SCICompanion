@@ -330,6 +330,37 @@ namespace UnitTests
             }
         }
 
+        // A resource that cannot be written fails the compile, and the script
+        // gets no .sco: the .sco describes the resources (review of S1; the
+        // review of 5f545221 found no test for it).
+        TEST_METHOD(OutDir_AFailedWrite_NoObjectFile)
+        {
+            NoAppStateForDestination noAppState;
+            SessionOptions sessionOptions;
+            sessionOptions.dataFolder = GetTestModuleDirectory();
+            GameSession session(sessionOptions);
+            OpenCopy(Templates[0], session);
+            std::string outDir = _copyFolder + "\\out";
+            fs::create_directory(outDir);
+            std::string sco = session.Helper().GetScriptObjectFileName("S1Widget");
+            fs::remove(sco);
+            std::string target = (fs::path(outDir) / Templates[0].script).string();
+            {
+                std::ofstream file(target.c_str(), std::ios::binary | std::ios::trunc);
+                file << "an old script";
+            }
+            Assert::IsTrue(SetFileAttributesA(target.c_str(), FILE_ATTRIBUTE_READONLY) != 0);
+            CompileWriteOptions options;
+            options.saveTo = ResourceSaveLocation::Patch;
+            options.outDir = outDir;
+            CompileLog log;
+            bool compiled = CompileWidget(session, options, log);
+            // Writable again, so that the clean-up can remove the copy.
+            SetFileAttributesA(target.c_str(), FILE_ATTRIBUTE_NORMAL);
+            Assert::IsFalse(compiled, L"the script file cannot be written");
+            Assert::IsFalse(fs::exists(sco), L"no .sco for a script whose resource was not written");
+        }
+
         // With raw, the output folder gets the plain data of each resource.
         TEST_METHOD(OutDirRaw_WritesThePlainData)
         {

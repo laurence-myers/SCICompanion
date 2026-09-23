@@ -13,6 +13,15 @@
 class CResourceMap;
 enum class ResourceType;
 
+// A compiled resource for an output folder that waits for the commit of a
+// batch (review of 5f545221).
+struct StagedOutputFile
+{
+    ResourceType type;
+    uint16_t number;
+    std::vector<uint8_t> data;
+};
+
 struct CompileWriteOptions
 {
     // The package or patch files. Default takes the game's setting
@@ -31,6 +40,11 @@ struct CompileWriteOptions
     // False: no debug\<n>.scd. The game's GenerateDebugInfo setting decides
     // whether the compiler makes debug information.
     bool writeDebugInfo = true;
+    // With outDir: when set, WriteCompiledResource adds each resource here
+    // and writes no file, and WriteStagedOutputFiles writes them later.
+    // CompileBatch sets it, so that a script that fails, or a batch whose
+    // commit fails, leaves no file in the folder (review of 5f545221).
+    std::vector<StagedOutputFile> *staged = nullptr;
 };
 
 // The file name of a compiled resource in an output folder: the patch file
@@ -41,5 +55,11 @@ std::string CompiledResourceFileName(ResourceType type, uint16_t number, const S
 // Writes one compiled resource (script, heap, text, vocab 996 or vocab 997)
 // to the destination of the options. Usage for an output folder with
 // Package. Inside a DeferResourceAppend batch, a write to the game only
-// queues.
+// queues; with options.staged, a write to an output folder only stages.
 sci::Status WriteCompiledResource(CResourceMap &resourceMap, const CompileWriteOptions &options, ResourceType type, uint16_t number, const std::vector<uint8_t> &data);
+
+// Writes the staged files into the output folder of the options, in order.
+// Every file that is there already must open for writing first, so that a
+// read-only file, or a file that another program holds, fails the write
+// before the first file.
+sci::Status WriteStagedOutputFiles(const GameFolderHelper &helper, const CompileWriteOptions &options, const std::vector<StagedOutputFile> &files);

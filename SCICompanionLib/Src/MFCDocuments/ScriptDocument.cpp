@@ -173,13 +173,16 @@ void CScriptDocument::OnCompile()
 
 		stringstream str;
 		str << "Compiling " << _scriptId.GetFileName();
-		str << (stopped ? " was stopped." : (fSuccess ? " succeeded." : " failed."));
+		// A script that compiled, but whose write failed, did not succeed
+		// (review of 5f545221: before, "succeeded" after a refused commit).
+		str << (stopped ? " was stopped." : (!fSuccess ? " failed." : (report.commit ? " succeeded." : " compiled, but was not written.")));
 		log.ReportResult(CompileResult(c_szLine));
 		log.ReportResult(CompileResult(str.str()));
 
-		if (!report.scripts.empty())
+		if (fSuccess)
 		{
-			// No sizes when no script compiled (review of S2c).
+			// No sizes when the script did not compile (review of S2c and
+			// of 5f545221).
 			string info = fmt::format(
 				"Object data: {0} bytes   Code: {1} bytes   Script vars: {2} bytes   Strings: {3} bytes	Saids: {4} bytes",
 				stats.Objects,

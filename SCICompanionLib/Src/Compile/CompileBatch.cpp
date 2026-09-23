@@ -25,10 +25,12 @@ namespace
         return text;
     }
 
-    // Into the game's package: not an output folder, not a dry run.
+    // Into the game's package: not an output folder. Also a dry run, which
+    // checks the patch files as a real run does (review of 5f545221: before,
+    // a dry run passed where the real run was refused).
     bool WritesThePackage(const GameFolderHelper &helper, const CompileWriteOptions &write)
     {
-        return (helper.GetResourceSaveLocation(write.saveTo) == ResourceSaveLocation::Package) && write.outDir.empty() && write.writeResources;
+        return (helper.GetResourceSaveLocation(write.saveTo) == ResourceSaveLocation::Package) && write.outDir.empty();
     }
 
     // The patch files that would hide the package writes of these scripts:
@@ -194,6 +196,7 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
         // go, so the commit holds the last pass.
         _passDefer.reset();
         _passDefer = std::make_unique<DeferResourceAppend>(_session.ResourceMap());
+        _passFiles.clear();
         _pass++;
         _next = 0;
         _passChangedObjectFile = false;
@@ -230,9 +233,16 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
         CompileResults results(log, _session.Version());
         // A savepoint of the script (review of S1 and S2a): a script that
         // fails withdraws the resources that it queued, so the commit never
-        // writes a compiled script without its tables.
+        // writes a compiled script without its tables. Its files for an
+        // output folder wait too, and go with it (review of 5f545221).
         DeferResourceAppend scriptLevel(_session.ResourceMap());
-        sci::Status compiled = CompileScriptFile(_session, results, log, _tables, *_headers, script, _options.write);
+        std::vector<StagedOutputFile> scriptFiles;
+        CompileWriteOptions write = _options.write;
+        if (!write.outDir.empty())
+        {
+            write.staged = &scriptFiles;
+        }
+        sci::Status compiled = CompileScriptFile(_session, results, log, _tables, *_headers, script, write);
         objectFileChanged = results.ObjectFileChanged();
         outcome.stats = results.Stats;
         // The log has a failure of the compile, but not a failure to join the
@@ -242,6 +252,10 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
         {
             compiled = scriptLevel.Commit();
             returned = compiled.has_value();
+        }
+        if (compiled)
+        {
+            _passFiles.insert(_passFiles.end(), scriptFiles.begin(), scriptFiles.end());
         }
         return compiled;
     });
@@ -349,7 +363,8 @@ sci::Status CompileBatch::_CheckQueuedWrites()
 // package has the resources already.
 void CompileBatch::_MoveShadowingPatches()
 {
-    if ((_options.shadows != ShadowPolicy::Replace) || _hidingPatches.empty())
+    // A dry run writes nothing, so it moves nothing.
+    if ((_options.shadows != ShadowPolicy::Replace) || _hidingPatches.empty() || !_options.write.writeResources)
     {
         return;
     }
@@ -367,6 +382,7 @@ void CompileBatch::_MoveShadowingPatches()
         folder = fs::path(base.string() + fmt::format("-{0}", n));
     }
     fs::create_directories(folder, ec);
+    std::vector<std::string> notMoved;
     for (const std::string &file : _hidingPatches)
     {
         fs::path target = folder / fs::path(file).filename();
@@ -374,17 +390,23 @@ void CompileBatch::_MoveShadowingPatches()
         fs::rename(file, target, moved);
         if (moved)
         {
-            std::string text = fmt::format("could not move the patch file {0}: {1}; it still hides the package write", file, moved.message());
-            _report.warnings.push_back(text);
-            if (_report.moves)
-            {
-                _report.moves = sci::Fail(sci::ErrorCode::Io, text);
-            }
+            notMoved.push_back(fmt::format("{0} ({1})", file, moved.message()));
         }
         else
         {
             _report.movedPatches.push_back(file + " -> " + target.string());
         }
+    }
+    if (!notMoved.empty())
+    {
+        // Every file, in one error (review of 5f545221: before, only the
+        // first file was in the error).
+        std::string text;
+        for (const std::string &file : notMoved)
+        {
+            text += (text.empty() ? "" : "; ") + file;
+        }
+        _report.moves = sci::Fail(sci::ErrorCode::Io, "could not move these patch files, which still hide the package write: " + text);
     }
 }
 
@@ -449,11 +471,18 @@ CompileReport CompileBatch::Finish()
             return _passDefer->Commit();
         });
         // The table rule: save only when a script compiled (plan section 4.5).
+        // With an output folder, the table files wait for the commit too.
+        std::vector<StagedOutputFile> tableFiles;
         if (_anyCompiled)
         {
+            CompileWriteOptions write = _options.write;
+            if (!write.outDir.empty())
+            {
+                write.staged = &tableFiles;
+            }
             _report.tables = sci::Guard("saving the class and selector tables", [&]() -> sci::Status
             {
-                return _tables.Save(_session.ResourceMap(), _options.write);
+                return _tables.Save(_session.ResourceMap(), write);
             });
         }
         if (!joined)
@@ -485,7 +514,16 @@ CompileReport CompileBatch::Finish()
         g_compileAppendTimer.Start();
         _report.commit = sci::Guard("writing the compiled resources", [&]() -> sci::Status
         {
-            return _defer->Commit();
+            SCI_TRY(_defer->Commit());
+            if (_options.write.outDir.empty())
+            {
+                return sci::Ok();
+            }
+            // The tables first: a script without its tables is worse than
+            // tables without the script.
+            std::vector<StagedOutputFile> files = tableFiles;
+            files.insert(files.end(), _passFiles.begin(), _passFiles.end());
+            return WriteStagedOutputFiles(_session.Helper(), _options.write, files);
         });
         g_compileAppendTimer.Stop();
         g_compileIOTimer.Stop();

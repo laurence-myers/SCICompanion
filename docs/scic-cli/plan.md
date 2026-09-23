@@ -1258,7 +1258,7 @@ back, not on the commit before K1.)
 | PR | Change | Fixes | Test (negative check) | Size |
 |---|---|---|---|---|
 | S1 | Compile destination: `CompileWriteOptions { ResourceSaveLocation saveTo; std::string outDir; bool raw; bool writeResources, writeObjectFile, writeDebugInfo; }`. With `outDir`, the patch files (or with `raw` the plain data) go to that folder through `ResourceBlob::SaveToFile`. The script, heap and text writes and `CompileTables::Save(saveTo)` use it. `GameFolderHelper::GetSaveSourceFlags(location)` resolves `Default`. The GUI passes `Default`. The `.sco`, `.scd` and `.sc` writes return a `Status`. | P2, P10 | Copies of the SCI0 and SCI1.1 templates: `Patch` writes `script.NNN`, or `NNN.scr` and `NNN.hep`, and `resource.map` stays byte-equal (fails before: the output goes into the package). `Package` in a patch-mode copy writes the package. A read-only `.sco` gives a compile error that names it, and the compile fails (fails before: silent). Found at S1: a folder's read-only attribute does not stop a write on Windows, so the test uses a read-only file. `outDir` gets the patch files (with `raw`, the plain data) and the game does not change; a dry run writes nothing; `outDir` with `Package` is an error. | M |
-| S2 | `CompileBatch` and `CompileScripts` (section 3.3), returning `CompileReport` (section 6.5): one log for each script, the table rule, one deferred commit, an abort flag, the shadow check, `Guard` around each script, the passes of section 4.5 (write a `.sco` only when its bytes change; the commit holds the last pass), the `--all` list from the script-name map (not `GetAllScripts`), and a skip of named scripts with no source file. `CNewCompileDialog` and `OnCompile` use it. `CalculateErrors` counts again from zero. `CompileResult` gets the raw message. All lines are 1-based. GUI change: before a package save that a patch file would hide, the GUI asks to move the patch files aside. | P1 (compile), P11, P13 | Compile all scripts of both templates with 0 errors. With one broken script, the others compile and are written, and the report shows one `Compile` status. A script that throws inside its exception boundary gives an `Internal` status, and the batch goes on (fault injection in the script's callback). The error counts are exact (fails before). A parser error gives the source line (fails before for the 0-based sites). The shadow check finds `997.voc`. | M |
+| S2 | `CompileBatch` and `CompileScripts` (section 3.3), returning `CompileReport` (section 6.5): one log for each script, the table rule, one deferred commit, an abort flag, the shadow check, `Guard` around each script, the passes of section 4.5 (write a `.sco` only when its bytes change; the commit holds the last pass), the `--all` list from the script-name map (not `GetAllScripts`), and a skip of named scripts with no source file. `CNewCompileDialog` and `OnCompile` use it. `CalculateErrors` counts again from zero. `CompileResult` gets the raw message. All lines are 1-based. GUI change: before a package save that a patch file would hide, the GUI asks to move the patch files aside. Review of `98d884c7`: the files for an output folder wait for the commit (a script that fails, or a commit that fails, writes no file there; every file that is there already must open for writing before the first write); the `.sco` is the last write of a script, and a debug file that cannot be written is a warning; a dry run checks the patch files as a real run does, and moves none. | P1 (compile), P11, P13 | Compile all scripts of both templates with 0 errors. With one broken script, the others compile and are written, and the report shows one `Compile` status. A script that throws inside its exception boundary gives an `Internal` status, and the batch goes on (fault injection in the script's callback). The error counts are exact (fails before). A parser error gives the source line (fails before for the 0-based sites). The shadow check finds `997.voc`. | M |
 | S3 | `ScriptCatalog` and the script-name map (sections 3.3, 3.4): `ScriptNameMap` built from `game.ini` (optional), `src\*.sc`, `src\*.sco`, derived names and `nNNN`; `GameFolderHelper` uses it when it is set (`GetScriptFileName(n)`, `GetScriptObjectFileName(n)`, `SaveSCOFile`, the decompiler's `(use Name)`, the compiler's number-to-name map; not `FigureOutName(Script, n)`, which names the compiled blobs, because the resource map writes blob names into `game.ini`: found at S3a); `GameSession` builds and installs it. Two commits: S3a (the map, the naming rule, the dialog) and S3b (the catalog services). Also `SuggestScriptNames` (pure, in number order), `ListScripts`, `ResolveScriptSelectors`, `FindShadowingPatches`, all returning `Result`. `DecompileDialog::_AssignFilenames` uses `SuggestScriptNames`. GUI change: the `_N` suffix for a duplicate name follows the script number. S3 review: a name gets `_` for `-` (the parser takes no `-` in `(use ...)`) and after a device name (`CON`); `game.ini` gives a name only with the key that the GUI reads; names compare as Windows file names do, also outside ASCII; a conflict names its scripts, and a mode that writes refuses only those scripts (`--all` leaves them out with a warning). | P14, P22 | The name rules: Main, "Game" first, first class, public instance, and a `_N` suffix that follows the number (fails before: hash order). The rule order of section 3.4 (a `.sc` name beats a derived name; `game.ini` beats both). A template copy with no `game.ini` gives the same file names from `src\` (fails before: `nNNN`). Two `.sc` files for one number is a `Usage` error. Selector cases: number, range, name, path, duplicate, header, unknown (all bad selectors in one `Usage` error). An unreadable script gives a row with its error. | M |
 | S4 | `DecompileRun` (section 3.3), returning `DecompileReport`: the names of section 3.4 with `--reset-names`, `WriteScriptNamesToGameIni(update\|create\|none)`, `PrepareDecompileFolder` (plain file copy, no shell), the batch with `Guard` around each script, the stale-script loop, the statistics, an output sink (files or a callback). Also `GenerateObjectFiles(session, scripts)` for `script sco` (section 4.6). `DecompileDialog` uses it. Remove the leftover `theApp` (B3b removed the 3-argument `DecompileScript`). S4 review fixes: a reset renames only the chosen scripts and never takes the file of another script; the stale loop checks the scripts of earlier groups too; a failed write of main's `.sco` is in the report; a run with no `src\Decompiler.ini` reads the one of the data folder (before, `--stdout` used the default settings); `GenerateObjectFiles` reads the includes that are not headers (the locals of a `.shp`) and takes the class names of the source (before, about 30 scripts of the SCI1.1 template did not compile after it). | P1 (decompile), P16 | The `update`, `create` and `none` modes of `--game-ini`, and `--reset-names`. With no `game.ini`, nothing creates it (fails before: the dialog's naming writes it). The folder preparation copies once and never overwrites. The callback sink writes no file. `--update-stale` stops when no script is stale. A script that fails gives a status in the report, and the others are written. | M |
 
@@ -1313,11 +1313,14 @@ GUI changes in this plan (all others are refactors with no visible change):
   "Corrupt" in the status column of the resource list (before: an empty
   resource, or bytes that were not read from the volume). A valid empty
   resource (for example, a text with no strings) shows no status.
-- S1: a compile that cannot write its script, heap, text, `.sco` or
-  `.scd` gives an error in the compile output, and the compile of that
-  script fails (before: nothing for the `.sco` and the `.scd`, and the
-  compile counted as a success; a resource write failed only in the
-  commit, which showed its error). A
+- S1: a compile that cannot write its script, heap, text or `.sco`
+  gives an error in the compile output, and the compile of that script
+  fails (before: nothing for the `.sco` and the `.scd`, and the compile
+  counted as a success; a resource write failed only in the commit,
+  which showed its error). A `.scd` (debug file) that cannot be written
+  is a warning (review of `98d884c7`: as an error, it failed the script
+  after its `.sco` was written, and a later script of the batch was
+  written against the class of the script that failed). A
   decompile shows a failed `.sco` or `.sc` write in its results, and the
   Decompile dialog's name edit shows a failed `.sco` save (before:
   nothing, and "Saved changes").
@@ -1330,12 +1333,24 @@ GUI changes in this plan (all others are refactors with no visible change):
   table). Yes in the patch-file question moves only the patch files that
   hide a resource that the commit wrote (before: also the files of a
   script that failed, and of tables that did not change). Cancel in the
-  question is not an error: a message, no error sound, and the run after
-  a compile goes on. A script is no longer out of date only after the
-  write. The single-script compile shows the sizes only when a script
-  compiled. A patch file that cannot move is an error. A backup of an
-  earlier batch in the same second is kept. Compile-all shows the
-  diagnostics of the last script once (before: twice).
+  question is not an error: a message and no error sound. A script is
+  no longer out of date only after the write. The single-script compile
+  shows the sizes only when the script compiled. A patch file that
+  cannot move is an error. A backup of an earlier batch in the same
+  second is kept. A script document opened from a file compiles with
+  the number that its source declares (its debug file is
+  `debug\NNN.scd`, and the patch-file question sees its patch files).
+- Review of `98d884c7`: Cancel (in the patch-file question, or in the
+  compile dialog) before a run no longer runs the game at once with the
+  old scripts: the run asks "Run the game anyway?", and its text now
+  covers Cancel ("The scripts were not all compiled and written"). The
+  single-script compile says "compiled, but was not written" when the
+  write failed (before: "succeeded"). A table failure that stops the
+  write is one error line (before: two). The error of the patch files
+  that cannot move names each of them (before: the first; the others
+  were warnings).
+- S2c: compile-all shows the diagnostics of the last script once
+  (before: twice).
 - S2c: before a package save that a patch file would hide, the GUI asks:
   Yes moves the patch files to `replaced-patches\<time>` in the game
   folder after the save, No keeps them, Cancel stops and writes nothing.

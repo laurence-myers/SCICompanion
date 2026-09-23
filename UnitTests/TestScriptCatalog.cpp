@@ -433,6 +433,14 @@ namespace UnitTests
             sci::Result<ScriptSelection> both = ResolveScriptSelectors(session, { "100", "src\\S3Old100.sc" }, SelectorMode::Compile);
             Assert::IsFalse(both.has_value());
             Assert::IsTrue(both.error().message.find("script 100 is also") != std::string::npos, WideCatalog(both.error().message).c_str());
+            // A name or a range and a path for one script (review of c6584ca7:
+            // only a number had a test).
+            for (const char *selector : { "TitleScreen", "100-100" })
+            {
+                sci::Result<ScriptSelection> mixed = ResolveScriptSelectors(session, { selector, "src\\S3Old100.sc" }, SelectorMode::Compile);
+                Assert::IsFalse(mixed.has_value(), WideCatalog(selector).c_str());
+                Assert::IsTrue(mixed.error().message.find("script 100 is also") != std::string::npos, WideCatalog(mixed.error().message).c_str());
+            }
 
             sci::Result<ScriptSelection> spellings = ResolveScriptSelectors(session, { "src\\TitleScreen.sc", "src\\titlescreen.sc" }, SelectorMode::Compile);
             Assert::IsTrue(spellings.has_value(), WideCatalog(spellings ? std::string() : spellings.error().ToString()).c_str());

@@ -125,11 +125,15 @@ CompileResult StartFailureLine(const sci::Error &error)
 
 void ReportCompileBatch(const CompileReport &report, ICompileLog &log, const std::string &writeProblem)
 {
+    // A table failure refuses the commit; that refusal is no second error
+    // line (review of 5f545221).
+    bool refusedByTables = !report.tables && !report.commit && (report.commit.error().message == report.tables.error().message);
     if (!report.tables)
     {
-        log.ReportResult(CompileResult("There was a problem saving the class and selector tables: " + report.tables.error().ToString(), CompileResult::CRT_Error));
+        log.ReportResult(CompileResult(std::string("There was a problem saving the class and selector tables") + (refusedByTables ? ", so no compiled resource was written: " : ": ") +
+            report.tables.error().ToString(), CompileResult::CRT_Error));
     }
-    if (!report.commit)
+    if (!report.commit && !refusedByTables)
     {
         if (report.commit.error().code == sci::ErrorCode::Cancelled)
         {
@@ -145,16 +149,13 @@ void ReportCompileBatch(const CompileReport &report, ICompileLog &log, const std
         log.ReportResult(CompileResult("Moved the patch file " + moved));
     }
     // A patch file that could not move is an error: it still hides the
-    // package write (review of S2b).
+    // package write (review of S2b). The error names every such file.
     if (!report.moves)
     {
         log.ReportResult(CompileResult("Error: " + report.moves.error().ToString(), CompileResult::CRT_Error));
     }
     for (const std::string &warning : report.warnings)
     {
-        if (report.moves || (warning != report.moves.error().message))
-        {
-            log.ReportResult(CompileResult("Warning: " + warning, CompileResult::CRT_Warning));
-        }
+        log.ReportResult(CompileResult("Warning: " + warning, CompileResult::CRT_Warning));
     }
 }

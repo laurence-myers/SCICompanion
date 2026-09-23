@@ -55,8 +55,11 @@ struct ScriptOutcome
     // Ok; Compile (the errors are in the diagnostics); the error of a source
     // file that could not be read or an output that could not be written; or
     // the error of an exception (Internal, or the code of a DataError). A
-    // script that fails writes no resource (its writes are withdrawn), but
-    // a .sco or .scd file that it wrote stays.
+    // script that fails writes no resource: its writes to the game are
+    // withdrawn, and its files for an output folder are dropped (they wait
+    // for the commit; review of 5f545221). Its .sco is its last write, so it
+    // leaves no new .sco; a debug file that it wrote stays, and a debug file
+    // that cannot be written is a warning.
     sci::Status status;
     std::vector<CompileResult> diagnostics;
     // The sizes of the compiled script (the GUI shows them).
@@ -151,7 +154,10 @@ public:
     // Before the commit, it checks the queued package writes again for patch
     // files that would hide them (a text of a script's auto text), and asks
     // askShadows about new files. With Replace, it moves only the patch
-    // files that hide a resource that the commit wrote. Call it once.
+    // files that hide a resource that the commit wrote (a dry run moves
+    // none). With an output folder, the commit writes the files of the
+    // tables, then those of the scripts that compiled (WriteStagedOutputFiles).
+    // Call it once.
     CompileReport Finish();
 
     size_t Count() const { return _scripts.size(); }
@@ -175,8 +181,13 @@ private:
     bool _passChangedObjectFile = false;
     bool _anyCompiled = false;
     bool _finished = false;
-    // Writes into the game's package (not an output folder, not a dry run).
+    // Writes into the game's package (not an output folder), also for a dry
+    // run: a dry run checks the patch files as a real run does (review of
+    // 5f545221).
     bool _toPackage = false;
+    // With an output folder: the files of the scripts of this pass that
+    // compiled. The commit writes the last pass.
+    std::vector<StagedOutputFile> _passFiles;
     // The patch files that the policy or askShadows answered for, so the
     // check before the commit asks only about new ones.
     std::vector<std::string> _shadowingPatches;

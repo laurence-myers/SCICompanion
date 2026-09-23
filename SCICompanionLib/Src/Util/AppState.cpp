@@ -769,7 +769,7 @@ void AppState::RunGame(bool debug, int optionalResourceNumber)
 		{
 			if (!CompileABunchOfScripts(this, &GetDependencyTracker()))
 			{
-				goAhead = (IDYES == AfxMessageBox("There were errors compiling the scripts. Run game anyway?", MB_ICONWARNING | MB_YESNO));
+				goAhead = (IDYES == AfxMessageBox("The scripts were not all compiled and written (see the compile output). Run the game anyway?", MB_ICONWARNING | MB_YESNO));
 			}
 		}
 

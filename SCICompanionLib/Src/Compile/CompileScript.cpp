@@ -162,10 +162,25 @@ sci::Status CompileScriptFile(GameSession &session, CompileResults &results, Com
 					check(WriteCompiledResource(resourceMap, options, ResourceType::Heap, wNum, outputHep));
 				}
 
-				// Save the corresponding sco file. The .sco and the .scd
-				// describe the resources: a script whose resources could not be
-				// written gets neither (review of S1).
+				// The debug file and the .sco file describe the resources: a
+				// script whose resources could not be written gets neither
+				// (review of S1). The .sco is the last write, so a script that
+				// fails leaves no new .sco that a later script of a batch could
+				// compile against (review of 5f545221: a failed debug file
+				// came after the .sco). A debug file that cannot be written is
+				// a warning: the game does not need it.
 				g_compileIOTimer.Start();
+				g_compileDebugSymbolTimer.Start();
+				if (options.writeDebugInfo && status && !results.GetDebugInfo().empty())
+				{
+					sci::Status wroteDebugFile = WriteBytesToFile(helper.GetScriptDebugFileName(script.GetResourceNumber()), results.GetDebugInfo());
+					if (!wroteDebugFile)
+					{
+						log.ReportResult(CompileResult(fmt::format("Could not write the debug file of {0}: {1}", script.GetFileNameOrig(), wroteDebugFile.error().ToString()),
+							CompileResult::CompileResultType::CRT_Warning));
+					}
+				}
+				g_compileDebugSymbolTimer.Stop();
 				g_compileObjFileTimer.Start();
 				if (options.writeObjectFile && status)
 				{
@@ -174,12 +189,6 @@ sci::Status CompileScriptFile(GameSession &session, CompileResults &results, Com
 					results.SetObjectFileChanged(changed);
 				}
 				g_compileObjFileTimer.Stop();
-				g_compileDebugSymbolTimer.Start();
-				if (options.writeDebugInfo && status && !results.GetDebugInfo().empty())
-				{
-					check(WriteBytesToFile(helper.GetScriptDebugFileName(script.GetResourceNumber()), results.GetDebugInfo()));
-				}
-				g_compileDebugSymbolTimer.Stop();
 				g_compileIOTimer.Stop();
 			}
 		}
