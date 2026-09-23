@@ -129,6 +129,9 @@ public:
 	const SCIVersion &GetSCIVersion() const;
 	void SetVersion(const SCIVersion &version);
 	const GameFolderHelper &Helper() const { return _gameFolderHelper; }
+	// The script names of a GameSession (docs/scic-cli/plan.md section 3.4).
+	// An open clears them. The GUI sets none.
+	void SetScriptNames(std::shared_ptr<const ScriptNameMap> names);
 	const Vocab000 *GetVocab000();
 	const PaletteComponent *GetPalette999();
 	void SaveAudioMap65535(const AudioMapComponent &newAudioMap, int mapContext);

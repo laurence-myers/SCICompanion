@@ -36,7 +36,9 @@ public:
     GameSession &operator=(const GameSession &) = delete;
 
     // Opens the game in the folder. No dialog and no exception: a failure
-    // comes back as an error, and then no game is open.
+    // comes back as an error, and then do not use the session. The open
+    // also reads the script names (ScriptNameMap: game.ini when it exists,
+    // src\*.sc and src\*.sco) and gives them to the game's helper.
     sci::Status Open(const std::string &gameFolder);
 
     CResourceMap &ResourceMap() { return *_resourceMap; }

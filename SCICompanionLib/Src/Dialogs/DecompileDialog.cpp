@@ -20,6 +20,7 @@
 #include "SCO.h"
 #include "DecompilerResults.h"
 #include "GameFolderHelper.h"
+#include "ScriptNameMap.h"
 #include "DecompilerConfig.h"
 #include "format.h"
 #include "ResourceContainer.h"
@@ -726,51 +727,25 @@ void DecompileDialog::OnBnClickedAssignfilenames()
 
 void DecompileDialog::_AssignFilenames()
 {
-	unordered_set<string> importantClasses = { "Game" }; // e.g. needed for KQ6, 994
-
-	unordered_set<string> usedNames;
-
 	GlobalCompiledScriptLookups *lookups = appState->GetResourceMap().GetCompiledScriptLookups();
 	if (lookups)
 	{
+		// The naming rule of the command line too: the scripts go in number
+		// order, so the "_N" suffix of a duplicate name follows the number.
+		std::vector<ScriptObjectsForNaming> scripts;
 		for (CompiledScript *script : lookups->GetGlobalClassTable().GetAllScripts())
 		{
-			string suggestedName;
-			if (script->GetScriptNumber() == 0)
+			ScriptObjectsForNaming forNaming;
+			forNaming.number = script->GetScriptNumber();
+			for (const auto &object : script->GetObjects())
 			{
-				suggestedName = "Main";
-			} else
-			{
-				// Look for the first class in the file. If none found, then the first public instance.
-				string firstPublicInstance;
-				string firstClass;
-				for (const auto &object : script->GetObjects())
-				{
-					if (!object->IsInstance() && (firstClass.empty() || importantClasses.find(object->GetName()) != importantClasses.end()))
-					{
-						firstClass = object->GetName();
-					}
-					else if (object->IsInstance() && object->IsPublic && firstPublicInstance.empty())
-					{
-						firstPublicInstance = object->GetName();
-					}
-				}
-				suggestedName = firstClass.empty() ? firstPublicInstance : firstClass;
+				forNaming.objects.push_back({ object->GetName(), !object->IsInstance(), object->IsPublic });
 			}
-			if (!suggestedName.empty())
-			{
-				std::string suggestedNameUpper = suggestedName;
-				ToUpper(suggestedNameUpper);
-				// Make it unique if we already named something this (this happens in LSL6)
-				// Ignore case, as Windows filenames are case insensitive.
-				if (usedNames.find(suggestedNameUpper) != usedNames.end())
-				{
-					suggestedName += fmt::format("_{0}", script->GetScriptNumber());
-				}
-				usedNames.insert(suggestedNameUpper);
-
-				appState->GetResourceMap().AssignName(ResourceType::Script, script->GetScriptNumber(), NoBase36, suggestedName.c_str());
-			}
+			scripts.push_back(std::move(forNaming));
+		}
+		for (const auto &name : SuggestScriptNames(std::move(scripts)))
+		{
+			appState->GetResourceMap().AssignName(ResourceType::Script, name.first, NoBase36, name.second.c_str());
 		}
 
 		_PopulateScripts();

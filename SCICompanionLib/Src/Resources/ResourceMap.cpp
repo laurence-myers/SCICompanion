@@ -16,6 +16,7 @@
 #include "AppState.h"
 #include "ResourceContainer.h"
 #include "ResourceMap.h"
+#include "ScriptNameMap.h"
 #include "ResourceRecency.h"
 #include "SaveResourceDialog.h"
 #include "RemoveScriptDialog.h"
@@ -1339,8 +1340,22 @@ void CResourceMap::GetAllScripts(std::vector<ScriptId> &scripts)
 	}
 }
 
+void CResourceMap::SetScriptNames(std::shared_ptr<const ScriptNameMap> names)
+{
+	_gameFolderHelper.ScriptNames = std::move(names);
+}
+
 void CResourceMap::GetNumberToNameMap(std::unordered_map<WORD, std::string> &scos)
 {
+	if (_gameFolderHelper.ScriptNames)
+	{
+		// A session's names: game.ini when it exists, and the files of src\.
+		for (const auto &entry : _gameFolderHelper.ScriptNames->Entries())
+		{
+			scos[entry.first] = entry.second.name;
+		}
+		return;
+	}
 	TCHAR szIniFile[MAX_PATH];
 	if (SUCCEEDED(GetGameIni(szIniFile, ARRAYSIZE(szIniFile))))
 	{
@@ -1453,6 +1468,8 @@ sci::Status CResourceMap::_OpenGameFolder(const string &gameFolder)
 {
 	_runLogic->SetGameFolder(gameFolder);
 	_gameFolderHelper.GameFolder = gameFolder;
+	// The names of the game that was open before do not apply.
+	_gameFolderHelper.ScriptNames.reset();
 	// The text codepage comes from game.ini (437 when there is none).
 	SetTextCodepage(gameFolder.empty() ? 437 : Helper().GetCodepage());
 	_talkerToView = TalkerToViewMap(Helper().GetLipSyncFolder());

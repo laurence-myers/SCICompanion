@@ -6,9 +6,10 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: the F2, K1, K2, K3 and K4 reviews, then K5. F1, A1, A2,
-  B1, B2, B3a and B3b are committed and reviewed, with their review fixes.
-  F2, K1, K2, K3 and K4 are committed.
+- Current step: S3. F1, A1, A2, B1, B2, B3a, B3b, F2 and K1 to K4 are
+  committed and reviewed, with their review fixes. K5 and K6 are
+  committed. Two reviews are running: K5, `2aee01b1` and K6; and the five
+  review-fix commits of F2 and K1 to K4.
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -17,7 +18,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -40,14 +41,14 @@ for each step, and a follow-up commit if the review finds a problem.
 | B2 Script text loader | done | `3be03ff1`, review fixes (the commit after `af7cdb5f`) | FIX: 1 should-fix, 1 nit. No difference from the editor in about 46,000 files (a differential probe), 723 parses and 5 compiles. Fixed: `LoadScriptText` names the file for a thrown failure and refuses a file over 64 MB (`Unsupported`); tests at the exact 32 KB edge of the style rule, and a stream walk; the exception boundary reports an MFC `CMemoryException` as "out of memory" (an F1 gap the review found). |
 | B3a Compile path on the session | done | `8fe055d0`, review fixes (the commit after `f646dd52`) | FIX: 1 should-fix, 6 nits, 1 question. Fixed: the compile-all tests fail on a `&getpoly` message (a missing polygon is only a message, so a wrong polygon folder passed every test); tests for the codepage set by Game Properties, for the table saves, and for a compile error with no class hints; no polygon file read when the script has no game folder; `CompileLog::SummarizeAndReportErrors` moved to the engine, and the GUI plays the error sound; "Ignoring class" is Info; `OutputScriptStrings.h` hygiene; stale plan references. |
 | B3b Decompile path on the session, `appState` check rule | done | `f646dd52`, review fixes (the commit after `56b487d5`) | FIX: 1 should-fix, 6 nits, 1 question. Fixed: a test that the decompiler reads `sci.sh` from the data folder (the real-game tools now resolve enum names; see "Decisions"); `Src\Util` in the `appState` rule (13 GUI files in the allowlist); `DecompileScript` declared in `DecompileScript.h`; `GetIncludeFolder` is const; `%zu` and Warning for two log lines; corrected documents and CI comment. Outside the branch: the whole-game dump writes `.sco` files into the game folder that it dumps (a separate task was proposed). |
-| F2 Engine errors as values | done | the commit after `637d1ab1` | next |
-| K1 `and`/`or` value semantics | done | `cdf8759d` | running |
-| K2 `.sco` exports from the public block | done | `c6f42341` | next |
-| K3 Species order from compiled scripts | done | `746518e5` | next |
-| K4 `#` in selector names | done | the commit after `746518e5` | next |
-| K5 `proc<N>_<M>` for a missing script | not started | | |
-| K6 No `vocab.000`; `/` in paths | not started | | |
-| S3 ScriptCatalog, script names without `game.ini` | not started | | |
+| F2 Engine errors as values | done | `84f58380`, review fixes `31c34e18` | FIX: 2 should-fix (TryLoad rejected template script 990; `CheckResourceData` missed an unreadable header and a short read), nits and questions. Fixed, with the stream source name for a heap read in a copy. The review of the fixes is running. |
+| K1 `and`/`or` value semantics | done | `cdf8759d`, review fixes `76150fb2` | FIX: 1 should-fix (the README note that the plan promised), nits. Fixed: push-context and `or`-condition tests, dead `WeakSyntaxNode`, history and text. Review of the fixes running. |
+| K2 `.sco` exports from the public block | done | `c6f42341`, review fixes `4356cd87` | PASS with nits. Fixed: slot order, a template-wide `.sco` test, the real decompile effect in the docs. Review of the fixes running. |
+| K3 Species order from compiled scripts | done | `746518e5`, review fixes `1fad4b57` | PASS with nits. Fixed: `GlobalClassTable` skips the alignment, one log line per mismatch, a no-heap test, the numbers. Review of the fixes running. |
+| K4 `#` in selector names | done | `b7385d13`, review fixes `ebb6ff7d` | FIX: 1 should-fix (a `#` property read in a method still got `_`; KQ6 script 710). Fixed in `CleanTokenSCI`. Review of the fixes running. |
+| K5 `proc<N>_<M>` for a missing script | done | `78490d24`; test fix `2aee01b1` | running |
+| K6 No `vocab.000`; `/` in paths | done | `dcc0fdf7` | running |
+| S3 ScriptCatalog, script names without `game.ini` | S3a done; S3b in progress | S3a: the commit after `dcc0fdf7` | |
 | S1 Compile destination | not started | | |
 | S2 CompileBatch | not started | | |
 | S4 DecompileRun | not started | | |
@@ -538,6 +539,48 @@ for each step, and a follow-up commit if the review finds a problem.
 - K6: `ScriptId` splits a path at the last `\` or `/`, so "src/rm110.sc"
   gives the folder "src" and the file "rm110.sc". Before, it gave no
   folder and the whole text as the file name.
+- S3 is two commits: S3a (the script-name map, the naming rule, the
+  dialog) and S3b (`ListScripts`, the selectors, the shadow check).
+- S3a: `ScriptNameMap` (`Src\Resources\ScriptNameMap.h/.cpp`) has plan
+  section 3.4's rules. `Build` reads rules 1 to 3: `game.ini [Script]`
+  (its buffer grows; the old readers gave no names for a section over
+  20,000 characters), the `(script# X)` of each `src\*.sc` (X is a
+  number, or a define of the file or of `src\*.sh`, as in the templates'
+  `game.sh`), and the header of each `src\*.sco`. `AddDerivedNames` is
+  rule 4, and `NameOf` gives `nNNN` (rule 5). `GameSession::Open` builds
+  the map and installs it in the resource map's helper
+  (`GameFolderHelper::ScriptNames`); every open of the resource map
+  clears it first. The GUI installs none.
+- S3a: the scan of a `.sc` file is a small scanner, not the parser. It
+  skips `;` comments and `"..."` and `{...}` strings. A `(script# X)`
+  whose define comes from an include outside `src\` is not read; the
+  name then comes from the `.sco`, or is `nNNN`.
+- S3a: a conflict is not an error of `Build`: two `.sc` files (or two
+  `.sco` files) that would name one script, or one name for two scripts
+  (their files would be one file). `Conflicts()` lists them, and the map
+  leaves a script with two files out. S3b makes the commands that write
+  refuse to start while there is a conflict. When `game.ini` names a
+  script, its other files do not matter (no conflict).
+- S3a: `GameFolderHelper::GetScriptTitle(n)` is the map's name when the
+  map is set, else the `game.ini` name, else `nNNN`.
+  `GetScriptFileName(n)`, `GetScriptObjectFileName(n)`, the 2-argument
+  `SaveSCOFile`, the decompiler's `(use Name)` lines and
+  `CResourceMap::GetNumberToNameMap` (the compiler's number-to-name map)
+  use it.
+- Deviation from plan section 3.4: `FigureOutName(Script, n)` still
+  reads `game.ini` only. It names the compiled blobs, and the resource
+  map writes a blob's name into `game.ini` (`AssignName`, which creates
+  the file) when it saves the blob. With map names, every command-line
+  compile would create or extend `game.ini`. A test compiles a script in
+  a copy with no `game.ini` and checks that the file stays missing (fails
+  when `FigureOutName` takes the map's name).
+- S3a: `SuggestScriptNames` is the decompiler's naming rule, as a pure
+  function; the Decompile dialog's "Reset filenames" uses it. GUI change:
+  the scripts go in number order, so the `_N` suffix of a duplicate name
+  follows the number (before: the hash order of the class table). A
+  suffixed name counts as used, and a name gets `_` for a character that
+  a file or a `(use ...)` cannot have (before: raw object names, for
+  example with a space).
 ## Next action
 
 Phase K is done (K1 to K6), and the findings of the reviews of F2 and K1

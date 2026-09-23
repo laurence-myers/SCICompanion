@@ -205,7 +205,8 @@ void DetermineAndInsertUsings(const GameFolderHelper &helper, Script &script, De
 {
 	for (uint16_t usingScript : lookups.GetValidUsings())
 	{
-		script.AddUse(helper.FigureOutName(ResourceType::Script, usingScript, NoBase36));
+		// game.ini, or the session's script-name map.
+		script.AddUse(helper.GetScriptTitle(usingScript));
 	}
 }
 

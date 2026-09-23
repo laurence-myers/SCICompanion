@@ -629,9 +629,8 @@ void CSCOObjectClass::Save(std::vector<BYTE> &output, SCOVersion version) const
 
 void SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco)
 {
-	// Ask the question
-	std::string keyName = default_reskey(sco.GetScriptNumber(), NoBase36);
-	std::string scriptTitle = helper.GetIniString("Script", keyName, keyName.c_str());
+	// The script's name: game.ini, or the session's script-name map.
+	std::string scriptTitle = helper.GetScriptTitle(sco.GetScriptNumber());
 	ScriptId script = helper.GetScriptId(scriptTitle);
 	SaveSCOFile(helper, sco, script);
 }

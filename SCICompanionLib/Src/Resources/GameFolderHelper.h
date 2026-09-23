@@ -24,6 +24,7 @@ enum class ResourceSourceFlags : int;
 
 class ResourceRecency;
 class ResourceBlob;
+class ScriptNameMap;
 
 extern const std::string GameSection;
 extern const std::string CodepageKey;
@@ -42,6 +43,10 @@ public:
 	GameFolderHelper(const GameFolderHelper &orig) = default;
 	GameFolderHelper &operator=(const GameFolderHelper &other) = default;
 
+	// The name of a script: from ScriptNames when it is set (the command
+	// line; docs/scic-cli/plan.md section 3.4), otherwise from game.ini
+	// [Script], or nNNN.
+	std::string GetScriptTitle(uint16_t wScript) const;
 	std::string GetScriptFileName(const std::string &name) const;
 	std::string GetScriptFileName(uint16_t wScript) const;
 	std::string GetScriptObjectFileName(const std::string &title) const;
@@ -88,6 +93,9 @@ public:
 	// Members
 	SCIVersion Version;
 	std::string GameFolder;
+	// The script names of a GameSession. Null in the GUI. Set it before
+	// another thread uses the helper, and not while one does.
+	std::shared_ptr<const ScriptNameMap> ScriptNames;
 
 private:
 	std::string _GetSubfolder(const char *key, const std::string *prefix = nullptr) const;

@@ -14,6 +14,7 @@
 #include "stdafx.h"
 #include "ResourceContainer.h" 
 #include "GameFolderHelper.h"
+#include "ScriptNameMap.h"
 #include "ResourceBlob.h"
 #include "ResourceMapOperations.h"
 #include "format.h"
@@ -59,10 +60,20 @@ std::string default_reskey(int iNumber, uint32_t base36Number)
 	}
 }
 
+std::string GameFolderHelper::GetScriptTitle(uint16_t wScript) const
+{
+	if (ScriptNames)
+	{
+		return ScriptNames->NameOf(wScript);
+	}
+	std::string key = default_reskey(wScript, NoBase36);
+	return GetIniString("Script", key, key.c_str());
+}
+
 std::string GameFolderHelper::GetScriptFileName(WORD wScript) const
 {
 	std::string filename;
-	std::string scriptTitle = GetIniString("Script", default_reskey(wScript, NoBase36), default_reskey(wScript, NoBase36).c_str());
+	std::string scriptTitle = GetScriptTitle(wScript);
 	if (!scriptTitle.empty())
 	{
 		filename = GetScriptFileName(scriptTitle);
@@ -112,7 +123,7 @@ std::string GameFolderHelper::GetScriptSymbolFileName(uint16_t wScript) const
 std::string GameFolderHelper::GetScriptObjectFileName(WORD wScript) const
 {
 	std::string filename;
-	std::string scriptTitle = GetIniString("Script", default_reskey(wScript, NoBase36), default_reskey(wScript, NoBase36).c_str());
+	std::string scriptTitle = GetScriptTitle(wScript);
 	if (!scriptTitle.empty())
 	{
 		filename = GetScriptObjectFileName(scriptTitle);
