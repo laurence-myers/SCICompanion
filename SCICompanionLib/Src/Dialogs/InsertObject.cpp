@@ -90,7 +90,7 @@ AvailableMethods::AvailableMethods()
 
 void AvailableMethods::PrepareBuffer(const sci::MethodDefinition *methodDef, CString &buffer)
 {
-	ConvertToSCISyntaxHelper(*_script);
+	ConvertToSCISyntaxHelper(*_script, appState->GetResourceMap().Helper());
 	std::stringstream ss;
 	//sci::SourceCodeWriter out(ss, _objectToScript[theClass]);
 	// Providing the script lets us sync comments, but it is not working properly. They merge with newlines, and comments in
@@ -161,7 +161,7 @@ void AvailableObjects::PrepareBuffer(sci::ClassDefinition *theClass, CString &bu
 {
 	for (auto &script : _scripts)
 	{
-		ConvertToSCISyntaxHelper(*script);
+		ConvertToSCISyntaxHelper(*script, appState->GetResourceMap().Helper());
 	}
 
 	// Grab any properties from the "fake ego"

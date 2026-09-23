@@ -17,7 +17,7 @@
 #include "ScriptOMAll.h"
 #include "DecompilerCore.h"
 #include "format.h"
-#include "AppState.h"
+#include "CoreLog.h"
 #include "PMachine.h"
 
 using namespace std;
@@ -371,7 +371,7 @@ void DisassembleFallback(FunctionBase &func, code_pos start, code_pos end, Decom
 					// In SCI0 is this a relative offset from the post operation program counter.
 					// In SCI1 it appears to be an absolute offset.
 					ICompiledScriptSpecificLookups::ObjectType type;
-					SCIVersion version = appState->GetVersion();
+					const SCIVersion &version = lookups.GetVersion();
 					uint16_t wName = version.lofsaOpcodeIsAbsolute ?
 						cur->get_first_operand() :
 						(cur->get_first_operand() + cur->get_final_postop_offset());
@@ -380,7 +380,7 @@ void DisassembleFallback(FunctionBase &func, code_pos start, code_pos end, Decom
 					if (name.empty())
 					{
 						name = InvalidLookupError;
-						appState->LogInfo("Unable to find symbol for %d.", wName);
+						CoreLogFormat(LogLevel::Warning, "Unable to find symbol for %d.", wName);
 					}
 					_AddString(*asmStatement, name, _ScriptObjectTypeToPropertyValueType(type));
 					break;

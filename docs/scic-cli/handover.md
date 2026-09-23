@@ -6,9 +6,9 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: the B3a review, then B3b. F1, A1, A2, B1 and B2 are
-  committed and reviewed, with their review fixes. B3a (the compile path)
-  is committed.
+- Current step: the B3a and B3b reviews, then F2. F1, A1, A2, B1 and B2
+  are committed and reviewed, with their review fixes. B3a (the compile
+  path) and B3b (the decompile path) are committed.
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -17,7 +17,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -38,8 +38,8 @@ for each step, and a follow-up commit if the review finds a problem.
 | A2 Patch writer, size check | done | `7432a479`, review fixes (the commit after `3be03ff1`) | FIX: 1 should-fix, 6 nits (it also reviewed `258ce43c`). Fixed: the patch writer checks every existing target (read-only, locked) before the first rename and removes the `.bak` files left after a failed rename; a repackage inside an open batch is refused; the audio cache is marked out of date before its map save; `PerformChecks` runs inside the exception boundary; the size error names the resource and no longer says "A Audio"; the plan's statements on atomic commits and on the old audio cache behaviour; README "What's new". Left as known gaps (below): `Cancelled` for check failures that are not a choice, and a rename that fails after the checks. |
 | B1 GameSession, core log | done | `13a786ac`, review fixes (the commit after `d1221472`) | FIX: 2 should-fix, 8 nits. Fixed: only a GUI `AppState` installs itself as the log sink, and it removes itself with a compare-exchange (`RemoveCoreLogSink`); `Open("")` is a Usage error; `TryOpen` is inside the exception boundary as a whole; `AppState::Write` deletes MFC exceptions; `LogInfo` uses `CoreLogFormatV`, with `_Printf_format_string_`; three format-string bugs (`Vocab99x.cpp` `%d` for a name, two dialogs that used the error text as the format, and leaked their `COleException`); the grammar load uses `std::call_once`; the headless `SafeMessageBox` gives the safe answer for every button set; test hygiene. Left: see "Decisions" (the GUI open path and the B3 guard test). |
 | B2 Script text loader | done | `3be03ff1`, review fixes (the commit after `af7cdb5f`) | FIX: 1 should-fix, 1 nit. No difference from the editor in about 46,000 files (a differential probe), 723 parses and 5 compiles. Fixed: `LoadScriptText` names the file for a thrown failure and refuses a file over 64 MB (`Unsupported`); tests at the exact 32 KB edge of the style rule, and a stream walk; the exception boundary reports an MFC `CMemoryException` as "out of memory" (an F1 gap the review found). |
-| B3a Compile path on the session | done | the commit after `52b05d4b` | next |
-| B3b Decompile path on the session, `appState` check rule | not started | | |
+| B3a Compile path on the session | done | `8fe055d0` | running |
+| B3b Decompile path on the session, `appState` check rule | done | the commit after `8fe055d0` | next |
 | F2 Engine errors as values | not started | | |
 | K1 `and`/`or` value semantics | not started | | |
 | K2 `.sco` exports from the public block | not started | | |
@@ -158,9 +158,8 @@ for each step, and a follow-up commit if the review finds a problem.
   there.
 - For B3: the guard test cannot rely on a crash from `appState->LogInfo`
   with no `AppState`, because the B1 `LogInfo` does not touch `this`. B3a
-  changed the `Vocab99x.cpp` calls to `CoreLogFormat`. B3b must change
-  the other engine calls and add a check-script rule against `appState` in
-  the engine folders.
+  and B3b changed the engine's calls to `CoreLog`, and B3b added the check
+  rule against `appState` in the engine folders.
 - B2: the editor's line rule is odder than the plan said (plan section
   2.8 now has it): a CR-only file is one line, "LF CR" is a style, and a
   NUL ends a line. `SplitScriptText` copies it exactly.
@@ -231,7 +230,44 @@ for each step, and a follow-up commit if the review finds a problem.
   `DbugStr` kernel call in `Compile.cpp`) has no test; it is
   inspection-verified. The templates do not call `DbugStr`.
 
+- B3b: `DecompileBatch`, `DecompileScript` and `CreateDecompilerConfig`
+  take the resource map, and get the helper from it. The decompile dialog
+  passes `appState->GetResourceMap()`; before, the batch read it through
+  `appState` on the same worker thread.
+- B3b: `CreateDecompilerConfig` reads `sci.sh` and `keys.sh` from the
+  include folder of the resource map (the data folder). Before, it used
+  the static `GameFolderHelper::GetIncludeFolder()` (the folder of the
+  running exe). In the GUI, that is the same folder. In the tests, it is
+  now the module folder; the templates have no `src\Decompiler.ini`, and
+  the config uses the defines only after it reads that file, so the test
+  results do not change.
+- B3b: `ConvertToSCISyntaxHelper` has no default for its lookups. A new
+  overload takes a helper and loads the lookups from it (the three GUI
+  callers use it). With null lookups, the formatter no longer loads them
+  itself.
+- B3b: `DecompileScript` and `FixDuplicateObjectNames` moved to
+  `Src\Compile\DecompileScript.cpp`. The 3-argument `DecompileScript`
+  (P15, dead code that passed a null config) is gone.
+- B3b: the log calls in `DecompilerFallback`, `Disassembler`,
+  `PaletteOperations`, `Sound` and `View` go to `CoreLog` (Warning for a
+  failure, Info for a note). The "Empty loop found" call in `View.cpp` had
+  no null check, so a view with an empty loop crashed a load with no
+  `AppState`. The two `Sound.cpp` messages lost their trailing line break.
+  The commented-out call in `DecompilerNew.cpp` now uses `CoreLog` too.
+- B3b: the check rule `appstate-in-engine` covers `Src\Core`,
+  `Src\Compile` and `Src\Resources`. The allowlist has the two audio-cache
+  sites (`GameFolderHelper.cpp`, `ResourceMapOperations.cpp`: the
+  `AudioCacheResourceSource` needs the `CResourceMap`) and the GUI flags of
+  the pic code (`Pic.cpp` `_fDontCheckPic`, `PicDrawManager.cpp`
+  `_fNoGdiPlus`, `PicOperations.cpp` the clipboard format). The script
+  commands do not reach them. `Src\Util` is not in the rule, because it
+  also holds GUI code; its codecs and script-text code do not use
+  `appState`. Phase E1 makes the build enforce the layers.
+- For E1: some engine files still include `AppState.h` with no use
+  (`Audio.cpp`, `AudioMap.cpp`, `Message.cpp`, `ResourceMap.cpp`,
+  `Sync.cpp`, `Vocab000.cpp`). B3b removed it from the `Src\Compile` files.
 ## Next action
 
-Run the B3a adversarial review (a worktree on the B3a commit) and fix any
-real finding. Then B3b (plan section 9).
+Read the B3a review (running) and fix any real finding. Run the B3b
+adversarial review (a worktree on the B3b commit) and fix any real
+finding. Then F2 (plan section 9).

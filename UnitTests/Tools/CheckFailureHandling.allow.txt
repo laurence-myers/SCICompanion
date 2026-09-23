@@ -1,10 +1,15 @@
-# Failure-handling sites that existed before the rules (see CheckFailureHandling.ps1).
+# Sites that existed before the rules (see CheckFailureHandling.ps1).
 # Format: <rule> <path under SCICompanionLib\Src> <count>. Lower a count when you remove a site.
 afxmessagebox-in-engine Resources\ResourceMap.cpp 2
 afxmessagebox-in-engine Resources\ResourceMapOperations.cpp 2
 afxmessagebox-in-engine Resources\Sound.cpp 4
 afxmessagebox-in-engine Resources\SoundOperations.cpp 4
 afxmessagebox-in-engine Resources\Vocab000.cpp 3
+appstate-in-engine Resources\GameFolderHelper.cpp 1
+appstate-in-engine Resources\Pic.cpp 4
+appstate-in-engine Resources\PicDrawManager.cpp 1
+appstate-in-engine Resources\PicOperations.cpp 2
+appstate-in-engine Resources\ResourceMapOperations.cpp 1
 empty-catch-all Compile\CodeInspector.h 1
 empty-catch-all Dialogs\DecompileDialog.cpp 1
 empty-catch-all Dialogs\PhonemeDialog.cpp 1

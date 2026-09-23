@@ -14,7 +14,7 @@
 #include "stdafx.h"
 #include "PaletteOperations.h"
 #include "ResourceEntity.h"
-#include "AppState.h"
+#include "CoreLog.h"
 #include "ImageUtil.h"
 #include "GameFolderHelper.h"
 
@@ -506,7 +506,7 @@ void ReadPalette(PaletteComponent &palette, sci::istream &byteStream)
 		}
 		else
 		{
-			appState->LogInfo("Corrupt palette.");
+			CoreLog(LogLevel::Warning, "Corrupt palette.");
 			end = 0; // So we fill in with black below...
 		}
 	}

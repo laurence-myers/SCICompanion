@@ -17,7 +17,7 @@
 #include "View.h"
 #include "ResourceEntity.h"
 #include "PaletteOperations.h"
-#include "AppState.h"
+#include "CoreLog.h"
 #include "format.h"
 #include "ImageUtil.h"
 
@@ -240,11 +240,8 @@ void ReadCelFrom(ResourceEntity &resource, sci::istream byteStream, Cel &cel, bo
 		// still loads. Each cel is read from its own offset in ReadLoopFrom, so
 		// returning early here does not disturb the other cels. ScummVM likewise
 		// does not reject a view over a cel size at load. Warn so the corruption is
-		// visible (appState is null in headless/unit-test loads). (#182)
-		if (appState != nullptr)
-		{
-			appState->LogInfo("Corrupt cel in view %d (package %d): replaced with a 1x1 placeholder.", resource.ResourceNumber, resource.PackageNumber);
-		}
+		// visible. The core log works with no GUI. (#182)
+		CoreLogFormat(LogLevel::Warning, "Corrupt cel in view %d (package %d): replaced with a 1x1 placeholder.", resource.ResourceNumber, resource.PackageNumber);
 		// Set the transparent colour explicitly first: we return before reading it
 		// from the (corrupt) stream, and Cel() leaves it indeterminate. Fill the 1x1
 		// pixel with that same colour so the placeholder is fully transparent and its
@@ -607,7 +604,7 @@ void PostReadProcessing(ResourceEntity &resource, RasterComponent &raster)
 		Loop &loop = raster.Loops[i];
 		if (loop.Cels.size() == 0)
 		{
-			appState->LogInfo("Empty loop found: view: %d, loop %d.", resource.ResourceNumber, i);
+			CoreLogFormat(LogLevel::Info, "Empty loop found: view: %d, loop %d.", resource.ResourceNumber, i);
 			// Make degenerate
 			loop.Cels.push_back(Cel());
 			CreateDegenerate(loop.Cels[0], loop.Cels[0].TransparentColor);

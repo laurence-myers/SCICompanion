@@ -12,6 +12,13 @@
 #include "CompileInterfaces.h"
 #include "CompileContext.h"
 #include "Text.h"
+#include "CompiledScript.h"
+#include "DecompilerConfig.h"
+#include "DecompileBatch.h"
+#include "DecompilerCore.h"
+#include "DecompileHelper.h"
+#include "OutputCodeHelper.h"
+#include <set>
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -391,6 +398,102 @@ namespace UnitTests
                 Assert::AreEqual(1252, GetTextCodepage(), L"the codepage must come from game.ini");
                 Assert::AreEqual(dosText, Dos2Win(dosText), L"a 1252 game keeps its text");
             }
+        }
+    };
+
+    // Plan step B3b. Before it, the decompile read the text resources,
+    // vocab.000, the version and the class lookups through appState, and
+    // logged through it. With no AppState, the first decompile dereferenced
+    // null.
+    TEST_CLASS(TestHeadlessDecompile)
+    {
+        std::string _copyFolder;
+
+        void RemoveCopy()
+        {
+            if (!_copyFolder.empty())
+            {
+                std::error_code ec;
+                std::filesystem::remove_all(_copyFolder, ec);
+                _copyFolder.clear();
+            }
+        }
+
+        // Runs the test body for a session on a copy of each template.
+        template<typename TBody>
+        void ForEachTemplate(TBody body)
+        {
+            const char *templates[] = { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" };
+            for (const char *name : templates)
+            {
+                _copyFolder = CopyGameFromModuleFolder(name);
+                {
+                    // The data folder holds include\ (sci.sh, keys.sh).
+                    SessionOptions options;
+                    options.dataFolder = GetTestModuleDirectory();
+                    GameSession session(options);
+                    sci::Status opened = session.Open(_copyFolder);
+                    Assert::IsTrue(opened.has_value(), Wide(opened ? std::string() : opened.error().ToString()).c_str());
+
+                    GlobalCompiledScriptLookups lookups;
+                    Assert::IsTrue(lookups.Load(session.Helper()), L"the lookups must load");
+                    uint16_t dummy;
+                    lookups.GetSelectorTable().ReverseLookup("", dummy);
+                    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(session.ResourceMap(), lookups.GetSelectorTable());
+
+                    std::set<uint16_t> scriptNumbers;
+                    for (CompiledScript *script : lookups.GetGlobalClassTable().GetAllScripts())
+                    {
+                        scriptNumbers.insert(script->GetScriptNumber());
+                    }
+                    Assert::IsFalse(scriptNumbers.empty(), Wide(name).c_str());
+
+                    body(name, session, lookups, *config, scriptNumbers);
+                }
+                RemoveCopy();
+            }
+        }
+
+    public:
+        TEST_METHOD_CLEANUP(CleanUp)
+        {
+            RemoveCopy();
+        }
+
+        TEST_METHOD(DecompileAll_Templates_WorkWithNoAppState)
+        {
+            NoAppState noAppState;
+            CaptureLogSink sink;
+            ScopedCoreLogSink scoped(sink);
+            ForEachTemplate([](const char *name, GameSession &session, GlobalCompiledScriptLookups &lookups, IDecompilerConfig &config, const std::set<uint16_t> &scriptNumbers)
+            {
+                TestDecompilerResults results;
+                DecompileBatch batch(&config, lookups, session.ResourceMap(), results);
+                batch.Run(scriptNumbers);
+                Assert::AreEqual(scriptNumbers.size(), batch.GetWrittenScripts().size(), Wide(name).c_str());
+            });
+        }
+
+        // The asm output uses the fallback path for every function, and the
+        // formatter loads its own lookups from the helper.
+        TEST_METHOD(DecompileAsm_Templates_WorkWithNoAppState)
+        {
+            NoAppState noAppState;
+            CaptureLogSink sink;
+            ScopedCoreLogSink scoped(sink);
+            ForEachTemplate([](const char *name, GameSession &session, GlobalCompiledScriptLookups &lookups, IDecompilerConfig &config, const std::set<uint16_t> &scriptNumbers)
+            {
+                for (uint16_t scriptNumber : scriptNumbers)
+                {
+                    CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+                    Assert::IsTrue(compiled.Load(session.Helper(), session.Version(), scriptNumber), Wide(name).c_str());
+                    TestDecompilerResults results;
+                    std::unique_ptr<sci::Script> script = DecompileScript(&config, lookups, session.ResourceMap(), scriptNumber, compiled, results,
+                        false, false, nullptr, true, false);
+                    Assert::IsNotNull(script.get());
+                    ConvertToSCISyntaxHelper(*script, session.Helper());
+                }
+            });
         }
     };
 }

@@ -2116,7 +2116,7 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, Decompi
 			{
 				// TODO: Walk backwards until we have an instruction that puts something on the stack.
 				// This may not work in all cases (if we pass a branch, etc...)
-				appState->LogInfo("WARNING: Possible incorrect logic.");
+				CoreLog(LogLevel::Warning, "Possible incorrect logic.");
 				// How do we handle this one?
 				// assert(false);
 			}*/

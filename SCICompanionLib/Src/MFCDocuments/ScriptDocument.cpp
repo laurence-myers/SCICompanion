@@ -216,73 +216,7 @@ void CScriptDocument::OnDisassemble()
 	}
 }
 
-void DecompileScript(const GameFolderHelper &helper, WORD wScript, IDecompilerResults &results)
-{
-	CompiledScript compiledScript(0);
-	if (compiledScript.Load(helper, appState->GetVersion(), wScript))
-	{
-		unique_ptr<sci::Script> pScript = DecompileScript(nullptr, *appState->GetResourceMap().GetCompiledScriptLookups(), helper, wScript, compiledScript, results);
-		std::stringstream ss;
-		sci::SourceCodeWriter out(ss, pScript.get());
-		pScript->OutputSourceCode(out);
-		ShowTextFile(ss.str().c_str(), "script.scp.txt");
-	}
-}
-
-void FixDuplicateObjectNames(CompiledScript &compiledScript, const SelectorTable &selectorTable)
-{
-	// Occasionally a script will have objects with duplicate names. Rather than a bug, this indicates that there were two separate objects that had
-	// their name property explicitly provided. An example is _MapInSection.sc in QFG2.
-	// There are a few ways to address it, but we'll try the following here:
-	//  Check for any name dupes in the objects.
-	//  If so, change their name to some unique name
-	//  Then add a name property with a value pointing to the original string.
-	unordered_map<string, int> countOfNames;
-	unordered_map<string, char> suffixes;
-	for (const auto &object : compiledScript.GetObjects())
-	{
-		countOfNames[object->GetName()]++;
-		suffixes[object->GetName()] = 'a';
-	}
-
-	for (auto &object : compiledScript.GetObjects())
-	{
-		int count = countOfNames[object->GetName()];
-		if (count > 1)
-		{
-			// This is a multiple named one.
-			std::string newName = fmt::format("{0}_{1}", object->GetName(), suffixes[object->GetName()]++);
-			object->AdjustName(newName); // This will track the old name so we can explicitly list it
-		}
-	}
-}
-
-std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, const GameFolderHelper &helper, WORD wScript, CompiledScript &compiledScript, IDecompilerResults &results, bool debugControlFlow, bool debugInstConsumption, PCSTR pszDebugFilter, bool decompileAsm, bool substituteTextTuples)
-{
-	unique_ptr<sci::Script> pScript;
-	ObjectFileScriptLookups objectFileLookups(helper, scriptLookups.GetSelectorTable());
-	// Ok if pText fails (and is NULL)
-	unique_ptr<ResourceEntity> textResource = appState->GetResourceMap().CreateResourceFromNumber(ResourceType::Text, wScript);
-	TextComponent *pText = nullptr;
-	if (textResource)
-	{
-		pText = textResource->TryGetComponent<TextComponent>();
-	}
-
-	FixDuplicateObjectNames(compiledScript, config->GetSelectorTable());
-
-	DecompileLookups decompileLookups(config, helper, wScript, &scriptLookups, &objectFileLookups, &compiledScript, pText, &compiledScript, results);
-	decompileLookups.DebugControlFlow = debugControlFlow;
-	decompileLookups.DebugInstructionConsumption = debugInstConsumption;
-	decompileLookups.pszDebugFilter = pszDebugFilter;
-	decompileLookups.DecompileAsm = decompileAsm;
-	decompileLookups.SubstituteTextTuples = substituteTextTuples;
-	pScript.reset(Decompile(helper, compiledScript, decompileLookups, appState->GetResourceMap().GetVocab000()));
-
-	ConvertToSCISyntaxHelper(*pScript, &scriptLookups);
-
-	return pScript;
-}
+// DecompileScript and FixDuplicateObjectNames are in Src\Compile\DecompileScript.cpp.
 
 void CScriptDocument::OnViewObjectFile()
 {
@@ -367,7 +301,7 @@ void CScriptDocument::OnViewSyntaxTree()
 	bool fCompile = SyntaxParser_Parse(script, stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), &log);;
 	if (fCompile)
 	{
-		ConvertToSCISyntaxHelper(script);
+		ConvertToSCISyntaxHelper(script, appState->GetResourceMap().Helper());
 
 		std::stringstream out;
 		sci::SourceCodeWriter theCode(out, &script);

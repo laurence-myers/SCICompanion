@@ -5,6 +5,7 @@ class IDecompilerConfig;
 class IDecompilerResults;
 class GlobalCompiledScriptLookups;
 class GameFolderHelper;
+class CResourceMap;
 
 struct DecompileOptions
 {
@@ -41,7 +42,9 @@ struct DecompileOptions
 class DecompileBatch
 {
 public:
-	DecompileBatch(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, const GameFolderHelper &helper, IDecompilerResults &results, const DecompileOptions &options = DecompileOptions());
+	// The resource map gives the game (its helper), the text resources and
+	// vocab.000.
+	DecompileBatch(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, IDecompilerResults &results, const DecompileOptions &options = DecompileOptions());
 	~DecompileBatch();
 	DecompileBatch(const DecompileBatch &) = delete;
 	DecompileBatch &operator=(const DecompileBatch &) = delete;
@@ -67,6 +70,7 @@ private:
 
 	const IDecompilerConfig *_config;
 	GlobalCompiledScriptLookups &_scriptLookups;
+	CResourceMap &_resourceMap;
 	const GameFolderHelper &_helper;
 	IDecompilerResults &_results;
 	DecompileOptions _options;

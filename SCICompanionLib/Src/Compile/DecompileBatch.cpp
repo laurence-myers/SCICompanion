@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include "DecompileBatch.h"
-#include "AppState.h"
+#include "ResourceMap.h"
 #include "AutoDetectVariableNames.h"
 #include "CompiledScript.h"
 #include "DecompilerCore.h"
@@ -303,10 +303,11 @@ namespace
 class DecompileBatch::Item
 {
 public:
-	Item(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, const GameFolderHelper &helper, uint16_t scriptNumber, IDecompilerResults &results, const DecompileOptions &options) :
+	Item(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, uint16_t scriptNumber, IDecompilerResults &results, const DecompileOptions &options) :
 		_config(config),
 		_scriptLookups(scriptLookups),
-		_helper(helper),
+		_resourceMap(resourceMap),
+		_helper(resourceMap.Helper()),
 		_number(scriptNumber),
 		_results(results),
 		_options(options)
@@ -424,11 +425,11 @@ public:
 	}
 
 private:
-	// The same steps as DecompileScript (ScriptDocument.cpp).
+	// The same steps as DecompileScript (DecompileScript.cpp).
 	void _Decompile(DecompileState &state, IDecompilerResults &results)
 	{
 		// Ok if this fails (and is null)
-		state.textResource = appState->GetResourceMap().CreateResourceFromNumber(ResourceType::Text, _number);
+		state.textResource = _resourceMap.CreateResourceFromNumber(ResourceType::Text, _number);
 		TextComponent *pText = state.textResource ? state.textResource->TryGetComponent<TextComponent>() : nullptr;
 
 		FixDuplicateObjectNames(state.compiledScript, _config->GetSelectorTable());
@@ -440,7 +441,7 @@ private:
 		state.lookups->DecompileAsm = _options.DecompileAsm;
 		state.lookups->SubstituteTextTuples = _options.SubstituteTextTuples;
 
-		state.script = DecompileToAst(_helper, state.compiledScript, *state.lookups, appState->GetResourceMap().GetVocab000());
+		state.script = DecompileToAst(_helper, state.compiledScript, *state.lookups, _resourceMap.GetVocab000());
 	}
 
 	// Names the tree against mainSCO and this script's previous .sco, then
@@ -480,6 +481,7 @@ private:
 
 	const IDecompilerConfig *_config;
 	GlobalCompiledScriptLookups &_scriptLookups;
+	CResourceMap &_resourceMap;
 	const GameFolderHelper &_helper;
 	uint16_t _number;
 	IDecompilerResults &_results;
@@ -495,8 +497,8 @@ private:
 	vector<string> _globalNamesWhenWritten;
 };
 
-DecompileBatch::DecompileBatch(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, const GameFolderHelper &helper, IDecompilerResults &results, const DecompileOptions &options) :
-	_config(config), _scriptLookups(scriptLookups), _helper(helper), _results(results), _options(options)
+DecompileBatch::DecompileBatch(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, IDecompilerResults &results, const DecompileOptions &options) :
+	_config(config), _scriptLookups(scriptLookups), _resourceMap(resourceMap), _helper(resourceMap.Helper()), _results(results), _options(options)
 {
 }
 
@@ -567,7 +569,7 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 			break;
 		}
 		_results.AddResult(DecompilerResultType::Important, fmt::format("Decompiling script {0}", scriptNumber));
-		unique_ptr<Item> item = make_unique<Item>(_config, _scriptLookups, _helper, scriptNumber, _results, _options);
+		unique_ptr<Item> item = make_unique<Item>(_config, _scriptLookups, _resourceMap, scriptNumber, _results, _options);
 		vector<pair<string, string>> renames;
 		try
 		{

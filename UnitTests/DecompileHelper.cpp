@@ -205,7 +205,7 @@ DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks, bool de
     uint16_t dummy;
     lookups.GetSelectorTable().ReverseLookup("", dummy);
 
-    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(rm, lookups.GetSelectorTable());
 
     DecompileOutput out;
     CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
@@ -217,7 +217,7 @@ DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks, bool de
 
     TestDecompilerResults results;
     std::unique_ptr<sci::Script> pScript = DecompileScript(
-        config.get(), lookups, helper, scriptNumber, compiled, results,
+        config.get(), lookups, rm, scriptNumber, compiled, results,
         debugControlFlow, debugChunks, nullptr, false, false);
 
     std::stringstream ss;
@@ -295,7 +295,7 @@ int CountFallbacksAllScripts(std::vector<std::string> *outFailedScripts, int *ou
     lookups.Load(helper);
     uint16_t dummy;
     lookups.GetSelectorTable().ReverseLookup("", dummy);
-    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(rm, lookups.GetSelectorTable());
 
     std::vector<ScriptId> scripts;
     rm.GetAllScripts(scripts);
@@ -313,7 +313,7 @@ int CountFallbacksAllScripts(std::vector<std::string> *outFailedScripts, int *ou
         processed++;
         TestDecompilerResults results;
         std::unique_ptr<sci::Script> pScript = DecompileScript(
-            config.get(), lookups, helper, number, compiled, results,
+            config.get(), lookups, rm, number, compiled, results,
             false, false, nullptr, false, false);
         std::stringstream ss;
         sci::SourceCodeWriter writer(ss, pScript.get());
@@ -381,7 +381,7 @@ int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
     lookups.Load(helper);
     uint16_t dummy;
     lookups.GetSelectorTable().ReverseLookup("", dummy);
-    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(rm, lookups.GetSelectorTable());
 
     std::map<int, std::string> names;
     if (!nameMapDir.empty())
@@ -404,7 +404,7 @@ int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
         processed++;
         TestDecompilerResults results;
         std::unique_ptr<sci::Script> pScript = DecompileScript(
-            config.get(), lookups, helper, static_cast<uint16_t>(number), compiled, results,
+            config.get(), lookups, rm, static_cast<uint16_t>(number), compiled, results,
             false, false, nullptr, false, false);
         std::stringstream ss;
         sci::SourceCodeWriter writer(ss, pScript.get());
@@ -506,7 +506,7 @@ SnapshotResult CompareTemplateSnapshots()
     lookups.Load(helper);
     uint16_t dummy;
     lookups.GetSelectorTable().ReverseLookup("", dummy);
-    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(rm, lookups.GetSelectorTable());
 
     std::string expectedDir = GetTestFileDirectory("Decompile\\Snapshots\\SCI1.1");
     std::string actualDir = GetTestModuleDirectory() + "\\SnapshotActuals\\SCI1.1";
@@ -528,7 +528,7 @@ SnapshotResult CompareTemplateSnapshots()
 
         TestDecompilerResults results;
         std::unique_ptr<sci::Script> pScript = DecompileScript(
-            config.get(), lookups, helper, number, compiled, results,
+            config.get(), lookups, rm, number, compiled, results,
             false, false, nullptr, false, false);
         std::stringstream ss;
         sci::SourceCodeWriter writer(ss, pScript.get());

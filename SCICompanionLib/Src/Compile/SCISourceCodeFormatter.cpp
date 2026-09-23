@@ -18,7 +18,6 @@
 #include "PMachine.h"
 #include "StringUtil.h"
 #include "CompiledScript.h"
-#include "AppState.h"
 #include "OperatorTables.h"
 #include <numeric>
 
@@ -423,11 +422,8 @@ class TransformDeterminePropSelectors : public IExploreNode
 public:
 	TransformDeterminePropSelectors(sci::Script &script, GlobalCompiledScriptLookups *lookups) : _lookups(lookups)
 	{
-		// We need to determine what is a property and what is a method
-		if (!_lookups && _lookupsOwned.Load(appState->GetResourceMap().Helper()))
-		{
-			_lookups = &_lookupsOwned;
-		}
+		// We need to determine what is a property and what is a method. With no
+		// lookups, we cannot.
 		if (_lookups)
 		{
 			for (auto &script : _lookups->GetGlobalClassTable().GetAllScripts())
@@ -469,7 +465,6 @@ private:
 	std::set<uint16_t> _propSelectors;
 	std::set<uint16_t> _methodSelectors;
 	GlobalCompiledScriptLookups *_lookups;
-	GlobalCompiledScriptLookups _lookupsOwned;
 };
 
 std::string _GetCommentText(const Comment &comment)
@@ -508,6 +503,13 @@ std::string _GetCommentText(const Comment &comment)
 		first = false;
 	}
 	return newComment;
+}
+
+void ConvertToSCISyntaxHelper(Script &script, const GameFolderHelper &helper)
+{
+	// The game's classes tell a property from a method.
+	GlobalCompiledScriptLookups lookups;
+	ConvertToSCISyntaxHelper(script, lookups.Load(helper) ? &lookups : nullptr);
 }
 
 void ConvertToSCISyntaxHelper(Script &script, GlobalCompiledScriptLookups *lookups)

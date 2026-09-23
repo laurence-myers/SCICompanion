@@ -8,6 +8,9 @@
                                throw sci::DataError or return a sci::Result instead
       afxmessagebox-in-engine  AfxMessageBox in Src\Core, Src\Compile or Src\Resources;
                                return a sci::Result and let the GUI show it
+      appstate-in-engine       the GUI object appState in Src\Core, Src\Compile or
+                               Src\Resources; take the session, the resource map or
+                               the helper as a parameter (plan section 3.2)
 
     The sites that existed before the rules are in CheckFailureHandling.allow.txt,
     one line per file: "<rule> <path> <count>". A file must have exactly its
@@ -32,7 +35,8 @@ $excluded = @("CrystalEdit", "GIFLIB", "cpptoml", "CppFormat", "r8brain", "CRC32
 $rules = @(
     @{ Name = "empty-catch-all"; Pattern = 'catch\s*\(\s*\.\.\.\s*\)\s*\{(?:\s|;|//[^\n]*|/\*[\s\S]*?\*/)*\}'; Folders = $null },
     @{ Name = "throw-std-exception"; Pattern = 'throw\s+std::exception\s*\('; Folders = $null },
-    @{ Name = "afxmessagebox-in-engine"; Pattern = '\bAfxMessageBox\s*\('; Folders = @("Core", "Compile", "Resources") }
+    @{ Name = "afxmessagebox-in-engine"; Pattern = '\bAfxMessageBox\s*\('; Folders = @("Core", "Compile", "Resources") },
+    @{ Name = "appstate-in-engine"; Pattern = '\bappState\b'; Folders = @("Core", "Compile", "Resources") }
 )
 
 $found = @{}
@@ -54,7 +58,7 @@ foreach ($file in $files) {
 if ($Update) {
     $lines = $found.Keys | Sort-Object | ForEach-Object { "$_ $($found[$_])" }
     $header = @(
-        "# Failure-handling sites that existed before the rules (see CheckFailureHandling.ps1).",
+        "# Sites that existed before the rules (see CheckFailureHandling.ps1).",
         "# Format: <rule> <path under SCICompanionLib\Src> <count>. Lower a count when you remove a site."
     )
     [IO.File]::WriteAllText($allowPath, (($header + $lines) -join "`r`n") + "`r`n", (New-Object System.Text.UTF8Encoding($false)))

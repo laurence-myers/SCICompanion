@@ -13,7 +13,6 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "ScriptOMAll.h"
-#include "AppState.h"
 #include "OutputCodeHelper.h"
 #include "SCISourceCodeFormatter.h"
 #include "StringUtil.h"

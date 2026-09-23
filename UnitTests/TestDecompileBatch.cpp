@@ -118,10 +118,10 @@ namespace UnitTests
             Assert::IsTrue(lookups.Load(helper), L"lookups should load");
             uint16_t dummy;
             lookups.GetSelectorTable().ReverseLookup("", dummy);
-            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
 
             TestDecompilerResults results;
-            DecompileBatch batch(config.get(), lookups, helper, results);
+            DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
             batch.Run({ 950, 951 });
 
             Assert::AreEqual(2, (int)batch.GetWrittenScripts().size(), L"both scripts should be written");
@@ -179,11 +179,11 @@ namespace UnitTests
             Assert::IsTrue(lookups.Load(helper), L"lookups should load");
             uint16_t dummy;
             lookups.GetSelectorTable().ReverseLookup("", dummy);
-            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
 
             TestDecompilerResults results;
             {
-                DecompileBatch batch(config.get(), lookups, helper, results);
+                DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
                 batch.Run({ 950, 951 });
                 Assert::IsFalse(batch.GetGlobalRenames().empty(), L"the first run should name globals");
             }
@@ -191,7 +191,7 @@ namespace UnitTests
             std::string firstB = ReadTextFile(helper.GetScriptFileName(951));
 
             {
-                DecompileBatch batch(config.get(), lookups, helper, results);
+                DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
                 batch.Run({ 950, 951 });
                 Assert::IsTrue(batch.GetGlobalRenames().empty(), L"the second run should find every global already named");
             }
@@ -241,7 +241,7 @@ namespace UnitTests
             Assert::IsTrue(lookups.Load(helper), L"lookups should load");
             uint16_t dummy;
             lookups.GetSelectorTable().ReverseLookup("", dummy);
-            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
 
             for (uint16_t number : { (uint16_t)951, (uint16_t)950 })
             {
@@ -299,7 +299,7 @@ namespace UnitTests
             Assert::IsTrue(lookups.Load(helper), L"lookups should load");
             uint16_t dummy;
             lookups.GetSelectorTable().ReverseLookup("", dummy);
-            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
 
             std::set<uint16_t> numbers;
             {
@@ -326,7 +326,7 @@ namespace UnitTests
 
             ULONGLONG start = GetTickCount64();
             {
-                DecompileBatch batch(config.get(), lookups, helper, results);
+                DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
                 batch.Run(numbers);
                 results.lines.push_back(fmt::format("Wrote {0} of {1} scripts, {2} of them twice; {3} globals named", batch.GetWrittenScripts().size(), numbers.size(), batch.GetRewrittenScripts().size(), batch.GetGlobalRenames().size()));
             }

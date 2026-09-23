@@ -13,7 +13,7 @@
 ***************************************************************************/
 #pragma once
 
-class GameFolderHelper;
+class CResourceMap;
 class SelectorTable;
 
 namespace cpptoml
@@ -43,5 +43,7 @@ public:
 	std::string error;
 };
 
-std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(const GameFolderHelper &helper, const SelectorTable &selectorTable);
+// Reads Decompiler.ini from the game's src folder, and sci.sh and keys.sh from
+// the include folder of the resource map. A failure is in the result's error.
+std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(CResourceMap &resourceMap, const SelectorTable &selectorTable);
 

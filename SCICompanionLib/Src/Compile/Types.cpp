@@ -12,7 +12,6 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
-#include "AppState.h"
 #include "Types.h"
 #include "ScriptOM.h"
 #include "ScriptOMAll.h"

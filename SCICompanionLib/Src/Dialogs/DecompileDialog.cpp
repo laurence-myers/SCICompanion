@@ -820,7 +820,7 @@ void DecompileDialog::s_DecompileThreadWorker(DecompileDialog *pThis)
 		pThis->_lookups->GetSelectorTable().ReverseLookup("", wDummy);
 
 		// Redo this one each time
-		pThis->_decompilerConfig = CreateDecompilerConfig(helper, pThis->_lookups->GetSelectorTable());
+		pThis->_decompilerConfig = CreateDecompilerConfig(appState->GetResourceMap(), pThis->_lookups->GetSelectorTable());
 		if (!pThis->_decompilerConfig->error.empty())
 		{
 			string errorMessage = "Decompiler.ini: ";
@@ -838,7 +838,7 @@ void DecompileDialog::s_DecompileThreadWorker(DecompileDialog *pThis)
 			options.DebugFunctionMatch = (PCSTR)pThis->_debugFunctionMatch;
 			options.DecompileAsm = pThis->_debugAsm;
 			options.SubstituteTextTuples = pThis->_substituteTextTuples;
-			DecompileBatch batch(pThis->_decompilerConfig.get(), *pThis->_lookups, helper, *pThis->_decompileResults, options);
+			DecompileBatch batch(pThis->_decompilerConfig.get(), *pThis->_lookups, appState->GetResourceMap(), *pThis->_decompileResults, options);
 			batch.Run(scriptNumbers);
 
 			// Which scripts this batch did not write still use a renamed global

@@ -15,6 +15,7 @@
 #include "cpptoml.h"
 #include "ScriptOMAll.h"
 #include "GameFolderHelper.h"
+#include "ResourceMap.h"
 #include "DecompilerCore.h"
 #include "DecompilerConfig.h"
 #include "Vocab99x.h"
@@ -33,10 +34,10 @@ class DummyLog : public ICompileLog
 	void ReportResult(const CompileResult &result) override {} 
 };
 
-unique_ptr<Script> GetDefinesScript(const GameFolderHelper &helper, const std::string &name)
+unique_ptr<Script> GetDefinesScript(const GameFolderHelper &helper, const std::string &includeFolder, const std::string &name)
 {
 	DummyLog log;
-	ScriptId scriptId(helper.GetIncludeFolder() + "\\" + name);
+	ScriptId scriptId(includeFolder + "\\" + name);
 	unique_ptr<Script> script = make_unique<Script>(scriptId);
 	sci::Result<ScriptText> text = LoadScriptText(scriptId.GetFullPath());
 	if (text)
@@ -54,10 +55,10 @@ unique_ptr<Script> GetDefinesScript(const GameFolderHelper &helper, const std::s
 class DecompilerConfig : public IDecompilerConfig
 {
 public:
-	DecompilerConfig(const GameFolderHelper &helper, const SelectorTable &selectorTable) : _selectorTable(selectorTable)
+	DecompilerConfig(const GameFolderHelper &helper, const std::string &includeFolder, const SelectorTable &selectorTable) : _selectorTable(selectorTable)
 	{
-		unique_ptr<Script> definesScript = GetDefinesScript(helper, "sci.sh");
-		unique_ptr<Script> keysScript = GetDefinesScript(helper, "keys.sh");
+		unique_ptr<Script> definesScript = GetDefinesScript(helper, includeFolder, "sci.sh");
+		unique_ptr<Script> keysScript = GetDefinesScript(helper, includeFolder, "keys.sh");
 
 		string decompilerIniPath = helper.GetSrcFolder() + "\\Decompiler.ini";
 		try
@@ -381,7 +382,8 @@ private:
 	const SelectorTable &_selectorTable;
 };
 
-std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(const GameFolderHelper &helper, const SelectorTable &selectorTable)
+std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(CResourceMap &resourceMap, const SelectorTable &selectorTable)
 {
-	return make_unique<DecompilerConfig>(helper, selectorTable);
+	// The include folder follows the data folder of the resource map.
+	return make_unique<DecompilerConfig>(resourceMap.Helper(), resourceMap.GetIncludeFolder(), selectorTable);
 }

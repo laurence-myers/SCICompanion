@@ -13,7 +13,7 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "Sound.h"
-#include "AppState.h"
+#include "CoreLog.h"
 #include "ResourceEntity.h"
 #include "Audio.h"
 #include "format.h"
@@ -477,7 +477,7 @@ uint16_t SoundComponent::_ReadMidiFileTrack(size_t nTrack, std::istream &midiFil
 					{
 						if (nTrack != 0)
 						{
-							appState->LogInfo("Found tempo event in track %d in MIDI file - ignoring\n", nTrack);
+							CoreLogFormat(LogLevel::Info, "Found tempo event in track %d in MIDI file - ignoring", nTrack);
 						}
 						else
 						{
@@ -1798,7 +1798,7 @@ void SoundReadFrom_SCI0(ResourceEntity &resource, sci::istream &stream, const st
 
 	if (!stream.good())
 	{
-		appState->LogInfo("Corrupt sound resource.\n");
+		CoreLog(LogLevel::Warning, "Corrupt sound resource.");
 	}
 	else
 	{
