@@ -330,7 +330,12 @@ ResourceEnumFlags GameFolderHelper::GetDefaultEnumFlags() const
 
 ResourceSourceFlags GameFolderHelper::GetDefaultSaveSourceFlags() const
 {
-	ResourceSaveLocation saveLocation = GetResourceSaveLocation(ResourceSaveLocation::Default);
+	return GetSaveSourceFlags(ResourceSaveLocation::Default);
+}
+
+ResourceSourceFlags GameFolderHelper::GetSaveSourceFlags(ResourceSaveLocation location) const
+{
+	ResourceSaveLocation saveLocation = GetResourceSaveLocation(location);
 	return (saveLocation == ResourceSaveLocation::Patch) ? ResourceSourceFlags::PatchFile : ResourceSourceFlags::ResourceMap;
 }
 

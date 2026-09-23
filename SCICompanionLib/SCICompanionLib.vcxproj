@@ -110,6 +110,8 @@
     </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Src\Compile\CompileWrite.cpp" />
+    <ClCompile Include="Src\Core\FileWrite.cpp" />
     <ClCompile Include="Src\Resources\ScriptCatalog.cpp" />
     <ClCompile Include="Src\Resources\ScriptNameMap.cpp" />
     <ClCompile Include="Src\Compile\CompileScript.cpp" />
@@ -220,6 +222,8 @@
     <ClCompile Include="Src\Resources\VersionDetectionHelper.cpp" />
     <ClCompile Include="Src\Resources\View.cpp" />
     <ClCompile Include="Src\Util\AudioPlayback.cpp" />
+    <ClInclude Include="Src\Compile\CompileWrite.h" />
+    <ClInclude Include="Src\Core\FileWrite.h" />
     <ClInclude Include="Src\Resources\ScriptCatalog.h" />
     <ClInclude Include="Src\Resources\ScriptNameMap.h" />
     <ClInclude Include="Src\Core\ClassHints.h" />

@@ -16,6 +16,7 @@
 #include "ScriptOM.h"
 #include "CompiledScript.h"
 #include "GameFolderHelper.h"
+#include "FileWrite.h"
 
 using namespace std;
 using namespace sci;
@@ -627,25 +628,19 @@ void CSCOObjectClass::Save(std::vector<BYTE> &output, SCOVersion version) const
 	for_each(_methods.begin(), _methods.end(), [&output](uint16_t w) { push_word(output, w); });
 }
 
-void SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco)
+sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco)
 {
 	// The script's name: game.ini, or the session's script-name map.
 	std::string scriptTitle = helper.GetScriptTitle(sco.GetScriptNumber());
 	ScriptId script = helper.GetScriptId(scriptTitle);
-	SaveSCOFile(helper, sco, script);
+	return SaveSCOFile(helper, sco, script);
 }
 
-void SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco, ScriptId script)
+sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco, ScriptId script)
 {
 	vector<BYTE> scoOutput;
-	// First save the .sco file
 	sco.Save(scoOutput);
-	// Copy these bytes to a stream...
-	std::string scoFileName = helper.GetScriptObjectFileName(script.GetTitle());
-	ofstream scoFile(scoFileName.c_str(), ios::out | ios::binary);
-	// REVIEW: yucky
-	scoFile.write((const char *)&scoOutput[0], (std::streamsize)scoOutput.size());
-	scoFile.close();
+	return WriteBytesToFile(helper.GetScriptObjectFileName(script.GetTitle()), scoOutput);
 }
 
 unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const Script &script, const CompiledScript &compiledScript)

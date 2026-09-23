@@ -130,7 +130,7 @@ namespace UnitTests
                     break;
                 }
             }
-            SaveSCOFile(helper, *sco);
+            Assert::IsTrue(SaveSCOFile(helper, *sco).has_value(), L"setup: could not write the .sco");
 
             DecompileOutput out = DecompileToText(952);
             Assert::IsTrue(out.text.find("proc952_1") != std::string::npos,

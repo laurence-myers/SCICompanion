@@ -80,7 +80,7 @@ namespace UnitTests
                 Assert::IsTrue(mainSCO->GetVariables().size() > 5, L"Main should have more than 5 globals");
                 Assert::AreEqual(std::string("global3"), mainSCO->GetVariableName(3), L"slot 3 should be unnamed in the template");
                 mainSCO->GetVariables()[5].SetName("global5");
-                SaveSCOFile(helper, *mainSCO);
+                Assert::IsTrue(SaveSCOFile(helper, *mainSCO).has_value(), L"setup: could not write Main.sco");
             }
 
             AddFixtureScript("BatchGlobalsA");
@@ -275,7 +275,7 @@ namespace UnitTests
                     Assert::AreEqual(mainForFull->GetVariableName(i), mainForSkeleton.GetVariableName(i), L"Main.sco should end up the same either way");
                 }
                 // Script 950 can only name global3 once global5 has its name.
-                SaveSCOFile(helper, *mainForFull);
+                Assert::IsTrue(SaveSCOFile(helper, *mainForFull).has_value(), L"could not write Main.sco");
             }
         }
 

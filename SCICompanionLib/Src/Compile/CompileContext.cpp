@@ -119,10 +119,24 @@ sci::Status CompileTables::TryLoad(CResourceMap &resourceMap)
 		return sci::Ok();
 	});
 }
+sci::Status CompileTables::Save(CResourceMap &resourceMap, const CompileWriteOptions &options)
+{
+	sci::Status species = sci::Ok();
+	if (_species.IsDirty())
+	{
+		species = WriteCompiledResource(resourceMap, options, ResourceType::Vocab, VocabClassTable, _species.MakeResourceData());
+	}
+	sci::Status selectors = sci::Ok();
+	if (_selectors.IsDirty())
+	{
+		selectors = WriteCompiledResource(resourceMap, options, ResourceType::Vocab, VocabSelectorNames, _selectors.MakeResourceData());
+	}
+	return species ? selectors : species;
+}
+
 void CompileTables::Save(CResourceMap &resourceMap)
 {
-	_species.Save(resourceMap);
-	_selectors.Save(resourceMap);
+	ShowWriteError(Save(resourceMap, CompileWriteOptions()));
 }
 
 CompileResults::CompileResults(ICompileLog &log, const SCIVersion &version) : _log(log), _text(CreateDefaultTextResource(version)) {}

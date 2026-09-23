@@ -13,6 +13,7 @@
 #include "SCO.h"
 #include "ScriptOMAll.h"
 #include "Text.h"
+#include "FileWrite.h"
 #include "format.h"
 #include <fstream>
 #include <iterator>
@@ -466,7 +467,11 @@ private:
 		// Decompiling always generates an SCO. Any pertinent info from the old SCO should be transfered
 		// to the new one based extracting info from the script.
 		unique_ptr<CSCOFile> scoFile = SCOFromScriptAndCompiledScript(*state.script, state.compiledScript);
-		SaveSCOFile(_helper, *scoFile);
+		sci::Status wroteObjectFile = SaveSCOFile(_helper, *scoFile);
+		if (!wroteObjectFile)
+		{
+			_results.AddResult(DecompilerResultType::Error, wroteObjectFile.error().ToString());
+		}
 
 		// Dump it to the .sc file
 		// TODO: If it already exists, we might want to ask for confirmation.
@@ -474,8 +479,15 @@ private:
 		SourceCodeWriter out(ss, state.script.get());
 		state.script->OutputSourceCode(out);
 		string sourceFilename = _helper.GetScriptFileName(_number);
-		MakeTextFile(ss.str().c_str(), sourceFilename);
-		_results.AddResult(DecompilerResultType::Important, fmt::format("Generated {0}", sourceFilename));
+		sci::Status wroteSource = WriteTextToFile(sourceFilename, ss.str());
+		if (wroteSource)
+		{
+			_results.AddResult(DecompilerResultType::Important, fmt::format("Generated {0}", sourceFilename));
+		}
+		else
+		{
+			_results.AddResult(DecompilerResultType::Error, wroteSource.error().ToString());
+		}
 		return renames;
 	}
 
@@ -698,7 +710,11 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 		if (mainSCO && !mainWrittenLast)
 		{
 			_results.AddResult(DecompilerResultType::Important, "Updating global variables in script 0");
-			SaveSCOFile(_helper, *mainSCO);
+			sci::Status wroteMain = SaveSCOFile(_helper, *mainSCO);
+			if (!wroteMain)
+			{
+				_results.AddResult(DecompilerResultType::Error, wroteMain.error().ToString());
+			}
 		}
 	}
 }

@@ -88,7 +88,9 @@ modernizing the build. Broad highlights since the previous release:
   failed save no longer corrupts or loses a resource or volume file. A failed
   save now says what went wrong (for example, the size limit of the game's
   format), and a group of patch files replaces none of them when one cannot be
-  written.
+  written. A compile or decompile now also reports a failed write of its
+  `.sco`, `.scd` or `.sc` file, and a compile that cannot write its output
+  fails.
 * **Removed legacy SCI Studio script syntax.** Scripts now use SCI Companion's
   Sierra-style syntax only.
 * **Modern build tools.** The project now builds with the Visual Studio 2022

@@ -526,10 +526,11 @@ void DecompileDialog::OnTvnEndlabeleditTreesco(NMHDR *pNMHDR, LRESULT *pResult)
 			_sco->GetExports()[_scoPublicProcIndices[index]].SetName(pTVDispInfo->item.pszText);
 		}
 		*pResult = 1;
-		SaveSCOFile(_helper, *_sco);
-		m_wndStatus.SetWindowTextA(fmt::format("Saved changes to {0}",
-			PathFindFileName(_helper.GetScriptObjectFileName(_sco->GetScriptNumber()).c_str())).c_str()
-			);
+		sci::Status saved = SaveSCOFile(_helper, *_sco);
+		std::string status = saved ?
+			fmt::format("Saved changes to {0}", PathFindFileName(_helper.GetScriptObjectFileName(_sco->GetScriptNumber()).c_str())) :
+			("Could not save the changes: " + saved.error().ToString());
+		m_wndStatus.SetWindowTextA(status.c_str());
 	}
 	else
 	{

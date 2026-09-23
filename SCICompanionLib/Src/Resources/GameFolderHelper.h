@@ -87,6 +87,9 @@ public:
 	void SetResourceSaveLocation(ResourceSaveLocation location) const;
 	ResourceEnumFlags GetDefaultEnumFlags() const;
 	ResourceSourceFlags GetDefaultSaveSourceFlags() const;
+	// PatchFile or ResourceMap for a save location; Default reads the game's
+	// setting (plan step S1).
+	ResourceSourceFlags GetSaveSourceFlags(ResourceSaveLocation location) const;
 
 	bool IsResourceCompatible(const ResourceBlob &resource) const;
 

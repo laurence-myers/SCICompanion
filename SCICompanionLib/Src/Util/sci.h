@@ -236,6 +236,8 @@ RGBQUAD _RGBQuadFromColorRef(COLORREF color);
 COLORREF _ColorRefFromRGBQuad(RGBQUAD color);
 RGBQUAD EgaColorToRGBQuad(EGACOLOR ega);
 extern const int VocabKernelNames;
+extern const int VocabClassTable;
+extern const int VocabSelectorNames;
 
 EGACOLOR g_egaColorChooserPalette[];
 

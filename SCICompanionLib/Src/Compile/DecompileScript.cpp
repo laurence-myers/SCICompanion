@@ -598,14 +598,22 @@ Script *Decompile(const GameFolderHelper &helper, const CompiledScript &compiled
 		// Decompiling always generates an SCO. Any pertinent info from the old SCO should be transfered
 		// to the new one based extracting info from the script.
 		std::unique_ptr<CSCOFile> scoFile = SCOFromScriptAndCompiledScript(*pScript, compiledScript);
-		SaveSCOFile(helper, *scoFile);
+		sci::Status wroteObjectFile = SaveSCOFile(helper, *scoFile);
+		if (!wroteObjectFile)
+		{
+			lookups.DecompileResults().AddResult(DecompilerResultType::Error, wroteObjectFile.error().ToString());
+		}
 
 		// We may have added some global info to main's SCO. Save that now.
 		if (!mainDirtyRenames.empty())
 		{
 			lookups.DecompileResults().AddResult(DecompilerResultType::Important, "Updating global variables in script 0");
 			lookups.DecompileResults().SetGlobalVarsUpdated(mainDirtyRenames);
-			SaveSCOFile(helper, *mainSCO);
+			sci::Status wroteMain = SaveSCOFile(helper, *mainSCO);
+			if (!wroteMain)
+			{
+				lookups.DecompileResults().AddResult(DecompilerResultType::Error, wroteMain.error().ToString());
+			}
 		}
 	}
 	return pScript.release();

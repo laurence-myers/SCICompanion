@@ -18,6 +18,7 @@
 #include "Vocab000.h"
 #include "Vocab99x.h"
 #include "ScriptOMSmall.h"
+#include "CompileWrite.h"
 
 class ResourceEntity;
 class ILookupSaids;
@@ -516,6 +517,11 @@ public:
 	bool Load(CResourceMap &resourceMap);
 	// Load, with the reason for a failure (see CheckVocabTables).
 	sci::Status TryLoad(CResourceMap &resourceMap);
+	// Writes the tables that changed to the destination of the options (plan
+	// step S1). It tries both, and gives the first failure.
+	sci::Status Save(CResourceMap &resourceMap, const CompileWriteOptions &options);
+	// The same with the game's destination; a failure shows a message (the
+	// GUI).
 	void Save(CResourceMap &resourceMap);
 	const Vocab000 *Vocab() { return _pVocab; }
 	const KernelTable &Kernels() { return _kernels; }
@@ -590,8 +596,11 @@ private:
 bool GenerateScriptResource(GameSession &session, sci::Script &script, PrecompiledHeaders &headers, CompileTables &tables, CompileResults &results, bool generateDebugInfo);
 void ErrorHelper(CompileContext &context, const ISourceCodePosition *pPos, const std::string &text, const std::string &identifier, bool checkUse = true);
 // Compiles one script file of the session's game and writes its resources,
-// its .sco file and its debug information (CompileScript.cpp).
-bool NewCompileScript(GameSession &session, CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script);
+// its .sco file and its debug information (CompileScript.cpp), as the
+// options say (plan step S1; the GUI passes the defaults). A write that
+// fails is an error in the log, and the result is false.
+bool NewCompileScript(GameSession &session, CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script,
+	const CompileWriteOptions &options = CompileWriteOptions());
 // Parses a script or header file only (no code), with the preprocessor
 // defines of the version, or with the defines given.
 std::unique_ptr<sci::Script> SimpleCompile(const SCIVersion &version, CompileLog &log, ScriptId &scriptId, bool addCommentsToOM = false);

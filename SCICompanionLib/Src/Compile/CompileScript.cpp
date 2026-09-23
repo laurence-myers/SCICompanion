@@ -11,8 +11,9 @@
 #include "Text.h"
 #include "SCO.h"
 #include "ScriptText.h"
+#include "FileWrite.h"
+#include "CompileWrite.h"
 #include "format.h"
-#include <fstream>
 
 // The script compile, with no GUI: everything comes from the GameSession.
 
@@ -60,7 +61,15 @@ std::unique_ptr<sci::Script> SimpleCompile(const SCIVersion &version, CompileLog
 	return SimpleCompile(PreProcessorDefinesFromSCIVersion(version), log, scriptId, addCommentsToOM);
 }
 
-bool NewCompileScript(GameSession &session, CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script)
+// A write that failed: an error in the compile log, which names the script.
+static void _ReportWriteError(CompileLog &log, ScriptId &script, const sci::Error &error)
+{
+	log.ReportResult(CompileResult(fmt::format("Could not write the output of {0}: {1}", script.GetFileNameOrig(), error.ToString()),
+		CompileResult::CompileResultType::CRT_Error));
+}
+
+bool NewCompileScript(GameSession &session, CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script,
+	const CompileWriteOptions &options)
 {
 	bool fRet = false;
 	CResourceMap &resourceMap = session.ResourceMap();
@@ -94,6 +103,17 @@ bool NewCompileScript(GameSession &session, CompileResults &results, CompileLog 
 			if (GenerateScriptResource(session, *pScript, headers, tables, results, helper.GetGenerateDebugInfo()))
 			{
 				WORD wNum = results.GetScriptNumber();
+				// The writes go where the options say (plan step S1). A write
+				// that fails is an error, and the compile fails.
+				bool wroteAll = true;
+				auto check = [&](const sci::Status &status)
+				{
+					if (!status)
+					{
+						_ReportWriteError(log, script, status.error());
+						wroteAll = false;
+					}
+				};
 
 				// Save the text resource - but only if it's different than what's there (otherwise needless text resource turds pile up)
 				if (!results.GetTextComponent().Texts.empty())
@@ -105,7 +125,11 @@ bool NewCompileScript(GameSession &session, CompileResults &results, CompileLog 
 					auto existingTextResource = resourceMap.CreateResourceFromNumber(ResourceType::Text, textResource.ResourceNumber);
 					if (!existingTextResource || !existingTextResource->GetComponent<TextComponent>().AreTextsEqual(textResource.GetComponent<TextComponent>()))
 					{
-						resourceMap.AppendResource(textResource, session.Version().DefaultVolumeFile, textResource.ResourceNumber, "");
+						sci::ostream textData;
+						std::map<BlobKey, uint32_t> propertyBag;
+						textResource.WriteTo(textData, true, textResource.ResourceNumber, propertyBag);
+						std::vector<uint8_t> textBytes(textData.GetInternalPointer(), textData.GetInternalPointer() + textData.GetDataSize());
+						check(WriteCompiledResource(resourceMap, options, ResourceType::Text, (uint16_t)textResource.ResourceNumber, textBytes));
 						log.ReportResult(
 							CompileResult(fmt::format("Text resource {1} changed. Added {0} entries.", results.GetTextComponent().Texts.size(), textResource.ResourceNumber),
 							CompileResult::CompileResultType::CRT_Message)
@@ -113,39 +137,30 @@ bool NewCompileScript(GameSession &session, CompileResults &results, CompileLog 
 					} // Else don't save.
 				}
 
-				// Update any tables that need to be modified (global class table, selector table)
-
-				// Save the script resource
-				std::vector<BYTE> &output = results.GetScriptResource();
-				resourceMap.AppendResource(ResourceBlob(helper, nullptr, ResourceType::Script, output, helper.Version.DefaultVolumeFile, wNum, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags()));
-
+				// Save the script resource, and the heap of an SCI1.1 script.
+				check(WriteCompiledResource(resourceMap, options, ResourceType::Script, wNum, results.GetScriptResource()));
 				std::vector<BYTE> &outputHep = results.GetHeapResource();
 				if (!outputHep.empty())
 				{
-					resourceMap.AppendResource(ResourceBlob(helper, nullptr, ResourceType::Heap, outputHep, helper.Version.DefaultVolumeFile, wNum, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags()));
+					check(WriteCompiledResource(resourceMap, options, ResourceType::Heap, wNum, outputHep));
 				}
 
 				// Save the corresponding sco file.
 				g_compileIOTimer.Start();
 				g_compileObjFileTimer.Start();
-				CSCOFile &sco = results.GetSCO();
+				if (options.writeObjectFile)
 				{
-					SaveSCOFile(helper, sco, script);
+					check(SaveSCOFile(helper, results.GetSCO(), script));
 				}
 				g_compileObjFileTimer.Stop();
 				g_compileDebugSymbolTimer.Start();
-				if (!results.GetDebugInfo().empty())
+				if (options.writeDebugInfo && !results.GetDebugInfo().empty())
 				{
-					// Save debug information.
-					std::string scdFileName = helper.GetScriptDebugFileName(script.GetResourceNumber());
-					ofstream scdFile(scdFileName.c_str(), ios::out | ios::binary);
-					// REVIEW: yucky
-					scdFile.write((const char *)&results.GetDebugInfo()[0], (std::streamsize)results.GetDebugInfo().size());
-					scdFile.close();
+					check(WriteBytesToFile(helper.GetScriptDebugFileName(script.GetResourceNumber()), results.GetDebugInfo()));
 				}
 				g_compileDebugSymbolTimer.Stop();
 				g_compileIOTimer.Stop();
-				fRet = true;
+				fRet = wroteAll;
 			}
 		}
 		log.CalculateErrors();

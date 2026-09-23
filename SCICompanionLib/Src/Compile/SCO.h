@@ -13,6 +13,7 @@
 ***************************************************************************/
 #pragma once
 #include "Types.h"
+#include "Result.h"
 
 namespace sci
 {
@@ -212,8 +213,10 @@ private:
 };
 
 class GameFolderHelper;
-void SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco, ScriptId script);
-void SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco);
+// Writes src\<name>.sco. A failure is NotFound or Io, and names the file
+// (plan step S1; before, a failed write was silent).
+sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco, ScriptId script);
+sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco);
 
 class CompiledScript;
 std::unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const sci::Script &script, const CompiledScript &compiledScript);

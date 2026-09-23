@@ -22,8 +22,8 @@
 #include "ResourceBlob.h"
 #include "ResourceUtil.h"
 
-const static int VocabClassTable = 996;
-const static int VocabSelectorNames = 997;
+const int VocabClassTable = 996;
+const int VocabSelectorNames = 997;
 const int VocabKernelNames = 999;
 
 using namespace std;
@@ -765,60 +765,62 @@ bool SelectorTable::IsDefaultSelector(uint16_t value)
 	return _defaultSelectors.find(value) != _defaultSelectors.end();
 }
 
+std::vector<uint8_t> SelectorTable::MakeResourceData() const
+{
+	uint16_t cItems = (uint16_t)_indices.size();
+	vector<BYTE> output;
+	push_word(output, cItems - 1);  // This is total size minus one (max index)
+	// Then come the offsets - we can run through the strings to calculate these.
+	uint16_t wOffset = (uint16_t)output.size() + cItems * 2; // the strings will start after the offsets.
+	uint16_t badSelOffset = 0xffff;
+	bool needBAD_SELECTOR = _firstInvalidSelector < _indices.size();
+	if (needBAD_SELECTOR)
+	{
+		badSelOffset = wOffset;
+		wOffset += lstrlen(c_szBadSelector) + 2;
+	}
+	for (int index : _indices)
+	{
+		if (index != -1)
+		{
+			push_word(output, wOffset);
+			wOffset += (uint16_t)(_names[index].length() + 2); // Increase by size of rle string.
+		}
+		else
+		{
+			if (_version.HasOldSCI0ScriptHeader)
+			{
+				// This is normal operation - odd selectors are invalid in this case.
+				// TODO: assert we're odd.
+			}
+			else
+			{
+				assert(needBAD_SELECTOR);
+				push_word(output, badSelOffset);
+			}
+		}
+	}
+
+	// Now write the strings
+	if (needBAD_SELECTOR)
+	{
+		push_string_rle(output, c_szBadSelector);
+	}
+	for (int index : _indices)
+	{
+		if (index != -1)
+		{
+			push_string_rle(output, _names[index]);
+		}
+	}
+	return output;
+}
+
 void SelectorTable::Save(CResourceMap &resourceMap)
 {
 	if (_fDirty)
 	{
-		// Save ourselves
-		uint16_t cItems = (uint16_t)_indices.size();
-		vector<BYTE> output;
-		push_word(output, cItems - 1);  // This is total size minus one (max index)
-		// Then come the offsets - we can run through the strings to calculate these.
-		uint16_t wOffset = (uint16_t)output.size() + cItems * 2; // the strings will start after the offsets.
-		uint16_t badSelOffset = 0xffff;
-		bool needBAD_SELECTOR = _firstInvalidSelector < _indices.size();
-		if (needBAD_SELECTOR)
-		{
-			badSelOffset = wOffset;
-			wOffset += lstrlen(c_szBadSelector) + 2;
-		}
-		for (int index : _indices)
-		{
-			if (index != -1)
-			{
-				push_word(output, wOffset);
-				wOffset += (uint16_t)(_names[index].length() + 2); // Increase by size of rle string.
-			}
-			else
-			{
-				if (_version.HasOldSCI0ScriptHeader)
-				{
-					// This is normal operation - odd selectors are invalid in this case.
-					// TODO: assert we're odd.
-				}
-				else
-				{
-					assert(needBAD_SELECTOR);
-					push_word(output, badSelOffset);
-				}
-			}
-		}
-
-		// Now write the strings
-		if (needBAD_SELECTOR)
-		{
-			push_string_rle(output, c_szBadSelector);
-		}
-		for (int index : _indices)
-		{
-			if (index != -1)
-			{
-				push_string_rle(output, _names[index]);
-			}
-		}
-
-		// Now create a resource data for it and save it.
-		resourceMap.AppendResource(ResourceBlob(resourceMap.Helper(), nullptr, ResourceType::Vocab, output, _version.DefaultVolumeFile, VocabSelectorNames, NoBase36, resourceMap.GetSCIVersion(), resourceMap.Helper().GetDefaultSaveSourceFlags()));
+		resourceMap.AppendResource(ResourceBlob(resourceMap.Helper(), nullptr, ResourceType::Vocab, MakeResourceData(), _version.DefaultVolumeFile, VocabSelectorNames, NoBase36, resourceMap.GetSCIVersion(), resourceMap.Helper().GetDefaultSaveSourceFlags()));
 	}
 }
 
@@ -1182,20 +1184,23 @@ bool SpeciesTable::Load(const GameFolderHelper &helper, bool alignToCompiledScri
 	return fRet;
 }
 
+std::vector<uint8_t> SpeciesTable::MakeResourceData() const
+{
+	vector<BYTE> output;
+	output.reserve(4 * _direct.size());
+	for (vector<uint16_t>::const_iterator speciesIt = _direct.begin(); speciesIt != _direct.end(); ++speciesIt)
+	{
+		push_word(output, 0);
+		push_word(output, *speciesIt);
+	}
+	return output;
+}
+
 void SpeciesTable::Save(CResourceMap &resourceMap)
 {
 	if (_fDirty)
 	{
-		// Save ourselves
-		vector<BYTE> output;
-		output.reserve(4 * _direct.size());
-		for (vector<uint16_t>::const_iterator speciesIt = _direct.begin(); speciesIt != _direct.end(); ++speciesIt)
-		{
-			push_word(output, 0);
-			push_word(output, *speciesIt);
-		}
-		// Now create a resource data for it
-		resourceMap.AppendResource(ResourceBlob(resourceMap.Helper(), nullptr, ResourceType::Vocab, output, resourceMap.GetSCIVersion().DefaultVolumeFile, VocabClassTable, NoBase36, resourceMap.GetSCIVersion(), resourceMap.Helper().GetDefaultSaveSourceFlags()));
+		resourceMap.AppendResource(ResourceBlob(resourceMap.Helper(), nullptr, ResourceType::Vocab, MakeResourceData(), resourceMap.GetSCIVersion().DefaultVolumeFile, VocabClassTable, NoBase36, resourceMap.GetSCIVersion(), resourceMap.Helper().GetDefaultSaveSourceFlags()));
 	}
 }
 
