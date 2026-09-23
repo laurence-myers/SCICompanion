@@ -113,28 +113,20 @@ sci::istream ResourceContainer::ResourceIterator::_GetResourceHeaderAndPackage(R
 	}
 
 	sci::istream temp;
-	bool noData = false;
 	try
 	{
+		// A valid empty resource reads as a header with sizes 0 (the package
+		// source checks its type and number).
 		temp = (*_container->_mapAndVolumes)[_state.mapIndex]->GetHeaderAndPositionedStream(_currentEntry, rh);
-	}
-	catch (const EmptyResourceError &)
-	{
-		// A header with sizes 0: an empty resource, not a damaged one.
-		noData = true;
 	}
 	catch (std::exception)
 	{
-		// No header at the map's offset (or no volume): the caller marks the
-		// empty resource as corrupt.
-		noData = true;
+		// No header at the map's offset, no volume, or a damaged header: the
+		// caller marks the empty blob as corrupt.
 		if (headerUnreadable)
 		{
 			*headerUnreadable = true;
 		}
-	}
-	if (noData)
-	{
 		rh.Type = _currentEntry.Type;
 		rh.cbCompressed = 0;
 		rh.cbDecompressed = 0;

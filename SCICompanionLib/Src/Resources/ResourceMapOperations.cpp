@@ -163,7 +163,10 @@ void DeleteResource(CResourceMap &resourceMap, const ResourceBlob &data)
 						}
 						if (volumeStream.getBytesRemaining() >= dataLength)
 						{
-							if (data1 && data2 && (0 == memcmp(data1, data2, header.cbCompressed)))
+							// An empty resource has no bytes to compare; its blob has no
+							// data (second review of the F2 fixes: the delete found no
+							// match and showed "Resource not found.").
+							if ((dataLength == 0) || (data1 && data2 && (0 == memcmp(data1, data2, header.cbCompressed))))
 							{
 								// Finally yes, they are identical. We know which one to remove.
 								mapEntryToRemove = std::make_unique<ResourceMapEntryAgnostic>(mapEntry);

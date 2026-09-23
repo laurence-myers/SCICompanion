@@ -41,16 +41,18 @@ struct RebuildStats
 	size_t TotalSize;
 };
 
-// The header of an empty resource (for example, a text with no strings): it
-// is in the volume, and its sizes are 0. ReadResourceHeader throws it as a
-// DataError, as before, so a reader that needs the data still fails. The
-// resource iterator catches it apart from a header that is not in the
-// volume, and gives an empty blob with no Corrupted flag (review of the F2
-// review fixes: the first fix marked a valid empty resource).
+// A header whose sizes are both 0: an empty resource (for example, a text with
+// no strings, saved to the package), or damage that zeroed the header.
+// ReadResourceHeader throws it with the header. A package source keeps it as
+// an empty resource only when the header has the map entry's type and number;
+// otherwise the header is damaged (reviews of the F2 review fixes: the first
+// fix marked a valid empty resource, and the second took a zeroed SCI1.1
+// header for one).
 class EmptyResourceError : public sci::DataError
 {
 public:
-	EmptyResourceError() : sci::DataError("the resource is empty") {}
+	explicit EmptyResourceError(const ResourceHeaderAgnostic &emptyHeader) : sci::DataError("the resource is empty"), header(emptyHeader) {}
+	ResourceHeaderAgnostic header;
 };
 
 typedef ResourceHeaderAgnostic(*ReadResourceHeaderFunc)(sci::istream &byteStream, SCIVersion version, ResourceSourceFlags sourceFlags, uint16_t packageHint);
@@ -70,7 +72,7 @@ ResourceHeaderAgnostic ReadResourceHeader(sci::istream &byteStream, SCIVersion v
 	ResourceHeaderAgnostic rhAgnostic = rh.ToAgnostic(version, sourceFlags, packageHint);
 	if ((rhAgnostic.cbCompressed == 0) && (rhAgnostic.cbDecompressed == 0))
 	{
-		throw EmptyResourceError();
+		throw EmptyResourceError(rhAgnostic);
 	}
 	if ((rhAgnostic.cbCompressed == 0) || (rhAgnostic.cbDecompressed == 0))
 	{
@@ -274,7 +276,7 @@ public:
 
 		packageByteStream.seekg(mapEntry.Offset);
 
-		headerEntry = (*_headerReadWrite.reader)(packageByteStream, _version, this->SourceFlags, mapEntry.PackageNumber);
+		headerEntry = _ReadHeader(packageByteStream, mapEntry);
 
 		return packageByteStream;
 	}
@@ -289,7 +291,9 @@ public:
 		}
 
 		packageByteStream.seekg(mapEntry.Offset);
-		ResourceHeaderAgnostic headerEntry = (*_headerReadWrite.reader)(packageByteStream, _version, this->SourceFlags, mapEntry.PackageNumber);
+		// An empty resource is its header only: the rebuild keeps it (before,
+		// the rebuild dropped it with no message).
+		ResourceHeaderAgnostic headerEntry = _ReadHeader(packageByteStream, mapEntry);
 		uint32_t headerSize = packageByteStream.tellg() - mapEntry.Offset;
 		size = headerSize + headerEntry.cbCompressed;
 		packageByteStream.seekg(mapEntry.Offset);
@@ -555,6 +559,26 @@ protected:
 	}
 
 private:
+	// Reads the header at the stream's position. An empty resource with the
+	// map entry's type and number gives its header (sizes 0). An empty header
+	// with another type or number (a zeroed region) is damage, and throws as
+	// a header that is not in the volume does.
+	ResourceHeaderAgnostic _ReadHeader(sci::istream &packageByteStream, const ResourceMapEntryAgnostic &mapEntry)
+	{
+		try
+		{
+			return (*_headerReadWrite.reader)(packageByteStream, _version, this->SourceFlags, mapEntry.PackageNumber);
+		}
+		catch (const EmptyResourceError &empty)
+		{
+			if ((empty.header.Type != mapEntry.Type) || (empty.header.Number != mapEntry.Number))
+			{
+				throw sci::DataError("corrupted resource!");
+			}
+			return empty.header;
+		}
+	}
+
 	ResourceHeaderReadWrite _headerReadWrite;
 	SCIVersion _version;
 

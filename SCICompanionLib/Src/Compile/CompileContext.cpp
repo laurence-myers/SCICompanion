@@ -758,8 +758,10 @@ ProcedureType CompileContext::LookupProc(const string &str, WORD &wScript, WORD 
 			if (_ParseScriptAndExport(str.substr(NonExistantExportPrefix.length()), scriptNumber, exportNumber))
 			{
 				// A callb to a missing export of main decompiles to __proc0_M;
-				// it compiles back to callb (K5 review: calle 0 M is two bytes
-				// longer).
+				// it compiles back to callb (K5 review: calle 0 M is one byte
+				// longer, or two when the operands are words). An asm
+				// "calle __proc0_M, n" is now "Procedure type does not match
+				// call type."; the decompiler never writes it.
 				type = (scriptNumber == 0) ? ProcedureMain : ProcedureExternal;
 				wIndex = exportNumber;
 				wScript = scriptNumber;

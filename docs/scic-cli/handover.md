@@ -6,11 +6,10 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: the fixes of the review of `bc827391` and `fe02c12a`, then
-  S2b. F1, A1, A2, B1, B2, B3a, B3b, F2, K1 to K6 and S3 are committed and
+- Current step: S2b. F1, A1, A2, B1, B2, B3a, B3b, F2, K1 to K6 and S3 are committed and
   reviewed, with their review fixes. S1 and S2a are committed; they are not
-  reviewed yet. The review of `bc827391` (PASS, nits) and `fe02c12a` (FIX:
-  a zeroed SCI1.1 header looks like a valid empty resource) is done.
+  reviewed yet. The review of `bc827391` and `fe02c12a` is done, and its
+  findings are fixed (the commit after `de2fb8dc`).
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -19,7 +18,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -42,13 +41,13 @@ for each step, and a follow-up commit if the review finds a problem.
 | B2 Script text loader | done | `3be03ff1`, review fixes (the commit after `af7cdb5f`) | FIX: 1 should-fix, 1 nit. No difference from the editor in about 46,000 files (a differential probe), 723 parses and 5 compiles. Fixed: `LoadScriptText` names the file for a thrown failure and refuses a file over 64 MB (`Unsupported`); tests at the exact 32 KB edge of the style rule, and a stream walk; the exception boundary reports an MFC `CMemoryException` as "out of memory" (an F1 gap the review found). |
 | B3a Compile path on the session | done | `8fe055d0`, review fixes (the commit after `f646dd52`) | FIX: 1 should-fix, 6 nits, 1 question. Fixed: the compile-all tests fail on a `&getpoly` message (a missing polygon is only a message, so a wrong polygon folder passed every test); tests for the codepage set by Game Properties, for the table saves, and for a compile error with no class hints; no polygon file read when the script has no game folder; `CompileLog::SummarizeAndReportErrors` moved to the engine, and the GUI plays the error sound; "Ignoring class" is Info; `OutputScriptStrings.h` hygiene; stale plan references. |
 | B3b Decompile path on the session, `appState` check rule | done | `f646dd52`, review fixes (the commit after `56b487d5`) | FIX: 1 should-fix, 6 nits, 1 question. Fixed: a test that the decompiler reads `sci.sh` from the data folder (the real-game tools now resolve enum names; see "Decisions"); `Src\Util` in the `appState` rule (13 GUI files in the allowlist); `DecompileScript` declared in `DecompileScript.h`; `GetIncludeFolder` is const; `%zu` and Warning for two log lines; corrected documents and CI comment. Outside the branch: the whole-game dump writes `.sco` files into the game folder that it dumps (a separate task was proposed). |
-| F2 Engine errors as values | done | `84f58380`, review fixes `31c34e18` | FIX: 2 should-fix (TryLoad rejected template script 990; `CheckResourceData` missed an unreadable header and a short read), nits and questions. Fixed, with the stream source name for a heap read in a copy. Review of the fixes: FIX (a valid empty package resource was marked "Corrupt"); fixed in the commit after `bc827391`, with a test of a short read of compressed data, the seek offset text and the text count (2,193). |
+| F2 Engine errors as values | done | `84f58380`, review fixes `31c34e18`, `fe02c12a` and the commit after `de2fb8dc` | FIX: 2 should-fix (TryLoad rejected template script 990; `CheckResourceData` missed an unreadable header and a short read), nits and questions. Fixed, with the stream source name for a heap read in a copy. Review of the fixes: FIX (a valid empty package resource was marked "Corrupt"); fixed in the commit after `bc827391`, with a test of a short read of compressed data, the seek offset text and the text count (2,193). Review of that fix: FIX (a zeroed SCI1.1 header looked like a valid empty resource; a rebuild dropped an empty resource); fixed in the commit after `de2fb8dc`. |
 | K1 `and`/`or` value semantics | done | `cdf8759d`, review fixes `76150fb2` | FIX: 1 should-fix (the README note that the plan promised), nits. Fixed: push-context and `or`-condition tests, dead `WeakSyntaxNode`, history and text. Review of the fixes: PASS; the unused `fMeaning` parameter went in the commit after `bc827391`. |
 | K2 `.sco` exports from the public block | done | `c6f42341`, review fixes `4356cd87` | PASS with nits. Fixed: slot order, a template-wide `.sco` test, the real decompile effect in the docs. Review of the fixes: PASS; a test comment, and a C2 check of the public block (a question), in the commit after `bc827391`. |
 | K3 Species order from compiled scripts | done | `746518e5`, review fixes `1fad4b57` | PASS with nits. Fixed: `GlobalClassTable` skips the alignment, one log line per mismatch, a no-heap test, the numbers. Review of the fixes: PASS; the vocab 996 preview and the rebuild command skip the alignment, the opt-in test fails with no input, the time text, in the commit after `bc827391`. |
 | K4 `#` in selector names | done | `b7385d13`, review fixes `ebb6ff7d` | FIX: 1 should-fix (a `#` property read in a method still got `_`; KQ6 script 710). Fixed in `CleanTokenSCI`. Review of the fixes: PASS; the plan's GUI text, a README note and a wider known gap, in the commit after `bc827391`. |
-| K5 `proc<N>_<M>` for a missing script | done | `78490d24`; test fix `2aee01b1`; review fixes (the commit after `108cb227`) | PASS with 6 nits; the test commit PASS. Fixed: tests for an `asm` `calle` and for the name as a value (an undeclared name again), a leading zero is not a procedure, `__proc0_<M>` compiles to `callb`, the README text, the handover and plan text. |
-| K6 No `vocab.000`; `/` in paths | done | `dcc0fdf7`, review fixes (the commit after `108cb227`) | FIX: 1 should-fix (the handover State, fixed in `f85fe77d`), 7 nits, 1 question. Fixed: the Said test counts one error for two Said strings, a vocab 900 test, the null vocabulary in the "Add as synonym of" dialog, the `ScriptId` folder keeps only `\`, stale text. Known gaps: see "Decisions" (a synonym with no vocabulary, a name with a slash, a `ScriptId` with no folder). |
+| K5 `proc<N>_<M>` for a missing script | done | `78490d24`; test fix `2aee01b1`; review fixes (the commit after `108cb227`) | PASS with 6 nits; the test commit PASS. Fixed: tests for an `asm` `calle` and for the name as a value (an undeclared name again), a leading zero is not a procedure, `__proc0_<M>` compiles to `callb`, the README text, the handover and plan text. Review of the fixes (`bc827391`): PASS with nits (the byte count, the `asm` form, the plan rows), fixed in the commit after `de2fb8dc`. |
+| K6 No `vocab.000`; `/` in paths | done | `dcc0fdf7`, review fixes (the commit after `108cb227`) | FIX: 1 should-fix (the handover State, fixed in `f85fe77d`), 7 nits, 1 question. Fixed: the Said test counts one error for two Said strings, a vocab 900 test, the null vocabulary in the "Add as synonym of" dialog, the `ScriptId` folder keeps only `\`, stale text. Known gaps: see "Decisions" (a synonym with no vocabulary, a name with a slash, a `ScriptId` with no folder). Review of the fixes (`bc827391`): PASS with nits, fixed in the commit after `de2fb8dc`. |
 | S3 ScriptCatalog, script names without `game.ini` | done | S3a `f85fe77d`; S3b `108cb227`; review fixes (the commit after `fb14399f`) | FIX: S3a 1 should-fix (a `-` in a derived name), S3b 1 should-fix (one name conflict refused every script, with the wrong fix), nits and questions. Fixed: see "S3 review" in "Decisions". |
 | S1 Compile destination | done | the commit after `fe02c12a` | |
 | S2 CompileBatch | S2a done; S2b, S2c to do | S2a: the commit after `a9561fcc` | |
@@ -367,9 +366,28 @@ for each step, and a follow-up commit if the review finds a problem.
   now throws `EmptyResourceError` (a `DataError`) when both sizes are 0,
   and the iterator gives such a resource an empty blob with no flag, as
   before F2. A header with only one size of 0 stays damaged. A test also
-  covers the short read of compressed data. Known gap (older than F2,
-  inspection only): the delete and the rebuild of an empty package
-  resource fail, because they read its header with the same reader.
+  covers the short read of compressed data.
+- Second review of the F2 fixes (`fe02c12a`, FIX): damage that zeroes an
+  SCI1.1 or SCI2 package header (their stored size does not add 4) also
+  gives sizes of 0, and the first `EmptyResourceError` took it for an
+  empty resource. Now `EmptyResourceError` carries the header, and the
+  package source (`_ReadHeader`) keeps an empty resource only when the
+  header has the map entry's type and number; otherwise the header is
+  damaged. A valid empty resource reads as a header with sizes 0, also in
+  the size read of the rebuild and in the delete: before (older than F2),
+  a rebuild dropped it with no message, and a delete failed with "the
+  resource is empty" and left it in the package. The delete then compared
+  the bytes and found no match, because an empty blob has no data; it now
+  takes an empty resource as a match (`ResourceMapOperations.cpp`). Tests:
+  a zeroed header, a header with one size of 0, and the rebuild and delete
+  of an empty text. Known gap: `DeleteResource` (engine code) shows
+  `AfxMessageBox("Resource not found.")` and a script dialog directly, so
+  with no GUI it blocks (a test host stopped there); the CLI deletes no
+  resource today. The test runs the package step of the rebuild (the
+  source's `RebuildResources`). The whole GUI command (`RebuildResources`
+  in `ResourceMap.cpp`) stopped with an access violation in a headless
+  test on a copy of the SCI1.1 template, after or in its audio-cache step;
+  not investigated (the CLI does not rebuild resources).
 - F2 (GUI change): `TextReadFrom` no longer swallows a read failure. A
   text resource whose last string has no NUL now opens as a default
   resource marked "Resource load failed", instead of showing the strings
@@ -563,8 +581,11 @@ for each step, and a follow-up commit if the review finds a problem.
   no warning: the decompiler writes it on purpose. K5 review:
   `__proc0_<M>` (the decompiler's name for a `callb` to an export that
   main does not have) compiles to `callb`, as a call of a main procedure
-  by its name does. Before, it gave `calle 0 M`, two bytes longer, so the
-  round trip was not byte-exact.
+  by its name does. Before, it gave `calle 0 M`, one byte longer (two
+  when the operands are words), so the round trip was not byte-exact. An
+  `asm` `calle __proc0_M, n` is now "Procedure type does not match call
+  type."; the decompiler never writes it, and no GOG game has a `calle`
+  to script 0 (review of the K5 and K6 fixes).
 - Test lesson (K5): `Assert::IsTrue(CompileSource(..., error), W("..." +
   error).c_str())` shows an empty error when the compile fails. MSVC
   evaluates the arguments right to left, so the text is made before the
@@ -760,6 +781,6 @@ for each step, and a follow-up commit if the review finds a problem.
 ## Next action
 
 Phase K and S3 are done, with the fixes of their reviews; S1 and S2a are
-done. Fix the findings of the review of `bc827391` and `fe02c12a` (see
-"State"). Then S2b, S2c and S4 (plan section 9), and a review of S1 and
-S2.
+done, and the fixes of every review so far are committed. Next: S2b, S2c
+and S4 (plan section 9), then a review of S1, S2, the S3 review fixes and
+the fixes of the review of `bc827391` and `fe02c12a`.

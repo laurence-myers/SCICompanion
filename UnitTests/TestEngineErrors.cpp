@@ -14,7 +14,12 @@
 #include "CompileContext.h"
 #include "Vocab99x.h"
 #include "Helper.h"
+#include "ResourceSources.h"
+#include "ResourceMapOperations.h"
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -59,6 +64,55 @@ namespace UnitTests
                 std::filesystem::remove_all(_copyFolder, ec);
                 _copyFolder.clear();
             }
+        }
+
+        // In a copy of the SCI1.1 template, sets count bytes of the package
+        // header of text 10 to 0, from byte first of the header (9 bytes:
+        // the type with 0x80, the number, the compressed and the full size,
+        // the method). True when the blob of text 10 is then Corrupted and
+        // TryCreate refuses it.
+        bool DamagedTextHeader(size_t count, size_t first = 0)
+        {
+            NoAppStateInScope noAppState;
+            RemoveCopy();
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            uint32_t size = 0;
+            {
+                GameSession session;
+                Assert::IsTrue(session.Open(_copyFolder).has_value());
+                std::unique_ptr<ResourceBlob> text = session.Helper().MostRecentResource(ResourceType::Text, 10, ResourceEnumFlags::None);
+                Assert::IsTrue(text != nullptr, L"setup: the SCI1.1 template has text 10");
+                size = text->GetHeader().cbDecompressed;
+            }
+            std::string volumePath = _copyFolder + "\\resource.000";
+            std::vector<uint8_t> volume;
+            {
+                std::ifstream file(volumePath, std::ios::binary);
+                volume.assign((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            }
+            size_t header = SIZE_MAX;
+            int matches = 0;
+            for (size_t i = 0; (i + 9) <= volume.size(); i++)
+            {
+                if ((volume[i] == (0x80 | (int)ResourceType::Text)) && (volume[i + 1] == 10) && (volume[i + 2] == 0) &&
+                    (volume[i + 5] == (size & 0xff)) && (volume[i + 6] == ((size >> 8) & 0xff)))
+                {
+                    header = i;
+                    matches++;
+                }
+            }
+            Assert::AreEqual(1, matches, L"setup: the header of text 10 must be found once");
+            std::fill(volume.begin() + header + first, volume.begin() + header + first + count, (uint8_t)0);
+            {
+                std::ofstream file(volumePath, std::ios::binary | std::ios::trunc);
+                file.write(reinterpret_cast<const char *>(volume.data()), volume.size());
+            }
+
+            GameSession session;
+            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            std::unique_ptr<ResourceBlob> text = session.Helper().MostRecentResource(ResourceType::Text, 10, ResourceEnumFlags::None);
+            Assert::IsTrue(text != nullptr);
+            return IsFlagSet(text->GetStatusFlags(), ResourceLoadStatusFlags::Corrupted) && !TryCreateResourceFromResourceData(*text).has_value();
         }
 
     public:
@@ -490,6 +544,61 @@ namespace UnitTests
                     WideText(std::string("an empty resource is not damaged: ") + templateFolder).c_str());
                 auto created = TryCreateResourceFromResourceData(*blob);
                 Assert::IsTrue(created.has_value(), WideText(created ? std::string() : created.error().ToString()).c_str());
+            }
+        }
+
+        // Review of the F2 review fixes (second): damage that zeroes an SCI1.1
+        // package header gives sizes of 0, as an empty resource has; the
+        // header's type and number (also 0) do not match the map entry, so
+        // the blob is damaged. The fix before took it for a valid empty
+        // resource.
+        TEST_METHOD(ZeroedPackageHeader_IsDamaged)
+        {
+            Assert::IsTrue(DamagedTextHeader(9), L"a zeroed header must mark the blob Corrupted");
+        }
+
+        // A header with only one size of 0 is damaged too.
+        TEST_METHOD(PackageHeaderWithOneSizeOfZero_IsDamaged)
+        {
+            Assert::IsTrue(DamagedTextHeader(2, 3), L"a header with a compressed size of 0 must mark the blob Corrupted");
+        }
+
+        // Review of the F2 review fixes (second): a rebuild dropped an empty
+        // package resource with no message, and a delete of it failed with
+        // "the resource is empty" (both older than F2: the size read threw).
+        TEST_METHOD(EmptyPackageResource_RebuildKeepsIt_DeleteRemovesIt)
+        {
+            NoAppStateInScope noAppState;
+            for (const char *templateFolder : { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" })
+            {
+                RemoveCopy();
+                _copyFolder = CopyGameFromModuleFolder(templateFolder);
+                {
+                    GameSession session;
+                    Assert::IsTrue(session.Open(_copyFolder).has_value());
+                    const GameFolderHelper &helper = session.Helper();
+                    std::vector<uint8_t> noData;
+                    ResourceBlob empty(helper, nullptr, ResourceType::Text, noData, helper.Version.DefaultVolumeFile, 555, NoBase36, helper.Version, ResourceSourceFlags::ResourceMap);
+                    Assert::IsTrue(session.ResourceMap().WriteResource(empty).has_value());
+                    // The package step of the GUI's "rebuild resources".
+                    std::unique_ptr<ResourceSource> package = CreateResourceSource(ResourceTypeFlags::All, helper, ResourceSourceFlags::ResourceMap, ResourceSourceAccessFlags::ReadWrite);
+                    std::map<ResourceType, RebuildStats> stats;
+                    package->RebuildResources(true, *package, stats);
+                }
+                {
+                    GameSession session;
+                    Assert::IsTrue(session.Open(_copyFolder).has_value());
+                    std::unique_ptr<ResourceBlob> blob = session.Helper().MostRecentResource(ResourceType::Text, 555, ResourceEnumFlags::None);
+                    Assert::IsTrue(blob != nullptr, WideText(std::string("the rebuild dropped the empty text: ") + templateFolder).c_str());
+                    Assert::IsFalse(IsFlagSet(blob->GetStatusFlags(), ResourceLoadStatusFlags::Corrupted));
+                    session.ResourceMap().DeleteResource(blob.get());
+                }
+                {
+                    GameSession session;
+                    Assert::IsTrue(session.Open(_copyFolder).has_value());
+                    Assert::IsTrue(nullptr == session.Helper().MostRecentResource(ResourceType::Text, 555, ResourceEnumFlags::None),
+                        WideText(std::string("the delete left the empty text: ") + templateFolder).c_str());
+                }
             }
         }
 
