@@ -597,8 +597,13 @@ bool GenerateScriptResource(GameSession &session, sci::Script &script, Precompil
 void ErrorHelper(CompileContext &context, const ISourceCodePosition *pPos, const std::string &text, const std::string &identifier, bool checkUse = true);
 // Compiles one script file of the session's game and writes its resources,
 // its .sco file and its debug information (CompileScript.cpp), as the
-// options say (plan step S1; the GUI passes the defaults). A write that
-// fails is an error in the log, and the result is false.
+// options say (plan step S1; the GUI passes the defaults). Ok; Compile when
+// the script has errors; or the error of a source file that could not be read
+// or of the first write that failed (plan step S2). Every failure is also an
+// error in the log.
+sci::Status CompileScriptFile(GameSession &session, CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script,
+	const CompileWriteOptions &options = CompileWriteOptions());
+// The same, as true for Ok.
 bool NewCompileScript(GameSession &session, CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script,
 	const CompileWriteOptions &options = CompileWriteOptions());
 // Parses a script or header file only (no code), with the preprocessor

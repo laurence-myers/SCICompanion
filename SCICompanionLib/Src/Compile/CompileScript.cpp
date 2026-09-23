@@ -33,9 +33,11 @@ void CompileLog::SummarizeAndReportErrors()
 
 void CompileLog::CalculateErrors()
 {
-	// Calculate errors;
-	_cErrors += (int)count_if(_compileResults.begin(), _compileResults.end(), mem_fun_ref(&CompileResult::IsError));
-	_cWarnings += (int)count_if(_compileResults.begin(), _compileResults.end(), mem_fun_ref(&CompileResult::IsWarning));
+	// The counts of the results that the log holds now. Before plan step S2,
+	// each call added to the counts, so a second call counted every result
+	// again (P11).
+	_cErrors = (int)count_if(_compileResults.begin(), _compileResults.end(), mem_fun_ref(&CompileResult::IsError));
+	_cWarnings = (int)count_if(_compileResults.begin(), _compileResults.end(), mem_fun_ref(&CompileResult::IsWarning));
 }
 
 std::unique_ptr<sci::Script> SimpleCompile(const std::unordered_set<std::string> &preProcessorDefines, CompileLog &log, ScriptId &scriptId, bool addCommentsToOM)
@@ -68,20 +70,31 @@ static void _ReportWriteError(CompileLog &log, ScriptId &script, const sci::Erro
 		CompileResult::CompileResultType::CRT_Error));
 }
 
-bool NewCompileScript(GameSession &session, CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script,
+sci::Status CompileScriptFile(GameSession &session, CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script,
 	const CompileWriteOptions &options)
 {
-	bool fRet = false;
 	CResourceMap &resourceMap = session.ResourceMap();
 	const GameFolderHelper &helper = session.Helper();
 
 	g_compileIOTimer.Start();
-
 	sci::Result<ScriptText> text = LoadScriptText(script.GetFullPath());
-	if (text)
+	g_compileIOTimer.Stop();
+	if (!text)
 	{
-		g_compileIOTimer.Stop();
+		// Before plan step S2, this failure was silent.
+		log.ReportResult(CompileResult(fmt::format("Could not read {0}: {1}", script.GetFileNameOrig(), text.error().ToString()),
+			CompileResult::CompileResultType::CRT_Error));
+		log.CalculateErrors();
+		return sci::Fail(text.error());
+	}
 
+	// Until the code is made: the errors are in the log.
+	sci::Error compileErrors;
+	compileErrors.code = sci::ErrorCode::Compile;
+	compileErrors.message = "the script has compile errors";
+	compileErrors.where.file = script.GetFullPath();
+	sci::Status status = sci::Fail(compileErrors);
+	{
 		CScriptStreamLimiter limiter(*text);
 		CCrystalScriptStream stream(&limiter);
 
@@ -104,14 +117,18 @@ bool NewCompileScript(GameSession &session, CompileResults &results, CompileLog 
 			{
 				WORD wNum = results.GetScriptNumber();
 				// The writes go where the options say (plan step S1). A write
-				// that fails is an error, and the compile fails.
-				bool wroteAll = true;
-				auto check = [&](const sci::Status &status)
+				// that fails is an error, and the compile fails with the first
+				// failure.
+				status = sci::Ok();
+				auto check = [&](const sci::Status &written)
 				{
-					if (!status)
+					if (!written)
 					{
-						_ReportWriteError(log, script, status.error());
-						wroteAll = false;
+						_ReportWriteError(log, script, written.error());
+						if (status)
+						{
+							status = written;
+						}
 					}
 				};
 
@@ -160,10 +177,15 @@ bool NewCompileScript(GameSession &session, CompileResults &results, CompileLog 
 				}
 				g_compileDebugSymbolTimer.Stop();
 				g_compileIOTimer.Stop();
-				fRet = wroteAll;
 			}
 		}
-		log.CalculateErrors();
 	}
-	return fRet;
+	log.CalculateErrors();
+	return status;
+}
+
+bool NewCompileScript(GameSession &session, CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script,
+	const CompileWriteOptions &options)
+{
+	return CompileScriptFile(session, results, log, tables, headers, script, options).has_value();
 }

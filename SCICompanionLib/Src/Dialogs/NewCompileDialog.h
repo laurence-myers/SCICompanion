@@ -41,6 +41,7 @@ protected:
 	bool _fResult;
 	bool _fAbort;
 	bool _fDone;
+	bool _anyErrors;	// A script of the run had errors.
 	int _nScript;
 	std::vector<ScriptId> _scripts;
 	CompileTables _tables;

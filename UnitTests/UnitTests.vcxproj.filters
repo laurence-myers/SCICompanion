@@ -41,6 +41,9 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="TestCompileBatch.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestCompileDestination.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

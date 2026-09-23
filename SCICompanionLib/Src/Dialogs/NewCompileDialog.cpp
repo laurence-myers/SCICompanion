@@ -43,6 +43,7 @@ CNewCompileDialog::CNewCompileDialog(const std::unordered_set<std::string> &scri
 	_fResult = false;
 	_fAbort = false;
 	_fDone = false;
+	_anyErrors = false;
 }
 
 CNewCompileDialog::~CNewCompileDialog()
@@ -51,7 +52,7 @@ CNewCompileDialog::~CNewCompileDialog()
 
 bool CNewCompileDialog::HasErrors()
 {
-	return _log.HasErrors();
+	return _anyErrors || _log.HasErrors();
 }
 
 
@@ -103,6 +104,9 @@ LRESULT CNewCompileDialog::CompileAll(WPARAM wParam, LPARAM lParam)
 			{
 				appState->GetDependencyTracker().ClearScript(scriptId);
 			}
+			// The log holds this script only (it is cleared before each
+			// script), and its counts are this script's (plan step S2, P11).
+			_anyErrors = _anyErrors || _log.HasErrors();
 		}
 
 		// The compile is done.  Post the results.

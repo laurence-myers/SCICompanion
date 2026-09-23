@@ -6,7 +6,7 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: S2. F1, A1, A2, B1, B2, B3a, B3b, F2 and K1 to K6 are
+- Current step: S2b. F1, A1, A2, B1, B2, B3a, B3b, F2 and K1 to K6 are
   committed and reviewed, with their review fixes. S3 (S3a, S3b) and S1 are
   committed. Two reviews are running: S3a and S3b; and the K5 and K6 review
   fixes (`bc827391`) with the fixes of the second review of F2 and K1 to
@@ -19,7 +19,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -51,7 +51,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | K6 No `vocab.000`; `/` in paths | done | `dcc0fdf7`, review fixes (the commit after `108cb227`) | FIX: 1 should-fix (the handover State, fixed in `f85fe77d`), 7 nits, 1 question. Fixed: the Said test counts one error for two Said strings, a vocab 900 test, the null vocabulary in the "Add as synonym of" dialog, the `ScriptId` folder keeps only `\`, stale text. Known gaps: see "Decisions" (a synonym with no vocabulary, a name with a slash, a `ScriptId` with no folder). |
 | S3 ScriptCatalog, script names without `game.ini` | done | S3a `f85fe77d`; S3b `108cb227` | running |
 | S1 Compile destination | done | the commit after `fe02c12a` | |
-| S2 CompileBatch | not started | | |
+| S2 CompileBatch | S2a done; S2b, S2c to do | S2a: the commit after `a9561fcc` | |
 | S4 DecompileRun | not started | | |
 | C1 CLI project, `script list` | not started | | |
 | C2 `script decompile`, `script sco` | not started | | |
@@ -694,6 +694,35 @@ for each step, and a follow-up commit if the review finds a problem.
   `VocabClassTable` and `VocabSelectorNames` are `extern` in `sci.h`, as
   `VocabKernelNames`; `SpeciesTable` and `SelectorTable` have `IsDirty`
   and `MakeResourceData`.
+- S2 is three commits: S2a (the batch engine: `CompileBatch`,
+  `CompileScripts`, `CompileReport`), S2b (the passes, the shadow check,
+  the raw message and the 1-based lines of a diagnostic), and S2c (the GUI
+  on the batch, and its shadow question).
+- S2a: `Src\Compile\CompileBatch.h/.cpp`. `CompileOptions` (the S1 write
+  options and `failFast`), `ScriptOutcome` (number, name, `Status`,
+  diagnostics), `CompileReport` (the scripts, `tables`, `commit`,
+  `cancelled`, `stopped`, the counts, `Succeeded`) and `ICompileEvents`
+  (`OnScriptStart` runs inside the exception boundary of the script, so a
+  test injects a fault there; `OnScriptDone`). `CompileBatch::Start` loads
+  the tables (`TryLoad`) and the headers, refuses an output folder with
+  Package (`Usage`) and Package in a patch-mode game (`WriteRefused`), and
+  opens one `DeferResourceAppend`. `Step` compiles one script with its own
+  `CompileLog`, inside `Guard`; an exception gives its error as the status
+  (`Internal` when it is not a `DataError`) and a diagnostic with its
+  text. `Finish` saves the tables only when a script compiled (plan section
+  4.5), then commits once, also after an abort (plan section 7). A batch
+  that is not finished withdraws its queued writes. `CompileScripts` runs
+  the three.
+- S2a: `CompileScriptFile` is `NewCompileScript` with a `Status`:
+  `Compile`, the read error of the source file (before: a silent `false`;
+  now also an error in the log, a GUI change), or the first write error.
+  `NewCompileScript` gives `CompileScriptFile(...).has_value()`.
+- S2a: `CompileLog::CalculateErrors` counts the results that the log holds.
+  Before, each call added them to the counts again, so
+  `ScriptDocument::OnCompile` counted every error twice after a failed
+  commit (P11). The compile dialog clears its log before each script, so it
+  keeps `_anyErrors` for `HasErrors` (its result for the caller, for
+  example the run after a compile-all).
 
 ## Next action
 

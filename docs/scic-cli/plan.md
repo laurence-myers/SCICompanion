@@ -1311,6 +1311,10 @@ GUI changes in this plan (all others are refactors with no visible change):
   decompile shows a failed `.sco` or `.sc` write in its results, and the
   Decompile dialog's name edit shows a failed `.sco` save (before:
   nothing, and "Saved changes").
+- S2a: a compile of a script whose source file cannot be read shows an
+  error (before: the compile failed with no message). The error and
+  warning counts of a compile are exact (before: a failed write after a
+  single-script compile counted every error twice).
 - S2: the GUI asks before a package save that a patch file would hide.
 - S2: compile-all saves the tables only if one or more scripts compiled.
 - S3: the `_N` suffix of a duplicate automatic script name follows the
