@@ -6,10 +6,11 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: S3. F1, A1, A2, B1, B2, B3a, B3b, F2 and K1 to K4 are
-  committed and reviewed, with their review fixes. K5 and K6 are
-  committed. Two reviews are running: K5, `2aee01b1` and K6; and the five
-  review-fix commits of F2 and K1 to K4.
+- Current step: the fixes of the K5 and K6 reviews, then S1. F1, A1, A2,
+  B1, B2, B3a, B3b, F2 and K1 to K4 are committed and reviewed, with their
+  review fixes. K5 and K6 are committed and reviewed. S3 (S3a, S3b) is
+  committed. One review is running: the five review-fix commits of F2 and
+  K1 to K4.
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -18,7 +19,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -48,7 +49,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | K4 `#` in selector names | done | `b7385d13`, review fixes `ebb6ff7d` | FIX: 1 should-fix (a `#` property read in a method still got `_`; KQ6 script 710). Fixed in `CleanTokenSCI`. Review of the fixes running. |
 | K5 `proc<N>_<M>` for a missing script | done | `78490d24`; test fix `2aee01b1` | running |
 | K6 No `vocab.000`; `/` in paths | done | `dcc0fdf7` | running |
-| S3 ScriptCatalog, script names without `game.ini` | S3a done; S3b in progress | S3a: the commit after `dcc0fdf7` | |
+| S3 ScriptCatalog, script names without `game.ini` | done | S3a `f85fe77d`; S3b: the commit after `f85fe77d` | |
 | S1 Compile destination | not started | | |
 | S2 CompileBatch | not started | | |
 | S4 DecompileRun | not started | | |
@@ -581,9 +582,36 @@ for each step, and a follow-up commit if the review finds a problem.
   suffixed name counts as used, and a name gets `_` for a character that
   a file or a `(use ...)` cannot have (before: raw object names, for
   example with a space).
+- S3b: `ScriptCatalog` (`Src\Resources\ScriptCatalog.h/.cpp`).
+  `ListScripts(session, alwaysDerive)` gives one row for each script
+  (number, name, the rule of the name, the derived name, where the game
+  has the compiled script, the `.sc` and `.sco` flags, and an error). It
+  reads the compiled scripts only when a compiled script has no name from
+  rules 1 to 3, or with `alwaysDerive`, as plan section 4.3 says; so an
+  unreadable script shows its error only then. The place of a package
+  script is "resource.NNN" (the package number, as the SCI0 to SCI1.1
+  maps name their volumes); a patch script shows its file name.
+- S3b: `DeriveScriptNames(session, all)` is rule 4 for the compiled
+  scripts (the names of rules 1 to 3 count as used; `all` names every
+  script, as a reset does). `AddDerivedScriptNames(session)` gives the
+  derived names to the session's map, for the decompile of S4.
+- S3b: `ResolveScriptSelectors(session, selectors, mode)` and
+  `SelectAllScripts(session, mode)` give a `ScriptSelection`: the
+  `ScriptId` of each script (the path of `src\<name>.sc`, with the number
+  set) and warnings. The modes are List, Decompile, Compile and Sco. A
+  path selector (Compile only) is taken first from the game folder, then
+  from the current folder, and must be a `.sc` file in `<game>\src`. The
+  modes that write refuse to start while the names have a conflict
+  (`Usage`, with each conflict). Every bad selector is in one `Usage`
+  error.
+- S3b: `FindShadowingPatches(helper, resources)` scans the game folder
+  with the rules of the patch file source: the type's name patterns, a
+  number from the name, and the type in the first byte. It finds a
+  standard name (`110.scr`) and another one (`0110.scr`).
+
 ## Next action
 
-Phase K is done (K1 to K6), and the findings of the reviews of F2 and K1
-to K4 are fixed. Two reviews come next: K5, the test commit and K6; and
-the five review-fix commits (F2, K1, K2, K3, K4). Fix their findings.
-Then phase S, in the order S3, S1, S2, S4 (plan section 9).
+Phase K is done (K1 to K6), and S3 is done (S3a, S3b). The reviews of K5,
+the test commit and K6 are done; fix their findings. The review of the five
+review-fix commits (F2, K1, K2, K3, K4) is running; fix its findings. Then
+S1, S2, S4 (plan section 9), and a review of S3a and S3b.

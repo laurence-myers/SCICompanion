@@ -71,6 +71,11 @@ private:
     std::vector<std::string> _conflicts;
 };
 
+// The number that a source file declares with (script# X), where X is a
+// number, or a define of the file or of src\*.sh. False when the scan cannot
+// read one (for example, X is a define of an include outside src\).
+bool ReadDeclaredScriptNumber(const GameFolderHelper &helper, const std::string &sourcePath, uint16_t &number);
+
 // The objects of a compiled script that the naming rule reads, in the order
 // of the compiled script.
 struct ScriptObjectsForNaming

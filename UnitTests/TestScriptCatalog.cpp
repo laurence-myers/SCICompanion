@@ -1,0 +1,360 @@
+#include "stdafx.h"
+#include "CppUnitTest.h"
+#include "AppState.h"
+#include "GameSession.h"
+#include "ResourceMap.h"
+#include "ResourceBlob.h"
+#include "ResourceContainer.h"
+#include "GameFolderHelper.h"
+#include "ScriptNameMap.h"
+#include "ScriptCatalog.h"
+#include "Helper.h"
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <string>
+#include <vector>
+
+using namespace Microsoft::VisualStudio::CppUnitTestFramework;
+
+namespace
+{
+    // Runs a test with no AppState, as the command line does.
+    struct NoAppStateForCatalog
+    {
+        AppState *saved;
+        NoAppStateForCatalog() : saved(appState) { appState = nullptr; }
+        ~NoAppStateForCatalog() { appState = saved; }
+    };
+
+    std::wstring WideCatalog(const std::string &text)
+    {
+        return std::wstring(text.begin(), text.end());
+    }
+
+    std::vector<uint16_t> NumbersOf(const ScriptSelection &selection)
+    {
+        std::vector<uint16_t> numbers;
+        for (const ScriptId &script : selection.scripts)
+        {
+            numbers.push_back(script.GetResourceNumber());
+        }
+        return numbers;
+    }
+
+    const ScriptRow *RowOf(const std::vector<ScriptRow> &rows, uint16_t number)
+    {
+        for (const ScriptRow &row : rows)
+        {
+            if (row.number == number)
+            {
+                return &row;
+            }
+        }
+        return nullptr;
+    }
+
+    void WriteBytes(const std::string &path, std::vector<uint8_t> bytes)
+    {
+        std::ofstream file(path, std::ios::binary | std::ios::trunc);
+        file.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+    }
+}
+
+namespace UnitTests
+{
+    // Plan step S3 (S3b): the script list, the script selectors and the
+    // shadow check of the command line (plan sections 4.2, 4.3 and 5).
+    TEST_CLASS(TestScriptCatalog)
+    {
+        std::string _copyFolder;
+        std::unique_ptr<GameSession> _session;
+
+        void RemoveCopy()
+        {
+            _session.reset();
+            if (!_copyFolder.empty())
+            {
+                std::error_code ec;
+                std::filesystem::remove_all(_copyFolder, ec);
+                _copyFolder.clear();
+            }
+        }
+
+        std::string SrcFile(const std::string &name) const
+        {
+            return _copyFolder + "\\src\\" + name;
+        }
+
+        // A copy of the SCI1.1 template, with the changes made before the
+        // open, in a session.
+        GameSession &Open(bool keepGameIni = true, const std::vector<std::string> &removeFromSrc = std::vector<std::string>())
+        {
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            if (!keepGameIni)
+            {
+                std::filesystem::remove(_copyFolder + "\\game.ini");
+            }
+            for (const std::string &file : removeFromSrc)
+            {
+                std::filesystem::remove(SrcFile(file));
+            }
+            return Reopen();
+        }
+
+        GameSession &Reopen()
+        {
+            _session = std::make_unique<GameSession>();
+            sci::Status opened = _session->Open(_copyFolder);
+            Assert::IsTrue(opened.has_value(), WideCatalog(opened ? std::string() : opened.error().ToString()).c_str());
+            return *_session;
+        }
+
+        // Writes the script data as a patch file of the game.
+        void WriteScriptPatch(GameSession &session, uint16_t number, const std::vector<uint8_t> &data)
+        {
+            const GameFolderHelper &helper = session.Helper();
+            ResourceBlob patch(helper, nullptr, ResourceType::Script, data, helper.Version.DefaultVolumeFile, number, NoBase36, helper.Version, ResourceSourceFlags::PatchFile);
+            sci::Status written = session.ResourceMap().WriteResource(patch);
+            Assert::IsTrue(written.has_value(), WideCatalog(written ? std::string() : written.error().ToString()).c_str());
+        }
+
+    public:
+        TEST_METHOD_CLEANUP(CleanUp)
+        {
+            RemoveCopy();
+        }
+
+        TEST_METHOD(List_Template_NamesAndLocations)
+        {
+            NoAppStateForCatalog noAppState;
+            GameSession &session = Open();
+            sci::Result<std::vector<ScriptRow>> rows = ListScripts(session, false);
+            Assert::IsTrue(rows.has_value(), WideCatalog(rows ? std::string() : rows.error().ToString()).c_str());
+            Assert::IsTrue(rows->size() > 80);
+            const ScriptRow *main = RowOf(*rows, 0);
+            Assert::IsNotNull(main);
+            Assert::AreEqual(std::string("Main"), main->name);
+            Assert::IsTrue(main->source == NameSource::GameIni);
+            Assert::AreEqual(std::string("resource.000"), main->location);
+            Assert::IsTrue(main->hasSource && main->hasObjectFile);
+            Assert::IsTrue(main->derivedName.empty() && main->error.empty());
+            for (size_t i = 1; i < rows->size(); i++)
+            {
+                Assert::IsTrue((*rows)[i - 1].number < (*rows)[i].number, L"rows are in number order");
+            }
+        }
+
+        TEST_METHOD(List_AlwaysDerive_FillsTheDerivedColumn)
+        {
+            NoAppStateForCatalog noAppState;
+            GameSession &session = Open();
+            sci::Result<std::vector<ScriptRow>> rows = ListScripts(session, true);
+            Assert::IsTrue(rows.has_value());
+            Assert::AreEqual(std::string("Main"), RowOf(*rows, 0)->derivedName);
+            int derived = 0;
+            for (const ScriptRow &row : *rows)
+            {
+                derived += row.derivedName.empty() ? 0 : 1;
+                Assert::IsTrue(row.error.empty(), WideCatalog(row.error).c_str());
+            }
+            Assert::IsTrue(derived > 60, L"most scripts have a class or a public instance");
+        }
+
+        // A compiled script with no game.ini entry, no .sc and no .sco gets
+        // its derived name (rule 4).
+        TEST_METHOD(List_NoNameFromTheFiles_DerivesTheName)
+        {
+            NoAppStateForCatalog noAppState;
+            GameSession &session = Open(false, { "TitleScreen.sc", "TitleScreen.sco" });
+            sci::Result<std::vector<ScriptRow>> rows = ListScripts(session, false);
+            Assert::IsTrue(rows.has_value());
+            const ScriptRow *title = RowOf(*rows, 100);
+            Assert::IsNotNull(title);
+            Assert::IsTrue(title->source == NameSource::Derived);
+            Assert::IsTrue(!title->name.empty() && (title->name != "n100"), WideCatalog(title->name).c_str());
+            Assert::IsFalse(title->hasSource);
+            Assert::IsTrue(RowOf(*rows, 0)->source == NameSource::Source, L"Main still comes from Main.sc");
+        }
+
+        TEST_METHOD(List_PatchFileAndUnreadableScript)
+        {
+            NoAppStateForCatalog noAppState;
+            GameSession &session = Open();
+            std::unique_ptr<ResourceBlob> script = session.Helper().MostRecentResource(ResourceType::Script, 100, ResourceEnumFlags::None);
+            Assert::IsTrue(script != nullptr);
+            WriteScriptPatch(session, 100, std::vector<uint8_t>(script->GetData(), script->GetData() + script->GetLength()));
+            // A cut copy of script 255 as a patch file.
+            std::unique_ptr<ResourceBlob> controls = session.Helper().MostRecentResource(ResourceType::Script, 255, ResourceEnumFlags::None);
+            Assert::IsTrue(controls && (controls->GetLength() > 10));
+            WriteScriptPatch(session, 255, std::vector<uint8_t>(controls->GetData(), controls->GetData() + 10));
+
+            sci::Result<std::vector<ScriptRow>> rows = ListScripts(session, true);
+            Assert::IsTrue(rows.has_value());
+            Assert::AreEqual(std::string("100.scr (patch)"), RowOf(*rows, 100)->location);
+            Assert::IsTrue(RowOf(*rows, 100)->error.empty());
+            const ScriptRow *cut = RowOf(*rows, 255);
+            Assert::IsFalse(cut->error.empty(), L"a script that cannot be read shows its error");
+            Assert::AreEqual(std::string("Controls"), cut->name, L"and keeps its name");
+        }
+
+        TEST_METHOD(Selectors_NumbersRangesNamesAndDuplicates)
+        {
+            NoAppStateForCatalog noAppState;
+            GameSession &session = Open();
+            sci::Result<ScriptSelection> selected = ResolveScriptSelectors(session, { "255", "Main", "main", "0", "100-100", "titlescreen" }, SelectorMode::Decompile);
+            Assert::IsTrue(selected.has_value(), WideCatalog(selected ? std::string() : selected.error().ToString()).c_str());
+            std::vector<uint16_t> numbers = NumbersOf(*selected);
+            Assert::AreEqual(size_t(3), numbers.size(), L"0 and Main and main are one script");
+            Assert::AreEqual(0, (int)numbers[0]);
+            Assert::AreEqual(100, (int)numbers[1]);
+            Assert::AreEqual(255, (int)numbers[2]);
+            // ScriptId keeps its path in lower case.
+            Assert::AreEqual(0, _stricmp((_copyFolder + "\\src\\TitleScreen.sc").c_str(), selected->scripts[1].GetFullPath().c_str()), WideCatalog(selected->scripts[1].GetFullPath()).c_str());
+        }
+
+        TEST_METHOD(Selectors_EveryBadSelectorIsInOneUsageError)
+        {
+            NoAppStateForCatalog noAppState;
+            GameSession &session = Open();
+            sci::Result<ScriptSelection> selected = ResolveScriptSelectors(session, { "NoSuchScript", "0", "4000", "3000-3100" }, SelectorMode::Compile);
+            Assert::IsFalse(selected.has_value());
+            const sci::Error &error = selected.error();
+            Assert::IsTrue(error.code == sci::ErrorCode::Usage);
+            Assert::IsTrue(error.message.find("NoSuchScript") != std::string::npos, WideCatalog(error.message).c_str());
+            Assert::IsTrue(error.message.find("4000") != std::string::npos, WideCatalog(error.message).c_str());
+            Assert::IsTrue(error.message.find("3000-3100") != std::string::npos, WideCatalog(error.message).c_str());
+            Assert::IsTrue(error.message.find("scic script list") != std::string::npos);
+        }
+
+        TEST_METHOD(Selectors_PathIsForCompileOnly)
+        {
+            NoAppStateForCatalog noAppState;
+            GameSession &session = Open();
+            sci::Result<ScriptSelection> compile = ResolveScriptSelectors(session, { "src\\TitleScreen.sc" }, SelectorMode::Compile);
+            Assert::IsTrue(compile.has_value(), WideCatalog(compile ? std::string() : compile.error().ToString()).c_str());
+            Assert::AreEqual(size_t(1), compile->scripts.size());
+            Assert::AreEqual(100, (int)compile->scripts[0].GetResourceNumber());
+
+            sci::Result<ScriptSelection> decompile = ResolveScriptSelectors(session, { "src\\TitleScreen.sc" }, SelectorMode::Decompile);
+            Assert::IsFalse(decompile.has_value());
+            Assert::IsTrue(decompile.error().message.find("only compile takes a path") != std::string::npos, WideCatalog(decompile.error().message).c_str());
+
+            sci::Result<ScriptSelection> header = ResolveScriptSelectors(session, { "src\\game.sh" }, SelectorMode::Compile);
+            Assert::IsFalse(header.has_value());
+            Assert::IsTrue(header.error().message.find("a header file cannot be compiled") != std::string::npos, WideCatalog(header.error().message).c_str());
+        }
+
+        // Compile keeps the order of game.ini [Script]; decompile uses number
+        // order. The template's [Script] section is not in number order.
+        TEST_METHOD(Selectors_CompileOrderFollowsGameIni)
+        {
+            NoAppStateForCatalog noAppState;
+            GameSession &session = Open();
+            const std::vector<uint16_t> &order = session.Helper().ScriptNames->GameIniOrder();
+            size_t i = 1;
+            while ((i < order.size()) && (order[i - 1] < order[i]))
+            {
+                i++;
+            }
+            Assert::IsTrue(i < order.size(), L"setup: game.ini is not in number order");
+            uint16_t first = order[i - 1];
+            uint16_t second = order[i];
+            std::vector<std::string> selectors = { std::to_string(second), std::to_string(first) };
+
+            sci::Result<ScriptSelection> compile = ResolveScriptSelectors(session, selectors, SelectorMode::Compile);
+            Assert::IsTrue(compile.has_value());
+            Assert::AreEqual((int)first, (int)NumbersOf(*compile)[0], L"compile: the game.ini order");
+            sci::Result<ScriptSelection> decompile = ResolveScriptSelectors(session, selectors, SelectorMode::Decompile);
+            Assert::IsTrue(decompile.has_value());
+            Assert::AreEqual((int)second, (int)NumbersOf(*decompile)[0], L"decompile: number order");
+        }
+
+        // While the names have a conflict, the modes that write refuse to
+        // start; the list works.
+        TEST_METHOD(Selectors_Conflict_RefusesTheModesThatWrite)
+        {
+            NoAppStateForCatalog noAppState;
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            std::filesystem::remove(_copyFolder + "\\game.ini");
+            std::filesystem::copy_file(SrcFile("TitleScreen.sc"), SrcFile("Title2.sc"));
+            GameSession &session = Reopen();
+
+            sci::Result<ScriptSelection> compile = ResolveScriptSelectors(session, { "0" }, SelectorMode::Compile);
+            Assert::IsFalse(compile.has_value());
+            Assert::IsTrue(compile.error().code == sci::ErrorCode::Usage);
+            Assert::IsTrue(compile.error().message.find("Title2.sc") != std::string::npos, WideCatalog(compile.error().message).c_str());
+            Assert::IsFalse(SelectAllScripts(session, SelectorMode::Decompile).has_value());
+            Assert::IsTrue(ResolveScriptSelectors(session, { "0" }, SelectorMode::List).has_value());
+        }
+
+        // --all for compile with no game.ini: every src\*.sc that declares a
+        // script number.
+        TEST_METHOD(SelectAll_Compile_NoGameIni_EverySource)
+        {
+            NoAppStateForCatalog noAppState;
+            GameSession &session = Open(false);
+            sci::Result<ScriptSelection> all = SelectAllScripts(session, SelectorMode::Compile);
+            Assert::IsTrue(all.has_value(), WideCatalog(all ? std::string() : all.error().ToString()).c_str());
+            int sources = 0;
+            for (const auto &entry : std::filesystem::directory_iterator(_copyFolder + "\\src"))
+            {
+                std::string extension = entry.path().extension().string();
+                std::transform(extension.begin(), extension.end(), extension.begin(), [](char ch) { return (char)std::tolower((unsigned char)ch); });
+                sources += (extension == ".sc") ? 1 : 0;
+            }
+            Assert::AreEqual((size_t)sources, all->scripts.size());
+            for (const ScriptId &script : all->scripts)
+            {
+                Assert::IsTrue(std::filesystem::exists(script.GetFullPath()), WideCatalog(script.GetFullPath()).c_str());
+            }
+            Assert::IsTrue(all->warnings.empty());
+        }
+
+        TEST_METHOD(SelectAll_Compile_NamedScriptWithNoSource_IsAWarning)
+        {
+            NoAppStateForCatalog noAppState;
+            GameSession &session = Open(true, { "TitleScreen.sc" });
+            sci::Result<ScriptSelection> all = SelectAllScripts(session, SelectorMode::Compile);
+            Assert::IsTrue(all.has_value());
+            std::vector<uint16_t> numbers = NumbersOf(*all);
+            Assert::IsTrue(std::find(numbers.begin(), numbers.end(), (uint16_t)100) == numbers.end());
+            bool warned = std::any_of(all->warnings.begin(), all->warnings.end(), [](const std::string &warning) { return warning.find("TitleScreen.sc") != std::string::npos; });
+            Assert::IsTrue(warned, L"the script with no source file is a warning");
+
+            sci::Result<ScriptSelection> one = ResolveScriptSelectors(session, { "TitleScreen" }, SelectorMode::Compile);
+            Assert::IsFalse(one.has_value(), L"one script with no source file is a usage error");
+        }
+
+        // The patch files that would hide a package write: a standard name and
+        // another name for one resource, other types, and a file whose first
+        // byte is another type (not a patch of the resource).
+        TEST_METHOD(ShadowingPatches_StandardAndOtherNames)
+        {
+            NoAppStateForCatalog noAppState;
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            uint8_t script = 0x80 | (uint8_t)ResourceType::Script;
+            WriteBytes(_copyFolder + "\\100.scr", { script, 0, 1, 2 });
+            WriteBytes(_copyFolder + "\\0100.scr", { script, 0, 1, 2 });
+            WriteBytes(_copyFolder + "\\100.hep", { 0x80 | (uint8_t)ResourceType::Heap, 0, 1, 2 });
+            WriteBytes(_copyFolder + "\\996.voc", { 0x80 | (uint8_t)ResourceType::Vocab, 0, 1, 2 });
+            WriteBytes(_copyFolder + "\\101.scr", { script, 0, 1, 2 });
+            WriteBytes(_copyFolder + "\\102.scr", { 0x80 | (uint8_t)ResourceType::View, 0, 1, 2 });
+            GameFolderHelper helper;
+            helper.GameFolder = _copyFolder;
+
+            sci::Result<std::vector<std::string>> files = FindShadowingPatches(helper, {
+                { ResourceType::Script, 100 }, { ResourceType::Heap, 100 }, { ResourceType::Vocab, 996 }, { ResourceType::Script, 102 }, { ResourceType::Vocab, 997 } });
+            Assert::IsTrue(files.has_value());
+            std::vector<std::string> expected = { _copyFolder + "\\0100.scr", _copyFolder + "\\100.hep", _copyFolder + "\\100.scr", _copyFolder + "\\996.voc" };
+            std::sort(expected.begin(), expected.end());
+            std::string actual;
+            for (const std::string &file : *files)
+            {
+                actual += file + "\n";
+            }
+            Assert::IsTrue(expected == *files, WideCatalog(actual).c_str());
+        }
+    };
+}

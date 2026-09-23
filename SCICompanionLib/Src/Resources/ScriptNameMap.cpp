@@ -322,6 +322,26 @@ namespace
     }
 }
 
+bool ReadDeclaredScriptNumber(const GameFolderHelper &helper, const std::string &sourcePath, uint16_t &number)
+{
+    std::map<std::string, uint16_t> defines;
+    std::error_code ec;
+    fs::path srcFolder = helper.GetSrcFolder();
+    if (!srcFolder.empty() && fs::is_directory(srcFolder, ec))
+    {
+        for (fs::directory_iterator it(srcFolder, ec), end; !ec && (it != end); it.increment(ec))
+        {
+            std::string text;
+            if (it->is_regular_file(ec) && (Upper(it->path().extension().string()) == ".SH") && ReadFileText(it->path(), text))
+            {
+                ReadNumberDefines(CodeOnly(text), defines);
+            }
+        }
+    }
+    std::string text;
+    return ReadFileText(fs::path(sourcePath), text) && ReadScriptNumber(text, defines, number);
+}
+
 const char *NameSourceText(NameSource source)
 {
     switch (source)
