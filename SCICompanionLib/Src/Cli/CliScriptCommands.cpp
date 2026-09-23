@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "CliCommands.h"
+#include "CliHost.h"
 #include "GameSession.h"
 #include "GameFolderHelper.h"
 #include "ScriptNameMap.h"
@@ -114,6 +115,12 @@ namespace cli
             rows.erase(std::remove_if(rows.begin(), rows.end(), [&](const ScriptRow &row) { return wanted.find(row.number) == wanted.end(); }), rows.end());
         }
 
+        if (CancelFlag().load())
+        {
+            // Ctrl+C while the scripts were read (C1 review: before, list
+            // printed the table and exited with 0).
+            return sci::Fail(sci::ErrorCode::Cancelled, "stopped by Ctrl+C");
+        }
         output.Result((options.format == "tsv") ? TsvTable(rows, options.derived) : TextTable(rows, options.derived));
         // Plan section 4.3: a compiled script that list read and cannot read
         // is exit code 6.

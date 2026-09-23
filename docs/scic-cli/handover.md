@@ -6,14 +6,14 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: the fixes of the C1 review, then C2. F1, A1, A2, B1,
-  B2, B3a, B3b, F2, K1 to K6, S3, S1, S2 (S2a, S2b, S2c) and S4 (S4a,
-  S4b) are committed and reviewed, with their review fixes (the S1 and
-  S2 fixes: `98d884c7`, and the fixes of its review: the commit after
-  `d01ea1e0`; the S4 fixes: `d01ea1e0`, whose review is running). C1
-  (`68e6f43e`) is committed and reviewed: FIX (see "C1 review"). The
-  fixes of the reviews of `bc827391` and `fe02c12a` (`8a322b32`), and
-  of `de2fb8dc` and `8a322b32` (`7d26d9d6`), are committed.
+- Current step: C2. F1, A1, A2, B1, B2, B3a, B3b, F2, K1 to K6, S3, S1,
+  S2 (S2a, S2b, S2c), S4 (S4a, S4b) and C1 are committed and reviewed,
+  with their review fixes: the S1 and S2 fixes `98d884c7` and the fixes
+  of its review `73be520f`; the S4 fixes `d01ea1e0`; the C1 fixes (the
+  commit after `73be520f`). The reviews of `d01ea1e0` and `73be520f` are
+  running, and the C1 fixes need their own review. The fixes of the
+  reviews of `bc827391` and `fe02c12a` (`8a322b32`), and of `de2fb8dc`
+  and `8a322b32` (`7d26d9d6`), are committed.
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -22,8 +22,8 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412. After the fixes of the review of `de2fb8dc` and `8a322b32`: 418. After the fixes of the reviews of S1 and S2: 429. After C1: 440. After the S4 review fixes: 454. After the fixes of the review of `7d26d9d6` and `98d884c7`: 460.
-  The integration suite has 21 tests.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412. After the fixes of the review of `de2fb8dc` and `8a322b32`: 418. After the fixes of the reviews of S1 and S2: 429. After C1: 440. After the S4 review fixes: 454. After the fixes of the review of `7d26d9d6` and `98d884c7`: 460. After the C1 review fixes: 462.
+  The integration suite has 22 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
   (`getenv`) and C4267 in the UnitTests helpers (`DecompileHelper.cpp`,
@@ -54,9 +54,9 @@ for each step, and a follow-up commit if the review finds a problem.
 | K6 No `vocab.000`; `/` in paths | done | `dcc0fdf7`, review fixes (the commit after `108cb227`) | FIX: 1 should-fix (the handover State, fixed in `f85fe77d`), 7 nits, 1 question. Fixed: the Said test counts one error for two Said strings, a vocab 900 test, the null vocabulary in the "Add as synonym of" dialog, the `ScriptId` folder keeps only `\`, stale text. Known gaps: see "Decisions" (a synonym with no vocabulary, a name with a slash, a `ScriptId` with no folder). Review of the fixes (`bc827391`): PASS with nits, fixed in the commit after `de2fb8dc`. |
 | S3 ScriptCatalog, script names without `game.ini` | done | S3a `f85fe77d`; S3b `108cb227`; review fixes (the commit after `fb14399f`) | FIX: S3a 1 should-fix (a `-` in a derived name), S3b 1 should-fix (one name conflict refused every script, with the wrong fix), nits and questions. Fixed: see "S3 review" in "Decisions". |
 | S1 Compile destination | done | `a9561fcc`; review fixes `98d884c7` | FIX: 1 should-fix (a script that failed after its resources were queued was written without its tables), nits. Fixed with the S2 review fixes. |
-| S2 CompileBatch | done | S2a `fb14399f`; S2b `f256c0d8`; S2c `2ca7e418`; review fixes `98d884c7`; fixes of its review (the commit after `d01ea1e0`) | S2a FIX (the same should-fix as S1), S2b FIX (Replace moved patch files of resources that the commit did not write), S2c FIX (the GUI reached it; the scan of src could throw). Fixed: see "S1 and S2 reviews". Review of the fixes: FIX (2 should-fix); fixed, see "Review of 7d26d9d6 and 98d884c7". |
+| S2 CompileBatch | done | S2a `fb14399f`; S2b `f256c0d8`; S2c `2ca7e418`; review fixes `98d884c7`; fixes of its review `73be520f` | S2a FIX (the same should-fix as S1), S2b FIX (Replace moved patch files of resources that the commit did not write), S2c FIX (the GUI reached it; the scan of src could throw). Fixed: see "S1 and S2 reviews". Review of the fixes: FIX (2 should-fix); fixed, see "Review of 7d26d9d6 and 98d884c7". |
 | S4 DecompileRun | done | S4a `152f4e56`; S4b `d588e499`; review fixes (the commit after `68e6f43e`) | S4a FIX: 6 should-fix, nits. S4b PASS with nits. Fixed: see "S4 review". |
-| C1 CLI project, `script list` | done | `68e6f43e` | FIX: 3 should-fix, nits (see "C1 review"); the fixes are the next step. |
+| C1 CLI project, `script list` | done | `68e6f43e`; review fixes (the commit after `73be520f`) | FIX: 3 should-fix, nits. Fixed: see "C1 review". |
 | C2 `script decompile`, `script sco` | not started | | |
 | C3 `script compile` | not started | | |
 | C4 CI and documents | not started | | |
@@ -1103,11 +1103,44 @@ for each step, and a follow-up commit if the review finds a problem.
 - C1: the version of `scic.exe` is in `Src\Cli\CliVersion.h`; the
   `.rc` of `scic.exe` reads it. A unit test checks it against
   `SCICompanionLib.rc`, and AGENTS.md lists the file.
-- C1 known gaps: no test runs the crash handling or the Ctrl+C handler
-  (inspection only). `--dry-run` is accepted; `list` writes nothing in
+- C1 known gaps: no test runs the Ctrl+C handler itself (a test sets
+  the cancel flag). `--dry-run` is accepted; `list` writes nothing in
   any case. Names go to the console as bytes of the ANSI code page, with
   no conversion.
-- C1 review (2026-09-24): FIX. Should-fix, for the next commit:
+- C1 review (2026-09-24): FIX. All fixed in the commit after
+  `73be520f`, each with a test:
+  1. `--log` got only what the console showed. Now `CliOutput` writes
+     every message to the `LogFile` (it replaces `LogFileConsole`),
+     whatever `-q` and `-v` say; one lock covers the console and the
+     log.
+  2. A failed `commit`, `tables`, `moves`, `gameIni` or
+     `mainObjectFile` gave 6 for a code other than `Io`. Now
+     `AddWriteStatus` makes any code but `Internal`, `WriteRefused`
+     and `Cancelled` a failed write (9). Plan 8 says so.
+  3. `abort()` and `std::terminate()` gave 3 and no line, and a bad CRT
+     parameter 0xC0000409. Now a `SIGABRT` handler, an invalid-
+     parameter handler and a pure-call handler print one line and exit
+     with 1. A test hook, the environment variable `SCIC_TEST_CRASH`
+     (`access`, `abort`, `terminate`, `invalid`), makes `scic.exe` fail
+     at its start; an integration test runs each.
+  Nits fixed: Ctrl+C during `list` gives 7 and no table; a core-log
+  error is an error line, not a warning; `SCIC_DATA_DIR` has no length
+  limit; an empty `--data-dir` and an empty game folder give 2;
+  `--log` refuses an existing file of the game folder (at any depth)
+  that is not a `.log` or `.txt` file; `scic help help` works; the
+  test messages are made after the run; the tests use names in their
+  own copies; tests for the stderr copy in the log, the trimmed
+  spaces, "(not compiled)", `SCIC_DATA_DIR` and `-v`; plan 3.5, 4.3,
+  6.6 and 8. The licence gap: the post-build of `SCICompanion.vcxproj`
+  copies `Files\Licenses` to `Release\Licenses`, so the CI artifact
+  (every folder of `Release` but `TestFiles`) has the notices. The
+  question: the `--derived` column is the name of a reset; it is a
+  selector only for a script with no name from rules 1 to 3 (plan
+  4.3).
+  Left (inspection only): the core-log error line (no engine code
+  logs at that level) and the pure-call handler (no test triggers
+  one).
+- C1 review, the original findings:
   1. `--log` gets only what the console shows: `-q` and the absence of
      `-v` filter the log too, but plan 4.1 and 7 say "all messages".
   2. A failed `commit`, `tables`, `moves` or `gameIni` with another code
@@ -1131,8 +1164,8 @@ for each step, and a follow-up commit if the review finds a problem.
 
 ## Next action
 
-Phases K and S are done, with the fixes of their reviews. The review of
-the S4 fixes (`d01ea1e0`) is running (an isolated worktree), and the
-fixes of the review of `7d26d9d6` and `98d884c7` need their own review.
-Next: the fixes of the C1 review (see "C1 review" in "Decisions"), then
-C2 (plan section 9).
+Phases K and S and step C1 are done, with the fixes of their reviews.
+The reviews of `d01ea1e0` (the S4 fixes) and `73be520f` (the fixes of
+the review of `7d26d9d6` and `98d884c7`) are running in isolated
+worktrees, and the C1 fixes need their own review. Next: C2 (plan
+section 9: `scic script decompile` and `scic script sco`).

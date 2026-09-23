@@ -3,6 +3,7 @@
 #include "AppState.h"
 #include "Cli.h"
 #include "CliConsole.h"
+#include "CliHost.h"
 #include "CliVersion.h"
 #include "ExitCodes.h"
 #include "CompileInterfaces.h"
@@ -193,9 +194,38 @@ namespace UnitTests
             DecompileReport mainFailed;
             mainFailed.mainObjectFile = sci::Fail(sci::ErrorCode::Io, "Main.sco is read-only");
             Assert::AreEqual(9, (int)cli::ExitCodeForReport(mainFailed), L"the write of main's .sco (S4 review)");
+
+            // C1 review: a step that writes and fails is a failed write, with
+            // any code but Internal, WriteRefused and Cancelled (before: 6
+            // for Format or NotFound).
+            for (sci::ErrorCode code : { sci::ErrorCode::Format, sci::ErrorCode::NotFound, sci::ErrorCode::Unsupported })
+            {
+                CompileReport commit;
+                commit.commit = sci::Fail(code, "x");
+                CompileReport tables;
+                tables.tables = sci::Fail(code, "x");
+                CompileReport moves;
+                moves.moves = sci::Fail(code, "x");
+                DecompileReport gameIni;
+                gameIni.gameIni = sci::Fail(code, "x");
+                DecompileReport mainObjectFile;
+                mainObjectFile.mainObjectFile = sci::Fail(code, "x");
+                Assert::AreEqual(9, (int)cli::ExitCodeForReport(commit), L"the commit");
+                Assert::AreEqual(9, (int)cli::ExitCodeForReport(tables), L"the tables");
+                Assert::AreEqual(9, (int)cli::ExitCodeForReport(moves), L"the moves");
+                Assert::AreEqual(9, (int)cli::ExitCodeForReport(gameIni), L"game.ini");
+                Assert::AreEqual(9, (int)cli::ExitCodeForReport(mainObjectFile), L"main's .sco");
+            }
+            CompileReport internalCommit;
+            internalCommit.commit = sci::Fail(sci::ErrorCode::Internal, "a bug");
+            Assert::AreEqual(1, (int)cli::ExitCodeForReport(internalCommit));
+            CompileReport cancelledCommit;
+            cancelledCommit.commit = sci::Fail(sci::ErrorCode::Cancelled, "the answer was Cancel");
+            Assert::AreEqual(7, (int)cli::ExitCodeForReport(cancelledCommit));
         }
 
-        // script list on both templates, as text and as tsv (plan section 4.3).
+        // script list on both templates, as text and as tsv (plan section
+        // 4.3). No line of the text ends with a space.
         TEST_METHOD(List_BothTemplates_TextAndTsv)
         {
             NoAppStateForCli noAppState;
@@ -203,19 +233,43 @@ namespace UnitTests
             {
                 CopyTemplate(templateFolder);
                 cli::StringConsole text;
-                Assert::AreEqual(0, Run({ "script", "list", _copyFolder }, text), WideForCli(text.err).c_str());
+                int code = Run({ "script", "list", _copyFolder }, text);
+                Assert::AreEqual(0, code, WideForCli(text.err).c_str());
                 std::vector<std::string> lines = Lines(text.out);
                 Assert::IsTrue(lines.size() > 20, WideForCli(text.out).c_str());
                 Assert::IsTrue(lines[0].find("No.") != std::string::npos && lines[0].find("Name from") != std::string::npos, WideForCli(lines[0]).c_str());
                 Assert::IsTrue((lines[1].find("    0  Main") == 0) && (lines[1].find("game.ini") != std::string::npos), WideForCli(lines[1]).c_str());
+                for (const std::string &line : lines)
+                {
+                    Assert::IsTrue(line.empty() || (line.back() != ' '), WideForCli("a space at the end: [" + line + "]").c_str());
+                }
 
                 cli::StringConsole tsv;
-                Assert::AreEqual(0, Run({ "script", "list", _copyFolder, "--format", "tsv" }, tsv), WideForCli(tsv.err).c_str());
+                code = Run({ "script", "list", _copyFolder, "--format", "tsv" }, tsv);
+                Assert::AreEqual(0, code, WideForCli(tsv.err).c_str());
                 std::vector<std::string> rows = Lines(tsv.out);
                 Assert::AreEqual(std::string("number\tname\tname_from\tin_game\tsrc\tsco\terror"), rows[0]);
                 Assert::IsTrue(rows[1].find("0\tMain\tgame.ini\t") == 0, WideForCli(rows[1]).c_str());
                 Assert::AreEqual(lines.size(), rows.size(), L"the same rows");
             }
+        }
+
+        // A script that game.ini names and the game has not compiled is
+        // "(not compiled)" (plan section 4.3).
+        TEST_METHOD(List_AScriptThatIsNotCompiled)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            Assert::IsTrue(WritePrivateProfileString("Script", "n901", "C1Ghost", (fs::path(_copyFolder) / "game.ini").string().c_str()) != 0);
+            cli::StringConsole console;
+            int code = Run({ "script", "list", _copyFolder, "901" }, console);
+            Assert::AreEqual(0, code, WideForCli(console.err).c_str());
+            std::vector<std::string> lines = Lines(console.out);
+            Assert::AreEqual((size_t)2, lines.size(), WideForCli(console.out).c_str());
+            Assert::IsTrue((lines[1].find("C1Ghost") != std::string::npos) && (lines[1].find("(not compiled)") != std::string::npos), WideForCli(lines[1]).c_str());
+            // Its src and sco columns are "-", padded: the line must not end
+            // with the padding.
+            Assert::IsTrue(!lines[1].empty() && (lines[1].back() != ' '), WideForCli("a space at the end: [" + lines[1] + "]").c_str());
         }
 
         // Selectors choose the rows; --derived adds the column.
@@ -224,7 +278,8 @@ namespace UnitTests
             NoAppStateForCli noAppState;
             CopyTemplate("\\TemplateGame\\SCI0");
             cli::StringConsole console;
-            Assert::AreEqual(0, Run({ "script", "list", _copyFolder, "0", "door", "--format", "tsv", "--derived" }, console), WideForCli(console.err).c_str());
+            int code = Run({ "script", "list", _copyFolder, "0", "door", "--format", "tsv", "--derived" }, console);
+            Assert::AreEqual(0, code, WideForCli(console.err).c_str());
             std::vector<std::string> rows = Lines(console.out);
             Assert::AreEqual((size_t)3, rows.size(), WideForCli(console.out).c_str());
             Assert::IsTrue(rows[0].find("\tderived\t") != std::string::npos);
@@ -232,10 +287,14 @@ namespace UnitTests
         }
 
         // Plan section 8: a usage error is exit code 2, before any game opens.
+        // C1 review: an empty game folder, an empty --data-dir, and a --log
+        // that would overwrite a file of the game are usage errors too.
         TEST_METHOD(UsageErrors_ExitWith2)
         {
             NoAppStateForCli noAppState;
             CopyTemplate("\\TemplateGame\\SCI0");
+            std::string map = (fs::path(_copyFolder) / "resource.map").string();
+            std::string mapBefore = ReadFileText(map);
             std::vector<std::vector<std::string>> cases = {
                 {},
                 { "nosuchcommand" },
@@ -244,6 +303,8 @@ namespace UnitTests
                 { "script", "list", _copyFolder, "--nosuchoption" },
                 { "script", "list", _copyFolder, "s1nosuchscript" },
                 { "help", "nosuchtopic" },
+                { "script", "list", "" },
+                { "script", "list", _copyFolder, "--log", map },
             };
             for (const std::vector<std::string> &args : cases)
             {
@@ -251,31 +312,75 @@ namespace UnitTests
                 std::string text;
                 for (const std::string &arg : args)
                 {
-                    text += arg + " ";
+                    text += "[" + arg + "] ";
                 }
-                Assert::AreEqual(2, Run(args, console), WideForCli(text + "\n" + console.err).c_str());
+                int code = Run(args, console);
+                Assert::AreEqual(2, code, WideForCli(text + "\n" + console.err).c_str());
                 Assert::IsTrue(console.err.find("scic: error:") != std::string::npos, WideForCli(text).c_str());
             }
+            Assert::AreEqual(mapBefore, ReadFileText(map), L"--log did not write over resource.map");
+
+            cli::StringConsole emptyData;
+            int code = cli::RunCli({ "script", "list", _copyFolder, "--data-dir", "" }, emptyData);
+            Assert::AreEqual(2, code, WideForCli(emptyData.err).c_str());
+            Assert::IsTrue(emptyData.err.find("--data-dir needs a folder") != std::string::npos, WideForCli(emptyData.err).c_str());
         }
 
         // Plan section 8: a game that does not open, or a data folder with no
-        // include\sci.sh, is exit code 3.
+        // include\sci.sh, is exit code 3. SCIC_DATA_DIR gives the data folder
+        // when --data-dir does not (plan section 3.5).
         TEST_METHOD(BadFolderOrDataFolder_ExitsWith3)
         {
             NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
             cli::StringConsole badGame;
-            Assert::AreEqual(3, Run({ "script", "list", (fs::temp_directory_path() / "S1NoSuchGameFolder").string() }, badGame), WideForCli(badGame.err).c_str());
+            int code = Run({ "script", "list", _copyFolder + "\\NoSuchGame" }, badGame);
+            Assert::AreEqual(3, code, WideForCli(badGame.err).c_str());
             Assert::IsTrue(badGame.err.find("cannot open the game") != std::string::npos, WideForCli(badGame.err).c_str());
 
-            CopyTemplate("\\TemplateGame\\SCI0");
-            fs::path empty = fs::temp_directory_path() / "S1EmptyDataFolder";
+            fs::path empty = fs::path(_copyFolder) / "EmptyDataFolder";
             fs::create_directories(empty);
             cli::StringConsole badData;
-            int code = cli::RunCli({ "script", "list", _copyFolder, "--data-dir", empty.string() }, badData);
-            std::error_code ec;
-            fs::remove_all(empty, ec);
+            code = cli::RunCli({ "script", "list", _copyFolder, "--data-dir", empty.string() }, badData);
             Assert::AreEqual(3, code, WideForCli(badData.err).c_str());
             Assert::IsTrue(badData.err.find("include\\sci.sh") != std::string::npos, WideForCli(badData.err).c_str());
+
+            // The test process has no include\sci.sh next to it, so without
+            // --data-dir only SCIC_DATA_DIR can give the data folder.
+            char saved[1024] = {};
+            DWORD savedLength = GetEnvironmentVariableA("SCIC_DATA_DIR", saved, (DWORD)sizeof(saved));
+            SetEnvironmentVariableA("SCIC_DATA_DIR", GetTestModuleDirectory().c_str());
+            cli::StringConsole fromEnvironment;
+            int fromEnvironmentCode = cli::RunCli({ "script", "list", _copyFolder }, fromEnvironment);
+            SetEnvironmentVariableA("SCIC_DATA_DIR", empty.string().c_str());
+            cli::StringConsole emptyEnvironment;
+            int emptyEnvironmentCode = cli::RunCli({ "script", "list", _copyFolder }, emptyEnvironment);
+            // C1 review: a value longer than MAX_PATH was ignored, and the
+            // folder of the program took its place with no message.
+            std::string longFolder = empty.string() + "\\" + std::string(250, 'x');
+            SetEnvironmentVariableA("SCIC_DATA_DIR", longFolder.c_str());
+            cli::StringConsole longEnvironment;
+            int longEnvironmentCode = cli::RunCli({ "script", "list", _copyFolder }, longEnvironment);
+            SetEnvironmentVariableA("SCIC_DATA_DIR", (savedLength > 0) ? saved : nullptr);
+            Assert::AreEqual(0, fromEnvironmentCode, WideForCli(fromEnvironment.err).c_str());
+            Assert::AreEqual(3, emptyEnvironmentCode, WideForCli(emptyEnvironment.err).c_str());
+            Assert::IsTrue(emptyEnvironment.err.find(empty.string()) != std::string::npos, WideForCli(emptyEnvironment.err).c_str());
+            Assert::AreEqual(3, longEnvironmentCode, WideForCli(longEnvironment.err).c_str());
+            Assert::IsTrue(longEnvironment.err.find(longFolder) != std::string::npos, WideForCli("the long folder is the data folder:\n" + longEnvironment.err).c_str());
+        }
+
+        // Ctrl+C while list reads the scripts: no table, and exit code 7 (C1
+        // review: before, list printed the table and exited with 0).
+        TEST_METHOD(List_CtrlC_ExitsWith7)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            cli::CancelFlag().store(true);
+            cli::StringConsole console;
+            int code = Run({ "script", "list", _copyFolder }, console);
+            cli::CancelFlag().store(false);
+            Assert::AreEqual(7, code, WideForCli(console.err).c_str());
+            Assert::IsTrue(console.out.empty(), WideForCli(console.out).c_str());
         }
 
         // Plan section 4.3: list writes nothing, also in a game folder with no
@@ -288,7 +393,8 @@ namespace UnitTests
                 CopyTemplate("\\TemplateGame\\SCI0", bare);
                 auto before = Snapshot(_copyFolder);
                 cli::StringConsole console;
-                Assert::AreEqual(0, Run({ "script", "list", _copyFolder, "--derived" }, console), WideForCli(console.err).c_str());
+                int code = Run({ "script", "list", _copyFolder, "--derived" }, console);
+                Assert::AreEqual(0, code, WideForCli(console.err).c_str());
                 Assert::IsTrue(before == Snapshot(_copyFolder), bare ? L"no file changes (no game.ini)" : L"no file changes");
             }
         }
@@ -306,7 +412,8 @@ namespace UnitTests
                 patch.write(bytes, sizeof(bytes));
             }
             cli::StringConsole console;
-            Assert::AreEqual(6, Run({ "script", "list", _copyFolder }, console), WideForCli(console.out + console.err).c_str());
+            int code = Run({ "script", "list", _copyFolder }, console);
+            Assert::AreEqual(6, code, WideForCli(console.out + console.err).c_str());
             Assert::IsTrue(console.out.find("(unreadable:") != std::string::npos, WideForCli(console.out).c_str());
         }
 
@@ -336,37 +443,53 @@ namespace UnitTests
             cli::StringConsole group;
             Assert::AreEqual(0, cli::RunCli({ "script" }, group));
             Assert::IsTrue(group.out.find("list") != std::string::npos, WideForCli(group.out).c_str());
+            // C1 review: the root help lists help, so it has a help too.
+            cli::StringConsole helpHelp;
+            int code = cli::RunCli({ "help", "help" }, helpHelp);
+            Assert::AreEqual(0, code, WideForCli(helpHelp.err).c_str());
+            Assert::IsTrue(helpHelp.out.find("Usage: scic help") != std::string::npos, WideForCli(helpHelp.out).c_str());
         }
 
-        // --log writes the messages to a file too; --quiet shows errors only.
-        TEST_METHOD(LogFileAndQuiet)
+        // --log gets every message, whatever -q and -v say (C1 review:
+        // before, it got only what the console showed); --quiet shows errors
+        // only; -v shows the details. A log file that cannot open is exit
+        // code 3.
+        TEST_METHOD(LogFileQuietAndVerbose)
         {
             NoAppStateForCli noAppState;
             CopyTemplate("\\TemplateGame\\SCI0");
-            std::string log = _copyFolder + "\\..\\S1ScicLog.txt";
-            cli::StringConsole console;
-            Assert::AreEqual(0, Run({ "script", "list", _copyFolder, "--log", log }, console), WideForCli(console.err).c_str());
-            std::string logged = ReadFileText(log);
-            std::error_code ec;
-            fs::remove(log, ec);
-            Assert::IsTrue(logged.find("Main") != std::string::npos, WideForCli(logged).c_str());
-            cli::StringConsole noLog;
-            Assert::AreEqual(3, Run({ "script", "list", _copyFolder, "--log", _copyFolder + "\\NoSuchFolder\\log.txt" }, noLog), L"a log file that cannot open");
-            Assert::IsTrue(noLog.err.find("cannot open the log file") != std::string::npos, WideForCli(noLog.err).c_str());
-
             {
-                // A conflict is a warning; --quiet leaves it out.
+                // A conflict is a warning.
                 std::ofstream file((fs::path(_copyFolder) / "src" / "S1Other.sc").string(), std::ios::binary);
                 file << "(script# 961)\n";
                 std::ofstream second((fs::path(_copyFolder) / "src" / "S1Second.sc").string(), std::ios::binary);
                 second << "(script# 961)\n";
             }
-            cli::StringConsole loud;
-            Assert::AreEqual(0, Run({ "script", "list", _copyFolder }, loud));
-            Assert::IsTrue(loud.err.find("scic: warning:") != std::string::npos, WideForCli(loud.err).c_str());
+            std::string log = _copyFolder + "\\scic-test.log";
             cli::StringConsole quiet;
-            Assert::AreEqual(0, Run({ "script", "list", _copyFolder, "-q" }, quiet));
+            int code = Run({ "script", "list", _copyFolder, "-q", "--log", log }, quiet);
+            Assert::AreEqual(0, code, WideForCli(quiet.err).c_str());
             Assert::IsTrue(quiet.err.empty(), WideForCli(quiet.err).c_str());
+            Assert::IsTrue(quiet.out.find("Main") != std::string::npos, L"the table goes to stdout");
+            std::string logged = ReadFileText(log);
+            Assert::IsTrue(logged.find("Main") != std::string::npos, WideForCli(logged).c_str());
+            Assert::IsTrue(logged.find("scic: warning:") != std::string::npos, WideForCli("the log gets the warning with -q:\n" + logged).c_str());
+            Assert::IsTrue(logged.find("The data folder:") != std::string::npos, WideForCli("the log gets the details with no -v:\n" + logged).c_str());
+
+            cli::StringConsole loud;
+            code = Run({ "script", "list", _copyFolder }, loud);
+            Assert::AreEqual(0, code, WideForCli(loud.err).c_str());
+            Assert::IsTrue(loud.err.find("scic: warning:") != std::string::npos, WideForCli(loud.err).c_str());
+            Assert::IsTrue(loud.err.find("The data folder:") == std::string::npos, L"no details with no -v");
+            cli::StringConsole verbose;
+            code = Run({ "script", "list", _copyFolder, "-v" }, verbose);
+            Assert::AreEqual(0, code, WideForCli(verbose.err).c_str());
+            Assert::IsTrue(verbose.err.find("The data folder:") != std::string::npos, WideForCli(verbose.err).c_str());
+
+            cli::StringConsole noLog;
+            code = Run({ "script", "list", _copyFolder, "--log", _copyFolder + "\\NoSuchFolder\\log.txt" }, noLog);
+            Assert::AreEqual(3, code, L"a log file that cannot open");
+            Assert::IsTrue(noLog.err.find("cannot open the log file") != std::string::npos, WideForCli(noLog.err).c_str());
         }
     };
 }

@@ -16,20 +16,12 @@ namespace cli
         fflush(stderr);
     }
 
-    LogFileConsole::LogFileConsole(ICliConsole &inner, const std::string &path) : _inner(inner), _file(path, std::ios::out | std::ios::trunc)
+    LogFile::LogFile(const std::string &path) : _file(path, std::ios::out | std::ios::trunc)
     {
     }
 
-    void LogFileConsole::Out(const std::string &text)
+    void LogFile::Write(const std::string &text)
     {
-        _inner.Out(text);
-        _file << text;
-        _file.flush();
-    }
-
-    void LogFileConsole::Err(const std::string &text)
-    {
-        _inner.Err(text);
         _file << text;
         _file.flush();
     }

@@ -34,5 +34,32 @@ namespace UnitTests
             ChildOutput usage = RunChildReadStdout("\"" + scic + "\" script list", 60000);
             Assert::AreEqual(2UL, usage.exitCode, L"a usage error is exit code 2");
         }
+
+        // The crash handling (plan section 6.6): one line and exit code 1.
+        // C1 review: before, abort() and std::terminate() ended the process
+        // with exit code 3 and no line, and a bad parameter to a C runtime
+        // function with 0xC0000409 and no line. The test hook SCIC_TEST_CRASH
+        // makes scic.exe fail in each way.
+        BEGIN_TEST_METHOD_ATTRIBUTE(ScicExe_ACrashIsOneLineAndExitCode1)
+            TEST_METHOD_ATTRIBUTE(L"TestCategory", L"Integration")
+        END_TEST_METHOD_ATTRIBUTE()
+        TEST_METHOD(ScicExe_ACrashIsOneLineAndExitCode1)
+        {
+            std::string scic = GetTestModuleDirectory() + "\\scic.exe";
+            Assert::IsTrue(fs::exists(scic), L"setup: scic.exe is next to the tests");
+            for (const char *kind : { "access", "abort", "terminate", "invalid" })
+            {
+                SetEnvironmentVariableA("SCIC_TEST_CRASH", kind);
+                // cmd puts stderr into the output that the harness reads.
+                ChildOutput out = RunChildReadStdout("cmd /s /c \"\"" + scic + "\" --version 2>&1\"", 60000);
+                SetEnvironmentVariableA("SCIC_TEST_CRASH", nullptr);
+                std::string text = std::string(kind) + ": " + out.text;
+                std::wstring wideText(text.begin(), text.end());
+                Assert::IsTrue(out.launched && out.reachedEof, wideText.c_str());
+                Assert::AreEqual(1UL, out.exitCode, wideText.c_str());
+                Assert::IsTrue(out.text.find("scic: crash") != std::string::npos, wideText.c_str());
+                Assert::IsTrue(out.text.find("while the crash test") != std::string::npos, wideText.c_str());
+            }
+        }
     };
 }

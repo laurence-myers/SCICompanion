@@ -32,7 +32,7 @@ namespace cli
     struct ReportFacts
     {
         bool internal = false;      // a status is Internal
-        bool writeFailed = false;   // the commit, the tables, a move or a file write failed (Io)
+        bool writeFailed = false;   // the commit, the tables, a move, game.ini or main's .sco failed (any code but Internal, WriteRefused and Cancelled), or a file write of a script (Io)
         bool writeRefused = false;  // a write was refused (WriteRefused)
         bool cancelled = false;
         bool compileErrors = false; // a script has compile errors

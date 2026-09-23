@@ -31,8 +31,8 @@ namespace cli
 {
     namespace
     {
-        // The core log of the engine: a warning or an error to stderr, and a
-        // message with --verbose. The console passes it on to --log.
+        // The core log of the engine: an error, a warning, and a message
+        // with --verbose. CliOutput locks: codecs log from worker threads.
         class ConsoleLogSink : public ILogSink
         {
         public:
@@ -41,21 +41,23 @@ namespace cli
 
             void Write(LogLevel level, const std::string &text) override
             {
-                // Codecs log from worker threads.
-                std::lock_guard<std::mutex> lock(_mutex);
-                if (level == LogLevel::Info)
+                switch (level)
                 {
+                case LogLevel::Info:
                     _output.Detail(text);
-                }
-                else
-                {
+                    break;
+                case LogLevel::Warning:
                     _output.Warning(text);
+                    break;
+                default:
+                    // C1 review: before, an error was a warning, and -q hid it.
+                    _output.Error(text);
+                    break;
                 }
             }
 
         private:
             CliOutput &_output;
-            std::mutex _mutex;
         };
 
         std::string ExeFolder()
@@ -77,13 +79,50 @@ namespace cli
             {
                 return common.dataFolder;
             }
-            char value[MAX_PATH] = {};
-            size_t length = 0;
-            if ((getenv_s(&length, value, "SCIC_DATA_DIR") == 0) && (length > 1))
+            // Any length (C1 review: before, a value longer than MAX_PATH
+            // was ignored with no message).
+            DWORD length = GetEnvironmentVariableA("SCIC_DATA_DIR", nullptr, 0);
+            if (length > 1)
             {
-                return value;
+                std::string value(length, '\0');
+                DWORD copied = GetEnvironmentVariableA("SCIC_DATA_DIR", &value[0], length);
+                if ((copied > 0) && (copied < length))
+                {
+                    value.resize(copied);
+                    return value;
+                }
             }
             return ExeFolder();
+        }
+
+        // An existing file in the game folder, at any depth, that --log would
+        // overwrite: "" when there is none. A .log or .txt file is not one
+        // (C1 review: --log <game>\resource.map truncated the map).
+        std::string GameFileOf(const std::string &logFile, const std::string &gameFolder)
+        {
+            std::error_code ec;
+            if (gameFolder.empty() || !fs::is_regular_file(logFile, ec))
+            {
+                return std::string();
+            }
+            std::string extension = fs::path(logFile).extension().string();
+            if ((_stricmp(extension.c_str(), ".log") == 0) || (_stricmp(extension.c_str(), ".txt") == 0))
+            {
+                return std::string();
+            }
+            fs::path file = fs::absolute(logFile, ec);
+            for (fs::path folder = file.parent_path(); !folder.empty(); folder = folder.parent_path())
+            {
+                if (fs::equivalent(folder, gameFolder, ec))
+                {
+                    return file.string();
+                }
+                if (folder == folder.root_path())
+                {
+                    break;
+                }
+            }
+            return std::string();
         }
 
         const char *CommonFooter =
@@ -146,7 +185,7 @@ namespace cli
         app.add_flag("-q,--quiet", common.quiet, "Show errors only.");
         app.add_flag("-v,--verbose", common.verbose, "Show more detail.");
         app.add_option("--log", common.logFile, "Also write all messages to a file.");
-        app.add_option("--data-dir", common.dataFolder, "The folder that holds include\\ and Decompiler\\. Default: SCIC_DATA_DIR, or the folder of scic.exe.");
+        CLI::Option *dataFolderOption = app.add_option("--data-dir", common.dataFolder, "The folder that holds include\\ and Decompiler\\. Default: SCIC_DATA_DIR, or the folder of scic.exe.");
         app.add_flag("--dry-run", common.dryRun, "Do the work in memory, and write nothing.");
         app.add_flag("--version", version, "Show the version.");
 
@@ -167,8 +206,6 @@ namespace cli
         list->add_option("--format", listOptions.format, "text (default) or tsv.")->check(CLI::IsMember({ "text", "tsv" }));
         list->add_flag("--derived", listOptions.derived, "Add the derived name of each script.");
 
-        std::unique_ptr<LogFileConsole> logConsole;
-        ICliConsole *target = &console;
         CliOutput output(console, common);
         try
         {
@@ -189,19 +226,31 @@ namespace cli
             return (int)ExitCode::Usage;
         }
 
+        if ((dataFolderOption->count() > 0) && common.dataFolder.empty())
+        {
+            // C1 review: before, the exe folder took its place with no message.
+            output.Error("--data-dir needs a folder");
+            return (int)ExitCode::Usage;
+        }
+        std::unique_ptr<LogFile> logFile;
         if (!common.logFile.empty())
         {
-            logConsole = std::make_unique<LogFileConsole>(console, common.logFile);
-            if (!logConsole->IsOpen())
+            std::string gameFile = GameFileOf(common.logFile, listOptions.gameFolder);
+            if (!gameFile.empty())
+            {
+                output.Error("--log would overwrite " + gameFile + ", a file of the game; give another log file");
+                return (int)ExitCode::Usage;
+            }
+            logFile = std::make_unique<LogFile>(common.logFile);
+            if (!logFile->IsOpen())
             {
                 // Plan section 8: an error before the first script that is
                 // not a usage error.
                 output.Error("cannot open the log file " + common.logFile);
                 return (int)ExitCode::CannotStart;
             }
-            target = logConsole.get();
         }
-        CliOutput logged(*target, common);
+        CliOutput logged(console, common, logFile.get());
 
         if (version)
         {
@@ -223,7 +272,9 @@ namespace cli
                 catch (const CLI::OptionNotFound &)
                 {
                 }
-                if (!child || (child == help))
+                // "scic help help" shows the help of help (C1 review: the root
+                // help lists help as a command).
+                if (!child)
                 {
                     logged.Error("no help for \"" + name + "\"");
                     return (int)ExitCode::Usage;
@@ -264,8 +315,10 @@ namespace cli
         sci::Status opened = session.Open(listOptions.gameFolder);
         if (!opened)
         {
+            // Plan section 8: 3, but 2 for a usage error (C1 review: an
+            // empty game folder is Usage).
             logged.Error("cannot open the game: " + opened.error().ToString());
-            return (int)ExitCode::CannotStart;
+            return (int)ExitCodeForStartError(opened.error());
         }
 
         sci::Result<ExitCode> ran = sci::Guard("running the command", [&]() -> sci::Result<ExitCode>
@@ -284,6 +337,7 @@ namespace cli
     {
         InstallCrashHandling();
         InstallCancelHandler();
+        CrashForATestIfAsked();
         std::vector<std::string> args;
         for (int i = 1; i < argc; i++)
         {

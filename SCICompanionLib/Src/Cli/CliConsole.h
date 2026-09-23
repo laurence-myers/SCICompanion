@@ -39,17 +39,16 @@ namespace cli
         std::string err;
     };
 
-    // --log: passes everything on, and also writes it to a file.
-    class LogFileConsole : public ICliConsole
+    // --log: a file that gets every message, whatever the verbosity (C1
+    // review: before, -q and the absence of -v filtered the log too).
+    class LogFile
     {
     public:
-        LogFileConsole(ICliConsole &inner, const std::string &path);
+        explicit LogFile(const std::string &path);
         bool IsOpen() const { return _file.is_open(); }
-        void Out(const std::string &text) override;
-        void Err(const std::string &text) override;
+        void Write(const std::string &text);
 
     private:
-        ICliConsole &_inner;
         std::ofstream _file;
     };
 }

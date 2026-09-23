@@ -11,8 +11,16 @@ namespace cli
 {
     // No crash dialog. An unhandled exception prints one line, for example
     // "scic: crash 0xC0000005 while compiling script 110", and ends the
-    // process with exit code 1.
+    // process with exit code 1. So do abort() and std::terminate()
+    // ("scic: crash (abort)"), a bad parameter to a C runtime function, and
+    // a pure virtual call.
     void InstallCrashHandling();
+
+    // A test hook for the crash handling (TestCliIntegration): with the
+    // environment variable SCIC_TEST_CRASH set to access, abort, terminate or
+    // invalid, the process fails in that way. It does nothing when the
+    // variable is not set.
+    void CrashForATestIfAsked();
 
     // The item that this thread works on now, for the crash line. An empty
     // text removes it.

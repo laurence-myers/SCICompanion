@@ -1,7 +1,10 @@
 #include "stdafx.h"
 #include "CliHost.h"
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <exception>
 
 namespace cli
 {
@@ -24,19 +27,46 @@ namespace cli
             }
         }
 
-        LONG WINAPI CrashFilter(EXCEPTION_POINTERS *exception)
+        // One line, then exit code 1 (plan section 6.6).
+        void CrashLine(const char *what)
         {
             char line[512];
-            DWORD code = (exception && exception->ExceptionRecord) ? exception->ExceptionRecord->ExceptionCode : 0;
             int length = t_currentItem[0] ?
-                _snprintf_s(line, _TRUNCATE, "scic: crash 0x%08lX while %s\n", code, t_currentItem) :
-                _snprintf_s(line, _TRUNCATE, "scic: crash 0x%08lX\n", code);
+                _snprintf_s(line, _TRUNCATE, "scic: crash %s while %s\n", what, t_currentItem) :
+                _snprintf_s(line, _TRUNCATE, "scic: crash %s\n", what);
             if (length > 0)
             {
                 WriteToStderr(line, (size_t)length);
             }
             TerminateProcess(GetCurrentProcess(), 1);
+        }
+
+        LONG WINAPI CrashFilter(EXCEPTION_POINTERS *exception)
+        {
+            char code[16];
+            _snprintf_s(code, _TRUNCATE, "0x%08lX", (exception && exception->ExceptionRecord) ? exception->ExceptionRecord->ExceptionCode : 0);
+            CrashLine(code);
             return EXCEPTION_EXECUTE_HANDLER;
+        }
+
+        // abort(), and std::terminate(), which calls it (C1 review: before,
+        // the process ended with exit code 3, "cannot open the game", and no
+        // line).
+        void __cdecl AbortHandler(int)
+        {
+            CrashLine("(abort)");
+        }
+
+        // A C runtime function got a bad parameter (before: exit code
+        // 0xC0000409 and no line).
+        void __cdecl InvalidParameterHandler(const wchar_t *, const wchar_t *, const wchar_t *, unsigned int, uintptr_t)
+        {
+            CrashLine("(invalid parameter)");
+        }
+
+        void __cdecl PureCallHandler()
+        {
+            CrashLine("(pure virtual call)");
         }
 
         BOOL WINAPI CancelHandler(DWORD type)
@@ -63,6 +93,39 @@ namespace cli
         SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
         _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
         SetUnhandledExceptionFilter(CrashFilter);
+        signal(SIGABRT, AbortHandler);
+        _set_invalid_parameter_handler(InvalidParameterHandler);
+        _set_purecall_handler(PureCallHandler);
+    }
+
+    void CrashForATestIfAsked()
+    {
+        char kind[32] = {};
+        if (GetEnvironmentVariableA("SCIC_TEST_CRASH", kind, (DWORD)sizeof(kind)) == 0)
+        {
+            return;
+        }
+        SetCurrentItem("the crash test");
+        if (strcmp(kind, "access") == 0)
+        {
+            volatile int *nowhere = nullptr;
+            *nowhere = 1;
+        }
+        else if (strcmp(kind, "abort") == 0)
+        {
+            abort();
+        }
+        else if (strcmp(kind, "terminate") == 0)
+        {
+            std::terminate();
+        }
+        else if (strcmp(kind, "invalid") == 0)
+        {
+            char tooSmall[2];
+            const char *text = "too long";
+            strcpy_s(tooSmall, text);
+        }
+        SetCurrentItem("");
     }
 
     void SetCurrentItem(const std::string &item)

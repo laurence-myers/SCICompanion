@@ -40,6 +40,29 @@ namespace cli
                 break;
             }
         }
+
+        // A step that writes (the commit, the tables, the moves, game.ini,
+        // main's .sco): its failure is a failed write (9) whatever its code,
+        // but Internal, WriteRefused and Cancelled (C1 review: before, a
+        // commit that failed with Format was 6, "some scripts failed").
+        void AddWriteStatus(ReportFacts &facts, const sci::Status &status)
+        {
+            if (status)
+            {
+                return;
+            }
+            switch (status.error().code)
+            {
+            case sci::ErrorCode::Internal:
+            case sci::ErrorCode::WriteRefused:
+            case sci::ErrorCode::Cancelled:
+                AddStatus(facts, status);
+                break;
+            default:
+                facts.writeFailed = true;
+                break;
+            }
+        }
     }
 
     ExitCode ExitCodeForStartError(const sci::Error &error)
@@ -95,9 +118,9 @@ namespace cli
         {
             AddStatus(facts, outcome.status);
         }
-        AddStatus(facts, report.tables);
-        AddStatus(facts, report.commit);
-        AddStatus(facts, report.moves);
+        AddWriteStatus(facts, report.tables);
+        AddWriteStatus(facts, report.commit);
+        AddWriteStatus(facts, report.moves);
         facts.cancelled = facts.cancelled || report.cancelled;
         return ExitCodeForFacts(facts);
     }
@@ -109,8 +132,8 @@ namespace cli
         {
             AddStatus(facts, outcome.status);
         }
-        AddStatus(facts, report.mainObjectFile);
-        AddStatus(facts, report.gameIni);
+        AddWriteStatus(facts, report.mainObjectFile);
+        AddWriteStatus(facts, report.gameIni);
         facts.cancelled = facts.cancelled || report.cancelled;
         return ExitCodeForFacts(facts);
     }
