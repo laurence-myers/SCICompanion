@@ -566,6 +566,10 @@ public:
 	// (review of 4247f34c).
 	const std::set<uint16_t> &LoadedObjectFiles() const { return _loadedObjectFiles; }
 	void SetLoadedObjectFiles(std::set<uint16_t> scripts) { _loadedObjectFiles = std::move(scripts); }
+	// The resources that the compile wrote (in a batch: queued or staged):
+	// the script, the heap and a changed auto text (plan step C3).
+	const std::vector<WrittenResource> &Written() const { return _written; }
+	void AddWritten(ResourceType type, uint16_t number) { _written.push_back({ type, number }); }
 	CompileStats Stats;
 
 private:
@@ -579,6 +583,7 @@ private:
 	std::unique_ptr<ResourceEntity> _text;
 	bool _objectFileChanged = false;
 	std::set<uint16_t> _loadedObjectFiles;
+	std::vector<WrittenResource> _written;
 };
 
 

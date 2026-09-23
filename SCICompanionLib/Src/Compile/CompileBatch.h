@@ -72,6 +72,13 @@ struct ScriptOutcome
     std::vector<CompileResult> diagnostics;
     // The sizes of the compiled script (the GUI shows them).
     CompileStats stats;
+    // The resources that the commit writes for the script (a dry run: would
+    // write): its script, its heap, and its auto text when it changed. Empty
+    // for a script that failed. Plan section 6.5 (C3).
+    std::vector<WrittenResource> written;
+    // The compile wrote a new src\<name>.sco (Finish can put it back:
+    // CompileReport::restoredObjectFiles).
+    bool objectFileChanged = false;
 };
 
 struct CompileReport
@@ -84,6 +91,9 @@ struct CompileReport
     // The one write of the queued resources. Refused when the tables could
     // not be saved: the compiled scripts need them.
     sci::Status commit;
+    // The tables that the commit writes (a dry run: would write): vocab 996
+    // and 997 when they changed (C3).
+    std::vector<WrittenResource> tablesWritten;
     // With ShadowPolicy::Replace: Ok, or an Io error that names each patch
     // file that could not move (it still hides the package write).
     sci::Status moves;

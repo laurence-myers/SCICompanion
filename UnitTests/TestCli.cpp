@@ -13,6 +13,10 @@
 #include "DecompileRun.h"
 #include "GameSession.h"
 #include "SCO.h"
+#include "ResourceBlob.h"
+#include "ResourceContainer.h"
+#include "GameFolderHelper.h"
+#include "format.h"
 #include "Helper.h"
 #include <atomic>
 #include <filesystem>
@@ -1101,6 +1105,244 @@ namespace UnitTests
             Assert::AreEqual(0, Run({ "script", "decompile", _copyFolder, "974", "--stdout", "--debug-control-flow", "-q" }, console), WideForCli(console.err).c_str());
             Assert::IsTrue(console.err.find("graph (raw):") != std::string::npos, WideForCli(console.err.substr(0, 2000)).c_str());
             Assert::IsTrue(console.err.find("scic: warning: ") == std::string::npos, L"a dump is not a warning");
+        }
+
+        // Plan step C3 and its test row: compile --all on a template copy with
+        // no game.ini compiles every src\*.sc into patch files, and the
+        // package does not change.
+        TEST_METHOD(Compile_All_NoGameIni_PatchFiles)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            fs::remove(fs::path(_copyFolder) / "game.ini");
+            std::string map = ReadFileText((fs::path(_copyFolder) / "resource.map").string());
+            size_t sources = SourcesOf(_copyFolder).size();
+            cli::StringConsole console;
+            int code = Run({ "script", "compile", _copyFolder, "--all" }, console);
+            Assert::AreEqual(0, code, WideForCli(console.err).c_str());
+            Assert::IsTrue(console.err.find(fmt::format("Compiled and wrote {0} of {0} scripts as patch files", sources)) != std::string::npos, WideForCli(console.err).c_str());
+            size_t patches = 0;
+            for (const auto &entry : fs::directory_iterator(_copyFolder))
+            {
+                patches += (entry.path().filename().string().rfind("script.", 0) == 0) ? 1 : 0;
+            }
+            Assert::AreEqual(sources, patches, L"a patch file for each script");
+            Assert::AreEqual(map, ReadFileText((fs::path(_copyFolder) / "resource.map").string()), L"the package does not change");
+        }
+
+        // Plan step C3: --to package writes the package. The script bytes are
+        // the same for both destinations, and the same as the GUI's path
+        // (CompileScripts with the game's setting, plan step S2).
+        TEST_METHOD(Compile_ToPackage_TheSameBytesAsPatchesAndTheGui)
+        {
+            NoAppStateForCli noAppState;
+            SessionOptions sessionOptions;
+            sessionOptions.dataFolder = GetTestModuleDirectory();
+            std::vector<std::vector<uint8_t>> scripts;
+            for (int way = 0; way < 3; way++)
+            {
+                CopyTemplate("\\TemplateGame\\SCI0");
+                std::string map = ReadFileText((fs::path(_copyFolder) / "resource.map").string());
+                if (way < 2)
+                {
+                    cli::StringConsole console;
+                    std::vector<std::string> args = { "script", "compile", _copyFolder, "rm001" };
+                    if (way == 1)
+                    {
+                        args.push_back("--to");
+                        args.push_back("package");
+                    }
+                    Assert::AreEqual(0, Run(args, console), WideForCli(console.err).c_str());
+                    Assert::AreEqual(way == 0, fs::exists(fs::path(_copyFolder) / "script.001"), WideForCli(console.err).c_str());
+                    Assert::AreEqual(way == 0, map == ReadFileText((fs::path(_copyFolder) / "resource.map").string()), L"only --to package changes the package");
+                }
+                else
+                {
+                    GameSession session(sessionOptions);
+                    Assert::IsTrue(session.Open(_copyFolder).has_value());
+                    ScriptId rm001((fs::path(_copyFolder) / "src" / "rm001.sc").string().c_str());
+                    rm001.SetResourceNumber(1);
+                    std::atomic<bool> abort(false);
+                    ICompileEvents events;
+                    auto compiled = CompileScripts(session, { rm001 }, CompileOptions(), abort, events);
+                    Assert::IsTrue(compiled.has_value() && compiled->Succeeded(), L"the GUI's path");
+                }
+                GameSession session(sessionOptions);
+                Assert::IsTrue(session.Open(_copyFolder).has_value());
+                std::unique_ptr<ResourceBlob> blob = session.Helper().MostRecentResource(ResourceType::Script, 1, ResourceEnumFlags::None);
+                Assert::IsNotNull(blob.get());
+                scripts.emplace_back(blob->GetData(), blob->GetData() + blob->GetLength());
+            }
+            Assert::IsTrue((scripts[0] == scripts[1]) && (scripts[1] == scripts[2]), L"the same script bytes");
+        }
+
+        // Plan section 5: a patch file that would hide the package write
+        // refuses the compile (exit 8), and --replace-patches moves it aside;
+        // a game that keeps its resources in patch files refuses the package.
+        TEST_METHOD(Compile_ThePatchFileRules)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            cli::StringConsole patch;
+            Assert::AreEqual(0, Run({ "script", "compile", _copyFolder, "rm001" }, patch), WideForCli(patch.err).c_str());
+            Assert::IsTrue(fs::exists(fs::path(_copyFolder) / "script.001"), L"setup: the patch file");
+            cli::StringConsole refused;
+            Assert::AreEqual(8, Run({ "script", "compile", _copyFolder, "rm001", "--to", "package" }, refused), WideForCli(refused.err).c_str());
+            Assert::IsTrue(refused.err.find("script.001") != std::string::npos, WideForCli(refused.err).c_str());
+            cli::StringConsole replaced;
+            Assert::AreEqual(0, Run({ "script", "compile", _copyFolder, "rm001", "--into-volume", "--replace-patches" }, replaced), WideForCli(replaced.err).c_str());
+            Assert::IsFalse(fs::exists(fs::path(_copyFolder) / "script.001"), WideForCli(replaced.err).c_str());
+            Assert::IsTrue(fs::exists(fs::path(_copyFolder) / "replaced-patches"), L"the patch file moved aside");
+            Assert::IsTrue(replaced.err.find("moved the patch file") != std::string::npos, WideForCli(replaced.err).c_str());
+
+            Assert::IsTrue(WritePrivateProfileStringA("Game", "SaveToPatchFiles", "true", (fs::path(_copyFolder) / "game.ini").string().c_str()) != 0);
+            cli::StringConsole patchMode;
+            Assert::AreEqual(8, Run({ "script", "compile", _copyFolder, "rm001", "--to", "package" }, patchMode), WideForCli(patchMode.err).c_str());
+            Assert::IsTrue(patchMode.err.find("SaveToPatchFiles") != std::string::npos, WideForCli(patchMode.err).c_str());
+        }
+
+        // Plan section 4.5: --dry-run writes nothing (no resource, table, .sco
+        // or .scd), and lists what a run would write.
+        TEST_METHOD(Compile_DryRun_WritesNothing)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            auto before = Snapshot(_copyFolder);
+            cli::StringConsole console;
+            Assert::AreEqual(0, Run({ "script", "compile", _copyFolder, "--all", "--dry-run" }, console), WideForCli(console.err).c_str());
+            Assert::IsTrue(before == Snapshot(_copyFolder), WideForCli(console.err).c_str());
+            Assert::IsTrue(console.err.find("would write " + (fs::path(_copyFolder) / "script.001").string()) != std::string::npos, WideForCli(console.err).c_str());
+            Assert::IsTrue(console.err.find("a run would write them as patch files") != std::string::npos, WideForCli(console.err).c_str());
+        }
+
+        // Plan section 8: a script with an error is exit code 5, and the
+        // others are written. The error is in the MSBuild format, with the
+        // path as it was given and a 1-based column.
+        TEST_METHOD(Compile_OneBrokenScript_ExitsWith5)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            std::string source = (fs::path(_copyFolder) / "src" / "rm001.sc").string();
+            std::string text = ReadFileText(source);
+            std::string block = "(public\r\n\trm001 0\r\n)\r\n";
+            size_t at = text.find(block);
+            Assert::IsTrue(at != std::string::npos, L"setup: the public block of rm001");
+            // Line 25: (procedure (c3Broken) (return c3Undeclared))
+            text.insert(at + block.size(), "(procedure (c3Broken) (return c3Undeclared))\r\n");
+            {
+                std::ofstream file(source, std::ios::binary | std::ios::trunc);
+                file << text;
+            }
+            cli::StringConsole console;
+            int code = Run({ "script", "compile", _copyFolder, "--all" }, console);
+            Assert::AreEqual(5, code, WideForCli(console.err).c_str());
+            Assert::IsTrue(console.err.find(source + "(25,") != std::string::npos, WideForCli(console.err).c_str());
+            Assert::IsTrue(console.err.find("): error : ") != std::string::npos, WideForCli(console.err).c_str());
+            Assert::IsTrue(console.err.find("Failed: 1 (rm001).") != std::string::npos, WideForCli(console.err).c_str());
+            Assert::IsFalse(fs::exists(fs::path(_copyFolder) / "script.001"), L"the broken script is not written");
+            Assert::IsTrue(fs::exists(fs::path(_copyFolder) / "script.974"), L"the others are written");
+        }
+
+        // Plan step C3: a round trip on the SCI1.1 template: decompile --all,
+        // then compile --all, with 0 errors. (The SCI0 template does not
+        // round-trip yet: the decompiled Obj.sc names two procedures
+        // EqualsAny; see the handover.)
+        TEST_METHOD(Compile_RoundTrip_Sci11)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI1.1");
+            cli::StringConsole decompile;
+            Assert::AreEqual(0, Run({ "script", "decompile", _copyFolder, "--all" }, decompile), WideForCli(decompile.err).c_str());
+            // One pass is not enough after a decompile of every script (plan
+            // section 4.5): --passes 1 says so.
+            cli::StringConsole onePass;
+            Assert::AreEqual(0, Run({ "script", "compile", _copyFolder, "--all", "--passes", "1" }, onePass), WideForCli(onePass.err).c_str());
+            Assert::IsTrue(onePass.err.find("pass 1, the last, still changed a .sco file") != std::string::npos, WideForCli(onePass.err).c_str());
+            cli::StringConsole compile;
+            Assert::AreEqual(0, Run({ "script", "compile", _copyFolder, "--all" }, compile), WideForCli(compile.err).c_str());
+            Assert::IsTrue(compile.err.find("(0 errors,") != std::string::npos, WideForCli(compile.err).c_str());
+            Assert::IsTrue(compile.err.find("still changed a .sco file") == std::string::npos, WideForCli(compile.err).c_str());
+        }
+
+        // Plan section 4.5: --out-dir and --raw write the plain data into the
+        // folder, and the game does not change.
+        TEST_METHOD(Compile_OutDirRaw)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI1.1");
+            fs::path out = fs::path(_copyFolder) / "c3out";
+            fs::create_directories(out);
+            std::string map = ReadFileText((fs::path(_copyFolder) / "resource.map").string());
+            cli::StringConsole raw;
+            Assert::AreEqual(0, Run({ "script", "compile", _copyFolder, "Main", "--out-dir", out.string(), "--raw" }, raw), WideForCli(raw.err).c_str());
+            Assert::IsTrue(fs::exists(out / "script.0.bin") && fs::exists(out / "heap.0.bin"), WideForCli(raw.err).c_str());
+            Assert::AreEqual(map, ReadFileText((fs::path(_copyFolder) / "resource.map").string()), L"the game does not change");
+        }
+
+        // Plan section 4.5: --no-warn-unused turns off the "unused instance"
+        // warning (on by default, as in the GUI).
+        TEST_METHOD(Compile_NoWarnUnused)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI1.1");
+            cli::StringConsole warnings;
+            Assert::AreEqual(0, Run({ "script", "compile", _copyFolder, "Main", "--dry-run" }, warnings), WideForCli(warnings.err).c_str());
+            Assert::IsTrue(warnings.err.find("is not used anywhere") != std::string::npos, WideForCli(warnings.err).c_str());
+            cli::StringConsole noWarnings;
+            Assert::AreEqual(0, Run({ "script", "compile", _copyFolder, "Main", "--dry-run", "--no-warn-unused" }, noWarnings), WideForCli(noWarnings.err).c_str());
+            Assert::IsTrue(noWarnings.err.find("is not used anywhere") == std::string::npos, WideForCli(noWarnings.err).c_str());
+        }
+
+        // Plan section 4.5: with two broken scripts, --fail-fast stops after
+        // the first.
+        TEST_METHOD(Compile_FailFast)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI1.1");
+            for (const char *name : { "rm110.sc", "TitleScreen.sc" })
+            {
+                std::string source = (fs::path(_copyFolder) / "src" / name).string();
+                std::ofstream file(source, std::ios::binary | std::ios::app);
+                file << "\r\n(procedure (c3Broken) (return c3Undeclared))\r\n";
+            }
+            cli::StringConsole failFast;
+            Assert::AreEqual(5, Run({ "script", "compile", _copyFolder, "rm110", "TitleScreen", "--fail-fast", "--dry-run" }, failFast), WideForCli(failFast.err).c_str());
+            Assert::IsTrue(failFast.err.find("--fail-fast stopped the run: 1 scripts were not compiled.") != std::string::npos, WideForCli(failFast.err).c_str());
+        }
+
+        // The usage errors of compile (exit code 2): no scripts and no --all,
+        // --replace-patches with patch files, --passes with named scripts,
+        // --raw with no --out-dir, and a header file.
+        TEST_METHOD(Compile_UsageErrors)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI1.1");
+            for (const auto &args : std::vector<std::vector<std::string>>{
+                { "script", "compile", _copyFolder },
+                { "script", "compile", _copyFolder, "Main", "--replace-patches" },
+                { "script", "compile", _copyFolder, "Main", "--passes", "3" },
+                { "script", "compile", _copyFolder, "Main", "--raw" },
+                { "script", "compile", _copyFolder, (fs::path(_copyFolder) / "src" / "game.sh").string() } })
+            {
+                cli::StringConsole usage;
+                Assert::AreEqual(2, Run(args, usage), WideForCli(args.back() + ": " + usage.err).c_str());
+            }
+        }
+
+        // Ctrl+C stops the compile (exit code 7), and it writes nothing.
+        TEST_METHOD(Compile_CtrlC_ExitsWith7)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            struct CtrlC
+            {
+                CtrlC() { cli::CancelFlag().store(true); }
+                ~CtrlC() { cli::CancelFlag().store(false); }
+            } ctrlC;
+            cli::StringConsole console;
+            Assert::AreEqual(7, Run({ "script", "compile", _copyFolder, "--all" }, console), WideForCli(console.err).c_str());
+            Assert::IsTrue(console.err.find("Stopped by Ctrl+C") != std::string::npos, WideForCli(console.err).c_str());
+            Assert::IsFalse(fs::exists(fs::path(_copyFolder) / "script.001"), L"nothing is written");
         }
     };
 }

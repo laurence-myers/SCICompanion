@@ -6,11 +6,16 @@
 #include "ScriptNameMap.h"
 #include "ScriptCatalog.h"
 #include "CompileInterfaces.h"
+#include "CompileContext.h"
+#include "CompileBatch.h"
+#include "CompileWrite.h"
+#include "ResourceUtil.h"
 #include "DecompileRun.h"
 #include "DecompilerResults.h"
 #include "format.h"
 #include <algorithm>
 #include <atomic>
+#include <filesystem>
 #include <set>
 
 namespace cli
@@ -504,5 +509,225 @@ namespace cli
         }
         output.Message(summary);
         return ExitCodeForFacts(facts);
+    }
+
+    namespace
+    {
+        // The progress of a compile, with --verbose. The crash line names the
+        // script (plan section 6.6).
+        class CliCompileEvents : public ICompileEvents
+        {
+        public:
+            explicit CliCompileEvents(CliOutput &output) : _output(output) {}
+
+            void OnScriptStart(size_t index, size_t count, const ScriptId &script) override
+            {
+                std::string name = ScriptText(script.GetResourceNumber(), script.GetTitle());
+                SetCurrentItem("compiling script " + name);
+                _output.Detail(fmt::format("[{0}/{1}] Compiling {2}", index + 1, count, name));
+            }
+            void OnPassStart(int pass) override
+            {
+                _output.Detail(fmt::format("Pass {0}: a .sco file changed, so every script compiles again.", pass));
+            }
+
+        private:
+            CliOutput &_output;
+        };
+
+        // The resources go into the package (not an output folder).
+        bool ToThePackage(const GameFolderHelper &helper, const CompileWriteOptions &write)
+        {
+            return write.outDir.empty() && (helper.GetResourceSaveLocation(write.saveTo) == ResourceSaveLocation::Package);
+        }
+
+        // A written resource: its file (a patch file, or a file of the output
+        // folder), or "script 110" in the package.
+        std::string WrittenText(const WrittenResource &resource, const GameFolderHelper &helper, const CompileWriteOptions &write)
+        {
+            if (!write.outDir.empty())
+            {
+                return (std::filesystem::path(write.outDir) / CompiledResourceFileName(resource.type, resource.number, helper.Version, write.raw)).string();
+            }
+            if (ToThePackage(helper, write))
+            {
+                std::string type = GetResourceTypeTitle(resource.type);
+                std::transform(type.begin(), type.end(), type.begin(), [](char ch) { return (char)tolower((unsigned char)ch); });
+                return fmt::format("{0} {1}", type, resource.number);
+            }
+            return (std::filesystem::path(helper.GameFolder) / CompiledResourceFileName(resource.type, resource.number, helper.Version, false)).string();
+        }
+
+        std::string DestinationText(const GameFolderHelper &helper, const CompileWriteOptions &write)
+        {
+            if (!write.outDir.empty())
+            {
+                return "into " + write.outDir;
+            }
+            return ToThePackage(helper, write) ? std::string("into the package") : std::string("as patch files");
+        }
+
+        // Plan section 4.5, step 6: the diagnostics of the last pass (a script
+        // that failed in an earlier pass, and compiled in the last, has no
+        // error), what went where, and the totals.
+        // "1 error", "2 errors".
+        std::string CountText(size_t count, const char *word)
+        {
+            return fmt::format("{0} {1}{2}", count, word, (count == 1) ? "" : "s");
+        }
+
+        void PrintCompileReport(const CompileReport &report, size_t scriptCount, const GameFolderHelper &helper, const CompileWriteOptions &write, bool dryRun, bool all,
+            CliOutput &output)
+        {
+            for (const ScriptOutcome &outcome : report.scripts)
+            {
+                for (const CompileResult &diagnostic : outcome.diagnostics)
+                {
+                    PrintDiagnostic(diagnostic, output);
+                }
+            }
+            // What the commit wrote (a dry run: would write). A commit that
+            // failed wrote no resource.
+            auto listWrites = [&](const std::vector<WrittenResource> &resources)
+            {
+                std::vector<std::string> files;
+                for (const WrittenResource &resource : resources)
+                {
+                    files.push_back(WrittenText(resource, helper, write));
+                }
+                if (files.empty() || !report.commit)
+                {
+                    return;
+                }
+                std::string text = ListText(files, files.size());
+                if (dryRun)
+                {
+                    output.Message("would write " + text + (ToThePackage(helper, write) ? " into the package" : ""));
+                }
+                else
+                {
+                    output.Detail("wrote " + text + (ToThePackage(helper, write) ? " into the package" : ""));
+                }
+            };
+            std::vector<std::string> failed;
+            for (const ScriptOutcome &outcome : report.scripts)
+            {
+                if (outcome.status)
+                {
+                    listWrites(outcome.written);
+                }
+                else
+                {
+                    failed.push_back(ScriptText(outcome.number, outcome.name));
+                    // A compile error is in the diagnostics.
+                    if (outcome.status.error().code != sci::ErrorCode::Compile)
+                    {
+                        output.Error(ScriptText(outcome.number, outcome.name) + ": " + outcome.status.error().ToString());
+                    }
+                }
+            }
+            listWrites(report.tablesWritten);
+            // A table failure refuses the commit: one error line (as the GUI).
+            bool refusedByTables = !report.tables && !report.commit && (report.commit.error().message == report.tables.error().message);
+            if (!report.tables)
+            {
+                output.Error(std::string("the class and selector tables could not be saved") + (refusedByTables ? ", so no compiled resource was written: " : ": ") +
+                    report.tables.error().ToString());
+            }
+            if (!report.commit && !refusedByTables)
+            {
+                output.Error(report.commit.error().ToString());
+            }
+            for (const std::string &moved : report.movedPatches)
+            {
+                output.Message("moved the patch file " + moved);
+            }
+            if (!report.moves)
+            {
+                output.Error(report.moves.error().ToString());
+            }
+            for (const std::string &restored : report.restoredObjectFiles)
+            {
+                output.Message("put back " + restored + ": its script was not written");
+            }
+            if (!report.objectFiles)
+            {
+                output.Error(report.objectFiles.error().ToString());
+            }
+            for (const std::string &warning : report.warnings)
+            {
+                output.Warning(warning);
+            }
+            if (report.passLimit)
+            {
+                // A compile of named scripts is one pass: a .sco that changes is
+                // expected, and the scripts that use it are not in the run.
+                output.Warning((report.cancelled || report.stopped) ?
+                    std::string("the run stopped after a pass that changed a .sco file, so a script can use an old one: compile again") :
+                    (all ? fmt::format("pass {0}, the last, still changed a .sco file, so a script can use an old one: compile again, or give more --passes", report.passes) :
+                    std::string("a .sco file changed, so the scripts that use it can be out of date: compile them too, or give --all")));
+            }
+
+            size_t compiled = report.CompiledCount();
+            size_t notReached = scriptCount - report.scripts.size();
+            std::string destination = DestinationText(helper, write);
+            std::string summary = dryRun ? fmt::format("Compiled {0} of {1} scripts; a run would write them {2}", compiled, scriptCount, destination) :
+                (report.commit ? fmt::format("Compiled and wrote {0} of {1} scripts {2}", compiled, scriptCount, destination) :
+                fmt::format("Compiled {0} of {1} scripts, and wrote none", compiled, scriptCount));
+            summary += fmt::format(" ({0}, {1}{2}).", CountText(report.ErrorCount(), "error"), CountText(report.WarningCount(), "warning"),
+                (report.passes > 1) ? fmt::format(", {0} passes", report.passes) : std::string());
+            if (!failed.empty())
+            {
+                summary += fmt::format(" Failed: {0}.", ListText(failed));
+            }
+            if (report.cancelled)
+            {
+                summary += fmt::format(" Stopped by Ctrl+C: {0} scripts were not compiled.", notReached);
+            }
+            if (report.stopped)
+            {
+                summary += fmt::format(" --fail-fast stopped the run: {0} scripts were not compiled.", notReached);
+            }
+            output.Message(summary);
+        }
+    }
+
+    sci::Result<ExitCode> RunScriptCompile(GameSession &session, const ScriptCompileOptions &options, const CommonOptions &common, CliOutput &output)
+    {
+        bool toPackage = options.intoVolume || (options.to == "package");
+        if (options.replacePatches && !toPackage)
+        {
+            return sci::Fail(sci::ErrorCode::Usage, "--replace-patches goes with --to package");
+        }
+        if (options.passesGiven && !options.all)
+        {
+            return sci::Fail(sci::ErrorCode::Usage, "--passes goes with --all: a compile of named scripts is one pass");
+        }
+        SCI_TRY_ASSIGN(ScriptSelection selection, Select(session, options.all, options.selectors, SelectorMode::Compile, output));
+        if (selection.scripts.empty())
+        {
+            output.Message("No script to compile.");
+            return ExitCode::Success;
+        }
+
+        session.SetWarnOnUnusedInstances(!options.noWarnUnused);
+        CompileOptions compile;
+        // Plan section 5: patch files unless --to package, whatever the
+        // game's setting.
+        compile.write.saveTo = toPackage ? ResourceSaveLocation::Package : ResourceSaveLocation::Patch;
+        compile.write.outDir = options.outDir;
+        compile.write.raw = options.raw;
+        // --dry-run: no resource, table, .sco or .scd.
+        compile.write.writeResources = !common.dryRun;
+        compile.write.writeObjectFile = !common.dryRun;
+        compile.write.writeDebugInfo = !common.dryRun;
+        compile.failFast = options.failFast;
+        compile.passes = options.all ? options.passes : 1;
+        compile.shadows = options.replacePatches ? ShadowPolicy::Replace : ShadowPolicy::Refuse;
+        CliCompileEvents events(output);
+        SCI_TRY_ASSIGN(CompileReport report, CompileScripts(session, selection.scripts, compile, CancelFlag(), events));
+        SetCurrentItem("printing the report");
+        PrintCompileReport(report, selection.scripts.size(), session.Helper(), compile.write, common.dryRun, options.all, output);
+        return ExitCodeForReport(report);
     }
 }

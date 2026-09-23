@@ -131,6 +131,17 @@ sci::Status CompileScriptFile(GameSession &session, CompileResults &results, Com
 						}
 					}
 				};
+				// A resource write, and the list of the written resources (plan
+				// step C3).
+				auto writeResource = [&](ResourceType type, uint16_t number, const std::vector<uint8_t> &data)
+				{
+					sci::Status written = WriteCompiledResource(resourceMap, options, type, number, data);
+					if (written)
+					{
+						results.AddWritten(type, number);
+					}
+					check(written);
+				};
 
 				// Save the text resource - but only if it's different than what's there (otherwise needless text resource turds pile up)
 				if (!results.GetTextComponent().Texts.empty())
@@ -146,7 +157,7 @@ sci::Status CompileScriptFile(GameSession &session, CompileResults &results, Com
 						std::map<BlobKey, uint32_t> propertyBag;
 						textResource.WriteTo(textData, true, textResource.ResourceNumber, propertyBag);
 						std::vector<uint8_t> textBytes(textData.GetInternalPointer(), textData.GetInternalPointer() + textData.GetDataSize());
-						check(WriteCompiledResource(resourceMap, options, ResourceType::Text, (uint16_t)textResource.ResourceNumber, textBytes));
+						writeResource(ResourceType::Text, (uint16_t)textResource.ResourceNumber, textBytes);
 						log.ReportResult(
 							CompileResult(fmt::format("Text resource {1} changed. Added {0} entries.", results.GetTextComponent().Texts.size(), textResource.ResourceNumber),
 							CompileResult::CompileResultType::CRT_Message)
@@ -155,11 +166,11 @@ sci::Status CompileScriptFile(GameSession &session, CompileResults &results, Com
 				}
 
 				// Save the script resource, and the heap of an SCI1.1 script.
-				check(WriteCompiledResource(resourceMap, options, ResourceType::Script, wNum, results.GetScriptResource()));
+				writeResource(ResourceType::Script, wNum, results.GetScriptResource());
 				std::vector<BYTE> &outputHep = results.GetHeapResource();
 				if (!outputHep.empty())
 				{
-					check(WriteCompiledResource(resourceMap, options, ResourceType::Heap, wNum, outputHep));
+					writeResource(ResourceType::Heap, wNum, outputHep);
 				}
 
 				// The .sco file and the debug file describe the resources: a

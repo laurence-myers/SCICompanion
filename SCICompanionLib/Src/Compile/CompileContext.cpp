@@ -945,7 +945,9 @@ void CompileContext::_ReportThing(bool fError, const ISourceCodePosition *pPos, 
 	char sz[300];
 	// Add one to line number, since they are reported from a 0-base (parser), but displayed from a 1-base (script editor)
 	int line = pPos->GetLineNumber() + 1;
-	ScriptId scriptIdThing(_pErrorScript->GetPath().c_str());
+	// The script's own id: GetPath() has the folder in lower case, and the
+	// command line prints the path (plan step C3).
+	ScriptId scriptIdThing = _pErrorScript->GetScriptId();
 	StringCchPrintf(sz, ARRAYSIZE(sz), "%s: (%s) %s  Line: %d, col: %d", fError ? "Error" : "Warning", scriptIdThing.GetFileNameOrig().c_str(), szMessage, line, pPos->GetColumnNumber());
 	CompileResult result(sz, scriptIdThing, line, pPos->GetColumnNumber(), fError ? CompileResult::CRT_Error : CompileResult::CRT_Warning);
 	result.SetRawMessage(szMessage);

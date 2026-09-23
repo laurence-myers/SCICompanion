@@ -294,11 +294,13 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
         if (compiled)
         {
             _passFiles.insert(_passFiles.end(), scriptFiles.begin(), scriptFiles.end());
+            outcome.written = results->Written();
         }
         return compiled;
     });
     outcome.diagnostics = log.Results();
     bool objectFileChanged = results && results->ObjectFileChanged();
+    outcome.objectFileChanged = objectFileChanged;
     uint16_t compiledNumber = results ? results->GetScriptNumber() : InvalidResourceNumber;
     std::set<uint16_t> usedObjectFiles = results ? results->LoadedObjectFiles() : std::set<uint16_t>();
     if (compiledNumber != InvalidResourceNumber)
@@ -718,7 +720,17 @@ void CompileBatch::_Commit()
             }
             _report.tables = sci::Guard("saving the class and selector tables", [&]() -> sci::Status
             {
-                return _tables.Save(_session.ResourceMap(), write);
+                SCI_TRY(_tables.Save(_session.ResourceMap(), write));
+                // The tables that the save wrote (it writes a table that changed).
+                if (_tables.Species().IsDirty())
+                {
+                    _report.tablesWritten.push_back({ ResourceType::Vocab, (uint16_t)VocabClassTable });
+                }
+                if (_tables.Selectors().IsDirty())
+                {
+                    _report.tablesWritten.push_back({ ResourceType::Vocab, (uint16_t)VocabSelectorNames });
+                }
+                return sci::Ok();
             });
         }
         if (!joined)

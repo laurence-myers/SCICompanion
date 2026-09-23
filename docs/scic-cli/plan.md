@@ -781,8 +781,11 @@ Steps:
 4. If one or more scripts compiled, save vocab 996 and 997. The tables then
    hold the new selectors.
 5. Commit all resource writes in one batch.
-6. Print the diagnostics as they occur, then the report: each failed script
-   with its error, what went where, and the totals.
+6. Print the report: the diagnostics of the last pass (a script that
+   failed in an earlier pass and compiled in the last has no error; the
+   progress prints as it comes with `-v`), what went where (with `-v`; a
+   dry run lists it always), the error of each script that failed for a
+   reason that is not a compile error, and the totals (found at C3).
 
 Individual and bulk:
 
@@ -824,22 +827,23 @@ For one script, the table rule is the same as the GUI (save only on
 success). For many scripts, the GUI saves the tables even when all scripts
 failed. `scic` does not. This difference has no effect on the game.
 
-A script that is not in `[Script]` compiles, but `scic` warns: other
-scripts cannot find its classes by number. Add the entry with the GUI, or
-later with `compile --register` (section 13).
+A script that is not in `[Script]` compiles, and other scripts find its
+classes by number: the script-name map of section 3.4 (S3) has its name
+from `src\`, in `scic` and in the GUI. So `scic` gives no warning for it
+(found at C3: the warning that this section planned is not needed).
 
 Options:
 
 | Option | Meaning |
 |---|---|
 | `--to patch\|package` | Where to write the resources (section 5). Default: `patch`. `package` is the resource package (`resource.map` and a volume). `--into-volume` is another spelling of `--to package`. |
-| `--replace-patches` | With `--to package`: after the package write succeeds, move the patch files that would hide the new resources to `<game>\replaced-patches\<time>\`. |
+| `--replace-patches` | With `--to package` (else a usage error): after the package write succeeds, move the patch files that would hide the new resources to `<game>\replaced-patches\<time>\`. |
 | `--out-dir <folder>` | Write the patch files into this folder, not into the game folder. The game's resources do not change; `src\*.sco` still does. Use it to build a set of patch files to ship. Not with `--to package`. |
 | `--raw` | With `--out-dir`: write the plain resource data with no patch header, as `script.110.bin` and `heap.110.bin`. |
-| `--passes <n>` | With `--all`: the largest number of passes (default 5). `--passes 1` is one pass, as in the GUI. |
+| `--passes <n>` | With `--all` (else a usage error: a compile of named scripts is one pass): the largest number of passes (default 5). `--passes 1` is one pass, as in the GUI. |
 | `--fail-fast` | Stop at the first script with errors. |
 | `--no-warn-unused` | Turn off the "unused instance" warning. It is on by default, as in the GUI. |
-| `--dry-run` | Compile, but write no resource, table, `.sco` or `.scd`. Later scripts in the same run then read the old `.sco` of earlier scripts. |
+| `--dry-run` | Compile, but write no resource, table, `.sco` or `.scd`, and list what a run would write. Later scripts in the same run then read the old `.sco` of earlier scripts, so a dry run is one pass. |
 
 Diagnostics use the MSBuild format. Visual Studio and the VS Code
 `$msCompile` problem matcher can then go to the line:
@@ -1097,7 +1101,7 @@ struct ScriptOutcome
     std::string name;
     sci::Status status;                     // ok, or why this script failed
     std::vector<CompileResult> diagnostics;
-    std::vector<WrittenFile> written;       // resources and files for this script (C3, for --dry-run)
+    std::vector<WrittenResource> written;   // the resources that the commit writes for this script (C3: script, heap, auto text)
 };
 
 struct CompileReport
@@ -1320,7 +1324,7 @@ back, not on the commit before K1.)
 |---|---|---|---|
 | C1 | The `SCICompanionCli` project: `scic.exe`, console subsystem, static MFC for now, Release\|Win32, references to the library and Prof-UIS, `.sln` rows, a VERSIONINFO `.rc`. `Src\Cli\`: the command groups and arguments (vendored CLI11, BSD-3 licence, notice in `SCICompanion\Files\Licenses`), console, the exit-code mapping (section 8), the host (section 7) with the crash settings, Ctrl+C. Commands: `help`, `--version`, `script list`. Found at C1: CLI11 is 2.0.0, from a local copy (a download needs the user's permission). The version of `scic.exe` is in `Src\Cli\CliVersion.h`, which its `.rc` reads; a test checks it against `SCICompanionLib.rc`, and AGENTS.md lists the file. C1 review fixes: `--log` gets every message, whatever `-q` and `-v` say, and it refuses to overwrite a file of the game; a failed write step gives 9 with any code but `Internal`, `WriteRefused` and `Cancelled`; `abort()`, `std::terminate()`, a bad CRT parameter and a pure call give one line and exit 1; an empty game folder and an empty `--data-dir` give 2; `SCIC_DATA_DIR` has no length limit; Ctrl+C during `list` gives 7; `scic help help` works; the build copies `Files\Licenses` next to the programs, so the release has the licence notices. | In-process `RunCli`: `script list` on both templates (text and tsv), usage errors (exit 2), a bad folder (exit 3), a missing data folder (exit 3), and `list` writes nothing (the folder snapshot stays equal). A unit test for each row of the exit-code mapping. Integration: `scic.exe script list` through `IntegrationHarness::RunChildReadStdout` (`UnitTests\IntegrationHarness.h:126`). | M |
 | C2 | `scic script decompile` (section 4.4) and `scic script sco` (section 4.6). `script sco` reports a public block that the compiler refuses (a slot listed twice, a name with no definition; the `.sco` builder accepts them: a question of the review of the K2 fixes), and warns when the source's public block and the compiled export table disagree (found at the K2 review: the SCI1.1 template's `Main` and `DebugHandler` export names that their sources do not list). Found at C2: the decompiler's messages print as they come (errors and warnings; the progress with `-v`), then a summary (scripts written and failed, the function and byte rates, the globals named, the stale scripts, a `game.ini` error); every warning of the run report also goes to the results. `--dry-run` decompiles in memory and lists the files. `GenerateObjectFiles` takes `ObjectFileOptions` (a dry run, the Ctrl+C flag). Review of `37ee979b`: a dry run does the steps of a run in memory (`DecompileRunOptions::dryRun`: the stale scripts, `--update-stale`, main's `.sco`, `game.ini`, the `src\` files; `DecompileReport::files`); `sco` warns for a source with no public block, refuses an export that is not public (an include's procedure), lists the skipped scripts of `--all`, and its dry run checks each `.sco` (`changed`, exit 9); the MSBuild path keeps its case (`ScriptId::GetFullPathOrig`); the debug dumps are `DecompilerResultType::Debug`; a decompiler error in a written script is exit 6; the crash line follows the steps. | A template copy with no `game.ini` and no `src\` (a game SCI Companion never opened): `decompile --all` writes the derived names and creates no `game.ini`; a second run finds the same names. Individual and `--all` runs on template copies. `--stdout` and `--dry-run` write nothing. The stale report and `--update-stale`. Exit 6 when one script fails (a truncated script in a copy). | M |
-| C3 | `scic script compile` (sections 4.5 and 5). | `compile --all` on a template copy with no `game.ini` compiles every `src\*.sc`. The default writes patch files and leaves `resource.map` byte-equal. `--to package` writes the package. The script bytes are equal for both destinations, and equal to the GUI path (S2). The shadow refusal (exit 8) and `--replace-patches`. The patch-mode refusal. `--dry-run` writes nothing. Exit 5 with one broken script, and the others are written. Round trip: `decompile --all`, then `compile --all`, with 0 errors (as `RecompileAllDecompiledScripts`, `UnitTests\DecompileHelper.cpp:544-593`). | M |
+| C3 | `scic script compile` (sections 4.5 and 5). Found at C3: `ScriptOutcome::written` and `CompileReport::tablesWritten` (the resources that the commit writes; `CompileResults::Written`), and `objectFileChanged`; the diagnostics print from the report, for the last pass; a compile error keeps the case of its path (`CompileContext::_ReportThing` uses the script's own `ScriptId`); a compile of named scripts warns that a changed `.sco` can leave its users out of date; no warning for a script with no `[Script]` entry (S3 names it). The SCI0 template does not round-trip yet (the decompiled `Obj.sc` names two procedures `EqualsAny`; a separate task). | `compile --all` on a template copy with no `game.ini` compiles every `src\*.sc`. The default writes patch files and leaves `resource.map` byte-equal. `--to package` writes the package. The script bytes are equal for both destinations, and equal to the GUI path (S2). The shadow refusal (exit 8) and `--replace-patches`. The patch-mode refusal. `--dry-run` writes nothing. Exit 5 with one broken script, and the others are written. Round trip: `decompile --all`, then `compile --all`, with 0 errors (as `RecompileAllDecompiledScripts`, `UnitTests\DecompileHelper.cpp:544-593`). | M |
 | C4 | CI and documents: a smoke step in `build.yaml` (copy `Release\TemplateGame\SCI1.1` to a temp folder, then run `script list`, `script decompile --all` and `script compile --all`). README "What's new": a "Command-line tool" item. AGENTS.md: the CLI build and tests, and the failure-handling rules (C1 added the version file) (section 6.2). `UnitTests\README.md`. `UnitTests\Tools\CliCorpusSweep.ps1` (local use). | CI passes. | S |
 
 ### Phase E (optional, after phase C): a core library with no MFC GUI headers

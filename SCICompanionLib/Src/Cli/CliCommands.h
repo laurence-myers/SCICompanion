@@ -153,4 +153,29 @@ namespace cli
     // run: when it could not be), 7 after Ctrl+C, 1 for a bug. Fails for a
     // bad selector (Usage).
     sci::Result<ExitCode> RunScriptSco(GameSession &session, const ScriptScoOptions &options, const CommonOptions &common, CliOutput &output);
+
+    // scic script compile (plan section 4.5).
+    struct ScriptCompileOptions
+    {
+        std::string gameFolder;
+        std::vector<std::string> selectors;
+        bool all = false;
+        std::string to = "patch";   // patch or package
+        bool intoVolume = false;    // another spelling of --to package
+        bool replacePatches = false;
+        std::string outDir;
+        bool raw = false;
+        int passes = 5;             // with --all
+        bool passesGiven = false;
+        bool failFast = false;
+        bool noWarnUnused = false;
+    };
+
+    // Compiles the scripts as one batch (CompileScripts) and prints the
+    // report: the diagnostics of the last pass in the MSBuild format (plan
+    // section 4.5), the progress with --verbose, then what went where and
+    // the totals. --dry-run writes nothing and lists what a run would
+    // write. The exit code of the report (plan section 8). Fails when the
+    // batch cannot start (the code of ExitCodeForStartError: 2, 3, 7 or 8).
+    sci::Result<ExitCode> RunScriptCompile(GameSession &session, const ScriptCompileOptions &options, const CommonOptions &common, CliOutput &output);
 }

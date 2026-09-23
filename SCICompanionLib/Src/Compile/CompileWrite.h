@@ -22,6 +22,14 @@ struct StagedOutputFile
     std::vector<uint8_t> data;
 };
 
+// A compiled resource that a compile wrote: in a batch, one that the commit
+// writes (a dry run: would write). Plan section 6.5, for C3.
+struct WrittenResource
+{
+    ResourceType type;
+    uint16_t number;
+};
+
 struct CompileWriteOptions
 {
     // The package or patch files. Default takes the game's setting

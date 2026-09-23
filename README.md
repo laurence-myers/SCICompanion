@@ -47,8 +47,11 @@ modernizing the build. Broad highlights since the previous release:
   it, and whether its source and `.sco` files exist. `scic script decompile`
   decompiles scripts as the Decompile dialog does, or prints one script's
   source (`--stdout`). `scic script sco` makes the `.sco` files from source
-  that another tool wrote. `scic help` shows the commands, `--dry-run`
-  writes nothing, and the exit code tells a build script what happened.
+  that another tool wrote. `scic script compile` compiles scripts as one
+  batch, into patch files (the default), the package or another folder,
+  and prints each error in the format that Visual Studio and VS Code can
+  open. `scic help` shows the commands, `--dry-run` writes nothing, and
+  the exit code tells a build script what happened.
 * **Eliminated most `asm` fallbacks in the decompiler.** When the decompiler
   could not reconstruct a function's control flow it used to give up and emit
   raw `asm` disassembly. It now rebuilds the control flow into real source, so

@@ -177,8 +177,9 @@ namespace cli
         ScriptListOptions listOptions;
         ScriptDecompileOptions decompileOptions;
         ScriptScoOptions scoOptions;
+        ScriptCompileOptions compileOptions;
 
-        CLI::App app("scic: the command line of SCI Companion. Commands: script list, script decompile, script sco. \"scic help <group> <command>\" shows a command.", "scic");
+        CLI::App app("scic: the command line of SCI Companion. Commands: script list, script decompile, script sco, script compile. \"scic help <group> <command>\" shows a command.", "scic");
         // "/games/sq3" is a path, not an option.
         app.allow_windows_style_options(false);
         // One command: the words after it are its own (for example the topic of
@@ -195,7 +196,7 @@ namespace cli
         // The words after "help" are its topic, not commands to run.
         help->prefix_command();
 
-        CLI::App *script = app.add_subcommand("script", "The script commands: list, decompile, sco.");
+        CLI::App *script = app.add_subcommand("script", "The script commands: list, decompile, sco, compile.");
         script->fallthrough();
         script->require_subcommand(0, 1);
         script->footer(CommonFooter);
@@ -232,6 +233,23 @@ namespace cli
         sco->add_option("scripts", scoOptions.selectors, "Numbers, ranges (100-199) or names. Or give --all.");
         sco->add_flag("--all", scoOptions.all, "Every script with a source file and a compiled script.");
 
+        CLI::App *compile = script->add_subcommand("compile", "Compile scripts, as SCI Companion does, into patch files (default) or the package, as one batch.");
+        compile->fallthrough();
+        compile->footer(CommonFooter);
+        compile->add_option("game-folder", compileOptions.gameFolder, "The game folder.")->required();
+        compile->add_option("scripts", compileOptions.selectors, "Numbers, ranges (100-199), names or .sc files. Or give --all.");
+        compile->add_flag("--all", compileOptions.all, "Every script that has a source file.");
+        compile->add_option("--to", compileOptions.to, "patch (default): patch files in the game folder; package: the resource package.")
+            ->check(CLI::IsMember({ "patch", "package" }));
+        compile->add_flag("--into-volume", compileOptions.intoVolume, "The same as --to package.");
+        compile->add_flag("--replace-patches", compileOptions.replacePatches, "With --to package: move the patch files that would hide the new resources to replaced-patches\\<time>.");
+        compile->add_option("--out-dir", compileOptions.outDir, "Write the patch files into this folder; the game's resources do not change (its .sco files do).");
+        compile->add_flag("--raw", compileOptions.raw, "With --out-dir: the plain resource data, as script.110.bin.");
+        CLI::Option *passesOption = compile->add_option("--passes", compileOptions.passes, "With --all: the most passes (default 5). A pass that changes no .sco file is the last.")
+            ->check(CLI::Range(1, 100));
+        compile->add_flag("--fail-fast", compileOptions.failFast, "Stop after the first script that fails.");
+        compile->add_flag("--no-warn-unused", compileOptions.noWarnUnused, "No warning for an instance that is not used.");
+
         CliOutput output(console, common);
         try
         {
@@ -258,10 +276,12 @@ namespace cli
             output.Error("--data-dir needs a folder");
             return (int)ExitCode::Usage;
         }
-        // Plan section 4.2: decompile and sco take --all or one or more
-        // scripts, not both and not neither.
+        compileOptions.passesGiven = (passesOption->count() > 0);
+        // Plan section 4.2: decompile, sco and compile take --all or one or
+        // more scripts, not both and not neither.
         for (const auto &command : { std::make_pair(decompile, std::make_pair(decompileOptions.all, !decompileOptions.selectors.empty())),
-            std::make_pair(sco, std::make_pair(scoOptions.all, !scoOptions.selectors.empty())) })
+            std::make_pair(sco, std::make_pair(scoOptions.all, !scoOptions.selectors.empty())),
+            std::make_pair(compile, std::make_pair(compileOptions.all, !compileOptions.selectors.empty())) })
         {
             if (command.first->parsed() && (command.second.first == command.second.second))
             {
@@ -275,7 +295,8 @@ namespace cli
             return (int)ExitCode::Usage;
         }
         // The game folder of the command.
-        std::string gameFolder = decompile->parsed() ? decompileOptions.gameFolder : (sco->parsed() ? scoOptions.gameFolder : listOptions.gameFolder);
+        std::string gameFolder = decompile->parsed() ? decompileOptions.gameFolder :
+            (sco->parsed() ? scoOptions.gameFolder : (compile->parsed() ? compileOptions.gameFolder : listOptions.gameFolder));
         std::unique_ptr<LogFile> logFile;
         if (!common.logFile.empty())
         {
@@ -335,7 +356,7 @@ namespace cli
             console.Err(HelpOf(&app, "scic"));
             return (int)ExitCode::Usage;
         }
-        if (!list->parsed() && !decompile->parsed() && !sco->parsed())
+        if (!list->parsed() && !decompile->parsed() && !sco->parsed() && !compile->parsed())
         {
             // Plan section 4.1: "scic script" lists the script commands.
             logged.Help(HelpOf(script, "scic script"));
@@ -374,6 +395,10 @@ namespace cli
             if (sco->parsed())
             {
                 return RunScriptSco(session, scoOptions, common, logged);
+            }
+            if (compile->parsed())
+            {
+                return RunScriptCompile(session, compileOptions, common, logged);
             }
             return RunScriptList(session, listOptions, logged);
         });
