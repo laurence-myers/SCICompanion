@@ -20,12 +20,6 @@
 #include "WindowsUtil.h"
 #include "DependencyTracker.h"
 #include "ClassBrowser.h"
-#include "ResourceMap.h"
-#include "format.h"
-#include <filesystem>
-#include <regex>
-
-using namespace std::filesystem;
 
 #define UWM_STARTCOMPILE (WM_APP + 0)
 
@@ -59,7 +53,9 @@ void CNewCompileDialog::OnScriptDone(const ScriptOutcome &outcome)
 {
 	if (outcome.status)
 	{
-		appState->GetDependencyTracker().ClearScript(_current);
+		// The caller clears it in the dependency tracker after the commit
+		// (review of S2c: before, a commit that wrote nothing left it clear).
+		_compiled.push_back(_current);
 	}
 	// The compile is done.  Post the results.
 	std::vector<CompileResult> results = outcome.diagnostics;
@@ -156,92 +152,3 @@ END_MESSAGE_MAP()
 
 
 // CNewCompileDialog message handlers
-
-std::vector<ScriptId> ScriptsToCompile(CResourceMap &resourceMap, const std::unordered_set<std::string> &titles)
-{
-	std::vector<ScriptId> scripts;
-	std::vector<ScriptId> all;
-	resourceMap.GetAllScripts(all);
-	std::copy_if(all.begin(), all.end(), std::back_inserter(scripts),
-		[&](const ScriptId &scriptId)
-	{
-		return titles.empty() || (titles.find(scriptId.GetTitleLower()) != titles.end());
-	}
-	);
-
-	if (scripts.empty())
-	{
-		if (IDYES == AfxMessageBox("Error finding scripts to compile.\nDo you want to try scanning the src folder for scripts?", MB_YESNO | MB_APPLMODAL | MB_ICONEXCLAMATION))
-		{
-			path enumPath = resourceMap.Helper().GetSrcFolder();
-			auto matchRSTRegex = std::regex("(\\w+)\\.sc$");
-			std::error_code ec;
-			for (auto it = directory_iterator(enumPath, ec); !ec && (it != directory_iterator()); it.increment(ec))
-			{
-				const auto &file = it->path();
-				std::smatch sm;
-				std::string temp = file.filename().string();
-				std::error_code notADirectory;
-				if (!it->is_directory(notADirectory) && std::regex_search(temp, sm, matchRSTRegex) && (sm.size() > 1))
-				{
-					scripts.push_back(ScriptId(file.string()));
-				}
-			}
-			if (scripts.empty())
-			{
-				AfxMessageBox("Could not find any .sc files.", MB_OK | MB_ICONERROR);
-			}
-		}
-	}
-	return scripts;
-}
-
-ShadowPolicy AskAboutShadowingPatches(const std::vector<std::string> &files)
-{
-	const size_t shownFiles = 10;
-	std::string list;
-	for (size_t i = 0; (i < files.size()) && (i < shownFiles); i++)
-	{
-		list += files[i] + "\n";
-	}
-	if (files.size() > shownFiles)
-	{
-		list += fmt::format("(and {0} more)\n", files.size() - shownFiles);
-	}
-	std::string text = fmt::format(
-		"These patch files would hide the compiled resources in the package. The game and SCI Companion read a patch file before the package.\n\n"
-		"{0}\n"
-		"Yes: move the patch files to the folder replaced-patches in the game folder.\n"
-		"No: keep the patch files. The compiled resources in the package stay hidden.\n"
-		"Cancel: stop, and write nothing.",
-		list);
-	switch (AfxMessageBox(text.c_str(), MB_YESNOCANCEL | MB_ICONWARNING | MB_APPLMODAL))
-	{
-	case IDYES:
-		return ShadowPolicy::Replace;
-	case IDNO:
-		return ShadowPolicy::Ignore;
-	default:
-		return ShadowPolicy::Refuse;
-	}
-}
-
-void ReportCompileBatch(const CompileReport &report, ICompileLog &log, const std::string &writeProblem)
-{
-	if (!report.tables)
-	{
-		log.ReportResult(CompileResult("There was a problem saving the class and selector tables: " + report.tables.error().ToString(), CompileResult::CRT_Error));
-	}
-	if (!report.commit)
-	{
-		log.ReportResult(CompileResult(writeProblem + report.commit.error().ToString(), CompileResult::CRT_Error));
-	}
-	for (const std::string &moved : report.movedPatches)
-	{
-		log.ReportResult(CompileResult("Moved the patch file " + moved));
-	}
-	for (const std::string &warning : report.warnings)
-	{
-		log.ReportResult(CompileResult("Warning: " + warning, CompileResult::CRT_Warning));
-	}
-}

@@ -8,7 +8,10 @@ sci::Status WriteBytesToFile(const std::string &path, const void *data, size_t s
     {
         return sci::Fail(sci::ErrorCode::Unsupported, what + ": the data is too large");
     }
-    HANDLE file = CreateFileA(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    // Share the file as the ofstream that this replaced did: a program that
+    // has the file open with read and write sharing does not stop the write
+    // (review of S1).
+    HANDLE file = CreateFileA(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE)
     {
         DWORD error = GetLastError();

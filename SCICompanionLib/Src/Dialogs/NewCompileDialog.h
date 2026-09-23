@@ -14,12 +14,9 @@
 #pragma once
 
 #include "CompileBatch.h"
+#include "CompileBatchGui.h"
 #include <atomic>
-#include <string>
-#include <unordered_set>
 #include <vector>
-
-class CResourceMap;
 
 // The progress of a compile batch (plan step S2): one script for each
 // UWM_STARTCOMPILE message, so the window paints and Cancel works. The caller
@@ -35,6 +32,9 @@ public:
 	// ICompileEvents
 	void OnScriptStart(size_t index, size_t count, const ScriptId &script) override;
 	void OnScriptDone(const ScriptOutcome &outcome) override;
+
+	// The scripts that compiled.
+	const std::vector<ScriptId> &CompiledScripts() const { return _compiled; }
 
 // Dialog Data
 	enum { IDD = IDD_COMPILEDIALOG };
@@ -52,20 +52,8 @@ protected:
 	bool _fDone;
 	// The script that compiles now.
 	ScriptId _current;
+	std::vector<ScriptId> _compiled;
 
 	// Visuals
 	CExtButton m_wndCancel;
 };
-
-// The scripts of game.ini, or the ones with these lower-case titles. When
-// there is none, it offers to scan the src folder for .sc files.
-std::vector<ScriptId> ScriptsToCompile(CResourceMap &resourceMap, const std::unordered_set<std::string> &titles);
-
-// Plan step S2: the GUI asks before a package save that a patch file would
-// hide. Yes: move the patch files aside (Replace). No: keep them (Ignore).
-// Cancel: stop, and write nothing (Refuse).
-ShadowPolicy AskAboutShadowingPatches(const std::vector<std::string> &files);
-
-// The lines of a finished batch after the lines of its scripts: the table
-// save, the commit, the moved patch files and the warnings.
-void ReportCompileBatch(const CompileReport &report, ICompileLog &log, const std::string &writeProblem);

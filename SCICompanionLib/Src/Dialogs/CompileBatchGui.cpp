@@ -1,0 +1,160 @@
+#include "stdafx.h"
+#include "CompileBatchGui.h"
+#include "ResourceMap.h"
+#include "GameFolderHelper.h"
+#include "format.h"
+#include <filesystem>
+#include <regex>
+
+namespace fs = std::filesystem;
+
+namespace
+{
+    // The file name in the ANSI code page. False when the name has a
+    // character that the code page does not have (path::string() throws for
+    // such a name).
+    bool NarrowFileName(const fs::path &path, std::string &name)
+    {
+        std::wstring wide = path.filename().wstring();
+        if (wide.empty())
+        {
+            return false;
+        }
+        BOOL usedDefault = FALSE;
+        int length = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide.data(), (int)wide.size(), nullptr, 0, nullptr, &usedDefault);
+        if ((length <= 0) || usedDefault)
+        {
+            return false;
+        }
+        name.assign(length, '\0');
+        WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide.data(), (int)wide.size(), &name[0], length, nullptr, nullptr);
+        return true;
+    }
+
+    // A WM_QUIT is in the queue: a message box would end at once.
+    bool QuitPending()
+    {
+        MSG message;
+        return PeekMessage(&message, nullptr, WM_QUIT, WM_QUIT, PM_NOREMOVE) != FALSE;
+    }
+}
+
+std::vector<ScriptId> ScriptsToCompile(CResourceMap &resourceMap, const std::unordered_set<std::string> &titles)
+{
+    std::vector<ScriptId> scripts;
+    std::vector<ScriptId> all;
+    resourceMap.GetAllScripts(all);
+    std::copy_if(all.begin(), all.end(), std::back_inserter(scripts),
+        [&](const ScriptId &scriptId)
+    {
+        return titles.empty() || (titles.find(scriptId.GetTitleLower()) != titles.end());
+    }
+    );
+
+    if (scripts.empty())
+    {
+        if (IDYES == AfxMessageBox("Error finding scripts to compile.\nDo you want to try scanning the src folder for scripts?", MB_YESNO | MB_APPLMODAL | MB_ICONEXCLAMATION))
+        {
+            std::string srcFolder = resourceMap.Helper().GetSrcFolder();
+            auto matchRSTRegex = std::regex("(\\w+)\\.sc$");
+            std::error_code ec;
+            for (auto it = fs::directory_iterator(srcFolder, ec); !ec && (it != fs::directory_iterator()); it.increment(ec))
+            {
+                std::string name;
+                std::smatch sm;
+                std::error_code notADirectory;
+                if (!it->is_directory(notADirectory) && NarrowFileName(it->path(), name) && std::regex_search(name, sm, matchRSTRegex) && (sm.size() > 1))
+                {
+                    scripts.push_back(ScriptId(srcFolder + "\\" + name));
+                }
+            }
+            if (scripts.empty())
+            {
+                AfxMessageBox("Could not find any .sc files.", MB_OK | MB_ICONERROR);
+            }
+        }
+    }
+    return scripts;
+}
+
+ShadowPolicy AskAboutShadowingPatches(const std::vector<std::string> &files)
+{
+    if (QuitPending())
+    {
+        // Review of S2c: the box could not get an answer; write, as the
+        // compile did before it asked.
+        return ShadowPolicy::Ignore;
+    }
+    const size_t shownFiles = 10;
+    std::string list;
+    for (size_t i = 0; (i < files.size()) && (i < shownFiles); i++)
+    {
+        list += files[i] + "\n";
+    }
+    if (files.size() > shownFiles)
+    {
+        list += fmt::format("(and {0} more)\n", files.size() - shownFiles);
+    }
+    std::string text = fmt::format(
+        "These patch files would hide the compiled resources in the package. The game and SCI Companion read a patch file before the package.\n\n"
+        "{0}\n"
+        "Yes: move the patch files to the folder replaced-patches in the game folder.\n"
+        "No: keep the patch files. The compiled resources in the package stay hidden.\n"
+        "Cancel: stop, and write no resource.",
+        list);
+    switch (AfxMessageBox(text.c_str(), MB_YESNOCANCEL | MB_ICONWARNING | MB_APPLMODAL))
+    {
+    case IDYES:
+        return ShadowPolicy::Replace;
+    case IDNO:
+        return ShadowPolicy::Ignore;
+    default:
+        return ShadowPolicy::Refuse;
+    }
+}
+
+CompileResult StartFailureLine(const sci::Error &error)
+{
+    if (error.code == sci::ErrorCode::Cancelled)
+    {
+        // The user's answer is not an error (review of S2c).
+        return CompileResult("The compile was stopped, and nothing was written: " + error.ToString());
+    }
+    return CompileResult("The compile did not start: " + error.ToString(), CompileResult::CRT_Error);
+}
+
+void ReportCompileBatch(const CompileReport &report, ICompileLog &log, const std::string &writeProblem)
+{
+    if (!report.tables)
+    {
+        log.ReportResult(CompileResult("There was a problem saving the class and selector tables: " + report.tables.error().ToString(), CompileResult::CRT_Error));
+    }
+    if (!report.commit)
+    {
+        if (report.commit.error().code == sci::ErrorCode::Cancelled)
+        {
+            log.ReportResult(CompileResult("The compile was stopped, and no resource was written: " + report.commit.error().ToString()));
+        }
+        else
+        {
+            log.ReportResult(CompileResult(writeProblem + report.commit.error().ToString(), CompileResult::CRT_Error));
+        }
+    }
+    for (const std::string &moved : report.movedPatches)
+    {
+        log.ReportResult(CompileResult("Moved the patch file " + moved));
+    }
+    // A patch file that could not move is an error: it still hides the
+    // package write (review of S2b).
+    if (!report.moves)
+    {
+        log.ReportResult(CompileResult("Error: " + report.moves.error().ToString(), CompileResult::CRT_Error));
+    }
+    for (const std::string &warning : report.warnings)
+    {
+        if (report.moves || (warning != report.moves.error().message))
+        {
+            log.ReportResult(CompileResult("Warning: " + warning, CompileResult::CRT_Warning));
+        }
+    }
+}

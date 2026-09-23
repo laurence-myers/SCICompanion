@@ -162,10 +162,12 @@ sci::Status CompileScriptFile(GameSession &session, CompileResults &results, Com
 					check(WriteCompiledResource(resourceMap, options, ResourceType::Heap, wNum, outputHep));
 				}
 
-				// Save the corresponding sco file.
+				// Save the corresponding sco file. The .sco and the .scd
+				// describe the resources: a script whose resources could not be
+				// written gets neither (review of S1).
 				g_compileIOTimer.Start();
 				g_compileObjFileTimer.Start();
-				if (options.writeObjectFile)
+				if (options.writeObjectFile && status)
 				{
 					bool changed = false;
 					check(SaveSCOFile(helper, results.GetSCO(), script, &changed));
@@ -173,7 +175,7 @@ sci::Status CompileScriptFile(GameSession &session, CompileResults &results, Com
 				}
 				g_compileObjFileTimer.Stop();
 				g_compileDebugSymbolTimer.Start();
-				if (options.writeDebugInfo && !results.GetDebugInfo().empty())
+				if (options.writeDebugInfo && status && !results.GetDebugInfo().empty())
 				{
 					check(WriteBytesToFile(helper.GetScriptDebugFileName(script.GetResourceNumber()), results.GetDebugInfo()));
 				}

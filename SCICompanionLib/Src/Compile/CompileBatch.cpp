@@ -91,7 +91,7 @@ size_t CompileReport::WarningCount() const
 
 bool CompileReport::Succeeded() const
 {
-    return !cancelled && !stopped && (FailedCount() == 0) && tables.has_value() && commit.has_value();
+    return !cancelled && !stopped && (FailedCount() == 0) && tables.has_value() && commit.has_value() && moves.has_value();
 }
 
 CompileBatch::CompileBatch(GameSession &session, std::vector<ScriptId> scripts, const CompileOptions &options) :
@@ -119,7 +119,36 @@ sci::Result<std::unique_ptr<CompileBatch>> CompileBatch::Start(GameSession &sess
                     "this game keeps its resources in patch files (SaveToPatchFiles in game.ini), so SCI Companion does not read its package; compile to patch files");
             }
         }
+        // Review of S2a: before, these options wrote into the game, or failed
+        // each script after its .sco file was written.
+        if (options.write.raw && options.write.outDir.empty())
+        {
+            return sci::Fail(sci::ErrorCode::Usage, "raw files need an output folder");
+        }
+        if (!options.write.outDir.empty())
+        {
+            std::error_code ec;
+            if (!fs::is_directory(options.write.outDir, ec))
+            {
+                return sci::Fail(sci::ErrorCode::NotFound, "the output folder does not exist: " + options.write.outDir);
+            }
+            if (fs::equivalent(options.write.outDir, session.Helper().GameFolder, ec))
+            {
+                return sci::Fail(sci::ErrorCode::Usage, "the output folder is the game folder; to write into the game, give no output folder");
+            }
+        }
         const GameFolderHelper &helper = session.Helper();
+        // A script with no number (a document opened from a file, or the
+        // GUI's scan of src) gets the number that its source declares, so the
+        // shadow check and the report have it (review of S2b).
+        for (ScriptId &script : scripts)
+        {
+            uint16_t declared;
+            if ((script.GetResourceNumber() == InvalidResourceNumber) && ReadDeclaredScriptNumber(helper, script.GetFullPath(), declared))
+            {
+                script.SetResourceNumber(declared);
+            }
+        }
         std::unique_ptr<CompileBatch> batch(new CompileBatch(session, std::move(scripts), options));
         batch->_toPackage = WritesThePackage(helper, options.write);
         if (batch->_toPackage && (options.shadows != ShadowPolicy::Ignore))
@@ -150,6 +179,15 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
         // section 4.5): the scripts that use it are right only then.
         if (_scripts.empty() || !_passChangedObjectFile || (_pass >= _options.passes))
         {
+            // A .sco file changed in the last pass that the options allow.
+            _report.passLimit = !_scripts.empty() && _passChangedObjectFile;
+            return false;
+        }
+        if (abort.load())
+        {
+            // An abort between two passes keeps the pass that finished
+            // (review of S2b: before, the next pass withdrew it first).
+            _report.cancelled = true;
             return false;
         }
         // The next pass writes every script again; the writes of this pass
@@ -190,10 +228,21 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
     {
         events.OnScriptStart(index, _scripts.size(), script);
         CompileResults results(log, _session.Version());
+        // A savepoint of the script (review of S1 and S2a): a script that
+        // fails withdraws the resources that it queued, so the commit never
+        // writes a compiled script without its tables.
+        DeferResourceAppend scriptLevel(_session.ResourceMap());
         sci::Status compiled = CompileScriptFile(_session, results, log, _tables, *_headers, script, _options.write);
         objectFileChanged = results.ObjectFileChanged();
         outcome.stats = results.Stats;
+        // The log has a failure of the compile, but not a failure to join the
+        // pass.
         returned = true;
+        if (compiled)
+        {
+            compiled = scriptLevel.Commit();
+            returned = compiled.has_value();
+        }
         return compiled;
     });
     outcome.diagnostics = log.Results();
@@ -248,7 +297,8 @@ sci::Status CompileBatch::_DecideAbout(const std::vector<std::string> &files, bo
     std::string text = "these patch files would hide the package copies of the compiled resources: " + JoinPaths(files) + ".";
     if (!beforeTheCompile)
     {
-        text += " Nothing was written.";
+        // The .sco and .scd files are written with each script.
+        text += " No resource was written.";
     }
     if (asked)
     {
@@ -261,6 +311,7 @@ sci::Status CompileBatch::_DecideAbout(const std::vector<std::string> &files, bo
 // the commit. A script's auto text is known only after its compile.
 sci::Status CompileBatch::_CheckQueuedWrites()
 {
+    _hidingPatches.clear();
     if (!_toPackage || (_options.shadows == ShadowPolicy::Ignore))
     {
         return sci::Ok();
@@ -282,11 +333,15 @@ sci::Status CompileBatch::_CheckQueuedWrites()
             added.push_back(file);
         }
     }
-    if (added.empty())
+    if (!added.empty())
     {
-        return sci::Ok();
+        SCI_TRY(_DecideAbout(added, false));
     }
-    return _DecideAbout(added, false);
+    // Replace moves only these: the files that hide a resource that the
+    // commit writes (review of S2b: the list of the start also had the files
+    // of scripts that failed, and of tables that did not change).
+    _hidingPatches = shadowing;
+    return sci::Ok();
 }
 
 // ShadowPolicy::Replace, after the package write: the patch files go to
@@ -294,25 +349,37 @@ sci::Status CompileBatch::_CheckQueuedWrites()
 // package has the resources already.
 void CompileBatch::_MoveShadowingPatches()
 {
-    if (_shadowingPatches.empty())
+    if ((_options.shadows != ShadowPolicy::Replace) || _hidingPatches.empty())
     {
         return;
     }
     const GameFolderHelper &helper = _session.Helper();
     SYSTEMTIME now;
     GetLocalTime(&now);
-    fs::path folder = fs::path(helper.GameFolder) / "replaced-patches" /
+    fs::path base = fs::path(helper.GameFolder) / "replaced-patches" /
         fmt::format("{0:04}{1:02}{2:02}-{3:02}{4:02}{5:02}", now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute, now.wSecond);
+    // A new folder for each batch: an earlier batch in the same second keeps
+    // its files (review of S2b).
     std::error_code ec;
+    fs::path folder = base;
+    for (int n = 2; fs::exists(folder, ec); n++)
+    {
+        folder = fs::path(base.string() + fmt::format("-{0}", n));
+    }
     fs::create_directories(folder, ec);
-    for (const std::string &file : _shadowingPatches)
+    for (const std::string &file : _hidingPatches)
     {
         fs::path target = folder / fs::path(file).filename();
         std::error_code moved;
         fs::rename(file, target, moved);
         if (moved)
         {
-            _report.warnings.push_back(fmt::format("could not move the patch file {0}: {1}", file, moved.message()));
+            std::string text = fmt::format("could not move the patch file {0}: {1}; it still hides the package write", file, moved.message());
+            _report.warnings.push_back(text);
+            if (_report.moves)
+            {
+                _report.moves = sci::Fail(sci::ErrorCode::Io, text);
+            }
         }
         else
         {
@@ -394,6 +461,15 @@ CompileReport CompileBatch::Finish()
             _report.commit = joined;
             return _report;
         }
+        if (!_report.tables)
+        {
+            // The compiled scripts need their tables (review of S2a: before,
+            // the commit wrote them without the tables).
+            sci::Error error = _report.tables.error();
+            error.context.push_back("no compiled resource was written, because the class and selector tables could not be saved");
+            _report.commit = sci::Fail(error);
+            return _report;
+        }
         _report.commit = sci::Guard("checking the queued writes for patch files", [&]() -> sci::Status
         {
             return _CheckQueuedWrites();
@@ -403,10 +479,16 @@ CompileReport CompileBatch::Finish()
             // Nothing is written: the destructor withdraws the queued writes.
             return _report;
         }
+        // The GUI's timers show the time of the write only (review of S2c:
+        // before, they held the time of the question too).
+        g_compileIOTimer.Start();
+        g_compileAppendTimer.Start();
         _report.commit = sci::Guard("writing the compiled resources", [&]() -> sci::Status
         {
             return _defer->Commit();
         });
+        g_compileAppendTimer.Stop();
+        g_compileIOTimer.Stop();
         if (_report.commit)
         {
             _MoveShadowingPatches();

@@ -2116,22 +2116,30 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 		{
 			CNewCompileDialog dialog(**batch);
 			dialog.DoModal();
-			g_compileIOTimer.Start();
-			g_compileAppendTimer.Start();
+			// Finish times its write (the timers).
 			CompileReport report = (*batch)->Finish();
-			g_compileIOTimer.Stop();
-			g_compileAppendTimer.Stop();
+			bool stopped = !report.commit && (report.commit.error().code == sci::ErrorCode::Cancelled);
+			if (report.commit)
+			{
+				// The scripts are written: they are no longer out of date
+				// (review of S2c: before, the dialog cleared them before the
+				// commit).
+				for (const ScriptId &script : dialog.CompiledScripts())
+				{
+					appState->GetDependencyTracker().ClearScript(script);
+				}
+			}
 			// The result for the caller (for example, the run after a compile):
 			// a script that did not compile, or a failed save, is an error.
-			// Cancel is not.
-			result = (report.FailedCount() == 0) && report.tables && report.commit;
+			// Cancel is not, in the dialog or in the question.
+			result = (report.FailedCount() == 0) && report.tables && (report.commit || stopped) && report.moves;
 			log.ReportResult(CompileResult(fmt::format("{0} scripts compiled.", report.scripts.size())));
 			ReportCompileBatch(report, log, "There was a problem writing the compiled scripts: ");
 		}
 		else
 		{
-			result = false;
-			log.ReportResult(CompileResult("The compile did not start: " + batch.error().ToString(), CompileResult::CRT_Error));
+			result = (batch.error().code == sci::ErrorCode::Cancelled);
+			log.ReportResult(StartFailureLine(batch.error()));
 		}
 	}
 	else

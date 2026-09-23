@@ -110,6 +110,7 @@
     </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Src\Dialogs\CompileBatchGui.cpp" />
     <ClCompile Include="Src\Compile\DecompileRun.cpp" />
     <ClCompile Include="Src\Compile\CompileBatch.cpp" />
     <ClCompile Include="Src\Compile\CompileWrite.cpp" />
@@ -224,6 +225,7 @@
     <ClCompile Include="Src\Resources\VersionDetectionHelper.cpp" />
     <ClCompile Include="Src\Resources\View.cpp" />
     <ClCompile Include="Src\Util\AudioPlayback.cpp" />
+    <ClInclude Include="Src\Dialogs\CompileBatchGui.h" />
     <ClInclude Include="Src\Compile\DecompileRun.h" />
     <ClInclude Include="Src\Compile\CompileBatch.h" />
     <ClInclude Include="Src\Compile\CompileWrite.h" />

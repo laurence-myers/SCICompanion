@@ -123,6 +123,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Src\Dialogs\CompileBatchGui.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
     <ClCompile Include="Src\Compile\DecompileRun.cpp">
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
@@ -947,6 +950,9 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Src\Dialogs\CompileBatchGui.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
     <ClInclude Include="Src\Compile\DecompileRun.h">
       <Filter>Header Files\Compile</Filter>
     </ClInclude>

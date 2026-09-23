@@ -1922,25 +1922,33 @@ bool SCISyntaxParser::Parse(Script &script, streamIt &stream, std::unordered_set
 		std::string maybeKeyword;
 		streamIt errorPosCopy = errorPos;
 		ExtractSomeToken(maybeKeyword, errorPosCopy);
+		// The hint of the GUI text, and of the raw text: the raw text is a
+		// sentence of its own (review of S2c: it read 'Expected variable.:
+		// "foo"').
 		std::string hint;
+		std::string rawHint;
 		if (!maybeKeyword.empty())
 		{
 			if (std::find(SCIStatementKeywords.begin(), SCIStatementKeywords.end(), maybeKeyword) != SCIStatementKeywords.end())
 			{
 				hint = fmt::format(" (Statements must being with a parenthesis: \"({0}\").", maybeKeyword);
+				rawHint = fmt::format(" A statement must begin with a parenthesis: \"({0}\".", maybeKeyword);
 			}
 			else if (IsOperator(maybeKeyword, sciNameToBinaryOp) || IsOperator(maybeKeyword, sciNameToAssignmentOp) || IsOperator(maybeKeyword, sciNameToUnaryOp))
 			{
 				hint = fmt::format(" (Operator expressions must begin with a parenthesis: \"({0}\").", maybeKeyword);
+				rawHint = fmt::format(" An operator expression must begin with a parenthesis: \"({0}\".", maybeKeyword);
 			}
 			else if (maybeKeyword == "else")
 			{
 				hint = ": \"else\" cannot appear here.";
+				rawHint = " \"else\" cannot appear here.";
 			}
 			// Maybe more?
 			else
 			{
 				hint = fmt::format(": \"{0}\"", maybeKeyword);
+				rawHint = fmt::format(" The text there is \"{0}\".", maybeKeyword);
 			}
 		}
 		std::string strError = "Error: (" + script.GetScriptId().GetFileNameOrig() + ") " + rawError;
@@ -1952,7 +1960,7 @@ bool SCISyntaxParser::Parse(Script &script, streamIt &stream, std::unordered_set
 		{
 			CompileResult result(strError, scriptId, errorLine, errorPos.GetColumnNumber(), CompileResult::CRT_Error);
 			// For the command line: no "Error: (file)" and no position.
-			result.SetRawMessage(rawError + hint);
+			result.SetRawMessage(rawError + rawHint);
 			pError->ReportResult(result);
 		}
 	}

@@ -32,7 +32,8 @@ struct CompileOptions
 {
     // Where the output goes (plan step S1). Default: the game's setting.
     CompileWriteOptions write;
-    // Stop after the first script that does not compile.
+    // Stop after the first script that does not compile, in any pass (a
+    // later pass could fix a script that uses a .sco of the same batch).
     bool failFast = false;
     // The largest number of passes (plan section 4.5): a pass that changes
     // no .sco file is the last. The commit holds the last pass.
@@ -53,7 +54,9 @@ struct ScriptOutcome
     std::string name;
     // Ok; Compile (the errors are in the diagnostics); the error of a source
     // file that could not be read or an output that could not be written; or
-    // Internal (an exception in the engine).
+    // the error of an exception (Internal, or the code of a DataError). A
+    // script that fails writes no resource (its writes are withdrawn), but
+    // a .sco or .scd file that it wrote stays.
     sci::Status status;
     std::vector<CompileResult> diagnostics;
     // The sizes of the compiled script (the GUI shows them).
@@ -64,17 +67,24 @@ struct CompileReport
 {
     // The scripts that ran, in the order of the batch.
     std::vector<ScriptOutcome> scripts;
-    // The save of vocab 996 and 997. Ok when no script compiled (the tables
-    // are not saved then).
+    // The save of vocab 996 and 997 into the batch (the commit writes
+    // them). Ok when no script compiled (the tables are not saved then).
     sci::Status tables;
-    // The one write of the queued resources.
+    // The one write of the queued resources. Refused when the tables could
+    // not be saved: the compiled scripts need them.
     sci::Status commit;
+    // With ShadowPolicy::Replace: Ok, or the first patch file that could not
+    // move (it still hides the package write).
+    sci::Status moves;
     // The abort flag stopped the batch.
     bool cancelled = false;
     // failFast stopped the batch after a script that failed.
     bool stopped = false;
     // The passes that ran.
     int passes = 0;
+    // The last pass that options.passes allows changed a .sco file, so a
+    // script that uses it can still be out of date.
+    bool passLimit = false;
     // Patch files with another name for a written resource, and patch
     // tables that hide later package saves of the GUI.
     std::vector<std::string> warnings;
@@ -87,7 +97,8 @@ struct CompileReport
     // The error and warning diagnostics of all scripts.
     size_t ErrorCount() const;
     size_t WarningCount() const;
-    // Every script compiled, and the tables and the commit are Ok.
+    // Every script compiled, and the tables, the commit and the moves are
+    // Ok.
     bool Succeeded() const;
 };
 
@@ -98,7 +109,7 @@ class ICompileEvents
 public:
     virtual ~ICompileEvents() = default;
     // Before a script compiles, inside the exception boundary of the script:
-    // an exception from here is an Internal status of the script.
+    // an exception from here is the status of the script (Internal).
     virtual void OnScriptStart(size_t index, size_t count, const ScriptId &script) {}
     // After a script compiled or failed.
     virtual void OnScriptDone(const ScriptOutcome &outcome) {}
@@ -110,8 +121,11 @@ class CompileBatch
 {
 public:
     // Loads the tables and the headers, checks the destination, and opens
-    // one batch of resource writes. Fails when the batch cannot start: the
-    // tables do not load; Usage for an output folder with the package;
+    // one batch of resource writes. A script with no number gets the number
+    // that its source declares. Fails when the batch cannot start: the
+    // tables do not load; Usage for an output folder with the package, for
+    // raw files with no output folder, or for the game folder as the output
+    // folder; NotFound for an output folder that does not exist;
     // WriteRefused for the package of a game that keeps its resources in
     // patch files (SCI Companion does not read that package), or (with
     // ShadowPolicy::Refuse) when a patch file would hide the script, heap or
@@ -128,12 +142,16 @@ public:
     // stopped the batch. After the last script of a pass that changed a .sco
     // file, it starts the next pass (if options.passes allows): the writes of
     // the pass before are withdrawn, and the report has the new pass only.
+    // An abort between two passes keeps the pass that finished. Each script
+    // is a savepoint: a script that fails withdraws the writes that it
+    // queued, so the commit never writes a script without its tables.
     bool Step(const std::atomic<bool> &abort, ICompileEvents &events);
     // Saves the tables when one or more scripts compiled, and commits the
     // queued writes, also after an abort, as the GUI's Cancel button does.
     // Before the commit, it checks the queued package writes again for patch
     // files that would hide them (a text of a script's auto text), and asks
-    // askShadows about new files. Call it once.
+    // askShadows about new files. With Replace, it moves only the patch
+    // files that hide a resource that the commit wrote. Call it once.
     CompileReport Finish();
 
     size_t Count() const { return _scripts.size(); }
@@ -159,8 +177,12 @@ private:
     bool _finished = false;
     // Writes into the game's package (not an output folder, not a dry run).
     bool _toPackage = false;
-    // The patch files that hide a package write (ShadowPolicy::Replace).
+    // The patch files that the policy or askShadows answered for, so the
+    // check before the commit asks only about new ones.
     std::vector<std::string> _shadowingPatches;
+    // The patch files that hide a queued package write, found before the
+    // commit: the ones that Replace moves.
+    std::vector<std::string> _hidingPatches;
 
     sci::Status _DecideAbout(const std::vector<std::string> &files, bool beforeTheCompile);
     sci::Status _CheckQueuedWrites();

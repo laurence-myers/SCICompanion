@@ -6,11 +6,12 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: C1. F1, A1, A2, B1, B2, B3a, B3b, F2, K1 to K6 and S3 are
-  committed and reviewed, with their review fixes. S1, S2 (S2a, S2b, S2c)
-  and S4 (S4a, S4b) are committed; the reviews of S1, S2 and of the fix
-  commits `de2fb8dc` and `8a322b32` are running, and S4 is not reviewed. The review of `bc827391` and `fe02c12a` is done, and its
-  findings are fixed (the commit after `de2fb8dc`).
+- Current step: C1. F1, A1, A2, B1, B2, B3a, B3b, F2, K1 to K6, S3, S1 and
+  S2 (S2a, S2b, S2c) are committed and reviewed, with their review fixes
+  (the S1 and S2 fixes: the commit after `7d26d9d6`). S4 (S4a, S4b) is
+  committed; its review is running. The fixes of the reviews of
+  `bc827391` and `fe02c12a` (`8a322b32`), and of `de2fb8dc` and
+  `8a322b32` (`7d26d9d6`), are committed.
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -19,7 +20,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412. After the fixes of the review of `de2fb8dc` and `8a322b32`: 418.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412. After the fixes of the review of `de2fb8dc` and `8a322b32`: 418. After the fixes of the reviews of S1 and S2: 429.
   The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -50,8 +51,8 @@ for each step, and a follow-up commit if the review finds a problem.
 | K5 `proc<N>_<M>` for a missing script | done | `78490d24`; test fix `2aee01b1`; review fixes (the commit after `108cb227`) | PASS with 6 nits; the test commit PASS. Fixed: tests for an `asm` `calle` and for the name as a value (an undeclared name again), a leading zero is not a procedure, `__proc0_<M>` compiles to `callb`, the README text, the handover and plan text. Review of the fixes (`bc827391`): PASS with nits (the byte count, the `asm` form, the plan rows), fixed in the commit after `de2fb8dc`. |
 | K6 No `vocab.000`; `/` in paths | done | `dcc0fdf7`, review fixes (the commit after `108cb227`) | FIX: 1 should-fix (the handover State, fixed in `f85fe77d`), 7 nits, 1 question. Fixed: the Said test counts one error for two Said strings, a vocab 900 test, the null vocabulary in the "Add as synonym of" dialog, the `ScriptId` folder keeps only `\`, stale text. Known gaps: see "Decisions" (a synonym with no vocabulary, a name with a slash, a `ScriptId` with no folder). Review of the fixes (`bc827391`): PASS with nits, fixed in the commit after `de2fb8dc`. |
 | S3 ScriptCatalog, script names without `game.ini` | done | S3a `f85fe77d`; S3b `108cb227`; review fixes (the commit after `fb14399f`) | FIX: S3a 1 should-fix (a `-` in a derived name), S3b 1 should-fix (one name conflict refused every script, with the wrong fix), nits and questions. Fixed: see "S3 review" in "Decisions". |
-| S1 Compile destination | done | the commit after `fe02c12a` | |
-| S2 CompileBatch | done | S2a `fb14399f`; S2b `f256c0d8`; S2c: the commit after `f256c0d8` | |
+| S1 Compile destination | done | `a9561fcc`; review fixes (the commit after `7d26d9d6`) | FIX: 1 should-fix (a script that failed after its resources were queued was written without its tables), nits. Fixed with the S2 review fixes. |
+| S2 CompileBatch | done | S2a `fb14399f`; S2b `f256c0d8`; S2c `2ca7e418`; review fixes (the commit after `7d26d9d6`) | S2a FIX (the same should-fix as S1), S2b FIX (Replace moved patch files of resources that the commit did not write), S2c FIX (the GUI reached it; the scan of src could throw). Fixed: see "S1 and S2 reviews". |
 | S4 DecompileRun | done | S4a `152f4e56`; S4b: the commit after `152f4e56` | |
 | C1 CLI project, `script list` | not started | | |
 | C2 `script decompile`, `script sco` | not started | | |
@@ -107,6 +108,12 @@ for each step, and a follow-up commit if the review finds a problem.
 ## Decisions and deviations from the plan
 
 - The open questions Q4 to Q13 use the plan's recommendations.
+- 2026-09-24, CLI11 for C1: a download needs your permission, and you were
+  away. A copy of CLI11 2.0.0 (2021, BSD-3-Clause, single header) was on
+  this machine (`E:\Code\Cpp\asperite\third_party\IXWebSocket\third_party\
+  cli11\CLI11.hpp`; its only change from upstream is an include guard, as
+  its header says). C1 vendors that copy. A newer CLI11 (2.4 or later) is
+  a later swap of one header, when you allow the download.
 - Revision 4 of the plan (2026-09-23) added phase K and the `scicompile`
   features (plan section 14), at your request.
 - 2026-09-23, your change of plan: the CLI must work on a game that SCI
@@ -857,9 +864,47 @@ for each step, and a follow-up commit if the review finds a problem.
   table save, the commit, the moved files and the warnings. The result for
   the run after a compile: every script compiled, and the tables and the
   commit are Ok; Cancel is not an error (as before).
-- S2c known gaps: no test runs the GUI code (the dialog, the question, the
-  output lines); it was checked by inspection and by the build. Only one of
-  the eight parser sites (the `else` clause of a `cond`) has a test.
+- S2c known gaps: no test runs the dialog or the question; the output
+  lines and the scripts of a compile-all have a test (`CompileBatchGui`).
+  Only one of the eight parser sites (the `else` clause of a `cond`) has a
+  test.
+- S1 and S2 reviews (fixed in the commit after `7d26d9d6`):
+  - Each script is a savepoint (a nested `DeferResourceAppend`): a script
+    that fails withdraws the resources that it queued, so the commit never
+    writes a compiled script without its tables. `CompileScriptFile`
+    writes no `.sco` or `.scd` after a failed resource write. `Finish`
+    refuses the commit when the tables could not be saved.
+  - Replace moves only the patch files that hide a queued package write,
+    found before the commit (`_hidingPatches`); the list of the start is
+    only for the question. A new `replaced-patches` folder for each batch
+    (`-2`, `-3`... in the same second). A file that cannot move is
+    `report.moves`, and `Succeeded` needs it.
+  - An abort between two passes keeps the pass that finished.
+    `report.passLimit`: the last allowed pass still changed a `.sco`.
+  - `Start` gives `Usage` for raw files with no output folder and for the
+    game folder as the output folder, and `NotFound` for an output folder
+    that does not exist. A script with no number gets the number that its
+    source declares (the shadow check and the report need it).
+    `WriteCompiledResource` checks the size also for a dry run.
+  - `WriteBytesToFile` shares the file for read and write, as the
+    `ofstream` that it replaced did. It is still not atomic (a temp file
+    and a rename would fail when another program has the file open with
+    no delete sharing; not a regression).
+  - The raw text of a syntax error with a hint is a sentence of its own.
+  - GUI: the helpers are in `Src\Dialogs\CompileBatchGui.h/.cpp`
+    (`ScriptsToCompile` skips a name outside the ANSI code page;
+    `AskAboutShadowingPatches` asks nothing while a quit is pending, and
+    the batch writes, as before; `StartFailureLine`; `ReportCompileBatch`,
+    where Cancel is a message). The dependency tracker clears a script only
+    after a commit that is Ok. `Finish` times the commit (the GUI's
+    timers).
+  - Answers: `failFast` stops at the first failure in any pass, also one
+    that a later pass would fix (documented in `CompileOptions`). Columns
+    are 0-based: C3 adds 1 in its MSBuild-style output. The eight parser
+    messages are `CRT_Message` with a line: C3 prints them too. The report
+    has no `written` list yet: C3 adds it for `--dry-run` (plan 6.5).
+  - For C3: after a headless decompile of all SCI0 template scripts, the
+    review saw `SysWindow` and `Obj` not recompile (1 or 5 passes).
 - S2b known gaps: no test has a script that compiles in one pass and fails
   in a later one, so the withdrawal of an earlier pass is checked by
   inspection only. With an output folder, each pass writes its files at
@@ -929,8 +974,7 @@ for each step, and a follow-up commit if the review finds a problem.
 
 ## Next action
 
-Phase K and S3 are done, with the fixes of their reviews; S1, S2 and S4
-are done. The reviews of S1 and S2a, of S2b and S2c, and of `de2fb8dc` and
-`8a322b32` are running (three agents, isolated worktrees).
-Next: the fixes of those reviews, a review of S4 (S4a and S4b), then C1
-(plan section 9).
+Phases K and S are done, with the fixes of their reviews, except S4, whose
+review is running (an isolated worktree). Next: the fixes of the S4
+review, then C1 (plan section 9), with CLI11 2.0.0 from a local copy (see
+"Decisions").

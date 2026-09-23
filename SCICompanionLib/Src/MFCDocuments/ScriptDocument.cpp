@@ -97,26 +97,6 @@ void CScriptDocument::OnUpdateIsScript(CCmdUI *pCmdUI)
 
 const char c_szLine[] = "--------------------------------------------------------";
 
-namespace
-{
-	// The dependency tracker forgets a script that compiled.
-	class ClearCompiledScript : public ICompileEvents
-	{
-	public:
-		explicit ClearCompiledScript(const ScriptId &script) : _script(script) {}
-		void OnScriptDone(const ScriptOutcome &outcome) override
-		{
-			if (outcome.status)
-			{
-				appState->GetDependencyTracker().ClearScript(_script);
-			}
-		}
-
-	private:
-		ScriptId _script;
-	};
-}
-
 void CScriptDocument::OnCompile()
 {
 	if (_scriptId.IsHeader())
@@ -144,7 +124,7 @@ void CScriptDocument::OnCompile()
 		if (batch)
 		{
 			std::atomic<bool> abort(false);
-			ClearCompiledScript events(_scriptId);
+			ICompileEvents events;
 			{
 				// The class browser's background reload parses the same scripts and
 				// reads the game, so hold its lock for the compile.
@@ -158,9 +138,18 @@ void CScriptDocument::OnCompile()
 		}
 		else
 		{
-			log.ReportResult(CompileResult("The compile did not start: " + batch.error().ToString(), CompileResult::CRT_Error));
+			log.ReportResult(StartFailureLine(batch.error()));
 		}
 		bool fSuccess = !report.scripts.empty() && report.scripts[0].status.has_value();
+		// The user stopped it in the question: not an error (review of S2c).
+		bool stopped = batch ? (!report.commit && (report.commit.error().code == sci::ErrorCode::Cancelled)) :
+			(batch.error().code == sci::ErrorCode::Cancelled);
+		if (fSuccess && report.commit)
+		{
+			// The script is written: it is no longer out of date (review of
+			// S2c: before, it was cleared before the commit).
+			appState->GetDependencyTracker().ClearScript(_scriptId);
+		}
 		CompileStats stats;
 		if (!report.scripts.empty())
 		{
@@ -184,19 +173,23 @@ void CScriptDocument::OnCompile()
 
 		stringstream str;
 		str << "Compiling " << _scriptId.GetFileName();
-		str << (fSuccess ? " succeeded." : " failed.");
+		str << (stopped ? " was stopped." : (fSuccess ? " succeeded." : " failed."));
 		log.ReportResult(CompileResult(c_szLine));
 		log.ReportResult(CompileResult(str.str()));
 
-		string info = fmt::format(
-			"Object data: {0} bytes   Code: {1} bytes   Script vars: {2} bytes   Strings: {3} bytes	Saids: {4} bytes",
-			stats.Objects,
-			stats.Code,
-			stats.Locals,
-			stats.Strings,
-			stats.Saids
-		);
-		log.ReportResult(CompileResult(info));
+		if (!report.scripts.empty())
+		{
+			// No sizes when no script compiled (review of S2c).
+			string info = fmt::format(
+				"Object data: {0} bytes   Code: {1} bytes   Script vars: {2} bytes   Strings: {3} bytes	Saids: {4} bytes",
+				stats.Objects,
+				stats.Code,
+				stats.Locals,
+				stats.Strings,
+				stats.Saids
+			);
+			log.ReportResult(CompileResult(info));
+		}
 
 		ReportCompileBatch(report, log, "There was a problem writing the compiled script: ");
 		// The counts of every error and warning above.
