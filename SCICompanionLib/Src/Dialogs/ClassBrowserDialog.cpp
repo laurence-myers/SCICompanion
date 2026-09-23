@@ -98,7 +98,8 @@ void CClassBrowserDialog::DoDataExchange(CDataExchange* pDX)
 			char szError[1024];
 			szError[0] = 0;
 			pException->GetErrorMessage(szError, ARRAYSIZE(szError));
-			appState->LogInfo(szError);
+			appState->LogInfo("%s", szError);
+			pException->Delete();
 		}
 	}
 }

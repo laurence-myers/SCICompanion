@@ -408,8 +408,9 @@ Engine                    parser, compiler, decompiler, resource containers, cod
 ```
 
 - One `GameSession` is one open game. The CLI creates one for each run.
-  The GUI's `AppState` owns one and forwards `GetResourceMap()`,
-  `GetVersion()` and `LogInfo()` to it, so the GUI code does not change.
+  The GUI's `AppState` owns one and forwards `GetResourceMap()` and
+  `GetVersion()` to it, so the GUI code does not change. `LogInfo()` goes
+  to `CoreLog`, and the GUI's `AppState` is the log sink.
 - The engine and the services never use `appState`. A unit test runs every
   script operation with `appState == nullptr` to keep it so.
 - Every service returns `sci::Result<T>` or `sci::Status`. No exception

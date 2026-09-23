@@ -183,8 +183,13 @@ AppState::AppState(CWinApp *pApp) : _session(SessionOptions(), this, &_resourceR
 	EGAPaletteColorsClipboardFormat = RegisterClipboardFormat("SCICompanionEGAPaletteColors");
 	LoadSyntaxHighlightingColors();
 
-	// The session loaded the compiler's grammars. The core log comes here.
-	SetCoreLogSink(this);
+	// The session loaded the compiler's grammars. The GUI's core log comes
+	// here. An AppState with no app (the tests) has no log file, so it does
+	// not take the sink from its host.
+	if (pApp != nullptr)
+	{
+		SetCoreLogSink(this);
+	}
 }
 
 DependencyTracker &AppState::GetDependencyTracker()
@@ -243,10 +248,7 @@ void AppState::HideTipWindows()
 
 AppState::~AppState()
 {
-	if (GetCoreLogSink() == this)
-	{
-		SetCoreLogSink(nullptr);
-	}
+	RemoveCoreLogSink(this);
 	delete _pACThread;
 	CoTaskMemFree(_pidlFolder);
 }
@@ -875,24 +877,10 @@ std::vector<int> &AppState::GetRecentViews() { return _recentViews; }
 
 void AppState::LogInfo(const TCHAR *pszFormat, ...)
 {
-	if (GetCoreLogSink() == nullptr)
-	{
-		return;
-	}
-	std::string text;
 	va_list argList;
 	va_start(argList, pszFormat);
-	va_list measure;
-	va_copy(measure, argList);
-	int length = std::vsnprintf(nullptr, 0, pszFormat, measure);
-	va_end(measure);
-	if (length > 0)
-	{
-		text.assign((size_t)length, '\0');
-		std::vsnprintf(&text[0], (size_t)length + 1, pszFormat, argList);
-	}
+	CoreLogFormatV(LogLevel::Info, pszFormat, argList);
 	va_end(argList);
-	CoreLog(LogLevel::Info, text);
 }
 
 void AppState::Write(LogLevel level, const std::string &text)
@@ -902,7 +890,15 @@ void AppState::Write(LogLevel level, const std::string &text)
 	{
 		std::string line = (level == LogLevel::Info) ? text : (std::string(LogLevelName(level)) + ": " + text);
 		line += "\n";
-		_logFile.Write(line.c_str(), (UINT)line.size());
+		try
+		{
+			_logFile.Write(line.c_str(), (UINT)line.size());
+		}
+		catch (CException *e)
+		{
+			// A lost log line is not worth a failure.
+			e->Delete();
+		}
 	}
 }
 
@@ -932,7 +928,20 @@ int SafeMessageBox(const std::string &text, UINT type)
 			break;
 	}
 	CoreLog(level, text);
-	return (type & MB_YESNO) ? IDNO : IDOK;
+	switch (type & MB_TYPEMASK)
+	{
+		case MB_OKCANCEL:
+		case MB_YESNOCANCEL:
+		case MB_RETRYCANCEL:
+		case MB_CANCELTRYCONTINUE:
+			return IDCANCEL;
+		case MB_YESNO:
+			return IDNO;
+		case MB_ABORTRETRYIGNORE:
+			return IDABORT;
+		default:
+			return IDOK;
+	}
 }
 
 // AppState message handlers

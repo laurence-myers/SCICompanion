@@ -154,7 +154,7 @@ public:
 	void SetRecentlyInteractedView(int resourceNumber) override;
 
 	// Sends the text to the core log (CoreLog), at the Info level.
-	void LogInfo(const TCHAR *pszFormat, ...);
+	void LogInfo(_Printf_format_string_ const TCHAR *pszFormat, ...);
 
 	// ILogSink
 	void Write(LogLevel level, const std::string &text) override;

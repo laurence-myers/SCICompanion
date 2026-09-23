@@ -1440,7 +1440,14 @@ void CResourceMap::SetGameFolder(const string &gameFolder)
 
 sci::Status CResourceMap::TryOpen(const std::string &gameFolder)
 {
-	return _OpenGameFolder(gameFolder);
+	if (gameFolder.empty())
+	{
+		// For SetGameFolder, an empty folder closes the game; here it is a mistake.
+		return sci::Fail(sci::ErrorCode::Usage, "No game folder was given");
+	}
+	// The whole open is inside the exception boundary: the parts before and after the
+	// version sniff can also throw (for example, out of memory).
+	return sci::Guard("opening the game in " + gameFolder, [&]() { return _OpenGameFolder(gameFolder); });
 }
 
 sci::Status CResourceMap::_OpenGameFolder(const string &gameFolder)

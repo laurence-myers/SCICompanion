@@ -6,16 +6,17 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: B3 (next). F1, A1, A2, B1 and B2 are committed. F1, A1
-  and A2 are reviewed, with their review fixes. The B1 review is done and
-  its fixes come next; the B2 review runs in the background.
+- Current step: B3 (next). F1, A1, A2, B1 and B2 are committed. F1, A1,
+  A2 and B1 are reviewed, with their review fixes. The B2 review runs in
+  the background.
 - 2026-09-23: at your request, the branch history was rewritten so that
   no commit adds a copyright header. Every SHA from F1 on changed; the
   SHAs in this file and in the commit messages were changed to match.
 - Baseline on `0dc1fef5`: the Release build passes; the unit suite passes
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
-  After B1: 264. After B2: 269. After the A2 review fixes: 272.
+  After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
+  B1 review fixes: 276.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
   (`getenv`) and C4267 in the UnitTests helpers (`DecompileHelper.cpp`,
@@ -33,7 +34,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | F1 Result foundation | done | `04361133`, review fixes `b499f9ac` | FIX: 2 should-fix, 8 nits; fixed except the Gdiplus `Status`/`Ok` name overlap in `RoomExplorerView.cpp` (latent, not used) |
 | A1 Deferred writes | done | `1c4d1c6f`, review fixes `258ce43c` | FIX: 3 should-fix, 5 nits. Fixed: savepoints (an abandoned inner batch withdraws its resources and puts back what it replaced), the audio repackage stops on a failed map save, every queued type reloads, guards around the context text and the notifications, tests on SCI1.1 and for mixed destinations and a read-only volume, the plan row. Moved to A2: the audio cache writer swallows its errors and saves its audio map through the GUI wrapper. Already fixed by `b499f9ac`: the last-error capture in `util.cpp`. |
 | A2 Patch writer, size check | done | `7432a479`, review fixes (the commit after `3be03ff1`) | FIX: 1 should-fix, 6 nits (it also reviewed `258ce43c`). Fixed: the patch writer checks every existing target (read-only, locked) before the first rename and removes the `.bak` files left after a failed rename; a repackage inside an open batch is refused; the audio cache is marked out of date before its map save; `PerformChecks` runs inside the exception boundary; the size error names the resource and no longer says "A Audio"; the plan's statements on atomic commits and on the old audio cache behaviour; README "What's new". Left as known gaps (below): `Cancelled` for check failures that are not a choice, and a rename that fails after the checks. |
-| B1 GameSession, core log | done | `13a786ac` | FIX: 2 should-fix, 8 nits; fixes next |
+| B1 GameSession, core log | done | `13a786ac`, review fixes (the commit after `d1221472`) | FIX: 2 should-fix, 8 nits. Fixed: only a GUI `AppState` installs itself as the log sink, and it removes itself with a compare-exchange (`RemoveCoreLogSink`); `Open("")` is a Usage error; `TryOpen` is inside the exception boundary as a whole; `AppState::Write` deletes MFC exceptions; `LogInfo` uses `CoreLogFormatV`, with `_Printf_format_string_`; three format-string bugs (`Vocab99x.cpp` `%d` for a name, two dialogs that used the error text as the format, and leaked their `COleException`); the grammar load uses `std::call_once`; the headless `SafeMessageBox` gives the safe answer for every button set; test hygiene. Left: see "Decisions" (the GUI open path and the B3 guard test). |
 | B2 Script text loader | done | `3be03ff1` | running |
 | B3 Engine on the session | not started | | |
 | F2 Engine errors as values | not started | | |
@@ -138,6 +139,15 @@ for each step, and a follow-up commit if the review finds a problem.
   permissive; F2 can add a check.
 - The test helper `CopyGameFromModuleFolder` copies a template without an
   `AppState`, for tests that must run with `appState == nullptr`.
+- B1 review: `SetGameFolder` (the GUI path) now also turns a non-standard
+  exception from the version sniff (for example a `CException`) into its
+  "Unable to open resource map" box and a `CUserException`; before, such
+  an exception left the function as it was. No current code throws one
+  there.
+- For B3: the guard test cannot rely on a crash from `appState->LogInfo`
+  with no `AppState`, because the B1 `LogInfo` does not touch `this`. B3
+  must change the engine's `appState->LogInfo` calls to `CoreLogFormat`
+  and add a check-script rule against `appState` in the engine folders.
 - B2: the editor's line rule is odder than the plan said (plan section
   2.8 now has it): a CR-only file is one line, "LF CR" is a style, and a
   NUL ends a line. `SplitScriptText` copies it exactly.

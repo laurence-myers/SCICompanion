@@ -105,7 +105,8 @@ public:
 	// a failure shows a message box and throws a CUserException.
 	void SetGameFolder(const std::string &gameFolder);
 	// Opens the game in the folder. No dialog and no exception: a failure
-	// comes back as an error, and then no game is open.
+	// comes back as an error, and then no game is open. An empty folder is a
+	// Usage error.
 	sci::Status TryOpen(const std::string &gameFolder);
 	// True when the game's resource map is corrupt or truncated (an SCI1+ lookup
 	// table with no terminator). Safe to call on the UI thread after a game is

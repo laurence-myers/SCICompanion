@@ -61,11 +61,23 @@ namespace UnitTests
     //    so every later read of the setting was undefined (P17).
     TEST_CLASS(TestGameSession)
     {
-        std::string _gameFolder;
+        std::string _gameFolder;    // From SetUpGame: CleanUpGame also deletes its AppState.
+        std::string _copyFolder;    // From CopyGameFromModuleFolder: no AppState.
+
+        void RemoveCopy()
+        {
+            if (!_copyFolder.empty())
+            {
+                std::error_code ec;
+                std::filesystem::remove_all(_copyFolder, ec);
+                _copyFolder.clear();
+            }
+        }
 
     public:
         TEST_METHOD_CLEANUP(CleanUp)
         {
+            RemoveCopy();
             if (!_gameFolder.empty())
             {
                 CleanUpGame(_gameFolder);
@@ -83,29 +95,56 @@ namespace UnitTests
             };
             for (const auto &entry : templates)
             {
-                _gameFolder = CopyGameFromModuleFolder(entry.first);
+                _copyFolder = CopyGameFromModuleFolder(entry.first);
                 {
                     GameSession session;
-                    sci::Status opened = session.Open(_gameFolder);
+                    sci::Status opened = session.Open(_copyFolder);
                     std::string text = opened ? std::string() : opened.error().ToString();
                     Assert::IsTrue(opened.has_value(), Wide(text).c_str());
                     Assert::IsTrue(session.ResourceMap().IsGameLoaded());
-                    Assert::AreEqual(_gameFolder, session.Helper().GameFolder);
+                    Assert::AreEqual(_copyFolder, session.Helper().GameFolder);
                     Assert::IsTrue(session.Version().MapFormat == entry.second, Wide(entry.first).c_str());
                 }
+                RemoveCopy();
+            }
+        }
+
+        TEST_METHOD(Open_EmptyFolder_IsAUsageError)
+        {
+            NoAppState noAppState;
+            GameSession session;
+            sci::Status opened = session.Open("");
+            Assert::IsFalse(opened.has_value(), L"an empty folder is not a game");
+            Assert::AreEqual(std::string("usage"), std::string(sci::ErrorCodeName(opened.error().code)));
+            Assert::IsFalse(session.ResourceMap().IsGameLoaded());
+        }
+
+        TEST_METHOD(HeadlessAppState_DoesNotTakeTheSink)
+        {
+            ILogSink *before = GetCoreLogSink();
+            {
+                CaptureLogSink sink;
+                ScopedCoreLogSink scoped(sink);
+                // An AppState with no app (as in the tests) has no log file.
+                _gameFolder = SetUpGameSCI0();
+                Assert::IsTrue(GetCoreLogSink() == &sink, L"the AppState must not take the sink");
+                CoreLog(LogLevel::Info, "after the AppState");
                 CleanUpGame(_gameFolder);
                 _gameFolder.clear();
+                Assert::IsTrue(GetCoreLogSink() == &sink, L"deleting the AppState must not remove another sink");
+                Assert::AreEqual(size_t(1), sink.lines.size());
             }
+            Assert::IsTrue(GetCoreLogSink() == before, L"the scope puts back the sink before it");
         }
 
         TEST_METHOD(Open_NoResourceMap_ReturnsNotFoundThatNamesTheFile)
         {
             NoAppState noAppState;
-            _gameFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
-            std::filesystem::remove(_gameFolder + "\\resource.map");
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
+            std::filesystem::remove(_copyFolder + "\\resource.map");
 
             GameSession session;
-            sci::Status opened = session.Open(_gameFolder);
+            sci::Status opened = session.Open(_copyFolder);
 
             Assert::IsFalse(opened.has_value(), L"a folder with no resource.map must not open");
             Assert::AreEqual(std::string("not-found"), std::string(sci::ErrorCodeName(opened.error().code)));
@@ -199,7 +238,33 @@ namespace UnitTests
             ILogSink *previous = SetCoreLogSink(nullptr);
             CoreLog(LogLevel::Info, "nobody listens");
             CoreLogFormat(LogLevel::Info, "%s", "nobody listens");
+            Assert::IsNull(GetCoreLogSink());
             SetCoreLogSink(previous);
+        }
+
+        TEST_METHOD(RemoveCoreLogSink_RemovesOnlyTheSinkItNames)
+        {
+            CaptureLogSink first;
+            CaptureLogSink second;
+            ScopedCoreLogSink scoped(first);
+            RemoveCoreLogSink(&second);
+            Assert::IsTrue(GetCoreLogSink() == &first, L"another sink must stay");
+            RemoveCoreLogSink(&first);
+            Assert::IsNull(GetCoreLogSink());
+        }
+
+        TEST_METHOD(SafeMessageBox_NoGui_GivesTheSafeAnswer)
+        {
+            NoAppState noAppState;
+            CaptureLogSink sink;
+            ScopedCoreLogSink scoped(sink);
+            Assert::AreEqual(IDOK, SafeMessageBox("a", MB_OK));
+            Assert::AreEqual(IDCANCEL, SafeMessageBox("b", MB_OKCANCEL));
+            Assert::AreEqual(IDNO, SafeMessageBox("c", MB_YESNO));
+            Assert::AreEqual(IDCANCEL, SafeMessageBox("d", MB_YESNOCANCEL));
+            Assert::AreEqual(IDCANCEL, SafeMessageBox("e", MB_RETRYCANCEL));
+            Assert::AreEqual(IDABORT, SafeMessageBox("f", MB_ABORTRETRYIGNORE));
+            Assert::AreEqual(size_t(6), sink.lines.size());
         }
 
         TEST_METHOD(DependencyTracker_FollowsTheSettingAfterConstruction)

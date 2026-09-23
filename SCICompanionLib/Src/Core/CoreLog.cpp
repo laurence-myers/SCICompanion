@@ -46,6 +46,12 @@ ILogSink *GetCoreLogSink()
     return g_coreLogSink.load();
 }
 
+void RemoveCoreLogSink(ILogSink *sink)
+{
+    ILogSink *expected = sink;
+    g_coreLogSink.compare_exchange_strong(expected, nullptr);
+}
+
 void CoreLog(LogLevel level, const std::string &text)
 {
     ILogSink *sink = g_coreLogSink.load();
@@ -64,15 +70,13 @@ void CoreLog(LogLevel level, const std::string &text)
     }
 }
 
-void CoreLogFormat(LogLevel level, const char *format, ...)
+void CoreLogFormatV(LogLevel level, const char *format, va_list args)
 {
     if (g_coreLogSink.load() == nullptr)
     {
         return;
     }
     std::string text;
-    va_list args;
-    va_start(args, format);
     try
     {
         text = FormatV(format, args);
@@ -81,9 +85,16 @@ void CoreLogFormat(LogLevel level, const char *format, ...)
     {
         OutputDebugStringA("CoreLog: could not format a log line\n");
     }
-    va_end(args);
     if (!text.empty())
     {
         CoreLog(level, text);
     }
+}
+
+void CoreLogFormat(LogLevel level, const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    CoreLogFormatV(level, format, args);
+    va_end(args);
 }

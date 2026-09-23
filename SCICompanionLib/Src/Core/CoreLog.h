@@ -10,6 +10,8 @@
 // Codecs log from worker threads, so a sink must be thread-safe. The host
 // must keep its sink alive while any thread can log.
 
+#include <sal.h>
+#include <cstdarg>
 #include <string>
 
 enum class LogLevel
@@ -32,15 +34,20 @@ public:
 // Installs the sink (null removes it) and returns the sink before it.
 ILogSink *SetCoreLogSink(ILogSink *sink);
 ILogSink *GetCoreLogSink();
+// Removes the sink only if it is the one installed now. A sink calls this
+// in its destructor, so that the pointer never outlives the object.
+void RemoveCoreLogSink(ILogSink *sink);
 
 // Sends the text to the sink. Never throws.
 void CoreLog(LogLevel level, const std::string &text);
 
 // The same, with printf formatting, for the old LogInfo call sites. The text
-// has no length limit.
-void CoreLogFormat(LogLevel level, const char *format, ...);
+// has no length limit. Never throws.
+void CoreLogFormat(LogLevel level, _Printf_format_string_ const char *format, ...);
+void CoreLogFormatV(LogLevel level, const char *format, va_list args);
 
 // Installs a sink for the life of this object, then puts back the one before.
+// The sink before must live longer than this object.
 class ScopedCoreLogSink
 {
 public:
