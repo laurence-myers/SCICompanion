@@ -74,7 +74,9 @@ public:
 	// Decompiles the scripts, names their variables together, and writes each
 	// one's .sc and .sco, plus main's .sco when a global gained a name (unless
 	// script 0 is in the batch, whose own .sco then carries the names).
-	// An abort stops the batch where it is; the scripts already written stay.
+	// An abort stops the batch where it is; the scripts already written stay,
+	// and a script whose write came before the abort counts as written, with
+	// its renames (review of ba63d08a).
 	// A script that fails to decompile is reported and dropped, and the rest
 	// go on. Each script runs inside an exception boundary (plan step S4).
 	void Run(const std::set<uint16_t> &scriptNumbers);

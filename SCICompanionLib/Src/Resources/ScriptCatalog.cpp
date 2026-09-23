@@ -541,8 +541,12 @@ namespace
     // its title from every script. The current name of a chosen script
     // belongs to it too: a chosen script that gets no derived name (it
     // cannot be read, or it has no class and no public instance) keeps it,
-    // and one that fails keeps it in game.ini (review of c49c8143: before,
-    // another chosen script could take it, and two scripts had one name).
+    // and a script that no group of the run writes keeps it in game.ini
+    // (RunDecompile; review of c49c8143: before, another chosen script could
+    // take it, and two scripts had one name). So a reset is not always
+    // the same twice: when the current name of one chosen script is the
+    // derived name of another, the other gets the "_N" suffix, and a
+    // second reset can give it the plain name (review of ba63d08a).
     std::map<uint16_t, std::string> ResetNamesOf(const ScriptNameMap *names, std::vector<ScriptObjectsForNaming> toName, const std::set<uint16_t> &chosen)
     {
         std::vector<std::string> reserved;
@@ -562,12 +566,11 @@ namespace
             }
             for (const std::string &title : names->FileTitles())
             {
+                // The title of the own file of a chosen script is its current
+                // name, which it owns (above; review of ba63d08a: a second
+                // owner entry here changed nothing).
                 uint16_t owner;
-                if (names->NumberOf(title, owner) && (chosen.find(owner) != chosen.end()))
-                {
-                    owned[title] = owner;
-                }
-                else
+                if (!names->NumberOf(title, owner) || (chosen.find(owner) == chosen.end()))
                 {
                     reserved.push_back(title);
                 }

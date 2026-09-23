@@ -394,8 +394,15 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         {
             SCI_TRY(AddDerivedScriptNames(session));
         }
+        // The names of the chosen scripts before a reset: game.ini keeps them
+        // for a script that no group writes (review of ba63d08a).
+        std::map<uint16_t, std::string> namesBeforeReset;
         if (options.names == NameAssignment::All)
         {
+            for (uint16_t number : scripts)
+            {
+                namesBeforeReset[number] = helper.GetScriptTitle(number);
+            }
             SCI_TRY_ASSIGN(std::vector<std::string> warnings, ResetScriptNames(session, scripts, dryRun));
             // With an output, no file is written, so the old files do not
             // matter (review of 11106215).
@@ -440,8 +447,8 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         CountingResults counting(results, report.stats);
         LastSources sources;
         // The outcome of each script in report.scripts: a script that a later
-        // group decompiles again gets the outcome of that group, but not
-        // Cancelled after it was written.
+        // group decompiles again gets the outcome of that group, when the
+        // group reached it.
         std::map<uint16_t, size_t> outcomeIndex;
         // Each script that a group wrote, with its name: game.ini gets these
         // names (review of c49c8143: a later group that failed or stopped
@@ -474,6 +481,8 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
                 DecompileOutcome outcome;
                 outcome.number = number;
                 outcome.name = helper.GetScriptTitle(number);
+                // This group wrote the script, or it failed in this group.
+                bool reached = true;
                 auto failed = batch.GetFailedScripts().find(number);
                 if (failed != batch.GetFailedScripts().end())
                 {
@@ -481,6 +490,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
                 }
                 else if (batch.GetWrittenScripts().find(number) == batch.GetWrittenScripts().end())
                 {
+                    reached = false;
                     outcome.status = ran ? sci::Status(sci::Fail(sci::ErrorCode::Cancelled, "the run stopped before this script")) : ran;
                 }
                 if (outcome.status)
@@ -493,11 +503,14 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
                     outcomeIndex[number] = report.scripts.size();
                     report.scripts.push_back(std::move(outcome));
                 }
-                else if (!outcome.status && (outcome.status.error().code == sci::ErrorCode::Cancelled) && report.scripts[index->second].status)
+                else if (!reached)
                 {
-                    // An earlier group wrote it, and the abort came before this
-                    // group reached it: it keeps that outcome (review of
-                    // c49c8143), and the stale check after the abort lists it.
+                    // This group stopped before the script (an abort, or a batch
+                    // that threw): it keeps the outcome of the earlier group,
+                    // written or failed, and the stale check after an abort
+                    // lists it (reviews of c49c8143 and ba63d08a: before, a later
+                    // Cancelled replaced a failure, and the error of a batch
+                    // replaced a written outcome).
                 }
                 else
                 {
@@ -589,7 +602,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         // that the run did not decompile (review of c49c8143: before, only
         // the stopped rewrites). Main's .sco has the new names: the scripts
         // that the run wrote with them need it.
-        if (report.cancelled && !output && !report.globalRenames.empty())
+        if (report.cancelled && !output && options.staleAfterAbort && !report.globalRenames.empty())
         {
             std::set<uint16_t> candidates;
             for (CompiledScript *compiled : lookups.GetGlobalClassTable().GetAllScripts())
@@ -632,10 +645,16 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
                 for (const auto &entry : helper.ScriptNames->Entries())
                 {
                     // Not the scripts of a name conflict: the GUI does not
-                    // check game.ini for one (review of c49c8143).
+                    // check game.ini for one (review of c49c8143). A script
+                    // that a reset renamed and that no group wrote keeps its
+                    // name from before the reset: its files have that name
+                    // (review of ba63d08a: a cancelled reset of 979 wrote
+                    // n979=MenuBar_979, a file that does not exist).
                     if (helper.ScriptNames->ConflictsOf(entry.first).empty())
                     {
-                        names[entry.first] = entry.second.name;
+                        auto before = namesBeforeReset.find(entry.first);
+                        bool unwritten = (before != namesBeforeReset.end()) && (writtenNames.find(entry.first) == writtenNames.end());
+                        names[entry.first] = unwritten ? before->second : entry.second.name;
                     }
                 }
             }

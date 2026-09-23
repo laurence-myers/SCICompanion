@@ -321,6 +321,10 @@ public:
 	bool NeedsNamingRounds() const { return !!_skeleton; }
 	// The first .sc or .sco file of this script that could not be written.
 	const sci::Status &WriteStatus() const { return _writeStatus; }
+	// The last decompile of the script reached its write: the files (with
+	// an output, the source) are out. An abort that comes after the write
+	// does not undo it (review of ba63d08a).
+	bool Wrote() const { return _wrote; }
 
 	// Pass 1. Decompiles the script, names it against the global names known
 	// so far, and writes it. Keeps its naming skeleton if it still refers to
@@ -332,6 +336,7 @@ public:
 	// A file that cannot be written is in WriteStatus.
 	sci::Status DecompileNameAndWrite(unique_ptr<CSCOFile> &mainSCO, vector<pair<string, string>> &renames)
 	{
+		_wrote = false;
 		DecompileState state(_helper, _scriptLookups.GetSelectorTable());
 		SCI_TRY(state.compiledScript.TryLoad(_helper, _helper.Version, _number));
 		_Decompile(state, _results);
@@ -413,6 +418,7 @@ public:
 		_skeleton.reset();
 		// The files of this pass replace those of pass 1.
 		_writeStatus = sci::Ok();
+		_wrote = false;
 
 		DecompileState state(_helper, _scriptLookups.GetSelectorTable());
 		sci::Status loaded = state.compiledScript.TryLoad(_helper, _helper.Version, _number);
@@ -476,6 +482,7 @@ private:
 		{
 			// Plan step S4 (--stdout): the source, and no file.
 			_output->OnSource(_number, ss.str());
+			_wrote = true;
 			return renames;
 		}
 
@@ -502,6 +509,7 @@ private:
 			_results.AddResult(DecompilerResultType::Error, wroteSource.error().ToString());
 			_KeepFirstWriteError(wroteSource);
 		}
+		_wrote = true;
 		return renames;
 	}
 
@@ -522,6 +530,7 @@ private:
 	DecompileOptions _options; // Our own copy: the lookups point into DebugFunctionMatch.
 	IDecompileOutput *_output;
 	sci::Status _writeStatus;
+	bool _wrote = false;
 
 	// _namer points at _skeleton; members are destroyed in reverse order.
 	unique_ptr<Script> _skeleton;
@@ -634,16 +643,22 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 			_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed to decompile: {1}", scriptNumber, decompiled.error().ToString()));
 			continue;
 		}
+		if (item->Wrote())
+		{
+			// Its files are out: they count also when the abort came after
+			// the write (review of ba63d08a: before, the script was
+			// Cancelled, and its renames and main's .sco lost the names).
+			if (!item->WriteStatus())
+			{
+				_failed[scriptNumber] = item->WriteStatus().error();
+			}
+			_written.insert(scriptNumber);
+			_globalRenames.insert(_globalRenames.end(), renames.begin(), renames.end());
+		}
 		if (_results.IsAborted())
 		{
 			break;
 		}
-		if (!item->WriteStatus())
-		{
-			_failed[scriptNumber] = item->WriteStatus().error();
-		}
-		_written.insert(scriptNumber);
-		_globalRenames.insert(_globalRenames.end(), renames.begin(), renames.end());
 		if (item->NeedsNamingRounds())
 		{
 			forNaming++;
@@ -738,8 +753,10 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 			_failed[number] = rewritten.error();
 			_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed to write again: {1}", number, rewritten.error().ToString()));
 		}
-		else if (!_results.IsAborted())
+		else if (item->Wrote())
 		{
+			// Written again, also when the abort came after the write
+			// (review of ba63d08a).
 			_rewritten.insert(number);
 			_globalRenames.insert(_globalRenames.end(), renames.begin(), renames.end());
 			// The files of pass 2 replace those of pass 1, and so does their

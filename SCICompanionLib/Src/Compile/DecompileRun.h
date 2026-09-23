@@ -33,7 +33,9 @@ enum class NameAssignment
 // The names in game.ini after the run (--game-ini). The entries are the names
 // of the scripts that a group of the run wrote; when game.ini has no [Script]
 // entry, the names of every script (as the Decompile dialog gives them before
-// its first run), but not those of a name conflict. A
+// its first run), but not those of a name conflict, and a script that a
+// reset renamed and that no group wrote keeps its name from before the reset
+// (its files have that name; review of ba63d08a). A
 // name that game.ini has with another value is replaced (after a reset of
 // the names, the GUI then finds the new files). The default name nNNN gets no
 // entry.
@@ -62,6 +64,11 @@ struct DecompileRunOptions
     // still reads the .sco files that are on disk, so a source can differ
     // a little from the source of a run that writes. Ignored with an output.
     bool dryRun = false;
+    // After an abort, find the scripts whose files still use a global of
+    // the run by its old name (report.stale); the check reads every source
+    // file. The Decompile dialog sets false: it offers no stale script after
+    // a Cancel (review of ba63d08a).
+    bool staleAfterAbort = true;
 };
 
 struct DecompileStats
@@ -86,8 +93,10 @@ struct DecompileReport
 {
     // The scripts of the run in number order, then the new scripts of each
     // group of stale scripts that updateStale decompiled. A script that a
-    // later group decompiles again has one outcome: the last, but an abort
-    // before the later group reached it keeps the earlier written outcome.
+    // later group decompiles again has one outcome: the last one of a group
+    // that reached it. A later group that stopped before it (an abort, or a
+    // batch that threw) keeps the earlier outcome, written or failed
+    // (reviews of c49c8143 and ba63d08a).
     std::vector<DecompileOutcome> scripts;
     // The globals that the run named: (standard name, new name).
     std::vector<std::pair<std::string, std::string>> globalRenames;

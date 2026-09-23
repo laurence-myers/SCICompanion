@@ -293,7 +293,7 @@ namespace cli
         }
 
         // Plan section 4.4, step 7: the summary after the messages of the run.
-        void PrintDecompileReport(const DecompileReport &report, const GameFolderHelper &helper, bool dryRun, bool toStdout, CliOutput &output)
+        void PrintDecompileReport(const DecompileReport &report, const GameFolderHelper &helper, bool dryRun, bool toStdout, bool updateStale, CliOutput &output)
         {
             std::vector<std::string> failed;
             size_t written = 0;
@@ -372,8 +372,10 @@ namespace cli
                 {
                     stale.push_back(ScriptText(number, helper.GetScriptTitle(number)));
                 }
-                output.Warning(fmt::format(dryRun ? "after the run, these scripts would use a global of the run by its old name: {0}; decompile them too, or give --update-stale" :
-                    "these scripts use a global of the run by its old name: {0}; decompile them again, or give --update-stale", ListText(stale)));
+                // With --update-stale, only an abort leaves stale scripts: the
+                // advice is the command again (review of ba63d08a).
+                output.Warning(fmt::format(dryRun ? "after the run, these scripts would use a global of the run by its old name: {0}; decompile them too{1}" :
+                    "these scripts use a global of the run by its old name: {0}; decompile them again{1}", ListText(stale), updateStale ? "" : ", or give --update-stale"));
             }
             if (!report.gameIni)
             {
@@ -413,7 +415,7 @@ namespace cli
         CliDecompileOutput sources(output);
         SCI_TRY_ASSIGN(DecompileReport report, RunDecompile(session, numbers, run, results, options.toStdout ? &sources : nullptr));
         SetCurrentItem("printing the report");
-        PrintDecompileReport(report, session.Helper(), run.dryRun, options.toStdout, output);
+        PrintDecompileReport(report, session.Helper(), run.dryRun, options.toStdout, options.updateStale, output);
         return ExitCodeForReport(report, results.Errors());
     }
 

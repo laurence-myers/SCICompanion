@@ -18,6 +18,8 @@
 #include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <stdexcept>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -88,9 +90,17 @@ namespace
             {
                 started++;
             }
-            if (!abortOnMessage.empty() && (message.rfind(abortOnMessage, 0) == 0))
+            if (!abortOnMessage.empty() && (message.rfind(abortOnMessage, 0) == 0) && (++abortMatches >= abortOnMatch))
             {
                 abortSeen = true;
+            }
+            if (onMessage)
+            {
+                onMessage(message);
+            }
+            if (!throwOnMessage.empty() && (message.rfind(throwOnMessage, 0) == 0))
+            {
+                throw std::runtime_error("an injected fault");
             }
         }
         bool IsAborted() override { return ((abortAfter >= 0) && (started > abortAfter)) || abortSeen; }
@@ -100,9 +110,17 @@ namespace
         std::vector<std::string> problems;
         int abortAfter = -1;
         int started = 0;
-        // Abort when a message starts with this text.
+        // Abort when a message starts with this text, at its abortOnMatch-th
+        // message.
         std::string abortOnMessage;
+        int abortOnMatch = 1;
+        int abortMatches = 0;
         bool abortSeen = false;
+        // Throw from AddResult when a message starts with this text: outside
+        // the exception boundary of a script, so the batch throws.
+        std::string throwOnMessage;
+        // Called with each message.
+        std::function<void(const std::string &)> onMessage;
     };
 
     class CollectSources : public IDecompileOutput
@@ -1309,6 +1327,176 @@ namespace UnitTests
             Assert::IsTrue(report->cancelled, WideForRun(DescribeRun(*report)).c_str());
             Assert::AreEqual((size_t)1, report->stale.count(959), WideForRun(DescribeRun(*report)).c_str());
             Assert::IsTrue(ContainsIdentifier(ReadAllText(session.Helper().GetScriptFileName((WORD)959)), "global5"), L"setup: 959 still has the old name");
+        }
+
+        // Review of ba63d08a: an abort that comes just after the write of a
+        // script (here, at its "Generated" message) leaves the script
+        // written: it counts, with its renames, main's .sco gets the names,
+        // and the stale check after the abort finds 959. Before, 960 was
+        // Cancelled, the renames were lost, and main's .sco had no name for
+        // the global that 960's file uses (960 then did not compile).
+        TEST_METHOD(Abort_JustAfterAWrite_TheScriptCounts)
+        {
+            NoAppStateForRun noAppState;
+            PrepareStaleFixtures();
+            GameSession session(TestSessionOptions());
+            Open(session);
+            RunResults results;
+            results.abortOnMessage = "Generated " + session.Helper().GetScriptFileName((WORD)960);
+            auto report = RunDecompile(session, { 960 }, DecompileRunOptions(), results);
+            Assert::IsTrue(report.has_value());
+            std::string facts = DescribeRun(*report);
+            Assert::IsTrue(report->cancelled && results.abortSeen, WideForRun("setup: the abort came after the write:\n" + facts).c_str());
+            const DecompileOutcome *second = OutcomeOf(*report, 960);
+            Assert::IsTrue((second != nullptr) && second->status.has_value(), WideForRun(facts).c_str());
+            Assert::IsFalse(report->globalRenames.empty(), WideForRun("the renames of 960: " + facts).c_str());
+            GlobalCompiledScriptLookups lookups;
+            Assert::IsTrue(lookups.TryLoad(session.Helper()).has_value());
+            std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(session.Helper(), 0, lookups.GetSelectorTable());
+            Assert::IsNotNull(mainSCO.get());
+            Assert::AreNotEqual(std::string("global5"), mainSCO->GetVariables()[5].GetName(), L"main's .sco has the name of the global");
+            Assert::AreEqual((size_t)1, report->stale.count(959), WideForRun(facts).c_str());
+        }
+
+        // Review of ba63d08a: in pass 2, an abort that comes just after the
+        // second write of a script leaves it written again with the new names:
+        // it is not stale. Before, it was listed as a rewrite that the abort
+        // stopped.
+        TEST_METHOD(Abort_JustAfterASecondWrite_TheScriptIsNotStale)
+        {
+            NoAppStateForRun noAppState;
+            PrepareStaleFixtures();
+            GameSession session(TestSessionOptions());
+            Open(session);
+            RunResults results;
+            // 959 is written in pass 1 (with global5), and again in pass 2.
+            results.abortOnMessage = "Generated " + session.Helper().GetScriptFileName((WORD)959);
+            results.abortOnMatch = 2;
+            auto report = RunDecompile(session, { 959, 960 }, DecompileRunOptions(), results);
+            Assert::IsTrue(report.has_value());
+            std::string facts = DescribeRun(*report);
+            Assert::IsTrue(report->cancelled && results.abortSeen, WideForRun("setup: the abort came after the second write:\n" + facts).c_str());
+            Assert::IsFalse(ContainsIdentifier(ReadAllText(session.Helper().GetScriptFileName((WORD)959)), "global5"), L"setup: 959 has the new name");
+            Assert::AreEqual((size_t)0, report->stale.count(959), WideForRun(facts).c_str());
+        }
+
+        // Review of ba63d08a: with no [Script] entry in game.ini, the run
+        // writes every name; a script that a reset renamed and that no group
+        // wrote keeps its name from before the reset, which its files have.
+        // Before, a cancelled reset of 979 wrote n979=MenuBar_979, and the
+        // next session did not find Controls.sc.
+        TEST_METHOD(ResetNames_AScriptThatNoGroupWrote_KeepsItsNameInGameIni)
+        {
+            NoAppStateForRun noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0", false);
+            Assert::IsTrue(WritePrivateProfileString("Script", nullptr, nullptr, GameFile("game.ini").c_str()) != 0, L"setup: no [Script] section");
+            GameSession session(TestSessionOptions());
+            Open(session);
+            RunResults results;
+            // The abort comes in the first script.
+            results.abortAfter = 0;
+            DecompileRunOptions options;
+            options.names = NameAssignment::All;
+            auto report = RunDecompile(session, { 979 }, options, results);
+            Assert::IsTrue(report.has_value());
+            Assert::IsTrue(report->cancelled && !OutcomeOf(*report, 979)->status.has_value(), WideForRun("setup: 979 is not written:\n" + DescribeRun(*report)).c_str());
+            Assert::AreEqual(std::string("Controls"), IniEntry("n979"), L"the name from before the reset");
+            Assert::AreEqual(0, _stricmp("MenuBar", IniEntry("n997").c_str()), L"the other names");
+        }
+
+        // Review of ba63d08a: a later group that stopped before a script keeps
+        // the outcome of the earlier group. Here group 1 fails 965 (its .sc is
+        // read-only), and the abort comes in group 3 before 965. Before, 965
+        // became Cancelled (exit code 7, where plan section 8 gives 9).
+        TEST_METHOD(Abort_AFailureOfAnEarlierGroupStays)
+        {
+            NoAppStateForRun noAppState;
+            PrepareEarlierGroupFixtures();
+            std::string first = GameFile("src\\StaleFirst.sc");
+            Assert::IsTrue(SetFileAttributesA(first.c_str(), FILE_ATTRIBUTE_READONLY) != 0);
+            GameSession session(TestSessionOptions());
+            Open(session);
+            RunResults results;
+            results.abortOnMessage = "Decompiling script 0";
+            DecompileRunOptions options;
+            options.updateStale = true;
+            auto report = RunDecompile(session, { 965 }, options, results);
+            // Writable again, so that the clean-up can remove the copy.
+            SetFileAttributesA(first.c_str(), FILE_ATTRIBUTE_NORMAL);
+            Assert::IsTrue(report.has_value());
+            std::string facts = DescribeRun(*report);
+            Assert::IsTrue(report->cancelled && results.abortSeen, WideForRun("setup: the abort came in group 3:\n" + facts).c_str());
+            const DecompileOutcome *stale = OutcomeOf(*report, 965);
+            Assert::IsTrue((stale != nullptr) && !stale->status.has_value(), WideForRun(facts).c_str());
+            Assert::IsTrue(stale->status.error().code == sci::ErrorCode::Io, WideForRun(facts).c_str());
+        }
+
+        // Review of ba63d08a: a batch that throws in a later group keeps the
+        // written outcome of an earlier group; the scripts of the group that
+        // it did not reach get its error. Before, the error replaced the
+        // written outcome.
+        TEST_METHOD(BatchThrowsInALaterGroup_TheWrittenOutcomeStays)
+        {
+            NoAppStateForRun noAppState;
+            PrepareEarlierGroupFixtures();
+            GameSession session(TestSessionOptions());
+            Open(session);
+            RunResults results;
+            // Group 3 starts with script 0.
+            results.throwOnMessage = "Decompiling script 0";
+            DecompileRunOptions options;
+            options.updateStale = true;
+            auto report = RunDecompile(session, { 965 }, options, results);
+            Assert::IsTrue(report.has_value());
+            std::string facts = DescribeRun(*report);
+            const DecompileOutcome *main = OutcomeOf(*report, 0);
+            Assert::IsTrue((main != nullptr) && !main->status.has_value(), WideForRun("setup: the batch threw in group 3:\n" + facts).c_str());
+            const DecompileOutcome *first = OutcomeOf(*report, 965);
+            Assert::IsTrue((first != nullptr) && first->status.has_value(), WideForRun(facts).c_str());
+        }
+
+        // Review of ba63d08a (no test had these): after an abort, a run with an
+        // output makes no stale list; and game.ini keeps the name of a script
+        // that group 1 wrote when a later group fails it.
+        TEST_METHOD(Abort_Output_NoStaleList_AndAWrittenNameStays)
+        {
+            NoAppStateForRun noAppState;
+            PrepareStaleFixtures();
+            {
+                GameSession session(TestSessionOptions());
+                Open(session);
+                RunResults results;
+                // Two starts in pass 1; the abort comes at the first start of pass 2.
+                results.abortAfter = 2;
+                CollectSources sources;
+                auto report = RunDecompile(session, { 959, 960 }, DecompileRunOptions(), results, &sources);
+                Assert::IsTrue(report.has_value() && report->cancelled, report ? WideForRun(DescribeRun(*report)).c_str() : L"no report");
+                Assert::IsTrue(report->stale.empty(), WideForRun("an output writes nothing, so nothing is stale:\n" + DescribeRun(*report)).c_str());
+            }
+
+            PrepareEarlierGroupFixtures();
+            Assert::IsTrue(WritePrivateProfileString("Script", "n965", nullptr, GameFile("game.ini").c_str()) != 0, L"setup: no n965 entry");
+            std::string first = GameFile("src\\StaleFirst.sc");
+            GameSession session(TestSessionOptions());
+            Open(session);
+            RunResults results;
+            // Group 2 is 966: then 965's file becomes read-only, and group 3 fails it.
+            results.onMessage = [first](const std::string &message)
+            {
+                if (message.rfind("Decompiling script 966", 0) == 0)
+                {
+                    SetFileAttributesA(first.c_str(), FILE_ATTRIBUTE_READONLY);
+                }
+            };
+            DecompileRunOptions options;
+            options.updateStale = true;
+            auto report = RunDecompile(session, { 965 }, options, results);
+            SetFileAttributesA(first.c_str(), FILE_ATTRIBUTE_NORMAL);
+            Assert::IsTrue(report.has_value());
+            std::string facts = DescribeRun(*report);
+            const DecompileOutcome *stale = OutcomeOf(*report, 965);
+            Assert::IsTrue((stale != nullptr) && !stale->status.has_value(), WideForRun("setup: group 3 fails 965:\n" + facts).c_str());
+            Assert::AreEqual(std::string("StaleFirst"), IniEntry("n965"), WideForRun("the name that group 1 wrote:\n" + facts).c_str());
         }
     };
 }

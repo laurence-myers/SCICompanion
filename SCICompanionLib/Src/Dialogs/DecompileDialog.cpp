@@ -783,6 +783,9 @@ void DecompileDialog::s_DecompileThreadWorker(DecompileDialog *pThis)
 	options.engine.SubstituteTextTuples = pThis->_substituteTextTuples;
 	options.names = NameAssignment::None;
 	options.gameIni = GameIniNames::None;
+	// After a Cancel, the dialog offers no stale script (below), so the run
+	// need not read every source file for them (review of ba63d08a).
+	options.staleAfterAbort = false;
 	set<uint16_t> scriptNumbers = pThis->_scriptNumbers;
 	DecompilerDialogResults &results = *pThis->_decompileResults;
 
