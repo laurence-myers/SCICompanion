@@ -129,6 +129,12 @@ namespace UnitTests
                 { "only-break.sc", "\r\n" },
                 { "nul.sc", std::string(nulText, sizeof(nulText) - 1) },
                 { "late-lf.sc", std::string(40000, ';') + "\n(a)\r\n(b)\n" },
+                // The edge of the editor's first 32768-byte read: it cannot
+                // see a CR at byte 32768, so this is LF style...
+                { "edge-lf-then-cr.sc", std::string(32767, 'a') + "\n\rx\r\ny\n" },
+                // ...and a first LF at byte 32768 is outside the read, so
+                // this is CR LF style.
+                { "edge-lf-outside.sc", std::string(32768, 'a') + "\nx\r\ny" },
             };
             for (const auto &entry : cases)
             {
@@ -178,7 +184,45 @@ namespace UnitTests
             }
             Assert::AreEqual(fromEditor.GetLimit().line, fromText.GetLimit().line);
             Assert::AreEqual(fromEditor.GetLimit().column, fromText.GetLimit().column);
+
+            // The parser reads the text through the stream: walk both
+            // streams to the end, with the same characters and positions.
+            CCrystalScriptStream editorStream(&fromEditor);
+            CCrystalScriptStream textStream(&fromText);
+            CCrystalScriptStream::const_iterator editorIt = editorStream.begin();
+            CCrystalScriptStream::const_iterator textIt = textStream.begin();
+            int steps = 0;
+            while ((*editorIt != 0) && (steps < 10000))
+            {
+                Assert::AreEqual(*editorIt, *textIt);
+                Assert::AreEqual(editorIt.GetLineNumber(), textIt.GetLineNumber());
+                Assert::AreEqual(editorIt.GetColumnNumber(), textIt.GetColumnNumber());
+                ++editorIt;
+                ++textIt;
+                steps++;
+            }
+            Assert::AreEqual('\0', *textIt, L"both streams end at the same place");
+            Assert::IsTrue(steps > 40, L"the walk must cover the text");
             buffer.FreeAll();
+        }
+
+        TEST_METHOD(LoadScriptText_FileOverTheLimit_IsUnsupported)
+        {
+            std::string path = _folder + "\\huge.sc";
+            {
+                ScopedHandle file;
+                file.hFile = CreateFileA(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+                Assert::IsTrue(file.hFile != INVALID_HANDLE_VALUE);
+                LARGE_INTEGER size;
+                size.QuadPart = MaxScriptTextBytes + 1;
+                Assert::IsTrue(!!SetFilePointerEx(file.hFile, size, nullptr, FILE_BEGIN));
+                Assert::IsTrue(!!SetEndOfFile(file.hFile));
+            }
+            sci::Result<ScriptText> text = LoadScriptText(path);
+            Assert::IsFalse(text.has_value());
+            Assert::AreEqual(std::string("unsupported"), std::string(sci::ErrorCodeName(text.error().code)));
+            std::string message = text.error().ToString();
+            Assert::IsTrue(message.find("huge.sc") != std::string::npos, Wide(message).c_str());
         }
     };
 }

@@ -6,17 +6,17 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: B3 (next). F1, A1, A2, B1 and B2 are committed. F1, A1,
-  A2 and B1 are reviewed, with their review fixes. The B2 review runs in
-  the background.
-- 2026-09-23: at your request, the branch history was rewritten so that
-  no commit adds a copyright header. Every SHA from F1 on changed; the
-  SHAs in this file and in the commit messages were changed to match.
+- Current step: B3 (next). F1, A1, A2, B1 and B2 are committed and
+  reviewed, with their review fixes.
+- 2026-09-23: at your request, the branch history was rewritten twice:
+  no commit adds a copyright header, and every commit uses the term
+  "exception boundary". Every SHA on the branch changed; the SHAs in this
+  file and in the commit messages were changed to match.
 - Baseline on `0dc1fef5`: the Release build passes; the unit suite passes
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276.
+  B1 review fixes: 276. After the B2 review fixes: 278.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
   (`getenv`) and C4267 in the UnitTests helpers (`DecompileHelper.cpp`,
@@ -35,7 +35,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | A1 Deferred writes | done | `1c4d1c6f`, review fixes `258ce43c` | FIX: 3 should-fix, 5 nits. Fixed: savepoints (an abandoned inner batch withdraws its resources and puts back what it replaced), the audio repackage stops on a failed map save, every queued type reloads, guards around the context text and the notifications, tests on SCI1.1 and for mixed destinations and a read-only volume, the plan row. Moved to A2: the audio cache writer swallows its errors and saves its audio map through the GUI wrapper. Already fixed by `b499f9ac`: the last-error capture in `util.cpp`. |
 | A2 Patch writer, size check | done | `7432a479`, review fixes (the commit after `3be03ff1`) | FIX: 1 should-fix, 6 nits (it also reviewed `258ce43c`). Fixed: the patch writer checks every existing target (read-only, locked) before the first rename and removes the `.bak` files left after a failed rename; a repackage inside an open batch is refused; the audio cache is marked out of date before its map save; `PerformChecks` runs inside the exception boundary; the size error names the resource and no longer says "A Audio"; the plan's statements on atomic commits and on the old audio cache behaviour; README "What's new". Left as known gaps (below): `Cancelled` for check failures that are not a choice, and a rename that fails after the checks. |
 | B1 GameSession, core log | done | `13a786ac`, review fixes (the commit after `d1221472`) | FIX: 2 should-fix, 8 nits. Fixed: only a GUI `AppState` installs itself as the log sink, and it removes itself with a compare-exchange (`RemoveCoreLogSink`); `Open("")` is a Usage error; `TryOpen` is inside the exception boundary as a whole; `AppState::Write` deletes MFC exceptions; `LogInfo` uses `CoreLogFormatV`, with `_Printf_format_string_`; three format-string bugs (`Vocab99x.cpp` `%d` for a name, two dialogs that used the error text as the format, and leaked their `COleException`); the grammar load uses `std::call_once`; the headless `SafeMessageBox` gives the safe answer for every button set; test hygiene. Left: see "Decisions" (the GUI open path and the B3 guard test). |
-| B2 Script text loader | done | `3be03ff1` | running |
+| B2 Script text loader | done | `3be03ff1`, review fixes (the commit after `af7cdb5f`) | FIX: 1 should-fix, 1 nit. No difference from the editor in about 46,000 files (a differential probe), 723 parses and 5 compiles. Fixed: `LoadScriptText` names the file for a thrown failure and refuses a file over 64 MB (`Unsupported`); tests at the exact 32 KB edge of the style rule, and a stream walk; the exception boundary reports an MFC `CMemoryException` as "out of memory" (an F1 gap the review found). |
 | B3 Engine on the session | not started | | |
 | F2 Engine errors as values | not started | | |
 | K1 `and`/`or` value semantics | not started | | |
@@ -165,6 +165,11 @@ for each step, and a follow-up commit if the review finds a problem.
   GUI constructors; phase E can split it.
 - Known gap for S2: `NewCompileScript` returns false with no log line
   when it cannot read the script file (as before B2).
+- For C3: the editor's line rule is kept by design, so a CLI user can see
+  its effects. A bare LF in a CR LF file does not start a line, so a
+  diagnostic's line number can differ from other editors. A CR-only file
+  is one line; if it starts with a `;` comment, it compiles to an empty
+  script with no error. C3 can warn about such files.
 - Known gap for S2 and C3: `WriteResource(entity)` gives `Cancelled` when
   `PerformChecks` says no. With no GUI, a check's yes/no question gets
   "no", and some checks are not a choice (duplicate message tuples, an

@@ -34,6 +34,10 @@ struct ScriptText
 // - The text after the last break is the last line, also when it is empty.
 ScriptText SplitScriptText(const std::string &contents);
 
+// The largest script or header file that LoadScriptText reads.
+const long long MaxScriptTextBytes = 64LL * 1024 * 1024;
+
 // Reads the file and splits it as SplitScriptText does. NotFound when the
-// file does not exist, Io when it cannot be read.
+// file does not exist, Io when it cannot be read, Unsupported when it is
+// bigger than MaxScriptTextBytes. The error text names the file.
 sci::Result<ScriptText> LoadScriptText(const std::string &path);

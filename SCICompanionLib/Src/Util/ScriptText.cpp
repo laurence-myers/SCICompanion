@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "ScriptText.h"
+#include "format.h"
 
 namespace
 {
@@ -67,7 +68,7 @@ ScriptText SplitScriptText(const std::string &contents)
 
 sci::Result<ScriptText> LoadScriptText(const std::string &path)
 {
-    return sci::Guard("", [&]() -> sci::Result<ScriptText>
+    return sci::Guard("reading " + path, [&]() -> sci::Result<ScriptText>
     {
         ScopedHandle file;
         file.hFile = CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
@@ -82,9 +83,11 @@ sci::Result<ScriptText> LoadScriptText(const std::string &path)
             DWORD lastError = GetLastError();
             return sci::Fail(sci::FromWin32(lastError, "Reading " + path));
         }
-        if (size.QuadPart > 0x7fffffff)
+        if (size.QuadPart > MaxScriptTextBytes)
         {
-            return sci::Fail(sci::ErrorCode::Unsupported, path + " is too big for a script");
+            // A 32-bit process cannot hold a much bigger file as text, and no
+            // script comes near this size.
+            return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("{0} is too big for a script ({1} bytes; the limit is {2} bytes)", path, size.QuadPart, MaxScriptTextBytes));
         }
         std::string contents((size_t)size.QuadPart, '\0');
         DWORD total = 0;

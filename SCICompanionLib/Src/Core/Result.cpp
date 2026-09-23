@@ -186,10 +186,20 @@ namespace sci
                 CException *exception;
                 ~DeleteOnExit() { exception->Delete(); }
             } deleteOnExit = { e };
-            TCHAR text[512] = {};
-            BOOL hasText = e->GetErrorMessage(text, ARRAYSIZE(text));
-            error.code = e->IsKindOf(RUNTIME_CLASS(CFileException)) ? ErrorCode::Io : ErrorCode::Internal;
-            error.message = (hasText && text[0]) ? std::string(text) : std::string("MFC exception (no text)");
+            if (e->IsKindOf(RUNTIME_CLASS(CMemoryException)))
+            {
+                // In an MFC program a failed new throws this, not
+                // std::bad_alloc, and it has no text.
+                error.code = ErrorCode::Internal;
+                error.message = "out of memory";
+            }
+            else
+            {
+                TCHAR text[512] = {};
+                BOOL hasText = e->GetErrorMessage(text, ARRAYSIZE(text));
+                error.code = e->IsKindOf(RUNTIME_CLASS(CFileException)) ? ErrorCode::Io : ErrorCode::Internal;
+                error.message = (hasText && text[0]) ? std::string(text) : std::string("MFC exception (no text)");
+            }
         }
         catch (...)
         {

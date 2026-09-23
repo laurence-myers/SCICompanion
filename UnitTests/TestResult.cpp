@@ -179,6 +179,16 @@ namespace UnitTests
             Assert::AreEqual(std::string("MFC exception (no text)"), status.error().message);
         }
 
+        TEST_METHOD(Guard_CMemoryException_IsOutOfMemory)
+        {
+            // In an MFC program, a failed new throws CMemoryException*, not
+            // std::bad_alloc.
+            Status status = Guard("reading a big file", []() -> Status { AfxThrowMemoryException(); return Ok(); });
+            AssertCode(ErrorCode::Internal, status.error());
+            Assert::AreEqual(std::string("out of memory"), status.error().message);
+            Assert::AreEqual(std::string("reading a big file"), status.error().context.at(0));
+        }
+
         TEST_METHOD(Guard_UnknownException_IsInternal)
         {
             Status status = Guard("", []() -> Status { throw 42; });
