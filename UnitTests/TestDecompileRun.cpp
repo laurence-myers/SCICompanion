@@ -88,14 +88,21 @@ namespace
             {
                 started++;
             }
+            if (!abortOnMessage.empty() && (message.rfind(abortOnMessage, 0) == 0))
+            {
+                abortSeen = true;
+            }
         }
-        bool IsAborted() override { return (abortAfter >= 0) && (started > abortAfter); }
+        bool IsAborted() override { return ((abortAfter >= 0) && (started > abortAfter)) || abortSeen; }
         void InformStats(bool functionSuccessful, int byteCount) override {}
         void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override {}
 
         std::vector<std::string> problems;
         int abortAfter = -1;
         int started = 0;
+        // Abort when a message starts with this text.
+        std::string abortOnMessage;
+        bool abortSeen = false;
     };
 
     class CollectSources : public IDecompileOutput
@@ -320,6 +327,38 @@ namespace UnitTests
             ICompileEvents events;
             auto compiled = CompileScripts(session, { a, b }, CompileOptions(), abort, events);
             Assert::IsTrue(compiled.has_value() && compiled->Succeeded(), L"setup: the fixtures must compile");
+        }
+
+        // The SCI1.1 template with two scripts (965 and 966 are free there):
+        // 965 has (if global3 (= global5 gEgo)), and 966 has (= global3
+        // global5). Slots 3 and 5 of Main.sco get their standard names first.
+        // A run of 965 with updateStale names global5 in group 1; group 2
+        // (966) names global3, which 965 uses; group 3 is 0 and 965.
+        void PrepareEarlierGroupFixtures()
+        {
+            CopyTemplate("\\TemplateGame\\SCI1.1", false);
+            {
+                GameSession session(TestSessionOptions());
+                Open(session);
+                GlobalCompiledScriptLookups lookups;
+                Assert::IsTrue(lookups.TryLoad(session.Helper()).has_value());
+                std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(session.Helper(), 0, lookups.GetSelectorTable());
+                Assert::IsNotNull(mainSCO.get(), L"setup: Main.sco");
+                mainSCO->GetVariables()[3].SetName("global3");
+                mainSCO->GetVariables()[5].SetName("global5");
+                Assert::IsTrue(SaveSCOFile(session.Helper(), *mainSCO).has_value());
+            }
+            WriteAllText(GameFile("src\\StaleFirst.sc"), ";;; Sierra Script 1.0 - (do not remove this comment)\r\n(script# 965)\r\n(include sci.sh)\r\n(use Main)\r\n\r\n(public\r\n\tstaleFirst 0\r\n)\r\n\r\n(procedure (staleFirst)\r\n\t(if global3\r\n\t\t(= global5 gEgo)\r\n\t)\r\n)\r\n");
+            WriteAllText(GameFile("src\\StaleSecond.sc"), ";;; Sierra Script 1.0 - (do not remove this comment)\r\n(script# 966)\r\n(include sci.sh)\r\n(use Main)\r\n\r\n(public\r\n\tstaleSecond 0\r\n)\r\n\r\n(procedure (staleSecond)\r\n\t(= global3 global5)\r\n)\r\n");
+            GameSession session(TestSessionOptions());
+            Open(session);
+            ScriptId a(GameFile("src\\StaleFirst.sc").c_str());
+            a.SetResourceNumber(965);
+            ScriptId b(GameFile("src\\StaleSecond.sc").c_str());
+            b.SetResourceNumber(966);
+            std::atomic<bool> abort(false);
+            ICompileEvents events;
+            Assert::AreEqual(std::string(), CompileErrorsOf(CompileScripts(session, { a, b }, CompileOptions(), abort, events)), L"setup: the fixtures compile");
         }
 
     public:
@@ -854,37 +893,13 @@ namespace UnitTests
         TEST_METHOD(UpdateStale_AlsoAScriptOfAnEarlierGroup)
         {
             NoAppStateForRun noAppState;
-            CopyTemplate("\\TemplateGame\\SCI1.1", false);
-            {
-                GameSession session(TestSessionOptions());
-                Open(session);
-                GlobalCompiledScriptLookups lookups;
-                Assert::IsTrue(lookups.TryLoad(session.Helper()).has_value());
-                std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(session.Helper(), 0, lookups.GetSelectorTable());
-                Assert::IsNotNull(mainSCO.get(), L"setup: Main.sco");
-                mainSCO->GetVariables()[3].SetName("global3");
-                mainSCO->GetVariables()[5].SetName("global5");
-                Assert::IsTrue(SaveSCOFile(session.Helper(), *mainSCO).has_value());
-            }
-            WriteAllText(GameFile("src\\StaleFirst.sc"), ";;; Sierra Script 1.0 - (do not remove this comment)\r\n(script# 961)\r\n(include sci.sh)\r\n(use Main)\r\n\r\n(public\r\n\tstaleFirst 0\r\n)\r\n\r\n(procedure (staleFirst)\r\n\t(if global3\r\n\t\t(= global5 gEgo)\r\n\t)\r\n)\r\n");
-            WriteAllText(GameFile("src\\StaleSecond.sc"), ";;; Sierra Script 1.0 - (do not remove this comment)\r\n(script# 962)\r\n(include sci.sh)\r\n(use Main)\r\n\r\n(public\r\n\tstaleSecond 0\r\n)\r\n\r\n(procedure (staleSecond)\r\n\t(= global3 global5)\r\n)\r\n");
-            {
-                GameSession session(TestSessionOptions());
-                Open(session);
-                ScriptId a(GameFile("src\\StaleFirst.sc").c_str());
-                a.SetResourceNumber(961);
-                ScriptId b(GameFile("src\\StaleSecond.sc").c_str());
-                b.SetResourceNumber(962);
-                std::atomic<bool> abort(false);
-                ICompileEvents events;
-                Assert::AreEqual(std::string(), CompileErrorsOf(CompileScripts(session, { a, b }, CompileOptions(), abort, events)), L"setup: the fixtures compile");
-            }
+            PrepareEarlierGroupFixtures();
             GameSession session(TestSessionOptions());
             Open(session);
             RunResults results;
             DecompileRunOptions options;
             options.updateStale = true;
-            auto report = RunDecompile(session, { 961 }, options, results);
+            auto report = RunDecompile(session, { 965 }, options, results);
             Assert::IsTrue(report.has_value() && report->Succeeded(), report ? WideForRun(DescribeRun(*report)).c_str() : L"no report");
             std::string renames;
             for (const auto &rename : report->globalRenames)
@@ -892,22 +907,148 @@ namespace UnitTests
                 renames += rename.first + "->" + rename.second + " ";
             }
             Assert::IsTrue(renames.find("global3->") != std::string::npos, WideForRun("setup: a later group names global3: " + renames).c_str());
-            std::string first = ReadAllText(session.Helper().GetScriptFileName((WORD)961));
+            std::string first = ReadAllText(session.Helper().GetScriptFileName((WORD)965));
             Assert::IsFalse(ContainsIdentifier(first, "global3") || ContainsIdentifier(first, "global5"), WideForRun(first).c_str());
-            size_t outcomes961 = 0;
+            size_t outcomes965 = 0;
             for (const DecompileOutcome &outcome : report->scripts)
             {
-                outcomes961 += (outcome.number == 961) ? 1 : 0;
+                outcomes965 += (outcome.number == 965) ? 1 : 0;
             }
-            Assert::AreEqual((size_t)1, outcomes961, L"one outcome for a script that two groups decompiled");
+            Assert::AreEqual((size_t)1, outcomes965, L"one outcome for a script that two groups decompiled");
 
             GameSession next(TestSessionOptions());
             Open(next);
-            ScriptId a(session.Helper().GetScriptFileName((WORD)961).c_str());
-            a.SetResourceNumber(961);
+            ScriptId a(session.Helper().GetScriptFileName((WORD)965).c_str());
+            a.SetResourceNumber(965);
             std::atomic<bool> abort(false);
             ICompileEvents events;
-            Assert::AreEqual(std::string(), CompileErrorsOf(CompileScripts(next, { a }, CompileOptions(), abort, events)), L"961 compiles after the run");
+            Assert::AreEqual(std::string(), CompileErrorsOf(CompileScripts(next, { a }, CompileOptions(), abort, events)), L"965 compiles after the run");
+        }
+
+        // Review of c49c8143: an abort before a later group reaches a script
+        // that an earlier group wrote keeps its written outcome, game.ini
+        // gets its name, and the stale list has it (its file still uses a
+        // global that a later group named). Before, it was Cancelled, it lost
+        // its game.ini entry, and the stale list was empty.
+        TEST_METHOD(Abort_KeepsTheScriptsThatAGroupWrote)
+        {
+            NoAppStateForRun noAppState;
+            PrepareEarlierGroupFixtures();
+            GameSession session(TestSessionOptions());
+            Open(session);
+            RunResults results;
+            // Group 1 is 965, group 2 is 966 (it names global3), and group 3
+            // starts with script 0: the abort comes there.
+            results.abortOnMessage = "Decompiling script 0";
+            DecompileRunOptions options;
+            options.updateStale = true;
+            auto report = RunDecompile(session, { 965 }, options, results);
+            Assert::IsTrue(report.has_value());
+            Assert::IsTrue(report->cancelled, WideForRun("setup: the abort came:\n" + DescribeRun(*report)).c_str());
+            const DecompileOutcome *first = OutcomeOf(*report, 965);
+            Assert::IsTrue((first != nullptr) && first->status.has_value(), WideForRun(DescribeRun(*report)).c_str());
+            Assert::AreEqual((size_t)1, report->stale.count(965), WideForRun(DescribeRun(*report)).c_str());
+            Assert::AreEqual(std::string("StaleFirst"), IniEntry("n965"), L"game.ini gets the name of the written script");
+        }
+
+        // Review of c49c8143: a reset never gives two scripts one name. A
+        // chosen script that gets no derived name (978 has procedures only,
+        // or it cannot be read) keeps its name, and no other chosen script
+        // takes it. Before, 974 and 978 were both "Door", and 978 wrote over
+        // the new Door.sc of 974.
+        TEST_METHOD(ResetNames_TwoScriptsNeverShareAName)
+        {
+            NoAppStateForRun noAppState;
+            for (bool unreadable : { false, true })
+            {
+                CopyTemplate("\\TemplateGame\\SCI0", false);
+                Assert::IsTrue(WritePrivateProfileString("Script", "n974", "OldDoor", GameFile("game.ini").c_str()) != 0);
+                Assert::IsTrue(WritePrivateProfileString("Script", "n978", "Door", GameFile("game.ini").c_str()) != 0);
+                fs::rename(GameFile("src\\door.sc"), GameFile("src\\OldDoor.sc"));
+                fs::rename(GameFile("src\\door.sco"), GameFile("src\\OldDoor.sco"));
+                if (unreadable)
+                {
+                    std::ofstream patch(GameFile("script.978"), std::ios::binary | std::ios::trunc);
+                    const char bytes[] = { (char)(0x80 | (uint8_t)ResourceType::Script), 0, 5, 0, 1 };
+                    patch.write(bytes, sizeof(bytes));
+                }
+                GameSession session(TestSessionOptions());
+                Open(session);
+                RunResults results;
+                DecompileRunOptions options;
+                options.names = NameAssignment::All;
+                options.gameIni = GameIniNames::None;
+                auto report = RunDecompile(session, { 974, 978 }, options, results);
+                Assert::IsTrue(report.has_value(), WideForRun(report ? std::string() : report.error().ToString()).c_str());
+                Assert::AreEqual(std::string("Door"), session.Helper().GetScriptTitle(978), unreadable ? L"978 cannot be read and keeps its name" : L"978 has no derived name and keeps its name");
+                Assert::AreEqual(std::string("Door_974"), session.Helper().GetScriptTitle(974), L"974 does not take the name of 978");
+                Assert::IsTrue(ReadAllText(GameFile("src\\Door_974.sc")).find("(script# 974)") != std::string::npos, WideForRun(DescribeRun(*report)).c_str());
+            }
+        }
+
+        // Review of c49c8143: a reset of two scripts where one has the file
+        // of the name that the other derives. 997 keeps menubar.sc, and 979
+        // gets the suffix. Before (with no owner rule), 979 took "MenuBar".
+        TEST_METHOD(ResetNames_TwoChosenScripts_OneKeepsItsFile)
+        {
+            NoAppStateForRun noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0", false);
+            std::string menuBar = ReadAllText(GameFile("src\\menubar.sc"));
+            GameSession session(TestSessionOptions());
+            Open(session);
+            RunResults results;
+            DecompileRunOptions options;
+            options.names = NameAssignment::All;
+            options.gameIni = GameIniNames::None;
+            auto report = RunDecompile(session, { 979, 997 }, options, results);
+            Assert::IsTrue(report.has_value() && report->Succeeded(), report ? WideForRun(DescribeRun(*report)).c_str() : L"no report");
+            Assert::AreEqual(std::string("MenuBar_979"), session.Helper().GetScriptTitle(979));
+            Assert::AreEqual(std::string("TheMenuBar"), session.Helper().GetScriptTitle(997));
+            Assert::AreEqual(menuBar, ReadAllText(GameFile("src\\menubar.sc")), L"the old file of 997 does not change");
+        }
+
+        // Review of c49c8143: with no [Script] entry in game.ini, the names of
+        // every script go into game.ini, but not the names of a conflict (the
+        // GUI does not check game.ini for one). Here door.sco has the objects
+        // of Wander (983), so "door" is the name of 974 and of 983.
+        TEST_METHOD(GameIni_EveryName_NotAConflict)
+        {
+            NoAppStateForRun noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0", false);
+            Assert::IsTrue(WritePrivateProfileString("Script", nullptr, nullptr, GameFile("game.ini").c_str()) != 0, L"setup: no [Script] section");
+            fs::copy_file(GameFile("src\\wander.sco"), GameFile("src\\door.sco"), fs::copy_options::overwrite_existing);
+            fs::remove(GameFile("src\\wander.sco"));
+            fs::remove(GameFile("src\\wander.sc"));
+            GameSession session(TestSessionOptions());
+            Open(session);
+            Assert::IsFalse(session.Helper().ScriptNames->ConflictsOf(974).empty(), L"setup: a conflict");
+            RunResults results;
+            auto report = RunDecompile(session, { 985 }, DecompileRunOptions(), results);
+            Assert::IsTrue(report.has_value() && report->Succeeded(), report ? WideForRun(DescribeRun(*report)).c_str() : L"no report");
+            Assert::AreEqual(std::string("Main"), IniEntry("n000"), L"the other names");
+            Assert::AreEqual(std::string(), IniEntry("n974"), L"no name of the conflict");
+            Assert::AreEqual(std::string(), IniEntry("n983"), L"no name of the conflict");
+        }
+
+        // Review of c49c8143: an include that is not there names itself in
+        // the error of script sco (before: "Opening \").
+        TEST_METHOD(ObjectFiles_AMissingInclude_NamesIt)
+        {
+            NoAppStateForRun noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0", false);
+            std::string text = ReadAllText(GameFile("src\\door.sc"));
+            text.insert(text.find('\n') + 1, "(include s2NoSuchHeader.sh)\r\n");
+            WriteAllText(GameFile("src\\door.sc"), text);
+            GameSession session(TestSessionOptions());
+            Open(session);
+            ScriptId door(GameFile("src\\door.sc").c_str());
+            door.SetResourceNumber(974);
+            auto outcomes = GenerateObjectFiles(session, { door });
+            Assert::IsTrue(outcomes.has_value() && (outcomes->size() == 1));
+            const ObjectFileOutcome &outcome = (*outcomes)[0];
+            Assert::IsFalse(outcome.status.has_value());
+            Assert::IsTrue((outcome.status.error().code == sci::ErrorCode::NotFound) && (outcome.status.error().ToString().find("s2NoSuchHeader.sh") != std::string::npos),
+                WideForRun(outcome.status.error().ToString()).c_str());
         }
 
         // S4 review: a main .sco that cannot be written is in the report, and

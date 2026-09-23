@@ -53,9 +53,11 @@ sci::Status AddDerivedScriptNames(GameSession &session);
 // --reset-names (plan section 4.4): gives each compiled script in numbers its
 // derived name, also a script that has a name from rules 1 to 3; with every
 // script, as the Decompile dialog's "Reset filenames" does. A reset name is
-// never the name of another script, or the title of a file in src that
-// another script has (or that no script has): the naming rule's "_N" suffix
-// is added then (S4 review). A script that cannot be read keeps its name.
+// never the name of another script (also not the current name of another
+// chosen script), or the title of a file in src that another script has (or
+// that no script has): the naming rule's "_N" suffix is added then (S4
+// review, review of c49c8143). A script that cannot be read, or that has no
+// class and no public instance, keeps its name.
 // Returns a warning for each .sc and .sco file that keeps an old name. It
 // replaces the session's map with no lock, as AddDerivedScriptNames does.
 sci::Result<std::vector<std::string>> ResetScriptNames(GameSession &session, const std::set<uint16_t> &numbers);

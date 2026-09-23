@@ -532,7 +532,11 @@ namespace
     // no script takes the file of another script (before, a reset of script
     // 979 of the SCI0 template gave it "MenuBar", and the run wrote over
     // menubar.sc, the source of script 997). A file that no script has keeps
-    // its title from every script.
+    // its title from every script. The current name of a chosen script
+    // belongs to it too: a chosen script that gets no derived name (it
+    // cannot be read, or it has no class and no public instance) keeps it,
+    // and one that fails keeps it in game.ini (review of c49c8143: before,
+    // another chosen script could take it, and two scripts had one name).
     std::map<uint16_t, std::string> ResetNamesOf(const ScriptNameMap *names, std::vector<ScriptObjectsForNaming> toName, const std::set<uint16_t> &chosen)
     {
         std::vector<std::string> reserved;
@@ -545,6 +549,10 @@ namespace
                 {
                     reserved.push_back(entry.second.name);
                 }
+            }
+            for (uint16_t number : chosen)
+            {
+                owned[names->NameOf(number)] = number;
             }
             for (const std::string &title : names->FileTitles())
             {

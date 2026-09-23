@@ -92,7 +92,14 @@ namespace
                 {
                     continue;
                 }
-                ScriptId includeId(resourceMap.GetIncludePath(name));
+                std::string includePath = resourceMap.GetIncludePath(name);
+                if (includePath.empty())
+                {
+                    // Review of c49c8143: before, the error was "Opening \" with
+                    // no name.
+                    return sci::Fail(sci::ErrorCode::NotFound, "the include " + name + " is in neither the include folder nor src");
+                }
+                ScriptId includeId(includePath);
                 SCI_TRY_ASSIGN(ScriptText text, LoadScriptText(includeId.GetFullPath()));
                 CScriptStreamLimiter limiter(text);
                 CCrystalScriptStream stream(&limiter);
@@ -364,8 +371,13 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         CountingResults counting(results, report.stats);
         LastSources sources;
         // The outcome of each script in report.scripts: a script that a later
-        // group decompiles again gets the outcome of that group.
+        // group decompiles again gets the outcome of that group, but not
+        // Cancelled after it was written.
         std::map<uint16_t, size_t> outcomeIndex;
+        // Each script that a group wrote, with its name: game.ini gets these
+        // names (review of c49c8143: a later group that failed or stopped
+        // took the name out of game.ini).
+        std::map<uint16_t, std::string> writtenNames;
         std::set<std::pair<std::string, std::string>> knownRenames;
         std::set<uint16_t> toDo = scripts;
         for (int group = 1; !toDo.empty(); group++)
@@ -393,11 +405,21 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
                 {
                     outcome.status = ran ? sci::Status(sci::Fail(sci::ErrorCode::Cancelled, "the run stopped before this script")) : ran;
                 }
+                if (outcome.status)
+                {
+                    writtenNames[number] = outcome.name;
+                }
                 auto index = outcomeIndex.find(number);
                 if (index == outcomeIndex.end())
                 {
                     outcomeIndex[number] = report.scripts.size();
                     report.scripts.push_back(std::move(outcome));
+                }
+                else if (!outcome.status && (outcome.status.error().code == sci::ErrorCode::Cancelled) && report.scripts[index->second].status)
+                {
+                    // An earlier group wrote it, and the abort came before this
+                    // group reached it: it keeps that outcome (review of
+                    // c49c8143), and the stale check after the abort lists it.
                 }
                 else
                 {
@@ -426,8 +448,12 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             if (counting.IsAborted())
             {
                 report.cancelled = true;
-                // Written, but with the old names of globals that the run named.
-                report.stale.insert(batch.GetSkippedRewrites().begin(), batch.GetSkippedRewrites().end());
+                if (!output)
+                {
+                    // Written, but with the old names of globals that the run
+                    // named.
+                    report.stale.insert(batch.GetSkippedRewrites().begin(), batch.GetSkippedRewrites().end());
+                }
                 break;
             }
             if (output || groupRenames.empty())
@@ -473,6 +499,32 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             toDo = std::move(stale);
         }
 
+        // After an abort, every script whose file still uses a global of the
+        // run by its old name: a rewrite that the abort stopped, a script of
+        // an earlier group that a later group did not reach, and a script
+        // that the run did not decompile (review of c49c8143: before, only
+        // the stopped rewrites). Main's .sco has the new names: the scripts
+        // that the run wrote with them need it.
+        if (report.cancelled && !output && !report.globalRenames.empty())
+        {
+            std::set<uint16_t> candidates;
+            for (CompiledScript *compiled : lookups.GetGlobalClassTable().GetAllScripts())
+            {
+                candidates.insert(compiled->GetScriptNumber());
+            }
+            sci::Status checked = sci::Guard("finding the stale scripts", [&]() -> sci::Status
+            {
+                std::set<uint16_t> stale = FindScriptsReferencingGlobals(helper, candidates, report.globalRenames);
+                report.stale.insert(stale.begin(), stale.end());
+                return sci::Ok();
+            });
+            if (!checked)
+            {
+                report.warnings.push_back(checked.error().ToString());
+                results.AddResult(DecompilerResultType::Warning, checked.error().ToString());
+            }
+        }
+
         if (output)
         {
             for (const DecompileOutcome &outcome : report.scripts)
@@ -495,15 +547,17 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             {
                 for (const auto &entry : helper.ScriptNames->Entries())
                 {
-                    names[entry.first] = entry.second.name;
+                    // Not the scripts of a name conflict: the GUI does not
+                    // check game.ini for one (review of c49c8143).
+                    if (helper.ScriptNames->ConflictsOf(entry.first).empty())
+                    {
+                        names[entry.first] = entry.second.name;
+                    }
                 }
             }
-            for (const DecompileOutcome &outcome : report.scripts)
+            for (const auto &written : writtenNames)
             {
-                if (outcome.status)
-                {
-                    names[outcome.number] = outcome.name;
-                }
+                names[written.first] = written.second;
             }
             report.gameIni = WriteScriptNamesToGameIni(helper, names, options.gameIni);
         }

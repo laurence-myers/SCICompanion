@@ -30,8 +30,9 @@ enum class NameAssignment
 };
 
 // The names in game.ini after the run (--game-ini). The entries are the names
-// of the written scripts; when game.ini has no [Script] entry, the names of
-// every script (as the Decompile dialog gives them before its first run). A
+// of the scripts that a group of the run wrote; when game.ini has no [Script]
+// entry, the names of every script (as the Decompile dialog gives them before
+// its first run), but not those of a name conflict. A
 // name that game.ini has with another value is replaced (after a reset of
 // the names, the GUI then finds the new files). The default name nNNN gets no
 // entry.
@@ -75,14 +76,15 @@ struct DecompileReport
 {
     // The scripts of the run in number order, then the new scripts of each
     // group of stale scripts that updateStale decompiled. A script that a
-    // later group decompiles again has one outcome: the last.
+    // later group decompiles again has one outcome: the last, but an abort
+    // before the later group reached it keeps the earlier written outcome.
     std::vector<DecompileOutcome> scripts;
     // The globals that the run named: (standard name, new name).
     std::vector<std::pair<std::string, std::string>> globalRenames;
     // The scripts that use a global of the run by its old name: without
     // updateStale, the scripts that the run did not decompile; after an
-    // abort, also the written scripts that the abort kept from a second
-    // write with the new names.
+    // abort (with no output), every script whose file still uses one, also
+    // a script that the run wrote before the abort (review of c49c8143).
     std::set<uint16_t> stale;
     DecompileStats stats;
     bool cancelled = false;
