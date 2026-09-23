@@ -19,6 +19,10 @@
 - Revision 3 adds failure handling: failures are values (`Result`), not
   exceptions, at every boundary that the CLI and the services use, and
   batches report partial success (section 6).
+- Revision 4 adopts what applies from lucasartsifier's `scicompile`, an
+  earlier headless port of this compiler (section 14): six compiler fixes
+  (phase K), `scic script sco`, a compile-all that repeats until the `.sco`
+  files are stable, and compile output to another folder.
 
 ## 0. Summary
 
@@ -45,9 +49,15 @@
 - New library services (`ScriptCatalog`, `CompileBatch`, `DecompileRun`)
   have MFC-free interfaces. The CLI and the GUI dialogs both call them, so
   they share the code and the tests.
-- The work is 15 PRs in five phases: failure-handling foundation, safety
-  fixes, decoupling, services, CLI. An optional sixth phase splits a
-  `SCICompanionCore` library with no MFC GUI headers.
+- Phase K fixes six compiler bugs that `scicompile` found (section 14), for
+  example `(and a b)` in a value position, which must give the deciding
+  operand as Sierra's compiler does, not 1 or 0.
+- `scic script sco` makes the `.sco` files from existing source and the
+  game's compiled scripts, so a source tree from another decompiler (for
+  example sluicebox's sci-tools) can be compiled.
+- The work is 21 PRs in six phases: failure-handling foundation, safety
+  fixes, decoupling, compiler fixes, services, CLI. An optional seventh
+  phase splits a `SCICompanionCore` library with no MFC GUI headers.
 
 ## 1. Requirements
 
@@ -63,6 +73,7 @@ From you:
 | R6 | `decompile` overwrites existing `.sc` files (no refusal). |
 | R7 | Refactoring is allowed, to make the code easier to call from a CLI and to decouple it from MFC and the GUI. |
 | R8 | Propagate failures with a non-exception method (a `Result` type). No failure mode stays unhandled when an exception is thrown. Return partial success and failure after a compile or decompile. |
+| R9a | Adopt the changes from lucasartsifier's `scicompile` that apply to this code (section 14). |
 
 Added by this plan:
 
@@ -520,6 +531,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
 scic script list      <game-folder> [script ...] [options]
 scic script decompile <game-folder> (<script> ... | --all) [options]
 scic script compile   <game-folder> (<script> ... | --all) [options]
+scic script sco       <game-folder> (<script> ... | --all) [options]
 scic help [group [command]]
 scic --version
 ```
@@ -682,9 +694,17 @@ Individual and bulk:
 |---|---|---|
 | Scripts | the selection, in `game.ini` order | the `[Script]` section, in file order |
 | Empty `[Script]` section | not applicable | error; with `--scan-src`, compile each `src\*.sc` (the GUI's fallback) |
+| A `[Script]` entry with no `.sc` file | usage error (exit 2) | skipped, and listed as a warning |
+| Passes | one | repeat while a `.sco` file changed, at most `--passes` times (section 14) |
 | Tables (996, 997) | saved once at the end, if one or more scripts compiled | the same |
-| Resource writes | one batch | one batch |
+| Resource writes | one batch | one batch, from the last pass |
 | After an error | continue with the next script; `--fail-fast` stops | the same |
+
+Why the passes: `(use X)` reads `X.sco` from disk, and scripts have `use`
+cycles (`Main` and the system scripts). When a script's interface changes,
+the scripts that use it are right only after a second pass. A pass that
+changes no `.sco` file ends the loop, so a project with consistent `.sco`
+files (for example after `script decompile --all`) needs one pass.
 
 For one script, the table rule is the same as the GUI (save only on
 success). For many scripts, the GUI saves the tables even when all scripts
@@ -700,6 +720,9 @@ Options:
 |---|---|
 | `--to patch\|package` | Where to write the resources (section 5). Default: `patch`. `package` is the resource package (`resource.map` and a volume). `--into-volume` is another spelling of `--to package`. |
 | `--replace-patches` | With `--to package`: after the package write succeeds, move the patch files that would hide the new resources to `<game>\replaced-patches\<time>\`. |
+| `--out-dir <folder>` | Write the patch files into this folder, not into the game folder. The game's resources do not change; `src\*.sco` still does. Use it to build a set of patch files to ship. Not with `--to package`. |
+| `--raw` | With `--out-dir`: write the plain resource data with no patch header, as `script.110.bin` and `heap.110.bin`. |
+| `--passes <n>` | With `--all`: the largest number of passes (default 5). `--passes 1` is one pass, as in the GUI. |
 | `--scan-src` | With `--all` and an empty `[Script]` section: compile each `src\*.sc`. |
 | `--fail-fast` | Stop at the first script with errors. |
 | `--no-warn-unused` | Turn off the "unused instance" warning. It is on by default, as in the GUI. |
@@ -714,6 +737,28 @@ I:\Games\MyGame\src\rm110.sc(40,1): warning : Unused instance 'bar'.
 ```
 
 Exit codes: section 8.
+
+### 4.6 `scic script sco`
+
+```
+scic script sco C:\Games\LSL2 --all
+scic script sco C:\Games\LSL2 rm26 rm38
+```
+
+Purpose: make the `.sco` object files from source that another tool wrote
+(for example sluicebox's sci-tools), so that `script compile` can resolve
+each `(use ...)`. Our own decompiler writes `.sco` files, but another
+decompiler does not, and `compile --all` cannot start from nothing, because
+every script uses another one.
+
+- For each selected script, `sco` parses `src\<name>.sc`, loads the game's
+  compiled script, and writes `src\<name>.sco` from the two, with the same
+  code that the decompiler uses (`SCOFromScriptAndCompiledScript`, with the
+  PR K2 fix).
+- It does not compile and does not change a resource.
+- A script with no source file or no compiled resource is skipped and
+  listed. A parse error is a failure of that script (exit 6).
+- Then run `scic script compile --all`.
 
 ## 5. Where compiled output goes
 
@@ -1025,7 +1070,9 @@ types of different value types. #148 (`expected<void,E>::operator*`): use
 4. Install a console log sink (`SetCoreLogSink`): warnings go to stderr,
    and all messages go to the `--log` file if you give one.
 5. Create a `GameSession` with the options (data folder, warn on unused
-   instances). There is no `AppState`: `appState` stays null.
+   instances). There is no `AppState`: `appState` stays null. The session
+   calls `InitializeSyntaxParsers()`, which the `AppState` constructor did
+   before; without it the parser grammars are empty.
 6. `session.Open(folder)`. If it returns an error, print it and exit with 3.
 7. Run the command inside `Guard`. Print the report.
 8. Map the result to an exit code (section 8). Destroy the session.
@@ -1092,26 +1139,40 @@ days, L is 3 to 5 days.
 
 | PR | Change | Fixes | Test (negative check) | Size |
 |---|---|---|---|---|
-| B1 | `Src\Core\`: `GameSession`, `ILogSink`, `CoreLog`, `SessionOptions` (section 3.2). `CResourceMap::TryOpen` returns a `Status`. `AppState` owns a `GameSession` and forwards `GetResourceMap`, `GetVersion` and `LogInfo` to it. `SafeMessageBox` with no GUI goes to `CoreLog`. The codecs use `CoreLog`. Fix the `_fTrackHeaderFiles` order. | P8, P12, P17 | `GameSession::Open` on a corrupt map returns a `Format` error with the file name (fails before: an exception with no text). A headless `SafeMessageBox` text reaches the sink in full (fails before). | M |
+| B1 | `Src\Core\`: `GameSession`, `ILogSink`, `CoreLog`, `SessionOptions` (section 3.2). `CResourceMap::TryOpen` returns a `Status`. `AppState` owns a `GameSession` and forwards `GetResourceMap`, `GetVersion` and `LogInfo` to it. The session calls `InitializeSyntaxParsers()`. `SafeMessageBox` with no GUI goes to `CoreLog`. The codecs use `CoreLog`. Fix the `_fTrackHeaderFiles` order. | P8, P12, P17 | `GameSession::Open` on a corrupt map returns a `Format` error with the file name (fails before: an exception with no text). A headless `SafeMessageBox` text reaches the sink in full (fails before). | M |
 | B2 | Script text with no CrystalEdit: `ReadOnlyTextBuffer(const std::string &)`, `LoadScriptText(path)` returning `Result<ScriptText>` with the line-ending rule of section 2.8, and a small `TextPos` in place of `CPoint` in the stream. The engine call sites use it: the compile, `SimpleCompile`, the header loads (`CompileContext.cpp:1204`) and `DecompilerConfig`. The editor keeps its buffer. | P20 | For every `.sc` and `.sh` file in both templates, and for crafted files (LF only, CR only, mixed, no final line break), the lines from both loaders are equal. A naive splitter fails the mixed case (the negative check). A missing file gives `NotFound`. | S |
 | B3 | The script engine takes the session: `CompileTables`, `CompileResults`, `CompileContext`, `GenerateScriptResource`, `NewCompileScript` (moved to `Src\Compile\CompileScript.cpp`), the vocab 996/997 tables and the class table (`Vocab99x.cpp`), the text codepage (`Text.cpp`), the polygon folder (`SCISyntaxParser.cpp`), `ValidateSaid`, `SCISourceCodeFormatter`, `DecompileBatch`, `DecompileScript` (moved out of `ScriptDocument.cpp`), `DecompilerFallback`, `DecompilerNew`, `Disassembler`. The class browser becomes an optional `IClassHints`; the lock is taken only when a browser exists. The data folder comes from the session. | P15, P18, P19 | Compile all and decompile all of both templates with `appState == nullptr` (fails before: null dereference). The existing golden suites (bytecode oracle, decompile snapshots) do not change. | L |
 | F2 | Engine errors as values at the boundary. `sci::DataError` (standard C++, with an `ErrorCode`) replaces the 52 `throw std::exception("…")`. `Result` forms of the reads that the services use: `CreateResourceFromResourceData`, `CompiledScript::Load`, `GlobalCompiledScriptLookups::Load`, `CompileTables::Load`; a decompression failure reaches the caller as `Format`, not only as a log line. The silent swallows on the script paths go: `Text.cpp:209` (a partial read is a `Format` error), `DecompileDialog.cpp:866` (the worker reports through the service), `VersionDetectionHelper.cpp:902, 925` (a failed probe keeps the default and logs why). | P21 | A truncated script resource gives `Format` with the resource number (fails before: generic text, or nothing). A truncated text resource gives a `Format` error (fails before: a silent partial read). The golden suites do not change. | M |
+
+### Phase K: compiler fixes found in `scicompile` (section 14)
+
+Each fix makes the compiler agree with Sierra's compiler or with the game's
+own data. Each fix is one PR with a test that fails before it.
+
+| PR | Change | Test (negative check) | Size |
+|---|---|---|---|
+| K1 | `and` and `or` in a value position give the deciding operand, as Sierra's `sc` does (`MakeAnd`/`MakeOr` in `COMPILE.CPP`): `a; bnt E; b; E:` for `and`, `bt` for `or`. The old code (`_WriteFakeIfStatement`) gave 1 or 0. In a condition (`if`, `while`, ...) nothing changes. GUI change: the compiled bytes of such an expression change. | The bytes of `(= x (and a b))`, `(= x (or a b))` and `(proc (and (IsObject t) t))` are the Sierra shape (fails before: `ldi 1`). The bytes of `(if (and a b) ...)` do not change. | S |
+| K2 | `SCOFromScriptAndCompiledScript`: when the source has a `(public name N ...)` block, record those slots as they are. Only without that block, pair the definition order with the export table. | A script whose public procedures are defined out of slot order gives each name its own slot (fails before: the names shift). | S |
+| K3 | Class numbering: in each script, order the species of `vocab.996` as the classes are in the game's compiled script (the species in each class header), not in number order. A script that does not load keeps the old order. | A table and a compiled script whose class order differs from the number order give each class its own species (fails before: two classes swap). | M |
+| K4 | `#` inside a selector name (not first): the parser (`SelectorP`) accepts it, and the formatter keeps it in property names and send selectors. KQ6 names selector 879 `dungeon#`. | `(properties dungeon# 0)` and `(self dungeon#:)` parse, and the formatter writes `dungeon#` (fails before: a parse error, and `dungeon_`). | S |
+| K5 | A call to `proc<N>_<M>` that nothing resolves compiles to `calle N M`, with a warning, only if the game has no script N (a script that Sierra removed, as KQ6's 911). With a script N it stays an error. Also fix the parse of `__proc<N>_<M>`, which searched the whole name for `_` and gave script 0. | `proc911_0` in a copy with no script 911 gives `calle 911 0` and a warning (fails before: an error). `proc0_99` stays an error. `__proc911_0` gives `calle 911 0` (fails before: `calle 0 11`). | S |
+| K6 | A `Said` string in a game with no `vocab.000` gives a compile error that names the missing resource (fails before: a null dereference in `LookupWord`). `ScriptId` splits a path on `\` and on `/`, so `src/rm110.sc` works. | Both cases. | S |
 
 ### Phase S: services
 
 | PR | Change | Fixes | Test (negative check) | Size |
 |---|---|---|---|---|
-| S1 | Compile destination: `CompileWriteOptions { ResourceSaveLocation saveTo; bool writeResources, writeObjectFile, writeDebugInfo; }`. The script, heap and text writes and `CompileTables::Save(saveTo)` use it. `GameFolderHelper::GetSaveSourceFlags(location)` resolves `Default`. The GUI passes `Default`. The `.sco`, `.scd` and `.sc` writes return a `Status`. | P2, P10 | Copies of the SCI0 and SCI1.1 templates: `Patch` writes `script.NNN`, or `NNN.scr` and `NNN.hep`, and `resource.map` stays byte-equal (fails before: the output goes into the package). `Package` in a patch-mode copy writes the package. A `.sco` write into a read-only `src\` returns `Io` (fails before: silent). | M |
-| S2 | `CompileBatch` and `CompileScripts` (section 3.3), returning `CompileReport` (section 6.5): one log for each script, the table rule, one deferred commit, an abort flag, the shadow check, `Guard` around each script. `CNewCompileDialog` and `OnCompile` use it. `CalculateErrors` counts again from zero. `CompileResult` gets the raw message. All lines are 1-based. GUI change: before a package save that a patch file would hide, the GUI asks to move the patch files aside. | P1 (compile), P11, P13 | Compile all scripts of both templates with 0 errors. With one broken script, the others compile and are written, and the report shows one `Compile` status. A script that throws inside the engine gives an `Internal` status, and the batch goes on (fault injection). The error counts are exact (fails before). A parser error gives the source line (fails before for the 0-based sites). The shadow check finds `997.voc`. | M |
+| S1 | Compile destination: `CompileWriteOptions { ResourceSaveLocation saveTo; std::string outDir; bool raw; bool writeResources, writeObjectFile, writeDebugInfo; }`. With `outDir`, the patch files (or with `raw` the plain data) go to that folder through `ResourceBlob::SaveToFile`. The script, heap and text writes and `CompileTables::Save(saveTo)` use it. `GameFolderHelper::GetSaveSourceFlags(location)` resolves `Default`. The GUI passes `Default`. The `.sco`, `.scd` and `.sc` writes return a `Status`. | P2, P10 | Copies of the SCI0 and SCI1.1 templates: `Patch` writes `script.NNN`, or `NNN.scr` and `NNN.hep`, and `resource.map` stays byte-equal (fails before: the output goes into the package). `Package` in a patch-mode copy writes the package. A `.sco` write into a read-only `src\` returns `Io` (fails before: silent). | M |
+| S2 | `CompileBatch` and `CompileScripts` (section 3.3), returning `CompileReport` (section 6.5): one log for each script, the table rule, one deferred commit, an abort flag, the shadow check, `Guard` around each script, the passes of section 4.5 (write a `.sco` only when its bytes change; the commit holds the last pass), and a skip of `[Script]` entries with no source file. `CNewCompileDialog` and `OnCompile` use it. `CalculateErrors` counts again from zero. `CompileResult` gets the raw message. All lines are 1-based. GUI change: before a package save that a patch file would hide, the GUI asks to move the patch files aside. | P1 (compile), P11, P13 | Compile all scripts of both templates with 0 errors. With one broken script, the others compile and are written, and the report shows one `Compile` status. A script that throws inside the engine gives an `Internal` status, and the batch goes on (fault injection). The error counts are exact (fails before). A parser error gives the source line (fails before for the 0-based sites). The shadow check finds `997.voc`. | M |
 | S3 | `ScriptCatalog` (section 3.3): `SuggestScriptNames` (pure, in number order), the effective-name rule of section 4.3, `ListScripts`, `ResolveScriptSelectors`, `FindShadowingPatches`, all returning `Result`. `DecompileDialog::_AssignFilenames` uses `SuggestScriptNames`. GUI change: the `_N` suffix for a duplicate name follows the script number. | P14 | The name rules: Main, "Game" first, first class, public instance, and a `_N` suffix that follows the number (fails before: hash order). Catalogs of both templates. A copy with no `[Script]` section gives derived names. Selector cases: number, range, name, path, duplicate, header, unknown (all bad selectors in one `Usage` error). An unreadable script gives a row with its error. | M |
-| S4 | `DecompileRun` (section 3.3), returning `DecompileReport`: `AssignScriptNames(mode)`, `PrepareDecompileFolder` (plain file copy, no shell), the batch with `Guard` around each script, the stale-script loop, the statistics, an output sink (files or a callback). `DecompileDialog` uses it. Remove the 3-argument `DecompileScript` and the leftover `theApp`. | P1 (decompile), P16 | The `missing`, `all` and `none` modes. The folder preparation copies once and never overwrites. The callback sink writes no file. `--update-stale` stops when no script is stale. A script that fails gives a status in the report, and the others are written. | M |
+| S4 | `DecompileRun` (section 3.3), returning `DecompileReport`: `AssignScriptNames(mode)`, `PrepareDecompileFolder` (plain file copy, no shell), the batch with `Guard` around each script, the stale-script loop, the statistics, an output sink (files or a callback). Also `GenerateObjectFiles(session, scripts)` for `script sco` (section 4.6). `DecompileDialog` uses it. Remove the 3-argument `DecompileScript` and the leftover `theApp`. | P1 (decompile), P16 | The `missing`, `all` and `none` modes. The folder preparation copies once and never overwrites. The callback sink writes no file. `--update-stale` stops when no script is stale. A script that fails gives a status in the report, and the others are written. | M |
 
 ### Phase C: the CLI
 
 | PR | Change | Test | Size |
 |---|---|---|---|
 | C1 | The `SCICompanionCli` project: `scic.exe`, console subsystem, static MFC for now, Release\|Win32, references to the library and Prof-UIS, `.sln` rows, a VERSIONINFO `.rc`. `Src\Cli\`: the command groups and arguments (vendored CLI11, BSD-3 licence, notice in `SCICompanion\Files\Licenses`), console, the exit-code mapping (section 8), the host (section 7) with the crash settings, Ctrl+C. Commands: `help`, `--version`, `script list`. | In-process `RunCli`: `script list` on both templates (text and tsv), usage errors (exit 2), a bad folder (exit 3), a missing data folder (exit 3), and `list` writes nothing (the folder snapshot stays equal). A unit test for each row of the exit-code mapping. Integration: `scic.exe script list` through `IntegrationHarness::RunChildReadStdout` (`UnitTests\IntegrationHarness.h:126`). | M |
-| C2 | `scic script decompile` (section 4.4). | Individual and `--all` runs on template copies. `--stdout` and `--dry-run` write nothing. The stale report and `--update-stale`. Exit 6 when one script fails (a truncated script in a copy). | M |
+| C2 | `scic script decompile` (section 4.4) and `scic script sco` (section 4.6). | Individual and `--all` runs on template copies. `--stdout` and `--dry-run` write nothing. The stale report and `--update-stale`. Exit 6 when one script fails (a truncated script in a copy). | M |
 | C3 | `scic script compile` (sections 4.5 and 5). | The default writes patch files and leaves `resource.map` byte-equal. `--to package` writes the package. The script bytes are equal for both destinations, and equal to the GUI path (S2). The shadow refusal (exit 8) and `--replace-patches`. The patch-mode refusal. `--dry-run` writes nothing. Exit 5 with one broken script, and the others are written. Round trip: `decompile --all`, then `compile --all`, with 0 errors (as `RecompileAllDecompiledScripts`, `UnitTests\DecompileHelper.cpp:544-593`). | M |
 | C4 | CI and documents: a smoke step in `build.yaml` (copy `Release\TemplateGame\SCI1.1` to a temp folder, then run `script list`, `script decompile --all` and `script compile --all`). README "What's new": a "Command-line tool" item. AGENTS.md: the CLI build and tests, the third `.rc` file for the version, and the failure-handling rules (section 6.2). `UnitTests\README.md`. `UnitTests\Tools\CliCorpusSweep.ps1` (local use). | CI passes. | S |
 
@@ -1129,11 +1190,12 @@ days, L is 3 to 5 days.
   layering permanent.
 
 Dependencies: F1 is first; every later PR uses it. A1, A2, B1 and B2 need
-only F1. B3 needs B1 and B2. F2 needs B3. S1 and S3 need F2. S2 needs S1
-and A1. S4 needs S3. C1 needs S3. C2 needs C1 and S4. C3 needs C1, S2 and
-A2. C4 is last. E1 comes after C4. For the stacked-PR workflow, one
-straight order works: F1, A1, A2, B1, B2, B3, F2, S1, S2, S3, S4, C1, C2,
-C3, C4.
+only F1. B3 needs B1 and B2. F2 needs B3. The K PRs need F2 (they change
+code that B3 and F2 move) and do not depend on each other. S1 and S3 need
+the K PRs. S2 needs S1 and A1. S4 needs S3 and K2. C1 needs S3. C2 needs
+C1 and S4. C3 needs C1, S2 and A2. C4 is last. E1 comes after C4. For the
+stacked-PR workflow, one straight order works: F1, A1, A2, B1, B2, B3, F2,
+K1, K2, K3, K4, K5, K6, S1, S2, S3, S4, C1, C2, C3, C4.
 
 GUI changes in this plan (all others are refactors with no visible change):
 
@@ -1144,6 +1206,14 @@ GUI changes in this plan (all others are refactors with no visible change):
 - S2: compile-all saves the tables only if one or more scripts compiled.
 - S3: the `_N` suffix of a duplicate automatic script name follows the
   script number.
+- K1: `(and a b)` and `(or a b)` in a value position compile to Sierra's
+  code, so their value is the deciding operand, not 1 or 0. A fan script
+  that used the number 1 from such an expression gets a different number.
+  The README "What's new" says so.
+- K3: a recompiled Sierra script keeps each class's own species.
+- K4: the decompiler writes selector names with `#` as they are.
+- K5: a call into a script that the game does not have compiles, with a
+  warning.
 
 ## 10. Testing
 
@@ -1215,6 +1285,8 @@ Still open (the plan uses the recommendation unless you say otherwise):
 | Q9 | Phase E (core library split) | After phase C, as a separate stack. |
 | Q10 | The rewrite plan's CLI uses `scic compile` (verb first). | Change it to the `scic script compile` form, so scripts carry over to the .NET tool. |
 | Q11 | Result library | tl::expected v1.3.1, using only the `std::expected` names (section 6.7). |
+| Q12 | K1 changes compiled output for fan scripts that used the 1 from an `and`/`or` value. | Adopt Sierra's semantics (the project's direction: Sierra syntax and Sierra-compatible output), with a README note. |
+| Q13 | The scope of the `calle` fallback for `proc<N>_<M>` (K5) | Only when the game has no script N, with a warning. `scicompile` applies it to every unresolved name; a typo then compiles into a call to a missing export. |
 
 ## 12. Risks
 
@@ -1267,6 +1339,44 @@ Other later items:
 - Convert the other `HRESULT` and `bool` engine functions to `Result` as
   their areas change.
 
+## 14. Prior art: lucasartsifier's `scicompile`
+
+`https://github.com/katiahayati/lucasartsifier/tree/main/tools/scicompile`
+(GPL v2, last change 2026-08-24) is a headless Linux build of an older
+upstream SCI Companion compiler. It builds with CMake and GCC through header
+shims (`compat\`) and patched copies of 19 library files (`patched\`); it
+does not change the vendored tree. Its CLI:
+
+```
+scicompile <game> <input.sc> <output.bin>   one script to a file (+ <output.bin>.hep on SCI1.1)
+scicompile --all <game>                      compile all; writes .sco files, repeats to a fixed point
+scicompile --sco <game>                      .sco files from source + the game's compiled scripts
+  --version sci0|sci1|sci11, --wide-exports  overrides (it cannot detect them)
+```
+
+It found these problems. The table shows how each one applies to this code
+(checked on `0dc1fef5`):
+
+| Their change | This code | Action |
+|---|---|---|
+| `a[i] op= v` with a non-literal index stored to `a[0]` or `a[1]` (`eq?; toss; pprev`) | already fixed: `push0; eq?; ldi 0; or; pprev; sa?i` (`Compile.cpp:2089-2098`) | none |
+| `(and a b)` / `(or a b)` in a value position gave 1 or 0 | the same bug (`_WriteFakeIfStatement`, `Compile.cpp:2277`). Sierra's `sc` 4.100 (`MakeAnd`: "the expression evaluates to its value") and the `sc` learnings table agree with `scicompile`. | K1 |
+| `.sco` from source: a class missing from the compiled script dereferenced null | already fixed (#60) | none |
+| `.sco` from source: a procedure export past the source's public procedures read past the end | already fixed (#60) | none |
+| `.sco` from source: the public procedure names paired by definition order, not by the `(public name N)` slots (KQ5 `Interface.sc`) | the same bug (`SCO.cpp:730-780`); the decompiler uses this function too | K2 |
+| Class numbering: species in number order, not in the script's class order (LB2 script 0) | the same bug (`SpeciesTable::_Create`, `Vocab99x.cpp:1152-1168`) | K3 |
+| `#` inside a selector name (KQ6 `dungeon#`) | the same parser limit (`SCISyntaxParser.cpp:45-66`), and the formatter writes `dungeon_` (`CleanTokenSCI`) | K4 |
+| An unresolved `proc<N>_<M>` compiles to `calle N M` (KQ6 speedRoom calls stripped script 911) | the decompiler writes `proc<N>_<M>` (`DecompilerCore.cpp:97`), and the compile fails; the `__proc` prefix parse is also broken (`CompileContext.cpp:679`) | K5, narrowed (Q13) |
+| A null `vocab.000` guard in `LookupWord` | the same crash (`CompileContext.cpp:777-783`) | K6, as a clear error |
+| `ScriptId` split a path only on `\` | the same (`util.cpp:761`) | K6 |
+| The host must call `InitializeSyntaxParsers()` | the `AppState` constructor calls it; `GameSession` must | B1 |
+| `--sco` mode | missing | `script sco` (C2, S4) |
+| Compile-all to a fixed point; skip `[Script]` rows with no source | one pass, in the GUI | S2 and `--passes` |
+| Output to a file, not into the game | missing | `--out-dir`, `--raw` (S1, C3) |
+| `--version`, `--wide-exports` | detected by `SniffSCIVersion` and `_DetectIsExportWide` | none |
+| A missing file gives empty data instead of an exception (`ScopedFile`, `streamOwner`) | not adopted: it hides the failure; the `Result` model reports it (section 6) | none |
+| GCC portability (shims, `-I-`, `_Mynode()`, `lower_bound`, rvalue-to-reference bindings, `std::exception(const char*)`) | not needed on MSVC; F2 removes `std::exception(const char*)` | none now |
+
 ## Appendix A: host checklist
 
 Must:
@@ -1311,3 +1421,5 @@ Must not:
 | Headless test set-up | `UnitTests\Helper.cpp:53-128`; `UnitTests\DecompileHelper.cpp:132-222, 544-593` |
 | Rewrite plan: CLI names and exit codes; error policy | The .NET rewrite plan (outside this repository), Appendix A1 section 5.3; section 5.22 |
 | tl::expected | `https://github.com/TartanLlama/expected` (v1.3.1, CC0 1.0) |
+| lucasartsifier `scicompile` | `https://github.com/katiahayati/lucasartsifier/tree/main/tools/scicompile` (GPL v2): `main.cpp`, `BUILD_NOTES.md`, `COMPILE_ALL_NOTES.md`, `patched\` |
+| Sierra `sc` 4.100 source (MIT) | `https://github.com/Digital-Alchemy-Studios/da-sci-compiler-pub`, `COMPILE.CPP` (`MakeAnd`, `MakeOr`) |

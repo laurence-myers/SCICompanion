@@ -6,9 +6,10 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: F1 (next to start).
-- Baseline on `0dc1fef5`: the Release build passes with 34 warnings; the
-  unit suite passes 217 of 217 tests in about 4 minutes.
+- Current step: F1 (implemented, not yet committed; the negative checks
+  and the full unit run are next).
+- Baseline on `0dc1fef5`: the Release build passes; the unit suite passes
+  217 of 217 tests in about 4 minutes.
 
 ## Progress
 
@@ -17,19 +18,25 @@ for each step, and a follow-up commit if the review finds a problem.
 
 | Step | Status | Commit | Review |
 |---|---|---|---|
-| F1 Result foundation | not started | | |
+| F1 Result foundation | implemented, checking | | |
 | A1 Deferred writes | not started | | |
 | A2 Patch writer, size check | not started | | |
 | B1 GameSession, core log | not started | | |
 | B2 Script text loader | not started | | |
 | B3 Engine on the session | not started | | |
 | F2 Engine errors as values | not started | | |
+| K1 `and`/`or` value semantics | not started | | |
+| K2 `.sco` exports from the public block | not started | | |
+| K3 Species order from compiled scripts | not started | | |
+| K4 `#` in selector names | not started | | |
+| K5 `proc<N>_<M>` for a missing script | not started | | |
+| K6 No `vocab.000`; `/` in paths | not started | | |
 | S1 Compile destination | not started | | |
 | S2 CompileBatch | not started | | |
 | S3 ScriptCatalog | not started | | |
 | S4 DecompileRun | not started | | |
 | C1 CLI project, `script list` | not started | | |
-| C2 `script decompile` | not started | | |
+| C2 `script decompile`, `script sco` | not started | | |
 | C3 `script compile` | not started | | |
 | C4 CI and documents | not started | | |
 | E1 Core library (optional) | not started | | |
@@ -45,18 +52,33 @@ for each step, and a follow-up commit if the review finds a problem.
    Read the counts in `TestResults\UnitTests.trx`.
 4. Negative check: make the new test fail on purpose (revert the fix or
    break it), confirm it fails, then restore.
-5. Commit the step with this file updated. Message: `<type>(scic): <step> <summary>`.
-6. Adversarial review: one subagent in an isolated git worktree, told the
+5. Run `.\UnitTests\Tools\CheckFailureHandling.ps1` (after F1).
+6. Commit the step with this file updated. Message: `<type>(scic): <step> <summary>`.
+7. Adversarial review: one subagent in an isolated git worktree, told the
    exact commit SHA, told to refute the step, to build with warnings
    visible, and to run the tests. Fix real findings in a follow-up commit.
    Then remove the worktree (`git worktree remove --force`, `git worktree
    prune`) and its branch.
 
+## Gotchas
+
+- `sed -i` in Git Bash rewrites a CRLF file with LF endings. Edit project
+  files with the Edit tool or with PowerShell (`[IO.File]::ReadAllText`,
+  keep the BOM).
+- Every project reads `Directory.Build.props`. `/we4834` (a discarded
+  `Result` is an error) applies to our projects, not to Prof-UIS.
+- `tl-expected\tl\expected.hpp` is vendored unchanged (LF endings, SHA-256
+  in `tl-expected\README.md`). Settings such as `TL_ASSERT` go in
+  `Src\Core\Result.h`.
+
 ## Decisions and deviations from the plan
 
-- The open questions Q4 to Q11 use the plan's recommendations.
+- The open questions Q4 to Q13 use the plan's recommendations.
+- Revision 4 of the plan (2026-09-23) added phase K and the `scicompile`
+  features (plan section 14), at your request.
 
 ## Next action
 
-Start F1: vendor tl::expected v1.3.1 and add `Src\Core\Result.h` (plan
-sections 6 and 9).
+Finish F1: the negative check for `TL_ASSERT` (build without the override;
+`WrongAccess_ThrowsInvariantViolation` must fail), the full unit run, then
+commit and review.
