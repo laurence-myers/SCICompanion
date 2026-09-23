@@ -54,6 +54,19 @@ namespace
         return FindShadowingPatches(helper, keys);
     }
 
+    // "Name (N)" for a script of the batch, else "script N".
+    std::string ScriptLabel(const std::vector<ScriptId> &scripts, uint16_t number)
+    {
+        for (const ScriptId &script : scripts)
+        {
+            if (script.GetResourceNumber() == number)
+            {
+                return fmt::format("{0} ({1})", script.GetTitle(), number);
+            }
+        }
+        return fmt::format("script {0}", number);
+    }
+
     size_t CountDiagnostics(const std::vector<CompileResult> &diagnostics, bool errors)
     {
         return (size_t)std::count_if(diagnostics.begin(), diagnostics.end(),
@@ -197,6 +210,7 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
         _passDefer.reset();
         _passDefer = std::make_unique<DeferResourceAppend>(_session.ResourceMap());
         _passFiles.clear();
+        _passObjectFileUses.clear();
         _pass++;
         _next = 0;
         _passChangedObjectFile = false;
@@ -227,6 +241,8 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
     CompileLog log;
     bool returned = false;
     bool objectFileChanged = false;
+    uint16_t compiledNumber = InvalidResourceNumber;
+    std::set<uint16_t> usedObjectFiles;
     outcome.status = sci::Guard(fmt::format("compiling {0}", script.GetFileNameOrig()), [&]() -> sci::Status
     {
         events.OnScriptStart(index, _scripts.size(), script);
@@ -237,13 +253,17 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
         // output folder wait too, and go with it (review of 5f545221).
         DeferResourceAppend scriptLevel(_session.ResourceMap());
         std::vector<StagedOutputFile> scriptFiles;
+        // A dry run stages too: its list is what a real run would write, for
+        // the patch-file check before the commit (review of 4247f34c).
         CompileWriteOptions write = _options.write;
-        if (!write.outDir.empty())
+        if (!write.outDir.empty() || !write.writeResources)
         {
             write.staged = &scriptFiles;
         }
         sci::Status compiled = CompileScriptFile(_session, results, log, _tables, *_headers, script, write);
         objectFileChanged = results.ObjectFileChanged();
+        compiledNumber = results.GetScriptNumber();
+        usedObjectFiles = results.LoadedObjectFiles();
         outcome.stats = results.Stats;
         // The log has a failure of the compile, but not a failure to join the
         // pass.
@@ -261,9 +281,17 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
     });
     outcome.diagnostics = log.Results();
     _passChangedObjectFile = _passChangedObjectFile || objectFileChanged;
+    if (objectFileChanged)
+    {
+        _changedObjectFiles.insert(compiledNumber);
+    }
     if (outcome.status)
     {
         _anyCompiled = true;
+        if (compiledNumber != InvalidResourceNumber)
+        {
+            _passObjectFileUses[compiledNumber] = std::move(usedObjectFiles);
+        }
     }
     else
     {
@@ -290,11 +318,13 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
 
 // What to do with patch files that would hide a package write: the policy,
 // or the answer of options.askShadows (the answer is the policy from then
-// on). Replace keeps the files, to move them after the commit.
+// on). Replace keeps the files, to move them after the commit. A dry run
+// does not ask: it cannot move them (review of 4247f34c: it asked "move?",
+// and then moved nothing).
 sci::Status CompileBatch::_DecideAbout(const std::vector<std::string> &files, bool beforeTheCompile)
 {
     bool asked = false;
-    if ((_options.shadows == ShadowPolicy::Refuse) && _options.askShadows)
+    if ((_options.shadows == ShadowPolicy::Refuse) && _options.askShadows && _options.write.writeResources)
     {
         _options.shadows = _options.askShadows(files);
         asked = true;
@@ -321,9 +351,45 @@ sci::Status CompileBatch::_DecideAbout(const std::vector<std::string> &files, bo
     return sci::Fail(sci::ErrorCode::WriteRefused, text + " Move them aside, or replace them (--replace-patches).");
 }
 
+// A script of the commit compiled against the .sco files that it read. A new
+// pass withdraws the writes of the pass before, but not its .sco files, so a
+// script that failed in the last pass, or that did not run in it (an abort,
+// or failFast), can have a new .sco and the old resources in the game. A
+// script that used that .sco would then call a version of it that the game
+// does not have (review of 4247f34c: in pass 2, Y failed against the new
+// .sco of X, and X, compiled against the pass-1 .sco of Y, was written
+// without Y). The commit then writes nothing.
+sci::Status CompileBatch::_CheckObjectFileUses() const
+{
+    std::string uses;
+    for (const auto &user : _passObjectFileUses)
+    {
+        std::string changed;
+        for (uint16_t used : user.second)
+        {
+            if ((_changedObjectFiles.count(used) != 0) && (_passObjectFileUses.count(used) == 0))
+            {
+                changed += (changed.empty() ? "" : ", ") + ScriptLabel(_scripts, used);
+            }
+        }
+        if (!changed.empty())
+        {
+            uses += (uses.empty() ? "" : "; ") + ScriptLabel(_scripts, user.first) + " uses " + changed;
+        }
+    }
+    if (uses.empty())
+    {
+        return sci::Ok();
+    }
+    return sci::Fail(sci::ErrorCode::WriteRefused, "no compiled resource was written, because these scripts compiled against the new .sco file "
+        "of a script that failed in the last pass, or did not run in it, so the commit does not write it: " + uses + ". Compile the scripts again.");
+}
+
 // Plan section 5: the batch checks the queued package writes again before
-// the commit. A script's auto text is known only after its compile.
-sci::Status CompileBatch::_CheckQueuedWrites()
+// the commit. A script's auto text is known only after its compile. A dry
+// run queues nothing: its staged list has the writes of a real run (review
+// of 4247f34c: before, a dry run passed where the real run was refused).
+sci::Status CompileBatch::_CheckQueuedWrites(const std::vector<StagedOutputFile> &tableFiles)
 {
     _hidingPatches.clear();
     if (!_toPackage || (_options.shadows == ShadowPolicy::Ignore))
@@ -331,12 +397,27 @@ sci::Status CompileBatch::_CheckQueuedWrites()
         return sci::Ok();
     }
     std::vector<ResourceKey> keys;
-    for (const ResourceBlob *queued : _defer->Pending())
+    if (_options.write.writeResources)
     {
-        if (queued->GetSourceFlags() == ResourceSourceFlags::ResourceMap)
+        for (const ResourceBlob *queued : _defer->Pending())
         {
-            keys.push_back({ queued->GetType(), (uint16_t)queued->GetNumber() });
+            if (queued->GetSourceFlags() == ResourceSourceFlags::ResourceMap)
+            {
+                keys.push_back({ queued->GetType(), (uint16_t)queued->GetNumber() });
+            }
         }
+    }
+    else
+    {
+        auto addKeys = [&keys](const std::vector<StagedOutputFile> &files)
+        {
+            for (const StagedOutputFile &file : files)
+            {
+                keys.push_back({ file.type, file.number });
+            }
+        };
+        addKeys(tableFiles);
+        addKeys(_passFiles);
     }
     SCI_TRY_ASSIGN(std::vector<std::string> shadowing, FindShadowingPatches(_session.Helper(), keys));
     std::vector<std::string> added;
@@ -359,13 +440,21 @@ sci::Status CompileBatch::_CheckQueuedWrites()
 }
 
 // ShadowPolicy::Replace, after the package write: the patch files go to
-// <game>\replaced-patches\<time>. A file that does not move is a warning; the
-// package has the resources already.
+// <game>\replaced-patches\<time>. The files that do not move are an error in
+// report.moves (Io); the package has the resources already, so the commit
+// stays.
 void CompileBatch::_MoveShadowingPatches()
 {
-    // A dry run writes nothing, so it moves nothing.
-    if ((_options.shadows != ShadowPolicy::Replace) || _hidingPatches.empty() || !_options.write.writeResources)
+    if ((_options.shadows != ShadowPolicy::Replace) || _hidingPatches.empty())
     {
+        return;
+    }
+    if (!_options.write.writeResources)
+    {
+        // A dry run writes nothing, so it moves nothing; it names the files
+        // that a real run would move.
+        _report.warnings.push_back("a real run would move these patch files, which would hide the package write, to the folder replaced-patches: " +
+            JoinPaths(_hidingPatches));
         return;
     }
     const GameFolderHelper &helper = _session.Helper();
@@ -471,12 +560,13 @@ CompileReport CompileBatch::Finish()
             return _passDefer->Commit();
         });
         // The table rule: save only when a script compiled (plan section 4.5).
-        // With an output folder, the table files wait for the commit too.
+        // With an output folder, the table files wait for the commit too; a
+        // dry run lists them for its patch-file check.
         std::vector<StagedOutputFile> tableFiles;
         if (_anyCompiled)
         {
             CompileWriteOptions write = _options.write;
-            if (!write.outDir.empty())
+            if (!write.outDir.empty() || !write.writeResources)
             {
                 write.staged = &tableFiles;
             }
@@ -499,9 +589,17 @@ CompileReport CompileBatch::Finish()
             _report.commit = sci::Fail(error);
             return _report;
         }
+        _report.commit = sci::Guard("checking the .sco files that the scripts used", [&]() -> sci::Status
+        {
+            return _CheckObjectFileUses();
+        });
+        if (!_report.commit)
+        {
+            return _report;
+        }
         _report.commit = sci::Guard("checking the queued writes for patch files", [&]() -> sci::Status
         {
-            return _CheckQueuedWrites();
+            return _CheckQueuedWrites(tableFiles);
         });
         if (!_report.commit)
         {
@@ -515,7 +613,7 @@ CompileReport CompileBatch::Finish()
         _report.commit = sci::Guard("writing the compiled resources", [&]() -> sci::Status
         {
             SCI_TRY(_defer->Commit());
-            if (_options.write.outDir.empty())
+            if (_options.write.outDir.empty() || !_options.write.writeResources)
             {
                 return sci::Ok();
             }

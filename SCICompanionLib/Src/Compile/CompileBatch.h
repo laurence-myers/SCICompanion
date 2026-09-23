@@ -12,7 +12,9 @@
 #include "Result.h"
 #include <atomic>
 #include <functional>
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -43,7 +45,9 @@ struct CompileOptions
     // the patch files that would hide a package write, at the start and
     // before the commit (for the files that it finds only then). Its answer
     // is the policy from then on. Refuse stops the batch with Cancelled, and
-    // nothing is written. The GUI asks the user (plan step S2).
+    // nothing is written. The GUI asks the user (plan step S2). A dry run
+    // does not ask (it cannot move the files; review of 4247f34c): Refuse
+    // stops it with WriteRefused, as a real run with no askShadows.
     std::function<ShadowPolicy(const std::vector<std::string> &files)> askShadows;
 };
 
@@ -57,9 +61,11 @@ struct ScriptOutcome
     // the error of an exception (Internal, or the code of a DataError). A
     // script that fails writes no resource: its writes to the game are
     // withdrawn, and its files for an output folder are dropped (they wait
-    // for the commit; review of 5f545221). Its .sco is its last write, so it
-    // leaves no new .sco; a debug file that it wrote stays, and a debug file
-    // that cannot be written is a warning.
+    // for the commit; review of 5f545221). Its .sco is the last write that
+    // can fail it, so it leaves no new .sco from this pass; a .sco from an
+    // earlier pass stays, and the commit then writes nothing when a script
+    // of the commit uses it (review of 4247f34c). The debug file comes
+    // after the .sco, and one that cannot be written is a warning.
     sci::Status status;
     std::vector<CompileResult> diagnostics;
     // The sizes of the compiled script (the GUI shows them).
@@ -76,8 +82,8 @@ struct CompileReport
     // The one write of the queued resources. Refused when the tables could
     // not be saved: the compiled scripts need them.
     sci::Status commit;
-    // With ShadowPolicy::Replace: Ok, or the first patch file that could not
-    // move (it still hides the package write).
+    // With ShadowPolicy::Replace: Ok, or an Io error that names each patch
+    // file that could not move (it still hides the package write).
     sci::Status moves;
     // The abort flag stopped the batch.
     bool cancelled = false;
@@ -151,13 +157,17 @@ public:
     bool Step(const std::atomic<bool> &abort, ICompileEvents &events);
     // Saves the tables when one or more scripts compiled, and commits the
     // queued writes, also after an abort, as the GUI's Cancel button does.
-    // Before the commit, it checks the queued package writes again for patch
-    // files that would hide them (a text of a script's auto text), and asks
-    // askShadows about new files. With Replace, it moves only the patch
-    // files that hide a resource that the commit wrote (a dry run moves
-    // none). With an output folder, the commit writes the files of the
-    // tables, then those of the scripts that compiled (WriteStagedOutputFiles).
-    // Call it once.
+    // Before the commit, it writes nothing (WriteRefused) when a script of
+    // the commit compiled against a .sco file that the batch changed for a
+    // script whose writes are not in the commit: the script failed in the
+    // last pass, or the batch stopped before it (review of 4247f34c). Then
+    // it checks the package writes again for patch files that would hide
+    // them (a text of a script's auto text), and asks askShadows about new
+    // files; a dry run checks the writes that a real run would make, and
+    // asks nothing. With Replace, it moves only the patch files that hide a
+    // resource that the commit wrote (a dry run moves none). With an output
+    // folder, the commit writes the files of the tables, then those of the
+    // scripts that compiled (WriteStagedOutputFiles). Call it once.
     CompileReport Finish();
 
     size_t Count() const { return _scripts.size(); }
@@ -186,8 +196,15 @@ private:
     // 5f545221).
     bool _toPackage = false;
     // With an output folder: the files of the scripts of this pass that
-    // compiled. The commit writes the last pass.
+    // compiled. The commit writes the last pass. In a dry run: the
+    // resources that a real run would write, for the patch-file check.
     std::vector<StagedOutputFile> _passFiles;
+    // The scripts of this pass that compiled, by their compiled number,
+    // with the scripts whose .sco files each one read (review of
+    // 4247f34c).
+    std::map<uint16_t, std::set<uint16_t>> _passObjectFileUses;
+    // The scripts whose .sco files the batch changed, in any pass.
+    std::set<uint16_t> _changedObjectFiles;
     // The patch files that the policy or askShadows answered for, so the
     // check before the commit asks only about new ones.
     std::vector<std::string> _shadowingPatches;
@@ -196,7 +213,8 @@ private:
     std::vector<std::string> _hidingPatches;
 
     sci::Status _DecideAbout(const std::vector<std::string> &files, bool beforeTheCompile);
-    sci::Status _CheckQueuedWrites();
+    sci::Status _CheckObjectFileUses() const;
+    sci::Status _CheckQueuedWrites(const std::vector<StagedOutputFile> &tableFiles);
     void _MoveShadowingPatches();
     void _AddWarnings();
 };

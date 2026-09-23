@@ -43,7 +43,9 @@ struct CompileWriteOptions
     // With outDir: when set, WriteCompiledResource adds each resource here
     // and writes no file, and WriteStagedOutputFiles writes them later.
     // CompileBatch sets it, so that a script that fails, or a batch whose
-    // commit fails, leaves no file in the folder (review of 5f545221).
+    // commit is refused, leaves no file in the folder (review of
+    // 5f545221). In a dry run (no writeResources), the list has what a
+    // real run would write, and nothing writes it (review of 4247f34c).
     std::vector<StagedOutputFile> *staged = nullptr;
 };
 
@@ -60,6 +62,8 @@ sci::Status WriteCompiledResource(CResourceMap &resourceMap, const CompileWriteO
 
 // Writes the staged files into the output folder of the options, in order.
 // Every file that is there already must open for writing first, so that a
-// read-only file, or a file that another program holds, fails the write
-// before the first file.
+// read-only, hidden or system file, a folder with the file's name, or a
+// file that another program holds, fails the write before the first file.
+// A write that fails after that check (a full disk) leaves the files
+// before it.
 sci::Status WriteStagedOutputFiles(const GameFolderHelper &helper, const CompileWriteOptions &options, const std::vector<StagedOutputFile> &files);

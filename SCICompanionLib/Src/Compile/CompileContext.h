@@ -355,6 +355,8 @@ public:
 	void AddSCOPublics(CSCOPublicExport scoPublic);
 	std::vector<CSCOObjectClass> &GetInstanceSCOs();
 	CSCOFile &GetScriptSCO();
+	// The scripts whose .sco files this compile read, not its own.
+	std::set<uint16_t> LoadedObjectFiles() const;
 	std::string LookupSelectorName(WORD wIndex) const;
 	std::vector<WORD> GetRelocations();
 
@@ -559,17 +561,24 @@ public:
 	// (plan step S2: a pass that changes no .sco file ends the passes).
 	bool ObjectFileChanged() const { return _objectFileChanged; }
 	void SetObjectFileChanged(bool changed) { _objectFileChanged = changed; }
+	// The scripts whose .sco files the compile read (not its own). A batch
+	// uses them to see which scripts depend on a .sco that it changed
+	// (review of 4247f34c).
+	const std::set<uint16_t> &LoadedObjectFiles() const { return _loadedObjectFiles; }
+	void SetLoadedObjectFiles(std::set<uint16_t> scripts) { _loadedObjectFiles = std::move(scripts); }
 	CompileStats Stats;
 
 private:
 	std::vector<uint8_t> _outputScr;
 	std::vector<uint8_t> _outputHep;
 	std::vector<uint8_t> _outputDebug;
-	WORD _wScriptNumber;
+	// Set by the compile; InvalidResourceNumber when it stopped before it.
+	WORD _wScriptNumber = InvalidResourceNumber;
 	CSCOFile _sco;
 	ICompileLog &_log;
 	std::unique_ptr<ResourceEntity> _text;
 	bool _objectFileChanged = false;
+	std::set<uint16_t> _loadedObjectFiles;
 };
 
 

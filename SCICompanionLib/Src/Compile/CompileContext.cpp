@@ -1239,6 +1239,19 @@ CSCOFile &CompileContext::GetScriptSCO()
 	assert(_wScriptNumber != InvalidResourceNumber);
 	return _scos[_wScriptNumber];
 }
+std::set<uint16_t> CompileContext::LoadedObjectFiles() const
+{
+	// An empty entry is a .sco that the compile looked for and did not find.
+	std::set<uint16_t> scripts;
+	for (const auto &sco : _scos)
+	{
+		if ((sco.first != _wScriptNumber) && !sco.second.IsEmpty())
+		{
+			scripts.insert(sco.first);
+		}
+	}
+	return scripts;
+}
 std::string CompileContext::LookupSelectorName(WORD wIndex) const
 {
 	return _tables.Selectors().Lookup(wIndex);

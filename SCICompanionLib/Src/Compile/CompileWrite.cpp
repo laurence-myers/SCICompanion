@@ -56,6 +56,12 @@ sci::Status WriteCompiledResource(CResourceMap &resourceMap, const CompileWriteO
     }
     if (!options.writeResources)
     {
+        // A dry run of a batch lists what a real run would write, for the
+        // patch-file check before its commit (review of 4247f34c).
+        if (options.staged)
+        {
+            options.staged->push_back({ type, number, data });
+        }
         return sci::Ok();
     }
     if (options.outDir.empty())
@@ -81,15 +87,29 @@ sci::Status WriteStagedOutputFiles(const GameFolderHelper &helper, const Compile
 {
     // Every file that is there already must open for writing, so that a
     // read-only file, or a file that another program holds, fails the
-    // commit before the first write.
+    // commit before the first write. The write replaces a file with
+    // CREATE_ALWAYS and FILE_ATTRIBUTE_NORMAL, which Windows refuses for a
+    // hidden or system file, so the check refuses them too (review of
+    // 4247f34c). The check shares the file as the write does: a raw write
+    // shares read and write (WriteBytesToFile), a patch file nothing.
     for (const StagedOutputFile &file : files)
     {
         std::string path = OutputPathOf(helper, options, file.type, file.number);
-        if (GetFileAttributesA(path.c_str()) == INVALID_FILE_ATTRIBUTES)
+        DWORD attributes = GetFileAttributesA(path.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES)
         {
             continue;
         }
-        HANDLE handle = CreateFileA(path.c_str(), GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (attributes & FILE_ATTRIBUTE_DIRECTORY)
+        {
+            return sci::Fail(sci::ErrorCode::Io, "Writing " + path + ": a folder has this name");
+        }
+        if (attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))
+        {
+            return sci::Fail(sci::ErrorCode::Io, "Writing " + path + ": the file is hidden or a system file, which the write cannot replace");
+        }
+        DWORD share = options.raw ? (FILE_SHARE_READ | FILE_SHARE_WRITE) : 0;
+        HANDLE handle = CreateFileA(path.c_str(), GENERIC_WRITE, share, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (handle == INVALID_HANDLE_VALUE)
         {
             return sci::Fail(sci::FromWin32(GetLastError(), "Writing " + path));

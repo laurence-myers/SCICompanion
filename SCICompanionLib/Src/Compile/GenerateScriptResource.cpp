@@ -1310,6 +1310,9 @@ bool GenerateScriptResource_SCI0(GameSession &session, Script &script, Precompil
 		}
 	}
 
+	// The .sco files that the script used: a batch sees which scripts
+	// depend on a .sco that it changed (review of 4247f34c).
+	results.SetLoadedObjectFiles(context.LoadedObjectFiles());
 	return !context.HasErrors();
 }
 
@@ -1579,6 +1582,9 @@ bool GenerateScriptResource_SCI11(GameSession &session, Script &script, Precompi
 		}
 	}
 
+	// The .sco files that the script used: a batch sees which scripts
+	// depend on a .sco that it changed (review of 4247f34c).
+	results.SetLoadedObjectFiles(context.LoadedObjectFiles());
 	return !context.HasErrors();
 }
 

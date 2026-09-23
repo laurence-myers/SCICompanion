@@ -1378,6 +1378,12 @@ namespace UnitTests
                 {
                     Assert::IsTrue(report.has_value() && report->Succeeded(), report ? WideForBatch(Describe(*report)).c_str() : L"");
                     Assert::IsTrue(report->movedPatches.empty(), L"a dry run moves nothing");
+                    bool named = false;
+                    for (const std::string &warning : report->warnings)
+                    {
+                        named = named || (warning.find("script.904") != std::string::npos);
+                    }
+                    Assert::IsTrue(named, L"the report names the file that a real run would move (review of 4247f34c)");
                 }
                 Assert::IsTrue(GameHasFile("script.904"), L"the patch file stays");
                 Assert::IsTrue(map == BytesOf(_copyFolder + "\\resource.map"), L"nothing is written");
@@ -1410,6 +1416,309 @@ namespace UnitTests
             Assert::IsFalse(report->moves.has_value(), L"the moves failed");
             std::string error = report->moves.error().ToString();
             Assert::IsTrue((error.find("script.904") != std::string::npos) && (error.find("text.904") != std::string::npos), WideForBatch(error).c_str());
+        }
+
+        // Review of 4247f34c: a new pass withdraws the writes of the pass
+        // before, but not its .sco files. In pass 2, S2UseY fails against the
+        // new .sco of S2UseX, and S2UseX compiles against the pass-1 .sco of
+        // S2UseY. Before, the commit wrote the new S2UseX without S2UseY, whose
+        // export 1 it calls. Now the commit writes nothing.
+        TEST_METHOD(Passes_AScriptThatUsesTheNewObjectFileOfAFailedScript_WritesNothing)
+        {
+            NoAppStateForBatch noAppState;
+            const char *oldY = "(script# 904)\n(include sci.sh)\n(include game.sh)\n(use main)\n(public s2UseYOld 0)\n(procedure (s2UseYOld)\n    (return 1)\n)\n";
+            const char *oldX = "(script# 906)\n(include sci.sh)\n(include game.sh)\n(use main)\n(public s2UseXOld 0)\n(procedure (s2UseXOld)\n    (return 2)\n)\n";
+            const char *newY =
+                "(script# 904)\n(include sci.sh)\n(include game.sh)\n(use main)\n(use S2UseX)\n(public s2UseYNew 0 s2UseYMore 1)\n"
+                "(procedure (s2UseYNew)\n    (return (s2UseXOld))\n)\n(procedure (s2UseYMore)\n    (return 7)\n)\n";
+            const char *newX =
+                "(script# 906)\n(include sci.sh)\n(include game.sh)\n(use main)\n(use S2UseY)\n(public s2UseXNew 0)\n"
+                "(procedure (s2UseXNew)\n    (return (s2UseYMore))\n)\n";
+            // In the game, and in an output folder.
+            for (bool toFolder : { false, true })
+            {
+                GameSession session(TestSessionOptions());
+                OpenCopy("\\TemplateGame\\SCI0", session);
+                std::atomic<bool> abort(false);
+                TestCompileEvents setupEvents;
+                ScriptId y = WriteScript(session, "S2UseY", 904, oldY);
+                ScriptId x = WriteScript(session, "S2UseX", 906, oldX);
+                auto setup = CompileScripts(session, { y, x }, ToPatchFiles(), abort, setupEvents);
+                Assert::IsTrue(setup.has_value() && setup->Succeeded(), L"setup: the old scripts compile");
+                std::vector<uint8_t> oldYScript = BytesOf(_copyFolder + "\\script.904");
+                std::vector<uint8_t> oldXScript = BytesOf(_copyFolder + "\\script.906");
+                WriteScript(session, "S2UseY", 904, newY);
+                WriteScript(session, "S2UseX", 906, newX);
+                CompileOptions options = ToPatchFiles();
+                options.passes = 5;
+                fs::path out = fs::path(_copyFolder) / "S2Out";
+                if (toFolder)
+                {
+                    fs::create_directories(out);
+                    options.write.outDir = out.string();
+                }
+                TestCompileEvents events;
+                auto report = CompileScripts(session, { y, x }, options, abort, events);
+                Assert::IsTrue(report.has_value());
+                std::string facts = Describe(*report);
+                Assert::AreEqual(2, report->passes, WideForBatch(facts).c_str());
+                Assert::IsFalse(report->scripts[0].status.has_value(), WideForBatch("setup: S2UseY fails in pass 2: " + facts).c_str());
+                Assert::IsTrue(report->scripts[1].status.has_value(), WideForBatch("setup: S2UseX compiles in pass 2: " + facts).c_str());
+                Assert::IsFalse(report->commit.has_value(), WideForBatch("the commit writes nothing: " + facts).c_str());
+                Assert::IsTrue(report->commit.error().code == sci::ErrorCode::WriteRefused, WideForBatch(facts).c_str());
+                Assert::IsTrue(report->commit.error().ToString().find("S2UseX (906) uses S2UseY (904)") != std::string::npos, WideForBatch(facts).c_str());
+                Assert::IsTrue(oldYScript == BytesOf(_copyFolder + "\\script.904"), L"S2UseY in the game does not change");
+                Assert::IsTrue(oldXScript == BytesOf(_copyFolder + "\\script.906"), L"S2UseX in the game does not change");
+                if (toFolder)
+                {
+                    Assert::IsTrue(fs::is_empty(out), L"no file is written to the folder");
+                }
+            }
+        }
+
+        // Review of 4247f34c: an abort in pass 2 commits the pass-2 scripts
+        // that ran, and the pass-1 writes of the others are withdrawn.
+        // S2AbortX compiled in pass 2 against the new .sco of S2AbortY, which
+        // did not run in pass 2. Before, the commit wrote S2AbortX, which calls
+        // export 1 of S2AbortY, without S2AbortY. Now it writes nothing.
+        TEST_METHOD(Passes_AnAbortInALaterPass_WritesNoScriptThatUsesANewObjectFile)
+        {
+            NoAppStateForBatch noAppState;
+            GameSession session(TestSessionOptions());
+            OpenCopy("\\TemplateGame\\SCI0", session);
+            const char *oldY = "(script# 904)\n(include sci.sh)\n(include game.sh)\n(use main)\n(public s2AbortYOld 0)\n(procedure (s2AbortYOld)\n    (return 1)\n)\n";
+            const char *newY =
+                "(script# 904)\n(include sci.sh)\n(include game.sh)\n(use main)\n(public s2AbortYNew 0 s2AbortYMore 1)\n"
+                "(procedure (s2AbortYNew)\n    (return 3)\n)\n(procedure (s2AbortYMore)\n    (return 7)\n)\n";
+            const char *newX =
+                "(script# 906)\n(include sci.sh)\n(include game.sh)\n(use main)\n(use S2AbortY)\n(public s2AbortX 0)\n"
+                "(procedure (s2AbortX)\n    (return (s2AbortYMore))\n)\n";
+            std::atomic<bool> abort(false);
+            TestCompileEvents setupEvents;
+            ScriptId y = WriteScript(session, "S2AbortY", 904, oldY);
+            auto setup = CompileScripts(session, { y }, ToPatchFiles(), abort, setupEvents);
+            Assert::IsTrue(setup.has_value() && setup->Succeeded(), L"setup: the old S2AbortY compiles");
+            std::vector<uint8_t> oldYScript = BytesOf(_copyFolder + "\\script.904");
+            WriteScript(session, "S2AbortY", 904, newY);
+            ScriptId x = WriteScript(session, "S2AbortX", 906, newX);
+            CompileOptions options = ToPatchFiles();
+            options.passes = 5;
+            struct AbortInPassTwo : public ICompileEvents
+            {
+                std::atomic<bool> *flag = nullptr;
+                int pass = 1;
+                void OnPassStart(int newPass) override { pass = newPass; }
+                void OnScriptDone(const ScriptOutcome &outcome) override
+                {
+                    if (pass >= 2)
+                    {
+                        flag->store(true);
+                    }
+                }
+            } events;
+            events.flag = &abort;
+            auto report = CompileScripts(session, { x, y }, options, abort, events);
+            Assert::IsTrue(report.has_value());
+            std::string facts = Describe(*report);
+            Assert::IsTrue(report->cancelled && (report->passes == 2), WideForBatch("setup: the abort comes in pass 2: " + facts).c_str());
+            Assert::AreEqual((size_t)1, report->scripts.size(), WideForBatch(facts).c_str());
+            Assert::IsTrue(report->scripts[0].status.has_value(), WideForBatch("setup: S2AbortX compiles in pass 2: " + facts).c_str());
+            Assert::IsFalse(report->commit.has_value(), WideForBatch("the commit writes nothing: " + facts).c_str());
+            Assert::IsTrue(report->commit.error().ToString().find("S2AbortX (906) uses S2AbortY (904)") != std::string::npos, WideForBatch(facts).c_str());
+            Assert::IsFalse(GameHasFile("script.906"), L"S2AbortX is not written");
+            Assert::IsTrue(oldYScript == BytesOf(_copyFolder + "\\script.904"), L"S2AbortY in the game does not change");
+        }
+
+        // Review of 4247f34c: a dry run checks the auto text before the
+        // commit, as a real run does. Before, a dry run queued nothing, so it
+        // passed where the real run was refused.
+        TEST_METHOD(DryRun_ChecksTheAutoTextBeforeTheCommit)
+        {
+            NoAppStateForBatch noAppState;
+            for (bool dryRun : { false, true })
+            {
+                GameSession session(TestSessionOptions());
+                OpenCopy("\\TemplateGame\\SCI0", session);
+                std::vector<ScriptId> scripts = { WriteScript(session, "S2Text", 904, TextScript) };
+                WriteBytesToGame("text.904", { 0x80 | (uint8_t)ResourceType::Text, 0, 'x', 0 });
+                std::vector<uint8_t> map = BytesOf(_copyFolder + "\\resource.map");
+                CompileOptions options;
+                options.write.writeResources = !dryRun;
+                std::atomic<bool> abort(false);
+                TestCompileEvents events;
+                auto report = CompileScripts(session, scripts, options, abort, events);
+                Assert::IsTrue(report.has_value(), report ? L"" : WideForBatch(report.error().ToString()).c_str());
+                std::string facts = std::string(dryRun ? "dry run: " : "real run: ") + Describe(*report);
+                Assert::IsTrue(report->scripts[0].status.has_value(), WideForBatch(facts).c_str());
+                Assert::IsFalse(report->commit.has_value(), WideForBatch(facts).c_str());
+                Assert::IsTrue(report->commit.error().code == sci::ErrorCode::WriteRefused, WideForBatch(facts).c_str());
+                Assert::IsTrue(report->commit.error().ToString().find("text.904") != std::string::npos, WideForBatch(facts).c_str());
+                Assert::IsTrue(map == BytesOf(_copyFolder + "\\resource.map"), L"nothing is written");
+            }
+        }
+
+        // Review of 4247f34c: a dry run does not ask what to do with the
+        // patch files that would hide a package write (it cannot move them).
+        // Refuse stops it, as a real run with no askShadows. Before, it asked
+        // "move?", and then moved nothing.
+        TEST_METHOD(DryRun_AsksNothing)
+        {
+            NoAppStateForBatch noAppState;
+            GameSession session(TestSessionOptions());
+            OpenCopy("\\TemplateGame\\SCI0", session);
+            std::vector<ScriptId> scripts = { WriteScript(session, "S2Good904", 904, GoodText(904)) };
+            WriteBytesToGame("script.904", { 0x80 | (uint8_t)ResourceType::Script, 0, 1, 2 });
+            int asked = 0;
+            CompileOptions options;
+            options.write.writeResources = false;
+            options.askShadows = [&asked](const std::vector<std::string> &files)
+            {
+                asked++;
+                return ShadowPolicy::Replace;
+            };
+            std::atomic<bool> abort(false);
+            TestCompileEvents events;
+            auto report = CompileScripts(session, scripts, options, abort, events);
+            Assert::AreEqual(0, asked, L"a dry run asks nothing");
+            Assert::IsFalse(report.has_value(), L"Refuse stops the dry run");
+            Assert::IsTrue(report.error().code == sci::ErrorCode::WriteRefused, WideForBatch(report.error().ToString()).c_str());
+            Assert::IsTrue(GameHasFile("script.904"), L"the patch file stays");
+        }
+
+        // Review of 4247f34c: a hidden or system file, a folder with the
+        // file's name, or a file that another program holds, in the output
+        // folder fails the commit before the first write. Before, a hidden or
+        // system file passed the check, and its write failed after the table
+        // files were written.
+        TEST_METHOD(OutputFolder_AFileThatCannotBeReplaced_FailsBeforeTheFirstWrite)
+        {
+            NoAppStateForBatch noAppState;
+            const char *widget =
+                "(script# 907)\n(include sci.sh)\n(include game.sh)\n(use main)\n(use obj)\n"
+                "(class S2OutWidget of Obj\n    (properties\n        s2OutWidgetSize 0\n    )\n)\n";
+            for (std::string kind : { "hidden", "system", "folder", "held" })
+            {
+                GameSession session(TestSessionOptions());
+                OpenCopy("\\TemplateGame\\SCI0", session);
+                fs::path out = fs::path(_copyFolder) / "S2Out";
+                fs::create_directories(out);
+                std::vector<ScriptId> scripts = { WriteScript(session, "S2OutWidget", 907, widget) };
+                // The file of the script: the table files come before it.
+                std::string target = (out / "script.907").string();
+                HANDLE held = INVALID_HANDLE_VALUE;
+                if (kind == "folder")
+                {
+                    fs::create_directories(target);
+                }
+                else
+                {
+                    {
+                        std::ofstream file(target.c_str(), std::ios::binary | std::ios::trunc);
+                        file << "an old file";
+                    }
+                    if (kind == "held")
+                    {
+                        held = CreateFileA(target.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+                        Assert::IsTrue(held != INVALID_HANDLE_VALUE, L"setup: the file is held");
+                    }
+                    else
+                    {
+                        Assert::IsTrue(SetFileAttributesA(target.c_str(), (kind == "hidden") ? FILE_ATTRIBUTE_HIDDEN : FILE_ATTRIBUTE_SYSTEM) != 0);
+                    }
+                }
+                CompileOptions options = ToPatchFiles();
+                options.write.outDir = out.string();
+                std::atomic<bool> abort(false);
+                TestCompileEvents events;
+                auto report = CompileScripts(session, scripts, options, abort, events);
+                if (held != INVALID_HANDLE_VALUE)
+                {
+                    CloseHandle(held);
+                }
+                if (kind != "folder")
+                {
+                    // So that the clean-up can remove the copy.
+                    SetFileAttributesA(target.c_str(), FILE_ATTRIBUTE_NORMAL);
+                }
+                Assert::IsTrue(report.has_value());
+                std::string facts = kind + ": " + Describe(*report);
+                Assert::IsTrue(report->scripts[0].status.has_value(), WideForBatch(facts).c_str());
+                Assert::IsFalse(report->commit.has_value(), WideForBatch(facts).c_str());
+                Assert::IsTrue(report->commit.error().ToString().find("script.907") != std::string::npos, WideForBatch(facts).c_str());
+                Assert::IsFalse(fs::exists(out / "vocab.996") || fs::exists(out / "vocab.997"), WideForBatch("a table file is written: " + facts).c_str());
+            }
+        }
+
+        // Review of 4247f34c: with raw files, the check before the first write
+        // shares the file as the raw write does (read and write), so a program
+        // that has the file open with that sharing does not stop the commit.
+        // Before, the check shared nothing, and refused it.
+        TEST_METHOD(OutputFolderRaw_AFileThatAnotherProgramShares_IsWritten)
+        {
+            NoAppStateForBatch noAppState;
+            GameSession session(TestSessionOptions());
+            OpenCopy("\\TemplateGame\\SCI0", session);
+            fs::path out = fs::path(_copyFolder) / "S2Out";
+            fs::create_directories(out);
+            std::vector<ScriptId> scripts = { WriteScript(session, "S2Good904", 904, GoodText(904)) };
+            std::string target = (out / "script.904.bin").string();
+            {
+                std::ofstream file(target.c_str(), std::ios::binary | std::ios::trunc);
+                file << "an old file";
+            }
+            HANDLE reader = CreateFileA(target.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+            Assert::IsTrue(reader != INVALID_HANDLE_VALUE, L"setup: the file is open");
+            CompileOptions options = ToPatchFiles();
+            options.write.outDir = out.string();
+            options.write.raw = true;
+            std::atomic<bool> abort(false);
+            TestCompileEvents events;
+            auto report = CompileScripts(session, scripts, options, abort, events);
+            CloseHandle(reader);
+            Assert::IsTrue(report.has_value() && report->Succeeded(), report ? WideForBatch(Describe(*report)).c_str() : L"");
+            std::vector<uint8_t> written = BytesOf(target);
+            Assert::IsTrue(std::string(written.begin(), written.end()) != "an old file", L"the file has the new data");
+        }
+
+        // Review of 4247f34c: a script whose .sco cannot be written leaves no
+        // new debug file (the .sco comes first again), and the failed .sco is
+        // not a change, so the batch runs one pass. Before, the debug file was
+        // new, and the batch ran every pass that the options allow.
+        TEST_METHOD(ObjectFileWriteError_NoDebugFile_OnePass)
+        {
+            NoAppStateForBatch noAppState;
+            GameSession session(TestSessionOptions());
+            OpenCopy("\\TemplateGame\\SCI0", session);
+            session.Helper().SetIniString(GameSection, "GenerateDebugInfo", "true");
+            const char *widget =
+                "(script# 907)\n(include sci.sh)\n(include game.sh)\n(use main)\n(use obj)\n"
+                "(class S2ScoWidget of Obj\n    (properties\n        s2ScoWidgetSize 0\n    )\n)\n";
+            ScriptId script = WriteScript(session, "S2ScoWidget", 907, widget);
+            std::string sco = session.Helper().GetScriptObjectFileName("S2ScoWidget");
+            {
+                std::ofstream file(sco.c_str(), std::ios::binary | std::ios::trunc);
+                file << "not the new object file";
+            }
+            Assert::IsTrue(SetFileAttributesA(sco.c_str(), FILE_ATTRIBUTE_READONLY) != 0);
+            std::string debugFile = session.Helper().GetScriptDebugFileName(907);
+            // The folder is there, so a debug file after a failed .sco would be written.
+            fs::create_directories(fs::path(debugFile).parent_path());
+            std::error_code ec;
+            fs::remove(debugFile, ec);
+            CompileOptions options = ToPatchFiles();
+            options.passes = 5;
+            std::atomic<bool> abort(false);
+            TestCompileEvents events;
+            auto report = CompileScripts(session, { script }, options, abort, events);
+            // Writable again, so that the clean-up can remove the copy.
+            SetFileAttributesA(sco.c_str(), FILE_ATTRIBUTE_NORMAL);
+            Assert::IsTrue(report.has_value());
+            std::string facts = Describe(*report);
+            Assert::IsFalse(report->scripts[0].status.has_value(), WideForBatch("setup: the script fails: " + facts).c_str());
+            Assert::IsFalse(fs::exists(debugFile), WideForBatch("no new debug file: " + facts).c_str());
+            Assert::AreEqual(1, report->passes, WideForBatch(facts).c_str());
+            Assert::IsFalse(report->passLimit, WideForBatch(facts).c_str());
+            Assert::IsFalse(GameHasFile("script.907"), L"the script is not written");
         }
     };
 }

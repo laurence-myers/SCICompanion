@@ -658,11 +658,14 @@ sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco, Scr
 			}
 		}
 	}
+	// Changed only when the new file was written: a .sco that cannot be
+	// written is not a change that needs another pass (review of 4247f34c).
+	sci::Status written = WriteBytesToFile(path, scoOutput);
 	if (changed)
 	{
-		*changed = true;
+		*changed = written.has_value();
 	}
-	return WriteBytesToFile(path, scoOutput);
+	return written;
 }
 
 unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const Script &script, const CompiledScript &compiledScript)
