@@ -147,6 +147,7 @@ exit /b 0</Command>
     <ClCompile Include="TestUtilHardening.cpp" />
     <ClCompile Include="TestParserCtype.cpp" />
     <ClCompile Include="TestScoExports.cpp" />
+    <ClCompile Include="TestDecompileBatch.cpp" />
     <ClCompile Include="TestAppendHeader.cpp" />
     <ClCompile Include="TestCompiledObjectInit.cpp" />
     <ClCompile Include="TestLatentCorrectness.cpp" />
@@ -174,6 +175,8 @@ exit /b 0</Command>
     <None Include="Files\Decompile\SCI1.1\C1_ValueAndOr.sc" />
     <None Include="Files\Decompile\SCI1.1\C2_IndexedMathAssign.sc" />
     <None Include="Files\Decompile\SCI1.1\C2_IndexedMathAssign.expected.sc" />
+    <None Include="Files\Decompile\SCI1.1\BatchGlobalsA.sc" />
+    <None Include="Files\Decompile\SCI1.1\BatchGlobalsB.sc" />
     <None Include="Files\Decompile\SCI1.1\D0_Plain.sc" />
     <None Include="Files\Decompile\SCI1.1\F1_LoopHeadContinue.sc" />
     <None Include="Files\Decompile\SCI1.1\F3_AndAsArgument.sc" />

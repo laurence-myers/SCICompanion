@@ -183,9 +183,14 @@ public:
 
 	void ResetOnFailure();
 
-private:
-	void _CategorizeSelectors();
+	// Frees the state the instruction decompile built up and the later phases
+	// (naming, procedure-call resolution, usings, class defs) do not read: the
+	// variable usage, the rest-statement and local-procedure tracking, and the
+	// function hints. For a batch that holds every script's lookups until the
+	// end. Not for use between functions of one script.
+	void ReleaseDecompileState();
 
+private:
 	uint16_t _wScript;
 	const IDecompilerConfig *_config;
 	GlobalCompiledScriptLookups *_pLookups;
@@ -211,10 +216,6 @@ private:
 
 	std::map<uint16_t, const ILookupPropertyName*> _localProcToPropLookups;
 	bool _requestedProperty = false;
-
-	// Heuristics for which selectors are properties and which are methods.
-	std::unordered_set<uint16_t> _methodSelectors;
-	std::unordered_set<uint16_t> _propertySelectors;
 
 	std::set<uint16_t> _usings;
 	std::set<uint16_t> _unknownSpecies;
@@ -273,3 +274,5 @@ class IDecompilerResults;
 class GameFolderHelper;
 class GlobalCompiledScriptLookups;
 std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, const GameFolderHelper &helper, uint16_t wScript, CompiledScript &compiledScript, IDecompilerResults &results, bool debugControlFlow = false, bool debugInstConsumption = false, PCSTR pszDebugFilter = nullptr, bool decompileAsm = false, bool substituteTextTuples = false);
+// Gives objects that share a name distinct names (name_a, name_b, ...), keeping the original as the name property.
+void FixDuplicateObjectNames(CompiledScript &compiledScript, const SelectorTable &selectorTable);

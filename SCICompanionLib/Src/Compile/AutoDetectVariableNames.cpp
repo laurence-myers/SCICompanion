@@ -105,32 +105,13 @@ struct Suggestion
 class RenameContext
 {
 public:
-	RenameContext(Script &script, const IDecompilerConfig *config, CSCOFile *mainSCO, CSCOFile *scriptSCO) : _dirty(false), _mainSCO(mainSCO)
+	RenameContext(Script &script, const IDecompilerConfig *config, CSCOFile *mainSCO, CSCOFile *scriptSCO) : _dirty(false), _mainSCO(mainSCO), _globalVarSCO(nullptr)
 	{
 		// Populate things from these SCOs. And store the main SCO in case we make mods
-		CSCOFile *globalVarSCO = (mainSCO != nullptr) ? mainSCO : ((scriptSCO && scriptSCO->GetScriptNumber() == 0) ? scriptSCO : nullptr);
-		if (globalVarSCO)
-		{
-			// Pluck out the global variables. They are ordered by index
-			int index = 0;
-			for (CSCOLocalVariable &globalVar : globalVarSCO->GetVariables())
-			{
-				string stdGlobalName = _GetGlobalVariableName(index);
-				// Skip empty names (array padding, which would rename a slot to
-				// "" and then to "_2") and standard-form "globalN" labels (a
-				// leftover name for one slot that collides with the natural
-				// name of the slot it points at).
-				if (!globalVar.GetName().empty() && (globalVar.GetName() != stdGlobalName) &&
-					!_IsUndeterminedGlobalScope(globalVar.GetName()))
-				{
-					// It must have been given a name, so use it.
-					SetRenamed(nullptr, stdGlobalName, globalVar.GetName(), false);
-				}
-				index++;
-			}
-		}
+		_globalVarSCO = (mainSCO != nullptr) ? mainSCO : ((scriptSCO && scriptSCO->GetScriptNumber() == 0) ? scriptSCO : nullptr);
+		ImportGlobalNames();
 
-		if (scriptSCO && (scriptSCO != globalVarSCO))
+		if (scriptSCO && (scriptSCO != _globalVarSCO))
 		{
 			auto &decompiledScriptVarIt = script.GetScriptVariables().begin();
 			// Use these as locals. The freshly decompiled script will still have things like local1 and local26.
@@ -176,6 +157,34 @@ public:
 	}
 
 	vector<pair<string, string>> IsMainDirty() { return _mainRenamesInfo; }
+	void ClearMainDirty() { _mainRenamesInfo.clear(); }
+
+	// Adopts the global names in the SCO that holds the globals. A global that
+	// already has a name here keeps it, so this can be called again whenever
+	// another script has pushed new names to that SCO.
+	void ImportGlobalNames()
+	{
+		if (_globalVarSCO)
+		{
+			// Pluck out the global variables. They are ordered by index
+			int index = 0;
+			for (CSCOLocalVariable &globalVar : _globalVarSCO->GetVariables())
+			{
+				string stdGlobalName = _GetGlobalVariableName(index);
+				// Skip empty names (array padding, which would rename a slot to
+				// "" and then to "_2") and standard-form "globalN" labels (a
+				// leftover name for one slot that collides with the natural
+				// name of the slot it points at).
+				if (!globalVar.GetName().empty() && (globalVar.GetName() != stdGlobalName) &&
+					!_IsUndeterminedGlobalScope(globalVar.GetName()))
+				{
+					// It must have been given a name, so use it.
+					SetRenamed(nullptr, stdGlobalName, globalVar.GetName(), false);
+				}
+				index++;
+			}
+		}
+	}
 
 	void SetRenamed(FunctionBase *functionContext, const string &original, const string &suggestion, bool pushToMain = true)
 	{
@@ -294,6 +303,7 @@ private:
 	std::vector<std::pair<std::string, std::string>> _mainRenamesInfo;
 	TwoWayMap localMap;
 	CSCOFile *_mainSCO;
+	CSCOFile *_globalVarSCO;
 	unordered_map<FunctionBase*, TwoWayMap> functionMaps;
 };
 
@@ -638,7 +648,7 @@ private:
 class ApplyVariableNames : public IExploreNode
 {
 public:
-	ApplyVariableNames(RenameContext &renameContext, const SelectorTable &selectorTable) : _renameContext(renameContext), _selectorTable(selectorTable) {  }
+	ApplyVariableNames(RenameContext &renameContext, const SelectorTable &selectorTable) : _functionContext(nullptr), _renameContext(renameContext), _selectorTable(selectorTable) {  }
 
 	void ExploreNode(SyntaxNode &node, ExploreNodeState state) override
 	{
@@ -724,9 +734,27 @@ private:
 };
 
 
-void AutoDetectVariableNames(Script &script, const IDecompilerConfig *config, CSCOFile *mainSCO, CSCOFile *scriptSCO, vector<pair<string, string>> &mainDirtyRenames)
+VariableNamer::VariableNamer(Script &script, const IDecompilerConfig *config, CSCOFile *mainSCO, CSCOFile *scriptSCO) :
+	_script(script), _config(config), _context(std::make_unique<RenameContext>(script, config, mainSCO, scriptSCO))
 {
-	RenameContext renameContext(script, config, mainSCO, scriptSCO);
+}
+
+VariableNamer::~VariableNamer() {}
+
+vector<pair<string, string>> VariableNamer::Run()
+{
+	RenameContext &renameContext = *_context;
+	renameContext.ClearMainDirty();
+
+	// Adopt the names other scripts have given the globals since the last run,
+	// and apply every name known so far before looking for new ones: a variable
+	// only suggests a name once it has one itself, so a global that is still
+	// "globalN" in the tree would suggest nothing.
+	renameContext.ImportGlobalNames();
+	{
+		ApplyVariableNames applyVarNames(renameContext, _config->GetSelectorTable());
+		_script.Traverse(applyVarNames);
+	}
 
 	// Iteratively figure out variable names. Each cycle can propagate
 	// variable names one more step.
@@ -743,10 +771,16 @@ void AutoDetectVariableNames(Script &script, const IDecompilerConfig *config, CS
 	{
 		renameContext.ClearDirty();
 		DetectVariableNames detectVarNames(renameContext);
-		script.Traverse(detectVarNames);
-		ApplyVariableNames applyVarNames(renameContext, config->GetSelectorTable());
-		script.Traverse(applyVarNames);
+		_script.Traverse(detectVarNames);
+		ApplyVariableNames applyVarNames(renameContext, _config->GetSelectorTable());
+		_script.Traverse(applyVarNames);
 	} while (renameContext.IsDirty());
 
-	mainDirtyRenames = renameContext.IsMainDirty();
+	return renameContext.IsMainDirty();
+}
+
+void AutoDetectVariableNames(Script &script, const IDecompilerConfig *config, CSCOFile *mainSCO, CSCOFile *scriptSCO, vector<pair<string, string>> &mainDirtyRenames)
+{
+	VariableNamer namer(script, config, mainSCO, scriptSCO);
+	mainDirtyRenames = namer.Run();
 }

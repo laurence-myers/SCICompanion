@@ -53,6 +53,11 @@ fixture, decompiles it, and checks the result:
 - `AssertDecompileMatchesExpected` also compares the decompiled text with a
   committed `<fixture>.expected.sc` oracle (fidelity, not just stability).
 
+`TestDecompileBatch.cpp` drives `DecompileBatch` (the Decompile dialog's path:
+decompile every script once, name the globals across all of them, then write)
+over two fixtures whose global names depend on each other, and checks the
+stale-script scan the dialog uses afterwards.
+
 **Regression (`TestDecompile.cpp` template guards).**
 
 - `TemplateGame_FallbackBaseline` counts assembly fallbacks across the template

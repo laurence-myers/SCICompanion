@@ -1396,7 +1396,45 @@ bool GlobalCompiledScriptLookups::Load(const GameFolderHelper &helper)
 	bool selOk = _selectors.Load(helper);
 	bool kernelOk = _kernels.Load(helper);
 	bool classesOk = _classes.Load(helper);
+	// The class table changed, so the selector categories are stale.
+	_selectorCategoriesValid = false;
+	_propertySelectors.clear();
+	_methodSelectors.clear();
 	return selOk && kernelOk && classesOk;
+}
+
+void GlobalCompiledScriptLookups::_EnsureSelectorCategories()
+{
+	if (!_selectorCategoriesValid)
+	{
+		for (auto &script : _classes.GetAllScripts())
+		{
+			for (auto &object : script->GetObjects())
+			{
+				for (uint16_t propSelector : object->GetProperties())
+				{
+					_propertySelectors.insert(propSelector);
+				}
+				for (uint16_t methodSelector : object->GetMethods())
+				{
+					_methodSelectors.insert(methodSelector);
+				}
+			}
+		}
+		_selectorCategoriesValid = true;
+	}
+}
+
+const std::unordered_set<uint16_t> &GlobalCompiledScriptLookups::GetPropertySelectors()
+{
+	_EnsureSelectorCategories();
+	return _propertySelectors;
+}
+
+const std::unordered_set<uint16_t> &GlobalCompiledScriptLookups::GetMethodSelectors()
+{
+	_EnsureSelectorCategories();
+	return _methodSelectors;
 }
 
 std::string GlobalCompiledScriptLookups::LookupSelectorName(uint16_t wIndex)

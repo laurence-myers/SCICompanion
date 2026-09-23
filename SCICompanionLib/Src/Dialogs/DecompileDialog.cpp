@@ -16,6 +16,7 @@
 #include "DecompileDialog.h"
 #include "CompiledScript.h"
 #include "DecompilerCore.h"
+#include "DecompileBatch.h"
 #include "SCO.h"
 #include "DecompilerResults.h"
 #include "GameFolderHelper.h"
@@ -138,6 +139,11 @@ void DecompileDialog::DoDataExchange(CDataExchange* pDX)
 
 		_InitScriptList();
 		_PopulateScripts();
+		// A whole-game decompile is the common case, and the batch names the
+		// globals across everything it is given, so start with every script
+		// selected.
+		_SelectAll(true);
+		m_wndSelectAll.SetCheck(BST_CHECKED);
 		initialized = true;
 	}
 }
@@ -588,6 +594,7 @@ void DecompileDialog::OnTimer(UINT_PTR nIDEvent)
 		if (_future && (future_status::ready == _future->wait_for(std::chrono::seconds(0))))
 		{
 			vector<pair<string, string>> updatedGlobalsList = _decompileResults->GetUpdatedGlobalsList();
+			set<uint16_t> staleScripts = _decompileResults->GetStaleScripts();
 
 			_decompileResults.reset(nullptr);
 			_SyncButtonState();
@@ -603,21 +610,29 @@ void DecompileDialog::OnTimer(UINT_PTR nIDEvent)
 
 			if (!updatedGlobalsList.empty())
 			{
-				bool redecompile = (m_wndRedecompile.GetCheck() == BST_CHECKED);
-				if (!redecompile)
+				// The scripts of this pass were named together, so they all use
+				// the new names. A script decompiled in an earlier pass still
+				// refers to a renamed global by its old name, and needs to go
+				// again; only those, not the whole game.
+				if (!staleScripts.empty())
 				{
-					string message = fmt::format("{0} global variable(s) had their name updated during this pass.\n{1} -> {2}, ...\n\nScripts that reference them need to be re-decompiled. Decompile all scripts again?",
-						updatedGlobalsList.size(),
-						updatedGlobalsList[0].first,
-						updatedGlobalsList[0].second
-						);
+					bool redecompile = (m_wndRedecompile.GetCheck() == BST_CHECKED);
+					if (!redecompile)
+					{
+						string message = fmt::format("{0} global variable(s) had their name updated during this pass.\n{1} -> {2}, ...\n\n{3} previously decompiled script(s) refer to them by their old names and need to be decompiled again. Decompile them now?",
+							updatedGlobalsList.size(),
+							updatedGlobalsList[0].first,
+							updatedGlobalsList[0].second,
+							staleScripts.size()
+							);
 
-					redecompile = (IDYES == AfxMessageBox(message.c_str(), MB_YESNO | MB_ICONINFORMATION));
-				}
-				if (redecompile)
-				{
-					_SelectAll(true);
-					OnBnClickedDecompile();
+						redecompile = (IDYES == AfxMessageBox(message.c_str(), MB_YESNO | MB_ICONINFORMATION));
+					}
+					if (redecompile)
+					{
+						_SelectScripts(staleScripts);
+						OnBnClickedDecompile();
+					}
 				}
 			}
 		}
@@ -815,25 +830,32 @@ void DecompileDialog::s_DecompileThreadWorker(DecompileDialog *pThis)
 
 		if (pThis->_lookups)
 		{
-			for (uint16_t scriptNum : scriptNumbers)
+			// Decompile every script once, then name the globals across all of
+			// them, then write. See DecompileBatch.
+			DecompileOptions options;
+			options.DebugControlFlow = pThis->_debugControlFlow;
+			options.DebugInstructionConsumption = pThis->_debugInstConsumption;
+			options.DebugFunctionMatch = (PCSTR)pThis->_debugFunctionMatch;
+			options.DecompileAsm = pThis->_debugAsm;
+			options.SubstituteTextTuples = pThis->_substituteTextTuples;
+			DecompileBatch batch(pThis->_decompilerConfig.get(), *pThis->_lookups, helper, *pThis->_decompileResults, options);
+			batch.Run(scriptNumbers);
+
+			// Which scripts this batch did not write still use a renamed global
+			// by its old name? Found here, on the worker, so the UI thread does
+			// not read every source file of the game.
+			if (!batch.GetGlobalRenames().empty())
 			{
-				if (!pThis->_decompileResults->IsAborted())
+				set<uint16_t> candidates;
+				for (CompiledScript *script : pThis->_lookups->GetGlobalClassTable().GetAllScripts())
 				{
-					pThis->_decompileResults->AddResult(DecompilerResultType::Important, fmt::format("Decompiling script {0}", scriptNum));
-					CompiledScript compiledScript(0, CompiledScriptFlags::RemoveBadExports);
-					if (compiledScript.Load(helper, helper.Version, scriptNum))
+					uint16_t scriptNumber = script->GetScriptNumber();
+					if (batch.GetWrittenScripts().find(scriptNumber) == batch.GetWrittenScripts().end())
 					{
-						unique_ptr<sci::Script> pScript = DecompileScript(pThis->_decompilerConfig.get(), *pThis->_lookups, helper, scriptNum, compiledScript, *pThis->_decompileResults, pThis->_debugControlFlow, pThis->_debugInstConsumption, (PCSTR)pThis->_debugFunctionMatch, pThis->_debugAsm, pThis->_substituteTextTuples);
-						// Dump it to the .sc file
-						// TODO: If it already exists, we might want to ask for confirmation.
-						std::stringstream ss;
-						sci::SourceCodeWriter out(ss, pScript.get());
-						pScript->OutputSourceCode(out);
-						string sourceFilename = helper.GetScriptFileName(scriptNum);
-						MakeTextFile(ss.str().c_str(), sourceFilename);
-						pThis->_decompileResults->AddResult(DecompilerResultType::Important, fmt::format("Generated {0}", sourceFilename));
+						candidates.insert(scriptNumber);
 					}
 				}
+				pThis->_decompileResults->SetStaleScripts(FindScriptsReferencingGlobals(helper, candidates, batch.GetGlobalRenames()));
 			}
 			if (pThis->_decompileResults->IsAborted())
 			{
@@ -975,6 +997,21 @@ void DecompileDialog::_SelectAll(bool select)
 	int itemCount = m_wndListScripts.GetItemCount();
 	for (int i = 0; i < itemCount; i++)
 	{
+		m_wndListScripts.SetItemState(i, select ? LVIS_SELECTED : 0, LVIS_SELECTED);
+	}
+	m_wndListScripts.SetRedraw(TRUE);
+}
+
+void DecompileDialog::_SelectScripts(const std::set<uint16_t> &scriptNumbers)
+{
+	// A partial selection: keep the "select all" box in step with it.
+	m_wndSelectAll.SetCheck(BST_UNCHECKED);
+	m_wndListScripts.SetRedraw(FALSE);
+	int itemCount = m_wndListScripts.GetItemCount();
+	for (int i = 0; i < itemCount; i++)
+	{
+		uint16_t scriptNumber = (uint16_t)m_wndListScripts.GetItemData(i);
+		bool select = (scriptNumbers.find(scriptNumber) != scriptNumbers.end());
 		m_wndListScripts.SetItemState(i, select ? LVIS_SELECTED : 0, LVIS_SELECTED);
 	}
 	m_wndListScripts.SetRedraw(TRUE);
