@@ -36,6 +36,7 @@ enum ProcedureType
 	ProcedureUnknown,
 	ProcedureMain,	  // Something in the main script (wIndex)
 	ProcedureExternal,  // Something in another script  (wScript, wIndex)
+	ProcedureMissingScript,	// proc<N>_<M> in a game with no script N (wScript, wIndex); plan step K5
 	ProcedureLocal,	 // Something in the current script (wIndex)
 	ProcedureKernel,	// A kernel function (wIndex)
 };

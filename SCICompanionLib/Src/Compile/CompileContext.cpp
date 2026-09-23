@@ -23,6 +23,7 @@
 #include "GameSession.h"
 #include "ClassHints.h"
 #include "ResourceMap.h"
+#include "ResourceContainer.h"
 #include "ResourceUtil.h"
 #include "SyntaxParser.h"
 #include <unordered_map>
@@ -641,6 +642,32 @@ const ClassDefinition *CompileContext::LookupClassDefinition(const std::string &
 
 const std::string UndeclaredKernelPrefix = "kernel_";
 const std::string NonExistantExportPrefix = "__proc";
+const std::string MissingScriptProcPrefix = "proc";
+
+// Reads a decimal number of 1 to 5 digits that fits in 16 bits.
+static bool _ParseProcNumber(const std::string &text, uint16_t &value)
+{
+	if (text.empty() || (text.size() > 5) || !std::all_of(text.begin(), text.end(), [](char ch) { return (ch >= '0') && (ch <= '9'); }))
+	{
+		return false;
+	}
+	int number = std::stoi(text);
+	if (number > 0xffff)
+	{
+		return false;
+	}
+	value = (uint16_t)number;
+	return true;
+}
+
+// Reads "<N>_<M>", the end of the name of a call to export M of script N.
+static bool _ParseScriptAndExport(const std::string &text, uint16_t &script, uint16_t &exportIndex)
+{
+	size_t splitter = text.find('_');
+	return (splitter != std::string::npos) &&
+		_ParseProcNumber(text.substr(0, splitter), script) &&
+		_ParseProcNumber(text.substr(splitter + 1), exportIndex);
+}
 
 // Look up a string and map it to a procedure.  Return the script and index of the procedure, where appropraite
 // Script are looked up in this order:
@@ -648,6 +675,7 @@ const std::string NonExistantExportPrefix = "__proc";
 // ProcedureLocal:	  classOwner
 // ProcedureMain:	   wIndex
 // ProcedureExternal:   wScript, wIndex
+// ProcedureMissingScript: wScript, wIndex (proc<N>_<M>, and the game has no script N)
 //
 // pSignatures - optional: accepts the list of function signatures for this call.
 ProcedureType CompileContext::LookupProc(const string &str, WORD &wScript, WORD &wIndex, string &classOwner)
@@ -705,17 +733,21 @@ ProcedureType CompileContext::LookupProc(const string &str, WORD &wScript, WORD 
 		}
 		else if (startsWith(str, NonExistantExportPrefix))
 		{
-			// Important for the decompiler - calls to non-existant exports
-			std::string meat = str.substr(NonExistantExportPrefix.length());
-			size_t splitter = str.find_first_of('_');
-			if (splitter != std::string::npos)
+			// Important for the decompiler - calls to non-existant exports.
+			// The numbers follow the prefix. (Before K5, the parse looked for
+			// the '_' from the start of the whole name, so __proc911_0 gave
+			// script 0, export 11.)
+			uint16_t scriptNumber, exportNumber;
+			if (_ParseScriptAndExport(str.substr(NonExistantExportPrefix.length()), scriptNumber, exportNumber))
 			{
-				int scriptNumber = StrToInt(meat.substr(0, splitter).c_str());
-				int exportNumber = StrToInt(meat.substr(splitter + 1).c_str());
 				type = ProcedureExternal;
-				wIndex = (uint16_t)exportNumber;
-				wScript = (uint16_t)scriptNumber;
+				wIndex = exportNumber;
+				wScript = scriptNumber;
 			}
+		}
+		else if (_LookupMissingScriptProc(str, wScript, wIndex))
+		{
+			type = ProcedureMissingScript;
 		}
 	}
 
@@ -727,6 +759,34 @@ ProcedureType CompileContext::LookupProc(const std::string &str)
 	WORD wScript, wIndex;
 	string classOwner;
 	return LookupProc(str, wScript, wIndex, classOwner);
+}
+bool CompileContext::_ScriptExists(uint16_t number)
+{
+	if (!_scriptNumbers)
+	{
+		// One pass over the resource map entries, patch files included. The
+		// resource data is not read.
+		_scriptNumbers = std::make_unique<std::set<uint16_t>>();
+		auto container = Helper().Resources(ResourceTypeFlags::Script, ResourceEnumFlags::None);
+		for (auto it = container->begin(); it != container->end(); ++it)
+		{
+			_scriptNumbers->insert((uint16_t)it.GetResourceNumber());
+		}
+	}
+	return _scriptNumbers->find(number) != _scriptNumbers->end();
+}
+bool CompileContext::_LookupMissingScriptProc(const std::string &name, WORD &wScript, WORD &wIndex)
+{
+	uint16_t script, exportIndex;
+	if (startsWith(name, MissingScriptProcPrefix) &&
+		_ParseScriptAndExport(name.substr(MissingScriptProcPrefix.length()), script, exportIndex) &&
+		!_ScriptExists(script))
+	{
+		wScript = script;
+		wIndex = exportIndex;
+		return true;
+	}
+	return false;
 }
 bool CompileContext::_GetSCOObject(SpeciesIndex wSpecies, CSCOObjectClass &scoObject)
 {

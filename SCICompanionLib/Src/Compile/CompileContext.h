@@ -275,6 +275,7 @@ public:
 	// ProcedureLocal:	  classOwner
 	// ProcedureMain:	   wIndex
 	// ProcedureExternal:   wScript, wIndex
+	// ProcedureMissingScript: wScript, wIndex (proc<N>_<M>, and the game has no script N)
 	//
 	// pSignatures - optional: accepts the list of function signatures for this call.
 	ProcedureType LookupProc(const std::string &str, WORD &wScript, WORD &wIndex, std::string &classOwner);
@@ -408,6 +409,15 @@ private:
 
 	// Class names declared by classdef, mapped to their species number.
 	std::unordered_map<std::string, uint16_t> _classDefSpecies;
+
+	// Plan step K5: a call to proc<N>_<M> that no other name resolves, in a
+	// game that has no script N (a script that Sierra removed, as script 911
+	// of KQ6), is a call to export M of script N. Returns false for other
+	// names, and when the game has script N (the call then stays an error).
+	bool _LookupMissingScriptProc(const std::string &name, WORD &wScript, WORD &wIndex);
+	bool _ScriptExists(uint16_t number);
+	// The script numbers of the game, read at the first use.
+	std::unique_ptr<std::set<uint16_t>> _scriptNumbers;
 };
 
 template<typename T>

@@ -18,6 +18,7 @@
 #include "DecompileHelper.h"
 #include "AppState.h"
 #include "ResourceMap.h"
+#include "ResourceContainer.h"
 #include "CompiledScript.h"
 #include "format.h"
 
@@ -54,15 +55,16 @@ namespace UnitTests
 
     // Writes source into the game's src folder as <name>.sc and compiles it as
     // the given resource number. Returns the compiler's success; on failure the
-    // first error message is put in outError.
-    static bool CompileSource(uint16_t number, const std::string &name, const std::string &source, std::string &outError)
+    // first error message is put in outError. The warnings go to outWarnings
+    // when it is not null.
+    static bool CompileSource(uint16_t number, const std::string &name, const std::string &source, std::string &outError, std::vector<std::string> *outWarnings = nullptr)
     {
         std::string path = appState->GetResourceMap().Helper().GetScriptFileName(name);
         {
             std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
             file << source;
         }
-        return CompileFixture(number, name, &outError);
+        return CompileFixture(number, name, &outError, outWarnings);
     }
 
     // Loads the compiled script resource and returns its raw bytes.
@@ -276,6 +278,73 @@ namespace UnitTests
                 "\t)\n"
                 ")\n";
             AssertSameBytes(keyword, manual, L"an and/or in a condition must branch to the else of the if");
+        }
+
+        // Plan step K5. A call to proc<N>_<M> that no name resolves, in a game
+        // with no script N (Sierra removed script 911 from KQ6), compiles to
+        // "calle N M" with a warning. Before, it was an error.
+        TEST_METHOD(MissingScriptProc_CompilesToCalleWithAWarning)
+        {
+            _gameFolder = SetUpGameSCI11();
+            Assert::IsTrue(nullptr == appState->GetResourceMap().Helper().MostRecentResource(ResourceType::Script, 911, ResourceEnumFlags::None),
+                L"the template has no script 911");
+            std::string source = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest)\n"
+                "\t(proc911_0 5)\n"
+                ")\n";
+            std::string error;
+            std::vector<std::string> warnings;
+            // Compile first: the arguments of Assert::IsTrue are evaluated in
+            // no fixed order, so the text must not read error in the same call.
+            bool compiled = CompileSource(902, "kTest", source, error, &warnings);
+            Assert::IsTrue(compiled, W("proc911_0 did not compile: " + error).c_str());
+            std::string allWarnings;
+            for (const std::string &warning : warnings)
+            {
+                allWarnings += warning + "\n";
+            }
+            Assert::IsTrue(allWarnings.find("no script 911") != npos, W("expected a warning about script 911, got: " + allWarnings).c_str());
+
+            // The decompiler writes a call to an export that is not in the game
+            // as __proc<N>_<M>, so this shows "calle 911 0".
+            DecompileOutput decompiled = DecompileToText(902);
+            Assert::IsTrue(decompiled.text.find("(__proc911_0 5)") != npos, W(decompiled.text).c_str());
+        }
+
+        // K5: when the game has script N, an unresolved proc<N>_<M> stays an
+        // error. Script 0 of the template has no export 99.
+        TEST_METHOD(MissingScriptProc_ScriptThatExists_StaysAnError)
+        {
+            _gameFolder = SetUpGameSCI11();
+            std::string source = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest)\n"
+                "\t(proc0_99 5)\n"
+                ")\n";
+            std::string error;
+            Assert::IsFalse(CompileSource(902, "kTest", source, error), L"proc0_99 must not compile: the game has script 0");
+            Assert::IsTrue(error.find("proc0_99") != npos, W("expected an error for proc0_99, got: " + error).c_str());
+        }
+
+        // K5: __proc<N>_<M> is what the decompiler writes for a call to an
+        // export that is not in the game. Its parse looked for the '_' from
+        // the start of the whole name, so __proc911_0 gave "calle 0 11", and
+        // such a decompiled script did not round-trip.
+        TEST_METHOD(UnderscoreProc_GivesItsScriptAndExport)
+        {
+            _gameFolder = SetUpGameSCI11();
+            std::string escaped = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest)\n"
+                "\t(__proc911_0 5)\n"
+                ")\n";
+            std::string plain = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest)\n"
+                "\t(proc911_0 5)\n"
+                ")\n";
+            AssertSameBytes(escaped, plain, L"__proc911_0 must compile to calle 911 0");
         }
         // _file_ / _line_ are SCI2-only debug pseudo-opcodes. Using one in an
         // asm block in a non-SCI2 (here SCI1.1) game must be a compile error, not

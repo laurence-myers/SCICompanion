@@ -452,8 +452,30 @@ for each step, and a follow-up commit if the review finds a problem.
   formatter keeps the `#` only in property names and send selectors
   (`CleanSelectorSCI`); class names and other tokens still get `_`, as
   before.
+- K5: `LookupProc` gives the new `ProcedureMissingScript` for a
+  `proc<N>_<M>` that no kernel, local, main or `.sco` name resolves, when
+  the game has no script N. The call is `calle N M`, with the warning
+  "The game has no script N, so 'procN_M' compiles to calle N M. The call
+  fails if the game runs it." (in a procedure call and in an `asm`
+  `calle`). The game's script list is read once for each compile, and
+  only for such a name. When the game has script N, the name stays an
+  "Unknown procedure" error.
+- K5: the decompiler writes `__proc<N>_<M>` for a call to an export that
+  is not in the game (`_GetPossiblyMissingPublicProcedureName`), and
+  `proc<N>_<M>` for an export with no name. The old parse of `__proc`
+  looked for the `_` from the start of the whole name, so a decompiled
+  `(__proc911_0 ...)` recompiled to `calle 0 11`. The parse of both forms
+  now takes 1 to 5 digits on each side of the `_` (at most 65535); a name
+  with other characters there is not a procedure. A `__proc` call gives
+  no warning: the decompiler writes it on purpose.
+- Test lesson (K5): `Assert::IsTrue(CompileSource(..., error), W("..." +
+  error).c_str())` shows an empty error when the compile fails. MSVC
+  evaluates the arguments right to left, so the text is made before the
+  compile runs. Call the compile first and assert on a `bool`. The sites
+  that this branch added are fixed; 12 sites on master are a separate
+  task.
 ## Next action
 
-The F2 and K1 review findings are fixed. Read the K2 to K4 review
-(running) and fix any real finding. Then K5 (plan section 9). Add the
-review-fix commits (F2 and K1) to the next review.
+The F2 and K1 review findings are fixed, and K5 is done. Read the K2 to
+K4 review (running) and fix any real finding. Review K5 together with the
+review-fix commits of F2 and K1. Then K6 (plan section 9).

@@ -102,6 +102,14 @@ void ErrorHelper(CompileContext &context, const ISourceCodePosition *pPos, const
 	context.ReportError(pPos, strError.c_str(), identifier.c_str());
 }
 
+// Plan step K5: a call to proc<N>_<M> in a game with no script N compiles,
+// with a warning. The call fails if the game runs it.
+void _WarnMissingScript(CompileContext &context, const ISourceCodePosition *pPos, const string &name, WORD wScript, WORD wIndex)
+{
+	context.ReportWarning(pPos, "The game has no script %d, so '%s' compiles to calle %d %d. The call fails if the game runs it.",
+		(int)wScript, name.c_str(), (int)wScript, (int)wIndex);
+}
+
 void ReportKeywordError(CompileContext &context, const ISourceCodePosition *pPos, const string &text, const string &use)
 {
 	string strError = "'";
@@ -1796,6 +1804,11 @@ CodeResult ProcedureCall::OutputByteCode(CompileContext &context) const
 		context.code().inst(GetLineNumber(), Opcode::CALLB, wIndex, wCallBytes);
 		break;
 
+	case ProcedureMissingScript:
+		_WarnMissingScript(context, this, _innerName, wScript, wIndex);
+		context.code().inst(GetLineNumber(), Opcode::CALLE, wScript, wIndex, wCallBytes);
+		break;
+
 	case ProcedureExternal:
 		context.code().inst(GetLineNumber(), Opcode::CALLE, wScript, wIndex, wCallBytes);
 		break;
@@ -3228,8 +3241,12 @@ CodeResult Asm::OutputByteCode(CompileContext &context) const
 								context.code().inst(GetLineNumber(), opcode, wIndex, pNumParams->GetNumberValue());
 								context.TrackLocalProcCall(pValue->GetStringValue());
 							}
-							else if ((procType == ProcedureExternal) && (opcode == Opcode::CALLE))
+							else if (((procType == ProcedureExternal) || (procType == ProcedureMissingScript)) && (opcode == Opcode::CALLE))
 							{
+								if (procType == ProcedureMissingScript)
+								{
+									_WarnMissingScript(context, this, pValue->GetStringValue(), wScript, wIndex);
+								}
 								context.code().inst(GetLineNumber(), opcode, wScript, wIndex, pNumParams->GetNumberValue());
 							}
 							else

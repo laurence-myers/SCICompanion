@@ -52,10 +52,12 @@ modernizing the build. Broad highlights since the previous release:
   `(mod 7 3)` gave 3, not 1), and large shift counts were mishandled. An `and`
   or `or` used for its value now gives the operand that decides it, as Sierra's
   compiler does, not 1 or 0, so a script that used that 1 gets a different
-  value. The compiler now also reports an error instead of silently emitting
-  bad bytecode when it cannot resolve a branch, corrects the SCI0 public-export
-  order, and rejects assembly opcodes that the target SCI interpreter cannot
-  run.
+  value. A call to a procedure of a script that is not in the game (Sierra
+  left some in King's Quest VI) compiles with a warning, and a decompiled call
+  of this kind recompiles to the same call. The compiler now also reports an
+  error instead of silently emitting bad bytecode when it cannot resolve a
+  branch, corrects the SCI0 public-export order, and rejects assembly opcodes
+  that the target SCI interpreter cannot run.
 * **Faster whole-game decompiles.** Naming the global variables used to mean
   decompiling every script again, several times over, until no more names
   changed. The decompiler now decompiles and writes each script once, keeps
