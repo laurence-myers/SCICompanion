@@ -526,8 +526,21 @@ for each step, and a follow-up commit if the review finds a problem.
   compile runs. Call the compile first and assert on a `bool`. The sites
   that this branch added are fixed; 12 sites on master are a separate
   task.
+- K6: `CompileTables` takes the main vocabulary from `GetVocab000`, which
+  is null when the game has no vocabulary resource. `LookupWord` and
+  `LookupWordGroupClass` read it with no check: the first Said word
+  crashed the compile (access violation). They now give "not found", and
+  `PreScanSaid` gives one error that names the resource: "The game has no
+  vocabulary resource (vocab 0), so a Said string cannot be compiled."
+  The number is the game's `MainVocabResource` (0, or 900 when the game
+  has no vocab 0 at the open). A synonym in such a game gives "'x' is not
+  in the vocabulary." for each word: no crash, but not one error.
+- K6: `ScriptId` splits a path at the last `\` or `/`, so "src/rm110.sc"
+  gives the folder "src" and the file "rm110.sc". Before, it gave no
+  folder and the whole text as the file name.
 ## Next action
 
-The F2 and K1 review findings are fixed, and K5 is done. Read the K2 to
-K4 review (running) and fix any real finding. Review K5 together with the
-review-fix commits of F2 and K1. Then K6 (plan section 9).
+Phase K is done (K1 to K6), and the findings of the reviews of F2 and K1
+to K4 are fixed. Two reviews come next: K5, the test commit and K6; and
+the five review-fix commits (F2, K1, K2, K3, K4). Fix their findings.
+Then phase S, in the order S3, S1, S2, S4 (plan section 9).

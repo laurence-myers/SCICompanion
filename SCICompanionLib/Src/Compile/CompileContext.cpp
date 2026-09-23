@@ -867,14 +867,22 @@ bool CompileContext::SupportTypeChecking()
 }
 bool CompileContext::LookupWord(const string &word, WORD &wWordGroup)
 {
+	// Plan step K6: a game with no vocabulary resource has no words.
+	// PreScanSaid reports the missing resource once.
+	const Vocab000 *vocab = _tables.Vocab();
+	if (!vocab)
+	{
+		return false;
+	}
 	Vocab000::WordGroup group;
-	bool fRet = _tables.Vocab()->LookupWord(word, group);
+	bool fRet = vocab->LookupWord(word, group);
 	wWordGroup = (WORD)group;
 	return fRet;
 }
 bool CompileContext::LookupWordGroupClass(uint16_t group, WordClass *wordClass)
 {
-	return _tables.Vocab()->GetGroupClass(group, wordClass);
+	const Vocab000 *vocab = _tables.Vocab();
+	return vocab && vocab->GetGroupClass(group, wordClass);
 }
 sci::Script *CompileContext::SetErrorContext(sci::Script *pScript)
 {
@@ -1048,7 +1056,18 @@ void CompileContext::FixupLocalCalls()
 }
 void CompileContext::PreScanSaid(const std::string &theSaid, const ISourceCodePosition *pPos)
 {
-	ParseSaidString(this, *this, theSaid, nullptr, pPos);
+	if (_tables.Vocab())
+	{
+		ParseSaidString(this, *this, theSaid, nullptr, pPos);
+	}
+	else if (!_reportedNoVocabulary)
+	{
+		// Plan step K6: one error that names the resource, not an error for
+		// each word.
+		_reportedNoVocabulary = true;
+		ReportError(pPos, "The game has no vocabulary resource (%s), so a Said string cannot be compiled.",
+			DescribeResource(ResourceType::Vocab, Helper().Version.MainVocabResource).c_str());
+	}
 	GetTempToken(ValueType::Said, theSaid);
 }
 void CompileContext::TrackCallOffsetInstruction(WORD wProcIndex)

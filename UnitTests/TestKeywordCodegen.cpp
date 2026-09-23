@@ -316,6 +316,34 @@ namespace UnitTests
             Assert::IsTrue(decompiled.text.find("(__proc911_0 5)") != npos, W(decompiled.text).c_str());
         }
 
+        // Plan step K6. A Said string in a game with no vocabulary resource
+        // gives one compile error that names the resource. Before, the
+        // compiler read the vocabulary through a null pointer (LookupWord).
+        TEST_METHOD(SaidWithNoVocabulary_IsAnErrorThatNamesTheResource)
+        {
+            _gameFolder = SetUpGameSCI0();
+            CResourceMap &resourceMap = appState->GetResourceMap();
+            std::unique_ptr<ResourceBlob> vocabulary = resourceMap.Helper().MostRecentResource(ResourceType::Vocab, 0, ResourceEnumFlags::None);
+            Assert::IsTrue(vocabulary != nullptr, L"the SCI0 template has vocab.000");
+            resourceMap.DeleteResource(vocabulary.get());
+            // The resource map keeps the vocabulary that it read.
+            resourceMap.ClearVocab000();
+            Assert::IsTrue(nullptr == resourceMap.GetVocab000(), L"setup: no vocabulary");
+
+            std::string source = Header() +
+                "(public\n\tkTest 0\n)\n"
+                "(procedure (kTest)\n"
+                "\t(if (Said 'look/door')\n"
+                "\t\t(return 1)\n"
+                "\t)\n"
+                "\t(return 0)\n"
+                ")\n";
+            std::string error;
+            bool compiled = CompileSource(902, "kTest", source, error);
+            Assert::IsFalse(compiled, L"a Said string needs the vocabulary");
+            Assert::IsTrue(error.find("vocab 0") != npos, W("expected an error that names vocab 0, got: " + error).c_str());
+        }
+
         // K5: when the game has script N, an unresolved proc<N>_<M> stays an
         // error. Script 0 of the template has no export 99.
         TEST_METHOD(MissingScriptProc_ScriptThatExists_StaysAnError)

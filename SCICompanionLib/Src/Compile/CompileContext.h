@@ -418,6 +418,8 @@ private:
 	bool _ScriptExists(uint16_t number);
 	// The script numbers of the game, read at the first use.
 	std::unique_ptr<std::set<uint16_t>> _scriptNumbers;
+	// Plan step K6: the "no vocabulary" error is given once.
+	bool _reportedNoVocabulary = false;
 };
 
 template<typename T>

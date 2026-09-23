@@ -99,6 +99,28 @@ namespace UnitTests
             Assert::IsFalse(c < c);
         }
 
+        // Plan step K6: ScriptId split a path only at a '\', so "src/rm110.sc"
+        // gave the file name "src/rm110.sc" and no folder. A '/' also splits
+        // now, and the last separator of either kind wins.
+        TEST_METHOD(ScriptId_SplitsAPathAtEitherSlash)
+        {
+            ScriptId forward(std::string("src/rm110.sc"));
+            Assert::AreEqual(std::string("rm110.sc"), forward.GetFileName());
+            Assert::AreEqual(std::string("src"), forward.GetFolder());
+
+            ScriptId mixed(std::string("C:\\Game\\src/Rm110.sc"));
+            Assert::AreEqual(std::string("rm110.sc"), mixed.GetFileName());
+            Assert::AreEqual(std::string("c:\\game\\src"), mixed.GetFolder());
+
+            ScriptId back(std::string("C:/Game/src\\rm110.sc"));
+            Assert::AreEqual(std::string("rm110.sc"), back.GetFileName());
+            Assert::AreEqual(std::string("c:/game/src"), back.GetFolder());
+
+            ScriptId bare(std::string("rm110.sc"));
+            Assert::AreEqual(std::string("rm110.sc"), bare.GetFileName());
+            Assert::AreEqual(std::string(""), bare.GetFolder());
+        }
+
         // AppState::GetGameName built a std::string from an uninitialised buffer
         // when no game was loaded, because _GetGameStringProperty does not
         // write the buffer on failure.
