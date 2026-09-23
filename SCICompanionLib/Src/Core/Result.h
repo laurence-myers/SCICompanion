@@ -117,14 +117,26 @@ namespace sci
 
     // Bad data found deep in a reader. Deep code throws it; the exception boundary turns
     // it into an Error with its code.
+    //
+    // Code inside an exception boundary that cannot return a Result (for example, a
+    // virtual that returns something else) throws DataError(error) for a
+    // failed Result. The exception boundary gives back that Error, with its location
+    // and context, and adds its own context line.
     class DataError : public std::runtime_error
     {
     public:
         explicit DataError(const std::string &message, ErrorCode code = ErrorCode::Format)
-            : std::runtime_error(message), _code(code) {}
-        ErrorCode code() const { return _code; }
+            : std::runtime_error(message)
+        {
+            _error.code = code;
+            _error.message = message;
+        }
+        explicit DataError(Error error)
+            : std::runtime_error(error.message), _error(std::move(error)) {}
+        ErrorCode code() const { return _error.code; }
+        const Error &error() const { return _error; }
     private:
-        ErrorCode _code;
+        Error _error;
     };
 
     // Converts old failure codes at a boundary. NotFound for a missing file or

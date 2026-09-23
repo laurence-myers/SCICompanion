@@ -518,42 +518,44 @@ void AudioCacheResourceSource::RemoveEntries(int number, const std::vector<uint3
 
 AppendBehavior AudioCacheResourceSource::AppendResources(const std::vector<const ResourceBlob*> &blobs)
 {
-	try
+	// A failure throws to the caller: the resource map's exception boundary gives it
+	// back from WriteResource or the batch's Commit.
+	std::unique_ptr<ResourceEntity> audioMap = _PrepareForAddOrRemove();
+	AudioMapComponent &audioMapComponent = audioMap->GetComponent<AudioMapComponent>();
+
+	// If there is no matching entry, add one. We don't currently care about offsets and sync sizes,
+	// since those are only relevant when the resources exist in the official audio map.
+	for (const ResourceBlob *blobToBeSaved : blobs)
 	{
-		std::unique_ptr<ResourceEntity> audioMap = _PrepareForAddOrRemove();
-		AudioMapComponent &audioMapComponent = audioMap->GetComponent<AudioMapComponent>();
-
-		// If there is no matching entry, add one. We don't currently care about offsets and sync sizes,
-		// since those are only relevant when the resources exist in the official audio map.
-		for (const ResourceBlob *blobToBeSaved : blobs)
+		int number = blobToBeSaved->GetNumber();
+		uint32_t tuple = blobToBeSaved->GetBase36();
+		auto itFind = std::find_if(audioMapComponent.Entries.begin(), audioMapComponent.Entries.end(),
+			[number, tuple](const AudioMapEntry &amEntry) {  return amEntry.Number == number && GetMessageTuple(amEntry) == tuple; });
+		if (itFind == audioMapComponent.Entries.end())
 		{
-			int number = blobToBeSaved->GetNumber();
-			uint32_t tuple = blobToBeSaved->GetBase36();
-			auto itFind = std::find_if(audioMapComponent.Entries.begin(), audioMapComponent.Entries.end(),
-				[number, tuple](const AudioMapEntry &amEntry) {  return amEntry.Number == number && GetMessageTuple(amEntry) == tuple; });
-			if (itFind == audioMapComponent.Entries.end())
-			{
-				AudioMapEntry newEntry = {};
-				SetMessageTuple(newEntry, tuple);
-				newEntry.Number = number;
-				audioMapComponent.Entries.push_back(newEntry);
-			}
-
-			// Meanwhile, save this blob to files
-			SaveAudioBlobToFiles(*blobToBeSaved, _cacheSubFolderForEnum);
+			AudioMapEntry newEntry = {};
+			SetMessageTuple(newEntry, tuple);
+			newEntry.Number = number;
+			audioMapComponent.Entries.push_back(newEntry);
 		}
 
-		// And finally, serialize the audiomap and save it. We *should* just be able to go through the resource map again,
-		// and it should route it to the "patch files" resource source, under the audiocache folder.
-		assert(IsFlagSet(audioMap->SourceFlags, ResourceSourceFlags::AudioMapCache));
-		_resourceMap->AppendResource(*audioMap);
-
-		// This is no longer up-to-date.
-		UpToDateResources upToDate(_cacheFolder);
-		upToDate.MarkDirty(audioMap->ResourceNumber);
-		upToDate.Save();
+		// Meanwhile, save this blob to files
+		SaveAudioBlobToFiles(*blobToBeSaved, _cacheSubFolderForEnum);
 	}
-	catch (std::exception) {}
+
+	// And finally, serialize the audiomap and save it. We *should* just be able to go through the resource map again,
+	// and it should route it to the "patch files" resource source, under the audiocache folder.
+	assert(IsFlagSet(audioMap->SourceFlags, ResourceSourceFlags::AudioMapCache));
+	sci::Status mapSaved = _resourceMap->WriteResource(*audioMap);
+	if (!mapSaved)
+	{
+		throw sci::DataError(mapSaved.error());
+	}
+
+	// This is no longer up-to-date.
+	UpToDateResources upToDate(_cacheFolder);
+	upToDate.MarkDirty(audioMap->ResourceNumber);
+	upToDate.Save();
 
 	return AppendBehavior::Replace;
 }

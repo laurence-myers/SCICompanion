@@ -97,6 +97,11 @@ ResourceType ValidateResourceType(ResourceType type)
 	return type;
 }
 
+const char *GetResourceTypeTitle(ResourceType type)
+{
+	return ((size_t)type < ARRAYSIZE(g_resourceInfo)) ? g_resourceInfo[(size_t)type].pszTitleDefault : "Resource";
+}
+
 bool MatchesResourceFilenameFormat(const std::string &filename, ResourceType type, SCIVersion version, int *numberOut, std::string &nameOut)
 {
 	SCI_RESOURCE_INFO &resInfo = GetResourceInfo(type);

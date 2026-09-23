@@ -1,0 +1,202 @@
+#include "stdafx.h"
+#include "CppUnitTest.h"
+#include "AppState.h"
+#include "ResourceMap.h"
+#include "ResourceBlob.h"
+#include "ResourceEntity.h"
+#include "ResourceUtil.h"
+#include "GameFolderHelper.h"
+#include "Text.h"
+#include "Helper.h"
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <vector>
+
+using namespace Microsoft::VisualStudio::CppUnitTestFramework;
+
+namespace UnitTests
+{
+    // Plan step A2. Before it:
+    //  - the patch writer ignored the result of SaveToHandle, so a resource
+    //    that could not be written (for example one too big for the format)
+    //    left an empty .bak file that then replaced the good patch file (P9);
+    //  - the patch writer renamed each file as soon as it was written, so a
+    //    failure part way through a batch left some new and some old patch
+    //    files (a new .scr with an old .hep);
+    //  - ValidateResourceSize showed a message box, and always quoted the
+    //    SCI0 limit (P7);
+    //  - the audio cache writer swallowed its errors, and saved its audio map
+    //    through the GUI AppendResource, so a failed save came back as success.
+    TEST_CLASS(TestPatchWrites)
+    {
+        std::string _gameFolder;
+        std::vector<std::string> _readOnlyFiles;
+
+        static ResourceBlob MakeText(const GameFolderHelper &helper, int number, const std::vector<uint8_t> &bytes)
+        {
+            return ResourceBlob(helper, nullptr, ResourceType::Text, bytes, helper.Version.DefaultVolumeFile, number, NoBase36, helper.Version, ResourceSourceFlags::PatchFile);
+        }
+
+        static std::vector<uint8_t> Bytes(const std::string &text)
+        {
+            std::vector<uint8_t> bytes(text.begin(), text.end());
+            bytes.push_back(0);
+            return bytes;
+        }
+
+        std::string PatchPath(int number) const
+        {
+            return _gameFolder + "\\" + GetFileNameFor(ResourceType::Text, number, NoBase36, appState->GetResourceMap().Helper().Version);
+        }
+
+        // The patch file's data, without its two-byte header.
+        std::string ReadPatchText(int number) const
+        {
+            std::ifstream in(PatchPath(number), std::ios::binary);
+            if (!in)
+            {
+                return "(missing)";
+            }
+            std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            if (bytes.size() < 2)
+            {
+                return "(truncated)";
+            }
+            std::string text = bytes.substr(2);
+            while (!text.empty() && text.back() == '\0')
+            {
+                text.pop_back();
+            }
+            return text;
+        }
+
+        bool AnyBakFile() const
+        {
+            for (const auto &entry : std::filesystem::directory_iterator(_gameFolder))
+            {
+                if (entry.path().extension() == ".bak")
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+    public:
+        TEST_METHOD_INITIALIZE(Setup)
+        {
+            _gameFolder = SetUpGameSCI0();
+        }
+
+        TEST_METHOD_CLEANUP(CleanUp)
+        {
+            for (const std::string &path : _readOnlyFiles)
+            {
+                SetFileAttributesA(path.c_str(), FILE_ATTRIBUTE_NORMAL);
+            }
+            _readOnlyFiles.clear();
+            if (!_gameFolder.empty())
+            {
+                CleanUpGame(_gameFolder);
+                _gameFolder.clear();
+            }
+        }
+
+        TEST_METHOD(WriteEntity_Oversize_ReturnsUnsupportedAndWritesNothing)
+        {
+            CResourceMap &rm = appState->GetResourceMap();
+            std::unique_ptr<ResourceEntity> text(CreateTextResource(rm.GetSCIVersion()));
+            text->GetComponent<TextComponent>().AddString(std::string(MaxResourceSize + 10, 'x'));
+            text->ResourceNumber = 913;
+            text->SourceFlags = ResourceSourceFlags::PatchFile;
+
+            // The old entity path showed a message box here, which blocks a
+            // run with no GUI.
+            sci::Status failed = rm.WriteResource(*text);
+
+            Assert::IsFalse(failed.has_value());
+            Assert::AreEqual(std::string("unsupported"), std::string(sci::ErrorCodeName(failed.error().code)));
+            std::string message = failed.error().ToString();
+            Assert::IsTrue(message.find(std::to_string(MaxResourceSize)) != std::string::npos, std::wstring(message.begin(), message.end()).c_str());
+            Assert::AreEqual(std::string("(missing)"), ReadPatchText(913));
+        }
+
+        TEST_METHOD(AudioCacheWrite_FailedMapSave_ReturnsTheError)
+        {
+            // Audio needs an SCI1.1 game.
+            CleanUpGame(_gameFolder);
+            _gameFolder = SetUpGameSCI11();
+            CResourceMap &rm = appState->GetResourceMap();
+            const GameFolderHelper &helper = rm.Helper();
+            ResourceBlob audio(helper, nullptr, ResourceType::Audio, std::vector<uint8_t>(64, 0x80), 0, 5, NoBase36, helper.Version, ResourceSourceFlags::AudioCache);
+
+            // The first write makes the audio cache and its audio map.
+            sci::Status first = rm.WriteResource(audio);
+            std::string firstText = first ? std::string() : first.error().ToString();
+            Assert::IsTrue(first.has_value(), std::wstring(firstText.begin(), firstText.end()).c_str());
+            std::string cacheMap = _gameFolder + "\\audiocache\\" + GetFileNameFor(ResourceType::AudioMap, helper.Version.AudioMapResourceNumber, NoBase36, helper.Version);
+            Assert::IsTrue(std::filesystem::exists(cacheMap), std::wstring(cacheMap.begin(), cacheMap.end()).c_str());
+
+            SetFileAttributesA(cacheMap.c_str(), FILE_ATTRIBUTE_READONLY);
+            _readOnlyFiles.push_back(cacheMap);
+            sci::Status failed = rm.WriteResource(audio);
+
+            Assert::IsFalse(failed.has_value(), L"a failed save of the cache's audio map must come back");
+            Assert::AreEqual(std::string("io"), std::string(sci::ErrorCodeName(failed.error().code)));
+        }
+
+        TEST_METHOD(OversizeResource_KeepsTheOldPatchFile)
+        {
+            CResourceMap &rm = appState->GetResourceMap();
+            const GameFolderHelper &helper = rm.Helper();
+            Assert::IsTrue(rm.WriteResource(MakeText(helper, 907, Bytes("original"))).has_value());
+            Assert::AreEqual(std::string("original"), ReadPatchText(907));
+
+            std::vector<uint8_t> tooBig(MaxResourceSize + 1, 'x');
+            sci::Status failed = rm.WriteResource(MakeText(helper, 907, tooBig));
+
+            Assert::IsFalse(failed.has_value(), L"a resource too big for the format must not be written");
+            Assert::AreEqual(std::string("unsupported"), std::string(sci::ErrorCodeName(failed.error().code)));
+            Assert::AreEqual(std::string("original"), ReadPatchText(907), L"the old patch file must stay");
+            Assert::IsFalse(AnyBakFile(), L"no .bak file may be left behind");
+        }
+
+        TEST_METHOD(FailedResourceInBatch_KeepsTheOtherPatchFiles)
+        {
+            CResourceMap &rm = appState->GetResourceMap();
+            const GameFolderHelper &helper = rm.Helper();
+            Assert::IsTrue(rm.WriteResource(MakeText(helper, 908, Bytes("old"))).has_value());
+
+            sci::Status committed = sci::Ok();
+            {
+                DeferResourceAppend batch(rm);
+                Assert::IsTrue(rm.WriteResource(MakeText(helper, 908, Bytes("new"))).has_value());
+                Assert::IsTrue(rm.WriteResource(MakeText(helper, 909, std::vector<uint8_t>(MaxResourceSize + 1, 'x'))).has_value());
+                committed = batch.Commit();
+            }
+
+            Assert::IsFalse(committed.has_value());
+            Assert::AreEqual(std::string("old"), ReadPatchText(908), L"a batch that fails must not replace any of its patch files");
+            Assert::AreEqual(std::string("(missing)"), ReadPatchText(909));
+            Assert::IsFalse(AnyBakFile(), L"no .bak file may be left behind");
+        }
+
+        TEST_METHOD(CheckResourceSize_QuotesTheLimitOfTheFormat)
+        {
+            SCIVersion sci0 = sciVersion0;
+            sci::Status tooBigForSci0 = CheckResourceSize(sci0, MaxResourceSize + 1, ResourceType::Text);
+            Assert::IsFalse(tooBigForSci0.has_value());
+            Assert::AreEqual(std::string("unsupported"), std::string(sci::ErrorCodeName(tooBigForSci0.error().code)));
+            Assert::IsTrue(tooBigForSci0.error().message.find(std::to_string(MaxResourceSize)) != std::string::npos);
+            Assert::IsTrue(CheckResourceSize(sci0, MaxResourceSize, ResourceType::Text).has_value());
+
+            SCIVersion sci11 = sciVersion1_1;
+            Assert::IsTrue(CheckResourceSize(sci11, MaxResourceSize + 1, ResourceType::Text).has_value(), L"SCI1.1 maps allow larger resources");
+            sci::Status tooBigForSci11 = CheckResourceSize(sci11, MaxResourceSizeLarge + 1, ResourceType::Text);
+            Assert::IsFalse(tooBigForSci11.has_value());
+            Assert::IsTrue(tooBigForSci11.error().message.find(std::to_string(MaxResourceSizeLarge)) != std::string::npos, L"the message must quote the limit of this format");
+        }
+    };
+}

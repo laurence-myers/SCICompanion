@@ -136,8 +136,7 @@ namespace sci
 
     void ThrowWin32(unsigned long win32Error, const std::string &what)
     {
-        Error error = FromWin32(win32Error, what);
-        throw DataError(error.message, error.code);
+        throw DataError(FromWin32(win32Error, what));
     }
 
     void ThrowLastError(const std::string &what)
@@ -154,8 +153,8 @@ namespace sci
         }
         catch (const DataError &e)
         {
-            error.code = e.code();
-            error.message = e.what();
+            // The whole error: its code, location and context.
+            error = e.error();
         }
         catch (const InvariantViolation &e)
         {

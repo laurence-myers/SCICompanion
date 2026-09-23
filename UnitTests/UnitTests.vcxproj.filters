@@ -41,6 +41,9 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="TestPatchWrites.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestDeferredWrites.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

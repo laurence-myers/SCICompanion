@@ -46,6 +46,8 @@ struct SCI_RESOURCE_INFO
 extern SCI_RESOURCE_INFO g_resourceInfo[18];
 SCI_RESOURCE_INFO &GetResourceInfo(ResourceType type);
 ResourceType ValidateResourceType(ResourceType type);
+// "Script", "Text", ...; "Resource" for a type that is not valid.
+const char *GetResourceTypeTitle(ResourceType type);
 std::string GetFileDialogFilterFor(ResourceType type, SCIVersion version);
 std::string GetFileNameFor(ResourceType type, int number, uint32_t base36Number, SCIVersion version);
 std::string GetFileNameFor(const ResourceBlob &blob);

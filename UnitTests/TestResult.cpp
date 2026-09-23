@@ -112,6 +112,29 @@ namespace UnitTests
             AssertCode(ErrorCode::Format, status.error());
         }
 
+        // Code that cannot return a Result throws DataError(error) for a failed
+        // one. The exception boundary gives back the whole error: code, location and
+        // context, with its own context line added outside.
+        TEST_METHOD(Guard_DataErrorWithAnError_KeepsTheWholeError)
+        {
+            Status status = Guard("writing 2 resources to patch files", []() -> Status
+            {
+                Error error;
+                error.code = ErrorCode::Io;
+                error.message = "Access is denied.";
+                error.where.file = "text.911";
+                error.context.push_back("replacing the file");
+                throw DataError(std::move(error));
+            });
+            Assert::IsFalse(status.has_value());
+            AssertCode(ErrorCode::Io, status.error());
+            Assert::AreEqual(std::string("Access is denied."), status.error().message);
+            Assert::AreEqual(std::string("text.911"), status.error().where.file);
+            Assert::AreEqual(size_t(2), status.error().context.size());
+            Assert::AreEqual(std::string("replacing the file"), status.error().context[0]);
+            Assert::AreEqual(std::string("writing 2 resources to patch files"), status.error().context[1]);
+        }
+
         TEST_METHOD(Guard_StdException_IsInternal)
         {
             Status status = Guard("", []() -> Status { throw std::runtime_error("boom"); });

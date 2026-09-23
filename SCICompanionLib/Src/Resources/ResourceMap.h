@@ -73,6 +73,13 @@ public:
 	HRESULT AppendResourceAskForNumber(ResourceBlob &resource, bool warnOnOverwrite);
 	void AppendResourceAskForNumber(ResourceEntity &resource);
 	void AppendResourceAskForNumber(ResourceEntity &resource, const std::string &name, bool warnOnOverwrite = false);
+	// WriteResource for an entity: it serializes the entity, checks its size,
+	// and writes it as WriteResource(blob) does. No UI. An entity whose own
+	// checks fail (PerformChecks, which can ask the user) gives Cancelled.
+	sci::Status WriteResource(const ResourceEntity &resource, int packageNumber, int resourceNumber, const std::string &name, uint32_t base36Header = NoBase36, int *pChecksum = nullptr);
+	// The same, with the entity's own package, number and base-36 number.
+	sci::Status WriteResource(const ResourceEntity &resource, int *pChecksum = nullptr);
+	// The GUI forms: they also show the error text.
 	bool AppendResource(const ResourceEntity &resource, int *pChecksum = nullptr);
 	bool AppendResource(const ResourceEntity &resource, int packageNumber, int resourceNumber, const std::string &name, uint32_t base36Header = NoBase36, int *pChecksum = nullptr);
 
@@ -269,5 +276,6 @@ private:
 };
 
 // Shows a failed write to the user (a message box with a GUI, the log
-// without one). For GUI code that has nowhere else to report it.
+// without one). For GUI code that has nowhere else to report it. A Cancelled
+// error is not shown: the user chose it.
 void ShowWriteError(const sci::Status &status);

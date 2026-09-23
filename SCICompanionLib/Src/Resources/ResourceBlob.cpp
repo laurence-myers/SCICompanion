@@ -65,14 +65,25 @@ bool IsValidResourceName(PCTSTR pszName)
 	return true;
 }
 
+DWORD MaxResourceSizeFor(const SCIVersion &version, ResourceType type)
+{
+	return ((type == ResourceType::Audio) || (version.MapFormat >= ResourceMapFormat::SCI1)) ? MaxResourceSizeLarge : MaxResourceSize;
+}
+
 bool IsValidResourceSize(const SCIVersion &version, DWORD cb, ResourceType type)
 {
-	bool fRet = true;
-	if (cb > ((type == ResourceType::Audio) ? MaxResourceSizeLarge : ((version.MapFormat >= ResourceMapFormat::SCI1) ? MaxResourceSizeLarge : MaxResourceSize)))
+	return cb <= MaxResourceSizeFor(version, type);
+}
+
+sci::Status CheckResourceSize(const SCIVersion &version, DWORD cb, ResourceType type)
+{
+	if (IsValidResourceSize(version, cb, type))
 	{
-		fRet = false;
+		return sci::Ok();
 	}
-	return fRet;
+	return sci::Fail(sci::ErrorCode::Unsupported,
+		fmt::format("A {0} resource can have at most {1} bytes in this game's format; this one has {2} bytes",
+			GetResourceTypeTitle(type), MaxResourceSizeFor(version, type), cb));
 }
 
 int g_dwID = 0;

@@ -325,7 +325,7 @@ namespace
 	{
 		std::string destination = (blob.GetSourceFlags() == ResourceSourceFlags::PatchFile) ?
 			("the patch file " + GetFileNameFor(blob)) : _DescribeDestination(blob.GetSourceFlags());
-		return fmt::format("writing {0} {1} to {2}", GetResourceInfo(blob.GetType()).pszTitleDefault, blob.GetNumber(), destination);
+		return fmt::format("writing {0} {1} to {2}", GetResourceTypeTitle(blob.GetType()), blob.GetNumber(), destination);
 	}
 
 	// One resource as _DescribeWrite does; more as "writing 3 resources to
@@ -474,7 +474,7 @@ sci::Status CResourceMap::EndDeferAppend()
 
 void ShowWriteError(const sci::Status &status)
 {
-	if (!status)
+	if (!status && (status.error().code != sci::ErrorCode::Cancelled))
 	{
 		SafeMessageBox(status.error().ToString(), MB_OK | MB_ICONWARNING);
 	}
@@ -727,54 +727,61 @@ bool CResourceMap::AppendResource(const ResourceEntity &resource, int *pChecksum
 	return AppendResource(resource, resource.PackageNumber, resource.ResourceNumber, "", resource.Base36Number, pChecksum);
 }
 
-bool ValidateResourceSize(const SCIVersion &version, DWORD cb, ResourceType type)
+sci::Status CResourceMap::WriteResource(const ResourceEntity &resource, int packageNumber, int resourceNumber, const std::string &name, uint32_t base36Number, int *pChecksum)
 {
-	// The maximum resource size increases with SCI versions, as the map and resource package header size/offset bit widths increased.
-	// Audio is special, because it was stored with a custom map format.
-	// There are probably actual values that are correct, but we'll use 64K for earlier SCI versions,
-	// and a much larger value for later SCI versions. If we wanted to be "perfect", we could base it off the
-	// bit-width of the map offsets/package resource size fields.
-	bool fRet = IsValidResourceSize(version, cb, type);
-	if (!fRet)
+	if (!resource.PerformChecks())
 	{
-		TCHAR szBuffer[MAX_PATH];
-		StringCchPrintf(szBuffer, ARRAYSIZE(szBuffer), TEXT("Resources can't be bigger than %d bytes.  This resource is %d bytes."), MaxResourceSize, cb);
-		AfxMessageBox(szBuffer, MB_ERRORFLAGS);
-		fRet = false;
+		// The check has already told the user why (some checks ask).
+		return sci::Fail(sci::ErrorCode::Cancelled, "the resource did not pass its checks");
 	}
-	return fRet;
+
+	ResourceBlob data;
+	std::string context = fmt::format("preparing {0} {1}", GetResourceTypeTitle(resource.GetType()), resourceNumber);
+	SCI_TRY(sci::Guard(context, [&]() -> sci::Status
+	{
+		sci::ostream serial;
+		resource.WriteTo(serial, true, resourceNumber, data.GetPropertyBag());
+		// The maximum resource size grows with the SCI version, as the map and
+		// package size and offset fields widened. Audio has its own map format.
+		SCI_TRY(CheckResourceSize(Helper().Version, serial.tellp(), resource.GetType()));
+
+		sci::istream readStream = istream_from_ostream(serial);
+		ResourceSourceFlags sourceFlags = resource.SourceFlags;
+		if (sourceFlags == ResourceSourceFlags::Invalid)
+		{
+			sourceFlags = (GetDefaultResourceSaveLocation() == ResourceSaveLocation::Patch) ? ResourceSourceFlags::PatchFile : ResourceSourceFlags::ResourceMap;
+		}
+		HRESULT hr = data.CreateFromBits(Helper(), nullptr, resource.GetType(), &readStream, packageNumber, resourceNumber, base36Number, _gameFolderHelper.Version, sourceFlags);
+		if (FAILED(hr))
+		{
+			// Only a null stream fails, so this is a bug.
+			return sci::Fail(sci::ErrorCode::Internal, "could not make the resource data");
+		}
+		if (!name.empty())
+		{
+			data.SetName(name.c_str());
+		}
+		return sci::Ok();
+	}));
+
+	sci::Status status = WriteResource(data);
+	if (pChecksum)
+	{
+		*pChecksum = data.GetChecksum();
+	}
+	return status;
+}
+
+sci::Status CResourceMap::WriteResource(const ResourceEntity &resource, int *pChecksum)
+{
+	return WriteResource(resource, resource.PackageNumber, resource.ResourceNumber, "", resource.Base36Number, pChecksum);
 }
 
 bool CResourceMap::AppendResource(const ResourceEntity &resource, int packageNumber, int resourceNumber, const std::string &name, uint32_t base36Number, int *pChecksum)
 {
-	bool success = false;
-	if (resource.PerformChecks())
-	{
-		ResourceBlob data;
-		sci::ostream serial;
-		resource.WriteTo(serial, true, resourceNumber, data.GetPropertyBag());
-		if (ValidateResourceSize(Helper().Version, serial.tellp(), resource.GetType()))
-		{
-			sci::istream readStream = istream_from_ostream(serial);
-			ResourceSourceFlags sourceFlags = resource.SourceFlags;
-			if (sourceFlags == ResourceSourceFlags::Invalid)
-			{
-				sourceFlags = (GetDefaultResourceSaveLocation() == ResourceSaveLocation::Patch) ? ResourceSourceFlags::PatchFile : ResourceSourceFlags::ResourceMap;
-			}
-
-			data.CreateFromBits(Helper(), nullptr, resource.GetType(), &readStream, packageNumber, resourceNumber, base36Number, _gameFolderHelper.Version, sourceFlags);
-			if (!name.empty())
-			{
-				data.SetName(name.c_str());
-			}
-			success = SUCCEEDED(AppendResource(data));
-			if (pChecksum)
-			{
-				*pChecksum = data.GetChecksum();
-			}
-		}
-	}
-	return success;
+	sci::Status status = WriteResource(resource, packageNumber, resourceNumber, name, base36Number, pChecksum);
+	ShowWriteError(status);
+	return status.has_value();
 }
 
 std::unique_ptr<ResourceContainer> CResourceMap::Resources(ResourceTypeFlags types, ResourceEnumFlags enumFlags, int mapContext)

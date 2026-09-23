@@ -154,21 +154,61 @@ void PatchFilesResourceSource::RemoveEntry(const ResourceMapEntryAgnostic &mapEn
 
 AppendBehavior PatchFilesResourceSource::AppendResources(const std::vector<const ResourceBlob*> &blobs)
 {
-	for (const ResourceBlob *blob : blobs)
+	// Write every resource to a .bak file first, then replace the targets. A
+	// failure while writing then leaves every old patch file as it was, and
+	// removes the .bak files: a batch that failed part way used to leave, for
+	// example, a new .scr next to an old .hep. Each replace is atomic, so no
+	// patch file is ever left half written. (A failure during the replace step
+	// itself can still leave a mix; that needs a failing rename.)
+	std::vector<std::pair<std::string, std::string>> written; // .bak, target
+	std::string currentBak;
+	try
 	{
-		// Write to a .bak file, then atomically replace the target. This keeps an
-		// interrupted write from corrupting the existing file. It applies to every
-		// resource type, including Script and Text: writing those directly with
-		// CREATE_ALWAYS would leave a half-written .scr or text file as the game's
-		// resource if the write stopped part way.
-		std::string filename = GetFileNameFor(*blob);
-		std::string fullPath = _gameFolder + "\\" + filename;
-		std::string bakPath = fullPath + ".bak";
+		for (const ResourceBlob *blob : blobs)
 		{
-			ScopedFile file(bakPath, GENERIC_WRITE, 0, CREATE_ALWAYS);
-			blob->SaveToHandle(file.hFile, true);
+			std::string filename = GetFileNameFor(*blob);
+			std::string fullPath = _gameFolder + "\\" + filename;
+			currentBak = fullPath + ".bak";
+
+			// SaveToHandle refuses a resource that is too big for the format,
+			// with an unhelpful "out of memory" code. Say what is wrong instead.
+			DWORD size = max(blob->GetHeader().cbCompressed, blob->GetHeader().cbDecompressed);
+			sci::Status sizeOk = CheckResourceSize(blob->GetVersion(), size, blob->GetType());
+			if (!sizeOk)
+			{
+				sci::Error error = sizeOk.error();
+				error.where.file = filename;
+				throw sci::DataError(std::move(error));
+			}
+
+			{
+				ScopedFile file(currentBak, GENERIC_WRITE, 0, CREATE_ALWAYS);
+				HRESULT hr = blob->SaveToHandle(file.hFile, true);
+				if (FAILED(hr))
+				{
+					throw sci::DataError(sci::FromHResult(hr, "Writing " + currentBak));
+				}
+			}
+			written.emplace_back(currentBak, fullPath);
+			currentBak.clear();
 		}
-		replacefile(bakPath, fullPath);
+	}
+	catch (...)
+	{
+		if (!currentBak.empty())
+		{
+			DeleteFileA(currentBak.c_str());
+		}
+		for (const auto &bakAndTarget : written)
+		{
+			DeleteFileA(bakAndTarget.first.c_str());
+		}
+		throw;
+	}
+
+	for (const auto &bakAndTarget : written)
+	{
+		replacefile(bakAndTarget.first, bakAndTarget.second);
 	}
 	return AppendBehavior::Replace;
 }
