@@ -23,6 +23,7 @@
 #include "PatchResourceSource.h"
 #include "AppState.h"
 #include "SoundUtil.h"
+#include "Text.h"
 
 using namespace std;
 
@@ -284,6 +285,7 @@ int GameFolderHelper::GetCodepage() const
 void GameFolderHelper::SetCodepage(int codepage) const
 {
 	SetIniString(GameSection, CodepageKey, codepage == 1252 ? CodePage1252 : CodePage437);
+	SetTextCodepage(codepage);
 }
 
 bool GameFolderHelper::GetGenerateDebugInfo() const

@@ -14,7 +14,7 @@
 #include "stdafx.h"
 #include "Text.h"
 #include "ResourceEntity.h"
-#include "AppState.h"
+#include <atomic>
 
 using namespace std;
 
@@ -35,9 +35,24 @@ const unsigned char win2dosTable[] = {
 };
 //Wait, where's 0xE1/U+00DF, the Sharp S? It's so separate from the rest that I can't be arsed, and just hardcode it.
 
+namespace
+{
+	std::atomic<int> g_textCodepage(437);
+}
+
+void SetTextCodepage(int codepage)
+{
+	g_textCodepage = (codepage == 1252) ? 1252 : 437;
+}
+
+int GetTextCodepage()
+{
+	return g_textCodepage;
+}
+
 std::string Dos2Win(std::string &str)
 {
-	if (appState->GetResourceMap().Helper().GetCodepage() == 1252)
+	if (GetTextCodepage() == 1252)
 		return str;
 	std::string ret;
 	for (size_t i = 0; i < str.length(); i++)
@@ -53,7 +68,7 @@ std::string Dos2Win(std::string &str)
 
 std::string Win2Dos(const std::string &str)
 {
-	if (appState->GetResourceMap().Helper().GetCodepage() == 1252)
+	if (GetTextCodepage() == 1252)
 		return str;
 	std::string ret;
 	for (size_t i = 0; i < str.length(); i++)

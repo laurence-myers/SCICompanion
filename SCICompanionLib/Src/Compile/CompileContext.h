@@ -55,7 +55,10 @@ class CResourceMap;
 class IOutputByteCode;
 class CompileTables;
 class ICompileLog;
-class SCIClassBrowser;
+class GameFolderHelper;
+class GameSession;
+class IClassHints;
+struct SessionOptions;
 class ISourceCodePosition;
 class CompileContext;
 
@@ -133,7 +136,9 @@ struct CompileStats
 class CompileContext : public ICompileLog, public ILookupDefine, public ITrackCodeSink, public ILookupSaids
 {
 public:
-	CompileContext(SCIVersion version, sci::Script &script, PrecompiledHeaders &headers, CompileTables &tables, ICompileLog &results, bool generateDebugInfo);
+	// The session gives the version, the resource map, the options and the
+	// optional class hints.
+	CompileContext(GameSession &session, sci::Script &script, PrecompiledHeaders &headers, CompileTables &tables, ICompileLog &results, bool generateDebugInfo);
 	CompileContext(const CompileContext &src) = delete;
 	CompileContext operator=(const CompileContext &src) = delete;
 	~CompileContext() = default;
@@ -194,7 +199,8 @@ private:
 	std::set<uint16_t> _scrSinks;
 
 
-	SCIClassBrowser &_browser;
+	GameSession &_session;
+	IClassHints *_classHints;	// Null if there are none.
 	CResourceMap &_resourceMap;
 	sci::Script &_script;	   // Script being compiled
 	sci::Script *_pErrorScript;  // Current script used for error reporting (could be header file)
@@ -234,6 +240,8 @@ public:
 	bool LookupDefine(const std::string &str, WORD &wValue);
 	void AddDefine(sci::Define *pDefine);
 	const SCIVersion &GetVersion() { return _version; }
+	const GameFolderHelper &Helper() const;
+	const SessionOptions &Options() const;
 	//
 	// wIndex - index of the item.  Valid for all.
 	// pwScript - script of the item.  Only valid for ResolvedToken::ExportInstance (wIndex and wScript)
@@ -493,8 +501,8 @@ private:
 class CompileTables
 {
 public:
-	bool Load(SCIVersion version);
-	void Save();
+	bool Load(CResourceMap &resourceMap);
+	void Save(CResourceMap &resourceMap);
 	const Vocab000 *Vocab() { return _pVocab; }
 	const KernelTable &Kernels() { return _kernels; }
 	SpeciesTable &Species() { return _species; }
@@ -516,7 +524,7 @@ private:
 class CompileResults
 {
 public:
-	CompileResults(ICompileLog &log);
+	CompileResults(ICompileLog &log, const SCIVersion &version);
 	std::vector<uint8_t> &GetScriptResource() { return _outputScr; }
 	std::vector<uint8_t> &GetHeapResource() { return _outputHep; }
 	std::vector<uint8_t> &GetDebugInfo() { return _outputDebug; }
@@ -565,10 +573,15 @@ private:
 // The be-all end-all function for compiling a script.
 // Returns true if there were no errors.
 //
-bool GenerateScriptResource(SCIVersion version, sci::Script &script, PrecompiledHeaders &headers, CompileTables &tables, CompileResults &results, bool generateDebugInfo);
+bool GenerateScriptResource(GameSession &session, sci::Script &script, PrecompiledHeaders &headers, CompileTables &tables, CompileResults &results, bool generateDebugInfo);
 void ErrorHelper(CompileContext &context, const ISourceCodePosition *pPos, const std::string &text, const std::string &identifier, bool checkUse = true);
-bool NewCompileScript(CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script);
-std::unique_ptr<sci::Script> SimpleCompile(CompileLog &log, ScriptId &scriptId, bool addCommentsToOM = false);
+// Compiles one script file of the session's game and writes its resources,
+// its .sco file and its debug information (CompileScript.cpp).
+bool NewCompileScript(GameSession &session, CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script);
+// Parses a script or header file only (no code), with the preprocessor
+// defines of the version, or with the defines given.
+std::unique_ptr<sci::Script> SimpleCompile(const SCIVersion &version, CompileLog &log, ScriptId &scriptId, bool addCommentsToOM = false);
+std::unique_ptr<sci::Script> SimpleCompile(const std::unordered_set<std::string> &preProcessorDefines, CompileLog &log, ScriptId &scriptId, bool addCommentsToOM = false);
 void MergeScripts(sci::Script &mainScript, sci::Script &scriptToBeMerged);
 void ParseSaidString(CompileContext *contextOpt, ILookupSaids &context, const std::string &stringCode, std::vector<uint8_t> *output, const ISourceCodePosition *pos, std::vector<std::string> *wordsOptional = nullptr);
 void TrackArraySizes(CompileContext &context, sci::Script &script);

@@ -84,6 +84,8 @@ AppState::AppState(CWinApp *pApp) : _session(SessionOptions(), this, &_resourceR
 	_dependencyTracker = std::make_unique<DependencyTracker>(_fTrackHeaderFiles);
 	// This is a pointer because we don't want a dependency on it in the header file.
 	_classBrowser = std::make_unique<SCIClassBrowser>(*_dependencyTracker);
+	// The compiler's error messages use it for hints.
+	_session.SetClassHints(_classBrowser.get());
 
 	_pApp = pApp;
 	_audioProcessing = std::make_unique<AudioProcessingSettings>();

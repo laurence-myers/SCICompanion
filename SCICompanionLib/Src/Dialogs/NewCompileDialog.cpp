@@ -20,6 +20,8 @@
 #include "NewCompileDialog.h"
 #include "WindowsUtil.h"
 #include "ScriptDocument.h"
+#include "DependencyTracker.h"
+#include "ClassBrowser.h"
 #include <filesystem>
 #include <regex>
 
@@ -90,8 +92,18 @@ LRESULT CNewCompileDialog::CompileAll(WPARAM wParam, LPARAM lParam)
 	else
 	{
 		// Do a compile
-		CompileResults results(_log);
-		NewCompileScript(results, _log, _tables, _headers, scriptId);
+		GameSession &session = appState->GetSession();
+		CompileResults results(_log, session.Version());
+		{
+			// The class browser's background reload parses the same scripts and
+			// reads the game, so hold its lock for the compile.
+			ClassBrowserLock lock(appState->GetClassBrowser());
+			lock.Lock();
+			if (NewCompileScript(session, results, _log, _tables, _headers, scriptId))
+			{
+				appState->GetDependencyTracker().ClearScript(scriptId);
+			}
+		}
 
 		// The compile is done.  Post the results.
 		appState->OutputAddBatch(OutputPaneType::Compile, _log.Results());
@@ -133,7 +145,7 @@ BOOL CNewCompileDialog::OnInitDialog()
 	ShowSizeGrip(FALSE);
 	try
 	{
-		_tables.Load(appState->GetVersion()); // REVIEW: clean up
+		_tables.Load(appState->GetResourceMap()); // REVIEW: clean up
 
 		if (_scriptsToRecompile.empty())
 		{
@@ -211,7 +223,7 @@ void CNewCompileDialog::OnDestroy()
 	_log.CalculateErrors();
 
 	// Save any tables...
-	_tables.Save();
+	_tables.Save(appState->GetResourceMap());
 
 	__super::OnDestroy();
 }

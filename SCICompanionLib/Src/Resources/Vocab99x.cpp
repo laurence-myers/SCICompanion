@@ -12,7 +12,7 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
-#include "AppState.h"
+#include "CoreLog.h"
 #include "Vocab99x.h"
 #include "ResourceMap.h"
 #include "CompiledScript.h"
@@ -698,7 +698,7 @@ bool SelectorTable::Load(const GameFolderHelper &helper)
 	}
 	if (!fRet)
 	{
-		appState->LogInfo("Failed to load selector names from vocab resource");
+		CoreLogFormat(LogLevel::Warning, "Failed to load selector names from vocab resource");
 	}
 	return fRet;
 }
@@ -744,7 +744,7 @@ bool SelectorTable::IsDefaultSelector(uint16_t value)
 	return _defaultSelectors.find(value) != _defaultSelectors.end();
 }
 
-void SelectorTable::Save()
+void SelectorTable::Save(CResourceMap &resourceMap)
 {
 	if (_fDirty)
 	{
@@ -797,7 +797,7 @@ void SelectorTable::Save()
 		}
 
 		// Now create a resource data for it and save it.
-		appState->GetResourceMap().AppendResource(ResourceBlob(appState->GetResourceMap().Helper(), nullptr, ResourceType::Vocab, output, _version.DefaultVolumeFile, VocabSelectorNames, NoBase36, appState->GetVersion(), appState->GetResourceMap().Helper().GetDefaultSaveSourceFlags()));
+		resourceMap.AppendResource(ResourceBlob(resourceMap.Helper(), nullptr, ResourceType::Vocab, output, _version.DefaultVolumeFile, VocabSelectorNames, NoBase36, resourceMap.GetSCIVersion(), resourceMap.Helper().GetDefaultSaveSourceFlags()));
 	}
 }
 
@@ -833,7 +833,7 @@ bool KernelTable::Load(const GameFolderHelper &helper)
 		// if the normal kind of create fails, we will try that instead...
 		if (!fRet)
 		{
-			appState->LogInfo("Failed to load kernel names from vocab resource - trying alternate KQ1-style method");
+			CoreLogFormat(LogLevel::Warning, "Failed to load kernel names from vocab resource - trying alternate KQ1-style method");
 			sci::istream byteStream = blob->GetReadStream();
 			while (byteStream.good())
 			{
@@ -875,7 +875,7 @@ bool KernelTable::Load(const GameFolderHelper &helper)
 				break;
 		}
 		_names.reserve(kernelCount);
-		assert(appState->GetVersion().MapFormat != ResourceMapFormat::SCI0); // Shouldn't happen for SCI0
+		assert(helper.Version.MapFormat != ResourceMapFormat::SCI0); // Shouldn't happen for SCI0
 		for (size_t i = 0; i < kernelCount; i++)
 		{
 			_names.push_back(kernelNames[i]);
@@ -891,21 +891,21 @@ bool GlobalClassTable::Load(const GameFolderHelper &helper)
 	bool fRet = speciesTable.Load(helper);
 	if (fRet)
 	{
-		fRet = _Create(speciesTable);
+		fRet = _Create(speciesTable, helper);
 	}
 	if (!fRet)
 	{
-		appState->LogInfo("Failed to load class table from vocab resource");
+		CoreLogFormat(LogLevel::Warning, "Failed to load class table from vocab resource");
 	}
 	return fRet;
 }
 
-bool GlobalClassTable::_Create(const SpeciesTable &speciesTable)
+bool GlobalClassTable::_Create(const SpeciesTable &speciesTable, const GameFolderHelper &helper)
 {
 	// Collect the heap/script pairs first, since fetching the heap individually for each script is a performance issue.
 	// Patch files win out.
 	unordered_map<uint16_t, pair<unique_ptr<ResourceBlob>, unique_ptr<ResourceBlob>>> heapScriptPairs;
-	auto scriptContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::Script | ResourceTypeFlags::Heap, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+	auto scriptContainer = helper.Resources(ResourceTypeFlags::Script | ResourceTypeFlags::Heap, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
 	for (auto &scriptResource : *scriptContainer)
 	{
 		uint16_t scriptNumber = (uint16_t)scriptResource->GetNumber();
@@ -923,7 +923,7 @@ bool GlobalClassTable::_Create(const SpeciesTable &speciesTable)
 	for (auto &numberToPair : heapScriptPairs)
 	{
 		pair<unique_ptr<ResourceBlob>, unique_ptr<ResourceBlob>> &scriptAndHeap = numberToPair.second;
-		if (!appState->GetVersion().SeparateHeapResources ||
+		if (!helper.Version.SeparateHeapResources ||
 			(scriptAndHeap.first && scriptAndHeap.second))	  // Must have both script and heap if SCI1.1
 		{
 			int emptyNameClassIndex = 0;
@@ -941,7 +941,7 @@ bool GlobalClassTable::_Create(const SpeciesTable &speciesTable)
 				heapStream.reset(new sci::istream(scriptAndHeap.second->GetData(), scriptAndHeap.second->GetLength()));
 			}
 			// Load the script.
-			if (compiledScript->Load(appState->GetResourceMap().Helper(), appState->GetVersion(), scriptNumber, scriptAndHeap.first->GetReadStream(), heapStream.get()))
+			if (compiledScript->Load(helper, helper.Version, scriptNumber, scriptAndHeap.first->GetReadStream(), heapStream.get()))
 			{
 				CompiledScript *pCompiledScriptWeak = compiledScript.get();
 				_scripts.push_back(move(compiledScript));
@@ -965,7 +965,7 @@ bool GlobalClassTable::_Create(const SpeciesTable &speciesTable)
 						{
 							// Some games have scripts with classed defined in them which aren't in the global class table.
 							// These are probably leftovers that were never removed from the game (e.g. script 997 in KQ5CD)
-							appState->LogInfo("Ignoring class %s since it's not in the class table.", compiledObject->GetName().c_str());
+							CoreLogFormat(LogLevel::Warning, "Ignoring class %s since it's not in the class table.", compiledObject->GetName().c_str());
 						}
 					}
 				}
@@ -1078,12 +1078,12 @@ bool SpeciesTable::Load(const GameFolderHelper &helper)
 	}
 	if (!fRet)
 	{
-		appState->LogInfo("Failed to load class table from vocab resource");
+		CoreLogFormat(LogLevel::Warning, "Failed to load class table from vocab resource");
 	}
 	return fRet;
 }
 
-void SpeciesTable::Save()
+void SpeciesTable::Save(CResourceMap &resourceMap)
 {
 	if (_fDirty)
 	{
@@ -1096,12 +1096,13 @@ void SpeciesTable::Save()
 			push_word(output, *speciesIt);
 		}
 		// Now create a resource data for it
-		appState->GetResourceMap().AppendResource(ResourceBlob(appState->GetResourceMap().Helper(), nullptr, ResourceType::Vocab, output, appState->GetVersion().DefaultVolumeFile, VocabClassTable, NoBase36, appState->GetVersion(), appState->GetResourceMap().Helper().GetDefaultSaveSourceFlags()));
+		resourceMap.AppendResource(ResourceBlob(resourceMap.Helper(), nullptr, ResourceType::Vocab, output, resourceMap.GetSCIVersion().DefaultVolumeFile, VocabClassTable, NoBase36, resourceMap.GetSCIVersion(), resourceMap.Helper().GetDefaultSaveSourceFlags()));
 	}
 }
 
-void SpeciesTable::PurgeOldClasses(const GameFolderHelper &helper)
+void SpeciesTable::PurgeOldClasses(CResourceMap &resourceMap)
 {
+	const GameFolderHelper &helper = resourceMap.Helper();
 	vector<uint16_t> newTable;
 	GlobalClassTable globalClassTable;
 	if (globalClassTable.Load(helper))
@@ -1139,7 +1140,7 @@ void SpeciesTable::PurgeOldClasses(const GameFolderHelper &helper)
 		// Save it!
 		_fDirty = true;
 		_direct = newTable;
-		this->Save();
+		this->Save(resourceMap);
 		// Then reload.
 		_map.clear();
 		_direct.clear();

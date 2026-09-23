@@ -2025,7 +2025,7 @@ void CMainFrame::OnRebuildClassTable()
 		SpeciesTable speciesTable;
 		if (speciesTable.Load(appState->GetResourceMap().Helper()))
 		{
-			speciesTable.PurgeOldClasses(appState->GetResourceMap().Helper());
+			speciesTable.PurgeOldClasses(appState->GetResourceMap());
 		}
 	}
 }
@@ -2869,7 +2869,7 @@ void CMainFrame::OnValidateAllSaids()
 	if (vocab)
 	{
 		CompileLog log;
-		ValidateSaids(log, *vocab);
+		ValidateSaids(appState->GetResourceMap(), log, *vocab);
 		appState->OutputResults(OutputPaneType::Compile, log.Results());
 	}
 }
@@ -2882,7 +2882,7 @@ void CMainFrame::ExtractAllText()
 	std::vector<std::string> allStrings;
 	for (ScriptId &script : scripts)
 	{
-		ExtractScriptStrings(log, script, allStrings);
+		ExtractScriptStrings(appState->GetVersion(), log, script, allStrings);
 	}
 	// TODO: show compile errors
 	std::stringstream ss;

@@ -1454,6 +1454,8 @@ sci::Status CResourceMap::_OpenGameFolder(const string &gameFolder)
 {
 	_runLogic->SetGameFolder(gameFolder);
 	_gameFolderHelper.GameFolder = gameFolder;
+	// The text codepage comes from game.ini (437 when there is none).
+	SetTextCodepage(gameFolder.empty() ? 437 : Helper().GetCodepage());
 	_talkerToView = TalkerToViewMap(Helper().GetLipSyncFolder());
 	ClearVocab000();
 	_pPalette999.reset(nullptr);					// REVIEW: also do this if global palette is edited.

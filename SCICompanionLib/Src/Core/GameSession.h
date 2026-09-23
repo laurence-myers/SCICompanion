@@ -11,6 +11,7 @@
 
 class CResourceMap;
 class GameFolderHelper;
+class IClassHints;
 class ISCIAppServices;
 class ResourceRecency;
 struct SCIVersion;
@@ -20,6 +21,8 @@ struct SessionOptions
     // The folder that holds include\ and Decompiler\. Empty: the folder of
     // the program.
     std::string dataFolder;
+    // Warn about an instance that nothing refers to (the GUI default).
+    bool warnOnUnusedInstances = true;
 };
 
 class GameSession
@@ -41,8 +44,15 @@ public:
     const GameFolderHelper &Helper() const;
     const SCIVersion &Version() const;
     const SessionOptions &Options() const { return _options; }
+    void SetWarnOnUnusedInstances(bool warn) { _options.warnOnUnusedInstances = warn; }
+
+    // Optional hints for compile error messages. Null by default; the GUI
+    // sets its class browser. The session does not own them.
+    IClassHints *ClassHints() const { return _classHints; }
+    void SetClassHints(IClassHints *classHints) { _classHints = classHints; }
 
 private:
     SessionOptions _options;
     std::unique_ptr<CResourceMap> _resourceMap;
+    IClassHints *_classHints = nullptr;
 };

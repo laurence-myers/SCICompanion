@@ -110,6 +110,7 @@
     </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Src\Compile\CompileScript.cpp" />
     <ClCompile Include="Src\Util\ScriptText.cpp" />
     <ClCompile Include="Src\Core\GameSession.cpp" />
     <ClCompile Include="Src\Core\CoreLog.cpp" />
@@ -217,6 +218,7 @@
     <ClCompile Include="Src\Resources\VersionDetectionHelper.cpp" />
     <ClCompile Include="Src\Resources\View.cpp" />
     <ClCompile Include="Src\Util\AudioPlayback.cpp" />
+    <ClInclude Include="Src\Core\ClassHints.h" />
     <ClInclude Include="Src\Util\ScriptText.h" />
     <ClInclude Include="Src\Core\GameSession.h" />
     <ClInclude Include="Src\Core\CoreLog.h" />

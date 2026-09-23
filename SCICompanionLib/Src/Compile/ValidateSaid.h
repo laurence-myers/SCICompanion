@@ -3,4 +3,5 @@
 struct Vocab000;
 class CompileLog;
 
-void ValidateSaids(CompileLog &log, const Vocab000 &vocab000);
+class CResourceMap;
+void ValidateSaids(CResourceMap &resourceMap, CompileLog &log, const Vocab000 &vocab000);

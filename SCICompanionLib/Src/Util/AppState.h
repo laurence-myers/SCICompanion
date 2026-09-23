@@ -90,7 +90,9 @@ public:
 	void ReopenScriptDocument(uint16_t wNum);
 	void OpenMostRecentResourceAt(ResourceType type, uint16_t number, int index);
 	void SetScriptFrame(CFrameWnd *pScriptFrame) { _pScriptFrame = pScriptFrame; }
-	GameSession &GetSession() { return _session; }
+	// The game session. The GUI's compile preference goes into its options
+	// here, so that a change in the Preferences dialog takes effect at once.
+	GameSession &GetSession() { _session.SetWarnOnUnusedInstances(!!_fWarnOnUnusedInstances); return _session; }
 	CResourceMap &GetResourceMap() { return _session.ResourceMap(); }
 	const SCIVersion &GetVersion() const { return _session.Version(); }
 	UINT GetCommandClipboardFormat() { return _uClipboardFormat; }

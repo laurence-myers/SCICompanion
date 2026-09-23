@@ -1201,6 +1201,11 @@ namespace sci
 		void SetScriptId(ScriptId scriptId) { _scriptId = scriptId; }
 		bool IsHeader() const { return _scriptId.IsHeader(); }
 
+		// The game's polygon folder, for (GetPoly "name"). The compile sets
+		// it; with none, the parser looks in "poly" next to the script's folder.
+		void SetPolyFolder(const std::string &polyFolder) { _polyFolder = polyFolder; }
+		const std::string &GetPolyFolder() const { return _polyFolder; }
+
 		void OutputSourceCode(SourceCodeWriter &out) const;
 
 		void Accept(ISyntaxNodeVisitor &visitor) const override;
@@ -1244,6 +1249,7 @@ namespace sci
 
 		// These are not serialized:
 		ScriptId _scriptId;
+		std::string _polyFolder;
 	};
 
 }; // namespace sci	

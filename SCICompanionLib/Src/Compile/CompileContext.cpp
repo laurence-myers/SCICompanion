@@ -20,9 +20,10 @@
 #include "ScriptOMAll.h"
 #include "CompileInterfaces.h"
 #include "CompileContext.h"
-#include "AppState.h"
+#include "GameSession.h"
+#include "ClassHints.h"
+#include "ResourceMap.h"
 #include "SyntaxParser.h"
-#include "ClassBrowser.h"
 #include <unordered_map>
 #include "Text.h"
 #include "ResourceEntity.h"
@@ -78,21 +79,21 @@ bool IsSpecialSelector(const string &str, WORD &wOffset, SpeciesIndex &type)
 	return fRet;
 }
 
-bool CompileTables::Load(SCIVersion version)
+bool CompileTables::Load(CResourceMap &resourceMap)
 {
 	// REVIEW: this could be deleted while we're compiling.
-	_pVocab = appState->GetResourceMap().GetVocab000();
-	const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+	_pVocab = resourceMap.GetVocab000();
+	const GameFolderHelper &helper = resourceMap.Helper();
 	return _kernels.Load(helper) && _species.Load(helper) && _selectors.Load(helper);
 }
 
-void CompileTables::Save()
+void CompileTables::Save(CResourceMap &resourceMap)
 {
-	_species.Save();
-	_selectors.Save();
+	_species.Save(resourceMap);
+	_selectors.Save(resourceMap);
 }
 
-CompileResults::CompileResults(ICompileLog &log) : _log(log), _text(CreateDefaultTextResource(appState->GetVersion())) {}
+CompileResults::CompileResults(ICompileLog &log, const SCIVersion &version) : _log(log), _text(CreateDefaultTextResource(version)) {}
 
 TextComponent &CompileResults::GetTextComponent()
 {
@@ -103,11 +104,11 @@ TextComponent &CompileResults::GetTextComponent()
 void CompileContext::_LoadSCO(const std::string &name, bool fErrorIfNotFound)
 {
 	assert(!name.empty());
-	string scoFileName = appState->GetResourceMap().Helper().GetScriptObjectFileName(name);
+	string scoFileName = _resourceMap.Helper().GetScriptObjectFileName(name);
 	HANDLE hFile = CreateFile(scoFileName.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
 	if (hFile == INVALID_HANDLE_VALUE)
 	{
-		scoFileName = appState->GetResourceMap().Helper().GetScriptObjectFileName(name);
+		scoFileName = _resourceMap.Helper().GetScriptObjectFileName(name);
 		hFile = CreateFile(scoFileName.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
 	}
 	if (hFile != INVALID_HANDLE_VALUE)
@@ -156,14 +157,15 @@ void CompileContext::_LoadSCOIfNone(WORD wScript)
 
 const uint16_t TempTokenBase = 2345;
 
-CompileContext::CompileContext(SCIVersion version, Script &script, PrecompiledHeaders &headers, CompileTables &tables, ICompileLog &results, bool generateDebugInfo) :
-		_browser(appState->GetClassBrowser()),
-		_resourceMap(appState->GetResourceMap()),
+CompileContext::CompileContext(GameSession &session, Script &script, PrecompiledHeaders &headers, CompileTables &tables, ICompileLog &results, bool generateDebugInfo) :
+		_session(session),
+		_classHints(session.ClassHints()),
+		_resourceMap(session.ResourceMap()),
 		_results(results),
 		_tables(tables),
 		_headers(headers),
 		_script(script),
-		_version(version),
+		_version(session.Version()),
 		_code(_version),
 		_nextTempToken(TempTokenBase),
 		_autoTextNumber(InvalidResourceNumber),
@@ -188,7 +190,7 @@ CompileContext::CompileContext(SCIVersion version, Script &script, PrecompiledHe
 	// Get a map of script numbers to script names.  We use this when looking up a species index in the
 	// global class table, and then looking in the script for its name.  This is for type checking, and
 	// is only needed for the Cpp syntax.
-	appState->GetResourceMap().GetNumberToNameMap(_numberToNameMap);
+	_resourceMap.GetNumberToNameMap(_numberToNameMap);
 
 	// We'll always have an accumulator stack context at the top, so just add it now
 	PushOutputContext(OC_Accumulator);
@@ -840,50 +842,20 @@ void CompileContext::SetAutoText(uint16_t number)
 }
 
 // Try to figure out which script, if any, this identifier is exported from.
-// This is just used for error reporting.
+// This is just used for error reporting, and only when there are hints.
 string CompileContext::ScanForIdentifiersScriptName(const std::string &identifier)
 {
-	string strRet;
-	const VariableDeclVector *globals = _browser.GetMainGlobals();
-	if (globals)
-	{
-		if (matches_name(globals->begin(), globals->end(), identifier))
-		{
-			strRet = "main";
-		}
-	}
-	if (strRet.empty())
-	{
-		const Script *pContainerScript = nullptr;
-		// Try exported procedures.
-		const RawProcedureVector &procs = _browser.GetPublicProcedures();
-		auto procIt = match_name(procs.begin(), procs.end(), identifier);
-		if (procIt != procs.end())
-		{
-			pContainerScript = (*procIt)->GetOwnerScript();
-		}
-		if (pContainerScript == nullptr)
-		{
-			// Try classes.
-			const RawClassVector &classes = _browser.GetAllClasses();
-			auto classIt = match_name(classes.begin(), classes.end(), identifier);
-			if (classIt != classes.end())
-			{
-				pContainerScript = (*classIt)->GetOwnerScript();
-			}
-		}
-		if (pContainerScript)
-		{
-			strRet = pContainerScript->GetName();
-			// Trim the ".sc" off.
-			auto it = strRet.find('.');
-			if (it != string::npos)
-			{
-				strRet.erase(it);
-			}
-		}
-	}
-	return strRet;
+	return _classHints ? _classHints->ScriptThatExports(identifier) : string();
+}
+
+const GameFolderHelper &CompileContext::Helper() const
+{
+	return _resourceMap.Helper();
+}
+
+const SessionOptions &CompileContext::Options() const
+{
+	return _session.Options();
 }
 
 scicode &CompileContext::code() { return _code; }

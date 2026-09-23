@@ -8,7 +8,6 @@
 #include "format.h"
 #include "ScriptMakerHelper.h"
 #include "Polygon.h"
-#include "AppState.h"
 
 using namespace sci;
 using namespace std;
@@ -1603,6 +1602,22 @@ void _ProcessForEaches(ICompileLog &log, Script &script)
 	});
 }
 
+// The game's polygon folder: the one that the compile gave the script, else
+// "poly" next to the script's folder (the scripts are in <game>\src).
+std::string _PolyFolderFor(const Script &script)
+{
+	if (!script.GetPolyFolder().empty())
+	{
+		return script.GetPolyFolder();
+	}
+	std::string path = script.GetScriptId().GetFullPath();
+	size_t lastSlash = path.find_last_of("\\/");
+	std::string scriptFolder = (lastSlash == std::string::npos) ? std::string() : path.substr(0, lastSlash);
+	size_t parentSlash = scriptFolder.find_last_of("\\/");
+	std::string gameFolder = (parentSlash == std::string::npos) ? std::string() : scriptFolder.substr(0, parentSlash);
+	return gameFolder.empty() ? std::string() : (gameFolder + "\\poly");
+}
+
 void _ProcessGetPoly(ICompileLog &log, Script &script, FunctionBase &func, GetPolyStatement &theGetPoly)
 {
 	if (theGetPoly.GetStatement1()->GetNodeType() == sci::NodeType::NodeTypeComplexValue)
@@ -1616,7 +1631,7 @@ void _ProcessGetPoly(ICompileLog &log, Script &script, FunctionBase &func, GetPo
 				ourPolyName = "";
 			
 			//TODO: Load polygon data for current script, find ourPolyName, and USE THAT BITCH
-			auto polyComponent = CreatePolygonComponent(appState->GetResourceMap().Helper().GetPolyFolder(), ourScriptNum);
+			auto polyComponent = CreatePolygonComponent(_PolyFolderFor(script), ourScriptNum);
 
 			const SCIPolygon *ourPolygon = nullptr;
 			for (const SCIPolygon &poly : polyComponent->Polygons())

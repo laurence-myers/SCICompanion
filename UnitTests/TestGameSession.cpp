@@ -9,6 +9,9 @@
 #include "ScriptOM.h"
 #include "Codec.h"
 #include "Helper.h"
+#include "CompileInterfaces.h"
+#include "CompileContext.h"
+#include "Text.h"
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -285,6 +288,109 @@ namespace UnitTests
             tracker.NotifyHeaderFileChanged("game.sh");
             tracker.GetScriptsToRecompile(dirty, true);
             Assert::AreEqual(size_t(1), dirty.size(), L"with the setting on, the script that includes the header is marked");
+        }
+    };
+
+    // Plan step B3a. Before it, the compile read the game, its version, its
+    // options, the text codepage and the class browser through appState. With
+    // no AppState, the first compile dereferenced null.
+    TEST_CLASS(TestHeadlessCompile)
+    {
+        std::string _copyFolder;
+
+        void RemoveCopy()
+        {
+            if (!_copyFolder.empty())
+            {
+                std::error_code ec;
+                std::filesystem::remove_all(_copyFolder, ec);
+                _copyFolder.clear();
+            }
+        }
+
+    public:
+        TEST_METHOD_CLEANUP(CleanUp)
+        {
+            RemoveCopy();
+            SetTextCodepage(437);
+        }
+
+        TEST_METHOD(CompileAll_Templates_WorkWithNoAppState)
+        {
+            NoAppState noAppState;
+            CaptureLogSink sink;
+            ScopedCoreLogSink scoped(sink);
+            const char *templates[] = { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" };
+            for (const char *name : templates)
+            {
+                _copyFolder = CopyGameFromModuleFolder(name);
+                {
+                    // The data folder holds include\ (sci.sh, keys.sh).
+                    SessionOptions options;
+                    options.dataFolder = GetTestModuleDirectory();
+                    GameSession session(options);
+                    sci::Status opened = session.Open(_copyFolder);
+                    Assert::IsTrue(opened.has_value(), Wide(opened ? std::string() : opened.error().ToString()).c_str());
+
+                    std::vector<ScriptId> scripts;
+                    session.ResourceMap().GetAllScripts(scripts);
+                    Assert::IsFalse(scripts.empty(), Wide(name).c_str());
+
+                    CompileLog log;
+                    CompileTables tables;
+                    Assert::IsTrue(tables.Load(session.ResourceMap()), L"the vocab tables must load");
+                    PrecompiledHeaders headers(session.ResourceMap());
+                    size_t compiled = 0;
+                    for (ScriptId &script : scripts)
+                    {
+                        CompileResults results(log, session.Version());
+                        if (NewCompileScript(session, results, log, tables, headers, script))
+                        {
+                            compiled++;
+                        }
+                    }
+                    tables.Save(session.ResourceMap());
+
+                    std::string errors;
+                    for (const CompileResult &result : log.Results())
+                    {
+                        if (result.IsError())
+                        {
+                            errors += result.GetMessage() + "\n";
+                        }
+                    }
+                    Assert::IsTrue(errors.empty(), Wide(std::string(name) + ": " + errors).c_str());
+                    Assert::AreEqual(scripts.size(), compiled, Wide(name).c_str());
+                }
+                RemoveCopy();
+            }
+        }
+
+        TEST_METHOD(TextCodepage_ComesFromGameIni)
+        {
+            NoAppState noAppState;
+            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
+            std::string iniFile = _copyFolder + "\\game.ini";
+            // Byte 0x81 is u-umlaut in codepage 437. In codepage 1252 it is 0xFC.
+            std::string dosText = "\x81";
+            std::string winText = "\xFC";
+
+            {
+                SetTextCodepage(1252);
+                GameSession session;
+                Assert::IsTrue(session.Open(_copyFolder).has_value());
+                Assert::AreEqual(437, GetTextCodepage(), L"a game.ini with no codepage gives 437");
+                Assert::AreEqual(winText, Dos2Win(dosText));
+                Assert::AreEqual(dosText, Win2Dos(winText));
+            }
+
+            Assert::IsTrue(WritePrivateProfileString("Game", "Codepage", "1252", iniFile.c_str()) != FALSE);
+            {
+                GameSession session;
+                Assert::IsTrue(session.Open(_copyFolder).has_value());
+                Assert::AreEqual(1252, GetTextCodepage(), L"the codepage must come from game.ini");
+                Assert::AreEqual(dosText, Dos2Win(dosText), L"a 1252 game keeps its text");
+            }
         }
     };
 }

@@ -18,7 +18,7 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "GameFolderHelper.h"
 #include "ScriptOMAll.h"
 #include "CompileInterfaces.h"
 #include "CompileContext.h"
@@ -1764,7 +1764,7 @@ CodeResult ProcedureCall::OutputByteCode(CompileContext &context) const
 
 	if (_innerName == "DbugStr" && procType == ProcedureType::ProcedureKernel)
 	{
-		if (appState->GetResourceMap().Helper().GetNoDbugStr())
+		if (context.Helper().GetNoDbugStr())
 		{
 			context.ReportWarning(this, "DbugStr disabled");
 			return 0;

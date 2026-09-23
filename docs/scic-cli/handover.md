@@ -6,8 +6,9 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: B3 (next). F1, A1, A2, B1 and B2 are committed and
-  reviewed, with their review fixes.
+- Current step: the B3a review, then B3b. F1, A1, A2, B1 and B2 are
+  committed and reviewed, with their review fixes. B3a (the compile path)
+  is committed.
 - 2026-09-23: at your request, the branch history was rewritten twice:
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
@@ -16,7 +17,8 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280.
+  The integration suite has 20 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
   (`getenv`) and C4267 in the UnitTests helpers (`DecompileHelper.cpp`,
@@ -36,7 +38,8 @@ for each step, and a follow-up commit if the review finds a problem.
 | A2 Patch writer, size check | done | `7432a479`, review fixes (the commit after `3be03ff1`) | FIX: 1 should-fix, 6 nits (it also reviewed `258ce43c`). Fixed: the patch writer checks every existing target (read-only, locked) before the first rename and removes the `.bak` files left after a failed rename; a repackage inside an open batch is refused; the audio cache is marked out of date before its map save; `PerformChecks` runs inside the exception boundary; the size error names the resource and no longer says "A Audio"; the plan's statements on atomic commits and on the old audio cache behaviour; README "What's new". Left as known gaps (below): `Cancelled` for check failures that are not a choice, and a rename that fails after the checks. |
 | B1 GameSession, core log | done | `13a786ac`, review fixes (the commit after `d1221472`) | FIX: 2 should-fix, 8 nits. Fixed: only a GUI `AppState` installs itself as the log sink, and it removes itself with a compare-exchange (`RemoveCoreLogSink`); `Open("")` is a Usage error; `TryOpen` is inside the exception boundary as a whole; `AppState::Write` deletes MFC exceptions; `LogInfo` uses `CoreLogFormatV`, with `_Printf_format_string_`; three format-string bugs (`Vocab99x.cpp` `%d` for a name, two dialogs that used the error text as the format, and leaked their `COleException`); the grammar load uses `std::call_once`; the headless `SafeMessageBox` gives the safe answer for every button set; test hygiene. Left: see "Decisions" (the GUI open path and the B3 guard test). |
 | B2 Script text loader | done | `3be03ff1`, review fixes (the commit after `af7cdb5f`) | FIX: 1 should-fix, 1 nit. No difference from the editor in about 46,000 files (a differential probe), 723 parses and 5 compiles. Fixed: `LoadScriptText` names the file for a thrown failure and refuses a file over 64 MB (`Unsupported`); tests at the exact 32 KB edge of the style rule, and a stream walk; the exception boundary reports an MFC `CMemoryException` as "out of memory" (an F1 gap the review found). |
-| B3 Engine on the session | not started | | |
+| B3a Compile path on the session | done | the commit after `52b05d4b` | next |
+| B3b Decompile path on the session, `appState` check rule | not started | | |
 | F2 Engine errors as values | not started | | |
 | K1 `and`/`or` value semantics | not started | | |
 | K2 `.sco` exports from the public block | not started | | |
@@ -64,7 +67,10 @@ for each step, and a follow-up commit if the review finds a problem.
 3. Test: `.\UnitTests\RunTests.ps1` (unit), `-Integration`, or `-Filter`.
    Read the counts in `TestResults\UnitTests.trx`.
 4. Negative check: make the new test fail on purpose (revert the fix or
-   break it), confirm it fails, then restore.
+   break it), confirm it fails, then restore. Put the break on a path that
+   the test runs. After you restore a file from a copy, set its write time
+   to now: `Copy-Item` keeps the old time, so MSBuild does not rebuild,
+   and the binary keeps the break.
 5. Run `.\UnitTests\Tools\CheckFailureHandling.ps1` (after F1).
 6. Commit the step with this file updated. Message: `<type>(scic): <step> <summary>`.
 7. Adversarial review: one subagent in an isolated git worktree, told the
@@ -133,11 +139,11 @@ for each step, and a follow-up commit if the review finds a problem.
   sink: `AppState` in the GUI (it writes to the log file from the GUI's
   command line; before B1, `LogInfo` wrote there only, and cut lines at
   260 characters), `ScopedCoreLogSink` in the CLI and the tests.
-  `SessionOptions` has only `dataFolder`; B3 adds `warnOnUnusedInstances`
-  when the compiler reads it.
+  B3a added `SessionOptions::warnOnUnusedInstances`, where the compiler
+  reads it.
 - B1: `CResourceMap::SetDataFolder` replaces `SetIncludeFolderForTest` and
   also moves the Decompiler folder. `DecompilerConfig.cpp` still reads
-  the static `GameFolderHelper::GetIncludeFolder()` (B3).
+  the static `GameFolderHelper::GetIncludeFolder()` (B3b).
 - B1: P17 was worse than the plan said: `DependencyTracker` took the
   setting by value and kept a reference to that parameter.
 - B1: the "corrupt map" test of the plan became a "missing map" test. A
@@ -151,9 +157,10 @@ for each step, and a follow-up commit if the review finds a problem.
   an exception left the function as it was. No current code throws one
   there.
 - For B3: the guard test cannot rely on a crash from `appState->LogInfo`
-  with no `AppState`, because the B1 `LogInfo` does not touch `this`. B3
-  must change the engine's `appState->LogInfo` calls to `CoreLogFormat`
-  and add a check-script rule against `appState` in the engine folders.
+  with no `AppState`, because the B1 `LogInfo` does not touch `this`. B3a
+  changed the `Vocab99x.cpp` calls to `CoreLogFormat`. B3b must change
+  the other engine calls and add a check-script rule against `appState` in
+  the engine folders.
 - B2: the editor's line rule is odder than the plan said (plan section
   2.8 now has it): a CR-only file is one line, "LF CR" is a style, and a
   NUL ends a line. `SplitScriptText` copies it exactly.
@@ -180,7 +187,51 @@ for each step, and a follow-up commit if the review finds a problem.
   program locks the file at that moment). The renames before it stay
   done; the `.bak` files that are left are removed.
 
+- B3 is split into two commits (plan section 9): B3a, the compile path;
+  B3b, the decompile path, the check rule against `appState` in the
+  engine folders, and the decompile-all guard test.
+- B3a: the text codepage is a process-wide setting (`SetTextCodepage` and
+  `GetTextCodepage` in `Text.h`), like the log sink. The game open sets it
+  from `game.ini` (437 when there is no `game.ini` or no `Codepage` key),
+  and `GameFolderHelper::SetCodepage` (the Game Properties dialog) sets it
+  too. Before, each conversion read `game.ini`, so a hand edit of
+  `game.ini` took effect at once; now it takes effect at the next open.
+  With two games open in one process, the last open wins; the GUI and the
+  CLI open one game at a time.
+- B3a: the class browser is the session's optional `IClassHints`
+  (`Src\Core\ClassHints.h`). `SCIClassBrowser::ScriptThatExports` takes
+  the browser's lock itself (the mutex is recursive). The GUI callers and
+  the test helpers (`CompileFixture`, `TestCompile::_DoItHelper`) still
+  hold the browser's lock around `NewCompileScript`, as the old
+  `NewCompileScript` did: the browser's background reload parses the same
+  scripts and reads the game. The CLI has no browser and takes no lock.
+- B3a: `DependencyTracker::ClearScript` moved from `NewCompileScript` to
+  the GUI callers, inside the same lock. It keys on the script title, so
+  the result is the same.
+- B3a: `AppState::GetSession()` copies the GUI's "warn on unused
+  instances" setting into the session's options at each call. A change in
+  the Preferences dialog takes effect at the next compile, as before.
+- B3a: the compile gives the script its polygon folder
+  (`Script::SetPolyFolder`). Other parses (the class browser,
+  autocomplete, `SimpleCompile`) use `poly` next to the script's folder.
+  For a script in `<game>\src`, that is the same folder as before.
+- B3a: the polygon loader parses a `.shp` file with no defines (before:
+  the defines of the game's version). The defines only choose `#if` and
+  `#ifdef` code, which the polygon writer never writes, so the result is
+  the same.
+- B3a: `SimpleCompile` takes the version (or the defines),
+  `ExtractScriptStrings` the version, and `ValidateSaids` the resource
+  map. `SelectorTable::Save`, `SpeciesTable::Save` and
+  `SpeciesTable::PurgeOldClasses` take the resource map. `GlobalClassTable`
+  uses the helper that its `Load` gets.
+- B3a: the five `Vocab99x.cpp` log lines are warnings now
+  (`CoreLogFormat(LogLevel::Warning, ...)`), as the codec lines are since
+  B1. In the GUI's log file, they get a `warning:` prefix.
+- B3a: the `NoDbugStr` path (`CompileContext::Helper()`, used only for a
+  `DbugStr` kernel call in `Compile.cpp`) has no test; it is
+  inspection-verified. The templates do not call `DbugStr`.
+
 ## Next action
 
-Read the A2, B1 and B2 reviews and fix any real finding. Then B3 (plan
-section 9).
+Run the B3a adversarial review (a worktree on the B3a commit) and fix any
+real finding. Then B3b (plan section 9).

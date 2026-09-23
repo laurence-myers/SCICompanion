@@ -16,6 +16,7 @@
 #include "Helper.h"
 #include "DecompileHelper.h"
 #include "AppState.h"
+#include "ClassBrowser.h"
 #include "ResourceMap.h"
 #include "CompiledScript.h"
 #include "CompileContext.h"
@@ -140,13 +141,21 @@ bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::
     DeferResourceAppend defer(rm);
     CompileLog log;
     CompileTables tables;
-    tables.Load(appState->GetVersion());
+    tables.Load(rm);
     PrecompiledHeaders headers(rm);
-    CompileResults results(log);
-    bool ok = NewCompileScript(results, log, tables, headers, scriptId);
+    GameSession &session = appState->GetSession();
+    CompileResults results(log, session.Version());
+    bool ok = false;
+    {
+        // As the GUI does: the class browser's background reload must not run
+        // during the compile.
+        ClassBrowserLock lock(appState->GetClassBrowser());
+        lock.Lock();
+        ok = NewCompileScript(session, results, log, tables, headers, scriptId);
+    }
     if (ok)
     {
-        tables.Save();
+        tables.Save(rm);
     }
     // Commit persists the compiled resource. A failure here must fail the
     // compile, or a later decompile reads a stale resource.

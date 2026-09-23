@@ -444,10 +444,10 @@ class ScopedCoreLogSink;                    // installs a sink for a scope
 struct SessionOptions
 {
     std::string dataFolder;             // include\ and Decompiler\; default: the exe folder
-    bool warnOnUnusedInstances = true;  // the GUI default (added in B3, where the compiler reads it)
+    bool warnOnUnusedInstances = true;  // the GUI default (added in B3a, where the compiler reads it)
 };
 
-class IClassHints;                      // optional compile error hints; the class browser implements it (B3)
+class IClassHints;                      // optional compile error hints; the class browser implements it (B3a)
 
 class GameSession
 {
@@ -460,7 +460,7 @@ public:
     const GameFolderHelper &Helper() const;
     const SCIVersion &Version() const;
     const SessionOptions &Options() const;
-    IClassHints *ClassHints() const;    // null in the CLI (B3)
+    IClassHints *ClassHints() const;    // null in the CLI (B3a)
 };
 ```
 
@@ -477,8 +477,9 @@ Rules:
   returns a `Status`. `SetGameFolder` keeps its GUI behaviour and throws as
   before.
 - The engine gets the session (or the parts it needs: the resource map, the
-  helper, the options) as parameters. The log sink is the only global that
-  the engine uses.
+  helper, the options) as parameters. The engine uses only two
+  process-wide settings: the log sink, and the text codepage
+  (`SetTextCodepage`, which the game open sets from `game.ini`, B3a).
 - The data folder comes from the session. `scic` has a `--data-dir` option.
   The tests stop using `SetIncludeFolderForTest`.
 
@@ -1218,7 +1219,8 @@ days, L is 3 to 5 days.
 |---|---|---|---|---|
 | B1 | `Src\Core\`: `GameSession`, `ILogSink`, `CoreLog`, `SessionOptions` (section 3.2). `CResourceMap::TryOpen` returns a `Status`. `AppState` owns a `GameSession` and forwards `GetResourceMap` and `GetVersion` to it; `LogInfo` goes to `CoreLog`, and `AppState` is the GUI's sink. The session calls `InitializeSyntaxParsers()`. `SafeMessageBox` with no GUI goes to `CoreLog`. The codecs use `CoreLog`. `SessionOptions::dataFolder` sets the resource map's include and decompiler folders (`SetDataFolder` replaces `SetIncludeFolderForTest`). Fix the `_fTrackHeaderFiles` order, and the dangling reference in `DependencyTracker`. | P8, P12, P17 | `GameSession::Open` opens both templates with `appState == nullptr`. `Open` on a folder with no `resource.map` returns `NotFound` that names the file (fails before: `SetGameFolder` throws a `CUserException` with no text). A garbage map still opens, because the format detection is permissive (F2). A headless `SafeMessageBox` text reaches the sink in full (fails before). A codec failure logs with no `AppState` (fails before: a null dereference). | M |
 | B2 | Script text with no CrystalEdit: `ReadOnlyTextBuffer(const ScriptText &)` and `CScriptStreamLimiter(const ScriptText &)`, `LoadScriptText(path)` returning `Result<ScriptText>` and `SplitScriptText(contents)` with the line-ending rule of section 2.8 (`Src\Util\ScriptText.h`), and a small `TextPos` in place of `CPoint` in the stream. The engine call sites use it: the compile, `SimpleCompile`, the header loads (`CompileContext.cpp:1204`) and `DecompilerConfig`. The editor keeps its buffer. | P20 | For every `.sc` and `.sh` file in both templates, and for crafted files (LF only, CR only, mixed, no final line break), the lines from both loaders are equal. A naive splitter fails the mixed case (the negative check). A missing file gives `NotFound`. | S |
-| B3 | The script engine takes the session: `CompileTables`, `CompileResults`, `CompileContext`, `GenerateScriptResource`, `NewCompileScript` (moved to `Src\Compile\CompileScript.cpp`), the vocab 996/997 tables and the class table (`Vocab99x.cpp`), the text codepage (`Text.cpp`), the polygon folder (`SCISyntaxParser.cpp`), `ValidateSaid`, `SCISourceCodeFormatter`, `DecompileBatch`, `DecompileScript` (moved out of `ScriptDocument.cpp`), `DecompilerFallback`, `DecompilerNew`, `Disassembler`. The class browser becomes an optional `IClassHints`; the lock is taken only when a browser exists. The data folder comes from the session. | P15, P18, P19 | Compile all and decompile all of both templates with `appState == nullptr` (fails before: null dereference). The existing golden suites (bytecode oracle, decompile snapshots) do not change. | L |
+| B3a | The compile path takes the session: `CompileTables::Load` and `Save` take the resource map, `CompileResults` takes the version, `CompileContext` and `GenerateScriptResource` take the session, and `NewCompileScript` and `SimpleCompile` move to `Src\Compile\CompileScript.cpp` (`SimpleCompile` takes the version or the defines). Also the vocab 996/997 tables and the class table (`Vocab99x.cpp`, which logs through `CoreLog`), the text codepage (`Text.cpp`: a process-wide setting that the game open sets from `game.ini`), the polygon folder (`Script::SetPolyFolder`, read by `SCISyntaxParser.cpp`), `ValidateSaid` and `ExtractScriptStrings`. The class browser becomes an optional `IClassHints` on the session, and takes its own lock. `SessionOptions::warnOnUnusedInstances`: `AppState::GetSession` copies the GUI setting into it. The GUI callers clear the dependency tracker after a compile. | P18 (compile) | Compile all of both templates with `appState == nullptr` (fails when one compile site reads `appState`: a null dereference). The codepage comes from `game.ini` with no `AppState` (fails when the open does not set it). The existing golden suites (bytecode oracle, decompile snapshots) do not change. | M |
+| B3b | The decompile path takes the session: `SCISourceCodeFormatter`, `DecompileBatch`, `DecompileScript` (moved out of `ScriptDocument.cpp`; the 3-argument form goes), `DecompilerFallback`, `DecompilerNew`, `Disassembler`, and `DecompilerConfig` (the data folder comes from the session). A check-script rule: no `appState` in the engine folders, with an allowlist for the audio sites. | P15, P18 (decompile), P19 | Decompile all of both templates with `appState == nullptr` (fails before: a null dereference). The check script fails on a new `appState` in an engine folder. The golden suites do not change. | M |
 | F2 | Engine errors as values at the boundary. `sci::DataError` (standard C++, with an `ErrorCode`) replaces the 52 `throw std::exception("…")`. `Result` forms of the reads that the services use: `CreateResourceFromResourceData`, `CompiledScript::Load`, `GlobalCompiledScriptLookups::Load`, `CompileTables::Load`; a decompression failure reaches the caller as `Format`, not only as a log line. The silent swallows on the script paths go: `Text.cpp:209` (a partial read is a `Format` error), `DecompileDialog.cpp:866` (the worker reports through the service), `VersionDetectionHelper.cpp:902, 925` (a failed probe keeps the default and logs why). | P21 | A truncated script resource gives `Format` with the resource number (fails before: generic text, or nothing). A truncated text resource gives a `Format` error (fails before: a silent partial read). The golden suites do not change. | M |
 
 ### Phase K: compiler fixes found in `scicompile` (section 14)
@@ -1267,13 +1269,14 @@ own data. Each fix is one PR with a test that fails before it.
   layering permanent.
 
 Dependencies: F1 is first; every later PR uses it. A1, A2, B1 and B2 need
-only F1. B3 needs B1 and B2. F2 needs B3. The K PRs need F2 (they change
-code that B3 and F2 move) and do not depend on each other. S3 needs the K
-PRs, because every later service uses the script-name map. S1 needs S3. S2
-needs S1, S3 and A1. S4 needs S3 and K2. C1 needs S3. C2 needs C1 and S4.
-C3 needs C1, S2 and A2. C4 is last. E1 comes after C4. For the stacked-PR
-workflow, one straight order works: F1, A1, A2, B1, B2, B3, F2, K1, K2,
-K3, K4, K5, K6, S3, S1, S2, S4, C1, C2, C3, C4.
+only F1. B3a needs B1 and B2, and B3b needs B3a. F2 needs B3b. The K PRs
+need F2 (they change code that B3 and F2 move) and do not depend on each
+other. S3 needs the K PRs, because every later service uses the
+script-name map. S1 needs S3. S2 needs S1, S3 and A1. S4 needs S3 and K2.
+C1 needs S3. C2 needs C1 and S4. C3 needs C1, S2 and A2. C4 is last. E1
+comes after C4. For the stacked-PR workflow, one straight order works:
+F1, A1, A2, B1, B2, B3a, B3b, F2, K1, K2, K3, K4, K5, K6, S3, S1, S2, S4,
+C1, C2, C3, C4.
 
 GUI changes in this plan (all others are refactors with no visible change):
 
@@ -1392,7 +1395,7 @@ Still open (the plan uses the recommendation unless you say otherwise):
 | The static library pulls GUI objects into `scic.exe`, so the exe is larger. | Accepted until phase E. The tests already link the same way. |
 | The `.sco`, `.scd` and `.sc` writes are not atomic. | S1 returns their errors. Atomic writes come later. |
 | Paths with non-ASCII characters fail (MBCS build). | The documents say so. The GUI has the same limit. |
-| A long refactor stack conflicts with other work in the repo. | Short-lived PRs, merged in order. B3 is the largest; split it by folder if it grows. |
+| A long refactor stack conflicts with other work in the repo. | Short-lived PRs, merged in order. B3 was the largest, so it is split: B3a (the compile path) and B3b (the decompile path). |
 
 ## 13. Later: other resource operations
 

@@ -1,3 +1,3 @@
 class CompileLog;
 
-void ExtractScriptStrings(CompileLog &log, ScriptId scriptId, std::vector<std::string> &allStrings);
+void ExtractScriptStrings(const SCIVersion &version, CompileLog &log, ScriptId scriptId, std::vector<std::string> &allStrings);
