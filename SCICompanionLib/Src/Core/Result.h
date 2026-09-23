@@ -35,10 +35,13 @@ namespace sci
 
 // A wrong access to a Result (*r on an error, r.error() on a value) is a bug.
 // Check it in Release too, instead of undefined behaviour. The exception boundary
-// reports the InvariantViolation as an Internal error.
-#ifndef TL_ASSERT
-#define TL_ASSERT(x) do { if (!(x)) { throw ::sci::InvariantViolation("Result accessed in the wrong state: " #x); } } while (false)
+// reports the InvariantViolation as an Internal error. This file must be the
+// first to include tl/expected.hpp (it is in the precompiled headers), or
+// tl's own TL_ASSERT (assert, off in Release) would silently win.
+#ifdef TL_ASSERT
+#error "TL_ASSERT is already defined: include Result.h before tl/expected.hpp."
 #endif
+#define TL_ASSERT(x) do { if (!(x)) { throw ::sci::InvariantViolation("Result accessed in the wrong state: " #x); } } while (false)
 #include <tl/expected.hpp>
 
 namespace sci
@@ -131,16 +134,22 @@ namespace sci
     Error FromLastError(const std::string &what);
 
     // For deep I/O code that cannot return a Result: throws a DataError with
-    // the code and text of GetLastError (NotFound or Io).
+    // the code and text of a Win32 error (NotFound or Io). Read GetLastError
+    // into a variable before you build the text, and pass it to ThrowWin32:
+    // building the text can change the last error. ThrowLastError reads it on
+    // entry.
+    [[noreturn]] void ThrowWin32(unsigned long win32Error, const std::string &what);
     [[noreturn]] void ThrowLastError(const std::string &what);
 
     // Call only inside a catch block. Turns the exception in flight into an
     // Error. DataError keeps its code; a CFileException gives Io; any other
-    // exception gives Internal.
+    // exception gives Internal. It deletes an MFC CException* (do not call
+    // Delete() on it again).
     Error ErrorFromCurrentException(const std::string &context);
 
     // The exception boundary. Runs fn, which returns a Result or a Status. If
-    // an exception escapes fn, returns it as an Error instead.
+    // an exception escapes fn, returns it as an Error instead. A lambda that
+    // uses SCI_TRY needs an explicit return type (-> sci::Status).
     template<typename TFunc>
     auto Guard(const std::string &context, TFunc &&fn) -> decltype(fn())
     {
@@ -150,7 +159,18 @@ namespace sci
         }
         catch (...)
         {
-            return tl::unexpected<Error>(ErrorFromCurrentException(context));
+            try
+            {
+                return tl::unexpected<Error>(ErrorFromCurrentException(context));
+            }
+            catch (...)
+            {
+                // Building the error failed too (out of memory). The short text
+                // fits the small-string buffer, so this does not allocate.
+                Error error;
+                error.message = "out of memory";
+                return tl::unexpected<Error>(std::move(error));
+            }
         }
     }
 }
@@ -158,21 +178,26 @@ namespace sci
 #define SCI_CONCAT_INNER_(a, b) a##b
 #define SCI_CONCAT_(a, b) SCI_CONCAT_INNER_(a, b)
 
-// Returns early with the error if expr (a Result or a Status) failed.
+// Returns early with the error if expr (a Result or a Status) failed. The
+// error is moved from a temporary and copied from a named Result, so a Result
+// kept in a report is not emptied. expr must not return a reference into a
+// temporary (the temporary is gone at the end of the binding).
 #define SCI_TRY(expr)                                                                   \
     do                                                                                  \
     {                                                                                   \
         auto &&sci_try_result_ = (expr);                                                \
         if (!sci_try_result_)                                                           \
         {                                                                               \
-            return ::tl::unexpected<::sci::Error>(std::move(sci_try_result_.error()));   \
+            return ::tl::unexpected<::sci::Error>(                                      \
+                std::forward<decltype(sci_try_result_)>(sci_try_result_).error());      \
         }                                                                               \
     } while (false)
 
 // Returns early with the error if expr failed; otherwise moves the value into
 // decl, for example SCI_TRY_ASSIGN(auto lines, LoadScriptText(path)).
-// decl must not contain a top-level comma.
-#define SCI_TRY_ASSIGN(decl, expr) SCI_TRY_ASSIGN_IMPL_(SCI_CONCAT_(sci_try_result_, __LINE__), decl, expr)
+// decl must not contain a top-level comma. expr is taken by value: pass a
+// temporary, or std::move a named Result whose value cannot be copied.
+#define SCI_TRY_ASSIGN(decl, expr) SCI_TRY_ASSIGN_IMPL_(SCI_CONCAT_(sci_try_result_, __COUNTER__), decl, expr)
 #define SCI_TRY_ASSIGN_IMPL_(tmp, decl, expr)                                           \
     auto tmp = (expr);                                                                  \
     if (!tmp)                                                                           \

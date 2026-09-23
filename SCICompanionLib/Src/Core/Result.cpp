@@ -134,10 +134,15 @@ namespace sci
         return FromWin32(GetLastError(), what);
     }
 
+    void ThrowWin32(unsigned long win32Error, const std::string &what)
+    {
+        Error error = FromWin32(win32Error, what);
+        throw DataError(error.message, error.code);
+    }
+
     void ThrowLastError(const std::string &what)
     {
-        Error error = FromLastError(what);
-        throw DataError(error.message, error.code);
+        ThrowWin32(GetLastError(), what);
     }
 
     Error ErrorFromCurrentException(const std::string &context)
@@ -175,11 +180,17 @@ namespace sci
         }
         catch (CException *e)
         {
+            // Delete the MFC exception on every path, also if building the
+            // text below throws.
+            struct DeleteOnExit
+            {
+                CException *exception;
+                ~DeleteOnExit() { exception->Delete(); }
+            } deleteOnExit = { e };
             TCHAR text[512] = {};
             BOOL hasText = e->GetErrorMessage(text, ARRAYSIZE(text));
             error.code = e->IsKindOf(RUNTIME_CLASS(CFileException)) ? ErrorCode::Io : ErrorCode::Internal;
             error.message = (hasText && text[0]) ? std::string(text) : std::string("MFC exception (no text)");
-            e->Delete();
         }
         catch (...)
         {

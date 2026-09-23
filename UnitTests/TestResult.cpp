@@ -52,6 +52,20 @@ namespace
         SCI_TRY_ASSIGN(auto text, MakeText(ok));
         return text.size();
     }
+
+    // SCI_TRY on a named Result: it must copy the error, not move it out.
+    Status Propagate(Status &stored)
+    {
+        SCI_TRY(stored);
+        return Ok();
+    }
+
+    // Two SCI_TRY_ASSIGN on one line compile only if their names differ.
+    Result<size_t> TwoOnOneLine()
+    {
+        SCI_TRY_ASSIGN(auto first, MakeText(true)); SCI_TRY_ASSIGN(auto second, MakeText(true));
+        return first.size() + second.size();
+    }
 }
 
 namespace UnitTests
@@ -192,6 +206,19 @@ namespace UnitTests
 
             Result<size_t> failed = TextLength(false);
             AssertCode(ErrorCode::NotFound, failed.error());
+        }
+
+        TEST_METHOD(SciTry_NamedResult_KeepsItsError)
+        {
+            Status stored = Fail(ErrorCode::Io, "disk full");
+            Status first = Propagate(stored);
+            Assert::AreEqual(std::string("disk full"), first.error().message);
+            Assert::AreEqual(std::string("disk full"), stored.error().message, L"SCI_TRY must not move the error out of a named Result");
+            Status second = Propagate(stored);
+            Assert::AreEqual(std::string("disk full"), second.error().message);
+
+            Result<size_t> both = TwoOnOneLine();
+            Assert::AreEqual(size_t(10), *both);
         }
 
         TEST_METHOD(WithContext_AddsOnlyOnError)

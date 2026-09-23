@@ -646,7 +646,8 @@ bool EnsureFolderExists(const std::string &folderName, bool throwException)
 		{
 			if (throwException)
 			{
-				sci::ThrowLastError("Creating the folder " + folderName);
+				DWORD lastError = GetLastError();
+				sci::ThrowWin32(lastError, "Creating the folder " + folderName);
 			}
 			return false;
 		}
@@ -939,7 +940,8 @@ ScopedFile::ScopedFile(const std::string &filename, DWORD desiredAccess, DWORD s
 	hFile = CreateFile(filename.c_str(), desiredAccess, shareMode, nullptr, creationDisposition, FILE_ATTRIBUTE_NORMAL, nullptr);
 	if (hFile == INVALID_HANDLE_VALUE)
 	{
-		sci::ThrowLastError("Opening " + filename);
+		DWORD lastError = GetLastError();
+		sci::ThrowWin32(lastError, "Opening " + filename);
 	}
 }
 
@@ -950,7 +952,8 @@ void ScopedFile::Write(const uint8_t *data, uint32_t length)
 	{
 		if (!WriteFile(hFile, data, length, &cbWritten, nullptr))
 		{
-			sci::ThrowLastError("Writing to " + filename);
+			DWORD lastError = GetLastError();
+			sci::ThrowWin32(lastError, "Writing to " + filename);
 		}
 		if (cbWritten != length)
 		{
@@ -965,7 +968,8 @@ uint32_t ScopedFile::SeekToEnd()
 	uint32_t position = SetFilePointer(hFile, 0, nullptr, FILE_END);
 	if (position == INVALID_SET_FILE_POINTER)
 	{
-		sci::ThrowLastError("Seeking to the end of " + filename);
+		DWORD lastError = GetLastError();
+		sci::ThrowWin32(lastError, "Seeking to the end of " + filename);
 	}
 	return position;
 }
@@ -990,7 +994,8 @@ void movefile(const std::string &from, const std::string &to)
 {
 	if (!MoveFile(from.c_str(), to.c_str()))
 	{
-		sci::ThrowLastError("Moving " + from + " to " + to);
+		DWORD lastError = GetLastError();
+		sci::ThrowWin32(lastError, "Moving " + from + " to " + to);
 	}
 }
 
@@ -1003,7 +1008,8 @@ void replacefile(const std::string &from, const std::string &to)
 	// flush the file's data, so this is crash-atomic, not proof against power loss.
 	if (!MoveFileEx(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 	{
-		sci::ThrowLastError("Replacing " + to + " with " + from);
+		DWORD lastError = GetLastError();
+		sci::ThrowWin32(lastError, "Replacing " + to + " with " + from);
 	}
 }
 

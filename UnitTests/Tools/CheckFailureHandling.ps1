@@ -2,15 +2,18 @@
     Fails when code adds a failure-handling pattern that the failure-handling
     rules forbid (docs/scic-cli/plan.md, section 6.8):
 
-      empty-catch-all          a "catch (...)" with an empty body, which hides a failure
+      empty-catch-all          a "catch (...)" whose body is empty or holds only comments
+                               and ";", which hides a failure
       throw-std-exception      "throw std::exception(...)", a Microsoft-only form;
                                throw sci::DataError or return a sci::Result instead
       afxmessagebox-in-engine  AfxMessageBox in Src\Core, Src\Compile or Src\Resources;
                                return a sci::Result and let the GUI show it
 
     The sites that existed before the rules are in CheckFailureHandling.allow.txt,
-    one line per file: "<rule> <path> <count>". A file may not go over its count.
-    When you remove old sites, run with -Update to lower the counts.
+    one line per file: "<rule> <path> <count>". A file must have exactly its
+    count: more is a new site, and fewer means the allowlist is stale (a new
+    site could later take the freed place unnoticed). When you remove old
+    sites, run with -Update to lower the counts, and commit the allowlist.
 
     Usage:
       .\UnitTests\Tools\CheckFailureHandling.ps1           # check; exit 1 on a new site
@@ -27,7 +30,7 @@ $allowPath = Join-Path $PSScriptRoot "CheckFailureHandling.allow.txt"
 $excluded = @("CrystalEdit", "GIFLIB", "cpptoml", "CppFormat", "r8brain", "CRC32")
 
 $rules = @(
-    @{ Name = "empty-catch-all"; Pattern = 'catch\s*\(\s*\.\.\.\s*\)\s*\{\s*\}'; Folders = $null },
+    @{ Name = "empty-catch-all"; Pattern = 'catch\s*\(\s*\.\.\.\s*\)\s*\{(?:\s|;|//[^\n]*|/\*[\s\S]*?\*/)*\}'; Folders = $null },
     @{ Name = "throw-std-exception"; Pattern = 'throw\s+std::exception\s*\('; Folders = $null },
     @{ Name = "afxmessagebox-in-engine"; Pattern = '\bAfxMessageBox\s*\('; Folders = @("Core", "Compile", "Resources") }
 )
@@ -86,6 +89,10 @@ $lower | ForEach-Object { $_ }
 if ($failures.Count -gt 0) {
     $failures | ForEach-Object { $_ }
     "Failure-handling check FAILED: $($failures.Count) new site(s). See docs/scic-cli/plan.md, section 6."
+    exit 1
+}
+if ($lower.Count -gt 0) {
+    "Failure-handling check FAILED: the allowlist is stale. Run this script with -Update and commit the allowlist."
     exit 1
 }
 "Failure-handling check passed ($($found.Count) allowed site group(s))."
