@@ -541,8 +541,8 @@ namespace
     // its title from every script. The current name of a chosen script
     // belongs to it too: a chosen script that gets no derived name (it
     // cannot be read, or it has no class and no public instance) keeps it,
-    // and a script that no group of the run writes keeps it in game.ini
-    // (RunDecompile; review of c49c8143: before, another chosen script could
+    // and a script that no group of the run gives an ok outcome keeps it in
+    // game.ini (RunDecompile; review of c49c8143: before, another chosen script could
     // take it, and two scripts had one name). So a reset is not always
     // the same twice: when the current name of one chosen script is the
     // derived name of another, the other gets the "_N" suffix, and a
@@ -567,10 +567,16 @@ namespace
             for (const std::string &title : names->FileTitles())
             {
                 // The title of the own file of a chosen script is its current
-                // name, which it owns (above; review of ba63d08a: a second
-                // owner entry here changed nothing).
+                // name. In a name conflict, the script that NumberOf finds (the
+                // lowest number) owns the title: this entry replaces the one
+                // of the loop above (review of e83a7d41: without it, the
+                // highest number owned it, and --derived changed).
                 uint16_t owner;
-                if (!names->NumberOf(title, owner) || (chosen.find(owner) == chosen.end()))
+                if (names->NumberOf(title, owner) && (chosen.find(owner) != chosen.end()))
+                {
+                    owned[title] = owner;
+                }
+                else
                 {
                     reserved.push_back(title);
                 }

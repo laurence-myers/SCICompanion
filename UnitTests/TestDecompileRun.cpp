@@ -98,7 +98,7 @@ namespace
             {
                 onMessage(message);
             }
-            if (!throwOnMessage.empty() && (message.rfind(throwOnMessage, 0) == 0))
+            if (!throwOnMessage.empty() && (message.rfind(throwOnMessage, 0) == 0) && (++throwMatches >= throwOnMatch))
             {
                 throw std::runtime_error("an injected fault");
             }
@@ -116,9 +116,13 @@ namespace
         int abortOnMatch = 1;
         int abortMatches = 0;
         bool abortSeen = false;
-        // Throw from AddResult when a message starts with this text: outside
-        // the exception boundary of a script, so the batch throws.
+        // Throw from AddResult when a message starts with this text, at its
+        // throwOnMatch-th message. At a message outside the exception boundary
+        // of a script ("Decompiling script N"), the batch throws; at one
+        // inside it ("Generated ..."), the script fails.
         std::string throwOnMessage;
+        int throwOnMatch = 1;
+        int throwMatches = 0;
         // Called with each message.
         std::function<void(const std::string &)> onMessage;
     };
@@ -1453,6 +1457,12 @@ namespace UnitTests
             Assert::IsTrue((main != nullptr) && !main->status.has_value(), WideForRun("setup: the batch threw in group 3:\n" + facts).c_str());
             const DecompileOutcome *first = OutcomeOf(*report, 965);
             Assert::IsTrue((first != nullptr) && first->status.has_value(), WideForRun(facts).c_str());
+            // Review of e83a7d41: the report keeps the error of the batch (it
+            // does not succeed), and the stale check of an abort runs: 965's
+            // file still uses global3, which group 2 named.
+            Assert::IsFalse(report->batch.has_value(), WideForRun(facts).c_str());
+            Assert::IsFalse(report->Succeeded(), WideForRun(facts).c_str());
+            Assert::AreEqual((size_t)1, report->stale.count(965), WideForRun(facts).c_str());
         }
 
         // Review of ba63d08a (no test had these): after an abort, a run with an
@@ -1472,6 +1482,9 @@ namespace UnitTests
                 auto report = RunDecompile(session, { 959, 960 }, DecompileRunOptions(), results, &sources);
                 Assert::IsTrue(report.has_value() && report->cancelled, report ? WideForRun(DescribeRun(*report)).c_str() : L"no report");
                 Assert::IsTrue(report->stale.empty(), WideForRun("an output writes nothing, so nothing is stale:\n" + DescribeRun(*report)).c_str());
+                // Review of e83a7d41: and no source (before, the sources of
+                // pass 1 went to the output).
+                Assert::IsTrue(sources.sources.empty(), L"no source after an abort");
             }
 
             PrepareEarlierGroupFixtures();
@@ -1497,6 +1510,87 @@ namespace UnitTests
             const DecompileOutcome *stale = OutcomeOf(*report, 965);
             Assert::IsTrue((stale != nullptr) && !stale->status.has_value(), WideForRun("setup: group 3 fails 965:\n" + facts).c_str());
             Assert::AreEqual(std::string("StaleFirst"), IniEntry("n965"), WideForRun("the name that group 1 wrote:\n" + facts).c_str());
+        }
+
+        // Review of e83a7d41: a script that fails after its naming keeps the
+        // global names that it found (the namer put them into main's .sco).
+        // Here 960 fails at its "Generated" message. Before, the names were
+        // lost: main's .sco kept global5, and 957, which pass 2 wrote with the
+        // new name, did not compile.
+        TEST_METHOD(AScriptFailsAfterItsNaming_TheNamesStay)
+        {
+            NoAppStateForRun noAppState;
+            PrepareStaleFixtures();
+            WriteAllText(GameFile("src\\Stale957.sc"), ";;; Sierra Script 1.0 - (do not remove this comment)\r\n(script# 957)\r\n(include sci.sh)\r\n(use Main)\r\n\r\n(public\r\n\tstale957 0\r\n)\r\n\r\n(procedure (stale957)\r\n\t(return global5)\r\n)\r\n");
+            {
+                GameSession session(TestSessionOptions());
+                Open(session);
+                ScriptId script(GameFile("src\\Stale957.sc").c_str());
+                script.SetResourceNumber(957);
+                std::atomic<bool> abort(false);
+                ICompileEvents events;
+                Assert::AreEqual(std::string(), CompileErrorsOf(CompileScripts(session, { script }, CompileOptions(), abort, events)), L"setup: 957 compiles");
+            }
+            GameSession session(TestSessionOptions());
+            Open(session);
+            RunResults results;
+            results.throwOnMessage = "Generated " + session.Helper().GetScriptFileName((WORD)960);
+            auto report = RunDecompile(session, { 957, 960 }, DecompileRunOptions(), results);
+            Assert::IsTrue(report.has_value());
+            std::string facts = DescribeRun(*report);
+            const DecompileOutcome *second = OutcomeOf(*report, 960);
+            Assert::IsTrue((second != nullptr) && !second->status.has_value(), WideForRun("setup: 960 fails:\n" + facts).c_str());
+            Assert::IsFalse(report->globalRenames.empty(), WideForRun("the names of 960: " + facts).c_str());
+            GlobalCompiledScriptLookups lookups;
+            Assert::IsTrue(lookups.TryLoad(session.Helper()).has_value());
+            std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(session.Helper(), 0, lookups.GetSelectorTable());
+            Assert::IsNotNull(mainSCO.get());
+            std::string name = mainSCO->GetVariables()[5].GetName();
+            Assert::AreNotEqual(std::string("global5"), name, L"main's .sco has the name");
+            std::string first = ReadAllText(session.Helper().GetScriptFileName((WORD)957));
+            Assert::IsTrue(ContainsIdentifier(first, name) && !ContainsIdentifier(first, "global5"), WideForRun(name + "\n" + first).c_str());
+        }
+
+        // Review of e83a7d41 (no test had it): with staleAfterAbort false (the
+        // Decompile dialog), an abort makes no stale check.
+        TEST_METHOD(Abort_StaleAfterAbortFalse_NoStaleCheck)
+        {
+            NoAppStateForRun noAppState;
+            PrepareEarlierGroupFixtures();
+            GameSession session(TestSessionOptions());
+            Open(session);
+            RunResults results;
+            results.abortOnMessage = "Decompiling script 0";
+            DecompileRunOptions options;
+            options.updateStale = true;
+            options.staleAfterAbort = false;
+            auto report = RunDecompile(session, { 965 }, options, results);
+            Assert::IsTrue(report.has_value() && report->cancelled, report ? WideForRun(DescribeRun(*report)).c_str() : L"no report");
+            Assert::AreEqual((size_t)0, report->stale.count(965), WideForRun(DescribeRun(*report)).c_str());
+        }
+
+        // Review of e83a7d41: in a name conflict, the script that the name map
+        // finds first (the lowest number) owns the title of the file, so the
+        // --derived column gives it the plain name. Before, 979 got
+        // MenuBar_979.
+        TEST_METHOD(ResetNames_ANameConflict_TheLowestNumberOwnsTheTitle)
+        {
+            NoAppStateForRun noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0", false);
+            Assert::IsTrue(WritePrivateProfileString("Script", "n979", "MenuBar", GameFile("game.ini").c_str()) != 0);
+            GameSession session(TestSessionOptions());
+            Open(session);
+            auto rows = ListScripts(session, true);
+            Assert::IsTrue(rows.has_value(), rows ? L"" : WideForRun(rows.error().ToString()).c_str());
+            std::string derived;
+            for (const ScriptRow &row : *rows)
+            {
+                if (row.number == 979)
+                {
+                    derived = row.derivedName;
+                }
+            }
+            Assert::AreEqual(std::string("MenuBar"), derived);
         }
     };
 }

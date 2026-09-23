@@ -34,8 +34,9 @@ enum class NameAssignment
 // of the scripts that a group of the run wrote; when game.ini has no [Script]
 // entry, the names of every script (as the Decompile dialog gives them before
 // its first run), but not those of a name conflict, and a script that a
-// reset renamed and that no group wrote keeps its name from before the reset
-// (its files have that name; review of ba63d08a). A
+// reset renamed and that no group gave an ok outcome (it failed, or no
+// group reached it) keeps its name from before the reset (its files have
+// that name; review of ba63d08a). A
 // name that game.ini has with another value is replaced (after a reset of
 // the names, the GUI then finds the new files). The default name nNNN gets no
 // entry.
@@ -64,10 +65,10 @@ struct DecompileRunOptions
     // still reads the .sco files that are on disk, so a source can differ
     // a little from the source of a run that writes. Ignored with an output.
     bool dryRun = false;
-    // After an abort, find the scripts whose files still use a global of
-    // the run by its old name (report.stale); the check reads every source
-    // file. The Decompile dialog sets false: it offers no stale script after
-    // a Cancel (review of ba63d08a).
+    // After an abort (or a batch that threw), find the scripts whose files
+    // still use a global of the run by its old name (report.stale); the
+    // check reads every source file. The Decompile dialog sets false: it
+    // offers no stale script after a Cancel (review of ba63d08a).
     bool staleAfterAbort = true;
 };
 
@@ -116,6 +117,12 @@ struct DecompileReport
     sci::Status mainObjectFile;
     // The write of the names into game.ini.
     sci::Status gameIni;
+    // The batch of a group: Ok, or the error of a batch that threw
+    // (Internal). The scripts that it did not reach keep an earlier
+    // outcome, or get the error; the stale check of an abort runs (review
+    // of e83a7d41: before, a later group that threw could leave a stale
+    // script and a report that succeeded).
+    sci::Status batch;
     // The files that the run wrote, or with dryRun would write, other than
     // the .sc and .sco of each script in scripts: the src folder and the
     // decompiler files that the run copies into it, main's .sco with the
@@ -124,8 +131,8 @@ struct DecompileReport
 
     size_t WrittenCount() const;
     size_t FailedCount() const;
-    // Every script was written, the run was not cancelled, and main's .sco
-    // and game.ini are Ok.
+    // Every script was written, the run was not cancelled, and main's .sco,
+    // game.ini and the batch are Ok.
     bool Succeeded() const;
 };
 
@@ -135,7 +142,8 @@ struct DecompileReport
 // script that decompiled goes to it at the end, in number order, and nothing
 // is written: no .sc, no .sco, no src folder, no game.ini; the run finds no
 // stale script (--stdout), and a reset of the names gives no warning about
-// the old files.
+// the old files. After an abort, no source goes to the output: the source
+// of a part of a run is not the source of a run (review of e83a7d41).
 sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<uint16_t> &scripts, const DecompileRunOptions &options,
     IDecompilerResults &results, IDecompileOutput *output = nullptr);
 

@@ -136,6 +136,8 @@ namespace cli
         }
         AddWriteStatus(facts, report.mainObjectFile);
         AddWriteStatus(facts, report.gameIni);
+        // A batch that threw: Internal gives 1 (review of e83a7d41).
+        AddStatus(facts, report.batch);
         facts.cancelled = facts.cancelled || report.cancelled;
         return ExitCodeForFacts(facts);
     }

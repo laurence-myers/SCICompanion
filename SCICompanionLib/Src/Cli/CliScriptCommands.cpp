@@ -377,8 +377,9 @@ namespace cli
                 {
                     stale.push_back(ScriptText(number, helper.GetScriptTitle(number)));
                 }
-                // With --update-stale, only an abort leaves stale scripts: the
-                // advice is the command again (review of ba63d08a).
+                // With --update-stale, only an abort (or the guard of 100
+                // groups) leaves stale scripts: the advice is the command again
+                // (review of ba63d08a).
                 output.Warning(fmt::format(dryRun ? "after the run, these scripts would use a global of the run by its old name: {0}; decompile them too{1}" :
                     "these scripts use a global of the run by its old name: {0}; decompile them again{1}", ListText(stale), updateStale ? "" : ", or give --update-stale"));
             }

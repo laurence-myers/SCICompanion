@@ -321,10 +321,15 @@ public:
 	bool NeedsNamingRounds() const { return !!_skeleton; }
 	// The first .sc or .sco file of this script that could not be written.
 	const sci::Status &WriteStatus() const { return _writeStatus; }
-	// The last decompile of the script reached its write: the files (with
-	// an output, the source) are out. An abort that comes after the write
-	// does not undo it (review of ba63d08a).
+	// The last decompile of the script reached its write: the writes of
+	// its files (with an output, of its source) were made, also when they
+	// failed (WriteStatus). An abort that comes after the write does not
+	// undo it (review of ba63d08a).
 	bool Wrote() const { return _wrote; }
+	// The globals that the last naming of the script (pass 1 or pass 2)
+	// found. They are in mainSCO already, also when the script failed
+	// after its naming (review of e83a7d41).
+	const vector<pair<string, string>> &LastRenames() const { return _lastRenames; }
 
 	// Pass 1. Decompiles the script, names it against the global names known
 	// so far, and writes it. Keeps its naming skeleton if it still refers to
@@ -334,9 +339,10 @@ public:
 	// its own. Fails if the script does not load (before plan step S4, it was
 	// dropped with no message); sets renames to the globals its naming found.
 	// A file that cannot be written is in WriteStatus.
-	sci::Status DecompileNameAndWrite(unique_ptr<CSCOFile> &mainSCO, vector<pair<string, string>> &renames)
+	sci::Status DecompileNameAndWrite(unique_ptr<CSCOFile> &mainSCO)
 	{
 		_wrote = false;
+		_lastRenames.clear();
 		DecompileState state(_helper, _scriptLookups.GetSelectorTable());
 		SCI_TRY(state.compiledScript.TryLoad(_helper, _helper.Version, _number));
 		_Decompile(state, _results);
@@ -354,7 +360,7 @@ public:
 		// rounds start from the same point the full tree's naming did.
 		unique_ptr<Script> skeleton = BuildNamingSkeleton(*state.script);
 
-		renames = _NameAndWrite(state, mainSCO.get());
+		_NameAndWrite(state, mainSCO.get());
 
 		NameCollector collector;
 		state.script->Traverse(collector);
@@ -410,15 +416,17 @@ public:
 	}
 
 	// Pass 2, for the scripts that need it. Decompiles the script again, names
-	// it against the final global names, finishes it, and writes it. Returns
-	// the globals the naming found beyond those in mainSCO (expected: none).
-	vector<pair<string, string>> DecompileAndRewrite(CSCOFile *mainSCO)
+	// it against the final global names, finishes it, and writes it.
+	// LastRenames gives the globals that the naming found beyond those in
+	// mainSCO (expected: none).
+	void DecompileAndRewrite(CSCOFile *mainSCO)
 	{
 		_namer.reset();
 		_skeleton.reset();
 		// The files of this pass replace those of pass 1.
 		_writeStatus = sci::Ok();
 		_wrote = false;
+		_lastRenames.clear();
 
 		DecompileState state(_helper, _scriptLookups.GetSelectorTable());
 		sci::Status loaded = state.compiledScript.TryLoad(_helper, _helper.Version, _number);
@@ -431,9 +439,9 @@ public:
 		_Decompile(state, quiet);
 		if (_results.IsAborted())
 		{
-			return vector<pair<string, string>>();
+			return;
 		}
-		return _NameAndWrite(state, mainSCO);
+		_NameAndWrite(state, mainSCO);
 	}
 
 private:
@@ -457,10 +465,11 @@ private:
 	}
 
 	// Names the tree against mainSCO and this script's previous .sco, then
-	// finishes it and writes its .sc and .sco. Returns the globals it named.
-	vector<pair<string, string>> _NameAndWrite(DecompileState &state, CSCOFile *mainSCO)
+	// finishes it and writes its .sc and .sco. The globals that it named go
+	// to _lastRenames at once: the namer wrote them into mainSCO, and a
+	// failure after it must not lose them (review of e83a7d41).
+	void _NameAndWrite(DecompileState &state, CSCOFile *mainSCO)
 	{
-		vector<pair<string, string>> renames;
 		{
 			unique_ptr<CSCOFile> oldSCO;
 			if (_number != 0)
@@ -468,7 +477,7 @@ private:
 				oldSCO = GetExistingSCOFromScriptNumber(_helper, _number, _scriptLookups.GetSelectorTable());
 			}
 			VariableNamer namer(*state.script, _config, mainSCO, oldSCO.get());
-			renames = namer.Run();
+			_lastRenames = namer.Run();
 		}
 
 		FinishDecompiledScript(_helper, *state.script, state.compiledScript, *state.lookups);
@@ -483,7 +492,7 @@ private:
 			// Plan step S4 (--stdout): the source, and no file.
 			_output->OnSource(_number, ss.str());
 			_wrote = true;
-			return renames;
+			return;
 		}
 
 		// Decompiling always generates an SCO. Any pertinent info from the old SCO should be transfered
@@ -500,6 +509,9 @@ private:
 		// TODO: If it already exists, we might want to ask for confirmation.
 		string sourceFilename = _helper.GetScriptFileName(_number);
 		sci::Status wroteSource = WriteTextToFile(sourceFilename, ss.str());
+		// The writes are made: before the messages, which can fail too
+		// (review of e83a7d41).
+		_wrote = true;
 		if (wroteSource)
 		{
 			_results.AddResult(DecompilerResultType::Important, fmt::format("Generated {0}", sourceFilename));
@@ -509,8 +521,6 @@ private:
 			_results.AddResult(DecompilerResultType::Error, wroteSource.error().ToString());
 			_KeepFirstWriteError(wroteSource);
 		}
-		_wrote = true;
-		return renames;
 	}
 
 	void _KeepFirstWriteError(const sci::Status &written)
@@ -531,6 +541,7 @@ private:
 	IDecompileOutput *_output;
 	sci::Status _writeStatus;
 	bool _wrote = false;
+	vector<pair<string, string>> _lastRenames;
 
 	// _namer points at _skeleton; members are destroyed in reverse order.
 	unique_ptr<Script> _skeleton;
@@ -630,13 +641,17 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 		}
 		_results.AddResult(DecompilerResultType::Important, fmt::format("Decompiling script {0}", scriptNumber));
 		unique_ptr<Item> item = make_unique<Item>(_config, _scriptLookups, _resourceMap, scriptNumber, _results, _options, _output);
-		vector<pair<string, string>> renames;
 		// The exception boundary of the script (plan step S4). No context: the
 		// message and the report name the script.
 		sci::Status decompiled = sci::Guard("", [&]() -> sci::Status
 		{
-			return item->DecompileNameAndWrite(mainSCO, renames);
+			return item->DecompileNameAndWrite(mainSCO);
 		});
+		// The globals that its naming found are in mainSCO: they count also
+		// when the script failed after its naming (review of e83a7d41:
+		// before, main's .sco did not get them, and a script that the run
+		// wrote with one of them did not compile).
+		_globalRenames.insert(_globalRenames.end(), item->LastRenames().begin(), item->LastRenames().end());
 		if (!decompiled)
 		{
 			_failed[scriptNumber] = decompiled.error();
@@ -653,7 +668,6 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 				_failed[scriptNumber] = item->WriteStatus().error();
 			}
 			_written.insert(scriptNumber);
-			_globalRenames.insert(_globalRenames.end(), renames.begin(), renames.end());
 		}
 		if (_results.IsAborted())
 		{
@@ -741,15 +755,17 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 		}
 		uint16_t number = item->GetNumber();
 		_results.AddResult(DecompilerResultType::Important, fmt::format("Decompiling script {0} again with the new global names", number));
-		vector<pair<string, string>> renames;
 		sci::Status rewritten = sci::Guard("", [&]() -> sci::Status
 		{
-			renames = item->DecompileAndRewrite(mainSCO.get());
+			item->DecompileAndRewrite(mainSCO.get());
 			return sci::Ok();
 		});
+		// As in pass 1: the names are in mainSCO (review of e83a7d41).
+		_globalRenames.insert(_globalRenames.end(), item->LastRenames().begin(), item->LastRenames().end());
 		if (!rewritten)
 		{
-			// The file on disk is what pass 1 wrote.
+			// The file on disk is what pass 1 wrote, or what pass 2 wrote
+			// when the failure came after its write (Wrote()).
 			_failed[number] = rewritten.error();
 			_results.AddResult(DecompilerResultType::Error, fmt::format("Script {0} failed to write again: {1}", number, rewritten.error().ToString()));
 		}
@@ -758,7 +774,6 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 			// Written again, also when the abort came after the write
 			// (review of ba63d08a).
 			_rewritten.insert(number);
-			_globalRenames.insert(_globalRenames.end(), renames.begin(), renames.end());
 			// The files of pass 2 replace those of pass 1, and so does their
 			// write status.
 			_failed.erase(number);

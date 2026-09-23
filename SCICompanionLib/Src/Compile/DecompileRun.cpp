@@ -276,7 +276,7 @@ size_t DecompileReport::FailedCount() const
 
 bool DecompileReport::Succeeded() const
 {
-    return !cancelled && (FailedCount() == 0) && mainObjectFile.has_value() && gameIni.has_value();
+    return !cancelled && (FailedCount() == 0) && mainObjectFile.has_value() && gameIni.has_value() && batch.has_value();
 }
 
 sci::Status PrepareDecompileFolder(const GameFolderHelper &helper, const std::string &decompilerFolder)
@@ -539,6 +539,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             if (!ran)
             {
                 results.AddResult(DecompilerResultType::Error, ran.error().ToString());
+                report.batch = ran;
                 break;
             }
             if (counting.IsAborted())
@@ -601,8 +602,9 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         // an earlier group that a later group did not reach, and a script
         // that the run did not decompile (review of c49c8143: before, only
         // the stopped rewrites). Main's .sco has the new names: the scripts
-        // that the run wrote with them need it.
-        if (report.cancelled && !output && options.staleAfterAbort && !report.globalRenames.empty())
+        // that the run wrote with them need it. The same after a batch that
+        // threw (review of e83a7d41).
+        if ((report.cancelled || !report.batch) && !output && options.staleAfterAbort && !report.globalRenames.empty())
         {
             std::set<uint16_t> candidates;
             for (CompiledScript *compiled : lookups.GetGlobalClassTable().GetAllScripts())
@@ -624,12 +626,17 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
 
         if (output)
         {
-            for (const DecompileOutcome &outcome : report.scripts)
+            // Not after an abort (review of e83a7d41: before, --stdout
+            // printed the source of pass 1 when Ctrl+C came before pass 2).
+            if (!report.cancelled)
             {
-                auto source = sources.sources.find(outcome.number);
-                if (outcome.status && (source != sources.sources.end()))
+                for (const DecompileOutcome &outcome : report.scripts)
                 {
-                    output->OnSource(outcome.number, source->second);
+                    auto source = sources.sources.find(outcome.number);
+                    if (outcome.status && (source != sources.sources.end()))
+                    {
+                        output->OnSource(outcome.number, source->second);
+                    }
                 }
             }
         }
