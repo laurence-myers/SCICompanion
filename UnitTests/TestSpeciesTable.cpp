@@ -1,6 +1,5 @@
 #include "stdafx.h"
 #include "CppUnitTest.h"
-#include "AppState.h"
 #include "GameSession.h"
 #include "ResourceMap.h"
 #include "ResourceBlob.h"
@@ -9,7 +8,7 @@
 #include "CompiledScript.h"
 #include "Vocab99x.h"
 #include "Helper.h"
-#include <filesystem>
+#include "TestSupport.h"
 #include <set>
 #include <string>
 #include <vector>
@@ -18,19 +17,6 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace
 {
-    // Runs a test with no AppState, as the command line does.
-    struct NoAppStateForSpecies
-    {
-        AppState *saved;
-        NoAppStateForSpecies() : saved(appState) { appState = nullptr; }
-        ~NoAppStateForSpecies() { appState = saved; }
-    };
-
-    std::wstring WideForSpecies(const std::string &text)
-    {
-        return std::wstring(text.begin(), text.end());
-    }
-
     // The species of the classes of a compiled script, in the script's order.
     std::vector<uint16_t> ClassSpeciesInOrder(const CompiledScript &script)
     {
@@ -57,25 +43,14 @@ namespace UnitTests
     // number order would give two classes each other's species.
     TEST_CLASS(TestSpeciesTable)
     {
-        std::string _copyFolder;
+        NoAppState _noAppState;
+        GameCopy _game;
 
     public:
-        TEST_METHOD_CLEANUP(CleanUp)
-        {
-            if (!_copyFolder.empty())
-            {
-                std::error_code ec;
-                std::filesystem::remove_all(_copyFolder, ec);
-                _copyFolder.clear();
-            }
-        }
-
         TEST_METHOD(SpeciesOrder_FollowsTheCompiledClassOrder)
         {
-            NoAppStateForSpecies noAppState;
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
-            GameSession session;
-            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            _game.Make(TemplateSci0);
+            GameSession &session = _game.Open(SessionOptions());
             const GameFolderHelper &helper = session.Helper();
 
             // A script with two or more classes.
@@ -120,8 +95,7 @@ namespace UnitTests
             data[secondAt] = (uint8_t)(first & 0xff);
             data[secondAt + 1] = (uint8_t)(first >> 8);
             ResourceBlob patched(helper, nullptr, ResourceType::Script, data, helper.Version.DefaultVolumeFile, scriptNumber, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags());
-            sci::Status written = session.ResourceMap().WriteResource(patched);
-            Assert::IsTrue(written.has_value(), WideForSpecies(written ? std::string() : written.error().ToString()).c_str());
+            AssertOk(session.ResourceMap().WriteResource(patched));
 
             SpeciesTable table;
             Assert::IsTrue(table.Load(helper));
@@ -153,7 +127,6 @@ namespace UnitTests
                 // An opt-in test fails when its input is missing (#79).
                 Assert::Fail(L"SCICOMP_SPECIES_GAME is not set. Set it to a game folder, or to several separated by ';'; this opt-in test must not pass without running.");
             }
-            NoAppStateForSpecies noAppState;
             std::string mismatches;
             int mismatchCount = 0;
             std::set<std::string> mismatchedScripts;
@@ -174,8 +147,7 @@ namespace UnitTests
                     continue;
                 }
                 GameSession session;
-                sci::Status opened = session.Open(folder);
-                Assert::IsTrue(opened.has_value(), WideForSpecies(opened ? std::string() : opened.error().ToString()).c_str());
+                AssertOk(session.Open(folder));
                 const GameFolderHelper &helper = session.Helper();
                 SpeciesTable table;
                 if (!table.Load(helper))
@@ -218,7 +190,7 @@ namespace UnitTests
                             // failed assert is cut, and on a run over many
                             // games it would hide mismatches.
                             std::string line = folder + ": script " + std::to_string(blob->GetNumber()) + " class " + std::to_string(i) + ": table " + std::to_string(fromTable.Type()) + ", compiled " + std::to_string(species[i]);
-                            Logger::WriteMessage(WideForSpecies(line).c_str());
+                            Logger::WriteMessage(Wide(line).c_str());
                             mismatchCount++;
                             mismatchedScripts.insert(folder + ": script " + std::to_string(blob->GetNumber()));
                             if (mismatches.size() < 1000)
@@ -229,12 +201,12 @@ namespace UnitTests
                     }
                 }
             }
-            Logger::WriteMessage(WideForSpecies("Scripts with a leftover class (not compared): " + std::to_string(leftoverScripts)).c_str());
+            Logger::WriteMessage(Wide("Scripts with a leftover class (not compared): " + std::to_string(leftoverScripts)).c_str());
             for (const std::string &script : mismatchedScripts)
             {
-                Logger::WriteMessage(WideForSpecies("Mismatched " + script).c_str());
+                Logger::WriteMessage(Wide("Mismatched " + script).c_str());
             }
-            Assert::AreEqual(0, mismatchCount, WideForSpecies(std::to_string(mismatchCount) + " mismatches in " + std::to_string(mismatchedScripts.size()) +
+            Assert::AreEqual(0, mismatchCount, Wide(std::to_string(mismatchCount) + " mismatches in " + std::to_string(mismatchedScripts.size()) +
                 " scripts; the test log has one line for each. The first ones:\n" + mismatches).c_str());
         }
     };

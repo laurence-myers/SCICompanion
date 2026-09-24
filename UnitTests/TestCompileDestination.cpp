@@ -1,6 +1,5 @@
 #include "stdafx.h"
 #include "CppUnitTest.h"
-#include "AppState.h"
 #include "GameSession.h"
 #include "ResourceMap.h"
 #include "GameFolderHelper.h"
@@ -10,8 +9,8 @@
 #include "FileWrite.h"
 #include "SCO.h"
 #include "Helper.h"
+#include "TestSupport.h"
 #include <filesystem>
-#include <fstream>
 #include <map>
 #include <string>
 #include <vector>
@@ -21,25 +20,6 @@ namespace fs = std::filesystem;
 
 namespace
 {
-    // Runs a test with no AppState, as the command line does.
-    struct NoAppStateForDestination
-    {
-        AppState *saved;
-        NoAppStateForDestination() : saved(appState) { appState = nullptr; }
-        ~NoAppStateForDestination() { appState = saved; }
-    };
-
-    std::wstring WideForDestination(const std::string &text)
-    {
-        return std::wstring(text.begin(), text.end());
-    }
-
-    std::vector<uint8_t> ReadAllBytes(const std::string &path)
-    {
-        std::ifstream file(path, std::ios::binary);
-        return std::vector<uint8_t>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    }
-
     // The bytes of each file under the folder, by path.
     std::map<std::string, std::vector<uint8_t>> Snapshot(const std::string &folder)
     {
@@ -48,7 +28,7 @@ namespace
         {
             if (entry.is_regular_file())
             {
-                files[entry.path().string()] = ReadAllBytes(entry.path().string());
+                files[entry.path().string()] = ReadFileBytes(entry.path().string());
             }
         }
         return files;
@@ -108,8 +88,8 @@ namespace
 
     const TemplateCase Templates[] =
     {
-        { "\\TemplateGame\\SCI0", "(use obj)\n", "Obj", "script.903", "", "text.903", "vocab.996", "vocab.997" },
-        { "\\TemplateGame\\SCI1.1", "(use System)\n", "Object", "903.scr", "903.hep", "903.tex", "996.voc", "997.voc" },
+        { TemplateSci0, "(use obj)\n", "Obj", "script.903", "", "text.903", "vocab.996", "vocab.997" },
+        { TemplateSci11, "(use System)\n", "Object", "903.scr", "903.hep", "903.tex", "996.voc", "997.voc" },
     };
 
     // A class with a new property and a new method, so the compile changes
@@ -143,35 +123,17 @@ namespace UnitTests
     // tables, and the .sco, .scd and .sc writes report their errors.
     TEST_CLASS(TestCompileDestination)
     {
-        std::string _copyFolder;
-
-        void RemoveCopy()
-        {
-            if (!_copyFolder.empty())
-            {
-                // A test can leave a read-only file.
-                std::error_code ec;
-                if (fs::exists(_copyFolder, ec))
-                {
-                    for (const auto &entry : fs::recursive_directory_iterator(_copyFolder, ec))
-                    {
-                        SetFileAttributesA(entry.path().string().c_str(), FILE_ATTRIBUTE_NORMAL);
-                    }
-                }
-                fs::remove_all(_copyFolder, ec);
-                _copyFolder.clear();
-            }
-        }
+        GameCopy _game;
+        // The temp folder of FileWrite_GivesTheFailureAndKeepsTextMode.
+        std::string _folder;
 
         // Opens a copy of the template, and writes the widget source into
         // src\S1Widget.sc.
-        void OpenCopy(const TemplateCase &templateCase, GameSession &session)
+        GameSession &OpenCopy(const TemplateCase &templateCase)
         {
-            RemoveCopy();
-            _copyFolder = CopyGameFromModuleFolder(templateCase.folder);
-            Assert::IsTrue(session.Open(_copyFolder).has_value(), L"setup: the copy must open");
-            std::ofstream file(session.Helper().GetScriptFileName("S1Widget").c_str(), std::ios::binary | std::ios::trunc);
-            file << WidgetSource(templateCase);
+            GameSession &session = _game.OpenCopy(templateCase.folder);
+            WriteFileText(session.Helper().GetScriptFileName("S1Widget"), WidgetSource(templateCase));
+            return session;
         }
 
         // Compiles src\S1Widget.sc as script 903 with the options, and saves
@@ -189,8 +151,7 @@ namespace UnitTests
             bool compiled = NewCompileScript(session, results, log, tables, headers, scriptId, options);
             if (compiled)
             {
-                sci::Status saved = tables.Save(session.ResourceMap(), options);
-                Assert::IsTrue(saved.has_value(), WideForDestination(saved ? std::string() : saved.error().ToString()).c_str());
+                AssertOk(tables.Save(session.ResourceMap(), options));
                 if (scriptBytes)
                 {
                     *scriptBytes = results.GetScriptResource();
@@ -207,9 +168,14 @@ namespace UnitTests
             return compiled;
         }
 
-        bool GameHasFile(const std::string &name)
+        // CompileWidget, then an assert that the compile succeeds; the message
+        // is the errors of the compile.
+        static void AssertCompiles(GameSession &session, const CompileWriteOptions &options,
+            std::vector<uint8_t> *scriptBytes = nullptr, std::vector<uint8_t> *heapBytes = nullptr, std::vector<uint8_t> *debugBytes = nullptr)
         {
-            return fs::exists(fs::path(_copyFolder) / name);
+            CompileLog log;
+            bool compiled = CompileWidget(session, options, log, scriptBytes, heapBytes, debugBytes);
+            Assert::IsTrue(compiled, Wide(ErrorsOfLog(log)).c_str());
         }
 
         std::map<std::string, std::vector<uint8_t>> PackageSnapshot()
@@ -217,9 +183,9 @@ namespace UnitTests
             std::map<std::string, std::vector<uint8_t>> files;
             for (const char *name : PackageFiles)
             {
-                if (GameHasFile(name))
+                if (_game.Has(name))
                 {
-                    files[name] = ReadAllBytes((fs::path(_copyFolder) / name).string());
+                    files[name] = ReadFileBytes(_game.Path(name));
                 }
             }
             return files;
@@ -228,37 +194,32 @@ namespace UnitTests
     public:
         TEST_METHOD_CLEANUP(CleanUp)
         {
-            RemoveCopy();
+            RemoveFolder(_folder);
         }
 
         // Patch in a package-mode game: every resource of the compile is a
         // patch file, and the package does not change.
         TEST_METHOD(Patch_WritesPatchFiles_PackageUnchanged)
         {
-            NoAppStateForDestination noAppState;
+            NoAppState noAppState;
             for (const TemplateCase &templateCase : Templates)
             {
-                SessionOptions sessionOptions;
-                sessionOptions.dataFolder = GetTestModuleDirectory();
-                GameSession session(sessionOptions);
-                OpenCopy(templateCase, session);
+                GameSession &session = OpenCopy(templateCase);
                 Assert::IsTrue(session.Helper().GetResourceSaveLocation(ResourceSaveLocation::Default) == ResourceSaveLocation::Package, L"setup: the template is in package mode");
                 auto package = PackageSnapshot();
 
                 CompileWriteOptions options;
                 options.saveTo = ResourceSaveLocation::Patch;
-                CompileLog log;
-                bool compiled = CompileWidget(session, options, log);
-                Assert::IsTrue(compiled, WideForDestination(ErrorsOfLog(log)).c_str());
+                AssertCompiles(session, options);
 
                 for (const char *name : { templateCase.script, templateCase.heap, templateCase.text, templateCase.classTable, templateCase.selectorTable })
                 {
                     if (*name)
                     {
-                        Assert::IsTrue(GameHasFile(name), WideForDestination(std::string("no patch file ") + name + " in " + templateCase.folder).c_str());
+                        Assert::IsTrue(_game.Has(name), Wide(std::string("no patch file ") + name + " in " + templateCase.folder).c_str());
                     }
                 }
-                Assert::IsTrue(package == PackageSnapshot(), WideForDestination(std::string("the package changed: ") + templateCase.folder).c_str());
+                Assert::IsTrue(package == PackageSnapshot(), Wide(std::string("the package changed: ") + templateCase.folder).c_str());
             }
         }
 
@@ -266,28 +227,21 @@ namespace UnitTests
         // gives patch files, as the game says.
         TEST_METHOD(Package_InAPatchModeGame_WritesThePackage)
         {
-            NoAppStateForDestination noAppState;
+            NoAppState noAppState;
             for (const TemplateCase &templateCase : Templates)
             {
-                SessionOptions sessionOptions;
-                sessionOptions.dataFolder = GetTestModuleDirectory();
-                GameSession session(sessionOptions);
-                OpenCopy(templateCase, session);
+                GameSession &session = OpenCopy(templateCase);
                 session.Helper().SetResourceSaveLocation(ResourceSaveLocation::Patch);
                 auto package = PackageSnapshot();
 
                 CompileWriteOptions options;
                 options.saveTo = ResourceSaveLocation::Package;
-                CompileLog log;
-                bool compiled = CompileWidget(session, options, log);
-                Assert::IsTrue(compiled, WideForDestination(ErrorsOfLog(log)).c_str());
-                Assert::IsFalse(GameHasFile(templateCase.script), WideForDestination(std::string("a patch file in ") + templateCase.folder).c_str());
-                Assert::IsFalse(package == PackageSnapshot(), WideForDestination(std::string("the package did not change: ") + templateCase.folder).c_str());
+                AssertCompiles(session, options);
+                Assert::IsFalse(_game.Has(templateCase.script), Wide(std::string("a patch file in ") + templateCase.folder).c_str());
+                Assert::IsFalse(package == PackageSnapshot(), Wide(std::string("the package did not change: ") + templateCase.folder).c_str());
 
-                CompileLog defaultLog;
-                compiled = CompileWidget(session, CompileWriteOptions(), defaultLog);
-                Assert::IsTrue(compiled, WideForDestination(ErrorsOfLog(defaultLog)).c_str());
-                Assert::IsTrue(GameHasFile(templateCase.script), WideForDestination(std::string("Default must follow the game's patch mode: ") + templateCase.folder).c_str());
+                AssertCompiles(session, CompileWriteOptions());
+                Assert::IsTrue(_game.Has(templateCase.script), Wide(std::string("Default must follow the game's patch mode: ") + templateCase.folder).c_str());
             }
         }
 
@@ -295,14 +249,11 @@ namespace UnitTests
         // change, and src\ gets the .sco.
         TEST_METHOD(OutDir_WritesPatchFilesThere_GameUnchanged)
         {
-            NoAppStateForDestination noAppState;
+            NoAppState noAppState;
             for (const TemplateCase &templateCase : Templates)
             {
-                SessionOptions sessionOptions;
-                sessionOptions.dataFolder = GetTestModuleDirectory();
-                GameSession session(sessionOptions);
-                OpenCopy(templateCase, session);
-                std::string outDir = _copyFolder + "\\out";
+                GameSession &session = OpenCopy(templateCase);
+                std::string outDir = _game.Path("out");
                 fs::create_directory(outDir);
                 fs::remove(session.Helper().GetScriptObjectFileName("S1Widget"));
                 auto package = PackageSnapshot();
@@ -310,20 +261,18 @@ namespace UnitTests
                 CompileWriteOptions options;
                 options.saveTo = ResourceSaveLocation::Patch;
                 options.outDir = outDir;
-                CompileLog log;
-                bool compiled = CompileWidget(session, options, log);
-                Assert::IsTrue(compiled, WideForDestination(ErrorsOfLog(log)).c_str());
+                AssertCompiles(session, options);
 
                 for (const char *name : { templateCase.script, templateCase.heap, templateCase.text, templateCase.classTable, templateCase.selectorTable })
                 {
                     if (*name)
                     {
-                        Assert::IsTrue(fs::exists(fs::path(outDir) / name), WideForDestination(std::string("no ") + name + " in the output folder").c_str());
-                        Assert::IsFalse(GameHasFile(name), WideForDestination(std::string("a patch file in the game: ") + name).c_str());
+                        Assert::IsTrue(fs::exists(fs::path(outDir) / name), Wide(std::string("no ") + name + " in the output folder").c_str());
+                        Assert::IsFalse(_game.Has(name), Wide(std::string("a patch file in the game: ") + name).c_str());
                     }
                 }
                 // The patch header: the type with the high bit, then 0.
-                std::vector<uint8_t> script = ReadAllBytes((fs::path(outDir) / templateCase.script).string());
+                std::vector<uint8_t> script = ReadFileBytes((fs::path(outDir) / templateCase.script).string());
                 Assert::IsTrue((script.size() > 2) && (script[0] == (0x80 | (int)ResourceType::Script)) && (script[1] == 0), L"the script patch file has the patch header");
                 Assert::IsTrue(package == PackageSnapshot(), L"the package changed");
                 Assert::IsTrue(fs::exists(session.Helper().GetScriptObjectFileName("S1Widget")), L"the .sco goes to src\\");
@@ -334,63 +283,49 @@ namespace UnitTests
         // gets no .sco: the .sco describes the resources.
         TEST_METHOD(OutDir_AFailedWrite_NoObjectFile)
         {
-            NoAppStateForDestination noAppState;
-            SessionOptions sessionOptions;
-            sessionOptions.dataFolder = GetTestModuleDirectory();
-            GameSession session(sessionOptions);
-            OpenCopy(Templates[0], session);
-            std::string outDir = _copyFolder + "\\out";
+            NoAppState noAppState;
+            GameSession &session = OpenCopy(Templates[0]);
+            std::string outDir = _game.Path("out");
             fs::create_directory(outDir);
             std::string sco = session.Helper().GetScriptObjectFileName("S1Widget");
             fs::remove(sco);
             std::string target = (fs::path(outDir) / Templates[0].script).string();
-            {
-                std::ofstream file(target.c_str(), std::ios::binary | std::ios::trunc);
-                file << "an old script";
-            }
+            WriteFileText(target, "an old script");
             Assert::IsTrue(SetFileAttributesA(target.c_str(), FILE_ATTRIBUTE_READONLY) != 0);
             CompileWriteOptions options;
             options.saveTo = ResourceSaveLocation::Patch;
             options.outDir = outDir;
             CompileLog log;
-            bool compiled = CompileWidget(session, options, log);
-            // Writable again, so that the clean-up can remove the copy.
-            SetFileAttributesA(target.c_str(), FILE_ATTRIBUTE_NORMAL);
-            Assert::IsFalse(compiled, L"the script file cannot be written");
+            Assert::IsFalse(CompileWidget(session, options, log), L"the script file cannot be written");
             Assert::IsFalse(fs::exists(sco), L"no .sco for a script whose resource was not written");
         }
 
         // With raw, the output folder gets the plain data of each resource.
         TEST_METHOD(OutDirRaw_WritesThePlainData)
         {
-            NoAppStateForDestination noAppState;
+            NoAppState noAppState;
             for (const TemplateCase &templateCase : Templates)
             {
-                SessionOptions sessionOptions;
-                sessionOptions.dataFolder = GetTestModuleDirectory();
-                GameSession session(sessionOptions);
-                OpenCopy(templateCase, session);
-                std::string outDir = _copyFolder + "\\raw";
+                GameSession &session = OpenCopy(templateCase);
+                std::string outDir = _game.Path("raw");
                 fs::create_directory(outDir);
 
                 CompileWriteOptions options;
                 options.saveTo = ResourceSaveLocation::Patch;
                 options.outDir = outDir;
                 options.raw = true;
-                CompileLog log;
                 std::vector<uint8_t> scriptBytes;
                 std::vector<uint8_t> heapBytes;
-                bool compiled = CompileWidget(session, options, log, &scriptBytes, &heapBytes);
-                Assert::IsTrue(compiled, WideForDestination(ErrorsOfLog(log)).c_str());
+                AssertCompiles(session, options, &scriptBytes, &heapBytes);
 
-                Assert::IsTrue(ReadAllBytes(outDir + "\\script.903.bin") == scriptBytes, L"script.903.bin must hold the script's bytes");
+                Assert::IsTrue(ReadFileBytes(outDir + "\\script.903.bin") == scriptBytes, L"script.903.bin must hold the script's bytes");
                 if (*templateCase.heap)
                 {
-                    Assert::IsTrue(!heapBytes.empty() && (ReadAllBytes(outDir + "\\heap.903.bin") == heapBytes), L"heap.903.bin must hold the heap's bytes");
+                    Assert::IsTrue(!heapBytes.empty() && (ReadFileBytes(outDir + "\\heap.903.bin") == heapBytes), L"heap.903.bin must hold the heap's bytes");
                 }
                 for (const char *name : { "text.903.bin", "vocab.996.bin", "vocab.997.bin" })
                 {
-                    Assert::IsTrue(fs::exists(fs::path(outDir) / name), WideForDestination(std::string("no ") + name).c_str());
+                    Assert::IsTrue(fs::exists(fs::path(outDir) / name), Wide(std::string("no ") + name).c_str());
                 }
                 Assert::IsFalse(fs::exists(fs::path(outDir) / templateCase.script), L"raw writes no patch file");
             }
@@ -399,45 +334,37 @@ namespace UnitTests
         // An output folder takes patch files, not the package.
         TEST_METHOD(OutDirWithPackage_IsAnError)
         {
-            NoAppStateForDestination noAppState;
-            SessionOptions sessionOptions;
-            sessionOptions.dataFolder = GetTestModuleDirectory();
-            GameSession session(sessionOptions);
-            OpenCopy(Templates[0], session);
+            NoAppState noAppState;
+            GameSession &session = OpenCopy(Templates[0]);
             auto package = PackageSnapshot();
 
             CompileWriteOptions options;
             options.saveTo = ResourceSaveLocation::Package;
-            options.outDir = _copyFolder;
+            options.outDir = _game.Folder();
             CompileLog log;
             Assert::IsFalse(CompileWidget(session, options, log), L"an output folder with the package must fail");
             std::string errors = ErrorsOfLog(log);
-            Assert::IsTrue(errors.find("output folder") != std::string::npos, WideForDestination(errors).c_str());
+            Assert::IsTrue(errors.find("output folder") != std::string::npos, Wide(errors).c_str());
             Assert::IsTrue(package == PackageSnapshot(), L"the package changed");
         }
 
         // A dry run writes nothing: no resource, table, .sco or .scd.
         TEST_METHOD(DryRun_WritesNothing)
         {
-            NoAppStateForDestination noAppState;
+            NoAppState noAppState;
             for (const TemplateCase &templateCase : Templates)
             {
-                SessionOptions sessionOptions;
-                sessionOptions.dataFolder = GetTestModuleDirectory();
-                GameSession session(sessionOptions);
-                OpenCopy(templateCase, session);
+                GameSession &session = OpenCopy(templateCase);
                 session.Helper().SetIniString(GameSection, "GenerateDebugInfo", "true");
-                auto before = Snapshot(_copyFolder);
+                auto before = Snapshot(_game.Folder());
 
                 CompileWriteOptions options;
                 options.writeResources = false;
                 options.writeObjectFile = false;
                 options.writeDebugInfo = false;
-                CompileLog log;
-                bool compiled = CompileWidget(session, options, log);
-                Assert::IsTrue(compiled, WideForDestination(ErrorsOfLog(log)).c_str());
-                std::string differences = Differences(before, Snapshot(_copyFolder));
-                Assert::IsTrue(differences.empty(), WideForDestination(differences).c_str());
+                AssertCompiles(session, options);
+                std::string differences = Differences(before, Snapshot(_game.Folder()));
+                Assert::IsTrue(differences.empty(), Wide(differences).c_str());
             }
         }
 
@@ -445,71 +372,60 @@ namespace UnitTests
         // it, and not with writeDebugInfo false.
         TEST_METHOD(DebugInfo_IsWrittenOnlyWhenAsked)
         {
-            NoAppStateForDestination noAppState;
-            SessionOptions sessionOptions;
-            sessionOptions.dataFolder = GetTestModuleDirectory();
-            GameSession session(sessionOptions);
-            OpenCopy(Templates[1], session);
+            NoAppState noAppState;
+            GameSession &session = OpenCopy(Templates[1]);
             session.Helper().SetIniString(GameSection, "GenerateDebugInfo", "true");
-            std::string scd = _copyFolder + "\\debug\\903.scd";
+            std::string scd = _game.Path("debug\\903.scd");
 
             CompileWriteOptions noDebug;
             noDebug.writeDebugInfo = false;
-            CompileLog log;
-            Assert::IsTrue(CompileWidget(session, noDebug, log), WideForDestination(ErrorsOfLog(log)).c_str());
+            AssertCompiles(session, noDebug);
             Assert::IsFalse(fs::exists(scd), L"no .scd with writeDebugInfo false");
 
-            CompileLog debugLog;
             std::vector<uint8_t> debugBytes;
-            Assert::IsTrue(CompileWidget(session, CompileWriteOptions(), debugLog, nullptr, nullptr, &debugBytes), WideForDestination(ErrorsOfLog(debugLog)).c_str());
+            AssertCompiles(session, CompileWriteOptions(), nullptr, nullptr, &debugBytes);
             Assert::IsFalse(debugBytes.empty(), L"setup: the game makes debug information");
-            Assert::IsTrue(ReadAllBytes(scd) == debugBytes, L"debug\\903.scd must hold the debug information");
+            Assert::IsTrue(ReadFileBytes(scd) == debugBytes, L"debug\\903.scd must hold the debug information");
         }
 
         // A .sco that cannot be written is an error of the compile.
         TEST_METHOD(ObjectFile_ReadOnly_IsACompileError)
         {
-            NoAppStateForDestination noAppState;
-            SessionOptions sessionOptions;
-            sessionOptions.dataFolder = GetTestModuleDirectory();
-            GameSession session(sessionOptions);
-            OpenCopy(Templates[0], session);
+            NoAppState noAppState;
+            GameSession &session = OpenCopy(Templates[0]);
             std::string sco = session.Helper().GetScriptObjectFileName("S1Widget");
-            {
-                std::ofstream file(sco.c_str(), std::ios::binary | std::ios::trunc);
-                file << "old";
-            }
+            WriteFileText(sco, "old");
             Assert::IsTrue(!!SetFileAttributesA(sco.c_str(), FILE_ATTRIBUTE_READONLY), L"setup: the .sco must be read-only");
 
             CompileLog log;
             Assert::IsFalse(CompileWidget(session, CompileWriteOptions(), log), L"the compile must fail when its .sco cannot be written");
             std::string errors = ErrorsOfLog(log);
-            Assert::IsTrue(errors.find("S1Widget.sco") != std::string::npos, WideForDestination(errors).c_str());
-            Assert::IsTrue(ReadAllBytes(sco) == std::vector<uint8_t>({ 'o', 'l', 'd' }), L"the read-only .sco must not change");
+            Assert::IsTrue(errors.find("S1Widget.sco") != std::string::npos, Wide(errors).c_str());
+            Assert::IsTrue(ReadFileBytes(sco) == std::vector<uint8_t>({ 'o', 'l', 'd' }), L"the read-only .sco must not change");
         }
 
         // The file writer gives NotFound for a missing folder, Io for a
         // read-only file, and CR LF for each line feed of a text.
         TEST_METHOD(FileWrite_GivesTheFailureAndKeepsTextMode)
         {
-            _copyFolder = (fs::temp_directory_path() / ("S1FileWrite_" + std::to_string(GetCurrentProcessId()))).string();
-            fs::create_directories(_copyFolder);
+            _folder = (fs::temp_directory_path() / ("S1FileWrite_" + std::to_string(GetCurrentProcessId()))).string();
+            fs::create_directories(_folder);
 
-            sci::Status missing = WriteBytesToFile(_copyFolder + "\\no such folder\\a.bin", std::vector<uint8_t>({ 1, 2 }));
+            sci::Status missing = WriteBytesToFile(_folder + "\\no such folder\\a.bin", std::vector<uint8_t>({ 1, 2 }));
             Assert::IsFalse(missing.has_value());
-            Assert::IsTrue(missing.error().code == sci::ErrorCode::NotFound, WideForDestination(missing.error().ToString()).c_str());
+            Assert::IsTrue(missing.error().code == sci::ErrorCode::NotFound, Wide(missing.error().ToString()).c_str());
 
-            std::string readOnly = _copyFolder + "\\readonly.bin";
-            Assert::IsTrue(WriteBytesToFile(readOnly, std::vector<uint8_t>({ 1 })).has_value());
+            std::string readOnly = _folder + "\\readonly.bin";
+            AssertOk(WriteBytesToFile(readOnly, std::vector<uint8_t>({ 1 })));
             SetFileAttributesA(readOnly.c_str(), FILE_ATTRIBUTE_READONLY);
             sci::Status denied = WriteBytesToFile(readOnly, std::vector<uint8_t>({ 2 }));
             Assert::IsFalse(denied.has_value());
-            Assert::IsTrue(denied.error().code == sci::ErrorCode::Io, WideForDestination(denied.error().ToString()).c_str());
+            Assert::IsTrue(denied.error().code == sci::ErrorCode::Io, Wide(denied.error().ToString()).c_str());
             Assert::IsTrue(denied.error().ToString().find("readonly.bin") != std::string::npos, L"the error names the file");
 
-            std::string text = _copyFolder + "\\text.sc";
-            Assert::IsTrue(WriteTextToFile(text, "a\nb\n").has_value());
-            Assert::IsTrue(ReadAllBytes(text) == std::vector<uint8_t>({ 'a', '\r', '\n', 'b', '\r', '\n' }), L"text mode: CR LF for each line feed");
+            std::string text = _folder + "\\text.sc";
+            AssertOk(WriteTextToFile(text, "a\nb\n"));
+            Assert::IsTrue(ReadFileBytes(text) == std::vector<uint8_t>({ 'a', '\r', '\n', 'b', '\r', '\n' }), L"text mode: CR LF for each line feed");
         }
     };
 }

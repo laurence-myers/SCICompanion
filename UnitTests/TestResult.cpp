@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "CppUnitTest.h"
 #include "Result.h"
+#include "TestSupport.h"
 #include <string>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -10,10 +11,7 @@ namespace
 {
     void AssertCode(ErrorCode expected, const Error &error)
     {
-        std::wstring message = L"error was: ";
-        std::string text = error.ToString();
-        message += std::wstring(text.begin(), text.end());
-        Assert::AreEqual(std::string(ErrorCodeName(expected)), std::string(ErrorCodeName(error.code)), message.c_str());
+        Assert::AreEqual(std::string(ErrorCodeName(expected)), std::string(ErrorCodeName(error.code)), Wide("error was: " + error.ToString()).c_str());
     }
 
     bool Contains(const std::string &text, const std::string &part)
@@ -76,14 +74,13 @@ namespace UnitTests
         TEST_METHOD(Ok_IsSuccess)
         {
             Status status = Ok();
-            Assert::IsTrue(status.has_value());
+            AssertOk(status);
         }
 
         TEST_METHOD(Guard_PassesValueThrough)
         {
             Result<int> result = Guard("ctx", []() -> Result<int> { return 42; });
-            Assert::IsTrue(result.has_value());
-            Assert::AreEqual(42, *result);
+            Assert::AreEqual(42, ValueOf(result));
         }
 
         TEST_METHOD(Guard_PassesErrorThroughUnchanged)
@@ -227,15 +224,14 @@ namespace UnitTests
             Assert::AreEqual(std::string("first failed"), failed.error().message);
 
             Status succeeded = TwoSteps(false, secondRan);
-            Assert::IsTrue(succeeded.has_value());
+            AssertOk(succeeded);
             Assert::AreEqual(1, secondRan);
         }
 
         TEST_METHOD(SciTryAssign_MovesTheValue)
         {
             Result<size_t> length = TextLength(true);
-            Assert::IsTrue(length.has_value());
-            Assert::AreEqual(size_t(5), *length);
+            Assert::AreEqual(size_t(5), ValueOf(length));
 
             Result<size_t> failed = TextLength(false);
             AssertCode(ErrorCode::NotFound, failed.error());
@@ -257,7 +253,7 @@ namespace UnitTests
         TEST_METHOD(WithContext_AddsOnlyOnError)
         {
             Result<int> ok = WithContext(Result<int>(3), "script 1");
-            Assert::IsTrue(ok.has_value());
+            AssertOk(ok);
 
             Result<int> failed = WithContext(Result<int>(Fail(ErrorCode::Io, "disk full")), "writing 1.hep");
             failed = WithContext(std::move(failed), "script 1 (Main)");

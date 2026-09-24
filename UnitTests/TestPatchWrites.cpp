@@ -8,6 +8,7 @@
 #include "GameFolderHelper.h"
 #include "Text.h"
 #include "Helper.h"
+#include "TestSupport.h"
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -33,7 +34,6 @@ namespace UnitTests
     TEST_CLASS(TestPatchWrites)
     {
         std::string _gameFolder;
-        std::vector<std::string> _readOnlyFiles;
 
         static ResourceBlob MakeText(const GameFolderHelper &helper, int number, const std::vector<uint8_t> &bytes)
         {
@@ -93,14 +93,11 @@ namespace UnitTests
 
         TEST_METHOD_CLEANUP(CleanUp)
         {
-            for (const std::string &path : _readOnlyFiles)
-            {
-                SetFileAttributesA(path.c_str(), FILE_ATTRIBUTE_NORMAL);
-            }
-            _readOnlyFiles.clear();
             if (!_gameFolder.empty())
             {
-                CleanUpGame(_gameFolder);
+                // RemoveFolder also deletes the read-only files of a test.
+                CleanUpExistingGame();
+                RemoveFolder(_gameFolder);
                 _gameFolder.clear();
             }
         }
@@ -120,7 +117,7 @@ namespace UnitTests
             Assert::IsFalse(failed.has_value());
             Assert::AreEqual(std::string("unsupported"), std::string(sci::ErrorCodeName(failed.error().code)));
             std::string message = failed.error().ToString();
-            Assert::IsTrue(message.find(std::to_string(MaxResourceSize)) != std::string::npos, std::wstring(message.begin(), message.end()).c_str());
+            Assert::IsTrue(message.find(std::to_string(MaxResourceSize)) != std::string::npos, Wide(message).c_str());
             Assert::IsTrue(message.find("Text 913") != std::string::npos, L"the error must name the resource");
             Assert::AreEqual(std::string("(missing)"), ReadPatchText(913));
         }
@@ -129,16 +126,15 @@ namespace UnitTests
         {
             CResourceMap &rm = appState->GetResourceMap();
             const GameFolderHelper &helper = rm.Helper();
-            Assert::IsTrue(rm.WriteResource(MakeText(helper, 920, Bytes("old920"))).has_value());
-            Assert::IsTrue(rm.WriteResource(MakeText(helper, 921, Bytes("old921"))).has_value());
+            AssertOk(rm.WriteResource(MakeText(helper, 920, Bytes("old920"))));
+            AssertOk(rm.WriteResource(MakeText(helper, 921, Bytes("old921"))));
             SetFileAttributesA(PatchPath(921).c_str(), FILE_ATTRIBUTE_READONLY);
-            _readOnlyFiles.push_back(PatchPath(921));
 
             sci::Status committed = sci::Ok();
             {
                 DeferResourceAppend batch(rm);
-                Assert::IsTrue(rm.WriteResource(MakeText(helper, 920, Bytes("new920"))).has_value());
-                Assert::IsTrue(rm.WriteResource(MakeText(helper, 921, Bytes("new921"))).has_value());
+                AssertOk(rm.WriteResource(MakeText(helper, 920, Bytes("new920"))));
+                AssertOk(rm.WriteResource(MakeText(helper, 921, Bytes("new921"))));
                 committed = batch.Commit();
             }
 
@@ -146,7 +142,7 @@ namespace UnitTests
             Assert::AreEqual(std::string("io"), std::string(sci::ErrorCodeName(committed.error().code)));
             std::string message = committed.error().ToString();
             std::string name = GetFileNameFor(ResourceType::Text, 921, NoBase36, helper.Version);
-            Assert::IsTrue(message.find(name) != std::string::npos, std::wstring(message.begin(), message.end()).c_str());
+            Assert::IsTrue(message.find(name) != std::string::npos, Wide(message).c_str());
             Assert::AreEqual(std::string("old920"), ReadPatchText(920), L"no patch file of the batch may be replaced");
             Assert::AreEqual(std::string("old921"), ReadPatchText(921));
             Assert::IsFalse(AnyBakFile(), L"no .bak file may be left behind");
@@ -173,13 +169,12 @@ namespace UnitTests
                 return maps;
             };
             ResourceBlob audio(helper, nullptr, ResourceType::Audio, std::vector<uint8_t>(64, 0x80), 0, 5, NoBase36, helper.Version, ResourceSourceFlags::AudioCache);
-            Assert::IsTrue(rm.WriteResource(audio).has_value());
+            AssertOk(rm.WriteResource(audio));
             rm.RepackageAudio(true);
             Assert::AreEqual(size_t(1), upToDateMaps().count(mapNumber), L"the repackage marks the cache map up to date");
 
             std::string cacheMap = _gameFolder + "\\audiocache\\" + GetFileNameFor(ResourceType::AudioMap, mapNumber, NoBase36, helper.Version);
             SetFileAttributesA(cacheMap.c_str(), FILE_ATTRIBUTE_READONLY);
-            _readOnlyFiles.push_back(cacheMap);
             Assert::IsFalse(rm.WriteResource(audio).has_value());
 
             // The new audio file is in the cache, so the next repackage must
@@ -197,14 +192,11 @@ namespace UnitTests
             ResourceBlob audio(helper, nullptr, ResourceType::Audio, std::vector<uint8_t>(64, 0x80), 0, 5, NoBase36, helper.Version, ResourceSourceFlags::AudioCache);
 
             // The first write makes the audio cache and its audio map.
-            sci::Status first = rm.WriteResource(audio);
-            std::string firstText = first ? std::string() : first.error().ToString();
-            Assert::IsTrue(first.has_value(), std::wstring(firstText.begin(), firstText.end()).c_str());
+            AssertOk(rm.WriteResource(audio));
             std::string cacheMap = _gameFolder + "\\audiocache\\" + GetFileNameFor(ResourceType::AudioMap, helper.Version.AudioMapResourceNumber, NoBase36, helper.Version);
-            Assert::IsTrue(std::filesystem::exists(cacheMap), std::wstring(cacheMap.begin(), cacheMap.end()).c_str());
+            Assert::IsTrue(std::filesystem::exists(cacheMap), Wide(cacheMap).c_str());
 
             SetFileAttributesA(cacheMap.c_str(), FILE_ATTRIBUTE_READONLY);
-            _readOnlyFiles.push_back(cacheMap);
             sci::Status failed = rm.WriteResource(audio);
 
             Assert::IsFalse(failed.has_value(), L"a failed save of the cache's audio map must come back");
@@ -215,7 +207,7 @@ namespace UnitTests
         {
             CResourceMap &rm = appState->GetResourceMap();
             const GameFolderHelper &helper = rm.Helper();
-            Assert::IsTrue(rm.WriteResource(MakeText(helper, 907, Bytes("original"))).has_value());
+            AssertOk(rm.WriteResource(MakeText(helper, 907, Bytes("original"))));
             Assert::AreEqual(std::string("original"), ReadPatchText(907));
 
             std::vector<uint8_t> tooBig(MaxResourceSize + 1, 'x');
@@ -231,13 +223,13 @@ namespace UnitTests
         {
             CResourceMap &rm = appState->GetResourceMap();
             const GameFolderHelper &helper = rm.Helper();
-            Assert::IsTrue(rm.WriteResource(MakeText(helper, 908, Bytes("old"))).has_value());
+            AssertOk(rm.WriteResource(MakeText(helper, 908, Bytes("old"))));
 
             sci::Status committed = sci::Ok();
             {
                 DeferResourceAppend batch(rm);
-                Assert::IsTrue(rm.WriteResource(MakeText(helper, 908, Bytes("new"))).has_value());
-                Assert::IsTrue(rm.WriteResource(MakeText(helper, 909, std::vector<uint8_t>(MaxResourceSize + 1, 'x'))).has_value());
+                AssertOk(rm.WriteResource(MakeText(helper, 908, Bytes("new"))));
+                AssertOk(rm.WriteResource(MakeText(helper, 909, std::vector<uint8_t>(MaxResourceSize + 1, 'x'))));
                 committed = batch.Commit();
             }
 
@@ -254,10 +246,10 @@ namespace UnitTests
             Assert::IsFalse(tooBigForSci0.has_value());
             Assert::AreEqual(std::string("unsupported"), std::string(sci::ErrorCodeName(tooBigForSci0.error().code)));
             Assert::IsTrue(tooBigForSci0.error().message.find(std::to_string(MaxResourceSize)) != std::string::npos);
-            Assert::IsTrue(CheckResourceSize(sci0, MaxResourceSize, ResourceType::Text).has_value());
+            AssertOk(CheckResourceSize(sci0, MaxResourceSize, ResourceType::Text));
 
             SCIVersion sci11 = sciVersion1_1;
-            Assert::IsTrue(CheckResourceSize(sci11, MaxResourceSize + 1, ResourceType::Text).has_value(), L"SCI1.1 maps allow larger resources");
+            AssertOk(CheckResourceSize(sci11, MaxResourceSize + 1, ResourceType::Text), "SCI1.1 maps allow larger resources");
             sci::Status tooBigForSci11 = CheckResourceSize(sci11, MaxResourceSizeLarge + 1, ResourceType::Text);
             Assert::IsFalse(tooBigForSci11.has_value());
             Assert::IsTrue(tooBigForSci11.error().message.find(std::to_string(MaxResourceSizeLarge)) != std::string::npos, L"the message must quote the limit of this format");

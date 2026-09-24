@@ -4,10 +4,10 @@
 #include "CCrystalTextBuffer.h"
 #include "CrystalScriptStream.h"
 #include "Helper.h"
+#include "TestSupport.h"
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
-#include <fstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,11 +23,6 @@ namespace UnitTests
     TEST_CLASS(TestScriptText)
     {
         std::string _folder;
-
-        static std::wstring Wide(const std::string &text)
-        {
-            return std::wstring(text.begin(), text.end());
-        }
 
         static std::vector<std::string> EditorLines(const std::string &path)
         {
@@ -47,7 +42,7 @@ namespace UnitTests
         static void AssertSameLines(const std::string &path)
         {
             sci::Result<ScriptText> text = LoadScriptText(path);
-            Assert::IsTrue(text.has_value(), Wide(path).c_str());
+            AssertOk(text, path);
             std::vector<std::string> expected = EditorLines(path);
             Assert::AreEqual(expected.size(), text->lines.size(), Wide(path + ": line count").c_str());
             for (size_t i = 0; i < expected.size(); i++)
@@ -62,8 +57,7 @@ namespace UnitTests
         std::string WriteTestFile(const std::string &name, const std::string &contents)
         {
             std::string path = _folder + "\\" + name;
-            std::ofstream file(path, std::ios::binary);
-            file.write(contents.data(), contents.size());
+            WriteFileText(path, contents);
             return path;
         }
 
@@ -84,8 +78,7 @@ namespace UnitTests
 
         TEST_METHOD_CLEANUP(CleanUp)
         {
-            std::error_code ec;
-            std::filesystem::remove_all(_folder, ec);
+            RemoveFolder(_folder);
         }
 
         TEST_METHOD(TemplateScriptsAndHeaders_SameLinesAsTheEditor)
@@ -169,7 +162,7 @@ namespace UnitTests
             Assert::IsTrue(!!buffer.LoadFromFile(path.c_str()));
             CScriptStreamLimiter fromEditor(&buffer);
             sci::Result<ScriptText> text = LoadScriptText(path);
-            Assert::IsTrue(text.has_value());
+            AssertOk(text);
             CScriptStreamLimiter fromText(*text);
 
             Assert::AreEqual(fromEditor.GetLineCount(), fromText.GetLineCount());

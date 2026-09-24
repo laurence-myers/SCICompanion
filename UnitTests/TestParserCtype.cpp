@@ -19,7 +19,7 @@
 #include "DecompileHelper.h"
 #include "AppState.h"
 #include "ResourceMap.h"
-#include <fstream>
+#include "TestSupport.h"
 #include <string>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -119,12 +119,6 @@ namespace UnitTests
     {
         std::string _gameFolder;
 
-        static void WriteText(const std::string &path, const std::string &text)
-        {
-            std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
-            file << text;
-        }
-
     public:
         TEST_METHOD_INITIALIZE(Setup)
         {
@@ -154,14 +148,14 @@ namespace UnitTests
                 ")\n";
             std::string error;
             std::unique_ptr<sci::Script> script = TryParseSierraScript(source, &error);
-            Assert::IsTrue(script != nullptr, std::wstring(error.begin(), error.end()).c_str());
+            Assert::IsTrue(script != nullptr, Wide(error).c_str());
             Assert::AreEqual(size_t(1), script->GetClasses().size());
             const sci::ClassPropertyVector &properties = script->GetClasses()[0]->GetProperties();
             Assert::AreEqual(size_t(1), properties.size());
             Assert::AreEqual(std::string("dungeon#"), properties[0]->GetName(), L"the property name keeps its #");
 
             std::string text = ScriptToText(*script);
-            std::wstring wideText(text.begin(), text.end());
+            std::wstring wideText = Wide(text);
             Assert::IsTrue(text.find("dungeon# 0") != std::string::npos, wideText.c_str());
             Assert::IsTrue(text.find("dungeon#:") != std::string::npos, wideText.c_str());
             Assert::IsTrue(text.find("dungeon_") == std::string::npos, wideText.c_str());
@@ -188,22 +182,22 @@ namespace UnitTests
                 "    )\n"
                 ")\n";
             std::string path = appState->GetResourceMap().Helper().GetScriptFileName("HashTest");
-            WriteText(path, source);
+            WriteFileText(path, source);
             // Compile first: the text of the assert must not read error in
             // the same call.
             std::string error;
             bool compiled = CompileFixture(950, "HashTest", &error);
-            Assert::IsTrue(compiled, (L"the source did not compile: " + std::wstring(error.begin(), error.end())).c_str());
+            Assert::IsTrue(compiled, Wide("the source did not compile: " + error).c_str());
 
             DecompileOutput decompiled = DecompileToText(950);
-            std::wstring wideText(decompiled.text.begin(), decompiled.text.end());
+            std::wstring wideText = Wide(decompiled.text);
             Assert::IsTrue(decompiled.text.find("dungeon_") == std::string::npos, wideText.c_str());
             Assert::IsTrue(decompiled.text.find("dungeon#") != std::string::npos, wideText.c_str());
 
-            WriteText(path, decompiled.text);
+            WriteFileText(path, decompiled.text);
             error.clear();
             compiled = CompileFixture(950, "HashTest", &error);
-            Assert::IsTrue(compiled, (L"the decompiled text did not compile: " + std::wstring(error.begin(), error.end()) + L"\n" + wideText).c_str());
+            Assert::IsTrue(compiled, Wide("the decompiled text did not compile: " + error + "\n" + decompiled.text).c_str());
         }
 
         // A # cannot start a name: that is a selector literal (#look).
@@ -217,9 +211,9 @@ namespace UnitTests
                 ")\n";
             std::string error;
             std::unique_ptr<sci::Script> script = TryParseSierraScript(source, &error);
-            Assert::IsTrue(script != nullptr, std::wstring(error.begin(), error.end()).c_str());
+            Assert::IsTrue(script != nullptr, Wide(error).c_str());
             std::string text = ScriptToText(*script);
-            Assert::IsTrue(text.find("#look") != std::string::npos, std::wstring(text.begin(), text.end()).c_str());
+            Assert::IsTrue(text.find("#look") != std::string::npos, Wide(text).c_str());
         }
     };
 }

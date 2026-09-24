@@ -25,7 +25,7 @@
 #include "CompileInterfaces.h"
 #include "CompileContext.h"
 #include "DecompileHelper.h"
-#include <fstream>
+#include "TestSupport.h"
 #include <map>
 #include <memory>
 #include <string>
@@ -150,15 +150,12 @@ namespace UnitTests
                 "    (return 2)\n"
                 ")\n";
             std::string path = resourceMap.Helper().GetScriptFileName(name);
-            {
-                std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
-                file << source;
-            }
+            WriteFileText(path, source);
             // Compile first: the arguments of Assert::IsTrue are evaluated in
             // no fixed order, so the text must not read error in the same call.
             std::string error;
             bool fixtureCompiled = CompileFixture(950, name, &error);
-            Assert::IsTrue(fixtureCompiled, std::wstring(error.begin(), error.end()).c_str());
+            Assert::IsTrue(fixtureCompiled, Wide(error).c_str());
 
             ScriptId scriptId(path.c_str());
             scriptId.SetResourceNumber(950);
@@ -201,7 +198,7 @@ namespace UnitTests
                 "    (return 2)\n"
                 ")\n";
             std::string differences = CompareScoExports(950, "SeveralSlots", source);
-            Assert::IsTrue(differences.empty(), std::wstring(differences.begin(), differences.end()).c_str());
+            Assert::IsTrue(differences.empty(), Wide(differences).c_str());
         }
 
         // For each script of both templates, the .sco built from the source
@@ -259,10 +256,7 @@ namespace UnitTests
         {
             CResourceMap &resourceMap = appState->GetResourceMap();
             std::string path = resourceMap.Helper().GetScriptFileName(name);
-            {
-                std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
-                file << source;
-            }
+            WriteFileText(path, source);
             std::string error;
             bool compiled = CompileFixture(number, name, &error);
             if (!compiled)
@@ -309,9 +303,8 @@ namespace UnitTests
             {
                 differences += CompareWithTheCompilersSco(scriptId, lookups);
             }
-            std::wstring wideName(templateName.begin(), templateName.end());
-            Assert::IsTrue(compiledScripts.size() > 20, (L"too few scripts in the " + wideName + L" template").c_str());
-            Assert::IsTrue(differences.empty(), (wideName + L":\n" + std::wstring(differences.begin(), differences.end())).c_str());
+            Assert::IsTrue(compiledScripts.size() > 20, Wide("too few scripts in the " + templateName + " template").c_str());
+            Assert::IsTrue(differences.empty(), Wide(templateName + ":\n" + differences).c_str());
         }
     };
 }

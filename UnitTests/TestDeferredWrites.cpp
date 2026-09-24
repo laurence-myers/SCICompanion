@@ -8,10 +8,11 @@
 #include "SoundUtil.h"
 #include "Helper.h"
 #include "Stream.h"
+#include "TestSupport.h"
 #include <fstream>
-#include <iterator>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -34,7 +35,6 @@ namespace UnitTests
     TEST_CLASS(TestDeferredWrites)
     {
         std::string _gameFolder;
-        std::vector<std::string> _readOnlyFiles;
 
         static std::vector<uint8_t> TextBytes(const std::string &text)
         {
@@ -78,20 +78,9 @@ namespace UnitTests
             return count;
         }
 
-        static std::vector<char> ReadBytes(const std::string &path)
-        {
-            std::ifstream file(path, std::ios::binary);
-            return std::vector<char>(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
-        }
-
         static bool FileExists(const std::string &path)
         {
             return GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES;
-        }
-
-        static std::wstring Wide(const std::string &text)
-        {
-            return std::wstring(text.begin(), text.end());
         }
 
         std::string MapPath() const { return _gameFolder + "\\resource.map"; }
@@ -103,22 +92,13 @@ namespace UnitTests
             return _gameFolder + name;
         }
 
-        void MakeReadOnly(const std::string &path)
-        {
-            SetFileAttributesA(path.c_str(), FILE_ATTRIBUTE_READONLY);
-            _readOnlyFiles.push_back(path);
-        }
-
         void CleanUpGameCopy()
         {
-            for (const std::string &path : _readOnlyFiles)
-            {
-                SetFileAttributesA(path.c_str(), FILE_ATTRIBUTE_NORMAL);
-            }
-            _readOnlyFiles.clear();
             if (!_gameFolder.empty())
             {
-                CleanUpGame(_gameFolder);
+                // RemoveFolder also deletes the read-only files of a test.
+                CleanUpExistingGame();
+                RemoveFolder(_gameFolder);
                 _gameFolder.clear();
             }
         }
@@ -137,6 +117,22 @@ namespace UnitTests
             }
         }
 
+        // Opens a copy of the SCI1.1 template, which has resource.aud and
+        // resource.sfx, and gives the paths of the two. Each gets a marker
+        // after its last resource: a rebuilt volume does not have it.
+        std::pair<std::string, std::string> SetUpAudioVolumes()
+        {
+            _gameFolder = SetUpGameSCI11();
+            std::string aud = GetAudioVolumePath(_gameFolder, false, AudioVolumeName::Aud);
+            std::string sfx = GetAudioVolumePath(_gameFolder, false, AudioVolumeName::Sfx);
+            for (const std::string &volume : { aud, sfx })
+            {
+                std::ofstream file(volume, std::ios::binary | std::ios::app);
+                file << "KEEP-THIS-VOLUME";
+            }
+            return { aud, sfx };
+        }
+
     public:
         TEST_METHOD_CLEANUP(CleanUp)
         {
@@ -151,14 +147,14 @@ namespace UnitTests
                 const GameFolderHelper &helper = rm.Helper();
                 {
                     DeferResourceAppend outer(rm);
-                    Assert::IsTrue(rm.WriteResource(MakeText(helper, 901, "outer")).has_value());
+                    AssertOk(rm.WriteResource(MakeText(helper, 901, "outer")));
                     {
                         DeferResourceAppend inner(rm);
-                        Assert::IsTrue(rm.WriteResource(MakeText(helper, 902, "inner")).has_value());
-                        Assert::IsTrue(inner.Commit().has_value(), L"an inner commit only closes the inner batch");
+                        AssertOk(rm.WriteResource(MakeText(helper, 902, "inner")));
+                        AssertOk(inner.Commit(), "an inner commit only closes the inner batch");
                     }
                     Assert::AreEqual(size_t(2), outer.Pending().size(), L"the inner batch must not discard the outer queue");
-                    Assert::IsTrue(outer.Commit().has_value());
+                    AssertOk(outer.Commit());
                 }
                 Assert::AreEqual(std::string("outer"), ReadText(rm, 901));
                 Assert::AreEqual(std::string("inner"), ReadText(rm, 902));
@@ -172,15 +168,15 @@ namespace UnitTests
                 const GameFolderHelper &helper = rm.Helper();
                 {
                     DeferResourceAppend outer(rm);
-                    Assert::IsTrue(rm.WriteResource(MakeText(helper, 901, "outer")).has_value());
+                    AssertOk(rm.WriteResource(MakeText(helper, 901, "outer")));
                     {
                         DeferResourceAppend inner(rm);
-                        Assert::IsTrue(rm.WriteResource(MakeText(helper, 907, "inner")).has_value());
-                        Assert::IsTrue(rm.WriteResource(MakeText(helper, 901, "inner-replaced")).has_value());
+                        AssertOk(rm.WriteResource(MakeText(helper, 907, "inner")));
+                        AssertOk(rm.WriteResource(MakeText(helper, 901, "inner-replaced")));
                         // No Commit: the inner batch is abandoned.
                     }
                     Assert::AreEqual(size_t(1), outer.Pending().size(), L"the abandoned inner batch must withdraw what it queued");
-                    Assert::IsTrue(outer.Commit().has_value());
+                    AssertOk(outer.Commit());
                 }
                 Assert::AreEqual(std::string("outer"), ReadText(rm, 901), L"the copy that the abandoned batch replaced must come back");
                 Assert::AreEqual(std::string("(missing)"), ReadText(rm, 907));
@@ -194,20 +190,20 @@ namespace UnitTests
                 const GameFolderHelper &helper = rm.Helper();
                 {
                     DeferResourceAppend outer(rm);
-                    Assert::IsTrue(rm.WriteResource(MakeText(helper, 901, "outer")).has_value());
+                    AssertOk(rm.WriteResource(MakeText(helper, 901, "outer")));
                     {
                         DeferResourceAppend middle(rm);
                         {
                             DeferResourceAppend inner(rm);
-                            Assert::IsTrue(rm.WriteResource(MakeText(helper, 901, "inner")).has_value());
-                            Assert::IsTrue(rm.WriteResource(MakeText(helper, 908, "inner")).has_value());
-                            Assert::IsTrue(inner.Commit().has_value());
+                            AssertOk(rm.WriteResource(MakeText(helper, 901, "inner")));
+                            AssertOk(rm.WriteResource(MakeText(helper, 908, "inner")));
+                            AssertOk(inner.Commit());
                         }
                         // No Commit: the middle batch is abandoned, with what
                         // the inner batch gave it.
                     }
                     Assert::AreEqual(size_t(1), outer.Pending().size());
-                    Assert::IsTrue(outer.Commit().has_value());
+                    AssertOk(outer.Commit());
                 }
                 Assert::AreEqual(std::string("outer"), ReadText(rm, 901), L"the outer copy must come back");
                 Assert::AreEqual(std::string("(missing)"), ReadText(rm, 908));
@@ -220,7 +216,7 @@ namespace UnitTests
             {
                 {
                     DeferResourceAppend batch(rm);
-                    Assert::IsTrue(rm.WriteResource(MakeText(rm.Helper(), 906, "never")).has_value());
+                    AssertOk(rm.WriteResource(MakeText(rm.Helper(), 906, "never")));
                     // No Commit.
                 }
                 Assert::AreEqual(std::string("(missing)"), ReadText(rm, 906));
@@ -231,10 +227,10 @@ namespace UnitTests
         {
             OnEachTemplate([&](CResourceMap &rm)
             {
-                MakeReadOnly(MapPath());
+                SetFileAttributesA(MapPath().c_str(), FILE_ATTRIBUTE_READONLY);
 
                 DeferResourceAppend batch(rm);
-                Assert::IsTrue(rm.WriteResource(MakeText(rm.Helper(), 903, "blocked", "BlockedText")).has_value());
+                AssertOk(rm.WriteResource(MakeText(rm.Helper(), 903, "blocked", "BlockedText")));
                 sci::Status committed = batch.Commit();
 
                 Assert::IsFalse(committed.has_value(), L"a commit that cannot write the map must fail");
@@ -250,19 +246,19 @@ namespace UnitTests
             OnEachTemplate([&](CResourceMap &rm)
             {
                 const GameFolderHelper &helper = rm.Helper();
-                std::vector<char> mapBefore = ReadBytes(MapPath());
-                std::vector<char> volumeBefore = ReadBytes(VolumePath(helper));
+                std::vector<uint8_t> mapBefore = ReadFileBytes(MapPath());
+                std::vector<uint8_t> volumeBefore = ReadFileBytes(VolumePath(helper));
                 Assert::IsFalse(volumeBefore.empty(), Wide(VolumePath(helper)).c_str());
-                MakeReadOnly(VolumePath(helper));
+                SetFileAttributesA(VolumePath(helper).c_str(), FILE_ATTRIBUTE_READONLY);
 
                 DeferResourceAppend batch(rm);
-                Assert::IsTrue(rm.WriteResource(MakeText(helper, 912, "blocked", "VolumeText")).has_value());
+                AssertOk(rm.WriteResource(MakeText(helper, 912, "blocked", "VolumeText")));
                 sci::Status committed = batch.Commit();
 
                 Assert::IsFalse(committed.has_value(), L"a commit that cannot write the volume must fail");
                 Assert::AreEqual(std::string("io"), std::string(sci::ErrorCodeName(committed.error().code)));
-                Assert::IsTrue(mapBefore == ReadBytes(MapPath()), L"the map must not change");
-                Assert::IsTrue(volumeBefore == ReadBytes(VolumePath(helper)), L"the volume must not change");
+                Assert::IsTrue(mapBefore == ReadFileBytes(MapPath()), L"the map must not change");
+                Assert::IsTrue(volumeBefore == ReadFileBytes(VolumePath(helper)), L"the volume must not change");
                 Assert::AreEqual(std::string(""), helper.GetIniString("Text", "n912"));
             });
         }
@@ -272,11 +268,11 @@ namespace UnitTests
             OnEachTemplate([&](CResourceMap &rm)
             {
                 const GameFolderHelper &helper = rm.Helper();
-                MakeReadOnly(MapPath());
+                SetFileAttributesA(MapPath().c_str(), FILE_ATTRIBUTE_READONLY);
 
                 DeferResourceAppend batch(rm);
-                Assert::IsTrue(rm.WriteResource(MakeText(helper, 910, "patch", "PatchText", ResourceSourceFlags::PatchFile)).has_value());
-                Assert::IsTrue(rm.WriteResource(MakeText(helper, 911, "package", "PackageText")).has_value());
+                AssertOk(rm.WriteResource(MakeText(helper, 910, "patch", "PatchText", ResourceSourceFlags::PatchFile)));
+                AssertOk(rm.WriteResource(MakeText(helper, 911, "package", "PackageText")));
                 sci::Status committed = batch.Commit();
 
                 Assert::IsFalse(committed.has_value(), L"the package write fails");
@@ -293,10 +289,10 @@ namespace UnitTests
             {
                 {
                     DeferResourceAppend batch(rm);
-                    Assert::IsTrue(rm.WriteResource(MakeText(rm.Helper(), 904, "first")).has_value());
-                    Assert::IsTrue(rm.WriteResource(MakeText(rm.Helper(), 904, "second")).has_value());
+                    AssertOk(rm.WriteResource(MakeText(rm.Helper(), 904, "first")));
+                    AssertOk(rm.WriteResource(MakeText(rm.Helper(), 904, "second")));
                     Assert::AreEqual(size_t(1), batch.Pending().size());
-                    Assert::IsTrue(batch.Commit().has_value());
+                    AssertOk(batch.Commit());
                 }
                 Assert::AreEqual(std::string("second"), ReadText(rm, 904));
                 Assert::AreEqual(1, CountMapEntries(rm, 904));
@@ -307,14 +303,14 @@ namespace UnitTests
         {
             OnEachTemplate([&](CResourceMap &rm)
             {
-                MakeReadOnly(MapPath());
+                SetFileAttributesA(MapPath().c_str(), FILE_ATTRIBUTE_READONLY);
                 sci::Status failed = rm.WriteResource(MakeText(rm.Helper(), 905, "blocked", "DirectText"));
                 Assert::IsFalse(failed.has_value());
                 Assert::AreEqual(std::string("io"), std::string(sci::ErrorCodeName(failed.error().code)));
                 Assert::AreEqual(std::string(""), rm.Helper().GetIniString("Text", "n905"));
 
                 SetFileAttributesA(MapPath().c_str(), FILE_ATTRIBUTE_NORMAL);
-                Assert::IsTrue(rm.WriteResource(MakeText(rm.Helper(), 905, "written", "DirectText")).has_value());
+                AssertOk(rm.WriteResource(MakeText(rm.Helper(), 905, "written", "DirectText")));
                 Assert::AreEqual(std::string("written"), ReadText(rm, 905));
                 Assert::AreEqual(std::string("DirectText"), rm.Helper().GetIniString("Text", "n905"));
             });
@@ -322,52 +318,36 @@ namespace UnitTests
 
         TEST_METHOD(RepackageAudio_FailedMapSave_KeepsTheAudioVolumes)
         {
-            // The SCI1.1 template has resource.aud and resource.sfx.
-            _gameFolder = SetUpGameSCI11();
+            auto [aud, sfx] = SetUpAudioVolumes();
             CResourceMap &rm = appState->GetResourceMap();
-            std::string aud = GetAudioVolumePath(_gameFolder, false, AudioVolumeName::Aud);
-            std::string sfx = GetAudioVolumePath(_gameFolder, false, AudioVolumeName::Sfx);
-            // A marker after the last resource: a rebuilt volume does not have it.
-            for (const std::string &volume : { aud, sfx })
-            {
-                std::ofstream file(volume, std::ios::binary | std::ios::app);
-                file << "KEEP-THIS-VOLUME";
-            }
-            std::vector<char> audBefore = ReadBytes(aud);
-            std::vector<char> sfxBefore = ReadBytes(sfx);
-            std::vector<char> mapBefore = ReadBytes(MapPath());
+            std::vector<uint8_t> audBefore = ReadFileBytes(aud);
+            std::vector<uint8_t> sfxBefore = ReadFileBytes(sfx);
+            std::vector<uint8_t> mapBefore = ReadFileBytes(MapPath());
             std::string upToDate = _gameFolder + "\\audiocache\\uptodate.bin";
             bool upToDateExisted = FileExists(upToDate);
-            std::vector<char> upToDateBefore = ReadBytes(upToDate);
-            MakeReadOnly(MapPath());
+            std::vector<uint8_t> upToDateBefore = ReadFileBytes(upToDate);
+            SetFileAttributesA(MapPath().c_str(), FILE_ATTRIBUTE_READONLY);
 
             rm.RepackageAudio(true);
 
-            Assert::IsTrue(audBefore == ReadBytes(aud), L"the audio maps were not saved, so resource.aud must not change");
-            Assert::IsTrue(sfxBefore == ReadBytes(sfx), L"the audio maps were not saved, so resource.sfx must not change");
+            Assert::IsTrue(audBefore == ReadFileBytes(aud), L"the audio maps were not saved, so resource.aud must not change");
+            Assert::IsTrue(sfxBefore == ReadFileBytes(sfx), L"the audio maps were not saved, so resource.sfx must not change");
             Assert::IsFalse(FileExists(GetAudioVolumePath(_gameFolder, true, AudioVolumeName::Aud)), L"the new resource.aud must be deleted");
             Assert::IsFalse(FileExists(GetAudioVolumePath(_gameFolder, true, AudioVolumeName::Sfx)), L"the new resource.sfx must be deleted");
-            Assert::IsTrue(mapBefore == ReadBytes(MapPath()), L"resource.map must not change");
+            Assert::IsTrue(mapBefore == ReadFileBytes(MapPath()), L"resource.map must not change");
             Assert::AreEqual(upToDateExisted, FileExists(upToDate));
-            Assert::IsTrue(upToDateBefore == ReadBytes(upToDate), L"the cache must stay out of date, so the next repackage tries again");
+            Assert::IsTrue(upToDateBefore == ReadFileBytes(upToDate), L"the cache must stay out of date, so the next repackage tries again");
         }
 
         TEST_METHOD(RepackageAudio_InsideABatch_IsRefused)
         {
             // In a batch, the audio maps would only be queued while the
             // volumes are replaced at once.
-            _gameFolder = SetUpGameSCI11();
+            auto [aud, sfx] = SetUpAudioVolumes();
             CResourceMap &rm = appState->GetResourceMap();
-            std::string aud = GetAudioVolumePath(_gameFolder, false, AudioVolumeName::Aud);
-            std::string sfx = GetAudioVolumePath(_gameFolder, false, AudioVolumeName::Sfx);
-            for (const std::string &volume : { aud, sfx })
-            {
-                std::ofstream file(volume, std::ios::binary | std::ios::app);
-                file << "KEEP-THIS-VOLUME";
-            }
-            std::vector<char> audBefore = ReadBytes(aud);
-            std::vector<char> sfxBefore = ReadBytes(sfx);
-            std::vector<char> mapBefore = ReadBytes(MapPath());
+            std::vector<uint8_t> audBefore = ReadFileBytes(aud);
+            std::vector<uint8_t> sfxBefore = ReadFileBytes(sfx);
+            std::vector<uint8_t> mapBefore = ReadFileBytes(MapPath());
 
             {
                 DeferResourceAppend batch(rm);
@@ -376,9 +356,9 @@ namespace UnitTests
                 // No Commit: the batch is abandoned.
             }
 
-            Assert::IsTrue(audBefore == ReadBytes(aud), L"resource.aud must not change");
-            Assert::IsTrue(sfxBefore == ReadBytes(sfx), L"resource.sfx must not change");
-            Assert::IsTrue(mapBefore == ReadBytes(MapPath()), L"resource.map must not change");
+            Assert::IsTrue(audBefore == ReadFileBytes(aud), L"resource.aud must not change");
+            Assert::IsTrue(sfxBefore == ReadFileBytes(sfx), L"resource.sfx must not change");
+            Assert::IsTrue(mapBefore == ReadFileBytes(MapPath()), L"resource.map must not change");
         }
     };
 }

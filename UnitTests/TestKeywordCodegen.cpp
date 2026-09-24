@@ -80,6 +80,13 @@ namespace UnitTests
         return text;
     }
 
+    // Script 902 with the public procedure kTest: its parameters and its
+    // body. The uses go before the public block.
+    static std::string KTest(const std::string &params, const std::string &body, const std::string &uses = std::string())
+    {
+        return Header() + uses + "(public\n\tkTest 0\n)\n(procedure (kTest" + (params.empty() ? "" : " " + params) + ")\n" + body + ")\n";
+    }
+
     // Loads the compiled script resource and returns its raw bytes.
     static std::vector<uint8_t> LoadCompiledBytes(uint16_t number)
     {
@@ -152,7 +159,7 @@ namespace UnitTests
         }
 
         // Compiles the keyword form and the hand-written asm form of the same
-        // procedure, and returns whether their bytes are equal.
+        // procedure, and asserts that their bytes are equal.
         void AssertSameBytes(const std::string &keyword, const std::string &manual, const wchar_t *what)
         {
             // Compile first: the arguments of Assert::IsTrue are evaluated in
@@ -174,16 +181,11 @@ namespace UnitTests
         TEST_METHOD(ValueAndOr_GiveTheDecidingOperand)
         {
             _gameFolder = SetUpGameSCI11();
-            std::string keyword = Header() +
-                "(public\n\tkTest 0\n)\n"
-                "(procedure (kTest a b &tmp t)\n"
+            std::string keyword = KTest("a b &tmp t",
                 "\t(= t (and a b))\n"
                 "\t(= t (or a b))\n"
-                "\t(return t)\n"
-                ")\n";
-            std::string manual = Header() +
-                "(public\n\tkTest 0\n)\n"
-                "(procedure (kTest a b &tmp t)\n"
+                "\t(return t)\n");
+            std::string manual = KTest("a b &tmp t",
                 "\t(asm\n"
                 "\t\tlap a\n"
                 "\t\tbnt andEnd\n"
@@ -196,8 +198,7 @@ namespace UnitTests
                 "\torEnd:\n"
                 "\t\tsat t\n"
                 "\t)\n"
-                "\t(return t)\n"
-                ")\n";
+                "\t(return t)\n");
             AssertSameBytes(keyword, manual, L"a value and/or must compile to Sierra's short-circuit shape");
         }
 
@@ -207,16 +208,11 @@ namespace UnitTests
         TEST_METHOD(ValueAndOr_InACallArgument_JoinBeforeThePush)
         {
             _gameFolder = SetUpGameSCI11();
-            std::string keyword = Header() +
-                "(public\n\tkTest 0\n)\n"
-                "(procedure (kTest a b &tmp t)\n"
+            std::string keyword = KTest("a b &tmp t",
                 "\t(= t (Abs (and a b)))\n"
                 "\t(= t (Abs (or a b)))\n"
-                "\t(return t)\n"
-                ")\n";
-            std::string manual = Header() +
-                "(public\n\tkTest 0\n)\n"
-                "(procedure (kTest a b &tmp t)\n"
+                "\t(return t)\n");
+            std::string manual = KTest("a b &tmp t",
                 "\t(asm\n"
                 "\t\tpush1\n"
                 "\t\tlap a\n"
@@ -235,8 +231,7 @@ namespace UnitTests
                 "\t\tcallk Abs, 2\n"
                 "\t\tsat t\n"
                 "\t)\n"
-                "\t(return t)\n"
-                ")\n";
+                "\t(return t)\n");
             AssertSameBytes(keyword, manual, L"a value and/or in a call argument must join before the push");
         }
 
@@ -246,9 +241,7 @@ namespace UnitTests
         TEST_METHOD(ConditionAndOr_BranchToTheElse)
         {
             _gameFolder = SetUpGameSCI11();
-            std::string keyword = Header() +
-                "(public\n\tkTest 0\n)\n"
-                "(procedure (kTest a b &tmp t)\n"
+            std::string keyword = KTest("a b &tmp t",
                 "\t(if (and a b)\n"
                 "\t\t(= t 1)\n"
                 "\telse\n"
@@ -259,11 +252,8 @@ namespace UnitTests
                 "\telse\n"
                 "\t\t(= t 4)\n"
                 "\t)\n"
-                "\t(return t)\n"
-                ")\n";
-            std::string manual = Header() +
-                "(public\n\tkTest 0\n)\n"
-                "(procedure (kTest a b &tmp t)\n"
+                "\t(return t)\n");
+            std::string manual = KTest("a b &tmp t",
                 "\t(asm\n"
                 "\t\tlap a\n"
                 "\t\tbnt andElse\n"
@@ -290,8 +280,7 @@ namespace UnitTests
                 "\torEnd:\n"
                 "\t\tlat t\n"
                 "\t\tret\n"
-                "\t)\n"
-                ")\n";
+                "\t)\n");
             AssertSameBytes(keyword, manual, L"an and/or in a condition must branch to the else of the if");
         }
 
@@ -303,22 +292,14 @@ namespace UnitTests
             _gameFolder = SetUpGameSCI11();
             Assert::IsTrue(nullptr == appState->GetResourceMap().Helper().MostRecentResource(ResourceType::Script, 911, ResourceEnumFlags::None),
                 L"the template has no script 911");
-            std::string source = Header() +
-                "(public\n\tkTest 0\n)\n"
-                "(procedure (kTest)\n"
-                "\t(proc911_0 5)\n"
-                ")\n";
+            std::string source = KTest("", "\t(proc911_0 5)\n");
             std::string error;
             std::vector<std::string> warnings;
             // Compile first: the arguments of Assert::IsTrue are evaluated in
             // no fixed order, so the text must not read error in the same call.
             bool compiled = CompileSource(902, "kTest", source, error, &warnings);
             Assert::IsTrue(compiled, W("proc911_0 did not compile: " + error).c_str());
-            std::string allWarnings;
-            for (const std::string &warning : warnings)
-            {
-                allWarnings += warning + "\n";
-            }
+            std::string allWarnings = JoinLines(warnings);
             Assert::IsTrue(allWarnings.find("no script 911") != npos, W("expected a warning about script 911, got: " + allWarnings).c_str());
 
             // The decompiler writes a call to an export that is not in the game
@@ -342,17 +323,14 @@ namespace UnitTests
 
             // Two Said strings: the error comes once for the compile, not once
             // for each Said string or word.
-            std::string source = Header() +
-                "(public\n\tkTest 0\n)\n"
-                "(procedure (kTest)\n"
+            std::string source = KTest("",
                 "\t(if (Said 'look/door')\n"
                 "\t\t(return 1)\n"
                 "\t)\n"
                 "\t(if (Said 'open/door')\n"
                 "\t\t(return 2)\n"
                 "\t)\n"
-                "\t(return 0)\n"
-                ")\n";
+                "\t(return 0)\n");
             std::string error;
             std::vector<std::string> errors;
             bool compiled = CompileSource(902, "kTest", source, error, nullptr, &errors);
@@ -370,14 +348,11 @@ namespace UnitTests
             Assert::AreEqual(900, (int)resourceMap.Helper().Version.MainVocabResource, L"setup: the main vocabulary is vocab 900");
             Assert::IsTrue(nullptr == resourceMap.GetVocab000(), L"setup: no vocabulary");
 
-            std::string source = Header() +
-                "(public\n\tkTest 0\n)\n"
-                "(procedure (kTest)\n"
+            std::string source = KTest("",
                 "\t(if (Said 'look/door')\n"
                 "\t\t(return 1)\n"
                 "\t)\n"
-                "\t(return 0)\n"
-                ")\n";
+                "\t(return 0)\n");
             std::string error;
             bool compiled = CompileSource(902, "kTest", source, error);
             Assert::IsFalse(compiled, L"a Said string needs the vocabulary");
@@ -407,11 +382,7 @@ namespace UnitTests
         TEST_METHOD(MissingScriptProc_ScriptThatExists_StaysAnError)
         {
             _gameFolder = SetUpGameSCI11();
-            std::string source = Header() +
-                "(public\n\tkTest 0\n)\n"
-                "(procedure (kTest)\n"
-                "\t(proc0_99 5)\n"
-                ")\n";
+            std::string source = KTest("", "\t(proc0_99 5)\n");
             std::string error;
             Assert::IsFalse(CompileSource(902, "kTest", source, error), L"proc0_99 must not compile: the game has script 0");
             Assert::IsTrue(error.find("proc0_99") != npos, W("expected an error for proc0_99, got: " + error).c_str());
@@ -424,16 +395,8 @@ namespace UnitTests
         TEST_METHOD(UnderscoreProc_GivesItsScriptAndExport)
         {
             _gameFolder = SetUpGameSCI11();
-            std::string escaped = Header() +
-                "(public\n\tkTest 0\n)\n"
-                "(procedure (kTest)\n"
-                "\t(__proc911_0 5)\n"
-                ")\n";
-            std::string plain = Header() +
-                "(public\n\tkTest 0\n)\n"
-                "(procedure (kTest)\n"
-                "\t(proc911_0 5)\n"
-                ")\n";
+            std::string escaped = KTest("", "\t(__proc911_0 5)\n");
+            std::string plain = KTest("", "\t(proc911_0 5)\n");
             AssertSameBytes(escaped, plain, L"__proc911_0 must compile to calle 911 0");
         }
 
@@ -443,19 +406,12 @@ namespace UnitTests
         TEST_METHOD(MissingScriptProc_InAsm_CompilesToCalleWithAWarning)
         {
             _gameFolder = SetUpGameSCI11();
-            std::string call = Header() +
-                "(public\n\tkTest 0\n)\n"
-                "(procedure (kTest)\n"
-                "\t(proc911_0)\n"
-                ")\n";
-            std::string manual = Header() +
-                "(public\n\tkTest 0\n)\n"
-                "(procedure (kTest)\n"
+            std::string call = KTest("", "\t(proc911_0)\n");
+            std::string manual = KTest("",
                 "\t(asm\n"
                 "\t\tpush0\n"
                 "\t\tcalle proc911_0, 0\n"
-                "\t)\n"
-                ")\n";
+                "\t)\n");
             std::string error;
             std::vector<std::string> warnings;
             bool compiled = CompileSource(902, "kTest", manual, error, &warnings);
@@ -470,12 +426,9 @@ namespace UnitTests
         TEST_METHOD(MissingScriptProc_AsAValue_IsAnUndeclaredName)
         {
             _gameFolder = SetUpGameSCI11();
-            std::string source = Header() +
-                "(public\n\tkTest 0\n)\n"
-                "(procedure (kTest &tmp t)\n"
+            std::string source = KTest("&tmp t",
                 "\t(= t proc911_0)\n"
-                "\t(return t)\n"
-                ")\n";
+                "\t(return t)\n");
             std::string error;
             bool compiled = CompileSource(902, "kTest", source, error);
             Assert::IsFalse(compiled, L"proc911_0 is not a value");
@@ -489,11 +442,7 @@ namespace UnitTests
             _gameFolder = SetUpGameSCI11();
             for (const std::string name : { "proc0911_0", "proc911_00" })
             {
-                std::string source = Header() +
-                    "(public\n\tkTest 0\n)\n"
-                    "(procedure (kTest)\n"
-                    "\t(" + name + " 5)\n"
-                    ")\n";
+                std::string source = KTest("", "\t(" + name + " 5)\n");
                 std::string error;
                 bool compiled = CompileSource(902, "kTest", source, error);
                 Assert::IsFalse(compiled, W(name + " must not compile").c_str());
@@ -508,12 +457,7 @@ namespace UnitTests
         TEST_METHOD(UnderscoreProc_OfMain_CompilesToCallb)
         {
             _gameFolder = SetUpGameSCI11();
-            auto Source = [](const std::string &body) {
-                return Header() +
-                    "(use Main)\n"
-                    "(public\n\tkTest 0\n)\n"
-                    "(procedure (kTest)\n" + body + ")\n";
-            };
+            auto Source = [](const std::string &body) { return KTest("", body, "(use Main)\n"); };
             // Export 1 of the template's main script is Btest.
             AssertSameBytes(Source("\t(__proc0_1 5)\n"), Source("\t(Btest 5)\n"), L"__proc0_1 must compile to the callb of (Btest 5)");
             // Main has no export 99; the call is a callb all the same.
