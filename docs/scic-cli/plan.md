@@ -3,9 +3,9 @@
 - Date: 2026-09-23 (revision 3)
 - Written against branch `master` at `0dc1fef5`. The work is on branch
   `feat/scic-cli`.
-- Status: in progress. `docs/scic-cli/handover.md` has the current state
-  and how to resume. The line numbers in this plan are for `0dc1fef5`; the
-  code moves as the work goes on.
+- Status: in progress. `docs/scic-cli/handover.md` lists the open items;
+  the commit messages record each step and each review. The line numbers
+  in this plan are for `0dc1fef5`; the code moves as the work goes on.
 - Basis: code reading, three research passes (GUI coupling, resource saving,
   headless test harness), a coupling inventory, a failure-handling
   inventory, a check of the two candidate libraries, and a check in the code
