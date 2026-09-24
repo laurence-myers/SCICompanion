@@ -6,10 +6,9 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: the fixes of the review of C3 (the commit after
-  `34c1ba40`) need their review. The reviews of C4 (`34c1ba40`: FIX)
-  and of `8fc8e984` (PASS with nits) are done; the fixes of the review
-  of C4 come next. F1, A1, A2, B1, B2, B3a, B3b,
+- Current step: the fixes of the review of C4 (the commit after
+  `cd1d5ee3`) need their review. The fixes of the review of C3
+  (`cd1d5ee3`) are under review. F1, A1, A2, B1, B2, B3a, B3b,
   F2, K1 to K6, S3, S1, S2 (S2a, S2b, S2c), S4 (S4a, S4b), C1 and C2
   are committed and reviewed, with their review fixes: the S1 and S2
   fixes `98d884c7`, the fixes of its review `73be520f`, and the fixes
@@ -31,7 +30,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412. After the fixes of the review of `de2fb8dc` and `8a322b32`: 418. After the fixes of the reviews of S1 and S2: 429. After C1: 440. After the S4 review fixes: 454. After the fixes of the review of `7d26d9d6` and `98d884c7`: 460. After the C1 review fixes: 462. After C2: 470. After the fixes of the review of `d01ea1e0`: 475. After the fixes of the review of `73be520f`: 482. After the C2 review fixes: 492. After the fixes of the review of `4e7117ae`: 498. After the fixes of the review of `a0c27a61`: 501. After C3: 512. After the fixes of the review of `837f9f9b`: 515. After C4: 515 (C4 adds no unit test). After the fixes of the review of `fd65ff87`: 524.
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412. After the fixes of the review of `de2fb8dc` and `8a322b32`: 418. After the fixes of the reviews of S1 and S2: 429. After C1: 440. After the S4 review fixes: 454. After the fixes of the review of `7d26d9d6` and `98d884c7`: 460. After the C1 review fixes: 462. After C2: 470. After the fixes of the review of `d01ea1e0`: 475. After the fixes of the review of `73be520f`: 482. After the C2 review fixes: 492. After the fixes of the review of `4e7117ae`: 498. After the fixes of the review of `a0c27a61`: 501. After C3: 512. After the fixes of the review of `837f9f9b`: 515. After C4: 515 (C4 adds no unit test). After the fixes of the review of `fd65ff87`: 524. After the fixes of the review of `34c1ba40`: 524 (no unit test changed).
   The integration suite has 23 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -67,8 +66,8 @@ for each step, and a follow-up commit if the review finds a problem.
 | S4 DecompileRun | done | S4a `152f4e56`; S4b `d588e499`; review fixes `d01ea1e0`; fixes of its review `4e7117ae` | S4a FIX: 6 should-fix, nits. S4b PASS with nits. Fixed: see "S4 review". Review of the fixes: FIX (2 should-fix); fixed, see "Review of the S4 fixes". Review of `4e7117ae`: FIX (1 should-fix); fixed in `837f9f9b`, see "Review of the S4 fixes, second round". Review of `837f9f9b`: FIX (1 should-fix, older); fixed in `8fc8e984`, see "Review of 837f9f9b". Review of `8fc8e984`: PASS with 6 nits and 1 question (see "Review of 8fc8e984"). |
 | C1 CLI project, `script list` | done | `68e6f43e`; review fixes `6b1bfe64` | FIX: 3 should-fix, nits. Fixed: see "C1 review". Review of the fixes: PASS with 9 nits (see "Review of the C1 fixes"). |
 | C2 `script decompile`, `script sco` | done | `37ee979b`; review fixes `3cf3e33f` | FIX: 2 should-fix, 7 nits, 2 questions. Fixed: see "C2 review". Review of the fixes: PASS with 5 nits (see "Review of the C2 fixes"). |
-| C3 `script compile` | done | `fd65ff87`; review fixes (the commit after `34c1ba40`) | FIX: 3 should-fix, 8 nits, 1 question. Fixed: see "Review of fd65ff87". |
-| C4 CI and documents | done | `34c1ba40` | FIX: 2 should-fix (the sweep script), 9 nits, 1 question; see "Review of 34c1ba40". The fixes are the next step. |
+| C3 `script compile` | done | `fd65ff87`; review fixes (`cd1d5ee3`) | FIX: 3 should-fix, 8 nits, 1 question. Fixed: see "Review of fd65ff87". Review of the fixes: running. |
+| C4 CI and documents | done | `34c1ba40`; review fixes (the commit after `cd1d5ee3`) | FIX: 2 should-fix (the sweep script), 9 nits, 1 question. Fixed: see "Review of 34c1ba40". |
 | E1 Core library (optional) | not started | | |
 
 ## How to work a step
@@ -1323,7 +1322,7 @@ for each step, and a follow-up commit if the review finds a problem.
   `writeObjectFile = !common.dryRun || common.dryRun`, and
   `Compile_DryRun_WritesNothing` passed with it (the SCI0 template's
   `.sco` files do not change), so the C3 message was wrong there.
-  The fixes (the commit after `34c1ba40`): (S1) `ReportResult` sets the
+  The fixes (`cd1d5ee3`): (S1) `ReportResult` sets the
   error flag for an error, so the script fails with `Compile` (exit 5)
   and is not written, in `scic` and in the GUI; a missing include says
   "The include file X is not in the include folder or in src.", and a
@@ -1394,6 +1393,30 @@ for each step, and a follow-up commit if the review finds a problem.
   the `Objects\` folder. Question: a failed smoke step skips "Upload
   Artifacts", as a failed test step does; intended? Evidence: the
   scratch folder `c4review`.
+  The fixes (the commit after `cd1d5ee3`): (1) a row is a bug when the
+  command timed out, printed a crash line or an `[internal]` error, or
+  ended with an exit code that scic does not give for a result (not 0,
+  2, 3, 5, 6, 7, 8 or 9); the CSV has a `Bug` column. (2) `-Work`,
+  `-Source` and `-Scic` resolve with
+  `GetUnresolvedProviderPathFromPSPath`, so a relative path starts at
+  the PowerShell location, and a UNC path works. Nits: the header says
+  that the check compares text (no junction or `subst` alias); `-Depth`
+  (default 5) finds the Castle of Dr. Brain EGA folder; the texts on the
+  subfolders name `AUDIO\` and `AUD\`; each row goes into the CSV as it
+  comes, each game is in `try`/`finally` (an error is a `sweep` row,
+  and the copy goes), and the compile after a decompile that was a bug
+  is "skipped"; the smoke step compiles the shipped sources first and
+  checks that each summary names every script that `list` found ("No
+  script to compile." now fails it); AGENTS.md names `Io` for a
+  `CFileException` and the `Objects\` folder. The question: yes, a
+  failed smoke step skips "Upload Artifacts", as a failed test step
+  does: a build that fails a check ships no artifact. Tests: the step
+  body, taken from `build.yaml`, in Windows PowerShell 5.1 (27 s, each
+  summary "86 of 86"), and with no `src\` (the step fails: "No line
+  starts with"); the sweep on SQ3 with a relative `-Work` and another
+  process folder (the run folder follows the PowerShell location), and
+  with a stub that exits with 0xC0000409 (exit 1, 2 bugs, the compile
+  "skipped").
 - C4: CI and documents. `build.yaml`: a step "Smoke test scic.exe" in
   the build job, after the integration tests. It copies
   `Release\TemplateGame\SCI1.1` twice into `RUNNER_TEMP` (as it ships,
@@ -1410,7 +1433,8 @@ for each step, and a follow-up commit if the review finds a problem.
   `-Scic`, `-Include`, `-Exclude`, `-TimeoutSeconds` (900), `-Keep`. It
   copies only the files of the folder that holds `resource.map`: the
   subfolders of the GOG games hold DOSBox, ScummVM, saves, CD audio and
-  the user's `src\`, which the script commands do not read. Each copy
+  the user's `src\` (`GameSession::Open` reads `AUDIO\` and `AUD\` for the
+  audio format, which the script commands do not use). Each copy
   has a short name (`<run>\001`: scic has a MAX_PATH limit), loses its
   read-only attribute, and is removed after its game. A test run on
   three GOG games: every list and decompile exit 0; compile exit 5 for
@@ -1716,10 +1740,9 @@ for each step, and a follow-up commit if the review finds a problem.
 
 ## Next action
 
-The fixes of the review of C3 (the commit after `34c1ba40`) need their
-review. Next: the fixes of the review of C4 (`34c1ba40`; see "Review
-of 34c1ba40"); record the results of the full corpus sweep; commits
-for the nits of the reviews of the C1 fixes, of the C2 fixes
-(`3cf3e33f`), of `ccadff0c` and of `8fc8e984`; then the optional E1
-(plan section 9), or stop before it. Push and PRs only with the user's
-approval.
+The fixes of the review of C3 (`cd1d5ee3`) are under review, and the
+fixes of the review of C4 (the commit after `cd1d5ee3`) need their
+review. Then: record the results of the full corpus sweep; commits for
+the nits of the reviews of the C1 fixes, of the C2 fixes (`3cf3e33f`),
+of `ccadff0c` and of `8fc8e984`; then the optional E1 (plan section 9),
+or stop before it. Push and PRs only with the user's approval.

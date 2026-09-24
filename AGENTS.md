@@ -29,7 +29,8 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
   and CI.
 - The build puts `SCICompanion.exe`, `scic.exe` and `UnitTests.dll` in
   `Release\`. The app's post-build copies the data that they need next to
-  them (`include\`, `Decompiler\`, `TemplateGame\`). `scic.exe` reads
+  them (for example `include\`, `Decompiler\`, `Objects\` and
+  `TemplateGame\`). `scic.exe` reads
   `include\` and `Decompiler\` from its own folder; `--data-dir` or
   `SCIC_DATA_DIR` gives another folder.
 
@@ -102,9 +103,9 @@ The engine and the command-line tool follow the failure-handling model of
 - Compile errors and decompiler warnings are diagnostics: data about the
   input, not a failure of the call.
 - `sci::Guard(context, fn)` is the exception boundary. It turns an exception
-  that escapes `fn` into an error (`Internal`, or the code of a
-  `sci::DataError`), so that a batch goes on with the next script. Call it
-  the "exception boundary".
+  that escapes `fn` into an error: the code of a `sci::DataError`, `Io` for
+  an MFC `CFileException`, else `Internal`. So a batch goes on with the next
+  script. Call it the "exception boundary".
 - Do not add an empty `catch (...)`, or a `throw std::exception(...)` (throw
   `sci::DataError`, or return a `Result`). In `Src\Core`, `Src\Compile` and
   `Src\Resources`, do not add an `AfxMessageBox`; in those folders and in

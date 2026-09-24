@@ -98,12 +98,14 @@ jobs:
       timeout-minutes: 10
       run: .\UnitTests\RunTests.ps1 -Configuration ${{ matrix.configuration }} -Integration -BlameHang
 
-    # Smoke test of the command-line tool (docs/scic-cli/plan.md, step C4).
+    # Smoke test of the command-line tool (docs/scic-cli/plan.md, section 10).
     # Run the built scic.exe as a user does, on two copies of the SCI1.1
-    # template in the runner's temp folder: the template as it ships, and a
-    # game that SCI Companion never opened (no game.ini, no src\). Each
-    # command must exit with 0, and the second game must not get a game.ini.
-    # The step runs also when a test step failed, so that its result shows.
+    # template in the runner's temp folder: the template as it ships (its
+    # own sources compile first), and a game that SCI Companion never
+    # opened (no game.ini, no src\). Each command must exit with 0, each
+    # summary must name every script that list found, and the second game
+    # must not get a game.ini. The step runs also when a test step failed,
+    # so that its result shows.
     - name: Smoke test scic.exe
       if: ${{ !cancelled() && steps.build.outcome == 'success' }}
       shell: pwsh
@@ -111,12 +113,23 @@ jobs:
       run: |
         $scic = (Resolve-Path "${{ matrix.configuration }}\scic.exe").Path
         $template = "${{ matrix.configuration }}\TemplateGame\SCI1.1"
+        # Runs scic and prints its output. Fails on an exit code that is not
+        # 0. Returns the lines of stdout and stderr.
         function Invoke-Scic {
           Write-Host "> scic $args"
-          & $scic @args
-          if ($LASTEXITCODE -ne 0) { throw "scic $($args -join ' ') exited with $LASTEXITCODE." }
+          # The stderr of scic is output here, not an error.
+          $ErrorActionPreference = 'Continue'
+          $lines = @(& $scic @args 2>&1 | ForEach-Object { "$_" })
+          $code = $LASTEXITCODE
+          $lines | ForEach-Object { Write-Host $_ }
+          if ($code -ne 0) { throw "scic $($args -join ' ') exited with $code." }
+          return $lines
         }
-        Invoke-Scic --version
+        # Fails unless a line starts with the text (for example a summary).
+        function Assert-Line($lines, [string]$start) {
+          if (-not ($lines | Where-Object { $_.StartsWith($start) })) { throw "No line starts with: $start" }
+        }
+        Invoke-Scic --version | Out-Null
 
         $root = Join-Path $env:RUNNER_TEMP "scic-smoke"
         New-Item -ItemType Directory -Force $root | Out-Null
@@ -127,9 +140,14 @@ jobs:
         Remove-Item (Join-Path $neverOpened "game.ini")
         Remove-Item (Join-Path $neverOpened "src") -Recurse
         foreach ($game in @($shipped, $neverOpened)) {
-          Invoke-Scic script list $game
-          Invoke-Scic script decompile $game --all
-          Invoke-Scic script compile $game --all
+          $count = @(Invoke-Scic script list $game | Where-Object { $_ -match '^\s*\d+\s' }).Count
+          if ($count -lt 1) { throw "scic script list found no script in $game." }
+          if ($game -eq $shipped) {
+            # The sources as they ship: the decompile replaces them.
+            Assert-Line (Invoke-Scic script compile $game --all) "Compiled and wrote $count of $count scripts"
+          }
+          Assert-Line (Invoke-Scic script decompile $game --all) "Decompiled and wrote $count of $count scripts."
+          Assert-Line (Invoke-Scic script compile $game --all) "Compiled and wrote $count of $count scripts"
         }
         if (Test-Path (Join-Path $neverOpened "game.ini")) { throw "scic created game.ini in a game that had none." }
 
