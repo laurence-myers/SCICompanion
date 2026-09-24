@@ -53,8 +53,10 @@
       .\UnitTests\Tools\CliCorpusSweep.ps1 -Source 'F:\Games\Sierra', 'F:\games\gog' -Exclude '* - dev*'
       .\UnitTests\Tools\CliCorpusSweep.ps1 -Source 'F:\games\gog' -Include 'Space Quest*' -Keep
 #>
+# No [Parameter(Mandatory)]: it makes the script an advanced script, and
+# then an exit in a finally block after Ctrl+C has no effect.
 param(
-    [Parameter(Mandatory = $true)][string[]]$Source,
+    [string[]]$Source,
     # The folder for the run folders. Default: the temp folder.
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "scic-sweep"),
     # Default: Release\scic.exe of this repository.
@@ -70,6 +72,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if (-not $Source) { throw "-Source is required." }
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 # A file-system path as Windows sees it: a relative path starts at the
@@ -161,6 +164,11 @@ $rows = @()
 $bugs = 0
 $sweepErrors = 0
 
+function IsAre([int]$count) {
+    if ($count -eq 1) { return "is" }
+    return "are"
+}
+
 function RowsText([int]$count) {
     if ($count -eq 1) { return "1 row" }
     return "$count rows"
@@ -183,7 +191,7 @@ function Add-Row($row) {
 }
 
 # The rows that wait: a last try into the CSV, then sweep-unwritten.csv,
-# then the console. True when no row waited.
+# then the console. True when every row is in sweep.csv.
 function Save-PendingRows {
     $count = $script:pendingRows.Count
     if ($count -eq 0) { return $true }
@@ -202,10 +210,10 @@ function Save-PendingRows {
     $unwritten = Join-Path $run "sweep-unwritten.csv"
     try {
         $script:pendingRows | Export-Csv -LiteralPath $unwritten -NoTypeInformation -Encoding UTF8
-        Write-Host "$(RowsText $count) are not in ${csv}: see $unwritten."
+        Write-Host "$(RowsText $count) $(IsAre $count) not in ${csv}: see $unwritten."
     }
     catch {
-        Write-Host "$(RowsText $count) are not in $csv, and $unwritten cannot be written ($_). The rows:"
+        Write-Host "$(RowsText $count) $(IsAre $count) not in $csv, and $unwritten cannot be written ($_). The rows:"
         $script:pendingRows | ConvertTo-Csv -NoTypeInformation | ForEach-Object { Write-Host $_ }
     }
     $script:pendingRows.Clear()
@@ -272,6 +280,7 @@ function Invoke-ScicCommand([string]$game, [string]$copy, [string]$id, $command)
 
 $index = 0
 $allWritten = $false
+$loopDone = $false
 try {
     foreach ($game in $games) {
         $index++
@@ -325,10 +334,15 @@ try {
         }
         Write-Host $line
     }
+    $loopDone = $true
 }
 finally {
     # Also after Ctrl+C: PowerShell runs a finally block then.
     $allWritten = Save-PendingRows
+    if (-not $loopDone) {
+        Write-Host "The sweep stopped before its end. CSV: $csv"
+        exit 1
+    }
 }
 
 Write-Host ""

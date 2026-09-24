@@ -1569,8 +1569,8 @@ GUI changes in this plan (all others are refactors with no visible change):
   a row could not go into the CSV (it goes into `sweep-unwritten.csv`,
   also after Ctrl+C; review of `4897dc2e`: before, the row was lost).
   Each run gets its own run folder (the time, the process id and a random
-  part). It never writes into the source game folders. Copy the games; do not use junctions, because
-  `decompile` writes `src\` and `game.ini`.
+  part). It never writes into the source game folders. Copy the games; do
+  not use junctions, because `decompile` writes `src\` and `game.ini`.
 - CI: the build job builds and ships `scic.exe`. Its smoke step (C4) runs
   `script list`, `script decompile --all` and `script compile --all` on two
   copies of the SCI1.1 template: as it ships (its own sources compile
@@ -1583,7 +1583,8 @@ GUI changes in this plan (all others are refactors with no visible change):
   script to compile." exits with 0). The step runs also when a test step
   failed. The integration step of the build job runs the integration
   tests. The ASan job builds only `UnitTests`, so the in-process CLI tests
-  get ASan coverage with no change. The static-analysis job runs the failure-handling check.
+  get ASan coverage with no change. The static-analysis job runs the
+  failure-handling check.
 
 ## 11. Decisions
 

@@ -8,16 +8,26 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Next
 
-- The review of the fixes since `338ee1a7`: the nits of the C1 fixes,
-  and the fixes of the reviews of `85ac9717`, `338ee1a7`, the vcpkg
-  change and `103b8b23`.
+- The review of the C++ fixes (`e95c6e72`, `e1b791e9`, `7dd20f62`) runs.
 - Your request (2026-09-24): de-duplicate the test helpers and the
-  asserts, with one shared test-support file.
+  asserts (`TestSupport.h`); then one review of the whole batch (Sonnet),
+  with the fix of the review of `e3a4cf9a`.
 - Then the other review findings below, then the optional E1 (plan
   section 9), or stop before it.
 - Push and pull requests only with your approval.
 
 ## Review findings that are not fixed
+
+### `630e27b6` and `e3a4cf9a` (vcpkg, the sweep script): 4 nits
+
+- A write of several rows that fails part of the way (a full disk) puts
+  those rows into `sweep.csv` again at the next write.
+- A running Visual Studio does not see a change of `vcpkg.json` until the
+  solution reloads (the design-time build skips `InitializeBuildStatus`).
+- With no `vcpkg.json`, the `ProjectStateLine` read fails the load of the
+  projects (MSB4184); add an `Exists` condition.
+- "A vcpkg clone in `VCPKG_ROOT` avoids the fetch" (AGENTS.md) is true
+  only for a full clone that has the baseline commit.
 
 ### The C2 fixes (`3cf3e33f`): 4 nits
 
