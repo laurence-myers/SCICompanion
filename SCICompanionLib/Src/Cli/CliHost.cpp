@@ -51,7 +51,9 @@ namespace cli
         }
 
         // abort(), and std::terminate(), which calls it: one line, and exit
-        // code 1.
+        // code 1. With no handler, abort() ends the process with exit code 3
+        // and no line (InstallCrashHandling clears _CALL_REPORTFAULT), and 3
+        // is the exit code of "cannot open the game".
         void __cdecl AbortHandler(int)
         {
             CrashLine("(abort)");

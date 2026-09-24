@@ -1095,9 +1095,9 @@ namespace UnitTests
             Assert::IsTrue(raw.find("\"5\"") != std::string::npos, WideForBatch(raw + " / " + syntaxError->GetMessage()).c_str());
         }
 
-        // Every diagnostic line is 1-based, and a diagnostic has
-        // its raw message, with no "Error: (file) ... Line: N, col: M" around
-        // it, for the command line.
+        // Every diagnostic line is 1-based, and a diagnostic has its raw
+        // message, with no "Error: (file) ... Line: N, col: M" around it, for
+        // the command line.
         TEST_METHOD(Diagnostics_OneBasedLinesAndTheRawMessage)
         {
             NoAppStateForBatch noAppState;

@@ -34,7 +34,8 @@ enum class NameSource
 const char *NameSourceText(NameSource source);
 
 // Two files that give one script its name, or one name for two scripts. A
-// conflict names its scripts, so a command refuses only those scripts.
+// conflict names its scripts, so that a command that writes can refuse a
+// selection with one of them, and leave them out of --all with a warning.
 struct NameConflict
 {
     std::vector<uint16_t> numbers;  // the scripts in the conflict

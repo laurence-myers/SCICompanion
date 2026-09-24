@@ -6,10 +6,12 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: the fixes of the review of `4897dc2e` (the commit after
-  `85ac9717`) need their review. The reviews of the SCI0 round-trip fix
+- Current step: the fixes of the review of `0c777f51` (the commit after
+  `103b8b23`) need their review. The reviews of the SCI0 round-trip fix
   (`85ac9717`), of the vcpkg change (F1, C1 and `76b7aa3d`) and of the
-  comment cleanup (`0c777f51`) are running. F1, A1, A2, B1, B2, B3a,
+  fixes of the review of `4897dc2e` (`103b8b23`) are running. The
+  review of the comment cleanup (`0c777f51`) is done (see "Review of
+  0c777f51"). F1, A1, A2, B1, B2, B3a,
   B3b, F2, K1 to K6, S3, S1, S2 (S2a, S2b, S2c), S4 (S4a, S4b), C1, C2
   and C3 are committed and reviewed, with their review fixes (the last
   review of each passed, some with nits for a later commit); C4 and its
@@ -1320,6 +1322,26 @@ for each step, and a follow-up commit if the review finds a problem.
 - 2026-09-24, comments: at your request, the comments that the branch
   added describe only the current behaviour (`0c777f51`); the history is
   in the commit messages. Every review prompt carries the rule.
+- Review of 0c777f51 (the comment cleanup, 2026-09-24): FIX, 2
+  should-fix, 4 nits. Only comments changed (a strip of the comments
+  gave the same code in 70 files; the other 2 differ only in the Assert
+  texts that the commit names), and no comment of the branch refers to
+  its history. (1) The comment of `ResolveScriptSelectors` said that the
+  other selected scripts are not refused for a name conflict; but the
+  conflict goes into the one Usage error, which refuses the whole
+  selection (`compile ... 0 100` gives 2 when 100 is in a conflict). (2)
+  The comment of the SIGABRT handler lost its reason: with no handler,
+  `abort()` ends the process with exit code 3 and no line, the code of
+  "cannot open the game". Nits: the integration test comment (exit code
+  3 only with the abort behaviour of `InstallCrashHandling`), the crash
+  item comment said too much, an uneven wrap, a sentence of 67 words.
+  Evidence: the scratch folder `review-5ec3`. The fixes (the commit after
+  `103b8b23`): the texts of `ScriptCatalog.h`, `ScriptCatalog.cpp` and
+  `ScriptNameMap.h` agree (a selection with a script in a conflict is
+  refused as a whole; `--all` leaves that script out, with a warning; a
+  conflict of a script that is not selected refuses nothing), the
+  handler comment has its reason, and the nits. Only comments changed
+  (checked by a strip of the comments).
 - 2026-09-24, the SCI0 round trip (decompile `--all`, then compile
   `--all`) now compiles with 0 errors. The decompiler placed the names
   of the old `.sco` files by position: an export name of the form
@@ -1882,9 +1904,9 @@ for each step, and a follow-up commit if the review finds a problem.
 
 ## Next action
 
-The fixes of the review of `4897dc2e` (the commit after `85ac9717`)
+The fixes of the review of `0c777f51` (the commit after `103b8b23`)
 need their review. The reviews of the SCI0 round-trip fix (`85ac9717`),
-of the vcpkg change and of `0c777f51` are running. Then: fix what they
+of the vcpkg change and of `103b8b23` are running. Then: fix what they
 find; commits for the nits of the reviews of the C1 fixes, of the C2
 fixes (`3cf3e33f`), of `ccadff0c`, of `8fc8e984` and of `cd1d5ee3`;
 then the optional E1 (plan section 9), or stop before it. Push and PRs

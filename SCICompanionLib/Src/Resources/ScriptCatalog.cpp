@@ -540,12 +540,12 @@ namespace
     // would write over menubar.sc, the source of script 997). A file that no
     // script has keeps its title from every script. The current name of a
     // chosen script belongs to it too, so that no other chosen script takes
-    // it (two scripts would then have one name): a chosen script that gets
-    // no derived name (it cannot be read, or it has no class and no public
-    // instance) keeps it, and a script that no group of the run gives an ok
-    // outcome keeps it in game.ini (RunDecompile). So a reset is not always
-    // the same twice: when the current name of one chosen script is the
-    // derived name of another, the other gets the "_N" suffix, and a
+    // it: two scripts would then have one name. A chosen script that gets no
+    // derived name keeps its name (it cannot be read, or it has no class and
+    // no public instance). A script that no group of the run gives an ok
+    // outcome keeps its name in game.ini (RunDecompile). So a reset is not
+    // always the same twice: when the current name of one chosen script is
+    // the derived name of another, the other gets the "_N" suffix, and a
     // second reset can give it the plain name.
     std::map<uint16_t, std::string> ResetNamesOf(const ScriptNameMap *names, std::vector<ScriptObjectsForNaming> toName, const std::set<uint16_t> &chosen)
     {
@@ -802,8 +802,9 @@ sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const 
         std::set<uint16_t> byNumberOrName;
         std::vector<std::string> bad;
         // A script in a name conflict gives the conflict and its fix, before
-        // any other reason: a mode that writes refuses only the scripts in a
-        // conflict.
+        // any other reason. For a mode that writes, the Usage error then
+        // refuses the whole selection; a conflict of a script that is not
+        // selected refuses nothing.
         std::set<const NameConflict *> reported;
         auto inConflict = [&](uint16_t number) -> bool
         {
