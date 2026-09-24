@@ -420,8 +420,9 @@ Engine                    parser, compiler, decompiler, resource containers, cod
 - Every service returns `sci::Result<T>` or `sci::Status`. No exception
   leaves a service (section 6).
 - All CLI logic is in the library. The unit tests call it in-process with
-  `RunCli(args, console)`. The exe calls only `RunCli` (and `AfxWinInit`
-  while it still links MFC).
+  `RunCli(args, console)`. The exe calls only `CliMain` (and `AfxWinInit`
+  while it still links MFC), which installs the crash handling and the
+  Ctrl+C handler, then calls `RunCli`.
 
 ### 3.2 `GameSession` and the core log
 
@@ -621,7 +622,7 @@ Common options (all commands):
 |---|---|
 | `-q`, `--quiet` | Show errors only. |
 | `-v`, `--verbose` | Show more detail: each file written, memory use, warnings for each function. |
-| `--log <file>` | Also write all messages to a file. |
+| `--log <file>` | Also write all messages to a file. Not a file of the game (a `.log` file can be one). An error in the options themselves (a parse error, or a bad `--log`) is not in the log; a usage error after it is. |
 | `--data-dir <folder>` | The folder that holds `include\` and `Decompiler\`. Default: the exe folder. |
 | `--dry-run` | Do the work in memory. Write nothing. Show what a real run would write. |
 
@@ -1226,22 +1227,31 @@ types of different value types. #148 (`expected<void,E>::operator*`): use
 
 1. Call `AfxWinInit(GetModuleHandle(nullptr), nullptr, GetCommandLine(), 0)`
    while `scic` links the MFC library. Phase E removes this call.
-2. `return RunCli(argc, argv, console);`
+2. `return CliMain(argc, argv);`
+
+`CliMain` (in the library) turns off the crash dialogs and installs the
+crash filter and the handlers of section 6.6 (`abort()`, a bad parameter
+to a C runtime function, a pure call), and the Ctrl+C handler. Then it
+calls `RunCli(args, console)` inside `Guard` (exit 1 for an escaped
+exception).
 
 `RunCli` (in the library):
 
-1. Turn off the crash dialogs and install the crash filter (section 6.6).
-2. Parse the arguments. A usage error exits with 2 before `scic` opens the game.
-3. Make sure that `<data folder>\include\sci.sh` exists (exit 3 if not).
-4. Install a console log sink (`SetCoreLogSink`): warnings go to stderr,
+1. Parse the arguments. A usage error exits with 2 before `scic` opens the
+   game. The `--log` file opens first, so it gets the usage errors after it.
+2. Make sure that `<data folder>\include\sci.sh` exists (exit 3 if not).
+   The data folder is made absolute, as the game folder is.
+3. Install a console log sink (`SetCoreLogSink`): warnings go to stderr,
    and all messages go to the `--log` file if you give one.
-5. Create a `GameSession` with the options (data folder, warn on unused
+4. Create a `GameSession` with the options (data folder, warn on unused
    instances). There is no `AppState`: `appState` stays null. The session
    calls `InitializeSyntaxParsers()`, which the `AppState` constructor did
    before; without it the parser grammars are empty.
-6. `session.Open(folder)`. If it returns an error, print it and exit with 3.
-7. Run the command inside `Guard`. Print the report.
-8. Map the result to an exit code (section 8). Destroy the session.
+5. `session.Open(folder)`, with the absolute folder. If it returns an
+   error, print it and exit with 3 (2 for a usage error, for example an
+   empty folder; 1 for `Internal`: `ExitCodeForStartError`).
+6. Run the command inside `Guard`. Print the report.
+7. Map the result to an exit code (section 8). Destroy the session.
 
 Ctrl+C: a `SetConsoleCtrlHandler` handler sets an `std::atomic<bool>`.
 
@@ -1341,7 +1351,7 @@ back, not on the commit before K1.)
 
 | PR | Change | Test | Size |
 |---|---|---|---|
-| C1 | The `SCICompanionCli` project: `scic.exe`, console subsystem, static MFC for now, Release\|Win32, references to the library and Prof-UIS, `.sln` rows, a VERSIONINFO `.rc`. `Src\Cli\`: the command groups and arguments (CLI11 2.0.0 from vcpkg, BSD-3 licence, notice in `SCICompanion\Files\Licenses`), console, the exit-code mapping (section 8), the host (section 7) with the crash settings, Ctrl+C. Commands: `help`, `--version`, `script list`. Found at C1: CLI11 is 2.0.0 (the version pinned in `vcpkg.json`). The version of `scic.exe` is in `Src\Cli\CliVersion.h`, which its `.rc` reads; a test checks it against `SCICompanionLib.rc`, and AGENTS.md lists the file. C1 review fixes: `--log` gets every message, whatever `-q` and `-v` say, and it refuses to overwrite a file of the game; a failed write step gives 9 with any code but `Internal`, `WriteRefused` and `Cancelled`; `abort()`, `std::terminate()`, a bad CRT parameter and a pure call give one line and exit 1; an empty game folder and an empty `--data-dir` give 2; `SCIC_DATA_DIR` has no length limit; Ctrl+C during `list` gives 7; `scic help help` works; the build copies `Files\Licenses` next to the programs, so the release has the licence notices. | In-process `RunCli`: `script list` on both templates (text and tsv), usage errors (exit 2), a bad folder (exit 3), a missing data folder (exit 3), and `list` writes nothing (the folder snapshot stays equal). A unit test for each row of the exit-code mapping. Integration: `scic.exe script list` through `IntegrationHarness::RunChildReadStdout` (`UnitTests\IntegrationHarness.h:126`). | M |
+| C1 | The `SCICompanionCli` project: `scic.exe`, console subsystem, static MFC for now, Release\|Win32, references to the library and Prof-UIS, `.sln` rows, a VERSIONINFO `.rc`. `Src\Cli\`: the command groups and arguments (CLI11 2.0.0 from vcpkg, BSD-3 licence, notice in `SCICompanion\Files\Licenses`), console, the exit-code mapping (section 8), the host (section 7) with the crash settings, Ctrl+C. Commands: `help`, `--version`, `script list`. Found at C1: CLI11 is 2.0.0 (the version pinned in `vcpkg.json`). The version of `scic.exe` is in `Src\Cli\CliVersion.h`, which its `.rc` reads; a test checks it against `SCICompanionLib.rc`, and AGENTS.md lists the file. C1 review fixes: `--log` gets every message, whatever `-q` and `-v` say, and it refuses to overwrite a file of the game; a failed write step gives 9 with any code but `Internal`, `WriteRefused` and `Cancelled`; `abort()`, `std::terminate()`, a bad CRT parameter and a pure call give one line and exit 1; an empty game folder and an empty `--data-dir` give 2; `SCIC_DATA_DIR` has no length limit; Ctrl+C during `list` gives 7; `scic help help` works; the build copies `Files\Licenses` next to the programs, so the release has the licence notices. | In-process `RunCli`: `script list` on both templates (text and tsv), usage errors (exit 2), a bad folder (exit 3), a missing data folder (exit 3), and `list` writes nothing (the foand `list` writes nothing (the folder snapshot stays equal). `--log` with `-q` and `-v`, the usage errors in the log, a second run with the same `.log` (`LogFileQuietAndVerbose`); Ctrl+C before and after `list` starts; `--version` and help; absolute paths for a relative game folder and data folder. A unit test for each row of the exit-code mapping. Integration: `scic.exe script list` through `IntegrationHarness::RunChildReadStdout` (`UnitTests\IntegrationHarness.h:126`), and the crash handling (`ScicExe_ACrashIsOneLineAndExitCode1`). | M |
 | C2 | `scic script decompile` (section 4.4) and `scic script sco` (section 4.6). `script sco` reports a public block that the compiler refuses (a slot listed twice, a name with no definition; the `.sco` builder accepts them: a question of the review of the K2 fixes), and warns when the source's public block and the compiled export table disagree (found at the K2 review: the SCI1.1 template's `Main` and `DebugHandler` export names that their sources do not list). Found at C2: the decompiler's messages print as they come (errors and warnings; the progress with `-v`), then a summary (scripts written and failed, the function and byte rates, the globals named, the stale scripts, a `game.ini` error); every warning of the run report also goes to the results. `--dry-run` decompiles in memory and lists the files. `GenerateObjectFiles` takes `ObjectFileOptions` (a dry run, the Ctrl+C flag). Review of `37ee979b`: a dry run does the steps of a run in memory (`DecompileRunOptions::dryRun`: the stale scripts, `--update-stale`, main's `.sco`, `game.ini`, the `src\` files; `DecompileReport::files`); `sco` warns for a source with no public block, refuses an export that is not public (an include's procedure), lists the skipped scripts of `--all`, and its dry run checks each `.sco` (`changed`, exit 9); the MSBuild path keeps its case (`ScriptId::GetFullPathOrig`); the debug dumps are `DecompilerResultType::Debug`; a decompiler error in a written script is exit 6; the crash line follows the steps. | A template copy with no `game.ini` and no `src\` (a game SCI Companion never opened): `decompile --all` writes the derived names and creates no `game.ini`; a second run finds the same names. Individual and `--all` runs on template copies. `--stdout` and `--dry-run` write nothing. The stale report and `--update-stale`. Exit 6 when one script fails (a truncated script in a copy). | M |
 | C3 | `scic script compile` (sections 4.5 and 5). Found at C3: `ScriptOutcome::written` and `CompileReport::tablesWritten` (the resources that the commit writes; `CompileResults::Written`), and `objectFileChanged`; the diagnostics print from the report, for the last pass; a compile error keeps the case of its path (`CompileContext::_ReportThing` uses the script's own `ScriptId`); a compile of named scripts warns that a changed `.sco` can leave its users out of date; no warning for a script with no `[Script]` entry (S3 names it). The SCI0 template round-trips too: the decompiler places the names of the old `.sco` files by export slot and by local index (the commit after `0c777f51`; before, the decompiled `Obj.sc` named two procedures `EqualsAny`, and `SysWindow.sc` declared `local9` twice). Review of `fd65ff87`: an error in an include fails the script; `--out-dir ""` and `--to patch --into-volume` are usage errors; a parser message with a line is an `info` line without `-v`; absolute paths; the crash line names the step of the compile. | `compile --all` on a template copy with no `game.ini` compiles every `src\*.sc`. The default writes patch files and leaves `resource.map` byte-equal. `--to package` writes the package. The script bytes are equal for both destinations, and equal to the GUI path (S2). The shadow refusal (exit 8) and `--replace-patches`. The patch-mode refusal. `--dry-run` writes nothing. Exit 5 with one broken script, and the others are written. Round trip: `decompile --all`, then `compile --all`, with 0 errors (as `RecompileAllDecompiledScripts`, `UnitTests\DecompileHelper.cpp:544-593`). | M |
 | C4 | CI and documents: a smoke step in `build.yaml` (copy `Release\TemplateGame\SCI1.1` to a temp folder, then run `script list`, `script decompile --all` and `script compile --all`). README "What's new": a "Command-line tool" item. AGENTS.md: the CLI build and tests, and the failure-handling rules (C1 added the version file) (section 6.2). `UnitTests\README.md`. `UnitTests\Tools\CliCorpusSweep.ps1` (local use). The smoke step also runs on a copy with no `game.ini` and no `src\` (section 10). | CI passes. | S |

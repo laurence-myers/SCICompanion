@@ -58,6 +58,8 @@ namespace cli
         void Detail(const std::string &text) { _Write(text + "\n", _options.verbose && !_options.quiet, false); }
         // Help and lists of commands, to stdout.
         void Help(const std::string &text) { _Write(text, true, true); }
+        // Help after a usage error, to stderr, always.
+        void HelpAfterError(const std::string &text) { _Write(text, true, false); }
         // A debug dump that an option asked for, to stderr, always (also with
         // --quiet), with no "scic:" prefix: it is not a warning.
         void Dump(const std::string &text) { _Write(text + "\n", true, false); }

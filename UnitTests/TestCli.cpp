@@ -87,6 +87,31 @@ namespace
         return error;
     }
 
+    // Records the crash items (RecordCurrentItems) for a scope. The
+    // destructor ends the record, also when an assert throws.
+    struct RecordedItems
+    {
+        std::vector<std::string> items;
+        RecordedItems() { cli::RecordCurrentItems(&items); }
+        ~RecordedItems()
+        {
+            cli::RecordCurrentItems(nullptr);
+            cli::SetCurrentItem("");
+        }
+        RecordedItems(const RecordedItems &) = delete;
+        RecordedItems &operator=(const RecordedItems &) = delete;
+
+        std::string Text() const
+        {
+            std::string text;
+            for (const std::string &item : items)
+            {
+                text += item + " | ";
+            }
+            return text;
+        }
+    };
+
     // Each file of a folder tree: its size and its last write time.
     std::map<std::string, std::pair<uintmax_t, long long>> Snapshot(const std::string &folder)
     {
@@ -437,14 +462,18 @@ namespace UnitTests
         }
 
         // Plan section 8: a usage error is exit code 2, before any game opens.
-        // An empty game folder, an empty --data-dir, and a --log that would
-        // overwrite a file of the game are usage errors too.
+        // An empty game folder, an empty --data-dir, an empty --log, and a
+        // --log that would overwrite a file of the game (also a .txt file)
+        // are usage errors too.
         TEST_METHOD(UsageErrors_ExitWith2)
         {
             NoAppStateForCli noAppState;
             CopyTemplate("\\TemplateGame\\SCI0");
             std::string map = (fs::path(_copyFolder) / "resource.map").string();
             std::string mapBefore = ReadFileText(map);
+            std::string gameText = (fs::path(_copyFolder) / "game.txt").string();
+            std::string gameTextBefore = ReadFileText(gameText);
+            Assert::IsFalse(gameTextBefore.empty(), L"setup: the SCI0 template has game.txt");
             std::vector<std::vector<std::string>> cases = {
                 {},
                 { "nosuchcommand" },
@@ -455,6 +484,8 @@ namespace UnitTests
                 { "help", "nosuchtopic" },
                 { "script", "list", "" },
                 { "script", "list", _copyFolder, "--log", map },
+                { "script", "list", _copyFolder, "--log", gameText },
+                { "script", "list", _copyFolder, "--log", "" },
                 // Plan section 4.2: --all or scripts, not both and not neither.
                 { "script", "decompile", _copyFolder },
                 { "script", "decompile", _copyFolder, "974", "--all" },
@@ -478,6 +509,7 @@ namespace UnitTests
                 Assert::IsTrue(console.err.find("scic: error:") != std::string::npos, WideForCli(text).c_str());
             }
             Assert::AreEqual(mapBefore, ReadFileText(map), L"--log did not write over resource.map");
+            Assert::AreEqual(gameTextBefore, ReadFileText(gameText), L"--log did not write over game.txt");
 
             cli::StringConsole emptyData;
             int code = cli::RunCli({ "script", "list", _copyFolder, "--data-dir", "" }, emptyData);
@@ -537,6 +569,34 @@ namespace UnitTests
             cli::StringConsole console;
             int code = Run({ "script", "list", _copyFolder }, console);
             cli::CancelFlag().store(false);
+            Assert::AreEqual(7, code, WideForCli(console.err).c_str());
+            Assert::IsTrue(console.out.empty(), WideForCli(console.out).c_str());
+        }
+
+        // A Ctrl+C that comes after list started: the console sets the flag
+        // when list prints its first warning (a name conflict), before it
+        // reads the scripts. No table, and exit code 7.
+        TEST_METHOD(List_CtrlCAfterTheStart_ExitsWith7)
+        {
+            struct CancelOnWarning : public cli::StringConsole
+            {
+                void Err(const std::string &text) override
+                {
+                    StringConsole::Err(text);
+                    if (text.find("scic: warning:") != std::string::npos)
+                    {
+                        cli::CancelFlag().store(true);
+                    }
+                }
+            };
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            WriteFileText((fs::path(_copyFolder) / "src" / "S1Other.sc").string(), "(script# 961)\n");
+            WriteFileText((fs::path(_copyFolder) / "src" / "S1Second.sc").string(), "(script# 961)\n");
+            CancelOnWarning console;
+            int code = Run({ "script", "list", _copyFolder }, console);
+            bool flagged = cli::CancelFlag().exchange(false);
+            Assert::IsTrue(flagged, WideForCli("setup: a warning sets the flag:\n" + console.err).c_str());
             Assert::AreEqual(7, code, WideForCli(console.err).c_str());
             Assert::IsTrue(console.out.empty(), WideForCli(console.out).c_str());
         }
@@ -608,9 +668,10 @@ namespace UnitTests
             Assert::IsTrue(helpHelp.out.find("Usage: scic help") != std::string::npos, WideForCli(helpHelp.out).c_str());
         }
 
-        // --log gets every message, whatever -q and -v say; --quiet shows
-        // errors only; -v shows the details. A log file that cannot open is
-        // exit code 3.
+        // --log gets every message, whatever -q and -v say, also a usage
+        // error after the log opens; --quiet shows errors only; -v shows the
+        // details. A second run writes its .log in the game folder again. A
+        // log file that cannot open is exit code 3.
         TEST_METHOD(LogFileQuietAndVerbose)
         {
             NoAppStateForCli noAppState;
@@ -632,6 +693,22 @@ namespace UnitTests
             Assert::IsTrue(logged.find("Main") != std::string::npos, WideForCli(logged).c_str());
             Assert::IsTrue(logged.find("scic: warning:") != std::string::npos, WideForCli("the log gets the warning with -q:\n" + logged).c_str());
             Assert::IsTrue(logged.find("The data folder:") != std::string::npos, WideForCli("the log gets the details with no -v:\n" + logged).c_str());
+            cli::StringConsole again;
+            code = Run({ "script", "list", _copyFolder, "-q", "--log", log }, again);
+            Assert::AreEqual(0, code, WideForCli("the second run with the same .log:\n" + again.err).c_str());
+
+            cli::StringConsole noScripts;
+            code = Run({ "script", "decompile", _copyFolder, "--log", log }, noScripts);
+            Assert::AreEqual(2, code, WideForCli(noScripts.err).c_str());
+            logged = ReadFileText(log);
+            Assert::IsTrue(logged.find("scic: error: give --all, or one or more scripts") != std::string::npos, WideForCli("a usage error goes into the log:\n" + logged).c_str());
+            cli::StringConsole noCommand;
+            code = Run({ "--log", log }, noCommand);
+            Assert::AreEqual(2, code, WideForCli(noCommand.err).c_str());
+            Assert::IsTrue(noCommand.out.empty() && (noCommand.err.find("Usage: scic") != std::string::npos), WideForCli("the help goes to stderr:\n" + noCommand.err).c_str());
+            logged = ReadFileText(log);
+            Assert::IsTrue((logged.find("scic: error: give a command") != std::string::npos) && (logged.find("Usage: scic") != std::string::npos),
+                WideForCli("the error and the help go into the log:\n" + logged).c_str());
 
             cli::StringConsole loud;
             code = Run({ "script", "list", _copyFolder }, loud);
@@ -1511,19 +1588,34 @@ namespace UnitTests
         }
 
         // A relative game folder gives absolute paths in the MSBuild lines
-        // (the VS Code problem matcher needs them).
+        // (the VS Code problem matcher needs them), and so does a relative
+        // data folder. A game folder with a "\" at the end gives no "\\".
         TEST_METHOD(Compile_ARelativeGameFolder_PrintsAbsolutePaths)
         {
             NoAppStateForCli noAppState;
             CopyTemplate("\\TemplateGame\\SCI0");
             ReplaceFirst((fs::path(_copyFolder) / "src" / "rm001.sc").string(), "(public\r\n\trm001 0\r\n)\r\n", "(public\r\n\trm001 0\r\n)\r\n(procedure (c3Broken) (return c3Undeclared))\r\n");
+            std::string expected = (fs::path(_copyFolder) / "src" / "rm001.sc").string() + "(25,";
             fs::path saved = fs::current_path();
             fs::current_path(_copyFolder);
             cli::StringConsole console;
             int code = Run({ "script", "compile", ".", "rm001", "--dry-run" }, console);
             fs::current_path(saved);
             Assert::AreEqual(5, code, WideForCli(console.err).c_str());
-            Assert::IsTrue(console.err.find((fs::path(_copyFolder) / "src" / "rm001.sc").string() + "(25,") != std::string::npos, WideForCli(console.err).c_str());
+            Assert::IsTrue(console.err.find(expected) != std::string::npos, WideForCli(console.err).c_str());
+
+            cli::StringConsole endSeparator;
+            code = Run({ "script", "compile", _copyFolder + "\\", "rm001", "--dry-run" }, endSeparator);
+            Assert::AreEqual(5, code, WideForCli(endSeparator.err).c_str());
+            Assert::IsTrue(endSeparator.err.find(expected) != std::string::npos, WideForCli(endSeparator.err).c_str());
+
+            fs::path dataFolder = GetTestModuleDirectory();
+            fs::current_path(dataFolder.parent_path());
+            cli::StringConsole relativeData;
+            code = cli::RunCli({ "script", "list", _copyFolder, "0", "-v", "--data-dir", dataFolder.filename().string() }, relativeData);
+            fs::current_path(saved);
+            Assert::AreEqual(0, code, WideForCli(relativeData.err).c_str());
+            Assert::IsTrue(relativeData.err.find("The data folder: " + dataFolder.string() + "\n") != std::string::npos, WideForCli(relativeData.err).c_str());
         }
 
         // The crash line names the step of a compile: the selection, the
@@ -1532,20 +1624,12 @@ namespace UnitTests
         {
             NoAppStateForCli noAppState;
             CopyTemplate("\\TemplateGame\\SCI0");
-            std::vector<std::string> items;
-            cli::RecordCurrentItems(&items);
+            RecordedItems recorded;
             cli::StringConsole console;
             int code = Run({ "script", "compile", _copyFolder, "rm001", "--dry-run" }, console);
-            cli::RecordCurrentItems(nullptr);
-            cli::SetCurrentItem("");
             Assert::AreEqual(0, code, WideForCli(console.err).c_str());
             std::vector<std::string> expected = { "selecting the scripts", "starting the compile", "compiling script 1 (rm001)", "writing the compiled resources", "printing the report" };
-            std::string recorded;
-            for (const std::string &item : items)
-            {
-                recorded += item + " | ";
-            }
-            Assert::IsTrue(items == expected, WideForCli(recorded).c_str());
+            Assert::IsTrue(recorded.items == expected, WideForCli(recorded.Text()).c_str());
         }
 
         // The lines of the report. With -v, "wrote" names each file that the

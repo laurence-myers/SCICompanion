@@ -8,9 +8,8 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Next
 
-- The review of `85ac9717` (the SCI0 round trip) runs.
-- Fix the findings of the reviews of the vcpkg change, of `338ee1a7` and
-  of `103b8b23` (below).
+- Fix the findings of the reviews of `85ac9717`, of the vcpkg change, of
+  `338ee1a7` and of `103b8b23` (below).
 - Your request (2026-09-24): de-duplicate the test helpers and the
   asserts, with one shared test-support file.
 - Then the other review findings below, then the optional E1 (plan
@@ -18,6 +17,23 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 - Push and pull requests only with your approval.
 
 ## Review findings that are not fixed
+
+### `85ac9717` (the SCI0 round trip): 2 should-fix, 2 nits, 1 question
+
+- Should-fix: `ResolvePublicProcedureCalls` renames the procedures while
+  it goes through the export entries, so a new name that has the form of a
+  later slot's generated name is renamed again. This happens when a `.sco`
+  loads in part (a cut `obj.sco`: three `EqualsAny`, 6 compile errors).
+  Fix: find the procedure of each entry first, then rename.
+- Should-fix: `RenameContext` gives a declaration a `.sco` local name that
+  another declaration already has. An old `SysWindow.sco` (from the rule
+  before `85ac9717`) names indices 6 and 9 `local9`: "There is already a
+  local variable called 'local9'".
+- Nits: no test covers the export block; its comment does not say that it
+  acts only for a `.sco` that loads in part.
+- Question: an `obj.sco` with no slot 1 names the procedure `proc999_1`,
+  but its calls stay `localproc_0022`; one with no slot 2 gives two
+  procedures `proc999_2` (older). Known gaps?
 
 ### The vcpkg change (F1, C1 and `76b7aa3d`): 3 should-fix, 8 nits, 1 question
 
@@ -83,28 +99,6 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 - Texts: "1 rows" in two messages; a short line in plan section 10
   ("tests. The ASan job").
 
-### The C1 fixes (`6b1bfe64`): 9 nits
-
-- A second run with `--log <game>\x.out` refuses the file that the first
-  run wrote, and the message does not say what to do.
-- The root help after "give a command" does not go into the log. A parse
-  error, `--data-dir ""` and the `--log` refusal come before the log
-  opens.
-- `--log ""` is ignored (`--data-dir ""` is a usage error).
-- The `.txt` exemption lets `--log` overwrite `game.txt` of the SCI0
-  template.
-- Test gaps: a second run with the same `.log`; Ctrl+C during the read of
-  `list` (the test sets the flag before the run); the lock of `CliOutput`.
-- Texts: plan 3.1 and 7 name `RunCli` where the code has `CliMain`; plan 7
-  says that an `Open` error gives 3 (a usage error gives 2, `Internal` 1);
-  `ExitCodes.h` says "Io during a write".
-- `Licenses\README.txt` names `License.txt`, `COPYING2` and `COPYING`,
-  which the build does not copy (older than C1).
-- A second `abort()` on another thread can exit with 3: the C runtime
-  resets the handler before it calls it.
-- A hard link outside the game folder to a file of the game passes the
-  `--log` check.
-
 ### The C2 fixes (`3cf3e33f`): 4 nits
 
 - A decompile dry run does not check that the run can write. A read-only
@@ -160,7 +154,7 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 - Question: with `--stdout`, a batch that throws after pass 1 prints the
   pass-1 source, with exit 1. Print nothing?
 
-### `cd1d5ee3` (the C3 fixes): 11 nits, 1 question
+### `cd1d5ee3` (the C3 fixes): 7 nits, 1 question
 
 - Test gaps: no test fails for the absolute `--out-dir`, for the batch
   warnings in the count, for the dry-run text "would be written", or for
@@ -173,14 +167,11 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   log.
 - Each include error prints and counts twice: `sci.sh` includes `keys.sh`,
   so `Update` loops again and tries the failed include again.
-- A relative `--data-dir` gives relative diagnostic paths.
 - The include-read error has its path in lower case.
-- `--log ""` is ignored (also a nit of the C1 fixes).
 - 43 test asserts make their message before `Run` runs, so a failure shows
   no output.
-- The recorder hook can keep a dangling pointer when `Run` throws.
 - Texts: the plan's C3 row lists `objectFileChanged`; a dry run gives no
-  pass warning; a game folder with a `\` at its end prints `\\src`.
+  pass warning.
 - Question: should "The else clause must be the last clause in a cond."
   be a warning? The parser drops the clauses before it; today it is
   `info`, and `-q` hides it.
@@ -191,6 +182,8 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 - A damaged or empty `resource.map` opens: `list` shows no script, with
   warnings, and exits with 0 (the format detection is permissive).
+- A hard link outside the game folder to a file of the game passes the
+  `--log` check, which compares folders.
 - Names go to the console as bytes of the ANSI code page, with no
   conversion.
 - A compile prints its diagnostics at the end, not as they come. A script
@@ -286,7 +279,8 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 ### No test (checked by inspection only)
 
 - The Ctrl+C handler itself (the tests set the cancel flag), the core-log
-  error line, the pure-call handler.
+  error line, the pure-call handler, a second `abort()` on another thread,
+  the lock of `CliOutput`.
 - The compile dialog, the shadow question, the Decompile dialog,
   `MainFrm.cpp` and `ScriptDocument.cpp`; 7 of the 8 parser sites that
   give a 1-based line.

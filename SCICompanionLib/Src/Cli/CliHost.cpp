@@ -56,6 +56,9 @@ namespace cli
         // is the exit code of "cannot open the game".
         void __cdecl AbortHandler(int)
         {
+            // The C runtime sets SIGABRT back to its default before it calls
+            // the handler: an abort of another thread must come here too.
+            signal(SIGABRT, AbortHandler);
             CrashLine("(abort)");
         }
 

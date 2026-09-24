@@ -20,7 +20,7 @@ namespace cli
         PartialFailure = 6, // some scripts failed for a reason that is not a compile error
         Cancelled = 7,
         WriteRefused = 8,
-        WriteFailed = 9,    // Io during a write
+        WriteFailed = 9,    // a write step failed, or a file of a script could not be written (ReportFacts::writeFailed)
     };
 
     // An error before the first script: Usage gives 2, WriteRefused 8,

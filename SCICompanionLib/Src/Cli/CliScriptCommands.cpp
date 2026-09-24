@@ -104,7 +104,14 @@ namespace cli
         }
         char buffer[MAX_PATH * 4];
         DWORD length = GetFullPathNameA(path.c_str(), ARRAYSIZE(buffer), buffer, nullptr);
-        return ((length > 0) && (length < ARRAYSIZE(buffer))) ? std::string(buffer, length) : path;
+        std::string full = ((length > 0) && (length < ARRAYSIZE(buffer))) ? std::string(buffer, length) : path;
+        // No separator at the end, except the one of a root ("C:\"): the
+        // paths that the run makes add their own (else "game\\src").
+        while ((full.size() > 1) && ((full.back() == '\\') || (full.back() == '/')) && !std::filesystem::path(full).relative_path().empty())
+        {
+            full.pop_back();
+        }
+        return full;
     }
 
     sci::Result<ExitCode> RunScriptList(GameSession &session, const ScriptListOptions &options, CliOutput &output)
