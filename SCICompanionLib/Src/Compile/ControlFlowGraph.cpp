@@ -150,21 +150,13 @@ int NodeBlock::Compare(const NodeBlock &A, const NodeBlock &B)
 	}
 	else
 	{
-		// Two blocks with the same head. _CheckForSameHeader merges them into
-		// one loop with a common latch, unless it builds them as nested loops:
-		// then the one that ends first is nested in the other.
+		// The same NodeBlock. Two blocks with one head do not get here:
+		// _CheckForSameHeader merges them into one loop, or it keeps only the
+		// inner loop's block, and the outer loop's blocks come back in a
+		// later round.
 		// http://www.cs.cmu.edu/afs/cs/academic/class/15745-s01/www/lectures/lect0124.txt
 		// Inner Loops and Loops with the same header: http://nptel.ac.in/courses/106108052/module9/control-flow-ana-2.pdf
-		if (A.endAddress < B.endAddress)
-		{
-			// A is nested in B
-			return -1;
-		}
-		if (B.endAddress < A.endAddress)
-		{
-			// B is nested in A
-			return 1;
-		}
+		assert(B.latch == A.latch);
 		return 0;
 	}
 	// Disjoint, so they are equal
@@ -2136,13 +2128,15 @@ vector<NodeBlock> _FindBackEdges(DominatorMap &dominators, DominatorMap &postDom
 	return backEdges;
 }
 
-// Blocks that share a head, in latch order. Sierra's compiler gives a loop
-// that is the first statement of a repeat the head of the repeat, so the two
-// loops start at the same node. The first `count` blocks are the back edges
-// of an inner loop when that loop ends (at its follow node, the end address
-// of its blocks) no later than the next latch: the code from there to the
-// next latch is the rest of the outer loop's body. Returns that count, or 0
-// when the blocks do not nest.
+// Blocks that share a head, in latch order. The first `count` blocks are the
+// back edges of an inner loop when that loop ends (at its follow node, the
+// end address of its blocks) no later than the next latch: the code from
+// there to the next latch is the rest of the outer loop's body. Sierra's
+// compiler gives a loop that is the first statement of a repeat the head of
+// the repeat, so the two loops start at the same node. The rule also matches
+// a continue in the body (or a cond clause that ends in a jump to the head):
+// its bytecode is that of a loop at the start of the repeat, and the two
+// readings do the same. Returns that count, or 0 when the blocks do not nest.
 static size_t _CountInnerLoopLatches(const vector<NodeBlock*> &blocksWithSameHeader)
 {
 	uint16_t innerEnd = 0;

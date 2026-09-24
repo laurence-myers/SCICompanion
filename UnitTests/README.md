@@ -136,6 +136,7 @@ expected file is missing, the test writes the actual to
 | `F13_ValueIfArgument` | 931 | (chunk stage) | fixed; a send whose arguments are value ifs, with the selector and earlier arguments pushed before the if; an if test that reuses the accumulator hands those pushes to the send (`deferred`) |
 | `F14_BreakPastLatch` | 936 | (structurer) | fixed; a loop whose break jumps past its latch ends at its follow node, so the loop after its latch (in its else) is built first; King's Quest V script 755 |
 | `F15_SharedLoopHead` | 937 | (structurer) | fixed; a while that is the first statement of a repeat shares the repeat's head; when the two do not structure as one loop, a second analysis builds them as nested loops; King's Quest V script 755 |
+| `F16_SharedHeadOneLoop` | 938 | (structurer) | a while first in a repeat that structures as one loop keeps that text (a cond); no second analysis |
 
 `TemplateGame_FallbackBaseline` guards against new fallbacks. The template game
 started with 7 known fallbacks. The Family 1 and Family 6 fixes each removed

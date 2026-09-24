@@ -1266,16 +1266,28 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 			string trackingName = GetMethodTrackingName(func.GetOwnerClass(), func, true);
 			HeldDecompilerResults results(lookups.DecompileResults());
 			HeldDecompilerResults nestedResults(lookups.DecompileResults());
-			unique_ptr<ControlFlowGraph> cfg = make_unique<ControlFlowGraph>(messageDescription, results, trackingName, allowContinues, lookups.DebugControlFlow, lookups.pszDebugFilter);
-			success = cfg->Generate(code.begin(), code.end());
-			if (!success && cfg->MergedNestedLoops() && !lookups.DecompileResults().IsAborted())
+			unique_ptr<ControlFlowGraph> cfg;
+			try
 			{
-				unique_ptr<ControlFlowGraph> nestedCfg = make_unique<ControlFlowGraph>(messageDescription, nestedResults, trackingName, allowContinues, lookups.DebugControlFlow, lookups.pszDebugFilter, true);
-				if (nestedCfg->Generate(nestedCode.begin(), nestedCode.end()))
+				cfg = make_unique<ControlFlowGraph>(messageDescription, results, trackingName, allowContinues, lookups.DebugControlFlow, lookups.pszDebugFilter);
+				success = cfg->Generate(code.begin(), code.end());
+				if (!success && cfg->MergedNestedLoops() && !lookups.DecompileResults().IsAborted())
 				{
-					success = true;
-					cfg = std::move(nestedCfg);
+					unique_ptr<ControlFlowGraph> nestedCfg = make_unique<ControlFlowGraph>(messageDescription, nestedResults, trackingName, allowContinues, lookups.DebugControlFlow, lookups.pszDebugFilter, true);
+					if (nestedCfg->Generate(nestedCode.begin(), nestedCode.end()))
+					{
+						success = true;
+						cfg = std::move(nestedCfg);
+					}
 				}
+			}
+			catch (...)
+			{
+				// An analysis that throws: its messages (the progress and the
+				// debug dumps) help to find the cause, so they go on first.
+				results.Release();
+				nestedResults.Release();
+				throw;
 			}
 			(cfg->NestsLoopsWithOneHead() ? nestedResults : results).Release();
 

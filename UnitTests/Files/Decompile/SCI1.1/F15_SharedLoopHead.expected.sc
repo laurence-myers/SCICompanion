@@ -6,7 +6,11 @@
 	f15SharedLoopHead 0
 )
 
-(procedure (f15SharedLoopHead param1 &tmp temp0 temp1)
+(procedure (f15SharedLoopHead param1 &tmp temp0 temp1 temp2)
+	(while (< temp2 3)
+		(++ temp2)
+		(if param1 else (= temp1 temp2))
+	)
 	(repeat
 		(while (< temp0 10)
 			(if param1

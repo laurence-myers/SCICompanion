@@ -449,7 +449,7 @@ static std::string NormalizeWs(const std::string &text)
     return out;
 }
 
-void AssertDecompileMatchesExpected(const std::string &fixtureName, uint16_t scriptNumber)
+DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, uint16_t scriptNumber)
 {
     DecompileOutput first = DecompileAndRoundTrip(fixtureName, scriptNumber);
     if (first.fallbacks != 0)
@@ -485,6 +485,7 @@ void AssertDecompileMatchesExpected(const std::string &fixtureName, uint16_t scr
         WriteTextFile(outDir + "\\" + fixtureName + ".actual.sc", first.text);
         Assert::Fail(ToWString(fixtureName + ": decompiled text does not match expected. Actual in " + outDir).c_str());
     }
+    return first;
 }
 
 SnapshotResult CompareTemplateSnapshots()

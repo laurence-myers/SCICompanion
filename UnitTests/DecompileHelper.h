@@ -87,8 +87,9 @@ int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
 // expected file "<name>.expected.sc" in TestFiles\Decompile\SCI1.1. Asserts no
 // fallback, no asm, an exact match after whitespace normalization, and a stable
 // round trip. On mismatch it writes the actual text to TestResults so a diff is
-// easy. This tests fidelity, not just round-trip stability.
-void AssertDecompileMatchesExpected(const std::string &fixtureName, uint16_t scriptNumber);
+// easy. This tests fidelity, not just round-trip stability. Returns the first
+// decompile.
+DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, uint16_t scriptNumber);
 
 // Every selector number and name of the current game, one per line.
 std::string DumpSelectorTable();

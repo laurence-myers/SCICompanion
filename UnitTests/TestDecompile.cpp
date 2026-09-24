@@ -257,11 +257,24 @@ namespace UnitTests
 
         // A while that is the first statement of a repeat: the two loops
         // share their head. With a breakif in the while they do not structure
-        // as one loop, so the decompiler makes them nested loops.
+        // as one loop, so the decompiler makes them nested loops. A while with
+        // a continue stays one loop. The messages are those of the analysis
+        // that is used, so the failed first analysis leaves no warning.
         TEST_METHOD(SharedLoopHead)
         {
             _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F15_SharedLoopHead", 937);
+            DecompileOutput out = AssertDecompileMatchesExpected("F15_SharedLoopHead", 937);
+            LogWarnings("F15", out);
+            Assert::IsTrue(out.warnings.empty(), L"expected no warning");
+        }
+
+        // A while that is the first statement of a repeat, with no break in
+        // the while: as one loop it structures, so its text (a cond in the
+        // repeat) stays, and no second analysis runs.
+        TEST_METHOD(SharedLoopHead_OneLoopStructures)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F16_SharedHeadOneLoop", 938);
         }
 
         // Return values take the golden shape: an if whose branches return is

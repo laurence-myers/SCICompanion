@@ -8,13 +8,28 @@
 ; body, an if whose "bnt" goes straight back to the head (Sierra's compiler
 ; sends a jump to a jump on to the final target). As one loop, this does not
 ; structure; as a while nested in a repeat, it does.
+; Before the repeat, a while with a continue has two jumps back to its head
+; too, but it is one loop: its exit is past both of them.
 ; Shape from King's Quest V, script 755 (setControls::doit).
 (public
 	f15SharedLoopHead 0
 )
 
-(procedure (f15SharedLoopHead param1 &tmp temp0 temp1)
+(procedure (f15SharedLoopHead param1 &tmp temp0 temp1 temp2)
 	(asm
+	count:
+		lst temp2
+		ldi 3
+		lt?
+		bnt head
+		+at temp2
+		lap param1
+		bnt countMore
+		jmp count
+	countMore:
+		lat temp2
+		sat temp1
+		jmp count
 	head:
 		lst temp0
 		ldi 10
