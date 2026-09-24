@@ -1566,10 +1566,10 @@ GUI changes in this plan (all others are refactors with no visible change):
   `[internal]` error, or a timeout (review of `34c1ba40`: before, a crash
   that the crash filter did not see was not a bug), when it could not run
   a game (review of `3d2badc3`: before, that sweep exited with 0), or when
-  a row could not go into the CSV (it goes into `sweep-unwritten.csv`;
-  review of `4897dc2e`: before, the row was lost). Each run gets its own
-  run folder (the time and the process id). It never writes into the
-  source game folders. Copy the games; do not use junctions, because
+  a row could not go into the CSV (it goes into `sweep-unwritten.csv`,
+  also after Ctrl+C; review of `4897dc2e`: before, the row was lost).
+  Each run gets its own run folder (the time, the process id and a random
+  part). It never writes into the source game folders. Copy the games; do not use junctions, because
   `decompile` writes `src\` and `game.ini`.
 - CI: the build job builds and ships `scic.exe`. Its smoke step (C4) runs
   `script list`, `script decompile --all` and `script compile --all` on two
@@ -1582,9 +1582,8 @@ GUI changes in this plan (all others are refactors with no visible change):
   must name every script that `list` found (review of `34c1ba40`: "No
   script to compile." exits with 0). The step runs also when a test step
   failed. The integration step of the build job runs the integration
-  tests. The ASan job
-  builds only `UnitTests`, so the in-process CLI tests get ASan coverage
-  with no change. The static-analysis job runs the failure-handling check.
+  tests. The ASan job builds only `UnitTests`, so the in-process CLI tests
+  get ASan coverage with no change. The static-analysis job runs the failure-handling check.
 
 ## 11. Decisions
 

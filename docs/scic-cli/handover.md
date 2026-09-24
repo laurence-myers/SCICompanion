@@ -8,7 +8,9 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Next
 
-- Fix the findings of the review of `103b8b23` (below).
+- The review of the fixes since `338ee1a7`: the nits of the C1 fixes,
+  and the fixes of the reviews of `85ac9717`, `338ee1a7`, the vcpkg
+  change and `103b8b23`.
 - Your request (2026-09-24): de-duplicate the test helpers and the
   asserts, with one shared test-support file.
 - Then the other review findings below, then the optional E1 (plan
@@ -16,26 +18,6 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 - Push and pull requests only with your approval.
 
 ## Review findings that are not fixed
-
-### `103b8b23` (the corpus sweep script): 1 should-fix, 6 nits
-
-- Should-fix: Ctrl+C loses the rows that wait for a locked `sweep.csv`.
-  They are only in memory, and only the normal end writes them. Fix: a
-  `try`/`finally` around the game loop that writes them, or puts them into
-  `sweep-unwritten.csv`.
-- A failed write of `sweep-unwritten.csv` stops the script with an error,
-  and the rows are lost.
-- `-Scic` with `[ ]` can run another program: `Start-Process -FilePath`
-  takes a wildcard.
-- The device-path check reads the text that the user types:
-  `//?/C:/x` and `FileSystem::\\?\C:\x` get through, and a run folder can
-  then be in a source folder.
-- `-Work C:\` fails: `New-Item -Force` does not take a drive root.
-- Two sweeps in one process (runspaces) have one process id, and can
-  share a run folder. The comment and plan section 10 say that two sweeps
-  always get two folders.
-- Texts: "1 rows" in two messages; a short line in plan section 10
-  ("tests. The ASan job").
 
 ### The C2 fixes (`3cf3e33f`): 4 nits
 

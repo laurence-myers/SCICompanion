@@ -26,20 +26,20 @@
     a new run folder, and each copy is removed after its game, unless you
     give -Keep.
 
-    The run folder (<Work>\<time>-<process id>) gets sweep.csv and logs\.
-    The CSV has one row for each game and command, written as the sweep
-    goes (a row that cannot be written is tried again with the next one,
-    and at the end it goes into sweep-unwritten.csv): the game
-    folder, the command, the exit code ("timeout" when the command ran
-    longer than -TimeoutSeconds; "skipped" for a compile after a decompile
-    that did not finish), the seconds, the count of error lines ("scic:
-    error:", "scic: crash" and "path(line,col): error :"), the error codes
-    ("format", "io", ...), the summary of the report, whether the row is a
-    bug of scic, whether the command finished ("no" after a timeout, a
-    crash line, or an exit code that is not a result of scic), and the log
-    file (stdout, then stderr). A game that the
-    sweep itself could not run (for example a copy that failed) gets one
-    "sweep" row with the error.
+    The run folder (<Work>\<time>-<process id>-<random part>) gets sweep.csv
+    and logs\. The CSV has one row for each game and command, written as
+    the sweep goes (a row that cannot be written is tried again with the
+    next one; at the end, also after Ctrl+C, it goes into
+    sweep-unwritten.csv, or to the console): the game folder, the command,
+    the exit code ("timeout" when the command ran longer than
+    -TimeoutSeconds; "skipped" for a compile after a decompile that did not
+    finish), the seconds, the count of error lines ("scic: error:", "scic:
+    crash" and "path(line,col): error :"), the error codes ("format", "io",
+    ...), the summary of the report, whether the row is a bug of scic,
+    whether the command finished ("no" after a timeout, a crash line, or an
+    exit code that is not a result of scic), and the log file (stdout, then
+    stderr). A game that the sweep itself could not run (for example a copy
+    that failed) gets one "sweep" row with the error.
 
     A bug of scic: a command that timed out; that printed a crash line or
     an "internal" error; or that ended with an exit code that scic does not
@@ -75,15 +75,19 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 # A file-system path as Windows sees it: a relative path starts at the
 # current PowerShell folder (Set-Location), not at the folder of the
 # process; a UNC path has no provider prefix; a drive root keeps its "\".
-# A device path (\\.\ or \\?\) is refused: the text check of the folders
-# cannot compare it with the other forms.
+# A device path (\\.\ or \\?\, with either slash, also after a provider
+# prefix) is refused: the text check of the folders cannot compare it with
+# the other forms.
 function Get-FullPath([string]$path, [string]$what) {
-    if ($path.StartsWith('\\.\') -or $path.StartsWith('\\?\')) { throw "$what is a device path, which the script cannot use: $path" }
+    $devicePath = '^[\\/]{2}[.?][\\/]'
+    if ($path -match $devicePath) { throw "$what is a device path, which the script cannot use: $path" }
     $provider = $null
     $drive = $null
     $full = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($path, [ref]$provider, [ref]$drive)
     if ($provider.Name -ne "FileSystem") { throw "$what is not a file-system path: $path" }
+    if ($full -match $devicePath) { throw "$what is a device path, which the script cannot use: $path" }
     $full = [IO.Path]::GetFullPath($full)
+    if ($full -match $devicePath) { throw "$what is a device path, which the script cannot use: $path" }
     $trimmed = $full.TrimEnd('\')
     if ($trimmed -match '^[A-Za-z]:$') { $trimmed += '\' }
     return $trimmed
@@ -129,11 +133,12 @@ foreach ($root in $sources) {
 }
 if ($games.Count -eq 0) { throw "No game (a folder with resource.map) matched under: $($sources -join ', ')" }
 
-# A new run folder, named by the time and the process id, so that two
-# sweeps that start together get two folders ("-2" and so on if a folder
-# of that name exists).
-New-Item -ItemType Directory -Force $workFull | Out-Null
-$stamp = "{0}-{1}" -f (Get-Date -Format "yyyyMMdd-HHmmss"), $PID
+# A new run folder, named by the time, the process id and a random part,
+# so that two sweeps that start together (also two runspaces of one
+# process) get two folders ("-2" and so on if a folder of that name
+# exists). CreateDirectory also takes a drive root.
+[void][IO.Directory]::CreateDirectory($workFull)
+$stamp = "{0}-{1}-{2}" -f (Get-Date -Format "yyyyMMdd-HHmmss"), $PID, [guid]::NewGuid().ToString("N").Substring(0, 8)
 $run = Join-Path $workFull $stamp
 for ($n = 2; Test-Path -LiteralPath $run; $n++) { $run = Join-Path $workFull "$stamp-$n" }
 New-Item -ItemType Directory $run | Out-Null
@@ -156,6 +161,11 @@ $rows = @()
 $bugs = 0
 $sweepErrors = 0
 
+function RowsText([int]$count) {
+    if ($count -eq 1) { return "1 row" }
+    return "$count rows"
+}
+
 # Writes each row into the CSV at once, so a sweep that stops keeps its
 # rows. A row that cannot be written (for example while another program
 # has the CSV open) waits, and the next write tries it again.
@@ -168,8 +178,38 @@ function Add-Row($row) {
         $script:pendingRows.Clear()
     }
     catch {
-        Write-Warning "could not write $($script:pendingRows.Count) rows to $csv (the next write tries again): $_"
+        Write-Warning "could not write $(RowsText $script:pendingRows.Count) to $csv (the next write tries again): $_"
     }
+}
+
+# The rows that wait: a last try into the CSV, then sweep-unwritten.csv,
+# then the console. True when no row waited.
+function Save-PendingRows {
+    $count = $script:pendingRows.Count
+    if ($count -eq 0) { return $true }
+    $written = $false
+    try {
+        $script:pendingRows | Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8 -Append
+        $written = $true
+    }
+    catch {
+        Write-Warning "could not write $(RowsText $count) to ${csv}: $_"
+    }
+    if ($written) {
+        $script:pendingRows.Clear()
+        return $true
+    }
+    $unwritten = Join-Path $run "sweep-unwritten.csv"
+    try {
+        $script:pendingRows | Export-Csv -LiteralPath $unwritten -NoTypeInformation -Encoding UTF8
+        Write-Host "$(RowsText $count) are not in ${csv}: see $unwritten."
+    }
+    catch {
+        Write-Host "$(RowsText $count) are not in $csv, and $unwritten cannot be written ($_). The rows:"
+        $script:pendingRows | ConvertTo-Csv -NoTypeInformation | ForEach-Object { Write-Host $_ }
+    }
+    $script:pendingRows.Clear()
+    return $false
 }
 
 # Runs one command of scic on a copy; returns its row.
@@ -179,7 +219,8 @@ function Invoke-ScicCommand([string]$game, [string]$copy, [string]$id, $command)
     $out = Join-Path $logs "$id.$($command.Name).out.txt"
     $err = Join-Path $logs "$id.$($command.Name).err.txt"
     $watch = [Diagnostics.Stopwatch]::StartNew()
-    $process = Start-Process -FilePath $Scic -ArgumentList ($arguments -join " ") -NoNewWindow -PassThru `
+    # -FilePath takes a wildcard, so the path of scic is escaped.
+    $process = Start-Process -FilePath ([WildcardPattern]::Escape($Scic)) -ArgumentList ($arguments -join " ") -NoNewWindow -PassThru `
         -RedirectStandardOutput $out -RedirectStandardError $err
     # Windows PowerShell gives no ExitCode unless the handle was read.
     $null = $process.Handle
@@ -230,75 +271,69 @@ function Invoke-ScicCommand([string]$game, [string]$copy, [string]$id, $command)
 }
 
 $index = 0
-foreach ($game in $games) {
-    $index++
-    $id = "{0:D3}" -f $index
-    # A short copy folder: scic has a MAX_PATH limit.
-    $copy = Join-Path $run $id
-    $madeCopy = $false
-    $line = "[$id/$($games.Count)] $($game.Name):"
-    try {
-        New-Item -ItemType Directory $copy | Out-Null
-        $madeCopy = $true
-        foreach ($file in @(Get-ChildItem -LiteralPath $game.Folder -File)) {
-            $target = Join-Path $copy $file.Name
-            Copy-Item -LiteralPath $file.FullName -Destination $target
-            $copied = Get-Item -LiteralPath $target
-            $copied.Attributes = $copied.Attributes -band (-bnot [IO.FileAttributes]::ReadOnly)
-        }
-        $decompileFinished = $true
-        foreach ($command in $commands) {
-            if (($command.Name -eq "compile") -and -not $decompileFinished) {
-                # A compile after a decompile that did not finish tells
-                # nothing.
-                $row = [pscustomobject]@{ Game = $game.Folder; Command = "compile"; ExitCode = "skipped"; Seconds = 0; Errors = 0; Codes = ""; Summary = "the decompile did not finish"; Bug = ""; Finished = "no"; Log = "" }
+$allWritten = $false
+try {
+    foreach ($game in $games) {
+        $index++
+        $id = "{0:D3}" -f $index
+        # A short copy folder: scic has a MAX_PATH limit.
+        $copy = Join-Path $run $id
+        $madeCopy = $false
+        $line = "[$id/$($games.Count)] $($game.Name):"
+        try {
+            New-Item -ItemType Directory $copy | Out-Null
+            $madeCopy = $true
+            foreach ($file in @(Get-ChildItem -LiteralPath $game.Folder -File)) {
+                $target = Join-Path $copy $file.Name
+                Copy-Item -LiteralPath $file.FullName -Destination $target
+                $copied = Get-Item -LiteralPath $target
+                $copied.Attributes = $copied.Attributes -band (-bnot [IO.FileAttributes]::ReadOnly)
             }
-            else {
-                $row = Invoke-ScicCommand $game.Folder $copy $id $command
-            }
-            Add-Row $row
-            if ($row.Bug) { $bugs++ }
-            if ($command.Name -eq "decompile") { $decompileFinished = ($row.Finished -eq "yes") }
-            $line += " $($command.Name) $($row.ExitCode)"
-            if ($row.ExitCode -ne "skipped") { $line += " ($($row.Seconds) s)" }
-        }
-    }
-    catch {
-        # The sweep goes on with the next game; the row names the failure.
-        $sweepErrors++
-        Add-Row ([pscustomobject]@{ Game = $game.Folder; Command = "sweep"; ExitCode = "error"; Seconds = 0; Errors = 1; Codes = ""; Summary = "$_"; Bug = ""; Finished = "no"; Log = "" })
-        $line += " sweep error: $_"
-    }
-    finally {
-        # Only a copy that this run made; one that cannot go gives a warning.
-        if ($madeCopy -and -not $Keep -and (Test-Path -LiteralPath $copy)) {
-            try {
-                Remove-Item -LiteralPath $copy -Recurse -Force
-            }
-            catch {
-                Write-Warning "could not remove the copy ${copy}: $_"
+            $decompileFinished = $true
+            foreach ($command in $commands) {
+                if (($command.Name -eq "compile") -and -not $decompileFinished) {
+                    # A compile after a decompile that did not finish tells
+                    # nothing.
+                    $row = [pscustomobject]@{ Game = $game.Folder; Command = "compile"; ExitCode = "skipped"; Seconds = 0; Errors = 0; Codes = ""; Summary = "the decompile did not finish"; Bug = ""; Finished = "no"; Log = "" }
+                }
+                else {
+                    $row = Invoke-ScicCommand $game.Folder $copy $id $command
+                }
+                Add-Row $row
+                if ($row.Bug) { $bugs++ }
+                if ($command.Name -eq "decompile") { $decompileFinished = ($row.Finished -eq "yes") }
+                $line += " $($command.Name) $($row.ExitCode)"
+                if ($row.ExitCode -ne "skipped") { $line += " ($($row.Seconds) s)" }
             }
         }
+        catch {
+            # The sweep goes on with the next game; the row names the failure.
+            $sweepErrors++
+            Add-Row ([pscustomobject]@{ Game = $game.Folder; Command = "sweep"; ExitCode = "error"; Seconds = 0; Errors = 1; Codes = ""; Summary = "$_"; Bug = ""; Finished = "no"; Log = "" })
+            $line += " sweep error: $_"
+        }
+        finally {
+            # Only a copy that this run made; one that cannot go gives a warning.
+            if ($madeCopy -and -not $Keep -and (Test-Path -LiteralPath $copy)) {
+                try {
+                    Remove-Item -LiteralPath $copy -Recurse -Force
+                }
+                catch {
+                    Write-Warning "could not remove the copy ${copy}: $_"
+                }
+            }
+        }
+        Write-Host $line
     }
-    Write-Host $line
+}
+finally {
+    # Also after Ctrl+C: PowerShell runs a finally block then.
+    $allWritten = Save-PendingRows
 }
 
 Write-Host ""
 $rows | Group-Object Command, ExitCode | Sort-Object Name | ForEach-Object { Write-Host ("{0,-20} {1}" -f $_.Name, $_.Count) }
-$failed = $false
-if ($pendingRows.Count -gt 0) {
-    # A last try, then a second file.
-    try {
-        $pendingRows | Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8 -Append
-        $pendingRows.Clear()
-    }
-    catch {
-        $unwritten = Join-Path $run "sweep-unwritten.csv"
-        $pendingRows | Export-Csv -LiteralPath $unwritten -NoTypeInformation -Encoding UTF8
-        Write-Host "$($pendingRows.Count) rows are not in ${csv}: they are in $unwritten."
-        $failed = $true
-    }
-}
+$failed = -not $allWritten
 Write-Host "CSV: $csv"
 if ($bugs -gt 0) {
     Write-Host "$(if ($bugs -eq 1) { '1 command was a bug' } else { "$bugs commands were bugs" }) of scic: a crash, exit code 1 or another code that scic does not give, an internal error, or a timeout. See the Bug column."
