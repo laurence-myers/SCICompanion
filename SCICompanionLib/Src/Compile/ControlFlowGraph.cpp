@@ -2115,10 +2115,12 @@ vector<NodeBlock> _FindBackEdges(DominatorMap &dominators, DominatorMap &postDom
 			if (predsDoms.contains(node))
 			{
 				NodeBlock &backEdge = backEdges.emplace_back(node, pred, true, structure);
-				// The loop takes in the nodes up to its follow node (see
-				// CollectMoreChildren), and a break can put the follow node
-				// past the latch. A loop in that range nests in this one, and
-				// must be made first, so the block ends at the follow node.
+				// The loop takes in the nodes up to its follow node that its
+				// head dominates (see CollectMoreChildren), and a break can put
+				// the follow node past the latch. So the block ends at the
+				// follow node: Compare puts every loop in that range before
+				// this one, and a loop that this one takes in is then made
+				// first, as a nested loop must be.
 				backEdge.endAddress = _GetFurthestAddress(backEdge.body);
 			}
 		}

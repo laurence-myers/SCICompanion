@@ -246,9 +246,9 @@ namespace UnitTests
         }
 
         // A repeat whose break jumps past the latch, to the loop's follow node,
-        // with a for loop between the latch and the follow node. The outer
-        // loop holds the for loop, so the for loop is built first, as any
-        // nested loop is.
+        // with a second repeat (which holds a while) between the latch and the
+        // follow node. The first repeat holds the other two loops, so they are
+        // built first, as any nested loop is.
         TEST_METHOD(BreakPastLatch)
         {
             _gameFolder = SetUpGameSCI11();
