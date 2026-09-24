@@ -24,6 +24,10 @@ struct NodeBlock
 	ControlFlowNode *head;
 	ControlFlowNode *latch;
 	NodeSet body;
+	// The address where the structure made from the block ends. Compare uses
+	// it to find the blocks that nest in other blocks. It is the latch
+	// address; a loop's block (see _FindBackEdges) ends at its follow node.
+	uint16_t endAddress;
 };
 
 class ControlFlowGraph

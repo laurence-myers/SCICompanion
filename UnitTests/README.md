@@ -134,6 +134,7 @@ expected file is missing, the test writes the actual to
 | `B1_DeadBranch` | 929 | (fixup) | fixed; a `bnt` right after a `bnt` to the same target is deleted (`_RemoveDeadBranches`) |
 | `A2_ReusedSelector` | 930 | (chunk stage) | fixed; a selector pushed as `push` after an `ldi` of its number, and a `dup` argument |
 | `F13_ValueIfArgument` | 931 | (chunk stage) | fixed; a send whose arguments are value ifs, with the selector and earlier arguments pushed before the if; an if test that reuses the accumulator hands those pushes to the send (`deferred`) |
+| `F14_BreakPastLatch` | 936 | (structurer) | fixed; a loop whose break jumps past its latch ends at its follow node, so the loop after its latch (in its else) is built first; King's Quest V script 755 |
 
 `TemplateGame_FallbackBaseline` guards against new fallbacks. The template game
 started with 7 known fallbacks. The Family 1 and Family 6 fixes each removed

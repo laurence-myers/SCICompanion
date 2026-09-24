@@ -245,6 +245,16 @@ namespace UnitTests
             AssertDecompileMatchesExpected("F12_BreakJoin", 925);
         }
 
+        // A repeat whose break jumps past the latch, to the loop's follow node,
+        // with a for loop between the latch and the follow node. The outer
+        // loop holds the for loop, so the for loop is built first, as any
+        // nested loop is.
+        TEST_METHOD(BreakPastLatch)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F14_BreakPastLatch", 936);
+        }
+
         // Return values take the golden shape: an if whose branches return is
         // not itself returned; a value-shaped if at the end of the function
         // is; a ++ before the final ret is not a return value.

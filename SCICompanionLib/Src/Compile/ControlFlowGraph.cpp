@@ -91,7 +91,7 @@ void _CollectMoreNodesByAddress(NodeSet &nodeSet, ControlFlowNode *head, Control
 }
 
 // A back edge is smaller if it is contained within another.
-NodeBlock::NodeBlock(ControlFlowNode *head, ControlFlowNode *followNode, bool includeFollow, ControlFlowNode *parentToGatherMore) : head(head), latch(followNode)
+NodeBlock::NodeBlock(ControlFlowNode *head, ControlFlowNode *followNode, bool includeFollow, ControlFlowNode *parentToGatherMore) : head(head), latch(followNode), endAddress(followNode->GetStartingAddress())
 {
 	body = _CollectNodesBetween(head, followNode);
 	if (parentToGatherMore)
@@ -124,9 +124,9 @@ int NodeBlock::Compare(const NodeBlock &A, const NodeBlock &B)
 
 		// Instead, take advantage of the fact that SCI addresses are sequential.
 		uint16_t aStart = A.head->GetStartingAddress();
-		uint16_t aEnd = A.latch->GetStartingAddress();
+		uint16_t aEnd = A.endAddress;
 		uint16_t bStart = B.head->GetStartingAddress();
-		uint16_t bEnd = B.latch->GetStartingAddress();
+		uint16_t bEnd = B.endAddress;
 		if ((bStart > aStart) && (bEnd <= aEnd))
 		{
 			// B is nested in A
@@ -568,26 +568,24 @@ bool HasPrecedessorInSet(ControlFlowNode *node, const NodeSet &theSet)
 	return false;
 }
 
-ControlFlowNode *ControlFlowGraph::_FindFollowNodeForStructure(ControlFlowNode *structure)
+// The furthest address that the code of the nodes, and of the structures
+// among them, reaches: the largest branch target, or the address after the
+// last instruction. SCI code always proceeds forward in address, so the
+// follow node of a loop made from the nodes starts at this address.
+static uint16_t _GetFurthestAddress(const NodeSet &nodes)
 {
-	ControlFlowNode *follow = nullptr;
-	// Find the follow node. This isn't trivial. We can't just ask for the post dominator of the
-	// header - that won't work in the case of compound conditions (which are still unresolved at this point)
-	// We can leverage a tautology of SCI compilers - code always proceeds forward in address. So we can
-	// find the furthest branch of any of our children, then try to find the node that matches it.
-
 	stack<ControlFlowNode*> toProcess;
-	toProcess.push(structure);
+	for (ControlFlowNode *node : nodes)
+	{
+		toProcess.push(node);
+	}
 	uint16_t maxAddress = 0;
-	//uint16_t maxAddressDebug = 0;
 	while (!toProcess.empty())
 	{
 		ControlFlowNode *node = pop_ptr(toProcess);
 		if (node->Type == CFGNodeType::RawCode)
 		{
 			scii lastInstruction = node->getLastInstruction();
-			// We used to have this ^^^ code and it worked. But it always returns false
-			// and the case was never hit. Fixing it, and asserting it makes no diff
 			if (lastInstruction._is_branch_instruction())
 			{
 				uint16_t target = lastInstruction.get_branch_target()->get_final_offset();
@@ -597,8 +595,6 @@ ControlFlowNode *ControlFlowGraph::_FindFollowNodeForStructure(ControlFlowNode *
 			uint16_t postFinalAddress = (static_cast<RawCodeNode*>(node))->end->get_final_offset();
 			assert(postFinalAddress != 0xffff);
 			maxAddress = max(postFinalAddress, maxAddress);
-
-		 //   maxAddressDebug = max(postFinalAddress, maxAddress); // temp
 		}
 		else
 		{
@@ -608,14 +604,24 @@ ControlFlowNode *ControlFlowGraph::_FindFollowNodeForStructure(ControlFlowNode *
 			}
 		}
 	}
+	return maxAddress;
+}
 
+ControlFlowNode *ControlFlowGraph::_FindFollowNodeForStructure(ControlFlowNode *structure)
+{
+	ControlFlowNode *follow = nullptr;
+	// Find the follow node. This isn't trivial. We can't just ask for the post dominator of the
+	// header - that won't work in the case of compound conditions (which are still unresolved at this point)
+	// We can leverage a tautology of SCI compilers - code always proceeds forward in address. So we can
+	// find the furthest branch of any of our children, then try to find the node that matches it.
+	uint16_t maxAddress = _GetFurthestAddress(structure->Children());
 	assert(maxAddress);
-   // assert(maxAddress == maxAddressDebug && "Investigate... we might be ok, but it's different than before, so understand it");
 
 	// Now we need to follow the hierarchy down to the right level. This is not trivial. If callers *only* use this function after
 	// they have replaced themselves in the tree, then we can find the node with a starting address equal to maxAddress, and who
 	// has structure as a predecessor.
 	// Ok, I've changed this. Callers should *only* use this prior to replacing themselves in the tree.
+	stack<ControlFlowNode*> toProcess;
 	toProcess.push(mainStructure);
 	while (!toProcess.empty())
 	{
@@ -2108,7 +2114,12 @@ vector<NodeBlock> _FindBackEdges(DominatorMap &dominators, DominatorMap &postDom
 			// Does node dominate its predecessor? If so, pred -> node is a back edge
 			if (predsDoms.contains(node))
 			{
-				backEdges.emplace_back(node, pred, true, structure);
+				NodeBlock &backEdge = backEdges.emplace_back(node, pred, true, structure);
+				// The loop takes in the nodes up to its follow node (see
+				// CollectMoreChildren), and a break can put the follow node
+				// past the latch. A loop in that range nests in this one, and
+				// must be made first, so the block ends at the follow node.
+				backEdge.endAddress = _GetFurthestAddress(backEdge.body);
 			}
 		}
 	}
