@@ -99,6 +99,7 @@ exit /b 0</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Helper.h" />
+    <ClInclude Include="TestSupport.h" />
     <ClInclude Include="IntegrationHarness.h" />
     <ClInclude Include="DecompileHelper.h" />
     <ClInclude Include="OracleHelper.h" />
@@ -123,6 +124,7 @@ exit /b 0</Command>
     <ClCompile Include="TestDeferredWrites.cpp" />
     <ClCompile Include="TestResult.cpp" />
     <ClCompile Include="Helper.cpp" />
+    <ClCompile Include="TestSupport.cpp" />
     <ClCompile Include="IntegrationHarness.cpp" />
     <ClCompile Include="TestIntegrationHarness.cpp" />
     <ClCompile Include="TestPostBuildThreadIntegration.cpp" />
