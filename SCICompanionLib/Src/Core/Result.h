@@ -6,7 +6,8 @@
 // no value. The error is a structured sci::Error. Diagnostics about the user's
 // input (compile errors and warnings) are not errors of the call: they go to a
 // diagnostics sink. Bugs are broken invariants; the exception boundary
-// (sci::Guard) turns an escaped exception into an Internal error.
+// (sci::Guard) turns an escaped exception into an error (Internal for a
+// bug; see ErrorFromCurrentException).
 // See docs/scic-cli/plan.md, section 6.
 //
 // Rules:
@@ -139,8 +140,9 @@ namespace sci
         Error _error;
     };
 
-    // Converts old failure codes at a boundary. NotFound for a missing file or
-    // path, Io otherwise. The message is "<what>: <system text>".
+    // Converts Win32 and HRESULT failure codes at a boundary. NotFound for a
+    // missing file or path, Io otherwise. The message is
+    // "<what>: <system text>".
     Error FromWin32(unsigned long win32Error, const std::string &what);
     Error FromHResult(long hr, const std::string &what);
     Error FromLastError(const std::string &what);

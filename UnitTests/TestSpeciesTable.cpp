@@ -48,12 +48,13 @@ namespace
 
 namespace UnitTests
 {
-    // Plan step K3. vocab.996 gives the script of each species, so the table
-    // listed a script's species in number order. The compiler and the .sco
-    // number a script's classes in the order of the source, which for a
-    // decompiled script is the order of the compiled script. When a game's
-    // compiled script has its classes in another order (LB2 script 0), a
-    // recompile gave two classes each other's species.
+    // vocab.996 gives the script of each species, but not the order of a
+    // script's classes. The compiler and the .sco number a script's classes
+    // in the order of the source, which for a decompiled script is the order
+    // of the compiled script. So the table orders a script's species as the
+    // classes are in the compiled script, not in number order: when a game's
+    // compiled script has its classes in another order (LB2 script 0), the
+    // number order would give two classes each other's species.
     TEST_CLASS(TestSpeciesTable)
     {
         std::string _copyFolder;
@@ -191,8 +192,8 @@ namespace UnitTests
                     }
                     std::vector<uint16_t> species = ClassSpeciesInOrder(script);
                     // A leftover class (its species belongs to another script in
-                    // the table, or to none) keeps the old positional behaviour:
-                    // a known gap, so such a script is only counted.
+                    // the table, or to none) keeps its positional numbering: a
+                    // known gap, so such a script is only counted.
                     bool allInTable = true;
                     for (uint16_t classSpecies : species)
                     {
@@ -215,7 +216,7 @@ namespace UnitTests
                         {
                             // One log line for each mismatch: the text of a
                             // failed assert is cut, and on a run over many
-                            // games it hid mismatches (K3 review).
+                            // games it would hide mismatches.
                             std::string line = folder + ": script " + std::to_string(blob->GetNumber()) + " class " + std::to_string(i) + ": table " + std::to_string(fromTable.Type()) + ", compiled " + std::to_string(species[i]);
                             Logger::WriteMessage(WideForSpecies(line).c_str());
                             mismatchCount++;

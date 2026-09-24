@@ -140,8 +140,8 @@ HRESULT CWordEnumString::Clone(IEnumString **ppenum)
 
 HRESULT CWordEnumString::Init()
 {
-	// A game with no vocabulary resource has no words to offer (plan step K6
-	// review: this read the null vocabulary).
+	// A game with no vocabulary resource has no words to offer: its
+	// vocabulary is null.
 	const Vocab000 *vocab = appState->GetResourceMap().GetVocab000();
 	if (vocab)
 	{

@@ -21,7 +21,7 @@ namespace
     }
 
     // A name as Windows compares file names: without case, also for the
-    // letters outside ASCII ("Über" and "über" are one file; S3 review). The
+    // letters outside ASCII ("Über" and "über" are one file). The
     // key is the invariant upper case of the name, in UTF-8.
     std::string NameKey(const std::string &name)
     {
@@ -47,8 +47,8 @@ namespace
 
     // The file name of the path in the ANSI code page. False when the name
     // has a character that the code page does not have; shown then has the
-    // name with '?' for it. (Review of 7f41aa43: path::string() threw for
-    // such a name, and the open of the game failed.)
+    // name with '?' for it. path::string() throws for such a name; this
+    // does not, so the open of the game does not fail.
     bool NarrowName(const fs::path &path, std::string &name, std::string &shown)
     {
         std::wstring wide = path.filename().wstring();
@@ -363,8 +363,7 @@ namespace
                 value = value.substr(1, value.size() - 2);
             }
             // Only the key that the GUI reads for the number (n007; not n7 or
-            // n0007): GetPrivateProfileString finds a key by its text (S3
-            // review).
+            // n0007): GetPrivateProfileString finds a key by its text.
             uint16_t number;
             if ((key.size() < 2) || ((key[0] != 'n') && (key[0] != 'N')) || (key[1] == '$') || !ParseNumber(key.substr(1), number) ||
                 (Upper(key) != Upper(DefaultName(number))) || value.empty())
@@ -394,7 +393,7 @@ namespace
     }
 
     // A name for a file and for (use Name): letters, digits and '_'. The
-    // parser takes no '-' in (use Name) (FilenameP; S3 review: LSL6's
+    // parser takes no '-' in (use Name) (FilenameP; for example LSL6's
     // "Voice-Over_Announcer"). A device name gets a '_' after it.
     std::string CleanName(const std::string &name)
     {
@@ -418,8 +417,7 @@ namespace
 bool ReadDeclaredScriptNumber(const GameFolderHelper &helper, const std::string &sourcePath, uint16_t &number)
 {
     // An exception (out of memory, a path that the file system refuses) is
-    // "cannot read one": plan section 6.2, no exception leaves a service
-    // (S3 review).
+    // "cannot read one": plan section 6.2, no exception leaves a service.
     sci::Result<uint16_t> declared = sci::Guard("reading the script number of " + sourcePath, [&]() -> sci::Result<uint16_t>
     {
         std::map<std::string, uint16_t> defines;

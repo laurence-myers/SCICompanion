@@ -9,9 +9,8 @@ sci::Status WriteBytesToFile(const std::string &path, const void *data, size_t s
     {
         return sci::Fail(sci::ErrorCode::Unsupported, what + ": the data is too large");
     }
-    // Share the file as the ofstream that this replaced did: a program that
-    // has the file open with read and write sharing does not stop the write
-    // (review of S1).
+    // Share read and write, as an ofstream does: a program that has the file
+    // open with read and write sharing does not stop the write.
     HANDLE file = CreateFileA(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE)
     {
@@ -45,8 +44,8 @@ sci::Status WriteBytesToFile(const std::string &path, const std::vector<uint8_t>
 
 sci::Status CheckFileCanBeReplaced(const std::string &path, unsigned long shareMode)
 {
-    // The write opens the path with no "\\?\" prefix (review of 944de1df:
-    // a file of 260 characters passed the check, and its write failed).
+    // The write opens the path with no "\\?\" prefix, so it cannot write a
+    // path of MAX_PATH characters or more: the check refuses it too.
     if (path.size() >= MAX_PATH)
     {
         return sci::Fail(sci::ErrorCode::Io, fmt::format("Writing {0}: the path has {1} characters, and a write takes at most {2}", path, path.size(), MAX_PATH - 1));

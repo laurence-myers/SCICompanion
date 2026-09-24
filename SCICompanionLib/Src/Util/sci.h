@@ -429,8 +429,7 @@ public:
 	// Returns the complete path, for loading/saving, etc...
 	std::string GetFullPath() const;
 	// The complete path as it was given, not lower-cased: for a message
-	// that names the file (review of 11106215: the MSBuild diagnostics of
-	// scic had the folder in lower case).
+	// that names the file (for example, the MSBuild diagnostics of scic).
 	std::string GetFullPathOrig() const;
 
 	// Set the path w/o changing the resource number.

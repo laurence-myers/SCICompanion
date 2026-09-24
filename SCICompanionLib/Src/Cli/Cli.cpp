@@ -50,7 +50,7 @@ namespace cli
                     _output.Warning(text);
                     break;
                 default:
-                    // C1 review: before, an error was a warning, and -q hid it.
+                    // An error shows also with -q.
                     _output.Error(text);
                     break;
                 }
@@ -79,8 +79,7 @@ namespace cli
             {
                 return common.dataFolder;
             }
-            // Any length (C1 review: before, a value longer than MAX_PATH
-            // was ignored with no message).
+            // A value of any length, also one longer than MAX_PATH.
             DWORD length = GetEnvironmentVariableA("SCIC_DATA_DIR", nullptr, 0);
             if (length > 1)
             {
@@ -96,8 +95,8 @@ namespace cli
         }
 
         // An existing file in the game folder, at any depth, that --log would
-        // overwrite: "" when there is none. A .log or .txt file is not one
-        // (C1 review: --log <game>\resource.map truncated the map).
+        // overwrite: "" when there is none. A .log or .txt file is not one.
+        // So --log <game>\resource.map does not truncate the map.
         std::string GameFileOf(const std::string &logFile, const std::string &gameFolder)
         {
             std::error_code ec;
@@ -272,7 +271,8 @@ namespace cli
 
         if ((dataFolderOption->count() > 0) && common.dataFolder.empty())
         {
-            // C1 review: before, the exe folder took its place with no message.
+            // An empty --data-dir is an error: the folder of scic.exe does
+            // not take its place.
             output.Error("--data-dir needs a folder");
             return (int)ExitCode::Usage;
         }
@@ -280,9 +280,9 @@ namespace cli
         compileOptions.toGiven = (toOption->count() > 0);
         if ((outDirOption->count() > 0) && compileOptions.outDir.empty())
         {
-            // Review of 0046b54a: an empty --out-dir (for example an unset
-            // variable in a build script) wrote into the game, as with no
-            // --out-dir.
+            // An empty --out-dir (for example an unset variable in a build
+            // script) is an error, so that the compile does not write into
+            // the game, as with no --out-dir.
             output.Error("--out-dir needs a folder");
             return (int)ExitCode::Usage;
         }
@@ -346,8 +346,8 @@ namespace cli
                 catch (const CLI::OptionNotFound &)
                 {
                 }
-                // "scic help help" shows the help of help (C1 review: the root
-                // help lists help as a command).
+                // "scic help help" shows the help of help: the root help lists
+                // help as a command.
                 if (!child)
                 {
                     logged.Error("no help for \"" + name + "\"");
@@ -387,13 +387,13 @@ namespace cli
         sessionOptions.dataFolder = dataFolder;
         GameSession session(sessionOptions);
         // An absolute folder: the paths of the report are then absolute, as
-        // the VS Code problem matcher needs (review of 0046b54a: "scic script
-        // compile . rm001" printed ".\src\rm001.sc(25,31): error").
+        // the VS Code problem matcher needs (the matcher cannot open a
+        // relative path such as ".\src\rm001.sc").
         sci::Status opened = session.Open(AbsolutePath(gameFolder));
         if (!opened)
         {
-            // Plan section 8: 3, but 2 for a usage error (C1 review: an
-            // empty game folder is Usage).
+            // Plan section 8: 3, but 2 for a usage error (for example an
+            // empty game folder).
             logged.Error("cannot open the game: " + opened.error().ToString());
             return (int)ExitCodeForStartError(opened.error());
         }

@@ -48,7 +48,7 @@ public:
 // that cannot be read or parsed is in the result's error. A missing sci.sh or
 // keys.sh is not reported: the enum names are then lost.
 std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(const CResourceMap &resourceMap, const SelectorTable &selectorTable);
-// The same, with this Decompiler.ini (plan step S4: RunDecompile reads the
-// one of the data folder when the game has none in src).
+// The same, with this Decompiler.ini (RunDecompile reads the one of the
+// data folder when the game has none in src).
 std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(const CResourceMap &resourceMap, const SelectorTable &selectorTable, const std::string &decompilerIniPath);
 

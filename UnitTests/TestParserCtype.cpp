@@ -112,9 +112,9 @@ namespace UnitTests
         }
     };
 
-    // Plan step K4. A selector name can have a # after its first character:
-    // KQ6 names selector 879 "dungeon#". The parser stopped at the #, and the
-    // formatter wrote "dungeon_", which compiles to a new selector.
+    // A selector name can have a # after its first character: KQ6 names
+    // selector 879 "dungeon#". The parser keeps the # in the name, and so
+    // does the formatter: "dungeon_" would compile to a new selector.
     TEST_CLASS(TestSelectorNameHash)
     {
         std::string _gameFolder;
@@ -167,9 +167,9 @@ namespace UnitTests
             Assert::IsTrue(text.find("dungeon_") == std::string::npos, wideText.c_str());
         }
 
-        // K4 review: a method that reads, sets and increments its # property
-        // uses the name as a token, not as a selector. The formatter wrote
-        // "dungeon_" there, so the decompiled KQ6 script 710 did not compile
+        // A method that reads, sets and increments its # property uses the
+        // name as a token, not as a selector. The formatter keeps the # there
+        // too: with "dungeon_", the decompiled KQ6 script 710 does not compile
         // ("Undeclared identifier 'dungeon_'").
         TEST_METHOD(HashPropertyInAMethod_DecompilesAndRecompiles)
         {

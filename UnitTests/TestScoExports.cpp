@@ -126,11 +126,11 @@ namespace UnitTests
             Assert::AreEqual((size_t)0, sco->GetExports().size(), L"procedure exports with no public procedure name in the AST must be skipped");
         }
 
-        // Plan step K2. The (public name N ...) block gives each export its
-        // slot. procA is defined first but is in slot 1. Before K2, the .sco
-        // paired the names with the export table in definition order, so procA
-        // got slot 0 and procB slot 1, and a call by name went to the wrong
-        // procedure (KQ5 Interface.sc).
+        // The (public name N ...) block gives each export its slot. procA is
+        // defined first but is in slot 1. A .sco that paired the names with
+        // the export table in definition order would give procA slot 0 and
+        // procB slot 1, and a call by name would go to the wrong procedure
+        // (KQ5 Interface.sc).
         TEST_METHOD(PublicBlock_ProceduresDefinedOutOfSlotOrder_KeepTheirSlots)
         {
             CResourceMap &resourceMap = appState->GetResourceMap();
@@ -179,10 +179,10 @@ namespace UnitTests
             Assert::AreEqual(1, slots["procA"], L"procA is in slot 1");
         }
 
-        // K2 review: a name in several slots. The compiler writes its .sco in
-        // slot order, and a lookup by name gives the first entry. Before, the
-        // block order (procA 2 first) gave procA the slot 2, and the
-        // compiler's .sco gives it 0.
+        // A name in several slots. The compiler writes its .sco in slot
+        // order, and a lookup by name gives the first entry, so procA gets
+        // slot 0, as in the compiler's .sco, not slot 2 (the first in the
+        // block order).
         TEST_METHOD(PublicBlock_NameInSeveralSlots_IsInSlotOrder)
         {
             const char *source =
@@ -204,13 +204,12 @@ namespace UnitTests
             Assert::IsTrue(differences.empty(), std::wstring(differences.begin(), differences.end()).c_str());
         }
 
-        // K2 review: for each script of both templates, the .sco built from
-        // the source and the compiled script has the exports of the .sco that
-        // the compiler writes. Before K2, Main of the SCI1.1 template gave
-        // AimToward@7, Die@8 and AddToScore@9: its public block is not in
-        // definition order. No template public block is out of slot order or
-        // has a name in two slots, so this test does not pin the slot sort;
-        // PublicBlock_NameInSeveralSlots_IsInSlotOrder does.
+        // For each script of both templates, the .sco built from the source
+        // and the compiled script has the exports of the .sco that the
+        // compiler writes. The public block of Main of the SCI1.1 template is
+        // not in definition order. No template public block is out of slot
+        // order or has a name in two slots, so this test does not pin the
+        // slot sort; PublicBlock_NameInSeveralSlots_IsInSlotOrder does.
         TEST_METHOD(TemplateScripts_ScoExportsEqualTheCompilersSco)
         {
             CompareScoExportsOfEveryScript("SCI0");

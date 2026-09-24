@@ -18,9 +18,9 @@
 #include <atomic>
 #include <vector>
 
-// The progress of a compile batch (plan step S2): one script for each
-// UWM_STARTCOMPILE message, so the window paints and Cancel works. The caller
-// starts the batch before the dialog and finishes it after the dialog.
+// The progress of a compile batch: one script for each UWM_STARTCOMPILE
+// message, so the window paints and Cancel works. The caller starts the
+// batch before the dialog and finishes it after the dialog.
 
 class CNewCompileDialog : public CExtResizableDialog, public ICompileEvents
 {

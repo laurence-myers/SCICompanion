@@ -39,8 +39,8 @@ namespace cli
         std::string err;
     };
 
-    // --log: a file that gets every message, whatever the verbosity (C1
-    // review: before, -q and the absence of -v filtered the log too).
+    // --log: a file that gets every message, whatever the verbosity: -q and
+    // the absence of -v do not filter the log.
     class LogFile
     {
     public:

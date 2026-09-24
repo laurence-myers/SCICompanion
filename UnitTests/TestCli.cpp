@@ -109,8 +109,8 @@ namespace
 
 namespace UnitTests
 {
-    // Plan steps C1 and C2: scic.exe's command line (plan sections 4, 7 and
-    // 8), run in this process through RunCli.
+    // scic.exe's command line (plan sections 4, 7 and 8), run in this
+    // process through RunCli.
     TEST_CLASS(TestCli)
     {
         std::string _copyFolder;
@@ -335,9 +335,9 @@ namespace UnitTests
             Assert::AreEqual(9, (int)cli::ExitCodeForReport(decompiled));
             DecompileReport mainFailed;
             mainFailed.mainObjectFile = sci::Fail(sci::ErrorCode::Io, "Main.sco is read-only");
-            Assert::AreEqual(9, (int)cli::ExitCodeForReport(mainFailed), L"the write of main's .sco (S4 review)");
-            // Review of 11106215: an error of the decompiler in a script that it
-            // wrote (a function whose code it cannot find) is a partial failure.
+            Assert::AreEqual(9, (int)cli::ExitCodeForReport(mainFailed), L"the write of main's .sco");
+            // An error of the decompiler in a script that it wrote (a function
+            // whose code it cannot find) is a partial failure.
             DecompileReport written;
             written.scripts.resize(1);
             Assert::AreEqual(0, (int)cli::ExitCodeForReport(written, 0));
@@ -345,9 +345,9 @@ namespace UnitTests
             written.cancelled = true;
             Assert::AreEqual(7, (int)cli::ExitCodeForReport(written, 1), L"the order of plan section 8");
 
-            // C1 review: a step that writes and fails is a failed write, with
-            // any code but Internal, WriteRefused and Cancelled (before: 6
-            // for Format or NotFound).
+            // A step that writes and fails is a failed write (9), with any
+            // code but Internal, WriteRefused and Cancelled; also with Format
+            // or NotFound, which give 6 in the status of a script.
             for (sci::ErrorCode code : { sci::ErrorCode::Format, sci::ErrorCode::NotFound, sci::ErrorCode::Unsupported })
             {
                 CompileReport commit;
@@ -437,8 +437,8 @@ namespace UnitTests
         }
 
         // Plan section 8: a usage error is exit code 2, before any game opens.
-        // C1 review: an empty game folder, an empty --data-dir, and a --log
-        // that would overwrite a file of the game are usage errors too.
+        // An empty game folder, an empty --data-dir, and a --log that would
+        // overwrite a file of the game are usage errors too.
         TEST_METHOD(UsageErrors_ExitWith2)
         {
             NoAppStateForCli noAppState;
@@ -514,8 +514,8 @@ namespace UnitTests
             SetEnvironmentVariableA("SCIC_DATA_DIR", empty.string().c_str());
             cli::StringConsole emptyEnvironment;
             int emptyEnvironmentCode = cli::RunCli({ "script", "list", _copyFolder }, emptyEnvironment);
-            // C1 review: a value longer than MAX_PATH was ignored, and the
-            // folder of the program took its place with no message.
+            // A value longer than MAX_PATH also gives the data folder: the
+            // folder of the program does not take its place.
             std::string longFolder = empty.string() + "\\" + std::string(250, 'x');
             SetEnvironmentVariableA("SCIC_DATA_DIR", longFolder.c_str());
             cli::StringConsole longEnvironment;
@@ -528,8 +528,7 @@ namespace UnitTests
             Assert::IsTrue(longEnvironment.err.find(longFolder) != std::string::npos, WideForCli("the long folder is the data folder:\n" + longEnvironment.err).c_str());
         }
 
-        // Ctrl+C while list reads the scripts: no table, and exit code 7 (C1
-        // review: before, list printed the table and exited with 0).
+        // Ctrl+C while list reads the scripts: no table, and exit code 7.
         TEST_METHOD(List_CtrlC_ExitsWith7)
         {
             NoAppStateForCli noAppState;
@@ -602,17 +601,16 @@ namespace UnitTests
             cli::StringConsole group;
             Assert::AreEqual(0, cli::RunCli({ "script" }, group));
             Assert::IsTrue(group.out.find("list") != std::string::npos, WideForCli(group.out).c_str());
-            // C1 review: the root help lists help, so it has a help too.
+            // The root help lists help, so it has a help too.
             cli::StringConsole helpHelp;
             int code = cli::RunCli({ "help", "help" }, helpHelp);
             Assert::AreEqual(0, code, WideForCli(helpHelp.err).c_str());
             Assert::IsTrue(helpHelp.out.find("Usage: scic help") != std::string::npos, WideForCli(helpHelp.out).c_str());
         }
 
-        // --log gets every message, whatever -q and -v say (C1 review:
-        // before, it got only what the console showed); --quiet shows errors
-        // only; -v shows the details. A log file that cannot open is exit
-        // code 3.
+        // --log gets every message, whatever -q and -v say; --quiet shows
+        // errors only; -v shows the details. A log file that cannot open is
+        // exit code 3.
         TEST_METHOD(LogFileQuietAndVerbose)
         {
             NoAppStateForCli noAppState;
@@ -651,9 +649,9 @@ namespace UnitTests
             Assert::IsTrue(noLog.err.find("cannot open the log file") != std::string::npos, WideForCli(noLog.err).c_str());
         }
 
-        // Plan step C2 and its test row: a game that SCI Companion never
-        // opened (no game.ini, no src). decompile --all writes the derived
-        // names and creates no game.ini; a second run finds the same names.
+        // A game that SCI Companion never opened (no game.ini, no src):
+        // decompile --all writes the derived names and creates no game.ini; a
+        // second run finds the same names.
         TEST_METHOD(Decompile_ABareGame_DerivedNamesAndNoGameIni)
         {
             NoAppStateForCli noAppState;
@@ -778,15 +776,14 @@ namespace UnitTests
             }
         }
 
-        // Plan step C2: a public block that the compiler refuses, and a
-        // syntax error, fail the script (exit code 6), in the MSBuild format,
-        // and write no .sco. Before, the .sco builder took the public block.
+        // A public block that the compiler refuses, and a syntax error, fail
+        // the script (exit code 6), in the MSBuild format, and write no .sco:
+        // the .sco builder checks the public block as the compiler does.
         TEST_METHOD(Sco_ThePublicBlockAndSyntaxErrors_ExitWith6)
         {
             NoAppStateForCli noAppState;
             // The position: the end of the entry, 1-based, and the path as it
-            // was given (review of 11106215: no test had the position, and the
-            // folder was in lower case).
+            // was given, with the case of its folder.
             struct Case { const char *replacement; const char *error; const char *position; };
             for (const Case &broken : { Case{ "rm001 0 rm001 0", ": error : Export slot 0 has already been used.", "(23,17)" },
                 Case{ "rm001 0 s2NoSuch 1", ": error : Unknown export s2NoSuch in slot 1.", "(23,20)" }, Case{ "rm001 0) (procedure (s2Broken) (= ", ": error : ", "" } })
@@ -830,10 +827,9 @@ namespace UnitTests
             Assert::IsTrue(before == Snapshot(_copyFolder), L"--dry-run writes nothing");
         }
 
-        // Review of 11106215: a dry run lists what a run writes: the stale
-        // scripts (and with --update-stale, the scripts of each later group),
-        // main's .sco, the decompiler files of src, and game.ini. Before, it
-        // listed the .sc and .sco of the chosen scripts only, and gave no
+        // A dry run lists the files that a run writes: main's .sco, the
+        // decompiler files of src, game.ini and, with --update-stale, the
+        // scripts of each later group. Without --update-stale, it gives the
         // stale warning. The dry run writes nothing, so the same copy then
         // takes the run.
         TEST_METHOD(Decompile_DryRun_ListsWhatARunWrites)
@@ -875,8 +871,8 @@ namespace UnitTests
                 std::string facts = "dry run:\n" + dryRun.err + "\nrun:\n" + run.err;
                 Assert::IsFalse(wrote.empty(), WideForCli(facts).c_str());
                 Assert::IsTrue(wouldWrite == wrote, WideForCli(facts).c_str());
-                // One line for each file (review of 11106215: with --verbose, the
-                // batch's "Generated" line came too).
+                // One line for each file: the batch's "Generated" line does
+                // not print, also with --verbose.
                 Assert::IsTrue(run.err.find("Generated ") == std::string::npos, WideForCli(run.err).c_str());
                 if (caseIndex < 2)
                 {
@@ -894,10 +890,9 @@ namespace UnitTests
             }
         }
 
-        // Review of 11106215 (no test had these options): --reset-names gives a
-        // script its derived name, and --game-ini decides what game.ini gets.
-        // A dry run says "would keep", and --stdout says nothing of the old
-        // files (before, both said "keeps", and nothing was written).
+        // --reset-names gives a script its derived name, and --game-ini
+        // decides what game.ini gets. A dry run says "would keep", and
+        // --stdout says nothing of the old files, as neither writes a file.
         TEST_METHOD(Decompile_ResetNamesAndTheGameIniModes)
         {
             NoAppStateForCli noAppState;
@@ -953,8 +948,7 @@ namespace UnitTests
             Assert::AreEqual(std::string("Door"), nameInGameIni(), L"create: game.ini with the name");
         }
 
-        // Review of 11106215 (no test had it): Ctrl+C stops decompile and sco,
-        // with exit code 7.
+        // Ctrl+C stops decompile and sco, with exit code 7.
         TEST_METHOD(DecompileAndSco_CtrlC_ExitWith7)
         {
             NoAppStateForCli noAppState;
@@ -972,10 +966,9 @@ namespace UnitTests
             Assert::IsTrue(sco.err.find("Stopped by Ctrl+C") != std::string::npos, WideForCli(sco.err).c_str());
         }
 
-        // Review of 11106215: a .sco that cannot be written is exit code 9 (no
-        // test had it), also in a dry run, which now checks the file; a dry
-        // run says "would not change" for a .sco that has the bytes. Before, a
-        // dry run said "would write" for both.
+        // A .sco that cannot be written is exit code 9, also in a dry run,
+        // which checks the file; a dry run says "would not change" for a .sco
+        // that has the bytes.
         TEST_METHOD(Sco_AReadOnlyObjectFile_ExitsWith9_AlsoInADryRun)
         {
             NoAppStateForCli noAppState;
@@ -1003,9 +996,8 @@ namespace UnitTests
             Assert::AreEqual(9, dryRunCode, WideForCli(dryRun.err).c_str());
         }
 
-        // Review of 11106215: with --all, sco lists the scripts that it skips:
-        // a source with no compiled script, and a name with no source. Before,
-        // --all left them out with no message.
+        // With --all, sco lists the scripts that it skips: a source with no
+        // compiled script, and a name with no source.
         TEST_METHOD(Sco_All_ListsTheSkippedScripts)
         {
             NoAppStateForCli noAppState;
@@ -1024,9 +1016,8 @@ namespace UnitTests
             Assert::IsTrue(console.err.find("; 2 scripts skipped.") != std::string::npos, WideForCli(console.err).c_str());
         }
 
-        // Review of 11106215: a source with no public block, whose compiled
-        // script exports, gets a warning at the start of the file. Before, sco
-        // wrote a .sco with no export, with no message.
+        // A source with no public block, whose compiled script exports, gets a
+        // warning at the start of the file.
         TEST_METHOD(Sco_NoPublicBlock_Warns)
         {
             NoAppStateForCli noAppState;
@@ -1047,9 +1038,8 @@ namespace UnitTests
             Assert::IsTrue(console.err.find(expected) != std::string::npos, WideForCli(expected + "\n" + console.err).c_str());
         }
 
-        // Review of 11106215: an export of a procedure of an include that is
-        // not a header fails the script, as the compile fails it ("needs to be
-        // marked public"). Before, sco took it.
+        // An export of a procedure of an include that is not a header fails
+        // the script, as the compile fails it ("needs to be marked public").
         TEST_METHOD(Sco_AnExportFromAnInclude_FailsAsTheCompileDoes)
         {
             NoAppStateForCli noAppState;
@@ -1101,9 +1091,8 @@ namespace UnitTests
             Assert::IsTrue(same, L"the compile gives the same message");
         }
 
-        // Review of 11106215: the crash line names the step after the
-        // scripts. Before, it named the last script of decompile, and sco
-        // named no script.
+        // After the scripts, the crash line of decompile and of sco names the
+        // step of the run ("printing the report"), not the last script.
         TEST_METHOD(DecompileAndSco_TheCrashItemFollowsTheSteps)
         {
             NoAppStateForCli noAppState;
@@ -1121,8 +1110,8 @@ namespace UnitTests
             Assert::AreEqual(std::string("printing the report"), afterSco);
         }
 
-        // Review of 11106215: the dumps of a debug option print plainly, also
-        // with --quiet. Before, each was a warning, and --quiet hid it.
+        // The dumps of a debug option print plainly, not as warnings, so
+        // --quiet does not hide them.
         TEST_METHOD(Decompile_DebugDumps_PrintPlainly)
         {
             NoAppStateForCli noAppState;
@@ -1133,9 +1122,8 @@ namespace UnitTests
             Assert::IsTrue(console.err.find("scic: warning: ") == std::string::npos, L"a dump is not a warning");
         }
 
-        // Plan step C3 and its test row: compile --all on a template copy with
-        // no game.ini compiles every src\*.sc into patch files, and the
-        // package does not change.
+        // compile --all on a template copy with no game.ini compiles every
+        // src\*.sc into patch files, and the package does not change.
         TEST_METHOD(Compile_All_NoGameIni_PatchFiles)
         {
             NoAppStateForCli noAppState;
@@ -1156,9 +1144,9 @@ namespace UnitTests
             Assert::AreEqual(map, ReadFileText((fs::path(_copyFolder) / "resource.map").string()), L"the package does not change");
         }
 
-        // Plan step C3: --to package writes the package. The script bytes are
-        // the same for both destinations, and the same as the GUI's path
-        // (CompileScripts with the game's setting, plan step S2).
+        // --to package writes the package. The script bytes are the same for
+        // both destinations, and the same as the GUI's path (CompileScripts
+        // with the game's setting).
         TEST_METHOD(Compile_ToPackage_TheSameBytesAsPatchesAndTheGui)
         {
             NoAppStateForCli noAppState;
@@ -1269,10 +1257,9 @@ namespace UnitTests
             Assert::IsTrue(fs::exists(fs::path(_copyFolder) / "script.974"), L"the others are written");
         }
 
-        // Plan step C3: a round trip on the SCI1.1 template: decompile --all,
-        // then compile --all, with 0 errors. (The SCI0 template does not
-        // round-trip yet: the decompiled Obj.sc names two procedures
-        // EqualsAny; see the handover.)
+        // A round trip on the SCI1.1 template: decompile --all, then compile
+        // --all, with 0 errors. (The SCI0 template does not round-trip: for
+        // example, the decompiled Obj.sc names two procedures EqualsAny.)
         TEST_METHOD(Compile_RoundTrip_Sci11)
         {
             NoAppStateForCli noAppState;
@@ -1338,10 +1325,8 @@ namespace UnitTests
 
         // The usage errors of compile (exit code 2): no scripts and no --all,
         // --replace-patches with patch files, --passes with named scripts,
-        // --raw with no --out-dir, a header file, an empty --out-dir (review
-        // of 0046b54a: it wrote into the game), and --to patch with
-        // --into-volume (review of 0046b54a: it wrote the package). None
-        // writes a file.
+        // --raw with no --out-dir, a header file, an empty --out-dir, and --to
+        // patch with --into-volume. None writes a file.
         TEST_METHOD(Compile_UsageErrors)
         {
             NoAppStateForCli noAppState;
@@ -1378,10 +1363,9 @@ namespace UnitTests
             Assert::IsFalse(fs::exists(fs::path(_copyFolder) / "script.001"), L"nothing is written");
         }
 
-        // Review of 0046b54a: an error of an include (a header that does not
-        // parse, or a file that is not there) fails the script, as an error
-        // of the script does, and the text names the include. Before, the
-        // script was written, and the exit code was 0.
+        // An error of an include (a header that does not parse, or a file
+        // that is not there) fails the script, as an error of the script
+        // does, and the text names the include.
         TEST_METHOD(Compile_AnIncludeWithErrors_ExitsWith5)
         {
             NoAppStateForCli noAppState;
@@ -1407,10 +1391,9 @@ namespace UnitTests
             Assert::IsTrue(dryRun.err.find("Compiled 0 of 1 scripts, and a run would write none (") != std::string::npos, WideForCli(dryRun.err).c_str());
         }
 
-        // Review of 0046b54a: a message of the parser with a line prints as an
-        // "info" line in the MSBuild format, also without -v (the GUI always
-        // shows it), and --quiet hides it. Before, only -v showed it, so the
-        // parser dropped code with no word.
+        // A message of the parser with a line prints as an "info" line in the
+        // MSBuild format, also without -v (the GUI always shows it, and it
+        // can tell of code that the parser drops), and --quiet hides it.
         TEST_METHOD(Compile_AParserMessage_PrintsUnlessQuiet)
         {
             NoAppStateForCli noAppState;
@@ -1427,8 +1410,8 @@ namespace UnitTests
             Assert::IsTrue(quiet.err.find("The else clause") == std::string::npos, WideForCli(quiet.err).c_str());
         }
 
-        // Review of 0046b54a: a syntax error prints the path as it was given.
-        // Before, the parser gave the folder in lower case.
+        // A syntax error prints the path as it was given, with the case of
+        // its folder.
         TEST_METHOD(Compile_ASyntaxError_KeepsTheCaseOfItsPath)
         {
             NoAppStateForCli noAppState;
@@ -1441,9 +1424,8 @@ namespace UnitTests
             Assert::IsTrue(console.err.find(source + "(25,") != std::string::npos, WideForCli(source + " | " + console.err).c_str());
         }
 
-        // Review of 0046b54a: a script whose .sco cannot be written prints its
-        // error once (exit code 9). Before, the log line and the status line
-        // both printed it.
+        // A script whose .sco cannot be written prints its error once (exit
+        // code 9).
         TEST_METHOD(Compile_AWriteError_PrintsOnce)
         {
             NoAppStateForCli noAppState;
@@ -1458,9 +1440,9 @@ namespace UnitTests
             Assert::AreEqual((size_t)1, CountOf(console.err, "Access is denied"), WideForCli(console.err).c_str());
         }
 
-        // Review of 0046b54a: a dry run of a script whose .sco would change
-        // writes no .sco. (Compile_DryRun_WritesNothing uses the SCI0
-        // template, whose .sco files do not change, so it cannot see this.)
+        // A dry run of a script whose .sco would change writes no .sco.
+        // (Compile_DryRun_WritesNothing uses the SCI0 template, whose .sco
+        // files do not change, so it cannot see this.)
         TEST_METHOD(Compile_DryRun_AChangedObjectFileIsNotWritten)
         {
             NoAppStateForCli noAppState;
@@ -1477,9 +1459,8 @@ namespace UnitTests
                 L"setup: a run changes the .sco");
         }
 
-        // Review of 0046b54a: a relative game folder gives absolute paths in
-        // the MSBuild lines (the VS Code problem matcher needs them). Before,
-        // "scic script compile . rm001" printed ".\src\rm001.sc(25,31)".
+        // A relative game folder gives absolute paths in the MSBuild lines
+        // (the VS Code problem matcher needs them).
         TEST_METHOD(Compile_ARelativeGameFolder_PrintsAbsolutePaths)
         {
             NoAppStateForCli noAppState;
@@ -1494,9 +1475,8 @@ namespace UnitTests
             Assert::IsTrue(console.err.find((fs::path(_copyFolder) / "src" / "rm001.sc").string() + "(25,") != std::string::npos, WideForCli(console.err).c_str());
         }
 
-        // Review of 0046b54a: the crash line names the step of a compile: the
-        // selection, the start, each script, the writes and the report.
-        // Before, the writes kept the item of the last script.
+        // The crash line names the step of a compile: the selection, the
+        // start, each script, the writes and the report.
         TEST_METHOD(Compile_TheCrashItemFollowsTheSteps)
         {
             NoAppStateForCli noAppState;
@@ -1517,12 +1497,11 @@ namespace UnitTests
             Assert::IsTrue(items == expected, WideForCli(recorded).c_str());
         }
 
-        // Review of 0046b54a: the lines of the report. With -v, "wrote" names
-        // each file that the run wrote (the script and the heap of an SCI1.1
-        // script). A compile of named scripts whose .sco changed warns, and
-        // the summary counts each warning that printed. A dry run gives the
-        // warning for a patch file with another name. A commit that failed
-        // lists no file.
+        // The lines of the report. With -v, "wrote" names each file that the
+        // run wrote (the script and the heap of an SCI1.1 script). A compile
+        // of named scripts whose .sco changed warns, and the summary counts
+        // each warning that printed. A dry run gives the warning for a patch
+        // file with another name. A commit that failed lists no file.
         TEST_METHOD(Compile_TheReportLines)
         {
             NoAppStateForCli noAppState;
@@ -1560,8 +1539,8 @@ namespace UnitTests
             Assert::IsTrue(ListedFiles(refused.err, "wrote ").empty(), WideForCli(refused.err).c_str());
         }
 
-        // Review of 0046b54a: the text of a Windows error has no line break
-        // of its own. Before, a blank line came after "Unable to open".
+        // The text of a Windows error has no line break of its own, so no
+        // blank line comes after "Unable to open".
         TEST_METHOD(Compile_AMissingObjectFile_NoBlankLine)
         {
             NoAppStateForCli noAppState;

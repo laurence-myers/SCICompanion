@@ -81,8 +81,8 @@ ShadowPolicy AskAboutShadowingPatches(const std::vector<std::string> &files)
 {
     if (QuitPending())
     {
-        // Review of S2c: the box could not get an answer; write, as the
-        // compile did before it asked.
+        // The box cannot get an answer: write the package, and keep the
+        // patch files.
         return ShadowPolicy::Ignore;
     }
     const size_t shownFiles = 10;
@@ -117,7 +117,7 @@ CompileResult StartFailureLine(const sci::Error &error)
 {
     if (error.code == sci::ErrorCode::Cancelled)
     {
-        // The user's answer is not an error (review of S2c).
+        // The user's answer is not an error.
         return CompileResult("The compile was stopped, and nothing was written: " + error.ToString());
     }
     return CompileResult("The compile did not start: " + error.ToString(), CompileResult::CRT_Error);
@@ -126,7 +126,7 @@ CompileResult StartFailureLine(const sci::Error &error)
 void ReportCompileBatch(const CompileReport &report, ICompileLog &log, const std::string &writeProblem)
 {
     // A table failure refuses the commit; that refusal is no second error
-    // line (review of 5f545221).
+    // line.
     bool refusedByTables = !report.tables && !report.commit && (report.commit.error().message == report.tables.error().message);
     if (!report.tables)
     {
@@ -149,13 +149,13 @@ void ReportCompileBatch(const CompileReport &report, ICompileLog &log, const std
         log.ReportResult(CompileResult("Moved the patch file " + moved));
     }
     // A patch file that could not move is an error: it still hides the
-    // package write (review of S2b). The error names every such file.
+    // package write. The error names every such file.
     if (!report.moves)
     {
         log.ReportResult(CompileResult("Error: " + report.moves.error().ToString(), CompileResult::CRT_Error));
     }
-    // The .sco files of the scripts that were not written went back to
-    // their state before the compile (review of 944de1df).
+    // The .sco files of the scripts that were not written are back in their
+    // state before the compile.
     for (const std::string &restored : report.restoredObjectFiles)
     {
         log.ReportResult(CompileResult("Put back " + restored + ": its script was not written"));

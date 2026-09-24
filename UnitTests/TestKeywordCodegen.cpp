@@ -168,11 +168,9 @@ namespace UnitTests
             Assert::IsTrue(keywordBytes == manualBytes, what);
         }
 
-        // Plan step K1. An and/or used for its value gives the operand that
-        // decides it, as Sierra's sc does (MakeAnd, MakeOr): "a; bnt E; b; E:"
-        // for and, and bt for or. The old SCI Studio code gave 1 or 0: an if
-        // with ldi 1 and no else ("a; bnt F; b; bnt F; ldi 1; F:"), where the
-        // 0 is the operand that the taken bnt leaves in the accumulator.
+        // An and/or used for its value gives the operand that decides it, not
+        // 1 or 0, as Sierra's sc does (MakeAnd, MakeOr): "a; bnt E; b; E:"
+        // for and, and bt for or.
         TEST_METHOD(ValueAndOr_GiveTheDecidingOperand)
         {
             _gameFolder = SetUpGameSCI11();
@@ -203,9 +201,9 @@ namespace UnitTests
             AssertSameBytes(keyword, manual, L"a value and/or must compile to Sierra's short-circuit shape");
         }
 
-        // K1 review: the same in a push context (a call argument). Both exits
-        // of the short circuit must join before the push; a join after it
-        // skips the push on the short path, and the call gets a wrong stack.
+        // The same in a push context (a call argument). Both exits of the
+        // short circuit must join before the push; a join after it skips the
+        // push on the short path, and the call gets a wrong stack.
         TEST_METHOD(ValueAndOr_InACallArgument_JoinBeforeThePush)
         {
             _gameFolder = SetUpGameSCI11();
@@ -242,9 +240,9 @@ namespace UnitTests
             AssertSameBytes(keyword, manual, L"a value and/or in a call argument must join before the push");
         }
 
-        // In a condition, and/or branch to the if's else, as before. This
-        // test also passes with the old value path: it pins the condition
-        // shape, and it is not a negative check for K1.
+        // In a condition, and/or branch to the if's else. A condition does not
+        // use the value path, so this test pins the condition shape; it is
+        // not a negative check for the value shape.
         TEST_METHOD(ConditionAndOr_BranchToTheElse)
         {
             _gameFolder = SetUpGameSCI11();
@@ -297,9 +295,9 @@ namespace UnitTests
             AssertSameBytes(keyword, manual, L"an and/or in a condition must branch to the else of the if");
         }
 
-        // Plan step K5. A call to proc<N>_<M> that no name resolves, in a game
-        // with no script N (Sierra removed script 911 from KQ6), compiles to
-        // "calle N M" with a warning. Before, it was an error.
+        // A call to proc<N>_<M> that no name resolves, in a game with no
+        // script N (Sierra removed script 911 from KQ6), compiles to
+        // "calle N M" with a warning.
         TEST_METHOD(MissingScriptProc_CompilesToCalleWithAWarning)
         {
             _gameFolder = SetUpGameSCI11();
@@ -329,9 +327,8 @@ namespace UnitTests
             Assert::IsTrue(decompiled.text.find("(__proc911_0 5)") != npos, W(decompiled.text).c_str());
         }
 
-        // Plan step K6. A Said string in a game with no vocabulary resource
-        // gives one compile error that names the resource. Before, the
-        // compiler read the vocabulary through a null pointer (LookupWord).
+        // A Said string in a game with no vocabulary resource gives one
+        // compile error that names the resource.
         TEST_METHOD(SaidWithNoVocabulary_IsAnErrorThatNamesTheResource)
         {
             _gameFolder = SetUpGameSCI0();
@@ -344,7 +341,7 @@ namespace UnitTests
             Assert::IsTrue(nullptr == resourceMap.GetVocab000(), L"setup: no vocabulary");
 
             // Two Said strings: the error comes once for the compile, not once
-            // for each Said string or word (K6 review).
+            // for each Said string or word.
             std::string source = Header() +
                 "(public\n\tkTest 0\n)\n"
                 "(procedure (kTest)\n"
@@ -364,8 +361,8 @@ namespace UnitTests
             Assert::IsTrue(errors[0].find("vocab 0") != npos, W("expected an error that names vocab 0, got: " + errors[0]).c_str());
         }
 
-        // K6 review: the main vocabulary of an SCI1.1 game with no vocab 0 is
-        // vocab 900, and the error names it. The SCI1.1 template has neither.
+        // The main vocabulary of an SCI1.1 game with no vocab 0 is vocab 900,
+        // and the error names it. The SCI1.1 template has neither.
         TEST_METHOD(SaidWithNoVocabulary_SCI11_NamesVocab900)
         {
             _gameFolder = SetUpGameSCI11();
@@ -387,9 +384,8 @@ namespace UnitTests
             Assert::IsTrue(error.find("vocab 900") != npos, W("expected an error that names vocab 900, got: " + error).c_str());
         }
 
-        // K6 review: the auto-complete word list of the script editor's "Add
-        // as synonym of" dialog read the vocabulary through a null pointer in
-        // a game with none.
+        // The auto-complete word list of the script editor's "Add as synonym
+        // of" dialog is empty in a game with no vocabulary.
         TEST_METHOD(WordList_GameWithNoVocabulary_IsEmpty)
         {
             _gameFolder = SetUpGameSCI11();
@@ -406,7 +402,7 @@ namespace UnitTests
             Assert::IsTrue(hr == S_FALSE, L"Next must give S_FALSE when no word is left");
         }
 
-        // K5: when the game has script N, an unresolved proc<N>_<M> stays an
+        // When the game has script N, an unresolved proc<N>_<M> stays an
         // error. Script 0 of the template has no export 99.
         TEST_METHOD(MissingScriptProc_ScriptThatExists_StaysAnError)
         {
@@ -421,10 +417,10 @@ namespace UnitTests
             Assert::IsTrue(error.find("proc0_99") != npos, W("expected an error for proc0_99, got: " + error).c_str());
         }
 
-        // K5: __proc<N>_<M> is what the decompiler writes for a call to an
-        // export that is not in the game. Its parse looked for the '_' from
-        // the start of the whole name, so __proc911_0 gave "calle 0 11", and
-        // such a decompiled script did not round-trip.
+        // __proc<N>_<M> is what the decompiler writes for a call to an export
+        // that is not in the game. The numbers follow the prefix, so
+        // __proc911_0 gives "calle 911 0" (not "calle 0 11"), and such a
+        // decompiled script round-trips.
         TEST_METHOD(UnderscoreProc_GivesItsScriptAndExport)
         {
             _gameFolder = SetUpGameSCI11();
@@ -441,9 +437,9 @@ namespace UnitTests
             AssertSameBytes(escaped, plain, L"__proc911_0 must compile to calle 911 0");
         }
 
-        // K5 review: an asm calle of proc<N>_<M> of a missing script compiles
-        // too, with the warning, to the bytes of the call. The asm fallback of
-        // the decompiler writes this form (DecompilerFallback.cpp).
+        // An asm calle of proc<N>_<M> of a missing script compiles too, with
+        // the warning, to the bytes of the call. The asm fallback of the
+        // decompiler writes this form (DecompilerFallback.cpp).
         TEST_METHOD(MissingScriptProc_InAsm_CompilesToCalleWithAWarning)
         {
             _gameFolder = SetUpGameSCI11();
@@ -468,9 +464,9 @@ namespace UnitTests
             AssertSameBytes(call, manual, L"the asm calle must give the bytes of the call");
         }
 
-        // K5 review: proc<N>_<M> of a missing script is a procedure only in a
-        // call. As a value it is an undeclared name, as before K5, and not
-        // "The '(' character must immediately follow the function call".
+        // proc<N>_<M> of a missing script is a procedure only in a call. As a
+        // value it is an undeclared name, and not "The '(' character must
+        // immediately follow the function call".
         TEST_METHOD(MissingScriptProc_AsAValue_IsAnUndeclaredName)
         {
             _gameFolder = SetUpGameSCI11();
@@ -486,8 +482,8 @@ namespace UnitTests
             Assert::IsTrue(error.find("Undeclared identifier") != npos, W("expected an undeclared-identifier error, got: " + error).c_str());
         }
 
-        // K5 review: the decompiler writes no leading zero, so a number with
-        // one is a typo, and the name stays an error.
+        // The decompiler writes no leading zero, so a number with one is a
+        // typo, and the name stays an error.
         TEST_METHOD(MissingScriptProc_LeadingZero_StaysAnError)
         {
             _gameFolder = SetUpGameSCI11();
@@ -505,10 +501,10 @@ namespace UnitTests
             }
         }
 
-        // K5 review: the decompiler writes a callb to an export that main does
-        // not have as __proc0_<M>. It compiles back to callb, as a call of a
-        // main procedure by its name does (before: calle 0 M, which is two
-        // bytes longer).
+        // The decompiler writes a callb to an export that main does not have
+        // as __proc0_<M>. It compiles back to callb, as a call of a main
+        // procedure by its name does, not to calle 0 M, which is one byte
+        // longer, or two when the operands are words.
         TEST_METHOD(UnderscoreProc_OfMain_CompilesToCallb)
         {
             _gameFolder = SetUpGameSCI11();

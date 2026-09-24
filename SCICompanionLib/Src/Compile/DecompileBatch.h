@@ -27,7 +27,7 @@ struct DecompileOptions
 };
 
 // Instead of the files: the source of each script (the command line's
-// --stdout; plan step S4). With it, the batch writes no .sc and no .sco file,
+// --stdout and --dry-run). With it, the batch writes no .sc and no .sco file,
 // and not main's .sco. A script that the batch decompiles again (pass 2)
 // gives its source again; the last one counts.
 class IDecompileOutput
@@ -76,9 +76,9 @@ public:
 	// script 0 is in the batch, whose own .sco then carries the names).
 	// An abort stops the batch where it is; the scripts already written stay,
 	// and a script whose write came before the abort counts as written, with
-	// its renames (review of ba63d08a).
+	// its renames.
 	// A script that fails to decompile is reported and dropped, and the rest
-	// go on. Each script runs inside an exception boundary (plan step S4).
+	// go on. Each script runs inside an exception boundary.
 	void Run(const std::set<uint16_t> &scriptNumbers);
 
 	// The globals this run named: (standard name, new name).
@@ -94,22 +94,20 @@ public:
 	// in GetWrittenScripts too: a file of it was written.
 	const std::map<uint16_t, sci::Error> &GetFailedScripts() const { return _failed; }
 	// The write of main's .sco with the new global names at the end of the
-	// run: Ok, also when it was not needed (S4 review: before, a failure was
-	// a message only).
+	// run: Ok, also when it was not needed.
 	const sci::Status &GetMainObjectFileStatus() const { return _mainObjectFile; }
 	// The scripts that needed a second write with the new global names, and
 	// that an abort stopped before it: their files still use the old names.
 	const std::set<uint16_t> &GetSkippedRewrites() const { return _skippedRewrites; }
 	// A global gained a name that script 0's own .sco does not carry: the
 	// batch wrote main's .sco with the names (with an output, a batch that
-	// writes files would write it; review of 11106215).
+	// writes files would write it).
 	bool MainObjectFileNeeded() const { return _mainObjectFileNeeded; }
 
 	// With an output (a dry run of several groups): the main .sco that Run
 	// starts from instead of the file (null: the file), and the one that it
 	// ended with, so that the next group sees the names of this one, as it
-	// reads them from the file after a run that writes (review of
-	// 11106215).
+	// reads them from the file after a run that writes.
 	void SetMainObjectFile(std::unique_ptr<CSCOFile> mainSCO);
 	std::unique_ptr<CSCOFile> TakeMainObjectFile();
 

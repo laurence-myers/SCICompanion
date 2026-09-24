@@ -122,9 +122,8 @@ void DecompileDialog::DoDataExchange(CDataExchange* pDX)
 	if (!initialized)
 	{
 		// The src folder, and the files of the Decompiler folder when
-		// src\Decompiler.ini does not exist (plan step S4: a plain copy that
-		// never overwrites a file; before, the shell copied them, and could
-		// ask to replace a file of the game).
+		// src\Decompiler.ini does not exist: a plain copy that never
+		// overwrites a file of the game, and asks nothing.
 		sci::Status prepared = PrepareDecompileFolder(_helper, appState->GetResourceMap().GetDecompilerFolder());
 		if (!prepared)
 		{
@@ -772,7 +771,7 @@ void DecompileDialog::OnCancel()
 
 void DecompileDialog::s_DecompileThreadWorker(DecompileDialog *pThis)
 {
-	// Plan step S4: the run of the command line. The dialog names the scripts
+	// The run of the command line (RunDecompile). The dialog names the scripts
 	// in game.ini itself (_AssignFilenames), and asks about the stale scripts,
 	// so the run does neither.
 	DecompileRunOptions options;
@@ -784,7 +783,7 @@ void DecompileDialog::s_DecompileThreadWorker(DecompileDialog *pThis)
 	options.names = NameAssignment::None;
 	options.gameIni = GameIniNames::None;
 	// After a Cancel, the dialog offers no stale script (below), so the run
-	// need not read every source file for them (review of ba63d08a).
+	// need not read every source file for them.
 	options.staleAfterAbort = false;
 	set<uint16_t> scriptNumbers = pThis->_scriptNumbers;
 	DecompilerDialogResults &results = *pThis->_decompileResults;

@@ -30,7 +30,7 @@ namespace cli
         Warning,
         // A message with a script and a line (for example "The else clause
         // must be the last clause in a cond."): shown unless --quiet, as the
-        // GUI shows it (review of 0046b54a).
+        // GUI shows it.
         Info,
         // A message with no line: with --verbose only.
         Message,
@@ -39,8 +39,7 @@ namespace cli
     // What a command writes: a result to stdout; an error, a warning, a
     // message and a detail to stderr, as the verbosity allows. The log file
     // (--log) gets every message (plan sections 4.1 and 7). One lock covers
-    // both: codecs log from worker threads (C1 review: before, the lock was
-    // in the core-log sink only).
+    // both: codecs log from worker threads.
     class CliOutput
     {
     public:
@@ -59,9 +58,8 @@ namespace cli
         void Detail(const std::string &text) { _Write(text + "\n", _options.verbose && !_options.quiet, false); }
         // Help and lists of commands, to stdout.
         void Help(const std::string &text) { _Write(text, true, true); }
-        // A debug dump that an option asked for, to stderr, always, with no
-        // "scic:" prefix (review of 11106215: the dumps were warnings, and
-        // --quiet hid them).
+        // A debug dump that an option asked for, to stderr, always (also with
+        // --quiet), with no "scic:" prefix: it is not a warning.
         void Dump(const std::string &text) { _Write(text + "\n", true, false); }
         // A compiler diagnostic in the MSBuild format (plan section 4.5), to
         // stderr: an error always, a warning or an info line unless --quiet,
@@ -110,7 +108,8 @@ namespace cli
     };
 
     // Prints the scripts. Success, or PartialFailure when a compiled script
-    // that it read cannot be read. Fails for a bad selector (Usage).
+    // that it read cannot be read. Fails for a bad selector (Usage), and
+    // after Ctrl+C (Cancelled).
     sci::Result<ExitCode> RunScriptList(GameSession &session, const ScriptListOptions &options, CliOutput &output);
 
     // scic script decompile (plan section 4.4).
@@ -152,11 +151,10 @@ namespace cli
     // Makes the .sco files (GenerateObjectFiles) and prints each script
     // that was skipped or failed, then the summary. With --all, a script
     // with a source file and no compiled script, or with a name in
-    // game.ini and no source file, is skipped and listed (review of
-    // 11106215). The exit code: 6 when a script failed (also for a syntax
-    // error, plan section 4.6), 9 when a .sco could not be written (a dry
-    // run: when it could not be), 7 after Ctrl+C, 1 for a bug. Fails for a
-    // bad selector (Usage).
+    // game.ini and no source file, is skipped and listed. The exit code:
+    // 6 when a script failed (also for a syntax error, plan section 4.6), 9
+    // when a .sco could not be written (a dry run: when it could not be), 7
+    // after Ctrl+C, 1 for a bug. Fails for a bad selector (Usage).
     sci::Result<ExitCode> RunScriptSco(GameSession &session, const ScriptScoOptions &options, const CommonOptions &common, CliOutput &output);
 
     // scic script compile (plan section 4.5).
@@ -182,7 +180,7 @@ namespace cli
     // section 4.5), the progress with --verbose, then what went where and
     // the totals. --dry-run writes nothing and lists what a run would
     // write. The exit code of the report (plan section 8). Fails when the
-    // batch cannot start (the code of ExitCodeForStartError: 2, 3, 7 or 8).
+    // batch cannot start (the code of ExitCodeForStartError: 1, 2, 3, 7 or 8).
     sci::Result<ExitCode> RunScriptCompile(GameSession &session, const ScriptCompileOptions &options, const CommonOptions &common, CliOutput &output);
 
     // The full path of a folder or a file, from GetFullPathName: a relative

@@ -43,11 +43,10 @@ struct RebuildStats
 
 // A header whose sizes are both 0: an empty resource (for example, a text with
 // no strings, saved to the package), or damage that zeroed the header.
-// ReadResourceHeader throws it with the header. A package source keeps it as
-// an empty resource only when the header has the map entry's type and number;
-// otherwise the header is damaged (reviews of the F2 review fixes: the first
-// fix marked a valid empty resource, and the second took a zeroed SCI1.1
-// header for one).
+// ReadResourceHeader throws it with the header (a zeroed header whose type
+// byte has no mark of its format is damage at once). A package source keeps
+// it as an empty resource only when the header has the map entry's type and
+// number; otherwise the header is damaged.
 class EmptyResourceError : public sci::DataError
 {
 public:
@@ -73,8 +72,8 @@ ResourceHeaderAgnostic ReadResourceHeader(sci::istream &byteStream, SCIVersion v
 	if ((rhAgnostic.cbCompressed == 0) && (rhAgnostic.cbDecompressed == 0))
 	{
 		// A zeroed SCI1 to SCI2 header reads as view 0 with sizes of 0. Its
-		// type byte has no 0x80 mark, so it is damage, not an empty resource
-		// (review of dafb7179). An SCI2.1 header has no mark.
+		// type byte has no 0x80 mark, so it is damage, not an empty resource.
+		// An SCI2.1 header has no mark.
 		if (!rh.HasTypeMark())
 		{
 			throw sci::DataError("corrupted resource!");
@@ -298,8 +297,7 @@ public:
 		}
 
 		packageByteStream.seekg(mapEntry.Offset);
-		// An empty resource is its header only: the rebuild keeps it (before,
-		// the rebuild dropped it with no message).
+		// An empty resource is its header only: the rebuild keeps it.
 		ResourceHeaderAgnostic headerEntry = _ReadHeader(packageByteStream, mapEntry);
 		uint32_t headerSize = packageByteStream.tellg() - mapEntry.Offset;
 		size = headerSize + headerEntry.cbCompressed;
@@ -579,7 +577,7 @@ private:
 		catch (const EmptyResourceError &empty)
 		{
 			// The header's number is signed; a number of 32768 or more must
-			// match too (review of dafb7179).
+			// match too.
 			if ((empty.header.Type != mapEntry.Type) || ((uint16_t)empty.header.Number != mapEntry.Number))
 			{
 				throw sci::DataError("corrupted resource!");

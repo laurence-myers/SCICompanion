@@ -245,10 +245,10 @@ namespace
 
 namespace UnitTests
 {
-    // Plan step S4. Before it, the decompile of the GUI was in the Decompile
-    // dialog: it named the scripts in game.ini (it created game.ini), copied
-    // the Decompiler folder with the shell, dropped a script that did not
-    // load with no message, and had no status for each script.
+    // The decompile run (RunDecompile) of the command line and of the
+    // Decompile dialog: the names of the scripts (only Create creates
+    // game.ini), the src folder, and a status for each script, also for a
+    // script that does not load. Also script sco (GenerateObjectFiles).
     TEST_CLASS(TestDecompileRun)
     {
         std::string _copyFolder;
@@ -391,8 +391,7 @@ namespace UnitTests
 
         // With no game.ini, the names come from the compiled scripts, the run
         // writes src\<name>.sc, and nothing creates game.ini (plan section
-        // 3.4). The Decompile dialog wrote the names into game.ini, and so
-        // created it.
+        // 3.4).
         TEST_METHOD(NoGameIni_NothingCreatesIt)
         {
             NoAppStateForRun noAppState;
@@ -447,10 +446,10 @@ namespace UnitTests
             Assert::AreEqual(std::string("Door"), IniEntry("n974"));
         }
 
-        // --reset-names: every script gets its derived name, also one that
-        // game.ini names; the old files keep their names, and a warning lists
-        // them. Update writes the new name into game.ini, so the GUI finds the
-        // new file.
+        // --reset-names: each script of the run gets its derived name, also
+        // one that game.ini names; the old files keep their names, and a
+        // warning lists them. Update writes the new name into game.ini, so
+        // the GUI finds the new file.
         TEST_METHOD(ResetNames_TakesTheDerivedNames)
         {
             NoAppStateForRun noAppState;
@@ -543,7 +542,7 @@ namespace UnitTests
         }
 
         // A script that does not load gets its error in the report, and the
-        // others are written. Before, the batch dropped it with no message.
+        // others are written.
         TEST_METHOD(FailedScript_HasItsStatus_TheOthersAreWritten)
         {
             NoAppStateForRun noAppState;
@@ -573,8 +572,8 @@ namespace UnitTests
             Assert::IsTrue(reported, L"the failure is in the messages too");
         }
 
-        // A .sc file that cannot be written fails its script. Before, the
-        // batch gave only a message, and the script counted as written.
+        // A .sc file that cannot be written fails its script: the script
+        // does not count as written.
         TEST_METHOD(WriteError_FailsTheScript)
         {
             NoAppStateForRun noAppState;
@@ -611,12 +610,12 @@ namespace UnitTests
             Assert::IsTrue(!OutcomeOf(*report, 983)->status && (OutcomeOf(*report, 983)->status.error().code == sci::ErrorCode::Cancelled), WideForRun(DescribeRun(*report)).c_str());
         }
 
-        // S4a, script sco (plan section 4.6): with no .sco file in src, the
-        // .sco files made from the sources and the compiled scripts have what
-        // the compiler's .sco files have, and they let a compile of every
-        // script start; on both templates. S4 review: before, the SCI1.1
-        // template got the name strings as class names ("Blk" for Block) and
-        // no locals from 110.shp, and about 30 of its scripts did not compile.
+        // script sco (plan section 4.6): with no .sco file in src, the .sco
+        // files made from the sources and the compiled scripts have what the
+        // compiler's .sco files have, and they let a compile of every script
+        // start; on both templates. As the compiler does, a class gets its
+        // name in the source, not its name string ("Blk" for Block), and a
+        // source gets the locals of its .shp include (110.shp).
         TEST_METHOD(ObjectFiles_MatchTheCompiler_BothTemplates)
         {
             NoAppStateForRun noAppState;
@@ -696,9 +695,8 @@ namespace UnitTests
             }
         }
 
-        // S4 review: a source whose classes differ in number from the
-        // compiled script gets the names of the compiled script, and a
-        // warning.
+        // A source whose classes differ in number from the compiled script
+        // gets the names of the compiled script, and a warning.
         TEST_METHOD(ObjectFiles_OtherClassCount_Warns)
         {
             NoAppStateForRun noAppState;
@@ -724,7 +722,7 @@ namespace UnitTests
             Assert::IsTrue(made && (made->GetObjects().size() == 1) && (made->GetObjects()[0].GetName() == "Door"), L"the names of the compiled script");
         }
 
-        // S4a: a script with no source file, or with no compiled script, is
+        // A script with no source file, or with no compiled script, is
         // skipped; a source with a syntax error fails its script and writes
         // no .sco; the others are written.
         TEST_METHOD(ObjectFiles_SkipsAndFails)
@@ -813,10 +811,9 @@ namespace UnitTests
             Assert::IsTrue(FindScriptsReferencingGlobals(session.Helper(), others, report->globalRenames).empty(), L"the run stops when no script is stale");
         }
 
-        // S4 review: a reset name is never the file title of another script.
-        // Before, a reset of script 979 (its first class is MenuBar) named it
-        // "MenuBar", and the run wrote over menubar.sc, the source of script
-        // 997.
+        // A reset name is never the file title of another script: a reset of
+        // script 979 (its first class is MenuBar) names it "MenuBar_979", so
+        // the run does not write over menubar.sc, the source of script 997.
         TEST_METHOD(ResetNames_NeverTakeTheFileOfAnotherScript)
         {
             NoAppStateForRun noAppState;
@@ -840,8 +837,7 @@ namespace UnitTests
                 warnings += warning + "\n";
             }
             Assert::IsTrue(warnings.find("Controls.sc keeps its old name: script 979 is now MenuBar_979") != std::string::npos, WideForRun(warnings).c_str());
-            // It also goes to the results, when it is found (review of
-            // 11106215: no test had it).
+            // It also goes to the results, when it is found.
             bool inResults = false;
             for (const std::string &problem : results.problems)
             {
@@ -850,10 +846,9 @@ namespace UnitTests
             Assert::IsTrue(inResults, L"the warning goes to the results");
         }
 
-        // Review of 11106215: a dry run writes nothing, and its report lists
-        // the files that a run writes besides the scripts' own: the decompiler
-        // files of src and game.ini. A reset says "would keep". Before, a dry
-        // run (then an output) listed no other file.
+        // A dry run writes nothing, and its report lists the files that a run
+        // writes besides the scripts' own: the decompiler files of src and
+        // game.ini. A reset says "would keep".
         TEST_METHOD(DryRun_ListsTheOtherFilesAndWritesNothing)
         {
             NoAppStateForRun noAppState;
@@ -894,9 +889,9 @@ namespace UnitTests
             Assert::IsTrue(warnings.find("Controls.sc would keep its old name: script 979 would be MenuBar_979") != std::string::npos, WideForRun(warnings).c_str());
         }
 
-        // Review of c6584ca7: a reset name is never the title of the source of
-        // a script that the game has not compiled, alone or in a conflict.
-        // Before, script 974 was named "Door", and the run wrote over Door.sc.
+        // A reset name is never the title of the source of a script that the
+        // game has not compiled, alone or in a conflict: script 974 gets
+        // "Door_974", so the run does not write over Door.sc.
         TEST_METHOD(ResetNames_KeepTheFileOfAnUncompiledScript)
         {
             NoAppStateForRun noAppState;
@@ -925,10 +920,10 @@ namespace UnitTests
             }
         }
 
-        // S4 review: a reset of some scripts resets only them. Before, every
-        // script got its derived name in memory: Door.sc got (use Cycle),
-        // while game.ini kept n992=OldCycle, so a later run and the compile
-        // used the old name.
+        // A reset of some scripts resets only them. The other scripts keep
+        // their names, also in memory, so the sources agree with game.ini:
+        // Door.sc gets (use OldCycle), as game.ini has n992=OldCycle, and it
+        // compiles.
         TEST_METHOD(ResetNames_OnlyTheChosenScripts)
         {
             NoAppStateForRun noAppState;
@@ -960,10 +955,9 @@ namespace UnitTests
             Assert::AreEqual(std::string(), CompileErrorsOf(compiled), L"the reset source compiles");
         }
 
-        // S4 review: with updateStale, a later group that names a global
-        // makes a script of an earlier group stale, and the run decompiles it
-        // again. Before, the run skipped every script that it had decompiled:
-        // 961 kept global3, which group 2 named, and did not compile.
+        // With updateStale, a later group that names a global makes a script
+        // of an earlier group stale, and the run decompiles it again: 965
+        // uses global3, which group 2 names, and after the run 965 compiles.
         TEST_METHOD(UpdateStale_AlsoAScriptOfAnEarlierGroup)
         {
             NoAppStateForRun noAppState;
@@ -999,11 +993,10 @@ namespace UnitTests
             Assert::AreEqual(std::string(), CompileErrorsOf(CompileScripts(next, { a }, CompileOptions(), abort, events)), L"965 compiles after the run");
         }
 
-        // Review of c49c8143: an abort before a later group reaches a script
-        // that an earlier group wrote keeps its written outcome, game.ini
-        // gets its name, and the stale list has it (its file still uses a
-        // global that a later group named). Before, it was Cancelled, it lost
-        // its game.ini entry, and the stale list was empty.
+        // An abort before a later group reaches a script that an earlier
+        // group wrote keeps its written outcome, game.ini gets its name, and
+        // the stale list has it (its file still uses a global that a later
+        // group named).
         TEST_METHOD(Abort_KeepsTheScriptsThatAGroupWrote)
         {
             NoAppStateForRun noAppState;
@@ -1025,11 +1018,10 @@ namespace UnitTests
             Assert::AreEqual(std::string("StaleFirst"), IniEntry("n965"), L"game.ini gets the name of the written script");
         }
 
-        // Review of c49c8143: a reset never gives two scripts one name. A
-        // chosen script that gets no derived name (978 has procedures only,
-        // or it cannot be read) keeps its name, and no other chosen script
-        // takes it. Before, 974 and 978 were both "Door", and 978 wrote over
-        // the new Door.sc of 974.
+        // A reset never gives two scripts one name. A chosen script that gets
+        // no derived name (978 has procedures only, or it cannot be read)
+        // keeps its name, and no other chosen script takes it: 974 gets
+        // "Door_974", and the two scripts write different files.
         TEST_METHOD(ResetNames_TwoScriptsNeverShareAName)
         {
             NoAppStateForRun noAppState;
@@ -1060,9 +1052,9 @@ namespace UnitTests
             }
         }
 
-        // Review of c49c8143: a reset of two scripts where one has the file
-        // of the name that the other derives. 997 keeps menubar.sc, and 979
-        // gets the suffix. Before (with no owner rule), 979 took "MenuBar".
+        // A reset of two scripts where one has the file of the name that the
+        // other derives. The title of a file belongs to its script: 997 keeps
+        // menubar.sc, and 979 gets the suffix.
         TEST_METHOD(ResetNames_TwoChosenScripts_OneKeepsItsFile)
         {
             NoAppStateForRun noAppState;
@@ -1081,10 +1073,10 @@ namespace UnitTests
             Assert::AreEqual(menuBar, ReadAllText(GameFile("src\\menubar.sc")), L"the old file of 997 does not change");
         }
 
-        // Review of c49c8143: with no [Script] entry in game.ini, the names of
-        // every script go into game.ini, but not the names of a conflict (the
-        // GUI does not check game.ini for one). Here door.sco has the objects
-        // of Wander (983), so "door" is the name of 974 and of 983.
+        // With no [Script] entry in game.ini, the names of every script go
+        // into game.ini, but not the names of a conflict (the GUI does not
+        // check game.ini for one). Here door.sco has the objects of Wander
+        // (983), so "door" is the name of 974 and of 983.
         TEST_METHOD(GameIni_EveryName_NotAConflict)
         {
             NoAppStateForRun noAppState;
@@ -1104,8 +1096,8 @@ namespace UnitTests
             Assert::AreEqual(std::string(), IniEntry("n983"), L"no name of the conflict");
         }
 
-        // Review of c49c8143: an include that is not there names itself in
-        // the error of script sco (before: "Opening \").
+        // An include that is not there names itself in the error of script
+        // sco.
         TEST_METHOD(ObjectFiles_AMissingInclude_NamesIt)
         {
             NoAppStateForRun noAppState;
@@ -1125,8 +1117,8 @@ namespace UnitTests
                 WideForRun(outcome.status.error().ToString()).c_str());
         }
 
-        // S4 review: a main .sco that cannot be written is in the report, and
-        // the run did not succeed. Before, it was a message only.
+        // A main .sco that cannot be written is in the report, and the run
+        // does not succeed.
         TEST_METHOD(MainObjectFileWriteError_IsInTheReport)
         {
             NoAppStateForRun noAppState;
@@ -1150,8 +1142,7 @@ namespace UnitTests
             Assert::IsFalse(report->Succeeded());
         }
 
-        // A .sco file that cannot be written fails its script (the S4 review
-        // found no test for it).
+        // A .sco file that cannot be written fails its script.
         TEST_METHOD(ObjectFileWriteError_FailsTheScript)
         {
             NoAppStateForRun noAppState;
@@ -1170,8 +1161,7 @@ namespace UnitTests
             Assert::IsTrue((door != nullptr) && !door->status && (door->status.error().code == sci::ErrorCode::Io), WideForRun(DescribeRun(*report)).c_str());
         }
 
-        // A .sc file that pass 1 and pass 2 cannot write fails its script (the
-        // S4 review found no test for the write status of pass 2).
+        // A .sc file that pass 1 and pass 2 cannot write fails its script.
         TEST_METHOD(Pass2WriteError_FailsTheScript)
         {
             NoAppStateForRun noAppState;
@@ -1190,8 +1180,7 @@ namespace UnitTests
         }
 
         // With an output, main's .sco does not change, also when the run
-        // names a global, and the output gets the source of pass 2 (the S4
-        // review found no test for either).
+        // names a global, and the output gets the source of pass 2.
         TEST_METHOD(Output_KeepsMainSco_AndGetsThePass2Source)
         {
             NoAppStateForRun noAppState;
@@ -1223,8 +1212,7 @@ namespace UnitTests
             Assert::IsFalse(ContainsIdentifier(first, "global5"), WideForRun(first).c_str());
         }
 
-        // A game.ini that cannot be written fails the run (the S4 review
-        // found no test for it).
+        // A game.ini that cannot be written fails the run.
         TEST_METHOD(GameIniWriteError_FailsTheRun)
         {
             NoAppStateForRun noAppState;
@@ -1244,7 +1232,7 @@ namespace UnitTests
         }
 
         // The default name nNNN needs no entry in game.ini, and Create makes
-        // no game.ini for it (the S4 review found no test for it).
+        // no game.ini for it.
         TEST_METHOD(GameIni_DefaultNameNeedsNoEntry)
         {
             NoAppStateForRun noAppState;
@@ -1258,10 +1246,9 @@ namespace UnitTests
             Assert::AreEqual(std::string(), IniEntry("n005"));
         }
 
-        // S4 review: when game.ini has no [Script] entry, the run writes the
-        // name of every script, as the Decompile dialog does before its first
-        // run. Before, only the written script got an entry, and then the
-        // dialog did not name the others.
+        // When game.ini has no [Script] entry, the run writes the name of
+        // every script, as the Decompile dialog does before its first run, so
+        // the dialog then names the other scripts too.
         TEST_METHOD(GameIni_NoScriptSection_GetsEveryName)
         {
             NoAppStateForRun noAppState;
@@ -1277,10 +1264,10 @@ namespace UnitTests
             Assert::AreEqual(std::string("MENUBAR"), UpperName(IniEntry("n997")), L"a script that the run did not write");
         }
 
-        // S4 review: an output run on a game with no src folder uses the
-        // Decompiler.ini of the data folder, so it gives the source that a
-        // file run gives. Before, it used the default settings: global3 for
-        // gNewSpeed, 133 for #check, param1 for pEvent.
+        // An output run on a game with no src folder uses the Decompiler.ini
+        // of the data folder, so it gives the source that a file run gives.
+        // The default settings give other names: global3 for gNewSpeed, 133
+        // for #check, param1 for pEvent.
         TEST_METHOD(Output_SameSourceAsAFileRun)
         {
             NoAppStateForRun noAppState;
@@ -1314,9 +1301,8 @@ namespace UnitTests
             }
         }
 
-        // S4 review: an abort in pass 2 leaves a written script with an old
-        // global name; the report lists it as stale. Before, the report did
-        // not show it.
+        // An abort in pass 2 leaves a written script with an old global name;
+        // the report lists it as stale.
         TEST_METHOD(Abort_InPass2_TheScriptIsStale)
         {
             NoAppStateForRun noAppState;
@@ -1333,12 +1319,10 @@ namespace UnitTests
             Assert::IsTrue(ContainsIdentifier(ReadAllText(session.Helper().GetScriptFileName((WORD)959)), "global5"), L"setup: 959 still has the old name");
         }
 
-        // Review of ba63d08a: an abort that comes just after the write of a
-        // script (here, at its "Generated" message) leaves the script
-        // written: it counts, with its renames, main's .sco gets the names,
-        // and the stale check after the abort finds 959. Before, 960 was
-        // Cancelled, the renames were lost, and main's .sco had no name for
-        // the global that 960's file uses (960 then did not compile).
+        // An abort that comes just after the write of a script (here, at its
+        // "Generated" message) leaves the script written: it counts, with its
+        // renames, main's .sco gets the names (960's file uses them), and the
+        // stale check after the abort finds 959.
         TEST_METHOD(Abort_JustAfterAWrite_TheScriptCounts)
         {
             NoAppStateForRun noAppState;
@@ -1362,10 +1346,8 @@ namespace UnitTests
             Assert::AreEqual((size_t)1, report->stale.count(959), WideForRun(facts).c_str());
         }
 
-        // Review of ba63d08a: in pass 2, an abort that comes just after the
-        // second write of a script leaves it written again with the new names:
-        // it is not stale. Before, it was listed as a rewrite that the abort
-        // stopped.
+        // In pass 2, an abort that comes just after the second write of a
+        // script leaves it written again with the new names: it is not stale.
         TEST_METHOD(Abort_JustAfterASecondWrite_TheScriptIsNotStale)
         {
             NoAppStateForRun noAppState;
@@ -1384,11 +1366,10 @@ namespace UnitTests
             Assert::AreEqual((size_t)0, report->stale.count(959), WideForRun(facts).c_str());
         }
 
-        // Review of ba63d08a: with no [Script] entry in game.ini, the run
-        // writes every name; a script that a reset renamed and that no group
-        // wrote keeps its name from before the reset, which its files have.
-        // Before, a cancelled reset of 979 wrote n979=MenuBar_979, and the
-        // next session did not find Controls.sc.
+        // With no [Script] entry in game.ini, the run writes every name; a
+        // script that a reset renamed and that no group wrote keeps its name
+        // from before the reset, which its files have: a cancelled reset of
+        // 979 writes n979=Controls, so the next session finds Controls.sc.
         TEST_METHOD(ResetNames_AScriptThatNoGroupWrote_KeepsItsNameInGameIni)
         {
             NoAppStateForRun noAppState;
@@ -1408,10 +1389,10 @@ namespace UnitTests
             Assert::AreEqual(0, _stricmp("MenuBar", IniEntry("n997").c_str()), L"the other names");
         }
 
-        // Review of ba63d08a: a later group that stopped before a script keeps
-        // the outcome of the earlier group. Here group 1 fails 965 (its .sc is
-        // read-only), and the abort comes in group 3 before 965. Before, 965
-        // became Cancelled (exit code 7, where plan section 8 gives 9).
+        // A later group that stopped before a script keeps the outcome of the
+        // earlier group. Here group 1 fails 965 (its .sc is read-only), and
+        // the abort comes in group 3 before 965: 965 keeps its Io error, not
+        // Cancelled, so plan section 8 gives exit code 9, not 7.
         TEST_METHOD(Abort_AFailureOfAnEarlierGroupStays)
         {
             NoAppStateForRun noAppState;
@@ -1435,10 +1416,9 @@ namespace UnitTests
             Assert::IsTrue(stale->status.error().code == sci::ErrorCode::Io, WideForRun(facts).c_str());
         }
 
-        // Review of ba63d08a: a batch that throws in a later group keeps the
-        // written outcome of an earlier group; the scripts of the group that
-        // it did not reach get its error. Before, the error replaced the
-        // written outcome.
+        // A batch that throws in a later group keeps the written outcome of an
+        // earlier group; the scripts of the group that it did not reach get
+        // its error.
         TEST_METHOD(BatchThrowsInALaterGroup_TheWrittenOutcomeStays)
         {
             NoAppStateForRun noAppState;
@@ -1457,17 +1437,17 @@ namespace UnitTests
             Assert::IsTrue((main != nullptr) && !main->status.has_value(), WideForRun("setup: the batch threw in group 3:\n" + facts).c_str());
             const DecompileOutcome *first = OutcomeOf(*report, 965);
             Assert::IsTrue((first != nullptr) && first->status.has_value(), WideForRun(facts).c_str());
-            // Review of e83a7d41: the report keeps the error of the batch (it
-            // does not succeed), and the stale check of an abort runs: 965's
-            // file still uses global3, which group 2 named.
+            // The report keeps the error of the batch (it does not succeed),
+            // and the stale check of an abort runs: 965's file still uses
+            // global3, which group 2 named.
             Assert::IsFalse(report->batch.has_value(), WideForRun(facts).c_str());
             Assert::IsFalse(report->Succeeded(), WideForRun(facts).c_str());
             Assert::AreEqual((size_t)1, report->stale.count(965), WideForRun(facts).c_str());
         }
 
-        // Review of ba63d08a (no test had these): after an abort, a run with an
-        // output makes no stale list; and game.ini keeps the name of a script
-        // that group 1 wrote when a later group fails it.
+        // After an abort, a run with an output makes no stale list; and
+        // game.ini keeps the name of a script that group 1 wrote when a later
+        // group fails it.
         TEST_METHOD(Abort_Output_NoStaleList_AndAWrittenNameStays)
         {
             NoAppStateForRun noAppState;
@@ -1482,8 +1462,8 @@ namespace UnitTests
                 auto report = RunDecompile(session, { 959, 960 }, DecompileRunOptions(), results, &sources);
                 Assert::IsTrue(report.has_value() && report->cancelled, report ? WideForRun(DescribeRun(*report)).c_str() : L"no report");
                 Assert::IsTrue(report->stale.empty(), WideForRun("an output writes nothing, so nothing is stale:\n" + DescribeRun(*report)).c_str());
-                // Review of e83a7d41: and no source (before, the sources of
-                // pass 1 went to the output).
+                // And no source goes to the output, also not a source of
+                // pass 1.
                 Assert::IsTrue(sources.sources.empty(), L"no source after an abort");
             }
 
@@ -1512,11 +1492,10 @@ namespace UnitTests
             Assert::AreEqual(std::string("StaleFirst"), IniEntry("n965"), WideForRun("the name that group 1 wrote:\n" + facts).c_str());
         }
 
-        // Review of e83a7d41: a script that fails after its naming keeps the
-        // global names that it found (the namer put them into main's .sco).
-        // Here 960 fails at its "Generated" message. Before, the names were
-        // lost: main's .sco kept global5, and 957, which pass 2 wrote with the
-        // new name, did not compile.
+        // A script that fails after its naming keeps the global names that it
+        // found (the namer puts them into main's .sco). Here 960 fails at its
+        // "Generated" message: main's .sco gets the new name of global5, and
+        // pass 2 writes 957 with it.
         TEST_METHOD(AScriptFailsAfterItsNaming_TheNamesStay)
         {
             NoAppStateForRun noAppState;
@@ -1551,8 +1530,8 @@ namespace UnitTests
             Assert::IsTrue(ContainsIdentifier(first, name) && !ContainsIdentifier(first, "global5"), WideForRun(name + "\n" + first).c_str());
         }
 
-        // Review of e83a7d41 (no test had it): with staleAfterAbort false (the
-        // Decompile dialog), an abort makes no stale check.
+        // With staleAfterAbort false (the Decompile dialog), an abort makes no
+        // stale check.
         TEST_METHOD(Abort_StaleAfterAbortFalse_NoStaleCheck)
         {
             NoAppStateForRun noAppState;
@@ -1569,10 +1548,9 @@ namespace UnitTests
             Assert::AreEqual((size_t)0, report->stale.count(965), WideForRun(DescribeRun(*report)).c_str());
         }
 
-        // Review of e83a7d41: in a name conflict, the script that the name map
-        // finds first (the lowest number) owns the title of the file, so the
-        // --derived column gives it the plain name. Before, 979 got
-        // MenuBar_979.
+        // In a name conflict, the script that the name map finds first (the
+        // lowest number) owns the title of the file, so the --derived column
+        // gives it the plain name: 979 gets MenuBar, not MenuBar_979.
         TEST_METHOD(ResetNames_ANameConflict_TheLowestNumberOwnsTheTitle)
         {
             NoAppStateForRun noAppState;

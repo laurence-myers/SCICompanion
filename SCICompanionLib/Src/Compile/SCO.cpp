@@ -681,7 +681,7 @@ sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco, Scr
 		return sci::Ok();
 	}
 	// Changed only when the new file was written: a .sco that cannot be
-	// written is not a change that needs another pass (review of 4247f34c).
+	// written is not a change that needs another pass.
 	sci::Status written = WriteBytesToFile(path, scoOutput);
 	if (changed)
 	{
@@ -774,8 +774,8 @@ unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const Script &script, const 
 	// are, a name that is in several slots included (the decompiler names a
 	// "calle script slot" call from it). Pairing the names with the export table
 	// in definition order is wrong when the source defines them in another
-	// order (KQ5 Interface.sc: every public procedure name moved to another
-	// slot, and a call went to the wrong procedure).
+	// order (in KQ5 Interface.sc, every public procedure name would move to
+	// another slot, and a call would go to the wrong procedure).
 	if (!script.GetExports().empty())
 	{
 		// In slot order, as the compiler writes its .sco: GetExportIndex gives

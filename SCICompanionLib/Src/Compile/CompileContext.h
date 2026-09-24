@@ -413,15 +413,15 @@ private:
 	// Class names declared by classdef, mapped to their species number.
 	std::unordered_map<std::string, uint16_t> _classDefSpecies;
 
-	// Plan step K5: a call to proc<N>_<M> that no other name resolves, in a
-	// game that has no script N (a script that Sierra removed, as script 911
-	// of KQ6), is a call to export M of script N. Returns false for other
-	// names, and when the game has script N (the call then stays an error).
+	// A call to proc<N>_<M> that no other name resolves, in a game that has
+	// no script N (a script that Sierra removed, as script 911 of KQ6), is a
+	// call to export M of script N. Returns false for other names, and when
+	// the game has script N (the call then stays an error).
 	bool _LookupMissingScriptProc(const std::string &name, WORD &wScript, WORD &wIndex);
 	bool _ScriptExists(uint16_t number);
 	// The script numbers of the game, read at the first use.
 	std::unique_ptr<std::set<uint16_t>> _scriptNumbers;
-	// Plan step K6: the "no vocabulary" error is given once.
+	// The "no vocabulary" error is given once.
 	bool _reportedNoVocabulary = false;
 };
 
@@ -519,8 +519,8 @@ public:
 	bool Load(CResourceMap &resourceMap);
 	// Load, with the reason for a failure (see CheckVocabTables).
 	sci::Status TryLoad(CResourceMap &resourceMap);
-	// Writes the tables that changed to the destination of the options (plan
-	// step S1). It tries both, and gives the first failure.
+	// Writes the tables that changed to the destination of the options. It
+	// tries both, and gives the first failure.
 	sci::Status Save(CResourceMap &resourceMap, const CompileWriteOptions &options);
 	// The same with the game's destination; a failure shows a message (the
 	// GUI).
@@ -558,16 +558,15 @@ public:
 	TextComponent &GetTextComponent();
 	void SetAutoTextNumber(uint16_t autoTextNumber);
 	// The compile wrote a .sco file whose bytes differ from the file before
-	// (plan step S2: a pass that changes no .sco file ends the passes).
+	// (a pass that changes no .sco file ends the passes; plan section 4.5).
 	bool ObjectFileChanged() const { return _objectFileChanged; }
 	void SetObjectFileChanged(bool changed) { _objectFileChanged = changed; }
 	// The scripts whose .sco files the compile read (not its own). A batch
-	// uses them to see which scripts depend on a .sco that it changed
-	// (review of 4247f34c).
+	// uses them to see which scripts depend on a .sco that it changed.
 	const std::set<uint16_t> &LoadedObjectFiles() const { return _loadedObjectFiles; }
 	void SetLoadedObjectFiles(std::set<uint16_t> scripts) { _loadedObjectFiles = std::move(scripts); }
 	// The resources that the compile wrote (in a batch: queued or staged):
-	// the script, the heap and a changed auto text (plan step C3).
+	// the script, the heap and a changed auto text.
 	const std::vector<WrittenResource> &Written() const { return _written; }
 	void AddWritten(ResourceType type, uint16_t number) { _written.push_back({ type, number }); }
 	CompileStats Stats;
@@ -616,10 +615,9 @@ bool GenerateScriptResource(GameSession &session, sci::Script &script, Precompil
 void ErrorHelper(CompileContext &context, const ISourceCodePosition *pPos, const std::string &text, const std::string &identifier, bool checkUse = true);
 // Compiles one script file of the session's game and writes its resources,
 // its .sco file and its debug information (CompileScript.cpp), as the
-// options say (plan step S1; the GUI passes the defaults). Ok; Compile when
-// the script has errors; or the error of a source file that could not be read
-// or of the first write that failed (plan step S2). Every failure is also an
-// error in the log.
+// options say (the GUI passes the defaults). Ok; Compile when the script has
+// errors; or the error of a source file that could not be read or of the
+// first write that failed. Every failure is also an error in the log.
 sci::Status CompileScriptFile(GameSession &session, CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script,
 	const CompileWriteOptions &options = CompileWriteOptions());
 // The same, as true for Ok.

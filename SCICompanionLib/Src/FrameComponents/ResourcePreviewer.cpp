@@ -527,7 +527,8 @@ void VocabPreviewer::SetResource(const ResourceBlob &blob)
 		case 996: // species table
 		{
 			SpeciesTable species;
-			// The preview shows only the script of each species (K3).
+			// The preview shows only the script of each species, so the
+			// table needs no alignment to the compiled scripts.
 			if (species.Load(appState->GetResourceMap().Helper(), false))
 			{
 				_Populate(species.GetNames());

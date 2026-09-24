@@ -97,10 +97,9 @@ namespace
 
 namespace UnitTests
 {
-    // Plan step S3: the naming rule of the decompiler (rule 4 of plan
-    // section 3.4). Before S3, the Decompile dialog had the rule inline, and
-    // it went through the scripts in the hash order of the class table: the
-    // "_N" suffix of a duplicate name could go to either script.
+    // The naming rule of the decompiler (rule 4 of plan section 3.4). The
+    // scripts go in number order, so the "_N" suffix of a duplicate name does
+    // not depend on the order of the input.
     TEST_CLASS(TestSuggestScriptNames)
     {
     public:
@@ -164,19 +163,18 @@ namespace UnitTests
             Assert::AreEqual(std::string("Door_door"), names[1]);
             Assert::AreEqual(std::string("_3dRoom"), names[2]);
             Assert::AreEqual(std::string("what__"), names[3]);
-            // S3 review: the parser takes no '-' in (use Voice-Over).
+            // The parser takes no '-' in (use Voice-Over).
             Assert::AreEqual(std::string("Voice_Over"), names[4]);
-            // S3 review: Windows opens a device for CON.sc or LPT1.sc.
+            // Windows opens a device for CON.sc or LPT1.sc.
             Assert::AreEqual(std::string("Con_"), names[5]);
             Assert::AreEqual(std::string("lpt1_"), names[6]);
             Assert::AreEqual(std::string("Console"), names[7]);
         }
     };
 
-    // Plan step S3: the script-name map (plan section 3.4). Before S3, every
-    // script name came from game.ini [Script]; with no game.ini, every
-    // script was nNNN, so the decompiler wrote src\n110.sc and (use n255),
-    // and the compiler found no script file.
+    // The script-name map (plan section 3.4). The names come from game.ini
+    // and from the files of src\, so the decompiler and the compiler use the
+    // names of the script files also in a game with no game.ini.
     TEST_CLASS(TestScriptNameMap)
     {
         std::string _copyFolder;
@@ -291,7 +289,7 @@ namespace UnitTests
             Assert::AreEqual(size_t(1), map->Conflicts().size());
             const std::string &conflict = map->Conflicts()[0].text;
             Assert::IsTrue((conflict.find("Title2.sc") != std::string::npos) && (conflict.find("TitleScreen.sc") != std::string::npos), WideName(conflict).c_str());
-            // S3 review: the conflict names its script, and says how to fix it.
+            // The conflict names its script, and says how to fix it.
             Assert::IsTrue(map->Conflicts()[0].numbers == std::vector<uint16_t>({ 100 }));
             Assert::IsTrue(conflict.find("Keep one of the files") != std::string::npos, WideName(conflict).c_str());
             Assert::AreEqual(std::string("n100"), map->NameOf(100), L"neither file names the script");
@@ -313,9 +311,9 @@ namespace UnitTests
             Assert::AreEqual(size_t(0), map->ConflictsOf(100).size());
         }
 
-        // S3 review: game.ini gives a name only with the key that the GUI
-        // reads (n007: GetPrivateProfileString finds a key by its text), and
-        // without single or double quotes, as the GUI reads it.
+        // game.ini gives a name only with the key that the GUI reads (n007:
+        // GetPrivateProfileString finds a key by its text), and without
+        // single or double quotes, as the GUI reads it.
         TEST_METHOD(GameIni_TheKeyAndTheValueAsTheGuiReadsThem)
         {
             _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
@@ -331,7 +329,7 @@ namespace UnitTests
             Assert::AreEqual(std::string("S3Quoted"), map->NameOf(779));
         }
 
-        // S3 review: rule 5 takes only the standard form of the default name.
+        // Rule 5 takes only the standard form of the default name.
         TEST_METHOD(DefaultName_OnlyTheStandardForm)
         {
             _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
@@ -344,7 +342,7 @@ namespace UnitTests
             Assert::IsFalse(map->NumberOf("n1", number), L"the default name of script 1 is n001");
         }
 
-        // S3 review: two .sco files for one script (rule 3) are a conflict.
+        // Two .sco files for one script (rule 3) are a conflict.
         TEST_METHOD(TwoObjectFilesForOneScript_IsAConflict)
         {
             _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
@@ -361,7 +359,7 @@ namespace UnitTests
             Assert::AreEqual(std::string("n100"), map->NameOf(100), L"neither file names the script");
         }
 
-        // S3 review: a script can declare its number with its own define.
+        // A script can declare its number with its own define.
         TEST_METHOD(ScriptDeclaration_WithTheScriptsOwnDefine)
         {
             _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
@@ -375,14 +373,14 @@ namespace UnitTests
             Assert::IsTrue(map->SourceOf(7777) == NameSource::Source);
         }
 
-        // S3 review: Windows file names ignore the case of letters outside
-        // ASCII too, so "Über" and "über" are one file: a conflict.
+        // Windows file names ignore the case of letters outside ASCII too, so
+        // "Über" and "über" are one file: a conflict.
         TEST_METHOD(NamesThatDifferOnlyInTheCaseOfALetterOutsideAscii_AreAConflict)
         {
             if (GetACP() != 1252)
             {
-                // The names are code page 1252 bytes (review of 7f41aa43: the
-                // test failed on another code page; it skips there).
+                // The names are code page 1252 bytes, so the test skips on
+                // another code page.
                 Logger::WriteMessage(L"skipped: the ANSI code page is not 1252");
                 return;
             }
@@ -397,9 +395,9 @@ namespace UnitTests
             Assert::IsTrue(map->Conflicts()[0].numbers == std::vector<uint16_t>({ 777, 778 }));
         }
 
-        // The old [Script] readers used a buffer of 20000 characters, and a
-        // longer section gave no names at all. The map's reader grows its
-        // buffer.
+        // The [Script] readers of CResourceMap have a buffer of 20000
+        // characters, and a longer section gives them no names at all. The
+        // map's reader grows its buffer.
         TEST_METHOD(GameIni_ALongScriptSection_IsReadInFull)
         {
             _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
@@ -466,7 +464,7 @@ namespace UnitTests
         }
     };
 
-    // Plan step S3: a GameSession gives its helper the script names.
+    // A GameSession gives its helper the script names.
     TEST_CLASS(TestSessionScriptNames)
     {
         std::string _copyFolder;
@@ -492,8 +490,7 @@ namespace UnitTests
             RemoveCopy();
         }
 
-        // With no game.ini, the file names come from src\. Before S3 they were
-        // src\n000.sc and src\n000.sco.
+        // With no game.ini, the file names come from src\.
         TEST_METHOD(NoGameIni_TheHelperNamesTheFilesFromSrc)
         {
             NoAppStateForNames noAppState;
@@ -571,8 +568,8 @@ namespace UnitTests
         }
 
         // A decompile with no game.ini writes src\<name>.sc with the names of
-        // src\, and its (use ...) lines use them. Before S3: src\n100.sc and
-        // (use n000).
+        // src\, and its (use ...) lines use them: src\TitleScreen.sc and
+        // (use Main), not src\n100.sc and (use n000).
         TEST_METHOD(Decompile_NoGameIni_UsesTheNamesOfSrc)
         {
             NoAppStateForNames noAppState;

@@ -1914,17 +1914,17 @@ bool SCISyntaxParser::Parse(Script &script, streamIt &stream, std::unordered_set
 		// recover afterwards.
 		std::string rawError = context.GetErrorText();
 		streamIt errorPos = context.GetErrorPosition();
-		// Add one to line#, since editor lines are 1-based (plan step S2, P13:
-		// the text of the message had the 0-based line).
+		// Add one to line#, since editor lines are 1-based. The text of the
+		// message uses this line too.
 		int errorLine = errorPos.GetLineNumber() + 1;
 
 		// We can maybe improve the error by extracting a token here and seeing if it's a keyword.
 		std::string maybeKeyword;
 		streamIt errorPosCopy = errorPos;
 		ExtractSomeToken(maybeKeyword, errorPosCopy);
-		// The hint of the GUI text, and of the raw text: the raw text is a
-		// sentence of its own (review of S2c: it read 'Expected variable.:
-		// "foo"').
+		// The hint of the GUI text, and of the raw text: the raw hint is a
+		// sentence of its own, because the raw error can end with a full
+		// stop ('Expected variable.').
 		std::string hint;
 		std::string rawHint;
 		if (!maybeKeyword.empty())
@@ -1955,8 +1955,8 @@ bool SCISyntaxParser::Parse(Script &script, streamIt &stream, std::unordered_set
 		strError += fmt::format(" ({}, {})", errorLine, errorPos.GetColumnNumber());
 		strError += hint;
 
-		// The script's own id keeps the case of its path (review of 0046b54a:
-		// GetPath() has the folder in lower case).
+		// The script's own id keeps the case of its path: GetPath() has the
+		// folder in lower case.
 		ScriptId scriptId = script.GetScriptId();
 		if (pError)
 		{
@@ -1992,8 +1992,8 @@ bool SCISyntaxParser::ParseHeader(Script &script, streamIt &stream, std::unorder
 	{
 		std::string strError = context.GetErrorText();
 		streamIt errorPos = context.GetErrorPosition();
-		// The script's own id keeps the case of its path (review of 0046b54a:
-		// GetPath() has the folder in lower case).
+		// The script's own id keeps the case of its path: GetPath() has the
+		// folder in lower case.
 		ScriptId scriptId = script.GetScriptId();
 		if (pError)
 		{

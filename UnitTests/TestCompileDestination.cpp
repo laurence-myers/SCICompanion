@@ -138,9 +138,9 @@ namespace
 
 namespace UnitTests
 {
-    // Plan step S1. Before it, a compile wrote its script, heap, text and
-    // vocab tables where game.ini said (a caller could not choose), and the
-    // .sco, .scd and .sc writes ignored their errors.
+    // Where a compile writes (plan section 5): a caller chooses the package,
+    // patch files or an output folder for the script, heap, text and vocab
+    // tables, and the .sco, .scd and .sc writes report their errors.
     TEST_CLASS(TestCompileDestination)
     {
         std::string _copyFolder;
@@ -331,8 +331,7 @@ namespace UnitTests
         }
 
         // A resource that cannot be written fails the compile, and the script
-        // gets no .sco: the .sco describes the resources (review of S1; the
-        // review of 5f545221 found no test for it).
+        // gets no .sco: the .sco describes the resources.
         TEST_METHOD(OutDir_AFailedWrite_NoObjectFile)
         {
             NoAppStateForDestination noAppState;
@@ -467,8 +466,7 @@ namespace UnitTests
             Assert::IsTrue(ReadAllBytes(scd) == debugBytes, L"debug\\903.scd must hold the debug information");
         }
 
-        // A .sco that cannot be written is an error of the compile. Before,
-        // the write failed with no message, and the compile succeeded.
+        // A .sco that cannot be written is an error of the compile.
         TEST_METHOD(ObjectFile_ReadOnly_IsACompileError)
         {
             NoAppStateForDestination noAppState;

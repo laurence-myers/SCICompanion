@@ -126,7 +126,7 @@ namespace
         "    (return (+ s2UndeclaredOne s2UndeclaredTwo))\n"
         ")\n";
 
-    // S2b, the passes: S2PassB uses the class of S2PassA.
+    // For the passes: S2PassB uses the class of S2PassA.
     const char *PassAText =
         "(script# 904)\n"
         "(include sci.sh)\n"
@@ -182,9 +182,8 @@ namespace
 
 namespace UnitTests
 {
-    // Plan step S2. Before it, the compile of many scripts was in the GUI's
-    // compile dialog: one log for all scripts (whose counts grew with each
-    // count, P11), no status for each script, and no exception boundary.
+    // CompileScripts compiles many scripts as one batch: each script gets its
+    // own log and its own status, inside an exception boundary.
     TEST_CLASS(TestCompileBatch)
     {
         std::string _copyFolder;
@@ -351,7 +350,7 @@ namespace UnitTests
         }
 
         // The counts of a log are the counts of its results: a second count
-        // does not add them again (P11).
+        // does not add them again.
         TEST_METHOD(CompileLog_CountsItsResultsOnce)
         {
             CompileLog log;
@@ -463,7 +462,7 @@ namespace UnitTests
             Assert::IsFalse(session.ResourceMap().IsDeferring(), L"a batch that did not start opens no deferred writes");
         }
 
-        // S2b, the passes of plan section 4.5: script 906 uses script 904,
+        // The passes of plan section 4.5: script 906 uses script 904,
         // which has no .sco file yet. Pass 1 fails 906 and writes S2PassA.sco;
         // pass 2 compiles 906; pass 3 changes no .sco file and is the last.
         // The commit holds the last pass. With one pass, 906 fails.
@@ -502,8 +501,8 @@ namespace UnitTests
             }
         }
 
-        // S2b: a .sco file is written only when its bytes change, so a pass
-        // can see that nothing changed.
+        // A .sco file is written only when its bytes change, so a pass can
+        // see that nothing changed.
         TEST_METHOD(ObjectFile_IsWrittenOnlyWhenItChanges)
         {
             NoAppStateForBatch noAppState;
@@ -521,8 +520,8 @@ namespace UnitTests
             Assert::IsTrue(fs::last_write_time(sco) == old, L"the .sco file has the same bytes, so it must not be written again");
         }
 
-        // S2b, the shadow check of plan section 5: a patch file that would
-        // hide a package write refuses the batch.
+        // The shadow check of plan section 5: a patch file that would hide a
+        // package write refuses the batch.
         TEST_METHOD(ShadowingPatches_RefuseTheBatch)
         {
             NoAppStateForBatch noAppState;
@@ -540,8 +539,8 @@ namespace UnitTests
             Assert::IsTrue(map == BytesOf(_copyFolder + "\\resource.map"));
         }
 
-        // S2b: with Replace, the package is written, and the patch files move
-        // to replaced-patches\<time>.
+        // With Replace, the package is written, and the patch files move to
+        // replaced-patches\<time>.
         TEST_METHOD(ShadowingPatches_Replace_MovesThemAfterTheCommit)
         {
             NoAppStateForBatch noAppState;
@@ -566,7 +565,7 @@ namespace UnitTests
             Assert::IsTrue(script && (script->GetSourceFlags() == ResourceSourceFlags::ResourceMap), L"the package has script 904");
         }
 
-        // S2b: the batch checks the queued package writes again before the
+        // The batch checks the queued package writes again before the
         // commit: a script's auto text is known only after its compile.
         TEST_METHOD(ShadowingPatches_TheQueuedTextIsCheckedBeforeTheCommit)
         {
@@ -587,8 +586,7 @@ namespace UnitTests
             Assert::IsTrue(map == BytesOf(_copyFolder + "\\resource.map"), L"nothing is written");
         }
 
-        // S2c: the shadow check of an SCI1.1 game finds the patch file
-        // 997.voc (the acceptance test of plan row S2).
+        // The shadow check of an SCI1.1 game finds the patch file 997.voc.
         TEST_METHOD(ShadowingPatches_Sci11_Finds997Voc)
         {
             NoAppStateForBatch noAppState;
@@ -608,8 +606,8 @@ namespace UnitTests
             Assert::IsTrue(started.error().message.find("997.voc") != std::string::npos, WideForBatch(started.error().message).c_str());
         }
 
-        // S2c: askShadows answers for the patch files at the start (the GUI
-        // asks the user), and its answer is the policy from then on: the text
+        // askShadows answers for the patch files at the start (the GUI asks
+        // the user), and its answer is the policy from then on: the text
         // patch file that the batch finds before the commit gets no second
         // question. Refuse stops the batch with Cancelled.
         TEST_METHOD(AskShadows_TheAnswerAtTheStartIsThePolicy)
@@ -645,9 +643,9 @@ namespace UnitTests
                     Assert::IsFalse(map == BytesOf(_copyFolder + "\\resource.map"), L"the package is written");
                     bool replace = (answer == ShadowPolicy::Replace);
                     // Replace moves only the files that hide a written
-                    // resource (review of S2b): text.904 too, but not
-                    // vocab.997, because the tables did not change and the
-                    // commit did not write them.
+                    // resource: text.904 too, but not vocab.997, because the
+                    // tables did not change and the commit did not write
+                    // them.
                     Assert::AreEqual(replace ? (size_t)2 : (size_t)0, report->movedPatches.size(), L"Replace also moves text.904");
                     Assert::AreEqual(!replace, GameHasFile("text.904"));
                     Assert::AreEqual(!replace, GameHasFile("script.904"));
@@ -656,9 +654,9 @@ namespace UnitTests
             }
         }
 
-        // S2c: a patch file that the batch finds only before the commit (the
+        // A patch file that the batch finds only before the commit (the
         // script's auto text) gets its question then. Refuse writes nothing;
-        // No (Ignore) keeps the file (review of 5f545221: no test had it).
+        // No (Ignore) keeps the file.
         TEST_METHOD(AskShadows_BeforeTheCommit)
         {
             NoAppStateForBatch noAppState;
@@ -693,7 +691,7 @@ namespace UnitTests
             }
         }
 
-        // S2b: the warnings of a patch-file write (plan section 5).
+        // The warnings of a patch-file write (plan section 5).
         TEST_METHOD(PatchWrite_Warnings)
         {
             NoAppStateForBatch noAppState;
@@ -714,11 +712,10 @@ namespace UnitTests
             Assert::IsTrue(warnings.find("996 and 997") != std::string::npos, WideForBatch(warnings).c_str());
         }
 
-        // Review of S1 and S2a: a script that fails after its resources were
-        // queued (here, its .sco file cannot be written) writes no resource.
-        // Before, the commit wrote the script, but no script had compiled, so
-        // the tables were not saved: the game had a class that its class
-        // table did not have.
+        // A script that fails after its resources are queued (here, its .sco
+        // file cannot be written) writes no resource. No script compiled, so
+        // the tables are not saved: a written script would give the game a
+        // class that its class table does not have.
         TEST_METHOD(Savepoint_AFailedScript_WritesNoResource)
         {
             NoAppStateForBatch noAppState;
@@ -746,11 +743,11 @@ namespace UnitTests
             Assert::IsFalse(GameHasFile("vocab.996") || GameHasFile("vocab.997"), L"no script compiled, so the tables are not saved");
         }
 
-        // Review of S2b: Replace moves only the patch files that hide a
-        // resource that the commit wrote. Before, it moved every file of the
-        // start: the file of a script that failed (the game then read the
-        // old package copy), and the vocab.997 of tables that did not change
-        // (the game then lost selectors).
+        // Replace moves only the patch files that hide a resource that the
+        // commit wrote. It does not move the file of a script that failed
+        // (the game would then read the old package copy), or the vocab.997
+        // of tables that did not change (the game would then lose
+        // selectors).
         TEST_METHOD(Replace_MovesOnlyTheFilesOfWrittenResources)
         {
             NoAppStateForBatch noAppState;
@@ -792,14 +789,13 @@ namespace UnitTests
             Assert::IsTrue(after.IsSelectorName("s2ReviewSelector"), L"the game keeps the selector of the patch file");
         }
 
-        // Review of S2b: a script that compiles in pass 1 and fails in pass
-        // 2 writes nothing: the commit holds the last pass. (Before this
-        // test, only inspection checked the withdrawal of a pass.)
+        // A script that compiles in pass 1 and fails in pass 2 writes
+        // nothing: the commit holds the last pass.
         TEST_METHOD(Passes_AScriptThatFailsInALaterPass_IsWithdrawn)
         {
             NoAppStateForBatch noAppState;
             // In the game, and in an output folder, whose files wait for the
-            // commit too (review of 5f545221).
+            // commit too.
             for (bool toFolder : { false, true })
             {
                 GameSession session(TestSessionOptions());
@@ -835,16 +831,15 @@ namespace UnitTests
                 Assert::IsTrue(report->scripts[1].status.has_value(), WideForBatch(Describe(*report)).c_str());
                 Assert::IsTrue(fs::exists(where / "script.904"), toFolder ? L"S2PassY is written to the folder" : L"S2PassY is written");
                 Assert::IsFalse(fs::exists(where / "script.906"), toFolder ? L"the pass-1 file of S2PassX is dropped" : L"the pass-1 output of S2PassX is withdrawn");
-                // Review of 944de1df: the pass-1 .sco of S2PassX, which the commit
-                // does not write, goes (there was none before the batch).
+                // The pass-1 .sco of S2PassX, which the commit does not write,
+                // goes (there was none before the batch).
                 Assert::IsFalse(fs::exists(session.Helper().GetScriptObjectFileName("S2PassX")), WideForBatch("S2PassX.sco goes: " + Describe(*report)).c_str());
                 Assert::IsTrue(report->objectFiles.has_value() && (report->restoredObjectFiles.size() == 1), WideForBatch(Describe(*report)).c_str());
             }
         }
 
-        // Review of S2b: an abort between two passes keeps the pass that
-        // finished. Before, the next pass withdrew it, and nothing was
-        // written.
+        // An abort between two passes keeps the pass that finished: no new
+        // pass starts, and the commit writes the finished pass.
         TEST_METHOD(Abort_BetweenPasses_KeepsTheFinishedPass)
         {
             NoAppStateForBatch noAppState;
@@ -878,13 +873,13 @@ namespace UnitTests
             Assert::AreEqual(0, events.passesStarted, L"no new pass starts after the abort");
             Assert::AreEqual((size_t)2, report->scripts.size(), L"the report has the pass that finished");
             Assert::IsTrue(GameHasFile("script.904"), L"the finished pass is written");
-            // Review of 944de1df: that pass changed a .sco, and no pass came
-            // after it: a script of the commit can use an old one.
+            // That pass changed a .sco, and no pass comes after it, so a
+            // script of the commit can use an old one.
             Assert::IsTrue(report->passLimit, L"the abort reports the pass limit");
         }
 
-        // Review of S2a: options that wrote into the game, or failed each
-        // script after its .sco file was written, refuse the start.
+        // Options that would write into the game, or fail each script after
+        // its .sco file is written, refuse the start.
         TEST_METHOD(Start_RefusesBadOutputFolderOptions)
         {
             NoAppStateForBatch noAppState;
@@ -905,10 +900,9 @@ namespace UnitTests
             Assert::IsTrue(!gameStart && (gameStart.error().code == sci::ErrorCode::Usage), L"the game folder is not an output folder");
         }
 
-        // Review of S2b: a script with no number (a document opened from a
-        // file, or the GUI's scan of src) gets the number that its source
-        // declares, so the start sees its patch file, and the report has the
-        // number. Before, the number was 0xFFFF.
+        // A script with no number (a document opened from a file, or the
+        // GUI's scan of src) gets the number that its source declares, so the
+        // start sees its patch file, and the report has the number.
         TEST_METHOD(Start_AScriptWithNoNumber_GetsTheDeclaredNumber)
         {
             NoAppStateForBatch noAppState;
@@ -932,8 +926,8 @@ namespace UnitTests
             Assert::AreEqual(904, (int)report->scripts[0].number);
         }
 
-        // Review of S2b: Replace does not move a file over the backup of an
-        // earlier batch in the same second: each batch gets a new folder.
+        // Replace does not move a file over the backup of an earlier batch in
+        // the same second: each batch gets a new folder.
         TEST_METHOD(Replace_KeepsTheBackupOfAnEarlierBatch)
         {
             NoAppStateForBatch noAppState;
@@ -981,8 +975,8 @@ namespace UnitTests
             }
         }
 
-        // Review of S2a: the counts that a caller reads. A failed commit is
-        // not a success, and a warning is counted.
+        // The counts that a caller reads. A failed commit is not a success,
+        // and a warning is counted.
         TEST_METHOD(Report_SucceededAndTheWarningCount)
         {
             NoAppStateForBatch noAppState;
@@ -1005,8 +999,8 @@ namespace UnitTests
             Assert::IsFalse(notMoved.Succeeded(), L"a patch file that still hides the write is not a success");
         }
 
-        // Review of S2c: the lines that the GUI shows after a batch, and the
-        // scripts of a compile-all.
+        // The lines that the GUI shows after a batch, and the scripts of a
+        // compile-all.
         TEST_METHOD(Gui_ReportLinesAndTheScriptsOfACompileAll)
         {
             NoAppStateForBatch noAppState;
@@ -1031,8 +1025,7 @@ namespace UnitTests
             Assert::IsTrue((failedLog.Results().size() == 1) && failedLog.Results()[0].IsError() &&
                 (failedLog.Results()[0].GetMessage().find("Write problem: ") == 0));
 
-            // Review of 5f545221: a table failure that refused the commit is
-            // one error line (before, two).
+            // A table failure that refuses the commit gives one error line.
             CompileReport refused;
             refused.tables = sci::Fail(sci::ErrorCode::Io, "vocab.996 is read-only");
             sci::Error refusal = refused.tables.error();
@@ -1056,9 +1049,9 @@ namespace UnitTests
             Assert::AreEqual(974, (int)door[0].GetResourceNumber());
         }
 
-        // Review of S1: the write shares the file as the ofstream that it
-        // replaced did, so a program that has the file open with read and
-        // write sharing does not stop it.
+        // The write shares the file for read and write, as an ofstream does,
+        // so a program that has the file open with read and write sharing
+        // does not stop it.
         TEST_METHOD(FileWrite_SharesTheFile)
         {
             fs::path folder = fs::temp_directory_path() / "S2FileWriteShare";
@@ -1074,8 +1067,8 @@ namespace UnitTests
             Assert::IsTrue(written.has_value(), WideForBatch(written ? std::string() : written.error().ToString()).c_str());
         }
 
-        // Review of S2c: the raw text of a syntax error with a hint is a
-        // sentence of its own. Before, it read 'Expected variable.: "5"'.
+        // In the raw text of a syntax error, the hint is a sentence of its
+        // own ('The text there is "5".'), not ': "5"' after the error text.
         TEST_METHOD(SyntaxError_TheRawTextOfAHint)
         {
             NoAppStateForBatch noAppState;
@@ -1102,10 +1095,9 @@ namespace UnitTests
             Assert::IsTrue(raw.find("\"5\"") != std::string::npos, WideForBatch(raw + " / " + syntaxError->GetMessage()).c_str());
         }
 
-        // S2c, plan P13: every diagnostic line is 1-based (some parser
-        // messages had 0-based lines), and a diagnostic has its raw message,
-        // with no "Error: (file) ... Line: N, col: M" around it, for the
-        // command line.
+        // Every diagnostic line is 1-based, and a diagnostic has
+        // its raw message, with no "Error: (file) ... Line: N, col: M" around
+        // it, for the command line.
         TEST_METHOD(Diagnostics_OneBasedLinesAndTheRawMessage)
         {
             NoAppStateForBatch noAppState;
@@ -1142,7 +1134,7 @@ namespace UnitTests
                 }
             }
             Assert::IsNotNull(elseMessage, WideForBatch(Describe(*report)).c_str());
-            Assert::AreEqual(8, elseMessage->GetLineNumber(), L"the else clause is on line 8 (before: 7, 0-based)");
+            Assert::AreEqual(8, elseMessage->GetLineNumber(), L"the else clause is on line 8 (1-based)");
             Assert::IsNotNull(undeclared, WideForBatch(Describe(*report)).c_str());
             Assert::AreEqual(11, undeclared->GetLineNumber());
             const std::string &raw = undeclared->GetRawMessage();
@@ -1151,8 +1143,8 @@ namespace UnitTests
             Assert::IsTrue(undeclared->GetMessage().find("Line: 11") != std::string::npos, L"the GUI text keeps its form");
         }
 
-        // S2c, P13: the text of a syntax error has the 1-based line too (it
-        // had the 0-based line), and the error has a raw message.
+        // The text of a syntax error has the 1-based line too, and the
+        // error has a raw message.
         TEST_METHOD(SyntaxError_OneBasedLineInTheTextAndTheRawMessage)
         {
             NoAppStateForBatch noAppState;
@@ -1187,8 +1179,8 @@ namespace UnitTests
             Assert::IsTrue(!raw.empty() && (raw.find("Error:") == std::string::npos) && (raw.find("(7, ") == std::string::npos), WideForBatch(raw).c_str());
         }
 
-        // S2c: each outcome has the sizes of its compiled script (the GUI
-        // shows them after a compile).
+        // Each outcome has the sizes of its compiled script (the GUI shows
+        // them after a compile).
         TEST_METHOD(Outcome_HasTheStats)
         {
             NoAppStateForBatch noAppState;
@@ -1202,8 +1194,7 @@ namespace UnitTests
         }
 
         // A script whose source file is missing gives NotFound, and an error
-        // in its diagnostics. Before plan step S2, the compile failed with no
-        // message.
+        // in its diagnostics.
         TEST_METHOD(MissingSourceFile_IsNotFound)
         {
             NoAppStateForBatch noAppState;
@@ -1221,11 +1212,9 @@ namespace UnitTests
             Assert::IsTrue(Describe(*report).find("Could not read S2Missing.sc") != std::string::npos, WideForBatch(Describe(*report)).c_str());
         }
 
-        // Review of 5f545221: a debug file that cannot be written is a
-        // warning, and the batch stays whole. Before, script 907 failed after
-        // its .sco was written: the batch withdrew its resources, but script
-        // 906 compiled against its new class, and the game got script 906
-        // without script 907.
+        // A debug file that cannot be written is a warning (the game does not
+        // need it), and the batch stays whole: script 906 compiles against
+        // the new class of script 907, and both scripts are written.
         TEST_METHOD(DebugFileWriteError_IsAWarning_TheBatchStaysWhole)
         {
             NoAppStateForBatch noAppState;
@@ -1264,11 +1253,8 @@ namespace UnitTests
             Assert::IsTrue(warned, L"the debug file is a warning");
         }
 
-        // Review of 5f545221: with an output folder, the files wait for the
-        // commit. A script that fails writes no file, and a commit that
-        // fails writes none. Before, the files of a script that failed stayed
-        // in the folder, and so did the files of a batch whose tables could
-        // not be written.
+        // With an output folder, the files wait for the commit. A script that
+        // fails writes no file, and a commit that fails writes none.
         TEST_METHOD(OutputFolder_TheFilesWaitForTheCommit)
         {
             NoAppStateForBatch noAppState;
@@ -1335,9 +1321,8 @@ namespace UnitTests
             }
         }
 
-        // Review of 5f545221: passLimit says that the last pass that the
-        // options allow still changed a .sco file (S2PassB needs a second
-        // pass).
+        // passLimit says that the last pass that the options allow still
+        // changed a .sco file (S2PassB needs a second pass).
         TEST_METHOD(Passes_TheLimitIsReported)
         {
             NoAppStateForBatch noAppState;
@@ -1356,10 +1341,9 @@ namespace UnitTests
             }
         }
 
-        // Review of 5f545221: a dry run checks the patch files that would hide
-        // a package write, as a real run does, and moves none. Before, it
-        // skipped the check, so a dry run passed where the real run was
-        // refused.
+        // A dry run checks the patch files that would hide a package write,
+        // as a real run does, and moves none. So a dry run is refused where
+        // the real run is refused.
         TEST_METHOD(DryRun_ChecksTheShadowsAndMovesNothing)
         {
             NoAppStateForBatch noAppState;
@@ -1392,16 +1376,14 @@ namespace UnitTests
                     {
                         named = named || (warning.find("script.904") != std::string::npos);
                     }
-                    Assert::IsTrue(named, L"the report names the file that a real run would move (review of 4247f34c)");
+                    Assert::IsTrue(named, L"the report names the file that a real run would move");
                 }
                 Assert::IsTrue(GameHasFile("script.904"), L"the patch file stays");
                 Assert::IsTrue(map == BytesOf(_copyFolder + "\\resource.map"), L"nothing is written");
             }
         }
 
-        // Review of 5f545221: every patch file that cannot move is in the
-        // error of the moves. Before, only the first one was; the others
-        // were warnings.
+        // Every patch file that cannot move is in the error of the moves.
         TEST_METHOD(Replace_EveryFileThatCannotMove_IsInTheError)
         {
             NoAppStateForBatch noAppState;
@@ -1427,11 +1409,11 @@ namespace UnitTests
             Assert::IsTrue((error.find("script.904") != std::string::npos) && (error.find("text.904") != std::string::npos), WideForBatch(error).c_str());
         }
 
-        // Review of 4247f34c: a new pass withdraws the writes of the pass
-        // before, but not its .sco files. In pass 2, S2UseY fails against the
-        // new .sco of S2UseX, and S2UseX compiles against the pass-1 .sco of
-        // S2UseY. Before, the commit wrote the new S2UseX without S2UseY, whose
-        // export 1 it calls. Now the commit writes nothing.
+        // A new pass withdraws the writes of the pass before, but not its
+        // .sco files. In pass 2, S2UseY fails against the new .sco of S2UseX,
+        // and S2UseX compiles against the pass-1 .sco of S2UseY. The new
+        // S2UseX calls export 1 of S2UseY, so the commit must not write it
+        // without S2UseY: the commit writes nothing.
         TEST_METHOD(Passes_AScriptThatUsesTheNewObjectFileOfAFailedScript_WritesNothing)
         {
             NoAppStateForBatch noAppState;
@@ -1445,7 +1427,7 @@ namespace UnitTests
                 "(procedure (s2UseXNew)\n    (return (s2UseYMore))\n)\n";
             // In the game, in an output folder, and (variant 2) with a ScriptId
             // of S2UseX whose number (907) is not the number that its source
-            // declares (review of 944de1df: the refusal said "script 906").
+            // declares: the refusal names S2UseX with the declared number.
             for (int variant : { 0, 1, 2 })
             {
                 bool toFolder = (variant == 1);
@@ -1491,10 +1473,10 @@ namespace UnitTests
                 {
                     Assert::IsTrue(fs::is_empty(out), L"no file is written to the folder");
                 }
-                // Review of 944de1df: the .sco files are back as they were, so
-                // S2UseX alone does not compile against the old S2UseY. Before,
-                // the new .sco files stayed, and that compile wrote the new
-                // S2UseX with the old S2UseY.
+                // The .sco files are back as they were, so S2UseX alone does
+                // not compile against the old S2UseY. If the new .sco files
+                // stayed, that compile would write the new S2UseX with the old
+                // S2UseY.
                 Assert::IsTrue(report->objectFiles.has_value(), WideForBatch(facts).c_str());
                 Assert::IsTrue(oldYSco == BytesOf(ySco), L"S2UseY.sco is back");
                 Assert::IsTrue(oldXSco == BytesOf(xSco), L"S2UseX.sco is back");
@@ -1508,11 +1490,11 @@ namespace UnitTests
             }
         }
 
-        // Review of 4247f34c: an abort in pass 2 commits the pass-2 scripts
-        // that ran, and the pass-1 writes of the others are withdrawn.
-        // S2AbortX compiled in pass 2 against the new .sco of S2AbortY, which
-        // did not run in pass 2. Before, the commit wrote S2AbortX, which calls
-        // export 1 of S2AbortY, without S2AbortY. Now it writes nothing.
+        // An abort in pass 2 commits the pass-2 scripts that ran, and the
+        // pass-1 writes of the others are withdrawn. S2AbortX compiles in
+        // pass 2 against the new .sco of S2AbortY, which does not run in pass
+        // 2. S2AbortX calls export 1 of S2AbortY, so the commit must not write
+        // it without S2AbortY: the commit writes nothing.
         TEST_METHOD(Passes_AnAbortInALaterPass_WritesNoScriptThatUsesANewObjectFile)
         {
             NoAppStateForBatch noAppState;
@@ -1561,9 +1543,8 @@ namespace UnitTests
             Assert::IsTrue(oldYScript == BytesOf(_copyFolder + "\\script.904"), L"S2AbortY in the game does not change");
         }
 
-        // Review of 4247f34c: a dry run checks the auto text before the
-        // commit, as a real run does. Before, a dry run queued nothing, so it
-        // passed where the real run was refused.
+        // A dry run checks the auto text before the commit, as a real run
+        // does. So a dry run is refused where the real run is refused.
         TEST_METHOD(DryRun_ChecksTheAutoTextBeforeTheCommit)
         {
             NoAppStateForBatch noAppState;
@@ -1591,10 +1572,9 @@ namespace UnitTests
             }
         }
 
-        // Review of 4247f34c: a dry run does not ask what to do with the
-        // patch files that would hide a package write (it cannot move them).
-        // Refuse stops it, as a real run with no askShadows. Before, it asked
-        // "move?", and then moved nothing.
+        // A dry run does not ask what to do with the patch files that would
+        // hide a package write (it cannot move them). Refuse stops it, as a
+        // real run with no askShadows.
         TEST_METHOD(DryRun_AsksNothing)
         {
             NoAppStateForBatch noAppState;
@@ -1621,11 +1601,9 @@ namespace UnitTests
             Assert::IsTrue(GameHasFile("script.904"), L"the patch file stays");
         }
 
-        // Review of 4247f34c: a hidden or system file, a folder with the
-        // file's name, or a file that another program holds, in the output
-        // folder fails the commit before the first write. Before, a hidden or
-        // system file passed the check, and its write failed after the table
-        // files were written.
+        // A hidden or system file, a folder with the file's name, or a file
+        // that another program holds, in the output folder fails the commit
+        // before the first write, so no table file is written.
         TEST_METHOD(OutputFolder_AFileThatCannotBeReplaced_FailsBeforeTheFirstWrite)
         {
             NoAppStateForBatch noAppState;
@@ -1685,10 +1663,9 @@ namespace UnitTests
             }
         }
 
-        // Review of 4247f34c: with raw files, the check before the first write
-        // shares the file as the raw write does (read and write), so a program
-        // that has the file open with that sharing does not stop the commit.
-        // Before, the check shared nothing, and refused it.
+        // With raw files, the check before the first write shares the file
+        // as the raw write does (read and write), so a program that has the
+        // file open with that sharing does not stop the commit.
         TEST_METHOD(OutputFolderRaw_AFileThatAnotherProgramShares_IsWritten)
         {
             NoAppStateForBatch noAppState;
@@ -1716,10 +1693,9 @@ namespace UnitTests
             Assert::IsTrue(std::string(written.begin(), written.end()) != "an old file", L"the file has the new data");
         }
 
-        // Review of 4247f34c: a script whose .sco cannot be written leaves no
-        // new debug file (the .sco comes first again), and the failed .sco is
-        // not a change, so the batch runs one pass. Before, the debug file was
-        // new, and the batch ran every pass that the options allow.
+        // A script whose .sco cannot be written leaves no new debug file (the
+        // .sco is written before the debug file), and the failed .sco is not
+        // a change, so the batch runs one pass.
         TEST_METHOD(ObjectFileWriteError_NoDebugFile_OnePass)
         {
             NoAppStateForBatch noAppState;
@@ -1757,9 +1733,9 @@ namespace UnitTests
             Assert::IsFalse(GameHasFile("script.907"), L"the script is not written");
         }
 
-        // Review of 944de1df: with an output folder, a dry run checks the files
-        // as the write would. Before, a read-only file failed the real run and
-        // passed the dry run.
+        // With an output folder, a dry run checks the files as the write
+        // would, so a read-only file fails the dry run as it fails the real
+        // run.
         TEST_METHOD(DryRun_OutputFolder_ChecksTheFiles)
         {
             NoAppStateForBatch noAppState;
@@ -1794,9 +1770,8 @@ namespace UnitTests
             }
         }
 
-        // Review of 944de1df: a path of 260 characters or more fails the check
-        // before the first write. Before, it passed the check, the table files
-        // were written, and the write of the script file failed.
+        // A path of 260 characters or more fails the check before the first
+        // write, so no table file is written.
         TEST_METHOD(OutputFolder_APathTooLong_FailsBeforeTheFirstWrite)
         {
             NoAppStateForBatch noAppState;
@@ -1826,9 +1801,8 @@ namespace UnitTests
             Assert::IsFalse(fs::exists(out / "vocab.996.bin") || fs::exists(out / "vocab.997.bin"), WideForBatch("a table file is written: " + facts).c_str());
         }
 
-        // Review of 944de1df: a dry run that writes .sco files puts them back:
-        // it commits nothing, so the game's scripts stay as they were. Before,
-        // the new .sco stayed.
+        // A dry run that writes .sco files puts them back: it commits
+        // nothing, so the game's scripts stay as they were.
         TEST_METHOD(DryRun_PutsBackTheObjectFiles)
         {
             NoAppStateForBatch noAppState;

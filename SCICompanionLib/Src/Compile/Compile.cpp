@@ -102,8 +102,8 @@ void ErrorHelper(CompileContext &context, const ISourceCodePosition *pPos, const
 	context.ReportError(pPos, strError.c_str(), identifier.c_str());
 }
 
-// Plan step K5: a call to proc<N>_<M> in a game with no script N compiles,
-// with a warning. The call fails if the game runs it.
+// A call to proc<N>_<M> in a game with no script N compiles, with a
+// warning. The call fails if the game runs it.
 void _WarnMissingScript(CompileContext &context, const ISourceCodePosition *pPos, const string &name, WORD wScript, WORD wIndex)
 {
 	context.ReportWarning(pPos, "The game has no script %d, so '%s' compiles to calle %d %d. The call fails if the game runs it.",
@@ -1259,8 +1259,8 @@ CodeResult PropertyValueBase::OutputByteCode(CompileContext &context) const
 						WORD wScript, wIndex;
 						string classOwner;
 						ProcedureType procType = context.LookupProc(_stringValue, wScript, wIndex, classOwner);
-						// A proc<N>_<M> of a missing script (plan step K5) is a procedure
-						// only in a call: as a value it is an undeclared name.
+						// A proc<N>_<M> of a missing script is a procedure only in a
+						// call: as a value it is an undeclared name.
 						if ((procType != ProcedureUnknown) && (procType != ProcedureMissingScript))
 						{
 							context.ReportError(this, "The '(' character must immediately follow the function call '%s'.", _stringValue.c_str());

@@ -114,9 +114,9 @@ void CScriptDocument::OnCompile()
 		GameSession &session = appState->GetSession();
 		CompileLog log;
 		_ClearErrorCount();
-		// Plan step S2: a batch of one script. It saves the tables when the
-		// script compiled, and writes the resources in one commit. It asks
-		// before a package save that a patch file would hide.
+		// A batch of one script. It saves the tables when the script
+		// compiled, and writes the resources in one commit. It asks before a
+		// package save that a patch file would hide.
 		CompileOptions options;
 		options.askShadows = AskAboutShadowingPatches;
 		sci::Result<std::unique_ptr<CompileBatch>> batch = CompileBatch::Start(session, { _scriptId }, options);
@@ -141,13 +141,13 @@ void CScriptDocument::OnCompile()
 			log.ReportResult(StartFailureLine(batch.error()));
 		}
 		bool fSuccess = !report.scripts.empty() && report.scripts[0].status.has_value();
-		// The user stopped it in the question: not an error (review of S2c).
+		// The user stopped it in the question: not an error.
 		bool stopped = batch ? (!report.commit && (report.commit.error().code == sci::ErrorCode::Cancelled)) :
 			(batch.error().code == sci::ErrorCode::Cancelled);
 		if (fSuccess && report.commit)
 		{
-			// The script is written: it is no longer out of date (review of
-			// S2c: before, it was cleared before the commit).
+			// The script is written: it is not out of date. Only a commit
+			// that succeeded clears it.
 			appState->GetDependencyTracker().ClearScript(_scriptId);
 		}
 		CompileStats stats;
@@ -173,16 +173,14 @@ void CScriptDocument::OnCompile()
 
 		stringstream str;
 		str << "Compiling " << _scriptId.GetFileName();
-		// A script that compiled, but whose write failed, did not succeed
-		// (review of 5f545221: before, "succeeded" after a refused commit).
+		// A script that compiled, but whose write failed, did not succeed.
 		str << (stopped ? " was stopped." : (!fSuccess ? " failed." : (report.commit ? " succeeded." : " compiled, but was not written.")));
 		log.ReportResult(CompileResult(c_szLine));
 		log.ReportResult(CompileResult(str.str()));
 
 		if (fSuccess)
 		{
-			// No sizes when the script did not compile (review of S2c and
-			// of 5f545221).
+			// No sizes when the script did not compile.
 			string info = fmt::format(
 				"Object data: {0} bytes   Code: {1} bytes   Script vars: {2} bytes   Strings: {3} bytes	Saids: {4} bytes",
 				stats.Objects,

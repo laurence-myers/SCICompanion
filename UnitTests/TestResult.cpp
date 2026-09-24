@@ -144,7 +144,7 @@ namespace UnitTests
 
         TEST_METHOD(Guard_LegacyMsvcException_KeepsItsText)
         {
-            // The old code throws std::exception("...") (a Microsoft extension).
+            // std::exception("...") with a text is a Microsoft extension.
             Status status = Guard("", []() -> Status { throw std::exception("legacy failure"); });
             AssertCode(ErrorCode::Internal, status.error());
             Assert::AreEqual(std::string("legacy failure"), status.error().message);

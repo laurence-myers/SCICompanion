@@ -53,8 +53,8 @@ void CNewCompileDialog::OnScriptDone(const ScriptOutcome &outcome)
 {
 	if (outcome.status)
 	{
-		// The caller clears it in the dependency tracker after the commit
-		// (review of S2c: before, a commit that wrote nothing left it clear).
+		// The caller clears it in the dependency tracker only after a commit
+		// that wrote it.
 		_compiled.push_back(_current);
 	}
 	// The compile is done.  Post the results.

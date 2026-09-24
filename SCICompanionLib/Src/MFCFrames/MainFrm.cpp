@@ -2023,7 +2023,7 @@ void CMainFrame::OnRebuildClassTable()
 	if (IDYES == AfxMessageBox("Rebuilding the class table will purge old deleted classes from the class table.\nAfterwards, you will need to compile all. Go ahead?", MB_APPLMODAL | MB_ICONQUESTION | MB_YESNO))
 	{
 		SpeciesTable speciesTable;
-		// The purge reads only the script of each species (K3).
+		// The purge reads only the script of each species.
 		if (speciesTable.Load(appState->GetResourceMap().Helper(), false))
 		{
 			speciesTable.PurgeOldClasses(appState->GetResourceMap());
@@ -2106,8 +2106,8 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 	std::vector<ScriptId> scripts = ScriptsToCompile(appState->GetResourceMap(), scriptsToRecompile);
 	if (!scripts.empty())
 	{
-		// Plan step S2: one batch for the scripts. It saves the tables when a
-		// script compiled, and writes the resources in one commit, also after
+		// One batch for the scripts. It saves the tables when a script
+		// compiled, and writes the resources in one commit, also after
 		// Cancel. It asks before a package save that a patch file would hide.
 		CompileOptions options;
 		options.askShadows = AskAboutShadowingPatches;
@@ -2120,9 +2120,8 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 			CompileReport report = (*batch)->Finish();
 			if (report.commit)
 			{
-				// The scripts are written: they are no longer out of date
-				// (review of S2c: before, the dialog cleared them before the
-				// commit).
+				// The scripts are written: they are not out of date. Only a
+				// commit that succeeded clears them.
 				for (const ScriptId &script : dialog.CompiledScripts())
 				{
 					appState->GetDependencyTracker().ClearScript(script);
@@ -2132,9 +2131,7 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 			// false for a script that did not compile, a failed save, or Cancel
 			// (in the dialog, the scripts after it did not compile; in the
 			// question, nothing was written), so a run asks whether to run the
-			// game anyway (review of 5f545221: before, Cancel ran the game with
-			// the old scripts at once). The line for Cancel is still a message,
-			// not an error.
+			// game anyway. The line for Cancel is a message, not an error.
 			result = !report.cancelled && (report.FailedCount() == 0) && report.tables && report.commit && report.moves;
 			log.ReportResult(CompileResult(fmt::format("{0} scripts compiled.", report.scripts.size())));
 			ReportCompileBatch(report, log, "There was a problem writing the compiled scripts: ");

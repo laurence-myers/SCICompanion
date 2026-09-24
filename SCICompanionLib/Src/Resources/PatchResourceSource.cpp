@@ -189,8 +189,8 @@ AppendBehavior PatchFilesResourceSource::AppendResources(const std::vector<const
 	// Write every resource to a .bak file first, and check that every existing
 	// target can be replaced; only then replace the targets. A failure before
 	// the renames leaves every old patch file as it was, and removes the .bak
-	// files: a batch that failed part way used to leave, for example, a new
-	// .scr next to an old .hep. Each replace is atomic, so no patch file is
+	// files, so a batch that fails part way does not leave, for example, a
+	// new .scr next to an old .hep. Each replace is atomic, so no patch file is
 	// ever left half written. A rename can still fail after the checks (if
 	// another program locks the file at that moment); then the renames before
 	// it stay done, and the .bak files that are left are removed.

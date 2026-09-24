@@ -912,8 +912,8 @@ bool GlobalClassTable::Load(const GameFolderHelper &helper)
 {
 	SpeciesTable speciesTable;
 	// _Create needs only the script of each species, not its place in the
-	// script, so the table is not aligned to the compiled scripts (K3
-	// review: that alignment made this load 1.3 to 1.9 times slower).
+	// script, so the table is not aligned to the compiled scripts: the
+	// alignment would make this load 1.3 to 1.9 times slower.
 	bool fRet = speciesTable.Load(helper, false);
 	if (fRet)
 	{
@@ -1098,14 +1098,15 @@ std::vector<uint16_t> GlobalClassTable::GetSubclassesOf(uint16_t baseClass)
 // species in number order. The compiler and the .sco number a script's
 // classes in the order of its source; for a decompiled script, that is the
 // order of the compiled script. A game can have its classes in another order
-// (LB2 script 0), and then a recompile gave two classes each other's species.
-// So each script's list starts with the species that the table gives the
-// script, in the order of the script's compiled classes; the table's other
-// species for the script follow, in number order (The Colonel's Bequest has a
-// species for script 999 that script 999 does not have). A compiled class
-// whose species the table does not give the script (a leftover class) is
-// left out: to give it that species would give a new class there the species
-// of another script's class. A script that does not load keeps its order.
+// (LB2 script 0); with the species in number order, a recompile would give
+// two classes each other's species. So each script's list starts with the
+// species that the table gives the script, in the order of the script's
+// compiled classes; the table's other species for the script follow, in
+// number order (The Colonel's Bequest has a species for script 999 that
+// script 999 does not have). A compiled class whose species the table does
+// not give the script (a leftover class) is left out: to give it that
+// species would give a new class there the species of another script's
+// class. A script that does not load keeps its order.
 void SpeciesTable::_AlignToCompiledScripts(const GameFolderHelper &helper)
 {
 	// Find the scripts and their heaps in one pass: a lookup for each script
@@ -1250,7 +1251,7 @@ void SpeciesTable::PurgeOldClasses(CResourceMap &resourceMap)
 		_direct.clear();
 		_wNewSpeciesIndex = 0;
 		_fDirty = false;
-		this->Load(helper, false);   // No caller reads the species order after a purge (K3).
+		this->Load(helper, false);   // No caller reads the species order after a purge.
 	}
 }
 

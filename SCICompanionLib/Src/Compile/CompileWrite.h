@@ -1,8 +1,8 @@
 #pragma once
 
-// Where a compile writes (plan step S1; plan section 5): the destination of
-// the script, heap, text and vocab resources, and whether the object and
-// debug files are written.
+// Where a compile writes (plan section 5): the destination of the script,
+// heap, text and vocab resources, and whether the object and debug files
+// are written.
 
 #include "GameFolderHelper.h"
 #include "Result.h"
@@ -14,7 +14,7 @@ class CResourceMap;
 enum class ResourceType;
 
 // A compiled resource for an output folder that waits for the commit of a
-// batch (review of 5f545221).
+// batch.
 struct StagedOutputFile
 {
     ResourceType type;
@@ -23,7 +23,7 @@ struct StagedOutputFile
 };
 
 // A compiled resource that a compile wrote: in a batch, one that the commit
-// writes (a dry run: would write). Plan section 6.5, for C3.
+// writes (a dry run: would write). Plan section 6.5.
 struct WrittenResource
 {
     ResourceType type;
@@ -51,9 +51,9 @@ struct CompileWriteOptions
     // With outDir: when set, WriteCompiledResource adds each resource here
     // and writes no file, and WriteStagedOutputFiles writes them later.
     // CompileBatch sets it, so that a script that fails, or a batch whose
-    // commit is refused, leaves no file in the folder (review of
-    // 5f545221). In a dry run (no writeResources), the list has what a
-    // real run would write, and nothing writes it (review of 4247f34c).
+    // commit is refused, leaves no file in the folder. In a dry run (no
+    // writeResources), the list has what a real run would write, and
+    // nothing writes it.
     std::vector<StagedOutputFile> *staged = nullptr;
 };
 
@@ -72,10 +72,10 @@ sci::Status WriteCompiledResource(CResourceMap &resourceMap, const CompileWriteO
 // Every file that is there already must open for writing first, so that a
 // read-only, hidden or system file, a folder with the file's name, or a
 // file that another program holds, fails the write before the first file;
-// so does a path that is too long (review of 944de1df). A write that fails
-// after that check (a full disk) leaves the files before it.
+// so does a path that is too long. A write that fails after that check (a
+// full disk) leaves the files before it.
 sci::Status WriteStagedOutputFiles(const GameFolderHelper &helper, const CompileWriteOptions &options, const std::vector<StagedOutputFile> &files);
 
 // The check of WriteStagedOutputFiles before its first write, with no write
-// (a dry run; review of 944de1df).
+// (a dry run).
 sci::Status CheckStagedOutputFiles(const GameFolderHelper &helper, const CompileWriteOptions &options, const std::vector<StagedOutputFile> &files);

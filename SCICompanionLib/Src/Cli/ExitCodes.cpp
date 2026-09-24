@@ -41,10 +41,11 @@ namespace cli
             }
         }
 
-        // A step that writes (the commit, the tables, the moves, game.ini,
-        // main's .sco): its failure is a failed write (9) whatever its code,
-        // but Internal, WriteRefused and Cancelled (C1 review: before, a
-        // commit that failed with Format was 6, "some scripts failed").
+        // A step that writes (the commit, the tables, the moves, the .sco
+        // files that go back, game.ini, main's .sco): its failure is a failed
+        // write (9) whatever its code, but Internal, WriteRefused and
+        // Cancelled. So a commit that fails with Format is 9, not 6 ("some
+        // scripts failed").
         void AddWriteStatus(ReportFacts &facts, const sci::Status &status)
         {
             if (status)
@@ -136,7 +137,7 @@ namespace cli
         }
         AddWriteStatus(facts, report.mainObjectFile);
         AddWriteStatus(facts, report.gameIni);
-        // A batch that threw: Internal gives 1 (review of e83a7d41).
+        // A batch that threw: Internal gives 1.
         AddStatus(facts, report.batch);
         facts.cancelled = facts.cancelled || report.cancelled;
         return ExitCodeForFacts(facts);

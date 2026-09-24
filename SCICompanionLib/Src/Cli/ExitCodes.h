@@ -32,7 +32,7 @@ namespace cli
     struct ReportFacts
     {
         bool internal = false;      // a status is Internal
-        bool writeFailed = false;   // the commit, the tables, a move, game.ini or main's .sco failed (any code but Internal, WriteRefused and Cancelled), or a file write of a script (Io)
+        bool writeFailed = false;   // the commit, the tables, a move, a .sco that goes back, game.ini or main's .sco failed (any code but Internal, WriteRefused and Cancelled), or a file write of a script (Io)
         bool writeRefused = false;  // a write was refused (WriteRefused)
         bool cancelled = false;
         bool compileErrors = false; // a script has compile errors
@@ -44,6 +44,6 @@ namespace cli
     ExitCode ExitCodeForReport(const CompileReport &report);
     // decompilerErrors: the errors that the decompiler reported. One in a
     // script that it wrote (a function whose code it cannot find) makes a
-    // run with no failed script a partial failure (6; review of 11106215).
+    // run with no failed script a partial failure (6).
     ExitCode ExitCodeForReport(const DecompileReport &report, size_t decompilerErrors = 0);
 }

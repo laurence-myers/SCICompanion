@@ -68,8 +68,8 @@ namespace
     }
 
     // Why a selector that has the form of a number or a range is not one;
-    // "" when it does not have that form (S3 review: "200-100" and "65536"
-    // said "no script has this name").
+    // "" when it does not have that form. So "200-100" and "65536" get this
+    // reason, not "no script has this name".
     std::string WhyNotANumber(const std::string &text)
     {
         size_t dash = text.find('-');
@@ -110,7 +110,7 @@ namespace
         return fs::is_regular_file(path, ec);
     }
 
-    // One file, also when the two names differ in case (review of 7f41aa43).
+    // One file, also when the two names differ in case.
     bool SamePath(const std::string &a, const std::string &b)
     {
         std::error_code ec;
@@ -125,7 +125,7 @@ namespace
     // pattern of one of the types and gives a number, the file has 2 bytes or
     // more, and its first byte gives its type. So 105.hep with a script's
     // type byte is script 105 when scripts and heaps are read together, and a
-    // 1-byte 101.scr is no resource (S3 review).
+    // 1-byte 101.scr is no resource.
     std::map<PatchKey, std::vector<std::string>> PatchFilesOf(const GameFolderHelper &helper, const std::set<ResourceType> &types)
     {
         std::map<PatchKey, std::vector<std::string>> files;
@@ -263,8 +263,8 @@ namespace
     }
 
     // The name conflicts of the chosen scripts, for a mode that writes (the
-    // list shows every script). S3 review: before, any conflict refused every
-    // script, with one fix for all kinds of conflict.
+    // list shows every script). A conflict of another script does not refuse
+    // the chosen ones, and each conflict gives its own fix.
     std::vector<std::string> ConflictsOfChosen(const ScriptNameMap &names, SelectorMode mode, const std::set<uint16_t> &numbers)
     {
         std::vector<std::string> texts;
@@ -342,8 +342,8 @@ namespace
         }
 
         // Every script that the list shows: compiled, with a name, or in a
-        // conflict (review of 7f41aa43: a conflict keeps its script out of the
-        // names, and --all and a range did not see it).
+        // conflict. A conflict keeps its script out of the names, so --all and
+        // a range see it only through this.
         std::set<uint16_t> Known() const
         {
             std::set<uint16_t> numbers;
@@ -480,7 +480,7 @@ namespace
             std::error_code ec;
             given = fs::exists(inGame, ec) ? inGame : fs::absolute(given, ec);
         }
-        // src\..\src\X.sc and src/X.sc name the same file as src\X.sc (S3 review).
+        // src\..\src\X.sc and src/X.sc name the same file as src\X.sc.
         given = given.lexically_normal();
         given.make_preferred();
         std::string extension = UpperText(given.extension().string());
@@ -531,22 +531,22 @@ namespace
 
 namespace
 {
-    // The derived names of a reset (S4 review). The scripts in chosen get
-    // their derived names; every other script keeps its name, and no chosen
-    // script takes it. The title of a file in src belongs to the script that
-    // has that name: a chosen script can keep the title of its own file, but
-    // no script takes the file of another script (before, a reset of script
-    // 979 of the SCI0 template gave it "MenuBar", and the run wrote over
-    // menubar.sc, the source of script 997). A file that no script has keeps
-    // its title from every script. The current name of a chosen script
-    // belongs to it too: a chosen script that gets no derived name (it
-    // cannot be read, or it has no class and no public instance) keeps it,
-    // and a script that no group of the run gives an ok outcome keeps it in
-    // game.ini (RunDecompile; review of c49c8143: before, another chosen script could
-    // take it, and two scripts had one name). So a reset is not always
+    // The derived names of a reset. The scripts in chosen get their derived
+    // names; every other script keeps its name, and no chosen script takes
+    // it. The title of a file in src belongs to the script that has that
+    // name: a chosen script can keep the title of its own file, but no
+    // script takes the file of another script (for example, a reset of
+    // script 979 of the SCI0 template must not give it "MenuBar": the run
+    // would write over menubar.sc, the source of script 997). A file that no
+    // script has keeps its title from every script. The current name of a
+    // chosen script belongs to it too, so that no other chosen script takes
+    // it (two scripts would then have one name): a chosen script that gets
+    // no derived name (it cannot be read, or it has no class and no public
+    // instance) keeps it, and a script that no group of the run gives an ok
+    // outcome keeps it in game.ini (RunDecompile). So a reset is not always
     // the same twice: when the current name of one chosen script is the
     // derived name of another, the other gets the "_N" suffix, and a
-    // second reset can give it the plain name (review of ba63d08a).
+    // second reset can give it the plain name.
     std::map<uint16_t, std::string> ResetNamesOf(const ScriptNameMap *names, std::vector<ScriptObjectsForNaming> toName, const std::set<uint16_t> &chosen)
     {
         std::vector<std::string> reserved;
@@ -569,8 +569,7 @@ namespace
                 // The title of the own file of a chosen script is its current
                 // name. In a name conflict, the script that NumberOf finds (the
                 // lowest number) owns the title: this entry replaces the one
-                // of the loop above (review of e83a7d41: without it, the
-                // highest number owned it, and --derived changed).
+                // of the loop above, which gives it to the highest number.
                 uint16_t owner;
                 if (names->NumberOf(title, owner) && (chosen.find(owner) != chosen.end()))
                 {
@@ -607,7 +606,7 @@ namespace
 
 sci::Result<std::map<uint16_t, std::string>> DeriveScriptNames(GameSession &session, bool all, std::map<uint16_t, std::string> *errors)
 {
-    // No exception leaves a service (plan section 6.2; S3 review).
+    // No exception leaves a service (plan section 6.2).
     return sci::Guard("deriving the script names", [&]() -> sci::Result<std::map<uint16_t, std::string>>
     {
         const ScriptNameMap *names = session.Helper().ScriptNames.get();
@@ -637,7 +636,7 @@ sci::Result<std::map<uint16_t, std::string>> DeriveScriptNames(GameSession &sess
                 }
             }
             // Also the file of a script in a conflict, and any other file in
-            // src: a decompile must not write over it (review of 7f41aa43).
+            // src: a decompile must not write over it.
             used.insert(used.end(), names->FileTitles().begin(), names->FileTitles().end());
         }
         return SuggestScriptNames(std::move(toName), used);
@@ -671,9 +670,9 @@ sci::Result<std::vector<std::string>> ResetScriptNames(GameSession &session, con
         {
             return sci::Fail(sci::ErrorCode::Internal, "the session has no script names");
         }
-        // S4 review: only the chosen scripts. Before, every script got its
-        // derived name in memory, but game.ini got only the names of the
-        // scripts that the run wrote, so a later run used the old names.
+        // Only the chosen scripts: game.ini gets only the names of the
+        // scripts that the run writes, so a new name for another script
+        // would be in memory only, and a later run would use the old name.
         std::vector<ScriptObjectsForNaming> toName;
         for (auto &compiled : ReadForNaming(session, nullptr))
         {
@@ -803,8 +802,8 @@ sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const 
         std::set<uint16_t> byNumberOrName;
         std::vector<std::string> bad;
         // A script in a name conflict gives the conflict and its fix, before
-        // any other reason (S3 review): a mode that writes refuses only the
-        // scripts in a conflict.
+        // any other reason: a mode that writes refuses only the scripts in a
+        // conflict.
         std::set<const NameConflict *> reported;
         auto inConflict = [&](uint16_t number) -> bool
         {
@@ -874,7 +873,7 @@ sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const 
                 bad.push_back(selector + ": " + why);
             }
             // A script name can have a '.' (game.ini: n993=gamefile.sh), so a
-            // name wins over a path (S3 review).
+            // name wins over a path.
             else if (LooksLikePath(selector) && !selection.NumberOfName(selector, named))
             {
                 uint16_t number;
@@ -922,9 +921,9 @@ sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const 
                 }
             }
         }
-        // A number, a range or a name, and a path, for one script: the path
-        // took the place of the script's own file with no message (review of
-        // 7f41aa43).
+        // A number, a range or a name, and a path, for one script: an error
+        // when the path is not the script's own file, so that the path does
+        // not take the place of that file with no message.
         for (const auto &given : givenPaths)
         {
             if (byNumberOrName.find(given.first) != byNumberOrName.end())
@@ -971,9 +970,8 @@ sci::Result<ScriptSelection> SelectAllScripts(GameSession &session, SelectorMode
             else if ((mode == SelectorMode::Sco) && (selection.HasSource(number) || HasFileName(helper.ScriptNames.get(), number)))
             {
                 // Plan section 4.6: a source with no compiled script, or a
-                // name with no source, is skipped and listed; the .sco run
-                // gives the reason (review of 11106215: before, --all left it
-                // out with no message).
+                // name with no source, is skipped and listed, not left out
+                // with no message; the .sco run gives the reason.
                 chosen.insert(number);
             }
             else if ((mode == SelectorMode::Compile) && HasFileName(helper.ScriptNames.get(), number))

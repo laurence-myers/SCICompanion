@@ -46,18 +46,16 @@ namespace
 sci::Status WriteCompiledResource(CResourceMap &resourceMap, const CompileWriteOptions &options, ResourceType type, uint16_t number, const std::vector<uint8_t> &data)
 {
     const GameFolderHelper &helper = resourceMap.Helper();
-    // Also for a dry run, so that it fails where a real run fails (review of
-    // S1).
+    // Also for a dry run, so that it fails where a real run fails.
     SCI_TRY(CheckResourceSize(helper.Version, (DWORD)data.size(), type));
     if (options.raw && options.outDir.empty())
     {
-        // Before, the raw option was ignored with no message (review of S1).
         return sci::Fail(sci::ErrorCode::Usage, "raw files need an output folder");
     }
     if (!options.writeResources)
     {
         // A dry run of a batch lists what a real run would write, for the
-        // patch-file check before its commit (review of 4247f34c).
+        // patch-file check before its commit.
         if (options.staged)
         {
             options.staged->push_back({ type, number, data });
@@ -76,7 +74,7 @@ sci::Status WriteCompiledResource(CResourceMap &resourceMap, const CompileWriteO
     }
     if (options.staged)
     {
-        // The batch writes it at its commit (review of 5f545221).
+        // The batch writes it at its commit.
         options.staged->push_back({ type, number, data });
         return sci::Ok();
     }
@@ -89,9 +87,9 @@ sci::Status CheckStagedOutputFiles(const GameFolderHelper &helper, const Compile
     // read-only file, or a file that another program holds, fails the
     // commit before the first write. The write replaces a file with
     // CREATE_ALWAYS and FILE_ATTRIBUTE_NORMAL, which Windows refuses for a
-    // hidden or system file, so the check refuses them too (review of
-    // 4247f34c). The check shares the file as the write does: a raw write
-    // shares read and write (WriteBytesToFile), a patch file nothing.
+    // hidden or system file, so the check refuses them too. The check
+    // shares the file as the write does: a raw write shares read and write
+    // (WriteBytesToFile), a patch file nothing.
     for (const StagedOutputFile &file : files)
     {
         SCI_TRY(CheckFileCanBeReplaced(OutputPathOf(helper, options, file.type, file.number), options.raw ? (FILE_SHARE_READ | FILE_SHARE_WRITE) : 0));

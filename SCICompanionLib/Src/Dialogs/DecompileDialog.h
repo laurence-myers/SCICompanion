@@ -121,7 +121,7 @@ private:
 	std::unique_ptr<DecompilerDialogResults> _decompileResults;
 	std::unique_ptr<std::future<void>> _future;
 	// The session of the worker, taken on the UI thread: AppState::GetSession
-	// writes a session option (S4 review).
+	// writes a session option.
 	GameSession *_session = nullptr;
 
 	std::set<uint16_t> _scriptNumbers;

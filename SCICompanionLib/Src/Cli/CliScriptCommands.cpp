@@ -137,8 +137,8 @@ namespace cli
 
         if (CancelFlag().load())
         {
-            // Ctrl+C while the scripts were read (C1 review: before, list
-            // printed the table and exited with 0).
+            // Ctrl+C while the scripts were read: no table, and the run
+            // fails (exit code 7).
             return sci::Fail(sci::ErrorCode::Cancelled, "stopped by Ctrl+C");
         }
         output.Result((options.format == "tsv") ? TsvTable(rows, options.derived) : TextTable(rows, options.derived));
@@ -202,11 +202,10 @@ namespace cli
         // A compiler diagnostic in the MSBuild format (plan section 4.5):
         // "path(line,col): error : message", with a 1-based column. One with
         // no source file has no position. A message with a position is an
-        // "info" line, shown unless --quiet (review of 0046b54a: it showed
-        // with --verbose only, so "The else clause must be the last clause in
-        // a cond." did not show, and the parser had dropped code). A message
-        // with no position (for example the summary of a compile) shows with
-        // --verbose only.
+        // "info" line, shown unless --quiet: such a message can tell that
+        // the parser dropped code (for example "The else clause must be the
+        // last clause in a cond."). A message with no position (for example
+        // the summary of a compile) shows with --verbose only.
         void PrintDiagnostic(const CompileResult &result, CliOutput &output)
         {
             ScriptId script = result.GetScript();
@@ -221,7 +220,7 @@ namespace cli
             else
             {
                 // The path as it was given: GetFullPath has the folder in lower
-                // case (review of 11106215).
+                // case.
                 output.Diagnostic(level, fmt::format("{0}({1},{2}): {3} : {4}", script.GetFullPathOrig(), result.GetLineNumber(), result.GetColumn() + 1, kind, result.GetRawMessage()));
             }
         }
@@ -252,8 +251,8 @@ namespace cli
                     // The crash line names what the run does (plan section
                     // 6.6): the batch starts each script, the naming and the
                     // write of main's .sco with these messages, and the run its
-                    // later steps (review of 11106215: the item stayed the last
-                    // script).
+                    // later steps. So after the last script, the item is the
+                    // step, not that script.
                     for (const auto &step : StepItems())
                     {
                         if (message.rfind(step.first, 0) == 0)
@@ -262,8 +261,9 @@ namespace cli
                             break;
                         }
                     }
-                    // The summary has a line for each file (review of
-                    // 11106215: with --verbose, a file had two lines).
+                    // The summary has a line for each file, so a "Generated"
+                    // message does not show: with --verbose, a file would
+                    // have two lines.
                     if (message.rfind("Generated ", 0) != 0)
                     {
                         _output.Detail(message);
@@ -353,7 +353,7 @@ namespace cli
                 }
             }
             // The other files: the src folder's decompiler files, main's .sco
-            // and game.ini (review of 11106215: a dry run did not list them).
+            // and game.ini (a dry run lists them too).
             for (const std::string &file : report.files)
             {
                 if (dryRun)
@@ -402,8 +402,8 @@ namespace cli
                     stale.push_back(ScriptText(number, helper.GetScriptTitle(number)));
                 }
                 // With --update-stale, only an abort (or the guard of 100
-                // groups) leaves stale scripts: the advice is the command again
-                // (review of ba63d08a).
+                // groups) leaves stale scripts: the advice is to decompile
+                // them again, not to give --update-stale.
                 output.Warning(fmt::format(dryRun ? "after the run, these scripts would use a global of the run by its old name: {0}; decompile them too{1}" :
                     "these scripts use a global of the run by its old name: {0}; decompile them again{1}", ListText(stale), updateStale ? "" : ", or give --update-stale"));
             }
@@ -439,7 +439,7 @@ namespace cli
         run.updateStale = options.updateStale;
         // With --stdout or --dry-run, the run writes nothing: no .sc, .sco,
         // src folder or game.ini. A dry run does the other steps of a run in
-        // memory (review of 11106215).
+        // memory.
         run.dryRun = common.dryRun && !options.toStdout;
         CliDecompileResults results(output);
         CliDecompileOutput sources(output);
@@ -455,7 +455,7 @@ namespace cli
         ObjectFileOptions objectFileOptions;
         objectFileOptions.dryRun = common.dryRun;
         objectFileOptions.abort = &CancelFlag();
-        // The crash line names the script (review of 11106215).
+        // The crash line names the script.
         objectFileOptions.onScript = [](const ScriptId &script)
         {
             SetCurrentItem("making the .sco of script " + ScriptText(script.GetResourceNumber(), script.GetTitle()));
@@ -516,8 +516,8 @@ namespace cli
             }
             else
             {
-                // The file has these bytes: a run writes nothing (review of
-                // 11106215: a dry run said "would write").
+                // The file has these bytes: a run writes nothing, and a dry
+                // run says "would not change".
                 unchanged++;
                 output.Detail(outcome.path + (common.dryRun ? " would not change" : " did not change"));
             }
@@ -596,15 +596,15 @@ namespace cli
             return ToThePackage(helper, write) ? std::string("into the package") : std::string("as patch files");
         }
 
-        // Plan section 4.5, step 6: the diagnostics of the last pass (a script
-        // that failed in an earlier pass, and compiled in the last, has no
-        // error), what went where, and the totals.
         // "1 error", "2 errors".
         std::string CountText(size_t count, const char *word)
         {
             return fmt::format("{0} {1}{2}", count, word, (count == 1) ? "" : "s");
         }
 
+        // Plan section 4.5, step 6: the diagnostics of the last pass (a script
+        // that failed in an earlier pass, and compiled in the last, has no
+        // error), what went where, and the totals.
         void PrintCompileReport(const CompileReport &report, size_t scriptCount, const GameFolderHelper &helper, const CompileWriteOptions &write, bool dryRun, bool all,
             CliOutput &output)
         {
@@ -650,7 +650,7 @@ namespace cli
                     failed.push_back(ScriptText(outcome.number, outcome.name));
                     // A compile error is in the diagnostics, and so is the
                     // error of a read, a write or an exception: the compile or
-                    // the batch logs it (review of 0046b54a: it printed twice).
+                    // the batch logs it, so it does not print here again.
                     // Another failure prints here.
                     std::string error = outcome.status.error().ToString();
                     bool inTheDiagnostics = (outcome.status.error().code == sci::ErrorCode::Compile) ||
@@ -709,14 +709,14 @@ namespace cli
             size_t compiled = report.CompiledCount();
             size_t notReached = scriptCount - report.scripts.size();
             std::string destination = DestinationText(helper, write);
-            // With no compiled script, nothing is written (review of
-            // 0046b54a: a dry run said "a run would write them").
+            // With no compiled script, nothing is written: a dry run says "a
+            // run would write none".
             std::string summary = (compiled == 0) ? fmt::format("Compiled 0 of {0} scripts, and {1} none", scriptCount, dryRun ? "a run would write" : "wrote") :
                 (dryRun ? fmt::format("Compiled {0} of {1} scripts; a run would write them {2}", compiled, scriptCount, destination) :
                 (report.commit ? fmt::format("Compiled and wrote {0} of {1} scripts {2}", compiled, scriptCount, destination) :
                 fmt::format("Compiled {0} of {1} scripts, and wrote none", compiled, scriptCount)));
             // The warnings of the scripts, and the warnings of the batch that
-            // printed above (review of 0046b54a: "(0 warnings)" after them).
+            // printed above (also the warning of the pass limit).
             size_t warnings = report.WarningCount() + report.warnings.size() + (report.passLimit ? 1 : 0);
             summary += fmt::format(" ({0}, {1}{2}).", CountText(report.ErrorCount(), "error"), CountText(warnings, "warning"),
                 (report.passes > 1) ? fmt::format(", {0} passes", report.passes) : std::string());
@@ -740,7 +740,8 @@ namespace cli
     {
         if (options.intoVolume && options.toGiven && (options.to != "package"))
         {
-            // Review of 0046b54a: --to patch --into-volume wrote the package.
+            // --to patch with --into-volume is a usage error: it must not
+            // write the package.
             return sci::Fail(sci::ErrorCode::Usage, "--into-volume is --to package, so it does not go with --to patch");
         }
         bool toPackage = options.intoVolume || (options.to == "package");
@@ -752,7 +753,7 @@ namespace cli
         {
             return sci::Fail(sci::ErrorCode::Usage, "--passes goes with --all: a compile of named scripts is one pass");
         }
-        // The step of the crash line (review of 0046b54a).
+        // The step of the crash line.
         SetCurrentItem("selecting the scripts");
         SCI_TRY_ASSIGN(ScriptSelection selection, Select(session, options.all, options.selectors, SelectorMode::Compile, output));
         if (selection.scripts.empty())
@@ -766,9 +767,8 @@ namespace cli
         // Plan section 5: patch files unless --to package, whatever the
         // game's setting.
         compile.write.saveTo = toPackage ? ResourceSaveLocation::Package : ResourceSaveLocation::Patch;
-        // An absolute folder (review of 0046b54a and of 5ca73807: a relative
-        // folder gave relative paths, and a path that passed the length check
-        // was too long for the write).
+        // An absolute folder: the report gives absolute paths, and the length
+        // check measures the path that the write uses.
         compile.write.outDir = AbsolutePath(options.outDir);
         compile.write.raw = options.raw;
         // --dry-run: no resource, table, .sco or .scd.

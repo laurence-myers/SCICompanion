@@ -19,17 +19,17 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace UnitTests
 {
-    // Plan step A2. Before it:
-    //  - the patch writer ignored the result of SaveToHandle, so a resource
-    //    that could not be written (for example one too big for the format)
-    //    left an empty .bak file that then replaced the good patch file (P9);
-    //  - the patch writer renamed each file as soon as it was written, so a
-    //    failure part way through a batch left some new and some old patch
-    //    files (a new .scr with an old .hep);
-    //  - ValidateResourceSize showed a message box, and always quoted the
-    //    SCI0 limit (P7);
-    //  - the audio cache writer swallowed its errors, and saved its audio map
-    //    through the GUI AppendResource, so a failed save came back as success.
+    // The patch writer and the audio cache writer give their errors:
+    //  - a resource that cannot be written (for example one too big for the
+    //    format) fails, the old patch file stays, and no .bak file is left;
+    //  - a batch writes every patch file to a .bak file, and checks every
+    //    target, before the first rename, so a failed write or a target that
+    //    cannot be replaced leaves the old patch files (not a new .scr with
+    //    an old .hep);
+    //  - CheckResourceSize gives an error, not a message box, and quotes the
+    //    limit of the game's format;
+    //  - a failed save of the audio cache's audio map comes back as an
+    //    error, and marks the cache out of date.
     TEST_CLASS(TestPatchWrites)
     {
         std::string _gameFolder;
@@ -113,8 +113,8 @@ namespace UnitTests
             text->ResourceNumber = 913;
             text->SourceFlags = ResourceSourceFlags::PatchFile;
 
-            // The old entity path showed a message box here, which blocks a
-            // run with no GUI.
+            // The entity path gives an error here, not a message box, which
+            // would block a run with no GUI.
             sci::Status failed = rm.WriteResource(*text);
 
             Assert::IsFalse(failed.has_value());

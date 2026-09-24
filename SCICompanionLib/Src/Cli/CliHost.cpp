@@ -50,16 +50,15 @@ namespace cli
             return EXCEPTION_EXECUTE_HANDLER;
         }
 
-        // abort(), and std::terminate(), which calls it (C1 review: before,
-        // the process ended with exit code 3, "cannot open the game", and no
-        // line).
+        // abort(), and std::terminate(), which calls it: one line, and exit
+        // code 1.
         void __cdecl AbortHandler(int)
         {
             CrashLine("(abort)");
         }
 
-        // A C runtime function got a bad parameter (before: exit code
-        // 0xC0000409 and no line).
+        // A C runtime function got a bad parameter. The default handler of
+        // the C runtime would end the process with 0xC0000409 and no line.
         void __cdecl InvalidParameterHandler(const wchar_t *, const wchar_t *, const wchar_t *, unsigned int, uintptr_t)
         {
             CrashLine("(invalid parameter)");

@@ -48,10 +48,10 @@ namespace
 
 namespace UnitTests
 {
-    // Plan step F2: engine errors are values at the boundary. Before it, bad
-    // data threw the Microsoft-only std::exception("...") with no code, a
-    // partial text read was silent, a failed decompression reached the caller
-    // only as a log line, and the script and table loads gave only a bool.
+    // Engine errors are values at the boundary: bad data throws a
+    // sci::DataError with a code, a partial text read and a failed
+    // decompression are Format errors of the resource, and the script and
+    // table loads give a Status.
     TEST_CLASS(TestEngineErrors)
     {
         std::string _copyFolder;
@@ -141,7 +141,7 @@ namespace UnitTests
             Assert::IsTrue(threw, L"a read past the end must throw a DataError");
         }
 
-        // Old catch sites catch std::exception; a DataError must still reach them.
+        // Some catch sites catch std::exception; a DataError must still reach them.
         TEST_METHOD(DataError_TooLarge_IsUnsupportedAndAStdException)
         {
             bool threw = false;
@@ -172,7 +172,8 @@ namespace UnitTests
             Assert::AreEqual(size_t(2), (*created)->GetComponent<TextComponent>().Texts.size());
         }
 
-        // Before F2, TextReadFrom kept the texts read so far and said nothing.
+        // A text whose last string has no NUL is a Format error, not the texts
+        // read so far.
         TEST_METHOD(TryCreateResource_TextWithNoFinalNul_IsAFormatError)
         {
             GameFolderHelper helper;
@@ -186,7 +187,7 @@ namespace UnitTests
             Assert::AreEqual(std::string("text 5"), created.error().where.resource);
         }
 
-        // Before F2, a failed decompression reached the caller only as a log line.
+        // A failed decompression is a Format error of the resource.
         TEST_METHOD(TryCreateResource_DecompressionFailed_IsAFormatError)
         {
             GameFolderHelper helper;
@@ -202,8 +203,7 @@ namespace UnitTests
             Assert::IsTrue(created.error().message.find("decompressed") != std::string::npos, WideText(created.error().ToString()).c_str());
         }
 
-        // A truncated script: Format, with the script in the location. Before
-        // F2, Load gave only false, or read zeros past the end and succeeded.
+        // A truncated script: Format, with the script in the location.
         TEST_METHOD(CompiledScriptTryLoad_TruncatedScript_IsAFormatError)
         {
             NoAppStateInScope noAppState;
@@ -314,8 +314,8 @@ namespace UnitTests
             Assert::AreEqual(std::string("the game has no selector table"), checked.error().message);
         }
 
-        // F2 review: a table that is there but not valid gives its own name
-        // and resource. Before, the message named all three tables.
+        // A table that is there but not valid gives its own name and
+        // resource.
         TEST_METHOD(TablesTryLoad_SelectorTableNotValid_NamesTheTable)
         {
             NoAppStateInScope noAppState;
@@ -343,9 +343,9 @@ namespace UnitTests
             Assert::AreEqual(std::string("the selector table is not valid"), tablesLoaded.error().message);
         }
 
-        // F2 review: TryLoad reads in throw mode, but it must not reject a
-        // script that Load reads. Script 990 of the SCI1.1 template has an
-        // object name value outside its heap.
+        // TryLoad reads in throw mode, but it must not reject a script that
+        // Load reads. Script 990 of the SCI1.1 template has an object name
+        // value outside its heap.
         TEST_METHOD(CompiledScriptTryLoad_AgreesWithLoad_OnEveryTemplateScript)
         {
             NoAppStateInScope noAppState;
@@ -379,9 +379,9 @@ namespace UnitTests
             }
         }
 
-        // F2 review: a heap that cannot be read names the heap, not the script.
-        // The loader reads a copy of the heap stream, so the name must go with
-        // the copy.
+        // A heap that cannot be read names the heap, not the script. The
+        // loader reads a copy of the heap stream, so the name must go with the
+        // copy.
         TEST_METHOD(CompiledScriptTryLoad_DamagedHeap_NamesTheHeap)
         {
             NoAppStateInScope noAppState;
@@ -422,9 +422,10 @@ namespace UnitTests
             Assert::AreEqual(std::string("script 0"), loaded.error().where.resource);
         }
 
-        // K3 review: the TryLoad form that takes the blobs (K3 uses it), for
-        // an SCI1.1 script with no heap blob. Without the check, Load would
-        // find the heap by itself, and the caller's "no heap" would be lost.
+        // The TryLoad form that takes the blobs (the species table and the
+        // script catalog use it), for an SCI1.1 script with no heap blob.
+        // Without the check, Load would find the heap by itself, and the
+        // caller's "no heap" would be lost.
         TEST_METHOD(CompiledScriptTryLoad_BlobsWithNoHeap_IsNotFound)
         {
             NoAppStateInScope noAppState;
@@ -472,8 +473,8 @@ namespace UnitTests
             Assert::IsTrue(created.error().message.find("decompressed") != std::string::npos, WideText(created.error().ToString()).c_str());
         }
 
-        // F2 review: a volume that ends inside the resource data. Before, the
-        // blob held bytes that were not read from the volume, and had no flag.
+        // A volume that ends inside the resource data: the short read marks
+        // the blob Corrupted, and CheckResourceData fails.
         TEST_METHOD(ShortReadOfTheData_MarksTheBlobDamaged)
         {
             ResourceHeaderAgnostic header;
@@ -496,8 +497,7 @@ namespace UnitTests
             Assert::AreEqual(std::string("text 5"), checked.error().where.resource);
         }
 
-        // Review of the F2 review fixes: the same for compressed data, which
-        // the blob reads on another path.
+        // The same for compressed data, which the blob reads on another path.
         TEST_METHOD(ShortReadOfCompressedData_MarksTheBlobDamaged)
         {
             ResourceHeaderAgnostic header;
@@ -518,10 +518,9 @@ namespace UnitTests
             Assert::IsTrue(IsFlagSet(blob.GetStatusFlags(), ResourceLoadStatusFlags::Corrupted), L"a short read of compressed data marks the blob");
         }
 
-        // Review of the F2 review fixes: an empty resource in the package (a
-        // text with no strings) is valid. The header reader throws for its
-        // sizes of 0 as for a header that is not in the volume, so the first
-        // fix marked it "Corrupt", and TryCreate refused it.
+        // An empty resource in the package (a text with no strings) is
+        // valid: its header has sizes of 0, but its blob has no Corrupted
+        // flag, and TryCreate accepts it.
         TEST_METHOD(EmptyPackageResource_LoadsWithNoFlag)
         {
             NoAppStateInScope noAppState;
@@ -548,21 +547,19 @@ namespace UnitTests
             }
         }
 
-        // Review of the F2 review fixes (second): damage that zeroes an SCI1.1
-        // package header gives sizes of 0, as an empty resource has; the
-        // header's type and number (also 0) do not match the map entry, so
-        // the blob is damaged. The fix before took it for a valid empty
-        // resource.
+        // Damage that zeroes an SCI1.1 package header gives sizes of 0, as an
+        // empty resource has; the header's type and number (also 0) do not
+        // match the map entry, so the blob is damaged.
         TEST_METHOD(ZeroedPackageHeader_IsDamaged)
         {
             Assert::IsTrue(DamagedHeader(ResourceType::Text, 10, 9), L"a zeroed header must mark the blob Corrupted");
         }
 
-        // Review of dafb7179: a zeroed header reads as view 0 with sizes of
-        // 0, so for view 0 itself (the first header of the SCI1.1 template's
-        // resource.000) the type and the number match the map entry. Its
-        // type byte has no 0x80 mark, so it is damage. Before, it was a
-        // valid empty view, and a rebuild dropped the data of view 0.
+        // A zeroed header reads as view 0 with sizes of 0, so for view 0
+        // itself (the first header of the SCI1.1 template's resource.000) the
+        // type and the number match the map entry. Its type byte has no 0x80
+        // mark, so it is damage, not a valid empty view (a rebuild would drop
+        // the data of view 0).
         TEST_METHOD(ZeroedHeaderOfView0_IsDamaged)
         {
             Assert::IsTrue(DamagedHeader(ResourceType::View, 0, 9), L"a zeroed header of view 0 must mark the blob Corrupted");
@@ -574,9 +571,9 @@ namespace UnitTests
             Assert::IsTrue(DamagedHeader(ResourceType::Text, 10, 2, 3), L"a header with a compressed size of 0 must mark the blob Corrupted");
         }
 
-        // Review of dafb7179: the number of a package header is signed, so a
-        // valid empty resource numbered 32768 or more did not match its map
-        // entry. It was marked "Corrupt", and a rebuild dropped it.
+        // The number of a package header is signed, but a valid empty
+        // resource numbered 32768 or more must still match its map entry: it
+        // is not marked Corrupted, and a rebuild keeps it.
         TEST_METHOD(EmptyPackageResource_HighNumber_IsKept)
         {
             NoAppStateInScope noAppState;
@@ -603,9 +600,9 @@ namespace UnitTests
             Assert::IsFalse(IsFlagSet(blob->GetStatusFlags(), ResourceLoadStatusFlags::Corrupted));
         }
 
-        // Review of the F2 review fixes (second): a rebuild dropped an empty
-        // package resource with no message, and a delete of it failed with
-        // "the resource is empty" (both older than F2: the size read threw).
+        // A rebuild keeps an empty package resource, and a delete removes it,
+        // although the header reader throws "the resource is empty" for its
+        // sizes of 0.
         TEST_METHOD(EmptyPackageResource_RebuildKeepsIt_DeleteRemovesIt)
         {
             NoAppStateInScope noAppState;
@@ -642,9 +639,9 @@ namespace UnitTests
             }
         }
 
-        // F2 review: a map entry whose header is past the end of its volume.
-        // Before, the iterator gave an empty blob with no flag, which was the
-        // same as an empty resource.
+        // A map entry whose header is past the end of its volume gives a blob
+        // marked Corrupted, not an empty blob with no flag (which would look
+        // like an empty resource).
         TEST_METHOD(TruncatedVolume_EveryDamagedResourceIsMarked)
         {
             NoAppStateInScope noAppState;
@@ -679,10 +676,9 @@ namespace UnitTests
             Assert::IsTrue(intact > 1, L"the first half of the volume is there");
         }
 
-        // The GUI change of F2: with the default-resource fallback, a text
-        // resource whose last string has no NUL becomes a default resource
-        // marked "creation failed". Before, the GUI showed the strings read
-        // so far.
+        // With the GUI's default-resource fallback, a text resource whose
+        // last string has no NUL becomes a default resource marked "creation
+        // failed", not the strings read so far.
         TEST_METHOD(CreateResource_TextWithNoFinalNul_FallsBackAndIsMarked)
         {
             GameFolderHelper helper;
@@ -696,8 +692,8 @@ namespace UnitTests
             Assert::IsTrue(IsFlagSet(blob.GetStatusFlags(), ResourceLoadStatusFlags::ResourceCreationFailed));
         }
 
-        // F2 review: outside throw mode, a failed string read puts the stream
-        // back, so the text reader must stop. Before the fix, it read the same
+        // Outside throw mode, a failed string read puts the stream back, so
+        // the text reader must stop (it throws); else it would read the same
         // place again with no end.
         TEST_METHOD(TextReadFrom_NoFinalNulOutsideThrowMode_Throws)
         {

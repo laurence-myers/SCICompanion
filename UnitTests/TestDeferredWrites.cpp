@@ -19,18 +19,16 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 namespace UnitTests
 {
     // DeferResourceAppend batches resource writes into one rewrite of each
-    // destination. Before plan step A1:
-    //  - Commit always returned S_OK, and a failed write went only to a
-    //    message box (P3);
-    //  - a nested batch lost the outer queue, because the inner destructor
-    //    called AbandonAppend after its Commit (P4);
-    //  - a failed write still wrote the resource's name into game.ini (P5);
-    //  - the same resource queued twice gave two map entries, and on SCI0
-    //    the older copy won (P6).
-    // Before the fixes from the A1 review:
-    //  - an abandoned inner batch left its resources in the outer queue, and
-    //    a queued copy that it replaced did not come back;
-    //  - a failed save of the audio maps still replaced the audio volumes.
+    // destination:
+    //  - Commit returns the error of a failed write;
+    //  - a nested batch keeps the outer queue: an inner Commit only closes
+    //    the inner batch;
+    //  - a failed write does not write the resource's name into game.ini;
+    //  - the same resource queued twice gives one map entry, and the last
+    //    copy wins;
+    //  - an abandoned inner batch withdraws its resources from the outer
+    //    queue, and a queued copy that it replaced comes back;
+    //  - a failed save of the audio maps keeps the audio volumes.
     // Most tests run on a copy of each template game (SCI0, then SCI1.1),
     // because the two map formats have different writers.
     TEST_CLASS(TestDeferredWrites)

@@ -64,8 +64,8 @@ namespace
 
 namespace UnitTests
 {
-    // Plan step S3 (S3b): the script list, the script selectors and the
-    // shadow check of the command line (plan sections 4.2, 4.3 and 5).
+    // The script list, the script selectors and the shadow check of the
+    // command line (plan sections 4.2, 4.3 and 5).
     TEST_CLASS(TestScriptCatalog)
     {
         std::string _copyFolder;
@@ -273,9 +273,9 @@ namespace UnitTests
 
         // A mode that writes refuses a script in a name conflict, with the
         // conflict and its fix; the other scripts work, --all leaves the
-        // script out with a warning, and the list works. S3 review: before,
-        // one conflict refused every script (three real projects have two
-        // game.ini names that differ only in case).
+        // script out with a warning, and the list works. Only the scripts of
+        // the conflict are refused: real projects have two game.ini names
+        // that differ only in case.
         TEST_METHOD(Selectors_Conflict_RefusesOnlyItsScripts)
         {
             NoAppStateForCatalog noAppState;
@@ -304,8 +304,8 @@ namespace UnitTests
             Assert::IsTrue(ResolveScriptSelectors(session, { "100" }, SelectorMode::List).has_value());
         }
 
-        // S3 review: a script name can have a '.' (real games have
-        // n993=gamefile.sh), so a name wins over a path.
+        // A script name can have a '.' (real games have n993=gamefile.sh), so
+        // a name wins over a path.
         TEST_METHOD(Selectors_ANameWithADot_IsAName)
         {
             NoAppStateForCatalog noAppState;
@@ -317,9 +317,8 @@ namespace UnitTests
             Assert::AreEqual(7777, (int)NumbersOf(*selected)[0]);
         }
 
-        // S3 review: two paths for one script number are an error (before,
-        // the second path replaced the first with no message); a path is
-        // normal (no "..", only '\').
+        // Two paths for one script number are an error; the selection makes
+        // a path normal (no "..", only '\').
         TEST_METHOD(Selectors_TwoPathsForOneScript_AndANormalPath)
         {
             NoAppStateForCatalog noAppState;
@@ -336,10 +335,9 @@ namespace UnitTests
             Assert::AreEqual(0, _stricmp((_copyFolder + "\\src\\TitleScreen.sc").c_str(), normal->scripts[0].GetFullPath().c_str()), WideCatalog(normal->scripts[0].GetFullPath()).c_str());
         }
 
-        // Review of 7f41aa43: two files that declare a script that the game
-        // has not compiled are a conflict too. --all, a range and the name of
-        // one of the files show it, and list has the script. Before, they did
-        // not see the script.
+        // Two files that declare a script that the game has not compiled are
+        // a conflict too. --all, a range and the name of one of the files
+        // show it, and list has the script.
         TEST_METHOD(Conflict_OfAnUncompiledScript_IsShown)
         {
             NoAppStateForCatalog noAppState;
@@ -369,9 +367,9 @@ namespace UnitTests
             Assert::IsTrue(rows.has_value() && (RowOf(*rows, 7777) != nullptr), L"list has the script");
         }
 
-        // Review of 7f41aa43: a derived name takes no file title of src,
-        // also not the file of a script in a conflict. A decompile writes the
-        // file of the derived name, so it wrote over that file.
+        // A derived name takes no file title of src, also not the file of a
+        // script in a conflict: a decompile writes the file of the derived
+        // name, and it must not write over that file.
         TEST_METHOD(DerivedNames_TakeNoFileOfAConflict)
         {
             NoAppStateForCatalog noAppState;
@@ -391,9 +389,9 @@ namespace UnitTests
             Assert::AreNotEqual(name, again->at(100), L"the derived name must not be the file of the conflict");
         }
 
-        // Review of 7f41aa43: a file name with a character that the ANSI
-        // code page does not have stopped the open of the game. The map skips
-        // the file and reports it.
+        // A file name with a character that the ANSI code page does not have
+        // does not stop the open of the game: the map skips the file and
+        // reports it.
         TEST_METHOD(FileNameOutsideTheCodePage_IsSkipped)
         {
             NoAppStateForCatalog noAppState;
@@ -417,10 +415,9 @@ namespace UnitTests
             Assert::AreEqual(std::string("TitleScreen"), names.NameOf(100), L"the other names are there");
         }
 
-        // Review of 7f41aa43: a number and a path for one script are an error
-        // (before, the path took the place of the script's own file with no
-        // message); one file in two spellings is one script (before, an
-        // error).
+        // A number and a path for one script are an error: the path does not
+        // take the place of the script's own file. One file in two spellings
+        // is one script.
         TEST_METHOD(Selectors_NumberAndPathForOneScript_AndTwoSpellings)
         {
             NoAppStateForCatalog noAppState;
@@ -433,8 +430,7 @@ namespace UnitTests
             sci::Result<ScriptSelection> both = ResolveScriptSelectors(session, { "100", "src\\S3Old100.sc" }, SelectorMode::Compile);
             Assert::IsFalse(both.has_value());
             Assert::IsTrue(both.error().message.find("script 100 is also") != std::string::npos, WideCatalog(both.error().message).c_str());
-            // A name or a range and a path for one script (review of c6584ca7:
-            // only a number had a test).
+            // A name or a range and a path for one script.
             for (const char *selector : { "TitleScreen", "100-100" })
             {
                 sci::Result<ScriptSelection> mixed = ResolveScriptSelectors(session, { selector, "src\\S3Old100.sc" }, SelectorMode::Compile);
@@ -447,8 +443,8 @@ namespace UnitTests
             Assert::AreEqual(size_t(1), spellings->scripts.size());
         }
 
-        // S3 review: a number or a range that is not valid says why (before:
-        // "no script has this name").
+        // A number or a range that is not valid says why, not "no script has
+        // this name".
         TEST_METHOD(Selectors_ABadNumberOrRange_SaysWhy)
         {
             NoAppStateForCatalog noAppState;
@@ -462,7 +458,7 @@ namespace UnitTests
             Assert::IsTrue(message.find("no script has this name") == std::string::npos, WideCatalog(message).c_str());
         }
 
-        // S3 review: a compile path must be a file in src\.
+        // A compile path must be a file in src\.
         TEST_METHOD(Selectors_APathOutsideSrc_IsRefused)
         {
             NoAppStateForCatalog noAppState;
@@ -473,9 +469,9 @@ namespace UnitTests
             Assert::IsTrue(selected.error().message.find("the file is not in") != std::string::npos, WideCatalog(selected.error().message).c_str());
         }
 
-        // S3 review: the derived names (rule 4) count the names of rules 1
-        // to 3 as used; list and decompile take a derived name, compile does
-        // not; and AddDerivedScriptNames gives them to the session.
+        // The derived names (rule 4) count the names of rules 1 to 3 as used;
+        // list and decompile take a derived name, compile does not; and
+        // AddDerivedScriptNames gives them to the session.
         TEST_METHOD(DerivedNames_UsedNamesSelectorsAndTheSession)
         {
             NoAppStateForCatalog noAppState;
@@ -573,10 +569,9 @@ namespace UnitTests
             Assert::IsTrue(expected == *files, WideCatalog(actual).c_str());
         }
 
-        // S3 review: the shadow check sees the patch files as the patch file
-        // reader does: a 1-byte file is no resource, and 105.hep with a
-        // script's type byte is script 105 when scripts and heaps are read
-        // together.
+        // The shadow check sees the patch files as the patch file reader
+        // does: a 1-byte file is no resource, and 105.hep with a script's
+        // type byte is script 105 when scripts and heaps are read together.
         TEST_METHOD(ShadowingPatches_AsThePatchReaderSeesThem)
         {
             NoAppStateForCatalog noAppState;

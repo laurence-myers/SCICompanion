@@ -213,17 +213,15 @@ private:
 };
 
 class GameFolderHelper;
-// Writes src\<name>.sco. A failure is NotFound or Io, and names the file
-// (plan step S1; before, a failed write was silent). When the file already
-// has these bytes, it is not written again, and changed is false (plan step
-// S2: the passes of plan section 4.5 end when no .sco file changes). A write
-// that fails is not a change either (review of 4247f34c).
+// Writes src\<name>.sco. A failure is NotFound or Io, and names the file.
+// When the file already has these bytes, it is not written again, and
+// changed is false (the passes of plan section 4.5 end when no .sco file
+// changes). A write that fails is not a change either.
 sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco, ScriptId script, bool *changed = nullptr);
 sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco);
 // A dry run of SaveSCOFile: true when the write would change the file.
 // Io when it would, and the file cannot be replaced (a read-only file, for
-// example: CheckFileCanBeReplaced), as the write would fail (review of
-// 11106215).
+// example: CheckFileCanBeReplaced), as the write would fail.
 sci::Result<bool> SCOFileWouldChange(const GameFolderHelper &helper, const CSCOFile &sco, ScriptId script);
 
 class CompiledScript;

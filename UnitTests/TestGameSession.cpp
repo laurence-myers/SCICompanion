@@ -61,17 +61,12 @@ namespace UnitTests
         return std::wstring(text.begin(), text.end());
     }
 
-    // Plan step B1. Before it:
-    //  - a game could not be opened without AppState and its dialogs:
-    //    SetGameFolder showed a message box and threw a CUserException with
-    //    no text (P12);
-    //  - with no GUI, SafeMessageBox wrote to AppState's log file, which is
-    //    closed unless the GUI got a log file argument, and cut the text at
-    //    260 characters. With no AppState, the text was lost (P8);
-    //  - the codecs logged through appState: a null dereference with no
-    //    AppState;
-    //  - DependencyTracker kept a reference to its constructor's parameter,
-    //    so every later read of the setting was undefined (P17).
+    // The engine works with no AppState and no dialog:
+    //  - GameSession::Open gives an error with a code and a text;
+    //  - with no GUI, SafeMessageBox writes the whole text to the core log,
+    //    and gives the safe answer;
+    //  - the codecs log through the core log, also with no AppState;
+    //  - DependencyTracker follows the setting after its construction.
     TEST_CLASS(TestGameSession)
     {
         std::string _gameFolder;    // From SetUpGame: CleanUpGame also deletes its AppState.
@@ -301,9 +296,9 @@ namespace UnitTests
         }
     };
 
-    // Plan step B3a. Before it, the compile read the game, its version, its
-    // options, the text codepage and the class browser through appState. With
-    // no AppState, the first compile dereferenced null.
+    // The compile gets the game, its version, its options and the class
+    // hints from the session, and the open of the session sets the text
+    // codepage, so the compile works with no AppState.
     TEST_CLASS(TestHeadlessCompile)
     {
         std::string _copyFolder;
@@ -521,10 +516,10 @@ namespace UnitTests
             Assert::IsTrue(errors.find("headlessUndefinedName") != std::string::npos, Wide(errors).c_str());
         }    };
 
-    // Plan step B3b. Before it, the decompile read the text resources,
-    // vocab.000, the version and the class lookups through appState, and
-    // logged through it. With no AppState, the first decompile dereferenced
-    // null.
+    // The decompile reads the game (the text resources, vocab.000 and the
+    // version) through the resource map of the session, takes the class
+    // lookups from its caller, and logs through the core log, so it works
+    // with no AppState.
     TEST_CLASS(TestHeadlessDecompile)
     {
         std::string _copyFolder;
@@ -617,10 +612,10 @@ namespace UnitTests
         }
 
         // The decompiler reads sci.sh and keys.sh from the data folder of the
-        // session. Before B3b, it read them from the folder of the running
-        // program (in the tests, the test host, which has no include folder).
-        // With the shipped Decompiler.ini, script 12 of the SCI1.1 template
-        // gets palFIND_COLOR from sci.sh; with no sci.sh, it gets 5.
+        // session, not from the folder of the running program (in the tests,
+        // the test host, which has no include folder). With the shipped
+        // Decompiler.ini, script 12 of the SCI1.1 template gets palFIND_COLOR
+        // from sci.sh; with no sci.sh, it gets 5.
         TEST_METHOD(DecompilerConfig_ReadsTheHeadersFromTheDataFolder)
         {
             NoAppState noAppState;

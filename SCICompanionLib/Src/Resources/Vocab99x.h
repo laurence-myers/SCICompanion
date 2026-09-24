@@ -67,7 +67,7 @@ public:
 	uint16_t Add(const std::string &str);
 	void Save(CResourceMap &resourceMap);
 	// True when Add added a name. The compile writes MakeResourceData() to
-	// its destination (plan step S1).
+	// its destination.
 	bool IsDirty() const { return _fDirty; }
 	std::vector<uint8_t> MakeResourceData() const;
 	bool IsDefaultSelector(uint16_t value);
@@ -145,12 +145,12 @@ class SpeciesTable
 public:
 	SpeciesTable() { _wNewSpeciesIndex = 0; _fDirty = false; }
 	// alignToCompiledScripts: order each script's species as its compiled
-	// classes (plan step K3). The alignment loads every script, so a caller
-	// that needs only the script of each species passes false.
+	// classes. The alignment loads every script, so a caller that needs
+	// only the script of each species passes false.
 	bool Load(const GameFolderHelper &helper, bool alignToCompiledScripts = true);
 	void Save(CResourceMap &resourceMap);
 	// True when the table changed. The compile writes MakeResourceData() to
-	// its destination (plan step S1).
+	// its destination.
 	bool IsDirty() const { return _fDirty; }
 	std::vector<uint8_t> MakeResourceData() const;
 	bool GetSpeciesIndex(uint16_t wScript, uint16_t wClassIndexInScript, SpeciesIndex &wSpeciesIndex) const;

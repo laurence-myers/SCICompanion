@@ -33,9 +33,8 @@ void CompileLog::SummarizeAndReportErrors()
 
 void CompileLog::CalculateErrors()
 {
-	// The counts of the results that the log holds now. Before plan step S2,
-	// each call added to the counts, so a second call counted every result
-	// again (P11).
+	// Counts the results that the log holds. Each call counts from zero, so
+	// a second call does not count a result again.
 	_cErrors = (int)count_if(_compileResults.begin(), _compileResults.end(), mem_fun_ref(&CompileResult::IsError));
 	_cWarnings = (int)count_if(_compileResults.begin(), _compileResults.end(), mem_fun_ref(&CompileResult::IsWarning));
 }
@@ -81,7 +80,6 @@ sci::Status CompileScriptFile(GameSession &session, CompileResults &results, Com
 	g_compileIOTimer.Stop();
 	if (!text)
 	{
-		// Before plan step S2, this failure was silent.
 		log.ReportResult(CompileResult(fmt::format("Could not read {0}: {1}", script.GetFileNameOrig(), text.error().ToString()),
 			CompileResult::CompileResultType::CRT_Error));
 		log.CalculateErrors();
@@ -116,9 +114,8 @@ sci::Status CompileScriptFile(GameSession &session, CompileResults &results, Com
 			if (GenerateScriptResource(session, *pScript, headers, tables, results, helper.GetGenerateDebugInfo()))
 			{
 				WORD wNum = results.GetScriptNumber();
-				// The writes go where the options say (plan step S1). A write
-				// that fails is an error, and the compile fails with the first
-				// failure.
+				// The writes go where the options say. A write that fails is an
+				// error, and the compile fails with the first failure.
 				status = sci::Ok();
 				auto check = [&](const sci::Status &written)
 				{
@@ -131,8 +128,7 @@ sci::Status CompileScriptFile(GameSession &session, CompileResults &results, Com
 						}
 					}
 				};
-				// A resource write, and the list of the written resources (plan
-				// step C3).
+				// A resource write, and the list of the written resources.
 				auto writeResource = [&](ResourceType type, uint16_t number, const std::vector<uint8_t> &data)
 				{
 					sci::Status written = WriteCompiledResource(resourceMap, options, type, number, data);
@@ -174,12 +170,11 @@ sci::Status CompileScriptFile(GameSession &session, CompileResults &results, Com
 				}
 
 				// The .sco file and the debug file describe the resources: a
-				// script whose resources could not be written gets neither
-				// (review of S1). The .sco is the last write that can fail the
-				// script, so a script that fails leaves no new .sco that a
-				// later script of a batch could compile against (review of
-				// 5f545221). The debug file comes after it, so a script whose
-				// .sco fails leaves no new debug file (review of 4247f34c). A
+				// script whose resources could not be written gets neither.
+				// The .sco is the last write that can fail the script, so a
+				// script that fails leaves no new .sco that a later script of a
+				// batch could compile against. The debug file comes after it,
+				// so a script whose .sco fails leaves no new debug file. A
 				// debug file that cannot be written is a warning: the game does
 				// not need it.
 				g_compileIOTimer.Start();

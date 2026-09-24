@@ -10,9 +10,9 @@ namespace fs = std::filesystem;
 
 namespace UnitTests
 {
-    // Plan step C1: scic.exe as a process. It must start with MFC, find its
-    // data folder next to it, print the list to stdout, and exit with the
-    // code of the command.
+    // scic.exe as a process. It must start with MFC, find its data folder
+    // next to it, print the list to stdout, and exit with the code of the
+    // command.
     TEST_CLASS(TestCliIntegration)
     {
     public:
@@ -35,8 +35,8 @@ namespace UnitTests
             Assert::AreEqual(2UL, usage.exitCode, L"a usage error is exit code 2");
         }
 
-        // Plan step C2: script decompile --stdout prints the source to the
-        // stdout of scic.exe, and writes nothing.
+        // script decompile --stdout prints the source to the stdout of
+        // scic.exe, and writes nothing.
         BEGIN_TEST_METHOD_ATTRIBUTE(ScicExe_DecompileToStdout)
             TEST_METHOD_ATTRIBUTE(L"TestCategory", L"Integration")
         END_TEST_METHOD_ATTRIBUTE()
@@ -56,11 +56,11 @@ namespace UnitTests
             Assert::IsTrue(wroteNothing, L"no src folder");
         }
 
-        // The crash handling (plan section 6.6): one line and exit code 1.
-        // C1 review: before, abort() and std::terminate() ended the process
-        // with exit code 3 and no line, and a bad parameter to a C runtime
-        // function with 0xC0000409 and no line. The test hook SCIC_TEST_CRASH
-        // makes scic.exe fail in each way.
+        // The crash handling (plan section 6.6): one line and exit code 1,
+        // also for abort(), std::terminate() and a bad parameter to a C
+        // runtime function. With no handler, the first two end the process
+        // with exit code 3 and no line, and the third with 0xC0000409 and no
+        // line. The test hook SCIC_TEST_CRASH makes scic.exe fail in each way.
         BEGIN_TEST_METHOD_ATTRIBUTE(ScicExe_ACrashIsOneLineAndExitCode1)
             TEST_METHOD_ATTRIBUTE(L"TestCategory", L"Integration")
         END_TEST_METHOD_ATTRIBUTE()

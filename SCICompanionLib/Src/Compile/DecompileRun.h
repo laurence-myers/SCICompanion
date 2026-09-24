@@ -1,8 +1,8 @@
 #pragma once
 
-// The decompile of scripts as one run (plan step S4; plan sections 3.3, 3.4,
-// 4.4 and 6.5): the src folder, the names of every script, the batch with a
-// status for each script, the stale scripts, the statistics, and the names in
+// The decompile of scripts as one run (plan sections 3.3, 3.4, 4.4 and
+// 6.5): the src folder, the names of every script, the batch with a status
+// for each script, the stale scripts, the statistics, and the names in
 // game.ini. The command line and the GUI's Decompile dialog use it.
 
 #include "DecompileBatch.h"
@@ -36,10 +36,9 @@ enum class NameAssignment
 // its first run), but not those of a name conflict, and a script that a
 // reset renamed and that no group gave an ok outcome (it failed, or no
 // group reached it) keeps its name from before the reset (its files have
-// that name; review of ba63d08a). A
-// name that game.ini has with another value is replaced (after a reset of
-// the names, the GUI then finds the new files). The default name nNNN gets no
-// entry.
+// that name). A name that game.ini has with another value is replaced
+// (after a reset of the names, the GUI then finds the new files). The
+// default name nNNN gets no entry.
 enum class GameIniNames
 {
     Update,     // write the entries when game.ini exists
@@ -60,15 +59,15 @@ struct DecompileRunOptions
     // of a run that writes: the stale scripts (read from the sources in
     // memory), the groups of updateStale (each starts from the main .sco
     // of the group before), and the list of the files that the run would
-    // write (review of 11106215: before, a dry run skipped the stale step,
-    // main's .sco, game.ini and the src folder). A later script of the run
-    // still reads the .sco files that are on disk, so a source can differ
-    // a little from the source of a run that writes. Ignored with an output.
+    // write, with main's .sco, game.ini and the src folder. A later script
+    // of the run still reads the .sco files that are on disk, so a source
+    // can differ a little from the source of a run that writes. Ignored
+    // with an output.
     bool dryRun = false;
     // After an abort (or a batch that threw), find the scripts whose files
     // still use a global of the run by its old name (report.stale); the
     // check reads every source file. The Decompile dialog sets false: it
-    // offers no stale script after a Cancel (review of ba63d08a).
+    // offers no stale script after a Cancel.
     bool staleAfterAbort = true;
 };
 
@@ -96,15 +95,14 @@ struct DecompileReport
     // group of stale scripts that updateStale decompiled. A script that a
     // later group decompiles again has one outcome: the last one of a group
     // that reached it. A later group that stopped before it (an abort, or a
-    // batch that threw) keeps the earlier outcome, written or failed
-    // (reviews of c49c8143 and ba63d08a).
+    // batch that threw) keeps the earlier outcome, written or failed.
     std::vector<DecompileOutcome> scripts;
     // The globals that the run named: (standard name, new name).
     std::vector<std::pair<std::string, std::string>> globalRenames;
     // The scripts that use a global of the run by its old name: without
     // updateStale, the scripts that the run did not decompile; after an
     // abort (with no output), every script whose file still uses one, also
-    // a script that the run wrote before the abort (review of c49c8143).
+    // a script that the run wrote before the abort.
     std::set<uint16_t> stale;
     DecompileStats stats;
     bool cancelled = false;
@@ -112,16 +110,14 @@ struct DecompileReport
     // names, or a Decompiler.ini that could not be read. Each also went to
     // the results as a warning, when it was found.
     std::vector<std::string> warnings;
-    // The write of main's .sco with the new global names (S4 review: before,
-    // a failure was a message only).
+    // The write of main's .sco with the new global names.
     sci::Status mainObjectFile;
     // The write of the names into game.ini.
     sci::Status gameIni;
     // The batch of a group: Ok, or the error of a batch that threw
     // (Internal). The scripts that it did not reach keep an earlier
-    // outcome, or get the error; the stale check of an abort runs (review
-    // of e83a7d41: before, a later group that threw could leave a stale
-    // script and a report that succeeded).
+    // outcome, or get the error; the stale check of an abort runs, and the
+    // report does not succeed.
     sci::Status batch;
     // The files that the run wrote, or with dryRun would write, other than
     // the .sc and .sco of each script in scripts: the src folder and the
@@ -143,7 +139,7 @@ struct DecompileReport
 // is written: no .sc, no .sco, no src folder, no game.ini; the run finds no
 // stale script (--stdout), and a reset of the names gives no warning about
 // the old files. After an abort, no source goes to the output: the source
-// of a part of a run is not the source of a run (review of e83a7d41).
+// of a part of a run is not the source of a run.
 sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<uint16_t> &scripts, const DecompileRunOptions &options,
     IDecompilerResults &results, IDecompileOutput *output = nullptr);
 
@@ -173,7 +169,7 @@ struct ObjectFileOutcome
     // block has errors (in diagnostics). Cancelled: the abort flag stopped
     // the run before this script. Else why the script failed; with dryRun,
     // Io when a .sco that would change cannot be opened for writing, as the
-    // write would fail (review of 11106215).
+    // write would fail.
     sci::Status status;
     // The .sco file has new bytes: it was written, or with dryRun would be.
     // False when the file already has these bytes: nothing is written
@@ -202,16 +198,15 @@ struct ObjectFileOptions
 // (the number of the ScriptId), with the code of the decompiler
 // (SCOFromScriptAndCompiledScript). As the compiler does, the source gets
 // its includes that are not headers (the locals of a .shp file), and each
-// class gets its name in the source (S4 review; a warning when the source
-// and the compiled script have different numbers of classes). The public
-// block is checked as the compiler checks it: a slot used twice, or a name
-// with no class, instance or procedure in the source, fails the script
-// (C2), and so does a name of a procedure or instance of an include that
-// is not a header, unless the include's own public block lists it (the
-// compiler: "needs to be marked public"; review of 11106215). A public
-// block whose slots differ from the slots that the compiled script
-// exports is a warning, also when the source has no public block (review
-// of 11106215: before, all exports went with no message). The .sco goes to
+// class gets its name in the source (a warning when the source and the
+// compiled script have different numbers of classes). The public block is
+// checked as the compiler checks it: a slot used twice, or a name with no
+// class, instance or procedure in the source, fails the script, and so
+// does a name of a procedure or instance of an include that is not a
+// header, unless the include's own public block lists it (the compiler:
+// "needs to be marked public"). A public block whose slots differ from the
+// slots that the compiled script exports is a warning, also when the
+// source has no public block. The .sco goes to
 // src\<title of the ScriptId>.sco. It does not compile, and it changes no
 // resource. Source from another tool gets the .sco files that a compile
 // needs for each (use ...).

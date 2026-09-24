@@ -4,7 +4,7 @@
 // 3.3, 4.2, 4.3 and 5): the list of the scripts of a game, the script
 // selectors, and the shadow check before a package write. They read the
 // script names of the session (ScriptNameMap). Only AddDerivedScriptNames
-// changes the session; nothing here writes a file.
+// and ResetScriptNames change the session; nothing here writes a file.
 
 #include "Result.h"
 #include "ScriptNameMap.h"
@@ -47,7 +47,7 @@ sci::Result<std::map<uint16_t, std::string>> DeriveScriptNames(GameSession &sess
 // Gives the session's names the derived name of each compiled script that
 // has no name (rule 4): the decompiler needs a name for every script before
 // it writes a (use ...) line. It replaces the session's map with no lock:
-// call it before a worker thread reads the names (S4). The GUI sets no map.
+// call it before a worker thread reads the names. The GUI sets no map.
 sci::Status AddDerivedScriptNames(GameSession &session);
 
 // --reset-names (plan section 4.4): gives each compiled script in numbers its
@@ -55,12 +55,12 @@ sci::Status AddDerivedScriptNames(GameSession &session);
 // script, as the Decompile dialog's "Reset filenames" does. A reset name is
 // never the name of another script (also not the current name of another
 // chosen script), or the title of a file in src that another script has (or
-// that no script has): the naming rule's "_N" suffix is added then (S4
-// review, review of c49c8143). A script that cannot be read, or that has no
-// class and no public instance, keeps its name.
+// that no script has): the naming rule's "_N" suffix is added then. A script
+// that cannot be read, or that has no class and no public instance, keeps
+// its name.
 // Returns a warning for each .sc and .sco file that keeps an old name (with
-// dryRun, "would keep": a run that writes nothing; review of 11106215). It
-// replaces the session's map with no lock, as AddDerivedScriptNames does.
+// dryRun, "would keep": a run that writes nothing). It replaces the
+// session's map with no lock, as AddDerivedScriptNames does.
 sci::Result<std::vector<std::string>> ResetScriptNames(GameSession &session, const std::set<uint16_t> &numbers, bool dryRun = false);
 
 // Plan section 4.3: each script of the game, in number order. That is each
@@ -94,13 +94,16 @@ struct ScriptSelection
 // Every bad selector is in one Usage error. A selector that is the name of a
 // script is a name, also with a '.' in it; two paths for one script number
 // are an error. A mode that writes (Decompile, Compile, Sco) refuses a
-// selected script that is in a name conflict, with the conflict and its fix
-// (S3 review: before, any conflict refused every script).
+// selected script that is in a name conflict, with the conflict and its fix;
+// the other selected scripts are not refused for it.
 sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const std::vector<std::string> &selectors, SelectorMode mode);
 
 // --all: every script that the mode takes, in the same order. For Compile,
-// a named script with no source file is left out, with a warning. For the
-// modes that write, a script in a name conflict is left out, with a warning.
+// a named script with no source file is left out, with a warning. For Sco,
+// a script with a source file and no compiled script, or with a name from
+// rules 1 to 3 and no source file, is in the selection too:
+// GenerateObjectFiles skips it and gives the reason. For the modes that
+// write, a script in a name conflict is left out, with a warning.
 sci::Result<ScriptSelection> SelectAllScripts(GameSession &session, SelectorMode mode);
 
 struct ResourceKey

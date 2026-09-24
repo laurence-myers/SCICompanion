@@ -21,7 +21,7 @@ enum class DecompilerResultType
 	Error,
 	// A dump that a debug option asked for (the control-flow graphs, the
 	// instruction chunks). Not a warning: the command line prints it
-	// plainly (review of 11106215).
+	// plainly.
 	Debug
 };
 

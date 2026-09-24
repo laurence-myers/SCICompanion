@@ -77,8 +77,8 @@ namespace
     // (PrecompiledHeaders::Update): an include that is not a header (.sh and
     // .shm are headers; a .shp polygon file has locals) is merged into the
     // script, and the includes of a header are read too. The .sco then has
-    // the locals of the compiler's .sco (S4 review: before, rm110 of the
-    // SCI1.1 template had none of the 11 of 110.shp).
+    // the locals of the compiler's .sco (for example, rm110 of the SCI1.1
+    // template has the 11 locals of 110.shp).
     sci::Status MergeIncludedScripts(sci::Script &script, CResourceMap &resourceMap, const SCIVersion &version, CompileLog &log)
     {
         std::set<std::string> seen;
@@ -95,8 +95,8 @@ namespace
                 std::string includePath = resourceMap.GetIncludePath(name);
                 if (includePath.empty())
                 {
-                    // Review of c49c8143: before, the error was "Opening \" with
-                    // no name.
+                    // The include is not there: the error names it (an open
+                    // of the empty path would not).
                     return sci::Fail(sci::ErrorCode::NotFound, "the include " + name + " is in neither the include folder nor src");
                 }
                 ScriptId includeId(includePath);
@@ -154,17 +154,16 @@ namespace
 
     // The public block, as the compiler checks it (Script::PreScan in
     // Compile.cpp): a slot used twice, or a name that no class, instance or
-    // procedure of the source has, is an error (plan step C2: the .sco
-    // builder took both, and the compile of the script then failed). So is
-    // a name whose definition is not public: PostProcessScript makes a
-    // definition public from the public block of its own file, so a
-    // procedure or instance of an include that is not a header is public
-    // only when the include lists it (review of 11106215). A block whose
-    // slots differ from the slots that the compiled script exports is a
-    // warning (found at the K2 review: the SCI1.1 template's Main and
-    // DebugHandler export slots that their sources do not list), also when
-    // the source has no block (review of 11106215: the .sco then had no
-    // export, with no message).
+    // procedure of the source has, is an error (the .sco builder would take
+    // both, and the compile of the script would then fail). So is a name
+    // whose definition is not public: PostProcessScript makes a definition
+    // public from the public block of its own file, so a procedure or
+    // instance of an include that is not a header is public only when the
+    // include lists it. A block whose slots differ from the slots that the
+    // compiled script exports is a warning (for example, the SCI1.1
+    // template's Main and DebugHandler export slots that their sources do
+    // not list), also when the source has no block (the .sco then has no
+    // export).
     sci::Status CheckPublicBlock(const sci::Script &parsed, const ScriptId &script, uint16_t number, const CompiledScript &compiled, std::vector<CompileResult> &diagnostics)
     {
         std::set<int> slots;
@@ -290,8 +289,7 @@ sci::Status PrepareDecompileFolder(const GameFolderHelper &helper, const std::st
         {
             return sci::Fail(sci::ErrorCode::Io, fmt::format("could not make the folder {0}: {1}", src.string(), ec.message()));
         }
-        // A plain copy of the files (before plan step S4, the GUI used the
-        // shell, with a window).
+        // A plain copy of the files, with no shell and no window.
         SCI_TRY_ASSIGN(auto copies, DecompilerFilesToCopy(src, decompilerFolder));
         for (const auto &copy : copies)
         {
@@ -357,8 +355,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         CResourceMap &resourceMap = session.ResourceMap();
         DecompileReport report;
         // With an output (--stdout), the run only decompiles. A dry run
-        // decompiles in memory too, but does the other steps (review of
-        // 11106215).
+        // decompiles in memory too, but does the other steps.
         bool dryRun = options.dryRun && !output;
         bool inMemory = dryRun || output;
 
@@ -389,13 +386,13 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         // decompiler writes a (use Name) line for each script that it uses.
         // Missing and All change the session's names (the command line); the
         // GUI passes None, and names with game.ini. All resets only the
-        // names of the chosen scripts (S4 review).
+        // names of the chosen scripts.
         if ((options.names == NameAssignment::Missing) || (options.names == NameAssignment::All))
         {
             SCI_TRY(AddDerivedScriptNames(session));
         }
         // The names of the chosen scripts before a reset: game.ini keeps them
-        // for a script that no group writes (review of ba63d08a).
+        // for a script that no group writes.
         std::map<uint16_t, std::string> namesBeforeReset;
         if (options.names == NameAssignment::All)
         {
@@ -405,7 +402,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             }
             SCI_TRY_ASSIGN(std::vector<std::string> warnings, ResetScriptNames(session, scripts, dryRun));
             // With an output, no file is written, so the old files do not
-            // matter (review of 11106215).
+            // matter.
             if (!output)
             {
                 for (const std::string &warning : warnings)
@@ -424,8 +421,8 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         lookups.GetSelectorTable().ReverseLookup("", unused);
         // The game's src\Decompiler.ini, else the one of the data folder: a run
         // that writes no src folder (--stdout) then gives the source that a
-        // file run gives (S4 review: before, it used the default settings,
-        // with other global and parameter names).
+        // file run gives, not a source with the default settings (other
+        // global and parameter names).
         std::string iniPath = helper.GetSrcFolder() + "\\Decompiler.ini";
         std::error_code ec;
         if (!fs::exists(iniPath, ec))
@@ -451,8 +448,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         // group reached it.
         std::map<uint16_t, size_t> outcomeIndex;
         // Each script that a group wrote, with its name: game.ini gets these
-        // names (review of c49c8143: a later group that failed or stopped
-        // took the name out of game.ini).
+        // names, also when a later group fails or stops before the script.
         std::map<uint16_t, std::string> writtenNames;
         std::set<std::pair<std::string, std::string>> knownRenames;
         // A dry run: the main .sco of the group before, which a run that
@@ -470,7 +466,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             }
             // Each script has its own exception boundary in the batch; this one
             // keeps the report of the scripts that were written when the batch
-            // itself throws (S4 review).
+            // itself throws.
             sci::Status ran = sci::Guard("", [&]() -> sci::Status
             {
                 batch.Run(toDo);
@@ -508,9 +504,8 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
                     // This group stopped before the script (an abort, or a batch
                     // that threw): it keeps the outcome of the earlier group,
                     // written or failed, and the stale check after an abort
-                    // lists it (reviews of c49c8143 and ba63d08a: before, a later
-                    // Cancelled replaced a failure, and the error of a batch
-                    // replaced a written outcome).
+                    // lists it. A Cancelled or the error of this batch does
+                    // not replace that outcome.
                 }
                 else
                 {
@@ -560,8 +555,8 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             }
             // Plan section 4.4: the scripts that still use a global of this
             // group by its old name. That is every other script, also a script
-            // of an earlier group (S4 review: a later group can name a global
-            // that an earlier script uses).
+            // of an earlier group: a later group can name a global that an
+            // earlier script uses.
             std::set<uint16_t> candidates;
             for (CompiledScript *compiled : lookups.GetGlobalClassTable().GetAllScripts())
             {
@@ -600,10 +595,9 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         // After an abort, every script whose file still uses a global of the
         // run by its old name: a rewrite that the abort stopped, a script of
         // an earlier group that a later group did not reach, and a script
-        // that the run did not decompile (review of c49c8143: before, only
-        // the stopped rewrites). Main's .sco has the new names: the scripts
-        // that the run wrote with them need it. The same after a batch that
-        // threw (review of e83a7d41).
+        // that the run did not decompile. Main's .sco has the new names: the
+        // scripts that the run wrote with them need it. The same after a batch
+        // that threw.
         if ((report.cancelled || !report.batch) && !output && options.staleAfterAbort && !report.globalRenames.empty())
         {
             std::set<uint16_t> candidates;
@@ -626,8 +620,8 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
 
         if (output)
         {
-            // Not after an abort (review of e83a7d41: before, --stdout
-            // printed the source of pass 1 when Ctrl+C came before pass 2).
+            // Not after an abort: when Ctrl+C comes before pass 2, the
+            // source of pass 1 is not the source of the run.
             if (!report.cancelled)
             {
                 for (const DecompileOutcome &outcome : report.scripts)
@@ -645,18 +639,18 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             std::map<uint16_t, std::string> names;
             // The Decompile dialog names every script before its first run,
             // when game.ini has no [Script] entry; entries for only the
-            // written scripts would stop that (S4 review). So the run gives
-            // every name then.
+            // written scripts would stop that. So the run gives every name
+            // then.
             if (!helper.DoesSectionExistWithEntries("Script") && helper.ScriptNames)
             {
                 for (const auto &entry : helper.ScriptNames->Entries())
                 {
                     // Not the scripts of a name conflict: the GUI does not
-                    // check game.ini for one (review of c49c8143). A script
-                    // that a reset renamed and that no group wrote keeps its
-                    // name from before the reset: its files have that name
-                    // (review of ba63d08a: a cancelled reset of 979 wrote
-                    // n979=MenuBar_979, a file that does not exist).
+                    // check game.ini for one. A script that a reset renamed
+                    // and that no group wrote keeps its name from before the
+                    // reset: its files have that name (for example, a
+                    // cancelled reset of 979 must not write n979=MenuBar_979,
+                    // a file that does not exist).
                     if (helper.ScriptNames->ConflictsOf(entry.first).empty())
                     {
                         auto before = namesBeforeReset.find(entry.first);
@@ -760,9 +754,9 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
                 objectFile->SetScriptNumber(outcome.number);
                 // The class names of the source, as the compiler writes them:
                 // the name string in the compiled script can be another name
-                // (S4 review: the SCI1.1 template's (class Block ... (properties
-                // name {Blk}))). The compiler writes the classes in source
-                // order, so the positions agree.
+                // (for example, the SCI1.1 template's (class Block ...
+                // (properties name {Blk}))). The compiler writes the classes
+                // in source order, so the positions agree.
                 std::vector<std::string> sourceClasses;
                 for (const auto &classDefinition : parsed.GetClasses())
                 {
@@ -787,8 +781,7 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
                 if (options.dryRun)
                 {
                     // What the write would do: nothing for the same bytes, else
-                    // a write that must open the file (review of 11106215: a
-                    // dry run said "would write" for both).
+                    // a write that must open the file.
                     SCI_TRY_ASSIGN(outcome.changed, SCOFileWouldChange(helper, *objectFile, script));
                     return sci::Ok();
                 }

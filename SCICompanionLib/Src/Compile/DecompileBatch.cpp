@@ -324,11 +324,11 @@ public:
 	// The last decompile of the script reached its write: the writes of
 	// its files (with an output, of its source) were made, also when they
 	// failed (WriteStatus). An abort that comes after the write does not
-	// undo it (review of ba63d08a).
+	// undo it.
 	bool Wrote() const { return _wrote; }
 	// The globals that the last naming of the script (pass 1 or pass 2)
 	// found. They are in mainSCO already, also when the script failed
-	// after its naming (review of e83a7d41).
+	// after its naming.
 	const vector<pair<string, string>> &LastRenames() const { return _lastRenames; }
 
 	// Pass 1. Decompiles the script, names it against the global names known
@@ -336,9 +336,9 @@ public:
 	// an unnamed global, and records what a later round could change in it.
 	// When this is script 0 and there is no Main.sco yet, the .sco built from
 	// the tree becomes mainSCO, as it does when script 0 is decompiled first on
-	// its own. Fails if the script does not load (before plan step S4, it was
-	// dropped with no message); sets renames to the globals its naming found.
-	// A file that cannot be written is in WriteStatus.
+	// its own. Fails if the script does not load. LastRenames gives the
+	// globals that its naming found. A file that cannot be written is in
+	// WriteStatus.
 	sci::Status DecompileNameAndWrite(unique_ptr<CSCOFile> &mainSCO)
 	{
 		_wrote = false;
@@ -465,9 +465,10 @@ private:
 	}
 
 	// Names the tree against mainSCO and this script's previous .sco, then
-	// finishes it and writes its .sc and .sco. The globals that it named go
-	// to _lastRenames at once: the namer wrote them into mainSCO, and a
-	// failure after it must not lose them (review of e83a7d41).
+	// finishes it and writes its .sc and .sco (with an output, it gives the
+	// source to the output instead). The globals that it named go to
+	// _lastRenames at once: the namer wrote them into mainSCO, and a failure
+	// after it must not lose them.
 	void _NameAndWrite(DecompileState &state, CSCOFile *mainSCO)
 	{
 		{
@@ -489,7 +490,7 @@ private:
 		state.script->OutputSourceCode(out);
 		if (_output)
 		{
-			// Plan step S4 (--stdout): the source, and no file.
+			// The source goes to the output, and no file is written.
 			_output->OnSource(_number, ss.str());
 			_wrote = true;
 			return;
@@ -509,8 +510,8 @@ private:
 		// TODO: If it already exists, we might want to ask for confirmation.
 		string sourceFilename = _helper.GetScriptFileName(_number);
 		sci::Status wroteSource = WriteTextToFile(sourceFilename, ss.str());
-		// The writes are made: before the messages, which can fail too
-		// (review of e83a7d41).
+		// The writes are made. This comes before the messages, which can
+		// fail too.
 		_wrote = true;
 		if (wroteSource)
 		{
@@ -641,16 +642,15 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 		}
 		_results.AddResult(DecompilerResultType::Important, fmt::format("Decompiling script {0}", scriptNumber));
 		unique_ptr<Item> item = make_unique<Item>(_config, _scriptLookups, _resourceMap, scriptNumber, _results, _options, _output);
-		// The exception boundary of the script (plan step S4). No context: the
-		// message and the report name the script.
+		// The exception boundary of the script. No context: the message and
+		// the report name the script.
 		sci::Status decompiled = sci::Guard("", [&]() -> sci::Status
 		{
 			return item->DecompileNameAndWrite(mainSCO);
 		});
 		// The globals that its naming found are in mainSCO: they count also
-		// when the script failed after its naming (review of e83a7d41:
-		// before, main's .sco did not get them, and a script that the run
-		// wrote with one of them did not compile).
+		// when the script failed after its naming. So main's .sco gets them,
+		// and a script that the run wrote with one of them compiles.
 		_globalRenames.insert(_globalRenames.end(), item->LastRenames().begin(), item->LastRenames().end());
 		if (!decompiled)
 		{
@@ -660,9 +660,8 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 		}
 		if (item->Wrote())
 		{
-			// Its files are out: they count also when the abort came after
-			// the write (review of ba63d08a: before, the script was
-			// Cancelled, and its renames and main's .sco lost the names).
+			// Its files are out: the script counts as written, not as
+			// Cancelled, also when the abort came after the write.
 			if (!item->WriteStatus())
 			{
 				_failed[scriptNumber] = item->WriteStatus().error();
@@ -739,8 +738,8 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 		}
 		if (_results.IsAborted())
 		{
-			// Its files keep the old global names (S4 review: the report
-			// did not show these scripts).
+			// Its files keep the old global names: GetSkippedRewrites lists
+			// the script, for the report.
 			if (item->NeedsRewrite(mainSCO.get()))
 			{
 				_skippedRewrites.insert(item->GetNumber());
@@ -760,7 +759,7 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 			item->DecompileAndRewrite(mainSCO.get());
 			return sci::Ok();
 		});
-		// As in pass 1: the names are in mainSCO (review of e83a7d41).
+		// As in pass 1: the names are in mainSCO.
 		_globalRenames.insert(_globalRenames.end(), item->LastRenames().begin(), item->LastRenames().end());
 		if (!rewritten)
 		{
@@ -771,8 +770,7 @@ void DecompileBatch::Run(const set<uint16_t> &scriptNumbers)
 		}
 		else if (item->Wrote())
 		{
-			// Written again, also when the abort came after the write
-			// (review of ba63d08a).
+			// Written again, also when the abort came after the write.
 			_rewritten.insert(number);
 			// The files of pass 2 replace those of pass 1, and so does their
 			// write status.

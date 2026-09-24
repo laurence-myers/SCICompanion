@@ -16,10 +16,10 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace UnitTests
 {
-    // Plan step B2. Before it, the engine read scripts and headers only
-    // through the script editor's buffer (CCrystalTextBuffer, CrystalEdit).
-    // LoadScriptText must split lines exactly as that buffer does, or the
-    // line numbers of diagnostics change.
+    // LoadScriptText reads a script or a header with no editor buffer. It
+    // must split lines exactly as the script editor's buffer
+    // (CCrystalTextBuffer, CrystalEdit) does, or the line numbers of
+    // diagnostics change.
     TEST_CLASS(TestScriptText)
     {
         std::string _folder;

@@ -1,10 +1,10 @@
 #pragma once
 
-// The compile of several scripts as one batch (plan step S2; plan sections
-// 3.3, 4.5, 5 and 6.5): the tables and headers load once, each script gets
-// its own log and its own status inside an exception boundary, the tables
-// are saved once when a script compiled, and the resource writes of the
-// whole batch are one commit.
+// The compile of several scripts as one batch (plan sections 3.3, 4.5, 5
+// and 6.5): the tables and headers load once, each script gets its own log
+// and its own status inside an exception boundary, the tables are saved
+// once when a script compiled, and the resource writes of the whole batch
+// are one commit.
 
 #include "CompileInterfaces.h"
 #include "CompileContext.h"
@@ -32,7 +32,7 @@ enum class ShadowPolicy
 
 struct CompileOptions
 {
-    // Where the output goes (plan step S1). Default: the game's setting.
+    // Where the output goes (plan section 5). Default: the game's setting.
     CompileWriteOptions write;
     // Stop after the first script that does not compile, in any pass (a
     // later pass could fix a script that uses a .sco of the same batch).
@@ -45,9 +45,9 @@ struct CompileOptions
     // the patch files that would hide a package write, at the start and
     // before the commit (for the files that it finds only then). Its answer
     // is the policy from then on. Refuse stops the batch with Cancelled, and
-    // nothing is written. The GUI asks the user (plan step S2). A dry run
-    // does not ask (it cannot move the files; review of 4247f34c): Refuse
-    // stops it with WriteRefused, as a real run with no askShadows.
+    // nothing is written. The GUI asks the user. A dry run does not ask (it
+    // cannot move the files): Refuse stops it with WriteRefused, as a real
+    // run with no askShadows.
     std::function<ShadowPolicy(const std::vector<std::string> &files)> askShadows;
 };
 
@@ -58,23 +58,22 @@ struct ScriptOutcome
     std::string name;
     // Ok; Compile (the errors are in the diagnostics); the error of a source
     // file that could not be read or an output that could not be written; or
-    // the error of an exception (Internal, or the code of a DataError). A
-    // script that fails writes no resource: its writes to the game are
-    // withdrawn, and its files for an output folder are dropped (they wait
-    // for the commit; review of 5f545221). Its .sco is the last write that
-    // can fail it, so it leaves no new .sco from this pass; a .sco from an
-    // earlier pass stays until Finish, which writes nothing when a script
-    // of the commit uses it (review of 4247f34c), and then puts back the
-    // .sco of each script that the commit does not write (review of
-    // 944de1df). The debug file comes after the .sco, and one that cannot
-    // be written is a warning; it is not put back.
+    // the error of an exception (Internal, Io for an MFC file exception, or
+    // the code of a DataError). A script that fails writes no resource: its
+    // writes to the game are withdrawn, and its files for an output folder
+    // are dropped (they wait for the commit). Its .sco is the last write
+    // that can fail it, so it leaves no new .sco from this pass; a .sco from
+    // an earlier pass stays until Finish, which writes nothing when a script
+    // of the commit uses it, and then puts back the .sco of each script that
+    // the commit does not write. The debug file comes after the .sco, and
+    // one that cannot be written is a warning; it is not put back.
     sci::Status status;
     std::vector<CompileResult> diagnostics;
     // The sizes of the compiled script (the GUI shows them).
     CompileStats stats;
     // The resources that the commit writes for the script (a dry run: would
     // write): its script, its heap, and its auto text when it changed. Empty
-    // for a script that failed. Plan section 6.5 (C3).
+    // for a script that failed. Plan section 6.5.
     std::vector<WrittenResource> written;
 };
 
@@ -89,7 +88,7 @@ struct CompileReport
     // not be saved: the compiled scripts need them.
     sci::Status commit;
     // The tables that the commit writes (a dry run: would write): vocab 996
-    // and 997 when they changed (C3).
+    // and 997 when they changed.
     std::vector<WrittenResource> tablesWritten;
     // With ShadowPolicy::Replace: Ok, or an Io error that names each patch
     // file that could not move (it still hides the package write).
@@ -98,7 +97,7 @@ struct CompileReport
     // does not write (all of them when the commit is refused or fails, or
     // in a dry run) go back to their bytes from before the batch: Ok, or
     // an Io error that names each file that could not go back (it
-    // describes a script that the game does not have; review of 944de1df).
+    // describes a script that the game does not have).
     sci::Status objectFiles;
     // The .sco files that went back.
     std::vector<std::string> restoredObjectFiles;
@@ -110,8 +109,7 @@ struct CompileReport
     int passes = 0;
     // The last pass that ran changed a .sco file, and no pass came after
     // it (the limit of options.passes, an abort, or failFast), so a script
-    // of the commit that uses it can still be out of date (review of
-    // 944de1df: an abort gave no sign of it).
+    // of the commit that uses it can still be out of date.
     bool passLimit = false;
     // Patch files with another name for a written resource, and patch
     // tables that hide later package saves of the GUI.
@@ -145,7 +143,7 @@ public:
     virtual void OnPassStart(int pass) {}
     // Before Finish, when CompileScripts runs the batch: the commit, the
     // tables, and the .sco files that go back (the command line names the
-    // step in its crash line; review of 0046b54a).
+    // step in its crash line).
     virtual void OnFinish() {}
 };
 
@@ -184,16 +182,16 @@ public:
     // Before the commit, it writes nothing (WriteRefused) when a script of
     // the commit compiled against a .sco file that the batch changed for a
     // script whose writes are not in the commit: the script failed in the
-    // last pass, or the batch stopped before it (review of 4247f34c). Then
-    // it checks the package writes again for patch files that would hide
-    // them (a text of a script's auto text), and asks askShadows about new
-    // files; a dry run checks the writes that a real run would make, and
-    // asks nothing. With Replace, it moves only the patch files that hide a
-    // resource that the commit wrote (a dry run moves none). With an output
-    // folder, the commit writes the files of the tables, then those of the
-    // scripts that compiled (WriteStagedOutputFiles; a dry run checks them
-    // only). Then it puts back the .sco files of the scripts that the
-    // commit does not write (report.objectFiles). Call it once.
+    // last pass, or the batch stopped before it. Then it checks the package
+    // writes again for patch files that would hide them (a text of a
+    // script's auto text), and asks askShadows about new files; a dry run
+    // checks the writes that a real run would make, and asks nothing. With
+    // Replace, it moves only the patch files that hide a resource that the
+    // commit wrote (a dry run moves none). With an output folder, the commit
+    // writes the files of the tables, then those of the scripts that
+    // compiled (WriteStagedOutputFiles; a dry run checks them only). Then it
+    // puts back the .sco files of the scripts that the commit does not write
+    // (report.objectFiles). Call it once.
     CompileReport Finish();
 
     size_t Count() const { return _scripts.size(); }
@@ -218,16 +216,14 @@ private:
     bool _anyCompiled = false;
     bool _finished = false;
     // Writes into the game's package (not an output folder), also for a dry
-    // run: a dry run checks the patch files as a real run does (review of
-    // 5f545221).
+    // run: a dry run checks the patch files as a real run does.
     bool _toPackage = false;
     // With an output folder: the files of the scripts of this pass that
     // compiled. The commit writes the last pass. In a dry run: the
     // resources that a real run would write, for the patch-file check.
     std::vector<StagedOutputFile> _passFiles;
     // The scripts of this pass that compiled, by their compiled number,
-    // with the scripts whose .sco files each one read (review of
-    // 4247f34c).
+    // with the scripts whose .sco files each one read.
     std::map<uint16_t, std::set<uint16_t>> _passObjectFileUses;
     // The scripts whose .sco files the batch changed, in any pass, by their
     // compiled number, with their index in _scripts.
@@ -235,7 +231,7 @@ private:
     // The titles of the scripts by their compiled number, for the texts.
     std::map<uint16_t, std::string> _compiledTitles;
     // The .sco of each script (by its index) as it was before the batch,
-    // read before its first compile (review of 944de1df).
+    // read before its first compile.
     struct ObjectFileBefore
     {
         bool captured = false;

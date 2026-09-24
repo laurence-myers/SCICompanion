@@ -41,8 +41,8 @@ void RemoveCoreLogSink(ILogSink *sink);
 // Sends the text to the sink. Never throws.
 void CoreLog(LogLevel level, const std::string &text);
 
-// The same, with printf formatting, for the old LogInfo call sites. The text
-// has no length limit. Never throws.
+// The same, with printf formatting. The text has no length limit. Never
+// throws.
 void CoreLogFormat(LogLevel level, _Printf_format_string_ const char *format, ...);
 void CoreLogFormatV(LogLevel level, const char *format, va_list args);
 

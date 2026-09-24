@@ -98,7 +98,7 @@ sci::Status CompileTables::TryLoad(CResourceMap &resourceMap)
 		// The steps of Load, one at a time, so that a failure names its table.
 		// A missing vocab.000 is not an error here: GetVocab000 gives null,
 		// and only a Said string needs the vocabulary; its compile reports
-		// the missing resource (K6).
+		// the missing resource.
 		_pVocab = resourceMap.GetVocab000();
 		sci::ErrorLocation where;
 		if (!_kernels.Load(helper))
@@ -176,8 +176,8 @@ void CompileContext::_LoadSCO(const std::string &name, bool fErrorIfNotFound)
 		DWORD lastError = GetLastError();
 		char szError[200] = {};
 		FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, 0, lastError, 0, szError, ARRAYSIZE(szError), nullptr);
-		// FormatMessage ends the text with a line break (review of 0046b54a: a
-		// blank line came after the diagnostic).
+		// FormatMessage ends the text with a line break, which would put a
+		// blank line after the diagnostic.
 		size_t length = strlen(szError);
 		while ((length > 0) && ((szError[length - 1] == '\r') || (szError[length - 1] == '\n') || (szError[length - 1] == ' ')))
 		{
@@ -759,17 +759,16 @@ ProcedureType CompileContext::LookupProc(const string &str, WORD &wScript, WORD 
 		else if (startsWith(str, NonExistantExportPrefix))
 		{
 			// Important for the decompiler - calls to non-existant exports.
-			// The numbers follow the prefix. (Before K5, the parse looked for
-			// the '_' from the start of the whole name, so __proc911_0 gave
-			// script 0, export 11.)
+			// The numbers follow the prefix. The prefix has '_' characters of
+			// its own, so the parse starts after it.
 			uint16_t scriptNumber, exportNumber;
 			if (_ParseScriptAndExport(str.substr(NonExistantExportPrefix.length()), scriptNumber, exportNumber))
 			{
 				// A callb to a missing export of main decompiles to __proc0_M;
-				// it compiles back to callb (K5 review: calle 0 M is one byte
-				// longer, or two when the operands are words). An asm
-				// "calle __proc0_M, n" is now "Procedure type does not match
-				// call type."; the decompiler never writes it.
+				// it compiles back to callb (calle 0 M is one byte longer, or
+				// two when the operands are words). An asm "calle __proc0_M, n"
+				// gives "Procedure type does not match call type."; the
+				// decompiler never writes it.
 				type = (scriptNumber == 0) ? ProcedureMain : ProcedureExternal;
 				wIndex = exportNumber;
 				wScript = scriptNumber;
@@ -897,8 +896,8 @@ bool CompileContext::SupportTypeChecking()
 }
 bool CompileContext::LookupWord(const string &word, WORD &wWordGroup)
 {
-	// Plan step K6: a game with no vocabulary resource has no words.
-	// PreScanSaid reports the missing resource once.
+	// A game with no vocabulary resource has no words. PreScanSaid reports
+	// the missing resource once.
 	const Vocab000 *vocab = _tables.Vocab();
 	if (!vocab)
 	{
@@ -923,8 +922,7 @@ sci::Script *CompileContext::SetErrorContext(sci::Script *pScript)
 void CompileContext::ReportResult(const CompileResult &result)
 {
 	// An error that comes this way (an include that does not parse or load)
-	// fails the compile too, as an error of the script does (review of
-	// 0046b54a: before, the script was written, and scic exited with 0).
+	// fails the compile too, as an error of the script does.
 	if (result.IsError())
 	{
 		_fErrors = true;
@@ -961,7 +959,7 @@ void CompileContext::_ReportThing(bool fError, const ISourceCodePosition *pPos, 
 	// Add one to line number, since they are reported from a 0-base (parser), but displayed from a 1-base (script editor)
 	int line = pPos->GetLineNumber() + 1;
 	// The script's own id: GetPath() has the folder in lower case, and the
-	// command line prints the path (plan step C3).
+	// command line prints the path.
 	ScriptId scriptIdThing = _pErrorScript->GetScriptId();
 	StringCchPrintf(sz, ARRAYSIZE(sz), "%s: (%s) %s  Line: %d, col: %d", fError ? "Error" : "Warning", scriptIdThing.GetFileNameOrig().c_str(), szMessage, line, pPos->GetColumnNumber());
 	CompileResult result(sz, scriptIdThing, line, pPos->GetColumnNumber(), fError ? CompileResult::CRT_Error : CompileResult::CRT_Warning);
@@ -1103,8 +1101,7 @@ void CompileContext::PreScanSaid(const std::string &theSaid, const ISourceCodePo
 	}
 	else if (!_reportedNoVocabulary)
 	{
-		// Plan step K6: one error that names the resource, not an error for
-		// each word.
+		// One error that names the resource, not an error for each word.
 		_reportedNoVocabulary = true;
 		ReportError(pPos, "The game has no vocabulary resource (%s), so a Said string cannot be compiled.",
 			DescribeResource(ResourceType::Vocab, Helper().Version.MainVocabResource).c_str());
@@ -1368,7 +1365,7 @@ void PrecompiledHeaders::Update(CompileContext &context, Script &script)
 					{
 						std::stringstream ss;
 						// Name the include as the script wrote it: a file that was not
-						// found has no path (review of 0046b54a: "Unable to load \.").
+						// found has no path.
 						if (includePath.empty())
 						{
 							ss << "The include file " << *curHeaderIt << " is not in the include folder or in src.";

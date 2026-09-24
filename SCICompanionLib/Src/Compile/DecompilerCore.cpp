@@ -268,8 +268,7 @@ const BYTE *_ConvertToInstructions(DecompileLookups &lookups, std::list<scii> &c
 		else
 		{
 			// The first try (abortOnError) fails with no message: the caller
-			// tries again with a tighter bound (review of 11106215: the error
-			// came also when the second try worked).
+			// tries again with a tighter bound, and that try can work.
 			if (!abortOnError)
 			{
 				lookups.DecompileResults().AddResult(DecompilerResultType::Error, "Invalid branch target.");

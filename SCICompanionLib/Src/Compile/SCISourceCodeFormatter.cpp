@@ -178,8 +178,8 @@ using namespace std;
 // Actually, we can use it to convert paramTotal to argc.
 // Oh... in the SCI0 template game there is an object with a space in its name. Let's replace though with _
 // A # after the first character stays, as the parser takes it: KQ6 names
-// selector 879 "dungeon#", and "dungeon_" compiles to a new selector (plan
-// step K4). A name must not become a keyword that ends in #.
+// selector 879 "dungeon#", and "dungeon_" compiles to a new selector. A
+// name must not become a keyword that ends in #.
 std::string CleanTokenSCI(const std::string &src)
 {
 	if (src == "paramTotal")

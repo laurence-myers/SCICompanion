@@ -758,9 +758,8 @@ void ScriptId::_Init(PCTSTR pszFullFileName, WORD wScriptNum)
 		//_strFolder = fullPath.parent_path();
 		// Sigh Microsoft... std::tr2::sys doesn't work with UNC shares...
 		CString str = pszFullFileName;
-		// A path can use '\' or '/', as "src/rm110.sc" (plan step K6). The
-		// folder keeps only '\', so == gives one answer for both forms of a
-		// path (K6 review).
+		// A path can use '\' or '/', as "src/rm110.sc". The folder keeps
+		// only '\', so == gives one answer for both forms of a path.
 		str.Replace('/', '\\');
 		int iIndexBS = str.ReverseFind('\\');
 		_strFolder = str.Left(iIndexBS);

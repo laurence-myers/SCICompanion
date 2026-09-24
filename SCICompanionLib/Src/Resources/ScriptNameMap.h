@@ -11,7 +11,7 @@
 //   5. nNNN.
 // A GameSession installs a map in the game's GameFolderHelper when it opens
 // the game, and the helper then takes the script names from the map
-// (GetScriptTitle). The GUI installs none and reads game.ini as before.
+// (GetScriptTitle). The GUI installs none, and reads game.ini.
 
 #include "Result.h"
 #include <cstdint>
@@ -33,9 +33,8 @@ enum class NameSource
 // "game.ini", "source", "sco", "derived" or "default".
 const char *NameSourceText(NameSource source);
 
-// Two files that give one script its name, or one name for two scripts (S3
-// review: a conflict now names its scripts, so a command refuses only those
-// scripts).
+// Two files that give one script its name, or one name for two scripts. A
+// conflict names its scripts, so a command refuses only those scripts.
 struct NameConflict
 {
     std::vector<uint16_t> numbers;  // the scripts in the conflict
@@ -64,9 +63,8 @@ public:
     // Rule 4: gives each script in names that has no name yet its derived
     // name.
     void AddDerivedNames(const std::map<uint16_t, std::string> &names);
-    // A reset of the names (--reset-names, plan step S4): each script in
-    // names gets its derived name, also a script that has a name from rules
-    // 1 to 3.
+    // A reset of the names (--reset-names): each script in names gets its
+    // derived name, also a script that has a name from rules 1 to 3.
     void ReplaceNames(const std::map<uint16_t, std::string> &names);
 
     // Rule 5 when no rule gives a name: nNNN.
@@ -82,17 +80,16 @@ public:
     const std::vector<NameConflict> &Conflicts() const { return _conflicts; }
     // The conflicts that name the script.
     std::vector<const NameConflict *> ConflictsOf(uint16_t number) const;
-    // The script of a conflict with this file title or name, ignoring case
-    // (review of 7f41aa43: a conflict keeps its script out of the names, and a
-    // selector must still find it).
+    // The script of a conflict with this file title or name, ignoring case.
+    // A conflict keeps its script out of the names, and a selector must
+    // still find it.
     bool ConflictNumberOf(const std::string &name, uint16_t &number) const;
     // The title of each .sc and .sco file in src. A derived name takes none of
-    // them, so a decompile does not write over the file of another script
-    // (review of 7f41aa43).
+    // them, so a decompile does not write over the file of another script.
     const std::vector<std::string> &FileTitles() const { return _fileTitles; }
     // The files in src whose names have a character that the ANSI code page
-    // does not have (shown with '?'). The map skips them (review of
-    // 7f41aa43: before, one such file stopped the open of the game).
+    // does not have (shown with '?'). The map skips them, so such a file
+    // does not stop the open of the game.
     const std::vector<std::string> &SkippedFiles() const { return _skippedFiles; }
 
 private:
@@ -127,15 +124,15 @@ struct ScriptObjectsForNaming
 // gets the name of its first class (a class named "Game" wins), or else of
 // its first public instance; a script with neither gets no name. A character
 // that a name cannot have (a name has only letters, digits and '_': the
-// parser takes no '-' in (use ...), S3 review) becomes '_', a name that
-// starts with a digit gets a '_' before it, and a Windows device name (CON,
-// NUL, COM1...) gets a '_' after it. The
-// scripts go in number order. When an earlier script, or reservedNames, has
-// the name already (ignoring case), the script gets the name with "_N" after
-// it, where N is its number (and "_2", "_3"... after that in the rare case
-// that the suffixed name is taken too). A name in ownedNames is taken for
-// every script but its owner (S4 review: the title of a file in src that a
-// script has, so that a reset does not give another script that file).
+// parser takes no '-' in (use ...)) becomes '_', a name that starts with a
+// digit gets a '_' before it, and a Windows device name (CON, NUL, COM1...)
+// gets a '_' after it. The scripts go in number order. When an earlier
+// script, or reservedNames, has the name already (ignoring case), the script
+// gets the name with "_N" after it, where N is its number (and "_2", "_3"...
+// after that in the rare case that the suffixed name is taken too). A name
+// in ownedNames is taken for every script but its owner (for example, the
+// title of a file in src that a script has, so that a reset does not give
+// another script that file).
 std::map<uint16_t, std::string> SuggestScriptNames(std::vector<ScriptObjectsForNaming> scripts,
     const std::vector<std::string> &reservedNames = std::vector<std::string>(),
     const std::map<std::string, uint16_t> &ownedNames = std::map<std::string, uint16_t>());

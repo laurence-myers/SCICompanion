@@ -99,10 +99,10 @@ namespace UnitTests
             Assert::IsFalse(c < c);
         }
 
-        // Plan step K6: ScriptId split a path only at a '\', so "src/rm110.sc"
-        // gave the file name "src/rm110.sc" and no folder. A '/' also splits
-        // now, and the last separator of either kind wins. The folder keeps
-        // only '\' (K6 review), so both forms of a path are equal.
+        // ScriptId splits a path at a '\' and at a '/', and the last separator
+        // of either kind wins, so "src/rm110.sc" gives the file name
+        // "rm110.sc" and the folder "src". The folder keeps only '\', so both
+        // forms of a path are equal.
         TEST_METHOD(ScriptId_SplitsAPathAtEitherSlash)
         {
             ScriptId forward(std::string("src/rm110.sc"));
