@@ -1008,6 +1008,12 @@ namespace UnitTests
             AssertOk(report);
             const CompileResult *elseMessage = FindDiagnostic(report->scripts[0], DiagnosticKind::Any, "else clause must be the last");
             const CompileResult *undeclared = FindDiagnostic(report->scripts[0], DiagnosticKind::Error, "s2cUndeclared");
+            // One of each: a second one would hide behind the first.
+            for (const char *text : { "else clause must be the last", "s2cUndeclared" })
+            {
+                Assert::AreEqual(1, (int)std::count_if(report->scripts[0].diagnostics.begin(), report->scripts[0].diagnostics.end(),
+                    [&](const CompileResult &result) { return result.GetMessage().find(text) != std::string::npos; }), Wide(Describe(*report)).c_str());
+            }
             Assert::IsNotNull(elseMessage, Wide(Describe(*report)).c_str());
             Assert::AreEqual(8, elseMessage->GetLineNumber(), L"the else clause is on line 8 (1-based)");
             Assert::IsNotNull(undeclared, Wide(Describe(*report)).c_str());

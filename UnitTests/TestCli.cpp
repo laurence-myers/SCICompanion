@@ -879,11 +879,7 @@ namespace UnitTests
             WriteReadOnlyFile(objectFile, "not the new object file");
             cli::StringConsole dryRun;
             int dryRunCode = Run({ "script", "sco", _copyFolder, "rm001", "--dry-run" }, dryRun);
-            cli::StringConsole run;
-            int code = Run({ "script", "sco", _copyFolder, "rm001" }, run);
-            // Writable again, so that the clean-up can remove the copy.
-            SetFileAttributesA(objectFile.c_str(), FILE_ATTRIBUTE_NORMAL);
-            Assert::AreEqual(9, code, Wide(run.err).c_str());
+            cli::StringConsole run = Expect(9, { "script", "sco", _copyFolder, "rm001" });
             Assert::AreEqual(9, dryRunCode, Wide(dryRun.err).c_str());
         }
 
@@ -1364,10 +1360,7 @@ namespace UnitTests
             ReplaceFirst((fs::path(_copyFolder) / "src" / "rm001.sc").string(), "(public\r\n\trm001 0\r\n)\r\n", "(public\r\n\trm001 0\r\n)\r\n(local c3NewLocal)\r\n");
             std::string sco = (fs::path(_copyFolder) / "src" / "rm001.sco").string();
             Assert::IsTrue(SetFileAttributesA(sco.c_str(), FILE_ATTRIBUTE_READONLY) != 0, L"setup: a read-only .sco");
-            cli::StringConsole console;
-            int code = Run({ "script", "compile", _copyFolder, "rm001" }, console);
-            SetFileAttributesA(sco.c_str(), FILE_ATTRIBUTE_NORMAL);
-            Assert::AreEqual(9, code, Wide(console.err).c_str());
+            cli::StringConsole console = Expect(9, { "script", "compile", _copyFolder, "rm001" });
             Assert::AreEqual((size_t)1, CountOf(console.err, "Access is denied"), Wide(console.err).c_str());
         }
 
@@ -1396,6 +1389,7 @@ namespace UnitTests
             Assert::AreEqual(std::string("\\\\.\\C:\\"), cli::AbsolutePath("\\\\.\\C:\\"));
             Assert::AreEqual(std::string("\\\\?\\Volume{00000000-0000-0000-0000-000000000000}\\"), cli::AbsolutePath("\\\\?\\Volume{00000000-0000-0000-0000-000000000000}\\"));
             Assert::AreEqual(std::string("C:\\game"), cli::AbsolutePath("C:\\game\\\\"));
+            Assert::AreEqual(std::string("C:\\game{1}"), cli::AbsolutePath("C:\\game{1}\\"));
             Assert::AreEqual(std::string("\\\\?\\C:\\game"), cli::AbsolutePath("\\\\?\\C:\\game\\"));
         }
 

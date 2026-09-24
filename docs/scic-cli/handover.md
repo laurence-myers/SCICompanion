@@ -8,14 +8,25 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Next
 
-- One review (Sonnet) of the batch since `78da9f37`: the de-duplication
-  of the tests (`TestSupport.h`), and the fixes of the reviews of
-  `e3a4cf9a` and `e95c6e72`.
+- The fixes of the review of the de-duplication batch (the commit after
+  `54d92c25`) go into the next batch review.
+- Start a new session for the next milestone (AGENTS.md, "Work with AI
+  agents").
 - Then the other review findings below, then the optional E1 (plan
   section 9), or stop before it.
 - Push and pull requests only with your approval.
 
 ## Review findings that are not fixed
+
+### The de-duplication batch (`4a5cdfaa` to `54d92c25`): 3 nits
+
+- `AbsolutePath` removes the separator of a UNC root (`\\server\share\`,
+  `\\?\UNC\server\share\`); no test covers a UNC root.
+- The licence copy excludes `License.txt`, `COPYING` and `COPYING2` from
+  the mirror of `Files\Licenses`: a notice of that name there would not
+  be copied.
+- Six tests of TestDecompileRun leave a read-only file for `GameCopy` to
+  delete (`RemoveFolder` clears the attribute).
 
 ### `e95c6e72`, `e1b791e9` and `7dd20f62`: 5 nits, 1 question
 

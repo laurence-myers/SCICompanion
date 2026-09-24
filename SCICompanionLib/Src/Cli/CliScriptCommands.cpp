@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <atomic>
 #include <filesystem>
+#include <regex>
 #include <set>
 
 namespace cli
@@ -110,8 +111,8 @@ namespace cli
         // their own (else "game\\src").
         auto isRoot = [](const std::string &text)
         {
-            char before = text[text.size() - 2];
-            return (before == ':') || (before == '}') || std::filesystem::path(text).relative_path().empty();
+            static const std::regex root(R"(^(\\\\[?.]\\)?([A-Za-z]:|Volume\{[^\\]*\})[\\/]$)", std::regex::icase);
+            return std::regex_match(text, root) || std::filesystem::path(text).relative_path().empty();
         };
         while ((full.size() > 1) && ((full.back() == '\\') || (full.back() == '/')) && !isRoot(full))
         {

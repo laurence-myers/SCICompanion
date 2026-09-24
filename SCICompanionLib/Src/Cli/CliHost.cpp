@@ -29,14 +29,23 @@ namespace cli
         }
 
         std::atomic<bool> g_crashed(false);
+        thread_local bool t_inCrashLine = false;
 
         // One line, then exit code 1 (plan section 6.6). Only the first crash
-        // prints: a crash of another thread waits for it to end the process.
+        // prints: a crash of another thread waits for it to end the process
+        // (at most 10 s). A fault inside this function ends the process at
+        // once.
         void CrashLine(const char *what)
         {
+            if (t_inCrashLine)
+            {
+                TerminateProcess(GetCurrentProcess(), 1);
+            }
+            t_inCrashLine = true;
             if (g_crashed.exchange(true))
             {
-                Sleep(INFINITE);
+                Sleep(10000);
+                TerminateProcess(GetCurrentProcess(), 1);
             }
             char line[512];
             int length = t_currentItem[0] ?
