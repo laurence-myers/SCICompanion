@@ -18,6 +18,7 @@
 #include "DisassembleHelper.h"
 #include "DecompilerConfig.h"
 #include "Vocab99x.h"
+#include <set>
 using namespace sci;
 using namespace std;
 using namespace fmt;
@@ -119,11 +120,16 @@ public:
 			// to the declaration that starts at its index. The decompiled script
 			// can declare arrays in another way than the source that made the
 			// .sco, so a name at an index where no declaration starts is not used.
+			// Nor is a name that a declaration has already, or that an earlier
+			// index took: a .sco can name two indices alike (an older decompile
+			// wrote local9 at indices 6 and 9 of the SCI0 template's SysWindow).
 			map<int, VariableDecl*> declarationAt;
+			set<string> usedNames;
 			int start = 0;
 			for (auto &varDecl : script.GetScriptVariables())
 			{
 				declarationAt[start] = varDecl.get();
+				usedNames.insert(varDecl->GetName());
 				start += varDecl->GetSize();
 			}
 			const vector<CSCOLocalVariable> &localVars = scriptSCO->GetVariables();
@@ -134,7 +140,7 @@ public:
 				if (!scoName.empty() && (declaration != declarationAt.end()))
 				{
 					string stdDecompiledName = declaration->second->GetName();
-					if (scoName != stdDecompiledName)
+					if ((scoName != stdDecompiledName) && usedNames.insert(scoName).second)
 					{
 						// It must have been given a name, so use it.
 						SetRenamed(nullptr, stdDecompiledName, scoName, false);

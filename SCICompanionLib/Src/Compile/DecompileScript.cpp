@@ -365,15 +365,20 @@ void ResolvePublicProcedureCalls(DecompileLookups &lookups, const GameFolderHelp
 	unordered_map<int, unique_ptr<CSCOFile>> scoMap;
 	scoMap[script.GetScriptNumber()] = move(GetExistingSCOFromScriptNumber(helper, script.GetScriptNumber(), lookups.GetSelectorTable()));
 
-	// First the exports. An exported procedure that still has the generated
-	// name of its own slot (procN_i) gets the name of that slot in the .sco.
-	// The slot comes from the export table, not from the name: a name from a
-	// .sco can have the form of a generated name for another slot (the SCI0
-	// template's Obj.sco names slot 1 "proc999_2"). The export entry gets the
-	// same name, so that the public block agrees with the procedure.
+	// First the exports. The decompile names each export from the lookups,
+	// which take a .sco only when it loads in full. A .sco that loads only in
+	// part leaves the generated names (procN_i); then an exported procedure
+	// with the generated name of its own slot gets the name of that slot in
+	// this .sco. The slot comes from the export table, not from the name: a
+	// name from a .sco can have the form of a generated name for another slot
+	// (the SCI0 template's Obj.sco names slot 1 "proc999_2"). So the
+	// procedure of each slot is found first, and the renames come after. The
+	// export entry gets the same name, so that the public block agrees with
+	// the procedure.
 	CSCOFile *thisSCO = scoMap.at(script.GetScriptNumber()).get();
 	if (thisSCO)
 	{
+		vector<pair<ProcedureDefinition *, string>> renames;
 		for (auto &exportEntry : script.GetExports())
 		{
 			string generatedName = _GetPublicProcedureName(script.GetScriptNumber(), (uint16_t)exportEntry->Slot);
@@ -392,10 +397,14 @@ void ResolvePublicProcedureCalls(DecompileLookups &lookups, const GameFolderHelp
 			{
 				if (proc->IsPublic() && (proc->GetName() == generatedName))
 				{
-					proc->SetName(newProcName);
+					renames.emplace_back(proc.get(), newProcName);
 				}
 			}
 			exportEntry->Name = newProcName;
+		}
+		for (const auto &rename : renames)
+		{
+			rename.first->SetName(rename.second);
 		}
 	}
 

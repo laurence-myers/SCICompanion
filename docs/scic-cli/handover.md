@@ -8,8 +8,8 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Next
 
-- Fix the findings of the reviews of `85ac9717`, of the vcpkg change, of
-  `338ee1a7` and of `103b8b23` (below).
+- Fix the findings of the reviews of the vcpkg change, of `338ee1a7` and
+  of `103b8b23` (below).
 - Your request (2026-09-24): de-duplicate the test helpers and the
   asserts, with one shared test-support file.
 - Then the other review findings below, then the optional E1 (plan
@@ -17,23 +17,6 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 - Push and pull requests only with your approval.
 
 ## Review findings that are not fixed
-
-### `85ac9717` (the SCI0 round trip): 2 should-fix, 2 nits, 1 question
-
-- Should-fix: `ResolvePublicProcedureCalls` renames the procedures while
-  it goes through the export entries, so a new name that has the form of a
-  later slot's generated name is renamed again. This happens when a `.sco`
-  loads in part (a cut `obj.sco`: three `EqualsAny`, 6 compile errors).
-  Fix: find the procedure of each entry first, then rename.
-- Should-fix: `RenameContext` gives a declaration a `.sco` local name that
-  another declaration already has. An old `SysWindow.sco` (from the rule
-  before `85ac9717`) names indices 6 and 9 `local9`: "There is already a
-  local variable called 'local9'".
-- Nits: no test covers the export block; its comment does not say that it
-  acts only for a `.sco` that loads in part.
-- Question: an `obj.sco` with no slot 1 names the procedure `proc999_1`,
-  but its calls stay `localproc_0022`; one with no slot 2 gives two
-  procedures `proc999_2` (older). Known gaps?
 
 ### The vcpkg change (F1, C1 and `76b7aa3d`): 3 should-fix, 8 nits, 1 question
 
@@ -217,6 +200,10 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   read; the name then comes from the `.sco`, or is `nNNN`.
 - A script that uses a script in a name conflict compiles with the `.sco`
   that the two names share, with no warning.
+- An old `.sco` that lacks an export: with no slot 1 in the `Obj.sco` of
+  the SCI0 template, the procedure is `proc999_1` but its calls stay
+  `localproc_0022` ("Unknown procedure"); with no slot 2, two procedures
+  get the name `proc999_2` (older than the branch).
 - A script name in `game.ini` with `\` or `/` is not supported.
   `ScriptId("rm110.sc").GetFullPath()` gives `\rm110.sc`.
 - The class-table changes of a script that fails stay in the tables of the

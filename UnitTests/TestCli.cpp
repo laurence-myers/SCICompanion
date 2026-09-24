@@ -1405,6 +1405,66 @@ namespace UnitTests
             Assert::IsTrue(std::find(lines.begin(), lines.end(), std::string("\tlocalA")) != lines.end(), WideForCli(console.out).c_str());
         }
 
+        // A .sco that loads only in part (Obj.sco cut after its exports)
+        // still names each exported procedure by its slot, once: the name of
+        // one slot does not rename the procedure of another. The decompiled
+        // script compiles.
+        TEST_METHOD(Decompile_Sci0Obj_ACutObjectFile_NamesEachExportOnce)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            std::string objectFile = (fs::path(_copyFolder) / "src" / "Obj.sco").string();
+            std::string bytes = ReadFileText(objectFile);
+            Assert::IsTrue(bytes.size() > 90, L"setup: Obj.sco");
+            WriteFileText(objectFile, bytes.substr(0, 90));
+            cli::StringConsole source;
+            int code = Run({ "script", "decompile", _copyFolder, "999", "--stdout" }, source);
+            Assert::AreEqual(0, code, WideForCli(source.err).c_str());
+            Assert::AreEqual((size_t)1, CountOf(source.out, "(procedure (EqualsAny"), WideForCli(source.out).c_str());
+            Assert::IsTrue(source.out.find("\tproc999_2 1") != std::string::npos, WideForCli(source.out).c_str());
+            Assert::IsTrue(source.out.find("(procedure (proc999_2 param1") != std::string::npos, WideForCli(source.out).c_str());
+            Assert::IsTrue(source.out.find("(procedure (proc999_3 param1") != std::string::npos, WideForCli(source.out).c_str());
+            cli::StringConsole decompile;
+            code = Run({ "script", "decompile", _copyFolder, "999" }, decompile);
+            Assert::AreEqual(0, code, WideForCli(decompile.err).c_str());
+            cli::StringConsole compile;
+            code = Run({ "script", "compile", _copyFolder, "999", "--dry-run" }, compile);
+            Assert::AreEqual(0, code, WideForCli(compile.err).c_str());
+        }
+
+        // A .sco can name two locals alike: an older decompile wrote local9
+        // at indices 6 and 9 of SysWindow.sco. The name goes to one local
+        // only, and the decompiled script compiles.
+        TEST_METHOD(Decompile_Sci0SysWindow_TwoLikeNamesInTheObjectFile)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            {
+                SessionOptions sessionOptions;
+                sessionOptions.dataFolder = GetTestModuleDirectory();
+                GameSession session(sessionOptions);
+                Assert::IsTrue(session.Open(_copyFolder).has_value(), L"setup: the copy must open");
+                GlobalCompiledScriptLookups lookups;
+                Assert::IsTrue(lookups.TryLoad(session.Helper()).has_value());
+                std::unique_ptr<CSCOFile> sysWindow = GetExistingSCOFromScriptNumber(session.Helper(), 990, lookups.GetSelectorTable());
+                Assert::IsNotNull(sysWindow.get(), L"setup: SysWindow.sco");
+                Assert::IsTrue((sysWindow->GetVariables().size() > 9) && (sysWindow->GetVariables()[9].GetName() == "local9"), L"setup: SysWindow.sco names index 9 local9");
+                sysWindow->GetVariables()[6].SetName("local9");
+                Assert::IsTrue(SaveSCOFile(session.Helper(), *sysWindow).has_value());
+            }
+            cli::StringConsole source;
+            int code = Run({ "script", "decompile", _copyFolder, "990", "--stdout" }, source);
+            Assert::AreEqual(0, code, WideForCli(source.err).c_str());
+            std::vector<std::string> lines = Lines(source.out);
+            Assert::AreEqual((size_t)1, (size_t)std::count(lines.begin(), lines.end(), std::string("\tlocal9")), WideForCli(source.out).c_str());
+            cli::StringConsole decompile;
+            code = Run({ "script", "decompile", _copyFolder, "990" }, decompile);
+            Assert::AreEqual(0, code, WideForCli(decompile.err).c_str());
+            cli::StringConsole compile;
+            code = Run({ "script", "compile", _copyFolder, "990", "--dry-run" }, compile);
+            Assert::AreEqual(0, code, WideForCli(compile.err).c_str());
+        }
+
         // Plan section 4.5: --out-dir and --raw write the plain data into the
         // folder, and the game does not change.
         TEST_METHOD(Compile_OutDirRaw)
