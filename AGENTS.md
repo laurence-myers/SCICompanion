@@ -27,6 +27,15 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
 - **Debug | Win32 does not build locally** (a vendored dependency has no
   Debug|Win32 configuration, among other issues). Use Release for local builds
   and CI.
+- **vcpkg gives the libraries tl::expected and CLI11** (manifest mode:
+  `vcpkg.json` in the repository root, with pinned versions; the MSBuild
+  integration is in `Directory.Build.props` and `Directory.Build.targets`).
+  The build uses the vcpkg of `VCPKG_ROOT`, else `VCPKG_INSTALLATION_ROOT`
+  (the GitHub runners), else the copy that Visual Studio installs with its
+  C++ core features. The first build downloads the packages and the tools
+  of vcpkg, into `vcpkg_installed\` (git ignores it) and
+  `%LOCALAPPDATA%\vcpkg`. Do not copy a new library into the repository: add
+  it to `vcpkg.json`.
 - The build puts `SCICompanion.exe`, `scic.exe` and `UnitTests.dll` in
   `Release\`. The app's post-build copies the data that they need next to
   them (for example `include\`, `Decompiler\`, `Objects\` and

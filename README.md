@@ -15,8 +15,11 @@ SCI Companion builds with **Visual Studio 2022** and the **v143** platform
 toolset. You need:
 
 * Visual Studio 2022 with the **Desktop development with C++** workload,
-* the **MFC** component (the app and library are MFC), and
-* the **Windows 10 SDK** (10.0.26100 or later).
+* the **MFC** component (the app and library are MFC),
+* the **Windows 10 SDK** (10.0.26100 or later), and
+* **vcpkg**: the vcpkg component of Visual Studio, or a vcpkg folder in the
+  `VCPKG_ROOT` environment variable. The first build downloads the
+  libraries of `vcpkg.json` (tl::expected and CLI11).
 
 Open `SCICompanion.sln` and build the **Release / Win32** configuration, or
 build from a command prompt:

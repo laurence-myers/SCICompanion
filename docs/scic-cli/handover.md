@@ -25,6 +25,17 @@ Update this file in the same commit as each step.
   no commit adds a copyright header, and every commit uses the term
   "exception boundary". Every SHA on the branch changed; the SHAs in this
   file and in the commit messages were changed to match.
+- 2026-09-24: at your request, vcpkg replaced the copies of tl::expected
+  and CLI11, and the branch history was rewritten (`git filter-branch`):
+  F1 and C1 add `vcpkg.json` and the MSBuild integration in place of the
+  headers, so no commit of the branch has them. Every SHA on the branch
+  changed; the SHAs in this file, in the plan and in the commit messages
+  were mapped to the new ones (code comments with old SHAs go in the
+  comment cleanup). The old history is in the local branch
+  `backup/scic-cli-before-vcpkg` until you delete it. The first vcpkg
+  build downloaded the registry, CMake 4.4.0, 7-Zip, PowerShell 7.6.3,
+  two msys2 packages (pkgconf and its runtime) and the two sources. The
+  CI jobs fetch the runner's vcpkg registry before the build.
 - Baseline on `0dc1fef5`: the Release build passes; the unit suite passes
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
@@ -110,9 +121,14 @@ for each step, and a follow-up commit if the review finds a problem.
   conversion in AGENTS.md.
 - Every project reads `Directory.Build.props`. `/we4834` (a discarded
   `Result` is an error) applies to our projects, not to Prof-UIS.
-- `tl-expected\tl\expected.hpp` is vendored unchanged (LF endings, SHA-256
-  in `tl-expected\README.md`). Settings such as `TL_ASSERT` go in
-  `Src\Core\Result.h`.
+- tl::expected (1.3.1) and CLI11 (2.0.0) come from vcpkg: `vcpkg.json`
+  pins the versions and the registry baseline, and `Directory.Build.props`
+  and `Directory.Build.targets` hold the MSBuild integration (only
+  SCICompanionLib runs `vcpkg install`). Settings such as `TL_ASSERT` go
+  in `Src\Core\Result.h`. A new library goes into `vcpkg.json`, not into
+  the repository (your rule, 2026-09-24). A worktree inside the main
+  checkout (`.claude\worktrees\`) reads the main checkout's
+  `Directory.Build.targets` when its own commit has none.
 
 ## Decisions and deviations from the plan
 
@@ -121,8 +137,9 @@ for each step, and a follow-up commit if the review finds a problem.
   away. A copy of CLI11 2.0.0 (2021, BSD-3-Clause, single header) was on
   this machine (`E:\Code\Cpp\asperite\third_party\IXWebSocket\third_party\
   cli11\CLI11.hpp`; its only change from upstream is an include guard, as
-  its header says). C1 vendors that copy. A newer CLI11 (2.4 or later) is
-  a later swap of one header, when you allow the download.
+  its header says). C1 vendored that copy at first. Since the vcpkg
+  change (see "State"), CLI11 2.0.0 comes from vcpkg; a newer version is
+  a change of `vcpkg.json`.
 - Revision 4 of the plan (2026-09-23) added phase K and the `scicompile`
   features (plan section 14), at your request.
 - 2026-09-23, your change of plan: the CLI must work on a game that SCI
