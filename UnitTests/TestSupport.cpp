@@ -2,6 +2,10 @@
 #include "TestSupport.h"
 #include "AppState.h"
 #include "Helper.h"
+#include "CompileBatch.h"
+#include "CompiledScript.h"
+#include "SCO.h"
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -9,6 +13,17 @@
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 namespace fs = std::filesystem;
+
+namespace
+{
+    // A compile with no abort and no events, for the setup of a fixture.
+    sci::Result<CompileReport> Compile(GameSession &session, const std::vector<ScriptId> &scripts, const CompileOptions &options = CompileOptions())
+    {
+        std::atomic<bool> abort(false);
+        ICompileEvents events;
+        return CompileScripts(session, scripts, options, abort, events);
+    }
+}
 
 const char *const TemplateSci0 = "\\TemplateGame\\SCI0";
 const char *const TemplateSci11 = "\\TemplateGame\\SCI1.1";
@@ -55,10 +70,10 @@ GameSession &GameCopy::Open(const SessionOptions &options)
     return *_sessions.back();
 }
 
-GameSession &GameCopy::OpenCopy(const char *templateFolder, bool bare)
+GameSession &GameCopy::OpenCopy(const char *templateFolder, bool bare, const SessionOptions &options)
 {
     Make(templateFolder, bare);
-    return Open();
+    return Open(options);
 }
 
 void GameCopy::CloseSessions()
@@ -168,4 +183,65 @@ std::string Upper(std::string text)
         ch = (char)toupper((unsigned char)ch);
     }
     return text;
+}
+
+std::string JoinLines(const std::vector<std::string> &lines)
+{
+    std::string text;
+    for (const std::string &line : lines)
+    {
+        text += line + "\n";
+    }
+    return text;
+}
+
+void WriteReadOnlyFile(const std::string &path, const std::string &text)
+{
+    WriteFileText(path, text);
+    Assert::IsTrue(SetFileAttributesA(path.c_str(), FILE_ATTRIBUTE_READONLY) != 0, Wide("setup: " + path + " is read-only").c_str());
+}
+
+ScriptId ScriptAt(const std::string &path, uint16_t number)
+{
+    ScriptId script(path.c_str());
+    script.SetResourceNumber(number);
+    return script;
+}
+
+void WriteUnreadableScript(GameCopy &game, uint16_t number)
+{
+    WriteFileBytes(game.Path("script." + std::to_string(number)), { 0x80 | (uint8_t)ResourceType::Script, 0, 5, 0, 1 });
+}
+
+void NameMainGlobals(GameCopy &game, const std::vector<size_t> &slots)
+{
+    GameSession &session = game.Open();
+    GlobalCompiledScriptLookups lookups;
+    AssertOk(lookups.TryLoad(session.Helper()));
+    std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(session.Helper(), 0, lookups.GetSelectorTable());
+    Assert::IsNotNull(mainSCO.get(), L"setup: Main.sco");
+    for (size_t slot : slots)
+    {
+        mainSCO->GetVariables()[slot].SetName("global" + std::to_string(slot));
+    }
+    AssertOk(SaveSCOFile(session.Helper(), *mainSCO));
+    game.CloseSessions();
+}
+
+void PrepareStaleFixtures(GameCopy &game)
+{
+    game.Make(TemplateSci11);
+    NameMainGlobals(game, { 5 });
+    for (const auto &fixture : std::vector<std::pair<std::string, std::string>>{ { "BatchGlobalsA", "950" }, { "BatchGlobalsB", "951" } })
+    {
+        std::string text = ReadFileText(GetTestFileDirectory("Decompile\\SCI1.1") + "\\" + fixture.first + ".sc");
+        std::string declared = "(script# " + fixture.second + ")";
+        size_t at = text.find(declared);
+        Assert::IsTrue(at != std::string::npos, L"setup: the fixture declares its number");
+        text.replace(at, declared.size(), (fixture.second == "950") ? "(script# 959)" : "(script# 960)");
+        WriteFileText(game.Src(fixture.first + ".sc"), text);
+    }
+    auto compiled = Compile(game.Open(), { ScriptAt(game.Src("BatchGlobalsA.sc"), 959), ScriptAt(game.Src("BatchGlobalsB.sc"), 960) });
+    Assert::IsTrue(compiled.has_value() && compiled->Succeeded(), L"setup: the fixtures must compile");
+    game.CloseSessions();
 }

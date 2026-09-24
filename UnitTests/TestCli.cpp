@@ -196,45 +196,11 @@ namespace UnitTests
             return std::any_of(files.begin(), files.end(), [name](const std::string &file) { return _stricmp(fs::path(file).filename().string().c_str(), name) == 0; });
         }
 
-        // The SCI1.1 template with the two scripts of TestDecompileBatch as
-        // scripts 959 and 960 (as TestDecompileRun does): 959 uses global5,
-        // and a decompile of 960 names it. Slot 5 of Main.sco gets its
-        // standard name first.
+        // The stale fixtures, and _copyFolder for the args of a command.
         void PrepareStaleFixtures()
         {
-            CopyTemplate("\\TemplateGame\\SCI1.1");
-            SessionOptions sessionOptions;
-            sessionOptions.dataFolder = GetTestModuleDirectory();
-            {
-                GameSession session(sessionOptions);
-                Assert::IsTrue(session.Open(_copyFolder).has_value(), L"setup: the copy must open");
-                GlobalCompiledScriptLookups lookups;
-                Assert::IsTrue(lookups.TryLoad(session.Helper()).has_value());
-                std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(session.Helper(), 0, lookups.GetSelectorTable());
-                Assert::IsNotNull(mainSCO.get(), L"setup: Main.sco");
-                mainSCO->GetVariables()[5].SetName("global5");
-                Assert::IsTrue(SaveSCOFile(session.Helper(), *mainSCO).has_value());
-            }
-            for (const auto &fixture : std::vector<std::pair<std::string, std::string>>{ { "BatchGlobalsA", "959" }, { "BatchGlobalsB", "960" } })
-            {
-                std::string text = ReadFileText(GetTestFileDirectory("Decompile\\SCI1.1") + "\\" + fixture.first + ".sc");
-                std::string declared = (fixture.first == "BatchGlobalsA") ? "(script# 950)" : "(script# 951)";
-                size_t at = text.find(declared);
-                Assert::IsTrue(at != std::string::npos, L"setup: the fixture declares its number");
-                text.replace(at, declared.size(), "(script# " + fixture.second + ")");
-                std::ofstream file((fs::path(_copyFolder) / "src" / (fixture.first + ".sc")).string(), std::ios::binary | std::ios::trunc);
-                file << text;
-            }
-            GameSession session(sessionOptions);
-            Assert::IsTrue(session.Open(_copyFolder).has_value(), L"setup: the copy must open");
-            ScriptId a((fs::path(_copyFolder) / "src" / "BatchGlobalsA.sc").string().c_str());
-            a.SetResourceNumber(959);
-            ScriptId b((fs::path(_copyFolder) / "src" / "BatchGlobalsB.sc").string().c_str());
-            b.SetResourceNumber(960);
-            std::atomic<bool> abort(false);
-            ICompileEvents events;
-            auto compiled = CompileScripts(session, { a, b }, CompileOptions(), abort, events);
-            Assert::IsTrue(compiled.has_value() && compiled->Succeeded(), L"setup: the fixtures must compile");
+            ::PrepareStaleFixtures(_game);
+            _copyFolder = _game.Folder();
         }
 
     public:
@@ -545,12 +511,8 @@ namespace UnitTests
         TEST_METHOD(List_UnreadableScript_ExitsWith6)
         {
             CopyTemplate("\\TemplateGame\\SCI0");
-            {
-                // Script 905 has no name, so list reads it to derive one.
-                std::ofstream patch((fs::path(_copyFolder) / "script.905").string(), std::ios::binary);
-                const char bytes[] = { (char)(0x80 | 2), 0, 5, 0, 1 };
-                patch.write(bytes, sizeof(bytes));
-            }
+            // Script 905 has no name, so list reads it to derive one.
+            WriteUnreadableScript(_game, 905);
             cli::StringConsole console;
             int code = Run({ "script", "list", _copyFolder }, console);
             Assert::AreEqual(6, code, Wide(console.out + console.err).c_str());
@@ -699,11 +661,7 @@ namespace UnitTests
         TEST_METHOD(Decompile_OneScriptFails_ExitsWith6)
         {
             CopyTemplate("\\TemplateGame\\SCI0");
-            {
-                std::ofstream patch((fs::path(_copyFolder) / "script.905").string(), std::ios::binary);
-                const char bytes[] = { (char)(0x80 | 2), 0, 5, 0, 1 };
-                patch.write(bytes, sizeof(bytes));
-            }
+            WriteUnreadableScript(_game, 905);
             cli::StringConsole console = Expect(6, { "script", "decompile", _copyFolder, "905", "974" });
             Assert::IsTrue(console.err.find("Failed: 905") != std::string::npos, Wide(console.err).c_str());
             Assert::IsTrue(console.err.find("Decompiled and wrote 1 of 2 scripts.") != std::string::npos, Wide(console.err).c_str());
@@ -917,11 +875,7 @@ namespace UnitTests
             Assert::IsTrue(same.err.find("Would write 0 .sco files (1 would not change)") != std::string::npos, Wide(same.err).c_str());
 
             std::string objectFile = (fs::path(_copyFolder) / "src" / "rm001.sco").string();
-            {
-                std::ofstream file(objectFile, std::ios::binary | std::ios::trunc);
-                file << "not the new object file";
-            }
-            Assert::IsTrue(SetFileAttributesA(objectFile.c_str(), FILE_ATTRIBUTE_READONLY) != 0);
+            WriteReadOnlyFile(objectFile, "not the new object file");
             cli::StringConsole dryRun;
             int dryRunCode = Run({ "script", "sco", _copyFolder, "rm001", "--dry-run" }, dryRun);
             cli::StringConsole run;

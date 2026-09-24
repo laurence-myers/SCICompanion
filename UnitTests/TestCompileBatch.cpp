@@ -132,13 +132,6 @@ namespace
         return Compile(session, std::move(scripts), options, events);
     }
 
-    // Writes the file, and makes it read-only.
-    void WriteReadOnlyFile(const std::string &path, const std::string &text)
-    {
-        WriteFileText(path, text);
-        Assert::IsTrue(SetFileAttributesA(path.c_str(), FILE_ATTRIBUTE_READONLY) != 0, Wide("setup: " + path + " is read-only").c_str());
-    }
-
     // The bytes of a small patch file of a script, and of a text.
     const std::vector<uint8_t> ScriptPatch = { 0x80 | (uint8_t)ResourceType::Script, 0, 1, 2 };
     const std::vector<uint8_t> TextPatch = { 0x80 | (uint8_t)ResourceType::Text, 0, 'x', 0 };

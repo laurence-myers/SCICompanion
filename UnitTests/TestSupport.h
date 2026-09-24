@@ -13,6 +13,7 @@
 #include <vector>
 
 class AppState;
+class ScriptId;
 
 // The template games, under the test module folder.
 extern const char *const TemplateSci0;
@@ -53,8 +54,8 @@ public:
     // A new session on the copy; an assert fails when it does not open. The
     // other sessions stay open.
     GameSession &Open(const SessionOptions &options = TestSessionOptions());
-    // Make, then Open.
-    GameSession &OpenCopy(const char *templateFolder, bool bare = false);
+    // Make, then Open with these options.
+    GameSession &OpenCopy(const char *templateFolder, bool bare = false, const SessionOptions &options = TestSessionOptions());
     // Closes the sessions, for a test that then changes the files.
     void CloseSessions();
     void Remove();
@@ -90,6 +91,26 @@ void ReplaceFirst(const std::string &path, const std::string &from, const std::s
 size_t CountOf(const std::string &text, const std::string &what);
 // The text in upper case (ASCII).
 std::string Upper(std::string text);
+// The texts, one on a line.
+std::string JoinLines(const std::vector<std::string> &lines);
+
+// Writes the file, and makes it read-only.
+void WriteReadOnlyFile(const std::string &path, const std::string &text);
+
+// The script of a source file, with its number.
+ScriptId ScriptAt(const std::string &path, uint16_t number);
+
+// Writes a patch file that makes the script fail to load.
+void WriteUnreadableScript(GameCopy &game, uint16_t number);
+
+// Gives these slots of the game's Main.sco their standard names (globalN),
+// in a session that closes after the save.
+void NameMainGlobals(GameCopy &game, const std::vector<size_t> &slots);
+
+// The SCI1.1 template with two scripts as 959 and 960 (the template has
+// 950 and 951): 959 uses global5 (unnamed), and 960 names it. Slot 5 of
+// Main.sco is renamed to its standard name first.
+void PrepareStaleFixtures(GameCopy &game);
 
 // Asserts that the result has a value; the message is the error of the
 // result, after the text of "what".

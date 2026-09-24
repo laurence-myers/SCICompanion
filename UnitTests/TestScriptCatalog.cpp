@@ -41,17 +41,6 @@ namespace
         }
         return nullptr;
     }
-
-    // The texts, one on a line.
-    std::string JoinLines(const std::vector<std::string> &texts)
-    {
-        std::string joined;
-        for (const std::string &text : texts)
-        {
-            joined += text + "\n";
-        }
-        return joined;
-    }
 }
 
 namespace UnitTests

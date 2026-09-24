@@ -22,6 +22,7 @@
 #include "CompiledScript.h"
 #include "WordEnumString.h"
 #include "format.h"
+#include "TestSupport.h"
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -67,17 +68,6 @@ namespace UnitTests
             file << source;
         }
         return CompileFixture(number, name, &outError, outWarnings, outErrors);
-    }
-
-    // The messages, one on each line, for an assert text.
-    static std::string JoinLines(const std::vector<std::string> &lines)
-    {
-        std::string text;
-        for (const std::string &line : lines)
-        {
-            text += line + "\n";
-        }
-        return text;
     }
 
     // Script 902 with the public procedure kTest: its parameters and its

@@ -72,14 +72,6 @@ namespace UnitTests
     {
         GameCopy _game;
 
-        // A new copy of the template, and a session on it with the default
-        // options.
-        GameSession &OpenCopy(const char *templateFolder)
-        {
-            _game.Make(templateFolder);
-            return _game.Open(SessionOptions());
-        }
-
         // In a copy of the SCI1.1 template, sets count bytes of the package
         // header of the resource to 0, from byte first of the header (9
         // bytes: the type with 0x80, the number, the compressed and the full
@@ -90,7 +82,7 @@ namespace UnitTests
             NoAppState noAppState;
             uint32_t size = 0;
             {
-                GameSession &session = OpenCopy(TemplateSci11);
+                GameSession &session = _game.OpenCopy(TemplateSci11, false, SessionOptions());
                 std::unique_ptr<ResourceBlob> blob = session.Helper().MostRecentResource(type, number, ResourceEnumFlags::None);
                 Assert::IsTrue(blob != nullptr, L"setup: the SCI1.1 template has the resource");
                 Assert::IsTrue(blob->GetSourceFlags() == ResourceSourceFlags::ResourceMap, L"setup: the resource is in the package");
@@ -197,7 +189,7 @@ namespace UnitTests
             NoAppState noAppState;
             for (const char *name : { TemplateSci0, TemplateSci11 })
             {
-                GameSession &session = OpenCopy(name);
+                GameSession &session = _game.OpenCopy(name, false, SessionOptions());
                 const GameFolderHelper &helper = session.Helper();
 
                 CompiledScript intact(0);
@@ -225,7 +217,7 @@ namespace UnitTests
         TEST_METHOD(CompiledScriptTryLoad_MissingScript_IsNotFound)
         {
             NoAppState noAppState;
-            GameSession &session = OpenCopy(TemplateSci0);
+            GameSession &session = _game.OpenCopy(TemplateSci0, false, SessionOptions());
 
             CompiledScript missing(950);
             sci::Status loaded = missing.TryLoad(session.Helper(), session.Version(), 950);
@@ -240,7 +232,7 @@ namespace UnitTests
             NoAppState noAppState;
             for (const char *name : { TemplateSci0, TemplateSci11 })
             {
-                GameSession &session = OpenCopy(name);
+                GameSession &session = _game.OpenCopy(name, false, SessionOptions());
                 GlobalCompiledScriptLookups lookups;
                 AssertOk(lookups.TryLoad(session.Helper()));
                 CompileTables tables;
@@ -252,7 +244,7 @@ namespace UnitTests
         TEST_METHOD(CheckVocabTables_NoClassTable_IsNotFound)
         {
             NoAppState noAppState;
-            GameSession &session = OpenCopy(TemplateSci0);
+            GameSession &session = _game.OpenCopy(TemplateSci0, false, SessionOptions());
             std::unique_ptr<ResourceBlob> classTable = session.Helper().MostRecentResource(ResourceType::Vocab, 996, ResourceEnumFlags::None);
             Assert::IsTrue(classTable != nullptr, L"the template has a class table");
             session.ResourceMap().DeleteResource(classTable.get());
@@ -268,7 +260,7 @@ namespace UnitTests
         TEST_METHOD(CheckVocabTables_NoSelectorTable_IsNotFound)
         {
             NoAppState noAppState;
-            GameSession &session = OpenCopy(TemplateSci0);
+            GameSession &session = _game.OpenCopy(TemplateSci0, false, SessionOptions());
             std::unique_ptr<ResourceBlob> selectorTable = session.Helper().MostRecentResource(ResourceType::Vocab, 997, ResourceEnumFlags::None);
             Assert::IsTrue(selectorTable != nullptr, L"the template has a selector table");
             session.ResourceMap().DeleteResource(selectorTable.get());
@@ -286,7 +278,7 @@ namespace UnitTests
         TEST_METHOD(TablesTryLoad_SelectorTableNotValid_NamesTheTable)
         {
             NoAppState noAppState;
-            GameSession &session = OpenCopy(TemplateSci0);
+            GameSession &session = _game.OpenCopy(TemplateSci0, false, SessionOptions());
             const GameFolderHelper &helper = session.Helper();
             // A selector table that says it has 256 selectors, and has none.
             std::vector<uint8_t> data = { 0xff, 0x00 };
@@ -315,7 +307,7 @@ namespace UnitTests
             NoAppState noAppState;
             for (const char *name : { TemplateSci0, TemplateSci11 })
             {
-                const GameFolderHelper &helper = OpenCopy(name).Helper();
+                const GameFolderHelper &helper = _game.OpenCopy(name, false, SessionOptions()).Helper();
                 std::string disagreements;
                 int scripts = 0;
                 auto container = helper.Resources(ResourceTypeFlags::Script, ResourceEnumFlags::MostRecentOnly);
@@ -342,7 +334,7 @@ namespace UnitTests
         TEST_METHOD(CompiledScriptTryLoad_DamagedHeap_NamesTheHeap)
         {
             NoAppState noAppState;
-            const GameFolderHelper &helper = OpenCopy(TemplateSci11).Helper();
+            const GameFolderHelper &helper = _game.OpenCopy(TemplateSci11, false, SessionOptions()).Helper();
             std::unique_ptr<ResourceBlob> script = helper.MostRecentResource(ResourceType::Script, 0, ResourceEnumFlags::None);
             std::unique_ptr<ResourceBlob> heap = helper.MostRecentResource(ResourceType::Heap, 0, ResourceEnumFlags::None);
             Assert::IsTrue(script && heap && (heap->GetLength() > 10));
@@ -383,7 +375,7 @@ namespace UnitTests
         TEST_METHOD(CompiledScriptTryLoad_BlobsWithNoHeap_IsNotFound)
         {
             NoAppState noAppState;
-            const GameFolderHelper &helper = OpenCopy(TemplateSci11).Helper();
+            const GameFolderHelper &helper = _game.OpenCopy(TemplateSci11, false, SessionOptions()).Helper();
             std::unique_ptr<ResourceBlob> script = helper.MostRecentResource(ResourceType::Script, 0, ResourceEnumFlags::None);
             Assert::IsTrue(script != nullptr);
 
@@ -451,7 +443,7 @@ namespace UnitTests
             NoAppState noAppState;
             for (const char *templateFolder : { TemplateSci0, TemplateSci11 })
             {
-                GameSession &session = OpenCopy(templateFolder);
+                GameSession &session = _game.OpenCopy(templateFolder, false, SessionOptions());
                 const GameFolderHelper &helper = session.Helper();
                 std::vector<uint8_t> noData;
                 ResourceBlob empty(helper, nullptr, ResourceType::Text, noData, helper.Version.DefaultVolumeFile, 555, NoBase36, helper.Version, ResourceSourceFlags::ResourceMap);
@@ -498,7 +490,7 @@ namespace UnitTests
         {
             NoAppState noAppState;
             {
-                GameSession &session = OpenCopy(TemplateSci11);
+                GameSession &session = _game.OpenCopy(TemplateSci11, false, SessionOptions());
                 const GameFolderHelper &helper = session.Helper();
                 std::vector<uint8_t> noData;
                 ResourceBlob empty(helper, nullptr, ResourceType::Text, noData, helper.Version.DefaultVolumeFile, 40000, NoBase36, helper.Version, ResourceSourceFlags::ResourceMap);
@@ -526,7 +518,7 @@ namespace UnitTests
             for (const char *templateFolder : { TemplateSci0, TemplateSci11 })
             {
                 {
-                    GameSession &session = OpenCopy(templateFolder);
+                    GameSession &session = _game.OpenCopy(templateFolder, false, SessionOptions());
                     const GameFolderHelper &helper = session.Helper();
                     std::vector<uint8_t> noData;
                     ResourceBlob empty(helper, nullptr, ResourceType::Text, noData, helper.Version.DefaultVolumeFile, 555, NoBase36, helper.Version, ResourceSourceFlags::ResourceMap);
@@ -557,7 +549,7 @@ namespace UnitTests
         TEST_METHOD(TruncatedVolume_EveryDamagedResourceIsMarked)
         {
             NoAppState noAppState;
-            GameSession &session = OpenCopy(TemplateSci0);
+            GameSession &session = _game.OpenCopy(TemplateSci0, false, SessionOptions());
             // After the open, so that the version detection reads the whole game.
             std::string volume = _game.Path("resource.001");
             std::filesystem::resize_file(volume, std::filesystem::file_size(volume) / 2);

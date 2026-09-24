@@ -290,8 +290,7 @@ namespace UnitTests
             std::string sco = session.Helper().GetScriptObjectFileName("S1Widget");
             fs::remove(sco);
             std::string target = (fs::path(outDir) / Templates[0].script).string();
-            WriteFileText(target, "an old script");
-            Assert::IsTrue(SetFileAttributesA(target.c_str(), FILE_ATTRIBUTE_READONLY) != 0);
+            WriteReadOnlyFile(target, "an old script");
             CompileWriteOptions options;
             options.saveTo = ResourceSaveLocation::Patch;
             options.outDir = outDir;
@@ -394,8 +393,7 @@ namespace UnitTests
             NoAppState noAppState;
             GameSession &session = OpenCopy(Templates[0]);
             std::string sco = session.Helper().GetScriptObjectFileName("S1Widget");
-            WriteFileText(sco, "old");
-            Assert::IsTrue(!!SetFileAttributesA(sco.c_str(), FILE_ATTRIBUTE_READONLY), L"setup: the .sco must be read-only");
+            WriteReadOnlyFile(sco, "old");
 
             CompileLog log;
             Assert::IsFalse(CompileWidget(session, CompileWriteOptions(), log), L"the compile must fail when its .sco cannot be written");

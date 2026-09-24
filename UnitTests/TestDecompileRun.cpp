@@ -127,17 +127,6 @@ namespace
         return result;
     }
 
-    // The lines as one text, each line with a new line after it.
-    std::string JoinLines(const std::vector<std::string> &lines)
-    {
-        std::string text;
-        for (const std::string &line : lines)
-        {
-            text += line + "\n";
-        }
-        return text;
-    }
-
     // True when one of the texts contains "what".
     bool AnyContains(const std::vector<std::string> &texts, const std::string &what)
     {
@@ -160,14 +149,6 @@ namespace
         DecompileRunOptions options;
         options.updateStale = true;
         return options;
-    }
-
-    // The script of a source file, with its number.
-    ScriptId ScriptAt(const std::string &path, uint16_t number)
-    {
-        ScriptId script(path.c_str());
-        script.SetResourceNumber(number);
-        return script;
     }
 
     // A compile with no abort and no events.
@@ -293,12 +274,6 @@ namespace UnitTests
             return nullptr;
         }
 
-        // Writes a patch file that makes the script fail to load.
-        void WriteUnreadableScript(uint16_t number)
-        {
-            WriteFileBytes(_game.Path("script." + std::to_string(number)), { 0x80 | (uint8_t)ResourceType::Script, 0, 5, 0, 1 });
-        }
-
         // The path of Main.sco, from a session that closes before the test
         // continues.
         std::string MainObjectFile()
@@ -306,45 +281,6 @@ namespace UnitTests
             std::string path = _game.Open().Helper().GetScriptObjectFileName((WORD)0);
             _game.CloseSessions();
             return path;
-        }
-
-        // Gives these slots of Main.sco their standard names (globalN), in a
-        // session that closes after the save.
-        void NameMainGlobals(const std::vector<size_t> &slots)
-        {
-            GameSession &session = _game.Open();
-            GlobalCompiledScriptLookups lookups;
-            AssertOk(lookups.TryLoad(session.Helper()));
-            std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(session.Helper(), 0, lookups.GetSelectorTable());
-            Assert::IsNotNull(mainSCO.get(), L"setup: Main.sco");
-            for (size_t slot : slots)
-            {
-                mainSCO->GetVariables()[slot].SetName("global" + std::to_string(slot));
-            }
-            AssertOk(SaveSCOFile(session.Helper(), *mainSCO));
-            _game.CloseSessions();
-        }
-
-        // The SCI1.1 template with the two scripts of TestDecompileBatch, as
-        // scripts 959 and 960 (the template has 950 and 951): 959 uses
-        // global5 (unnamed), and 960 names it. Slot 5 of Main.sco is renamed
-        // to its standard name first.
-        void PrepareStaleFixtures()
-        {
-            _game.Make(TemplateSci11);
-            NameMainGlobals({ 5 });
-            for (const auto &fixture : std::vector<std::pair<std::string, std::string>>{ { "BatchGlobalsA", "950" }, { "BatchGlobalsB", "951" } })
-            {
-                std::string text = ReadFileText(GetTestFileDirectory("Decompile\\SCI1.1") + "\\" + fixture.first + ".sc");
-                std::string declared = "(script# " + fixture.second + ")";
-                size_t at = text.find(declared);
-                Assert::IsTrue(at != std::string::npos, L"setup: the fixture declares its number");
-                text.replace(at, declared.size(), (fixture.second == "950") ? "(script# 959)" : "(script# 960)");
-                WriteFileText(_game.Src(fixture.first + ".sc"), text);
-            }
-            auto compiled = Compile(_game.Open(), { ScriptAt(_game.Src("BatchGlobalsA.sc"), 959), ScriptAt(_game.Src("BatchGlobalsB.sc"), 960) });
-            Assert::IsTrue(compiled.has_value() && compiled->Succeeded(), L"setup: the fixtures must compile");
-            _game.CloseSessions();
         }
 
         // The SCI1.1 template with two scripts (965 and 966 are free there):
@@ -355,7 +291,7 @@ namespace UnitTests
         void PrepareEarlierGroupFixtures()
         {
             _game.Make(TemplateSci11);
-            NameMainGlobals({ 3, 5 });
+            NameMainGlobals(_game, { 3, 5 });
             WriteFileText(_game.Src("StaleFirst.sc"), ";;; Sierra Script 1.0 - (do not remove this comment)\r\n(script# 965)\r\n(include sci.sh)\r\n(use Main)\r\n\r\n(public\r\n\tstaleFirst 0\r\n)\r\n\r\n(procedure (staleFirst)\r\n\t(if global3\r\n\t\t(= global5 gEgo)\r\n\t)\r\n)\r\n");
             WriteFileText(_game.Src("StaleSecond.sc"), ";;; Sierra Script 1.0 - (do not remove this comment)\r\n(script# 966)\r\n(include sci.sh)\r\n(use Main)\r\n\r\n(public\r\n\tstaleSecond 0\r\n)\r\n\r\n(procedure (staleSecond)\r\n\t(= global3 global5)\r\n)\r\n");
             auto compiled = Compile(_game.Open(), { ScriptAt(_game.Src("StaleFirst.sc"), 965), ScriptAt(_game.Src("StaleSecond.sc"), 966) });
@@ -496,7 +432,7 @@ namespace UnitTests
         TEST_METHOD(FailedScript_HasItsStatus_TheOthersAreWritten)
         {
             _game.Make(TemplateSci0);
-            WriteUnreadableScript(905);
+            WriteUnreadableScript(_game, 905);
             GameSession &session = _game.Open();
             RunResults results;
             auto report = RunDecompile(session, { 905, 974 }, DecompileRunOptions(), results);
@@ -672,7 +608,7 @@ namespace UnitTests
         TEST_METHOD(StaleScripts_ReportedOrUpdated)
         {
             {
-                PrepareStaleFixtures();
+                PrepareStaleFixtures(_game);
                 GameSession &session = _game.Open();
                 RunResults results;
                 auto report = RunDecompile(session, { 960 }, DecompileRunOptions(), results);
@@ -691,7 +627,7 @@ namespace UnitTests
                 Assert::AreEqual((size_t)1, report->scripts.size(), L"without updateStale, 959 is only reported");
             }
 
-            PrepareStaleFixtures();
+            PrepareStaleFixtures(_game);
             GameSession &session = _game.Open();
             RunResults results;
             auto report = RunDecompile(session, { 960 }, UpdateStaleOptions(), results);
@@ -883,7 +819,7 @@ namespace UnitTests
                 fs::rename(_game.Src("door.sco"), _game.Src("OldDoor.sco"));
                 if (unreadable)
                 {
-                    WriteUnreadableScript(978);
+                    WriteUnreadableScript(_game, 978);
                 }
                 GameSession &session = _game.Open();
                 RunResults results;
@@ -951,7 +887,7 @@ namespace UnitTests
         // does not succeed.
         TEST_METHOD(MainObjectFileWriteError_IsInTheReport)
         {
-            PrepareStaleFixtures();
+            PrepareStaleFixtures(_game);
             std::string mainSco = MainObjectFile();
             Assert::IsTrue(SetFileAttributes(mainSco.c_str(), FILE_ATTRIBUTE_READONLY) != 0, L"setup: a read-only Main.sco");
             GameSession &session = _game.Open();
@@ -970,8 +906,7 @@ namespace UnitTests
             _game.Make(TemplateSci0);
             std::string objectFile = _game.Src("door.sco");
             // A .sco is written only when its bytes change.
-            WriteFileText(objectFile, "not a .sco file");
-            Assert::IsTrue(SetFileAttributes(objectFile.c_str(), FILE_ATTRIBUTE_READONLY) != 0);
+            WriteReadOnlyFile(objectFile, "not a .sco file");
             GameSession &session = _game.Open();
             RunResults results;
             auto report = RunDecompile(session, { 974 }, DecompileRunOptions(), results);
@@ -983,7 +918,7 @@ namespace UnitTests
         // A .sc file that pass 1 and pass 2 cannot write fails its script.
         TEST_METHOD(Pass2WriteError_FailsTheScript)
         {
-            PrepareStaleFixtures();
+            PrepareStaleFixtures(_game);
             Assert::IsTrue(SetFileAttributes(_game.Src("BatchGlobalsA.sc").c_str(), FILE_ATTRIBUTE_READONLY) != 0);
             GameSession &session = _game.Open();
             RunResults results;
@@ -998,7 +933,7 @@ namespace UnitTests
         // names a global, and the output gets the source of pass 2.
         TEST_METHOD(Output_KeepsMainSco_AndGetsThePass2Source)
         {
-            PrepareStaleFixtures();
+            PrepareStaleFixtures(_game);
             std::string mainSco = MainObjectFile();
             std::string before = ReadFileText(mainSco);
             GameSession &session = _game.Open();
@@ -1098,7 +1033,7 @@ namespace UnitTests
         // the report lists it as stale.
         TEST_METHOD(Abort_InPass2_TheScriptIsStale)
         {
-            PrepareStaleFixtures();
+            PrepareStaleFixtures(_game);
             GameSession &session = _game.Open();
             RunResults results;
             // Two starts in pass 1; the abort comes at the first start of pass 2.
@@ -1116,7 +1051,7 @@ namespace UnitTests
         // stale check after the abort finds 959.
         TEST_METHOD(Abort_JustAfterAWrite_TheScriptCounts)
         {
-            PrepareStaleFixtures();
+            PrepareStaleFixtures(_game);
             GameSession &session = _game.Open();
             RunResults results;
             results.abortOnMessage = "Generated " + session.Helper().GetScriptFileName((WORD)960);
@@ -1139,7 +1074,7 @@ namespace UnitTests
         // script leaves it written again with the new names: it is not stale.
         TEST_METHOD(Abort_JustAfterASecondWrite_TheScriptIsNotStale)
         {
-            PrepareStaleFixtures();
+            PrepareStaleFixtures(_game);
             GameSession &session = _game.Open();
             RunResults results;
             // 959 is written in pass 1 (with global5), and again in pass 2.
@@ -1222,7 +1157,7 @@ namespace UnitTests
         // group fails it.
         TEST_METHOD(Abort_Output_NoStaleList_AndAWrittenNameStays)
         {
-            PrepareStaleFixtures();
+            PrepareStaleFixtures(_game);
             {
                 GameSession &session = _game.Open();
                 RunResults results;
@@ -1264,7 +1199,7 @@ namespace UnitTests
         // pass 2 writes 957 with it.
         TEST_METHOD(AScriptFailsAfterItsNaming_TheNamesStay)
         {
-            PrepareStaleFixtures();
+            PrepareStaleFixtures(_game);
             WriteFileText(_game.Src("Stale957.sc"), ";;; Sierra Script 1.0 - (do not remove this comment)\r\n(script# 957)\r\n(include sci.sh)\r\n(use Main)\r\n\r\n(public\r\n\tstale957 0\r\n)\r\n\r\n(procedure (stale957)\r\n\t(return global5)\r\n)\r\n");
             Assert::AreEqual(std::string(), CompileErrorsOf(Compile(_game.Open(), { ScriptAt(_game.Src("Stale957.sc"), 957) })), L"setup: 957 compiles");
             _game.CloseSessions();

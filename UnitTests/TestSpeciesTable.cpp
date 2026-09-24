@@ -49,8 +49,7 @@ namespace UnitTests
     public:
         TEST_METHOD(SpeciesOrder_FollowsTheCompiledClassOrder)
         {
-            _game.Make(TemplateSci0);
-            GameSession &session = _game.Open(SessionOptions());
+            GameSession &session = _game.OpenCopy(TemplateSci0, false, SessionOptions());
             const GameFolderHelper &helper = session.Helper();
 
             // A script with two or more classes.
