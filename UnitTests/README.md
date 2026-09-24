@@ -278,10 +278,10 @@ game data other than the template games.
   integration test: run it with `RunTests.ps1 -Integration`.
 - CI (`build.yaml`, "Smoke test scic.exe") runs `scic script list`,
   `script decompile --all` and `script compile --all` on two copies of the
-  SCI1.1 template: as it ships (its own sources compile first, into
-  another folder), and with no `game.ini` and no `src\`. Each command must
-  exit with 0 and print no internal error, and each summary must name
-  every script that `list` found.
+  SCI1.1 template: as it ships (its own sources compile first, as a dry
+  run that writes nothing), and with no `game.ini` and no `src\`. Each
+  command must exit with 0 and print no internal error, and each summary
+  must name every script that `list` found.
 - `Tools\CliCorpusSweep.ps1` (local use) runs the same three commands on
   copies of a game library, and writes a CSV of the exit codes, error
   counts, error codes and times:
@@ -295,7 +295,8 @@ game data other than the template games.
   command was a bug of scic (the `Bug` column): a crash, an exit code that
   scic does not give for a result (1, or a crash code), an `[internal]`
   error, or a timeout. It also exits with 1 when it could not run a game
-  (a `sweep` row, for example a copy that failed).
+  (a `sweep` row, for example a copy that failed), or when a row could
+  not go into the CSV (it then goes into `sweep-unwritten.csv`).
 
 ## Other tests
 

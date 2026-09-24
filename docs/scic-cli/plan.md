@@ -1554,22 +1554,25 @@ GUI changes in this plan (all others are refactors with no visible change):
   exits with 1 when a command was a bug of scic: a crash, an exit code
   that scic does not give for a result (not 0, 2, 3, 5, 6, 7, 8 or 9), an
   `[internal]` error, or a timeout (review of `34c1ba40`: before, a crash
-  that the crash filter did not see was not a bug), or when it could not
-  run a game (review of `3d2badc3`: before, that sweep exited with 0). It
-  never writes
-  into the source game folders. Copy the games; do not use junctions,
-  because `decompile` writes `src\` and `game.ini`.
+  that the crash filter did not see was not a bug), when it could not run
+  a game (review of `3d2badc3`: before, that sweep exited with 0), or when
+  a row could not go into the CSV (it goes into `sweep-unwritten.csv`;
+  review of `4897dc2e`: before, the row was lost). Each run gets its own
+  run folder (the time and the process id). It never writes into the
+  source game folders. Copy the games; do not use junctions, because
+  `decompile` writes `src\` and `game.ini`.
 - CI: the build job builds and ships `scic.exe`. Its smoke step (C4) runs
   `script list`, `script decompile --all` and `script compile --all` on two
   copies of the SCI1.1 template: as it ships (its own sources compile
-  first, into another folder, because the decompile replaces them and
-  must read the template's package), and with no `game.ini` and no `src\`
-  (the run must not create `game.ini`). Each command must exit with 0 and
-  print no internal error, and each summary must name every script that
-  `list` found
-  (review of `34c1ba40`: "No script to compile." exits with 0). The step
-  runs also when a test step failed. The integration step of
-  the build job runs the integration tests. The ASan job
+  first, as a dry run that writes nothing, because the decompile replaces
+  them and must read the template as it ships; review of `4897dc2e`: a
+  compile into another folder changed six `.sco` files), and with no
+  `game.ini` and no `src\` (the run must not create `game.ini`). Each
+  command must exit with 0 and print no internal error, and each summary
+  must name every script that `list` found (review of `34c1ba40`: "No
+  script to compile." exits with 0). The step runs also when a test step
+  failed. The integration step of the build job runs the integration
+  tests. The ASan job
   builds only `UnitTests`, so the in-process CLI tests get ASan coverage
   with no change. The static-analysis job runs the failure-handling check.
 

@@ -6,13 +6,15 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: the SCI0 round-trip fix (the commit after `0c777f51`)
-  needs its review. The review of `4897dc2e` (the fixes of the review
-  of the C4 fixes) found 1 should-fix; its fixes come next. The reviews
-  of the vcpkg change (F1, C1 and `76b7aa3d`) and of the comment
-  cleanup (`0c777f51`) are running. F1, A1, A2, B1, B2, B3a, B3b,
-  F2, K1 to K6, S3, S1, S2 (S2a, S2b, S2c), S4 (S4a, S4b), C1 and C2
-  are committed and reviewed, with their review fixes: the S1 and S2
+- Current step: the fixes of the review of `4897dc2e` (the commit after
+  `85ac9717`) need their review. The reviews of the SCI0 round-trip fix
+  (`85ac9717`), of the vcpkg change (F1, C1 and `76b7aa3d`) and of the
+  comment cleanup (`0c777f51`) are running. F1, A1, A2, B1, B2, B3a,
+  B3b, F2, K1 to K6, S3, S1, S2 (S2a, S2b, S2c), S4 (S4a, S4b), C1, C2
+  and C3 are committed and reviewed, with their review fixes (the last
+  review of each passed, some with nits for a later commit); C4 and its
+  fixes are committed, and the review of its last fixes is above. The
+  details: the S1 and S2
   fixes `98d884c7`, the fixes of its review `73be520f`, and the fixes
   of the review of `73be520f` (`a0c27a61`), and the fixes of the review
   of `a0c27a61` (`ccadff0c`, review: PASS with nits, see "Review of
@@ -80,7 +82,7 @@ for each step, and a follow-up commit if the review finds a problem.
 | C1 CLI project, `script list` | done | `68e6f43e`; review fixes `6b1bfe64` | FIX: 3 should-fix, nits. Fixed: see "C1 review". Review of the fixes: PASS with 9 nits (see "Review of the C1 fixes"). |
 | C2 `script decompile`, `script sco` | done | `37ee979b`; review fixes `3cf3e33f` | FIX: 2 should-fix, 7 nits, 2 questions. Fixed: see "C2 review". Review of the fixes: PASS with 5 nits (see "Review of the C2 fixes"). |
 | C3 `script compile` | done | `fd65ff87`; review fixes (`cd1d5ee3`) | FIX: 3 should-fix, 8 nits, 1 question. Fixed: see "Review of fd65ff87". Review of the fixes: PASS with 11 nits and 1 question (see "Review of cd1d5ee3"). |
-| C4 CI and documents | done | `34c1ba40`; review fixes (`3d2badc3`) | FIX: 2 should-fix (the sweep script), 9 nits, 1 question. Fixed: see "Review of 34c1ba40". Review of the fixes: FIX, 1 should-fix (the sweep script), 9 nits, 1 question; fixed in the commit after `3d2badc3`, see "Review of 3d2badc3". |
+| C4 CI and documents | done | `34c1ba40`; review fixes (`3d2badc3`) | FIX: 2 should-fix (the sweep script), 9 nits, 1 question. Fixed: see "Review of 34c1ba40". Review of the fixes: FIX, 1 should-fix (the sweep script), 9 nits, 1 question; fixed in `4897dc2e`, see "Review of 3d2badc3". Review of `4897dc2e`: FIX, 1 should-fix, 7 nits; fixed in the commit after `85ac9717` (see "Review of 4897dc2e"). |
 | E1 Core library (optional) | not started | | |
 
 ## How to work a step
@@ -1507,7 +1509,7 @@ for each step, and a follow-up commit if the review finds a problem.
   line in AGENTS.md); the handover's C4 entry. Question: the shipped
   copy compiled first, so its decompile read the new patch files, not
   the package. Evidence: the scratch folder `review-2357`.
-  The fixes (the commit after `3d2badc3`): (S1) a "sweep" row counts,
+  The fixes (`4897dc2e`): (S1) a "sweep" row counts,
   and the sweep exits with 1 ("N games were not swept"). Nits: `Add-Row`
   and the removal of a copy give a warning when they fail; each run
   gets a new run folder (`<time>-2` for a second run in the same
@@ -1526,6 +1528,33 @@ for each step, and a follow-up commit if the review finds a problem.
   as is (exit 0, each summary "86 of 86"), with a stderr line that
   starts with a number (still 86 scripts, exit 0), and with an
   `[internal]` line (exit 1).
+- Review of 4897dc2e (the fixes of the review of `3d2badc3`,
+  2026-09-24): FIX, 1 should-fix, 7 nits. (S1) A CSV row that the sweep
+  could not write (for example while Excel has the CSV open) was lost,
+  and the sweep still exited with 0. Nits: two sweeps that start
+  together could share one run folder; the `--out-dir` compile of the
+  smoke step changed six `.sco` files that the decompile then read (so
+  that decompile was not of the template as it ships); the header did
+  not name the `Finished` column or the `-2` run folder, and the comment
+  of `Finished` did not name an unknown exit code; `[ ] * ?` were refused
+  also in `-Source` and `-Scic`, where they work, and a device path
+  (`\\.\C:\...`) got through; the State of this file did not name C3 as
+  reviewed; the C4 entry still said that the next commit records the
+  sweep; a short line in plan section 10. Evidence: the scratch folder
+  `review-d06c`.
+  The fixes (the commit after `85ac9717`): (S1) a row that cannot be
+  written waits, and the next write tries it again; at the end the rows
+  that are still not written go into `sweep-unwritten.csv`, and the
+  sweep exits with 1. Nits: the run folder is named by the time and the
+  process id, and `-Work` is made with `-Force`; the smoke step compiles
+  the shipped sources as a dry run (it writes nothing); the header and
+  the comment are complete; only `-Work` refuses `[ ] * ?`, and each
+  path refuses a device path; the texts. Tests: a sweep while a job held
+  `sweep.csv` open for 90 s (the first row waited, and the next write
+  stored both; exit 0) and to the end of the run (3 rows in
+  `sweep-unwritten.csv`, exit 1); the step body in Windows PowerShell 5.1
+  (exit 0, each summary "86 of 86", the dry run "Compiled 86 of 86
+  scripts;").
 - C4: CI and documents. `build.yaml`: a step "Smoke test scic.exe" in
   the build job, after the integration tests. It copies
   `Release\TemplateGame\SCI1.1` twice into `RUNNER_TEMP` (as it ships,
@@ -1552,8 +1581,8 @@ for each step, and a follow-up commit if the review finds a problem.
   read-only attribute, and is removed after its game. A test run on
   three GOG games: every list and decompile exit 0; compile exit 5 for
   Freddy Pharkas (1 error) and QfG3 (25 errors: decompiler round-trip
-  problems), 0 for SQ3. A full run of the local library started at C4;
-  the next commit records its results. Documents: AGENTS.md (the CLI
+  problems), 0 for SQ3. The results of a full run of the local library
+  are in the entry "the full corpus sweep". Documents: AGENTS.md (the CLI
   project, the `Release\` folder and the data folder, the CLI tests, and
   a "Failure handling" section with the rules of plan 6.2 and 6.8),
   `UnitTests\README.md` ("Command-line tool tests"), README (the build
@@ -1853,11 +1882,11 @@ for each step, and a follow-up commit if the review finds a problem.
 
 ## Next action
 
-The SCI0 round-trip fix (the commit after `0c777f51`) needs its review.
-Next: the fixes of the review of `4897dc2e` (1 should-fix: a CSV row
-that the sweep cannot write is lost). The reviews of the vcpkg change
-and of `0c777f51` are running. Then: fix what they find; commits for
-the nits of the reviews of the C1 fixes, of the C2 fixes (`3cf3e33f`),
-of `ccadff0c`, of `8fc8e984` and of `cd1d5ee3`; then the optional E1
-(plan section 9), or stop before it. Push and PRs only with the user's approval (also for
+The fixes of the review of `4897dc2e` (the commit after `85ac9717`)
+need their review. The reviews of the SCI0 round-trip fix (`85ac9717`),
+of the vcpkg change and of `0c777f51` are running. Then: fix what they
+find; commits for the nits of the reviews of the C1 fixes, of the C2
+fixes (`3cf3e33f`), of `ccadff0c`, of `8fc8e984` and of `cd1d5ee3`;
+then the optional E1 (plan section 9), or stop before it. Push and PRs
+only with the user's approval (also for
 `fix/test-resource-temp-folders`).
