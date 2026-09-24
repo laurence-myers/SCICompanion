@@ -271,11 +271,11 @@ namespace UnitTests
             Assert::AreEqual((int)second, (int)NumbersOf(*decompile)[0], L"decompile: number order");
         }
 
-        // A mode that writes refuses a script in a name conflict, with the
-        // conflict and its fix; the other scripts work, --all leaves the
-        // script out with a warning, and the list works. Only the scripts of
-        // the conflict are refused: real projects have two game.ini names
-        // that differ only in case.
+        // A mode that writes refuses a selection with a script in a name
+        // conflict, with the conflict and its fix. A selection without that
+        // script works, --all leaves the script out with a warning, and the
+        // list works. A conflict refuses no selection without its scripts:
+        // real projects have two game.ini names that differ only in case.
         TEST_METHOD(Selectors_Conflict_RefusesOnlyItsScripts)
         {
             NoAppStateForCatalog noAppState;

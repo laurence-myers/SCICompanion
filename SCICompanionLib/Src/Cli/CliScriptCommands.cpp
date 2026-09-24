@@ -258,9 +258,10 @@ namespace cli
                     // The crash line names what the run does (plan section
                     // 6.6). The batch prints one of these messages when it
                     // starts a script, the naming or the write of main's
-                    // .sco, and the run when it starts a later step. The item
-                    // is then that script or that step, until the next of
-                    // these messages or the report.
+                    // .sco; the run prints one when it starts the stale check
+                    // of a group or the write of game.ini. The item is then
+                    // that script or that step, until the next of these
+                    // messages or the report.
                     for (const auto &step : StepItems())
                     {
                         if (message.rfind(step.first, 0) == 0)

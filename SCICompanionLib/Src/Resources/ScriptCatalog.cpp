@@ -263,8 +263,8 @@ namespace
     }
 
     // The name conflicts of the chosen scripts, for a mode that writes (the
-    // list shows every script). A conflict of another script does not refuse
-    // the chosen ones, and each conflict gives its own fix.
+    // list shows every script), each with its own fix. --all leaves such a
+    // script out, with a warning.
     std::vector<std::string> ConflictsOfChosen(const ScriptNameMap &names, SelectorMode mode, const std::set<uint16_t> &numbers)
     {
         std::vector<std::string> texts;
@@ -534,11 +534,11 @@ namespace
     // The derived names of a reset. The scripts in chosen get their derived
     // names; every other script keeps its name, and no chosen script takes
     // it. The title of a file in src belongs to the script that has that
-    // name: a chosen script can keep the title of its own file, but no
-    // script takes the file of another script (for example, a reset of
-    // script 979 of the SCI0 template must not give it "MenuBar": the run
-    // would write over menubar.sc, the source of script 997). A file that no
-    // script has keeps its title from every script. The current name of a
+    // name. A chosen script can keep the title of its own file, but no script
+    // takes the file of another script. For example, a reset of script 979 of
+    // the SCI0 template must not give it "MenuBar": the run would write over
+    // menubar.sc, the source of script 997. A file that no script has keeps
+    // its title from every script. The current name of a
     // chosen script belongs to it too, so that no other chosen script takes
     // it: two scripts would then have one name. A chosen script that gets no
     // derived name keeps its name (it cannot be read, or it has no class and
@@ -801,10 +801,11 @@ sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const 
         // The scripts that a number, a range or a name chose.
         std::set<uint16_t> byNumberOrName;
         std::vector<std::string> bad;
-        // A script in a name conflict gives the conflict and its fix, before
-        // any other reason. For a mode that writes, the Usage error then
-        // refuses the whole selection; a conflict of a script that is not
-        // selected refuses nothing.
+        // In a mode that writes, a script in a name conflict gives the
+        // conflict and its fix, before any other reason, and the one Usage
+        // error then refuses the whole selection. For this check, a range has
+        // each script in it, also one that the mode does not take. A conflict
+        // of another script refuses nothing.
         std::set<const NameConflict *> reported;
         auto inConflict = [&](uint16_t number) -> bool
         {

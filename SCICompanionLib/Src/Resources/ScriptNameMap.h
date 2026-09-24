@@ -55,8 +55,9 @@ public:
     // Rules 1 to 3. Two src\*.sc files (or two src\*.sco files) that give
     // one script its name, or one name for two scripts, are not an error
     // here: Conflicts() describes each problem. The map gives no name from
-    // two files; two scripts with one name keep it. A command that compiles
-    // or decompiles refuses the scripts in a conflict. game.ini gives a name
+    // two files; two scripts with one name keep it. A command that writes
+    // (compile, decompile, sco) refuses a selection with a script in a
+    // conflict, and --all leaves the script out. game.ini gives a name
     // only with the key that the GUI reads (n007, not n7 or n0007), and
     // without the quotes around it.
     static sci::Result<ScriptNameMap> Build(const GameFolderHelper &helper);

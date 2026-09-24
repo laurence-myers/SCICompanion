@@ -94,9 +94,10 @@ struct ScriptSelection
 // Every bad selector is in one Usage error. A selector that is the name of a
 // script is a name, also with a '.' in it; two paths for one script number
 // are an error. A mode that writes (Decompile, Compile, Sco) refuses a
-// selected script that is in a name conflict, with the conflict and its fix
-// (the Usage error then refuses the whole selection). A conflict of a script
-// that is not selected refuses nothing.
+// selection with a script in a name conflict: the one Usage error has the
+// conflict and its fix. For this check, a range has each script in it, also
+// a script that the mode does not take. A conflict of another script
+// refuses nothing.
 sci::Result<ScriptSelection> ResolveScriptSelectors(GameSession &session, const std::vector<std::string> &selectors, SelectorMode mode);
 
 // --all: every script that the mode takes, in the same order. For Compile,

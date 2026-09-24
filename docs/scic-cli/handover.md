@@ -8,8 +8,8 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Next
 
-- Fix the findings of the reviews of the vcpkg change, of `338ee1a7` and
-  of `103b8b23` (below).
+- Fix the findings of the reviews of the vcpkg change and of `103b8b23`
+  (below).
 - Your request (2026-09-24): de-duplicate the test helpers and the
   asserts, with one shared test-support file.
 - Then the other review findings below, then the optional E1 (plan
@@ -45,22 +45,6 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   correct).
 - Question: does the CI fetch step work on a runner image that is older
   than the baseline?
-
-### `338ee1a7` (comment fixes): 2 should-fix, 5 nits
-
-- Should-fix: the comment of `Selectors_Conflict_RefusesOnlyItsScripts`
-  (`TestScriptCatalog.cpp`) still says that only the scripts of the
-  conflict are refused.
-- Should-fix: "a conflict of a script that is not selected refuses
-  nothing" (`ScriptCatalog.h`, `ScriptCatalog.cpp`) is false for a range.
-  For this check, a range has each script in it, also a script that the
-  mode does not take.
-- Nits: the first sentence of the conflict comment in `ScriptCatalog.cpp`
-  names no mode (List gives no conflict); the crash item comment
-  (`CliScriptCommands.cpp`) names steps that print no message after
-  Ctrl+C; `ScriptNameMap.h` and `ConflictsOfChosen` still describe the old
-  rule, and so does plan row S3; two long sentences
-  (`TestCliIntegration.cpp`, `ResetNamesOf`).
 
 ### `103b8b23` (the corpus sweep script): 1 should-fix, 6 nits
 

@@ -60,7 +60,7 @@ namespace UnitTests
         // also for abort(), std::terminate() and a bad parameter to a C
         // runtime function. Without the SIGABRT handler, the first two end
         // the process with exit code 3 and no line (with the abort behaviour
-        // that InstallCrashHandling sets); without the invalid-parameter
+        // that InstallCrashHandling sets). Without the invalid-parameter
         // handler, the third ends it with 0xC0000409 and no line. The test
         // hook SCIC_TEST_CRASH makes scic.exe fail in each way.
         BEGIN_TEST_METHOD_ATTRIBUTE(ScicExe_ACrashIsOneLineAndExitCode1)
