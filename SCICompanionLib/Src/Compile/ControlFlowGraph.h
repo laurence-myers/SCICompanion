@@ -33,7 +33,9 @@ struct NodeBlock
 class ControlFlowGraph
 {
 public:
-	ControlFlowGraph(const std::string &statusMessagePrefix, IDecompilerResults &decompilerResults, const std::string &contextName, bool allowContinues, bool debug, PCSTR pszDebugFilter) : _decompilerResults(decompilerResults), _contextName(contextName), _statusMessagePrefix(statusMessagePrefix), _debug(debug), _pszDebugFilter(pszDebugFilter), _allowContinues(allowContinues) {}
+	// nestLoopsWithOneHead: build the loops that share a head as nested loops
+	// where they nest (see _CheckForSameHeader), not as one loop.
+	ControlFlowGraph(const std::string &statusMessagePrefix, IDecompilerResults &decompilerResults, const std::string &contextName, bool allowContinues, bool debug, PCSTR pszDebugFilter, bool nestLoopsWithOneHead = false) : _decompilerResults(decompilerResults), _contextName(contextName), _statusMessagePrefix(statusMessagePrefix), _debug(debug), _pszDebugFilter(pszDebugFilter), _allowContinues(allowContinues), _nestLoopsWithOneHead(nestLoopsWithOneHead) {}
 	ControlFlowGraph(const ControlFlowGraph &src) = delete;
 	ControlFlowGraph& operator=(const ControlFlowGraph &src) = delete;
 
@@ -41,6 +43,12 @@ public:
 
 	const NodeSet &ControlStructures() const { return discoveredControlStructures; }
 	MainNode *GetMain() const { return static_cast<MainNode*>(mainStructure); };
+
+	bool NestsLoopsWithOneHead() const { return _nestLoopsWithOneHead; }
+	// True when the graph made one loop of loops that share a head, although
+	// they nest. A graph made with nestLoopsWithOneHead can then differ.
+	bool MergedNestedLoops() const { return _mergedNestedLoops; }
+	void SetMergedNestedLoops() { _mergedNestedLoops = true; }
 
 	template<typename _TNode, typename... Args>
 	_TNode *MakeStructuredNode(Args... args)
@@ -183,4 +191,6 @@ private:
 
 	bool _debug;
 	PCSTR _pszDebugFilter;
+	bool _nestLoopsWithOneHead;
+	bool _mergedNestedLoops = false;
 };

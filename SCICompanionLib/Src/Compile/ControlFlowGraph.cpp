@@ -150,13 +150,21 @@ int NodeBlock::Compare(const NodeBlock &A, const NodeBlock &B)
 	}
 	else
 	{
-		// The same NodeBlock.
-		// If two loops share the same head, but a different tail, I don't know how to handle that.
+		// Two blocks with the same head. _CheckForSameHeader merges them into
+		// one loop with a common latch, unless it builds them as nested loops:
+		// then the one that ends first is nested in the other.
 		// http://www.cs.cmu.edu/afs/cs/academic/class/15745-s01/www/lectures/lect0124.txt
 		// Inner Loops and Loops with the same header: http://nptel.ac.in/courses/106108052/module9/control-flow-ana-2.pdf
-		// We basically insert a dummy node and combine them.
-		// Hmm, this happens with do-whiles with compound conditions. But not the way SCIStudio or SCICompanion compiles them.
-		assert(B.latch == A.latch);
+		if (A.endAddress < B.endAddress)
+		{
+			// A is nested in B
+			return -1;
+		}
+		if (B.endAddress < A.endAddress)
+		{
+			// B is nested in A
+			return 1;
+		}
 		return 0;
 	}
 	// Disjoint, so they are equal
@@ -2128,6 +2136,27 @@ vector<NodeBlock> _FindBackEdges(DominatorMap &dominators, DominatorMap &postDom
 	return backEdges;
 }
 
+// Blocks that share a head, in latch order. Sierra's compiler gives a loop
+// that is the first statement of a repeat the head of the repeat, so the two
+// loops start at the same node. The first `count` blocks are the back edges
+// of an inner loop when that loop ends (at its follow node, the end address
+// of its blocks) no later than the next latch: the code from there to the
+// next latch is the rest of the outer loop's body. Returns that count, or 0
+// when the blocks do not nest.
+static size_t _CountInnerLoopLatches(const vector<NodeBlock*> &blocksWithSameHeader)
+{
+	uint16_t innerEnd = 0;
+	for (size_t count = 1; count < blocksWithSameHeader.size(); count++)
+	{
+		innerEnd = max(innerEnd, blocksWithSameHeader[count - 1]->endAddress);
+		if (innerEnd <= blocksWithSameHeader[count]->latch->GetStartingAddress())
+		{
+			return count;
+		}
+	}
+	return 0;
+}
+
 // Return true if we made no changes
 bool _CheckForSameHeader(ControlFlowGraph &cfg, ControlFlowNode &parent, vector<NodeBlock> &blocks)
 {
@@ -2135,6 +2164,10 @@ bool _CheckForSameHeader(ControlFlowGraph &cfg, ControlFlowNode &parent, vector<
 	// Look for any blocks with the same header but different latches. If we find them, introduce a new
 	// common latch node.
 	// We hit this scenario, for instance, in do-while loops with compound conditions.
+	// A graph that nests the loops that share a head (NestsLoopsWithOneHead)
+	// joins only the latches of the inner loop. The blocks of the outer loop
+	// wait for a later round: once the inner loop is made, their back edges go
+	// to it, and they are found again with the inner loop as their head.
 
 	// Just some kind of order.
 	sort(blocks.begin(), blocks.end(),
@@ -2163,8 +2196,11 @@ bool _CheckForSameHeader(ControlFlowGraph &cfg, ControlFlowNode &parent, vector<
 
 	// Now ones with the same head should be adjacent in the vector, making it easier
 	// to process.
+	// The indices of the outer loops' blocks that wait for a later round.
+	vector<size_t> later;
 	for (size_t i = 0; i < blocks.size(); )
 	{
+		size_t first = i;
 		vector<NodeBlock*> blocksWithSameHeader;
 		blocksWithSameHeader.push_back(&blocks[i]);
 		i++;
@@ -2181,6 +2217,24 @@ bool _CheckForSameHeader(ControlFlowGraph &cfg, ControlFlowNode &parent, vector<
 		}
 		if (blocksWithSameHeader.size() > 1)
 		{
+			size_t innerCount = _CountInnerLoopLatches(blocksWithSameHeader);
+			if (innerCount && cfg.NestsLoopsWithOneHead())
+			{
+				for (size_t outer = first + innerCount; outer < i; outer++)
+				{
+					later.push_back(outer);
+				}
+				if (innerCount == 1)
+				{
+					// The inner loop has one latch: it is ready.
+					continue;
+				}
+				blocksWithSameHeader.resize(innerCount);
+			}
+			else if (innerCount)
+			{
+				cfg.SetMergedNestedLoops();
+			}
 			noChanges = false;
 			// Create a common latch node. It will have our latch nodes as predecessors
 			// First we need to come up with a token address for this latch node.
@@ -2207,6 +2261,13 @@ bool _CheckForSameHeader(ControlFlowGraph &cfg, ControlFlowNode &parent, vector<
 			}
 			blocksWithSameHeader[0]->head->InsertPredecessor(common);
 			break; // Only do one set of these at a time.
+		}
+	}
+	if (noChanges)
+	{
+		for (auto it = later.rbegin(); it != later.rend(); ++it)
+		{
+			blocks.erase(blocks.begin() + *it);
 		}
 	}
 	return noChanges;

@@ -44,9 +44,10 @@ modernizing the build. Broad highlights since the previous release:
   could not reconstruct a function's control flow it used to give up and emit
   raw `asm` disassembly. It now rebuilds the control flow into real source, so
   far fewer functions fall back to `asm` -- for example, the Quest for Glory IV
-  scripts now decompile with no `asm` fallbacks. A loop that a `break` leaves
-  past its last jump back, with more loops in that part (King's Quest V,
-  script 755), no longer stops the decompile of its script.
+  scripts now decompile with no `asm` fallbacks. Two more of Sierra's loop
+  shapes decompile (both in King's Quest V, script 755): a loop that a `break`
+  leaves past its last jump back, with more loops in that part, and a loop
+  that starts at the same instruction as the `repeat` around it.
 * **Fixed bytecode output.** The compiler produced wrong bytecode in some cases:
   a constant `(mod a b)` was folded as bitwise-and instead of modulo (so
   `(mod 7 3)` gave 3, not 1), and large shift counts were mishandled. It now

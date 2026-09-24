@@ -255,6 +255,15 @@ namespace UnitTests
             AssertDecompileMatchesExpected("F14_BreakPastLatch", 936);
         }
 
+        // A while that is the first statement of a repeat: the two loops
+        // share their head. With a breakif in the while they do not structure
+        // as one loop, so the decompiler makes them nested loops.
+        TEST_METHOD(SharedLoopHead)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F15_SharedLoopHead", 937);
+        }
+
         // Return values take the golden shape: an if whose branches return is
         // not itself returned; a value-shaped if at the end of the function
         // is; a ++ before the final ret is not a return value.
