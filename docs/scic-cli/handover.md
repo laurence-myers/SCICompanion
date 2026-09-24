@@ -8,8 +8,7 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Next
 
-- Fix the findings of the reviews of the vcpkg change and of `103b8b23`
-  (below).
+- Fix the findings of the review of `103b8b23` (below).
 - Your request (2026-09-24): de-duplicate the test helpers and the
   asserts, with one shared test-support file.
 - Then the other review findings below, then the optional E1 (plan
@@ -17,34 +16,6 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 - Push and pull requests only with your approval.
 
 ## Review findings that are not fixed
-
-### The vcpkg change (F1, C1 and `76b7aa3d`): 3 should-fix, 8 nits, 1 question
-
-- Should-fix: a new version in `vcpkg.json` does not rebuild the files
-  that include the headers. vcpkg keeps the upstream file times, which are
-  older than the objects. Fix: a hash of `vcpkg.json` in the
-  `ProjectStateLine` (`Directory.Build.props`).
-- Should-fix: a tree without vcpkg (an older commit in a worktree inside
-  this checkout) reads the checkout's `Directory.Build.targets`, and fails
-  with "vcpkg was not found at ''". Fix: check only when `ScicVcpkgRoot`
-  has a value.
-- Should-fix: the error text, `Directory.Build.props` and AGENTS.md name
-  "C++ core features". The Visual Studio component is "vcpkg package
-  manager".
-- Nits: the triplet `x86-windows` uses the DLL C runtime, and the projects
-  link it statically (a compiled library would not link; the two libraries
-  are header-only); a checkout path longer than about 120 characters fails
-  (MAX_PATH); the CI step reads only `VCPKG_INSTALLATION_ROOT`, and the
-  props try `VCPKG_ROOT` first; the first build of each new worktree
-  fetches the vcpkg registry from GitHub, under one lock for all the builds
-  of the machine (a vcpkg clone in `VCPKG_ROOT` avoids it); the last line
-  of `Directory.Build.targets` has no line break; the `.gitignore` of
-  `master` does not ignore `vcpkg_installed/`; CI has no vcpkg cache (each
-  job downloads about 175 MB); the docs of the commits F1 to `3d2badc3`
-  still describe the old copies of the libraries (history: the tip is
-  correct).
-- Question: does the CI fetch step work on a runner image that is older
-  than the baseline?
 
 ### `103b8b23` (the corpus sweep script): 1 should-fix, 6 nits
 
@@ -212,6 +183,15 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   reads every `.sc` of the game, except those of the group, once for each
   group (time only).
 
+### Build and CI
+
+- CI has no vcpkg cache: each job downloads the tools and the sources of
+  vcpkg (about 175 MB) and builds the two ports.
+- The CI fetch step of the vcpkg registry is checked by inspection only:
+  vcpkg reads the baseline and the ports from the git objects that the
+  fetch gives. A runner image that is older than the baseline was not
+  tried.
+
 ### Engine and resources
 
 - The package writer leaves `resource.map.bak` and `resource.00N.bak` when
@@ -267,7 +247,6 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 - The `info` line for "The else clause must be the last clause in a
   cond." (see `cd1d5ee3`).
 - `--stdout` after a batch that throws (see `8fc8e984`).
-- The CI fetch step of vcpkg (see the vcpkg change).
 
 ## Outside this branch
 
@@ -281,6 +260,9 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   the vcpkg change, with the copied headers. Delete it?
 - 49 files that `master` added in 2026 have a copyright header; your rule
   says that a new file has none. A task on `master` can remove them.
+- The `.gitignore` of `master` does not ignore `vcpkg_installed/`: after a
+  build of this branch, a checkout of `master` in the same folder shows the
+  folder as untracked.
 - 12 asserts on `master` make their message before the call, so a failure
   shows no text: `TestKeywordCodegen.cpp` lines 133, 146, 605, 610, 641,
   681, 711 and 745, `TestDecompile.cpp` 97 and 113,

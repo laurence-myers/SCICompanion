@@ -53,10 +53,14 @@
   <!--
     vcpkg gives the header-only libraries in vcpkg.json (manifest mode). The
     vcpkg folder: the VCPKG_ROOT environment variable, else
-    VCPKG_INSTALLATION_ROOT (the GitHub runners), else the copy that Visual
-    Studio installs with its C++ core features. The packages go into
-    vcpkg_installed\, which git ignores. Only SCICompanionLib runs vcpkg
-    install; the other projects build after it and read the same folder.
+    VCPKG_INSTALLATION_ROOT (the GitHub runners), else the copy that the
+    Visual Studio component "vcpkg package manager" installs. The packages
+    go into vcpkg_installed\, which git ignores. Only SCICompanionLib runs
+    vcpkg install; the other projects build after it and read the same
+    folder. A change of vcpkg.json rebuilds the projects (ProjectStateLine):
+    vcpkg keeps the file times of a package that it builds, which can be
+    older than the objects, so the compare of file times does not see new
+    headers.
   -->
   <PropertyGroup Condition="!$(MSBuildProjectName.StartsWith('ProfUISLIB'))">
     <ScicVcpkgRoot Condition="'$(VCPKG_ROOT)' != ''">$(VCPKG_ROOT)</ScicVcpkgRoot>
@@ -64,6 +68,7 @@
     <ScicVcpkgRoot Condition="'$(ScicVcpkgRoot)' == ''">$(VsInstallRoot)\VC\vcpkg</ScicVcpkgRoot>
     <VcpkgEnableManifest>true</VcpkgEnableManifest>
     <VcpkgManifestInstall Condition="'$(MSBuildProjectName)' != 'SCICompanionLib'">false</VcpkgManifestInstall>
+    <ProjectStateLine>VcpkgManifest=$([MSBuild]::StableStringHash($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)vcpkg.json')))):$(ProjectStateLine)</ProjectStateLine>
   </PropertyGroup>
   <Import Condition="!$(MSBuildProjectName.StartsWith('ProfUISLIB')) and Exists('$(ScicVcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.props')"
           Project="$(ScicVcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.props" />

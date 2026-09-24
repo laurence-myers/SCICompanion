@@ -31,11 +31,24 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
   `vcpkg.json` in the repository root, with pinned versions; the MSBuild
   integration is in `Directory.Build.props` and `Directory.Build.targets`).
   The build uses the vcpkg of `VCPKG_ROOT`, else `VCPKG_INSTALLATION_ROOT`
-  (the GitHub runners), else the copy that Visual Studio installs with its
-  C++ core features. The first build downloads the packages and the tools
-  of vcpkg, into `vcpkg_installed\` (git ignores it) and
-  `%LOCALAPPDATA%\vcpkg`. Do not copy a new library into the repository: add
-  it to `vcpkg.json`.
+  (the GitHub runners), else the copy that the Visual Studio component
+  "vcpkg package manager" installs (recommended in the C++ workloads). The
+  first build downloads the packages and the tools of vcpkg, into
+  `vcpkg_installed\` (git ignores it) and `%LOCALAPPDATA%\vcpkg`. Do not
+  copy a new library into the repository: add it to `vcpkg.json`. The two
+  libraries are header-only. The projects link the C runtime statically
+  (static MFC), and the triplet `x86-windows` does not: a library that
+  vcpkg compiles needs the static triplet (`VcpkgUseStatic`).
+- **The first build of a new clone or worktree runs `vcpkg install`.** With
+  the Visual Studio copy of vcpkg, it fetches the vcpkg registry from
+  GitHub, under a lock that every build on the machine shares (a fetch can
+  take 15 minutes, and the other builds wait). A vcpkg clone in
+  `VCPKG_ROOT` avoids the fetch. So does a copy of `vcpkg_installed\` from
+  another checkout of the same `vcpkg.json`, with
+  `-p:VcpkgManifestInstall=false`. Keep the checkout path short (about 120
+  characters or less): the Visual Studio copy of vcpkg builds under
+  `vcpkg_installed\x86-windows\vcpkg\`, and a path longer than 260
+  characters fails while Windows long paths are off.
 - The build puts `SCICompanion.exe`, `scic.exe` and `UnitTests.dll` in
   `Release\`. The app's post-build copies the data that they need next to
   them (for example `include\`, `Decompiler\`, `Objects\` and
