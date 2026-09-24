@@ -1166,6 +1166,42 @@ void _TrackExternalScriptUsage(std::list<scii> code, DecompileLookups &lookups)
 	}
 }
 
+namespace
+{
+	// Holds the messages of a control-flow analysis until DecompileRaw knows
+	// which analysis it uses. The abort state and the rest go through.
+	class HeldDecompilerResults : public IDecompilerResults
+	{
+	public:
+		HeldDecompilerResults(IDecompilerResults &inner) : _inner(inner) {}
+		void AddResult(DecompilerResultType type, const std::string &message) override
+		{
+			_held.emplace_back(type, message);
+		}
+		bool IsAborted() override { return _inner.IsAborted(); }
+		void InformStats(bool functionSuccessful, int byteCount) override
+		{
+			_inner.InformStats(functionSuccessful, byteCount);
+		}
+		void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override
+		{
+			_inner.SetGlobalVarsUpdated(renames);
+		}
+		// Passes the held messages on, in order.
+		void Release()
+		{
+			for (const auto &held : _held)
+			{
+				_inner.AddResult(held.first, held.second);
+			}
+			_held.clear();
+		}
+	private:
+		IDecompilerResults &_inner;
+		std::vector<std::pair<DecompilerResultType, std::string>> _held;
+	};
+}
+
 // pEnd can be the end of script data. I have added autodetection support.
 void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset)
 {
@@ -1218,12 +1254,47 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 			string messageDescription = fmt::format("{0} {1}::{2}: Analyzing control flow", func.GetOwnerScript()->GetName(), className, func.GetName());
 			lookups.DecompileResults().AddResult(DecompilerResultType::Update, messageDescription);
 
-			ControlFlowGraph cfg(messageDescription, lookups.DecompileResults(), GetMethodTrackingName(func.GetOwnerClass(), func, true), allowContinues, lookups.DebugControlFlow, lookups.pszDebugFilter);
-			success = cfg.Generate(code.begin(), code.end());
+			// The analysis edits the instructions, so a second analysis works on
+			// a copy.
+			std::list<scii> nestedCode = code;
+			RepointBranchTargetsIntoCopy(code, nestedCode);
+
+			// The analysis makes one loop of the loops that share a head, which
+			// gives the output that it can structure. When it fails, and such
+			// loops nest, a second analysis makes them nested loops. The
+			// messages are those of the analysis that is used.
+			string trackingName = GetMethodTrackingName(func.GetOwnerClass(), func, true);
+			HeldDecompilerResults results(lookups.DecompileResults());
+			HeldDecompilerResults nestedResults(lookups.DecompileResults());
+			unique_ptr<ControlFlowGraph> cfg;
+			try
+			{
+				cfg = make_unique<ControlFlowGraph>(messageDescription, results, trackingName, allowContinues, lookups.DebugControlFlow, lookups.pszDebugFilter);
+				success = cfg->Generate(code.begin(), code.end());
+				if (!success && cfg->MergedNestedLoops() && !lookups.DecompileResults().IsAborted())
+				{
+					unique_ptr<ControlFlowGraph> nestedCfg = make_unique<ControlFlowGraph>(messageDescription, nestedResults, trackingName, allowContinues, lookups.DebugControlFlow, lookups.pszDebugFilter, true);
+					if (nestedCfg->Generate(nestedCode.begin(), nestedCode.end()))
+					{
+						success = true;
+						cfg = std::move(nestedCfg);
+					}
+				}
+			}
+			catch (...)
+			{
+				// An analysis that throws: its messages (the progress and the
+				// debug dumps) help to find the cause, so they go on first.
+				results.Release();
+				nestedResults.Release();
+				throw;
+			}
+			(cfg->NestsLoopsWithOneHead() ? nestedResults : results).Release();
+
 			if (success && !lookups.DecompileResults().IsAborted())
 			{
-				const NodeSet &controlStructures = cfg.ControlStructures();
-				MainNode *mainNode = cfg.GetMain();
+				const NodeSet &controlStructures = cfg->ControlStructures();
+				MainNode *mainNode = cfg->GetMain();
 				lookups.DecompileResults().AddResult(DecompilerResultType::Update, fmt::format("{0} {1}::{2}: Generating code", func.GetOwnerScript()->GetName(), className, func.GetName()));
 				messageDescription = fmt::format("{0} {1}::{2}: Instruction consumption", func.GetOwnerScript()->GetName(), className, func.GetName());
 				success = OutputNewStructure(messageDescription, func, *mainNode, lookups);

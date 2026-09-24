@@ -245,6 +245,38 @@ namespace UnitTests
             AssertDecompileMatchesExpected("F12_BreakJoin", 925);
         }
 
+        // A repeat whose break jumps past the latch, to the loop's follow node,
+        // with a second repeat (which holds a while) between the latch and the
+        // follow node. The first repeat holds the other two loops, so they are
+        // built first, as any nested loop is.
+        TEST_METHOD(BreakPastLatch)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F14_BreakPastLatch", 936);
+        }
+
+        // A while that is the first statement of a repeat: the two loops
+        // share their head. With a breakif in the while they do not structure
+        // as one loop, so the decompiler makes them nested loops. A while with
+        // a continue stays one loop. The messages are those of the analysis
+        // that is used, so the failed first analysis leaves no warning.
+        TEST_METHOD(SharedLoopHead)
+        {
+            _gameFolder = SetUpGameSCI11();
+            DecompileOutput out = AssertDecompileMatchesExpected("F15_SharedLoopHead", 937);
+            LogWarnings("F15", out);
+            Assert::IsTrue(out.warnings.empty(), L"expected no warning");
+        }
+
+        // A while that is the first statement of a repeat, with no break in
+        // the while: as one loop it structures, so its text (a cond in the
+        // repeat) stays, and no second analysis runs.
+        TEST_METHOD(SharedLoopHead_OneLoopStructures)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F16_SharedHeadOneLoop", 938);
+        }
+
         // Return values take the golden shape: an if whose branches return is
         // not itself returned; a value-shaped if at the end of the function
         // is; a ++ before the final ret is not a return value.

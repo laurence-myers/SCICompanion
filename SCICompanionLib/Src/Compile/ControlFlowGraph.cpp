@@ -91,7 +91,7 @@ void _CollectMoreNodesByAddress(NodeSet &nodeSet, ControlFlowNode *head, Control
 }
 
 // A back edge is smaller if it is contained within another.
-NodeBlock::NodeBlock(ControlFlowNode *head, ControlFlowNode *followNode, bool includeFollow, ControlFlowNode *parentToGatherMore) : head(head), latch(followNode)
+NodeBlock::NodeBlock(ControlFlowNode *head, ControlFlowNode *followNode, bool includeFollow, ControlFlowNode *parentToGatherMore) : head(head), latch(followNode), endAddress(followNode->GetStartingAddress())
 {
 	body = _CollectNodesBetween(head, followNode);
 	if (parentToGatherMore)
@@ -124,9 +124,9 @@ int NodeBlock::Compare(const NodeBlock &A, const NodeBlock &B)
 
 		// Instead, take advantage of the fact that SCI addresses are sequential.
 		uint16_t aStart = A.head->GetStartingAddress();
-		uint16_t aEnd = A.latch->GetStartingAddress();
+		uint16_t aEnd = A.endAddress;
 		uint16_t bStart = B.head->GetStartingAddress();
-		uint16_t bEnd = B.latch->GetStartingAddress();
+		uint16_t bEnd = B.endAddress;
 		if ((bStart > aStart) && (bEnd <= aEnd))
 		{
 			// B is nested in A
@@ -150,12 +150,12 @@ int NodeBlock::Compare(const NodeBlock &A, const NodeBlock &B)
 	}
 	else
 	{
-		// The same NodeBlock.
-		// If two loops share the same head, but a different tail, I don't know how to handle that.
+		// The same NodeBlock. Two blocks with one head do not get here:
+		// _CheckForSameHeader merges them into one loop, or it keeps only the
+		// inner loop's block, and the outer loop's blocks come back in a
+		// later round.
 		// http://www.cs.cmu.edu/afs/cs/academic/class/15745-s01/www/lectures/lect0124.txt
 		// Inner Loops and Loops with the same header: http://nptel.ac.in/courses/106108052/module9/control-flow-ana-2.pdf
-		// We basically insert a dummy node and combine them.
-		// Hmm, this happens with do-whiles with compound conditions. But not the way SCIStudio or SCICompanion compiles them.
 		assert(B.latch == A.latch);
 		return 0;
 	}
@@ -568,26 +568,24 @@ bool HasPrecedessorInSet(ControlFlowNode *node, const NodeSet &theSet)
 	return false;
 }
 
-ControlFlowNode *ControlFlowGraph::_FindFollowNodeForStructure(ControlFlowNode *structure)
+// The furthest address that the code of the nodes, and of the structures
+// among them, reaches: the largest branch target, or the address after the
+// last instruction. SCI code always proceeds forward in address, so the
+// follow node of a loop made from the nodes starts at this address.
+static uint16_t _GetFurthestAddress(const NodeSet &nodes)
 {
-	ControlFlowNode *follow = nullptr;
-	// Find the follow node. This isn't trivial. We can't just ask for the post dominator of the
-	// header - that won't work in the case of compound conditions (which are still unresolved at this point)
-	// We can leverage a tautology of SCI compilers - code always proceeds forward in address. So we can
-	// find the furthest branch of any of our children, then try to find the node that matches it.
-
 	stack<ControlFlowNode*> toProcess;
-	toProcess.push(structure);
+	for (ControlFlowNode *node : nodes)
+	{
+		toProcess.push(node);
+	}
 	uint16_t maxAddress = 0;
-	//uint16_t maxAddressDebug = 0;
 	while (!toProcess.empty())
 	{
 		ControlFlowNode *node = pop_ptr(toProcess);
 		if (node->Type == CFGNodeType::RawCode)
 		{
 			scii lastInstruction = node->getLastInstruction();
-			// We used to have this ^^^ code and it worked. But it always returns false
-			// and the case was never hit. Fixing it, and asserting it makes no diff
 			if (lastInstruction._is_branch_instruction())
 			{
 				uint16_t target = lastInstruction.get_branch_target()->get_final_offset();
@@ -597,8 +595,6 @@ ControlFlowNode *ControlFlowGraph::_FindFollowNodeForStructure(ControlFlowNode *
 			uint16_t postFinalAddress = (static_cast<RawCodeNode*>(node))->end->get_final_offset();
 			assert(postFinalAddress != 0xffff);
 			maxAddress = max(postFinalAddress, maxAddress);
-
-		 //   maxAddressDebug = max(postFinalAddress, maxAddress); // temp
 		}
 		else
 		{
@@ -608,14 +604,24 @@ ControlFlowNode *ControlFlowGraph::_FindFollowNodeForStructure(ControlFlowNode *
 			}
 		}
 	}
+	return maxAddress;
+}
 
+ControlFlowNode *ControlFlowGraph::_FindFollowNodeForStructure(ControlFlowNode *structure)
+{
+	ControlFlowNode *follow = nullptr;
+	// Find the follow node. This isn't trivial. We can't just ask for the post dominator of the
+	// header - that won't work in the case of compound conditions (which are still unresolved at this point)
+	// We can leverage a tautology of SCI compilers - code always proceeds forward in address. So we can
+	// find the furthest branch of any of our children, then try to find the node that matches it.
+	uint16_t maxAddress = _GetFurthestAddress(structure->Children());
 	assert(maxAddress);
-   // assert(maxAddress == maxAddressDebug && "Investigate... we might be ok, but it's different than before, so understand it");
 
 	// Now we need to follow the hierarchy down to the right level. This is not trivial. If callers *only* use this function after
 	// they have replaced themselves in the tree, then we can find the node with a starting address equal to maxAddress, and who
 	// has structure as a predecessor.
 	// Ok, I've changed this. Callers should *only* use this prior to replacing themselves in the tree.
+	stack<ControlFlowNode*> toProcess;
 	toProcess.push(mainStructure);
 	while (!toProcess.empty())
 	{
@@ -2108,11 +2114,41 @@ vector<NodeBlock> _FindBackEdges(DominatorMap &dominators, DominatorMap &postDom
 			// Does node dominate its predecessor? If so, pred -> node is a back edge
 			if (predsDoms.contains(node))
 			{
-				backEdges.emplace_back(node, pred, true, structure);
+				NodeBlock &backEdge = backEdges.emplace_back(node, pred, true, structure);
+				// The loop takes in the nodes up to its follow node that its
+				// head dominates (see CollectMoreChildren), and a break can put
+				// the follow node past the latch. So the block ends at the
+				// follow node: Compare puts every loop in that range before
+				// this one, and a loop that this one takes in is then made
+				// first, as a nested loop must be.
+				backEdge.endAddress = _GetFurthestAddress(backEdge.body);
 			}
 		}
 	}
 	return backEdges;
+}
+
+// Blocks that share a head, in latch order. The first `count` blocks are the
+// back edges of an inner loop when that loop ends (at its follow node, the
+// end address of its blocks) no later than the next latch: the code from
+// there to the next latch is the rest of the outer loop's body. Sierra's
+// compiler gives a loop that is the first statement of a repeat the head of
+// the repeat, so the two loops start at the same node. The rule also matches
+// a continue in the body (or a cond clause that ends in a jump to the head):
+// its bytecode is that of a loop at the start of the repeat, and the two
+// readings do the same. Returns that count, or 0 when the blocks do not nest.
+static size_t _CountInnerLoopLatches(const vector<NodeBlock*> &blocksWithSameHeader)
+{
+	uint16_t innerEnd = 0;
+	for (size_t count = 1; count < blocksWithSameHeader.size(); count++)
+	{
+		innerEnd = max(innerEnd, blocksWithSameHeader[count - 1]->endAddress);
+		if (innerEnd <= blocksWithSameHeader[count]->latch->GetStartingAddress())
+		{
+			return count;
+		}
+	}
+	return 0;
 }
 
 // Return true if we made no changes
@@ -2122,6 +2158,10 @@ bool _CheckForSameHeader(ControlFlowGraph &cfg, ControlFlowNode &parent, vector<
 	// Look for any blocks with the same header but different latches. If we find them, introduce a new
 	// common latch node.
 	// We hit this scenario, for instance, in do-while loops with compound conditions.
+	// A graph that nests the loops that share a head (NestsLoopsWithOneHead)
+	// joins only the latches of the inner loop. The blocks of the outer loop
+	// wait for a later round: once the inner loop is made, their back edges go
+	// to it, and they are found again with the inner loop as their head.
 
 	// Just some kind of order.
 	sort(blocks.begin(), blocks.end(),
@@ -2150,8 +2190,11 @@ bool _CheckForSameHeader(ControlFlowGraph &cfg, ControlFlowNode &parent, vector<
 
 	// Now ones with the same head should be adjacent in the vector, making it easier
 	// to process.
+	// The indices of the outer loops' blocks that wait for a later round.
+	vector<size_t> later;
 	for (size_t i = 0; i < blocks.size(); )
 	{
+		size_t first = i;
 		vector<NodeBlock*> blocksWithSameHeader;
 		blocksWithSameHeader.push_back(&blocks[i]);
 		i++;
@@ -2168,6 +2211,24 @@ bool _CheckForSameHeader(ControlFlowGraph &cfg, ControlFlowNode &parent, vector<
 		}
 		if (blocksWithSameHeader.size() > 1)
 		{
+			size_t innerCount = _CountInnerLoopLatches(blocksWithSameHeader);
+			if (innerCount && cfg.NestsLoopsWithOneHead())
+			{
+				for (size_t outer = first + innerCount; outer < i; outer++)
+				{
+					later.push_back(outer);
+				}
+				if (innerCount == 1)
+				{
+					// The inner loop has one latch: it is ready.
+					continue;
+				}
+				blocksWithSameHeader.resize(innerCount);
+			}
+			else if (innerCount)
+			{
+				cfg.SetMergedNestedLoops();
+			}
 			noChanges = false;
 			// Create a common latch node. It will have our latch nodes as predecessors
 			// First we need to come up with a token address for this latch node.
@@ -2194,6 +2255,13 @@ bool _CheckForSameHeader(ControlFlowGraph &cfg, ControlFlowNode &parent, vector<
 			}
 			blocksWithSameHeader[0]->head->InsertPredecessor(common);
 			break; // Only do one set of these at a time.
+		}
+	}
+	if (noChanges)
+	{
+		for (auto it = later.rbegin(); it != later.rend(); ++it)
+		{
+			blocks.erase(blocks.begin() + *it);
 		}
 	}
 	return noChanges;
