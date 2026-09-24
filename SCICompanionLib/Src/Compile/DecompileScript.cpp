@@ -365,24 +365,37 @@ void ResolvePublicProcedureCalls(DecompileLookups &lookups, const GameFolderHelp
 	unordered_map<int, unique_ptr<CSCOFile>> scoMap;
 	scoMap[script.GetScriptNumber()] = move(GetExistingSCOFromScriptNumber(helper, script.GetScriptNumber(), lookups.GetSelectorTable()));
 
-	// First let's resolve the exports
+	// First the exports. An exported procedure that still has the generated
+	// name of its own slot (procN_i) gets the name of that slot in the .sco.
+	// The slot comes from the export table, not from the name: a name from a
+	// .sco can have the form of a generated name for another slot (the SCI0
+	// template's Obj.sco names slot 1 "proc999_2"). The export entry gets the
+	// same name, so that the public block agrees with the procedure.
 	CSCOFile *thisSCO = scoMap.at(script.GetScriptNumber()).get();
 	if (thisSCO)
 	{
-		for (auto &proc : script.GetProceduresNC())
+		for (auto &exportEntry : script.GetExports())
 		{
-			uint16_t scriptNumber, index;
-			if (proc->IsPublic() && _IsUndeterminedPublicProc(compiledScript, proc->GetName(), scriptNumber, index))
+			string generatedName = _GetPublicProcedureName(script.GetScriptNumber(), (uint16_t)exportEntry->Slot);
+			if (exportEntry->Name != generatedName)
 			{
-				assert(scriptNumber == script.GetScriptNumber());
-				string newProcName = thisSCO->GetExportName(index);
-				// A stale .sco may not carry this export; keep the generated
-				// procN_i name rather than blanking it.
-				if (!newProcName.empty())
+				continue;
+			}
+			string newProcName = thisSCO->GetExportName((uint16_t)exportEntry->Slot);
+			// A stale .sco may not carry this export; keep the generated name
+			// rather than blanking it.
+			if (newProcName.empty())
+			{
+				continue;
+			}
+			for (auto &proc : script.GetProceduresNC())
+			{
+				if (proc->IsPublic() && (proc->GetName() == generatedName))
 				{
 					proc->SetName(newProcName);
 				}
 			}
+			exportEntry->Name = newProcName;
 		}
 	}
 

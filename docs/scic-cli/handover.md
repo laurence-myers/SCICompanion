@@ -6,8 +6,11 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: the fixes of the review of the C4 fixes (the commit
-  after `3d2badc3`) need their review. F1, A1, A2, B1, B2, B3a, B3b,
+- Current step: the SCI0 round-trip fix (the commit after `0c777f51`)
+  needs its review. The review of `4897dc2e` (the fixes of the review
+  of the C4 fixes) found 1 should-fix; its fixes come next. The reviews
+  of the vcpkg change (F1, C1 and `76b7aa3d`) and of the comment
+  cleanup (`0c777f51`) are running. F1, A1, A2, B1, B2, B3a, B3b,
   F2, K1 to K6, S3, S1, S2 (S2a, S2b, S2c), S4 (S4a, S4b), C1 and C2
   are committed and reviewed, with their review fixes: the S1 and S2
   fixes `98d884c7`, the fixes of its review `73be520f`, and the fixes
@@ -40,7 +43,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412. After the fixes of the review of `de2fb8dc` and `8a322b32`: 418. After the fixes of the reviews of S1 and S2: 429. After C1: 440. After the S4 review fixes: 454. After the fixes of the review of `7d26d9d6` and `98d884c7`: 460. After the C1 review fixes: 462. After C2: 470. After the fixes of the review of `d01ea1e0`: 475. After the fixes of the review of `73be520f`: 482. After the C2 review fixes: 492. After the fixes of the review of `4e7117ae`: 498. After the fixes of the review of `a0c27a61`: 501. After C3: 512. After the fixes of the review of `837f9f9b`: 515. After C4: 515 (C4 adds no unit test). After the fixes of the review of `fd65ff87`: 524. After the fixes of the review of `34c1ba40`: 524 (no unit test changed). After the fixes of the review of `3d2badc3`: 524 (no unit test changed).
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412. After the fixes of the review of `de2fb8dc` and `8a322b32`: 418. After the fixes of the reviews of S1 and S2: 429. After C1: 440. After the S4 review fixes: 454. After the fixes of the review of `7d26d9d6` and `98d884c7`: 460. After the C1 review fixes: 462. After C2: 470. After the fixes of the review of `d01ea1e0`: 475. After the fixes of the review of `73be520f`: 482. After the C2 review fixes: 492. After the fixes of the review of `4e7117ae`: 498. After the fixes of the review of `a0c27a61`: 501. After C3: 512. After the fixes of the review of `837f9f9b`: 515. After C4: 515 (C4 adds no unit test). After the fixes of the review of `fd65ff87`: 524. After the fixes of the review of `34c1ba40`: 524 (no unit test changed). After the fixes of the review of `3d2badc3`: 524 (no unit test changed). After the SCI0 round-trip fix: 527.
   The integration suite has 23 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -1300,14 +1303,45 @@ for each step, and a follow-up commit if the review finds a problem.
   move the PDB aside and rebuild the library project; parallel builds
   of review agents share `mspdbsrv` (a private `_MSPDBSRV_ENDPOINT_`
   avoids it).
-- C3 known gaps: the SCI0 template does not round-trip (decompile
-  `--all`, then compile `--all`): the decompiled `Obj.sc` names two
-  procedures `EqualsAny` and none `proc999_2` (a decompiler naming
-  problem; a separate task was offered), and `SysWindow.sc` declares
-  `local9` twice (review of `fd65ff87`). The SCI1.1 template
-  round-trips with 0 errors (a test). The diagnostics print at the end,
-  not as they come (a script that failed only in an earlier pass has
-  no error). The debug files do not go back after a refused commit.
+- 2026-09-24, the full corpus sweep (`CliCorpusSweep.ps1` over the 93
+  game folders of `F:\Games\Sierra` and `F:\games\gog`, without the
+  `- dev` and `scummvm` copies; about 1.2 hours): no crash and no
+  timeout. `list`: 92 exit 0, 1 exit 6 (Hoyle 3: script 995 cannot be
+  read, `[format]`). `decompile`: 85 exit 0; 6 exit 6 (Longbow, GK on
+  floppy and on CD, the GOG GK, the KQ4 `patch\NEW` folder: decompiler
+  errors in scripts that it wrote); 2 exit 1 (KQ5 EGA and floppy: script
+  755 fails with "invalid map<K, T> key" `[internal]`, a decompiler bug;
+  a separate task was offered). `compile`: 86 exit 5 (the decompiled
+  sources of real games do not all compile back: known limits of the
+  decompiler), 7 exit 0. Willy Beamish lists 0 scripts: it is not
+  supported (your note; not investigated).
+- 2026-09-24, comments: at your request, the comments that the branch
+  added describe only the current behaviour (`0c777f51`); the history is
+  in the commit messages. Every review prompt carries the rule.
+- 2026-09-24, the SCI0 round trip (decompile `--all`, then compile
+  `--all`) now compiles with 0 errors. The decompiler placed the names
+  of the old `.sco` files by position: an export name of the form
+  `procN_M` was read as slot M (the template's `Obj.sco` names slot 1
+  `proc999_2`), and the local names went to the declarations in order,
+  not to their indices (`SysWindow.sco` has arrays that the decompile
+  declares one index at a time). Now `ResolvePublicProcedureCalls`
+  renames an export only when it has the generated name of its own
+  slot (and renames the public block entry too), and `RenameContext`
+  gives a `.sco` local name to the declaration that starts at its
+  index. Tests: `Compile_RoundTrip_Sci0`,
+  `Decompile_Sci0Obj_NamesEachExportBySlot`,
+  `Decompile_Sci0SysWindow_LocalNamesByIndex` (the commit after
+  `0c777f51`).
+- 2026-09-24, outside this branch: `fix/test-resource-temp-folders`
+  (from master, `fdd7f780`, not pushed): the two TestResource tests
+  that make a temp folder remove it; before, each unit run left two
+  empty `SCI*.tmp` folders in `%TEMP%` (811 are there now; you decide
+  whether to delete them). This branch gets the fix when it takes
+  master.
+- C3 known gaps: both templates round-trip with 0 errors (tests; the
+  SCI0 template since the commit after `0c777f51`). The diagnostics
+  print at the end, not as they come (a script that failed only in an
+  earlier pass has no error). The debug files do not go back after a refused commit.
   One error in `game.sh` gives its error lines once for each script of
   `--all` (the header cache keeps only the headers that parsed); an
   error in an include that is not a header names the including script
@@ -1819,9 +1853,11 @@ for each step, and a follow-up commit if the review finds a problem.
 
 ## Next action
 
-The fixes of the review of the C4 fixes (the commit after `3d2badc3`)
-need their review. Then: record the results of the full corpus sweep;
-commits for the nits of the reviews of the C1 fixes, of the C2 fixes
-(`3cf3e33f`), of `ccadff0c`, of `8fc8e984` and of `cd1d5ee3`; then the
-optional E1 (plan section 9), or stop before it. Push and PRs only with
-the user's approval.
+The SCI0 round-trip fix (the commit after `0c777f51`) needs its review.
+Next: the fixes of the review of `4897dc2e` (1 should-fix: a CSV row
+that the sweep cannot write is lost). The reviews of the vcpkg change
+and of `0c777f51` are running. Then: fix what they find; commits for
+the nits of the reviews of the C1 fixes, of the C2 fixes (`3cf3e33f`),
+of `ccadff0c`, of `8fc8e984` and of `cd1d5ee3`; then the optional E1
+(plan section 9), or stop before it. Push and PRs only with the user's approval (also for
+`fix/test-resource-temp-folders`).

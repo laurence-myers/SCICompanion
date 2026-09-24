@@ -1258,8 +1258,7 @@ namespace UnitTests
         }
 
         // A round trip on the SCI1.1 template: decompile --all, then compile
-        // --all, with 0 errors. (The SCI0 template does not round-trip: for
-        // example, the decompiled Obj.sc names two procedures EqualsAny.)
+        // --all, with 0 errors.
         TEST_METHOD(Compile_RoundTrip_Sci11)
         {
             NoAppStateForCli noAppState;
@@ -1275,6 +1274,58 @@ namespace UnitTests
             Assert::AreEqual(0, Run({ "script", "compile", _copyFolder, "--all" }, compile), WideForCli(compile.err).c_str());
             Assert::IsTrue(compile.err.find("(0 errors,") != std::string::npos, WideForCli(compile.err).c_str());
             Assert::IsTrue(compile.err.find("still changed a .sco file") == std::string::npos, WideForCli(compile.err).c_str());
+        }
+
+        // A round trip on the SCI0 template: decompile --all, then compile
+        // --all, with 0 errors. Its .sco files give names that the decompile
+        // must place by export slot (Obj.sc) and by local index (SysWindow.sc).
+        TEST_METHOD(Compile_RoundTrip_Sci0)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            cli::StringConsole decompile;
+            int decompiled = Run({ "script", "decompile", _copyFolder, "--all" }, decompile);
+            Assert::AreEqual(0, decompiled, WideForCli(decompile.err).c_str());
+            cli::StringConsole compile;
+            int compiled = Run({ "script", "compile", _copyFolder, "--all" }, compile);
+            Assert::AreEqual(0, compiled, WideForCli(compile.err).c_str());
+            Assert::IsTrue(compile.err.find("(0 errors,") != std::string::npos, WideForCli(compile.err).c_str());
+        }
+
+        // A decompile names each exported procedure by the slot of its
+        // export. A name from the .sco can have the form of a generated name
+        // for another slot: the SCI0 template's Obj.sco names slot 1
+        // "proc999_2" and slot 2 "proc999_3".
+        TEST_METHOD(Decompile_Sci0Obj_NamesEachExportBySlot)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            cli::StringConsole console;
+            int code = Run({ "script", "decompile", _copyFolder, "999", "--stdout" }, console);
+            Assert::AreEqual(0, code, WideForCli(console.err).c_str());
+            Assert::IsTrue(console.out.find("\tproc999_2 1") != std::string::npos, WideForCli(console.out).c_str());
+            Assert::IsTrue(console.out.find("(procedure (proc999_2 param1") != std::string::npos, WideForCli(console.out).c_str());
+            Assert::IsTrue(console.out.find("(procedure (proc999_3 param1") != std::string::npos, WideForCli(console.out).c_str());
+            Assert::AreEqual((size_t)1, CountOf(console.out, "(procedure (EqualsAny"), WideForCli(console.out).c_str());
+        }
+
+        // A decompile gives each local name of the old .sco to the local at
+        // the same index. The SCI0 template's SysWindow.sco has two arrays of
+        // four locals (local5 at index 5, localA at index 10), which the
+        // decompiled script declares one index at a time: local9 names index
+        // 9 only, and index 6 keeps its decompiled name.
+        TEST_METHOD(Decompile_Sci0SysWindow_LocalNamesByIndex)
+        {
+            NoAppStateForCli noAppState;
+            CopyTemplate("\\TemplateGame\\SCI0");
+            cli::StringConsole console;
+            int code = Run({ "script", "decompile", _copyFolder, "990", "--stdout" }, console);
+            Assert::AreEqual(0, code, WideForCli(console.err).c_str());
+            std::vector<std::string> lines = Lines(console.out);
+            size_t local9 = std::count(lines.begin(), lines.end(), std::string("\tlocal9"));
+            Assert::AreEqual((size_t)1, local9, WideForCli(console.out).c_str());
+            Assert::IsTrue(std::find(lines.begin(), lines.end(), std::string("\tlocal6")) != lines.end(), WideForCli(console.out).c_str());
+            Assert::IsTrue(std::find(lines.begin(), lines.end(), std::string("\tlocalA")) != lines.end(), WideForCli(console.out).c_str());
         }
 
         // Plan section 4.5: --out-dir and --raw write the plain data into the
