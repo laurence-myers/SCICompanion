@@ -157,3 +157,23 @@ The engine and the command-line tool follow the failure-handling model of
 - Keep each PR atomic: one logical change per branch/PR.
 - Describe the change plainly — what it was before, what it is after, and how it
   was tested.
+
+## Work with AI agents
+
+- Review each feature step once, in an isolated worktree. Review a batch of
+  fixes once, not each fix.
+- Do not review a commit that changes only comments or docs; check that the
+  code without its comments did not change.
+- Fix the should-fix findings. Put the nits in the open-items list
+  (`docs\scic-cli\handover.md` for the CLI work), not in a new round of
+  fixes and reviews.
+- Mechanical agents (refactors, conversions, surveys): Sonnet. Reviews of
+  risky code: Opus.
+- Routine work: high or medium effort, not max.
+- Start a new session at each milestone; the open-items list and the memory
+  keep the state.
+- An agent reads a large document and returns a summary. A review report
+  lists only the findings.
+- In a new worktree, copy `vcpkg_installed\` (see "Building"), and build
+  with `-p:VcpkgManifestInstall=false` and a private
+  `_MSPDBSRV_ENDPOINT_`.
