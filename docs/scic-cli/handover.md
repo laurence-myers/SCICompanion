@@ -6,9 +6,8 @@ Update this file in the same commit as each step.
 ## State
 
 - Branch: `feat/scic-cli`, based on `master` at `0dc1fef5`. Not pushed.
-- Current step: the fixes of the review of C4 (the commit after
-  `cd1d5ee3`) need their review. The fixes of the review of C3
-  (`cd1d5ee3`) are under review. F1, A1, A2, B1, B2, B3a, B3b,
+- Current step: the fixes of the review of the C4 fixes (the commit
+  after `3d2badc3`) need their review. F1, A1, A2, B1, B2, B3a, B3b,
   F2, K1 to K6, S3, S1, S2 (S2a, S2b, S2c), S4 (S4a, S4b), C1 and C2
   are committed and reviewed, with their review fixes: the S1 and S2
   fixes `98d884c7`, the fixes of its review `73be520f`, and the fixes
@@ -30,7 +29,7 @@ Update this file in the same commit as each step.
   217 of 217 tests in about 4 minutes. After F1: 237. After A1: 242. After
   the F1 review fixes: 243. After the A1 review fixes: 248. After A2: 254.
   After B1: 264. After B2: 269. After the A2 review fixes: 272. After the
-  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412. After the fixes of the review of `de2fb8dc` and `8a322b32`: 418. After the fixes of the reviews of S1 and S2: 429. After C1: 440. After the S4 review fixes: 454. After the fixes of the review of `7d26d9d6` and `98d884c7`: 460. After the C1 review fixes: 462. After C2: 470. After the fixes of the review of `d01ea1e0`: 475. After the fixes of the review of `73be520f`: 482. After the C2 review fixes: 492. After the fixes of the review of `4e7117ae`: 498. After the fixes of the review of `a0c27a61`: 501. After C3: 512. After the fixes of the review of `837f9f9b`: 515. After C4: 515 (C4 adds no unit test). After the fixes of the review of `fd65ff87`: 524. After the fixes of the review of `34c1ba40`: 524 (no unit test changed).
+  B1 review fixes: 276. After the B2 review fixes: 278. After B3a: 280. After B3b: 282. After the B3a review fixes: 285. After the B3b review fixes: 286. After F2: 295. After K1: 297. After K2: 298. After K3: 299 (its opt-in test runs only with an explicit `-Filter`). After K4: 301. After the F2 review fixes: 310. After the K1 review fixes: 311. After K5: 314. After the K4 review fixes: 315. After the K2 review fixes: 317. After the K3 review fixes: 318. After K6: 320. After S3a: 336. After S3b: 348. After the K5 and K6 review fixes: 354. After the fixes of the second review of F2 and K1 to K4: 356. After S1: 365. After S2a: 375. After the S3 review fixes: 386. After the fixes of the review of `bc827391` and `fe02c12a`: 389. After S2b: 395. After S2c: 401. After S4a: 412. After the fixes of the review of `de2fb8dc` and `8a322b32`: 418. After the fixes of the reviews of S1 and S2: 429. After C1: 440. After the S4 review fixes: 454. After the fixes of the review of `7d26d9d6` and `98d884c7`: 460. After the C1 review fixes: 462. After C2: 470. After the fixes of the review of `d01ea1e0`: 475. After the fixes of the review of `73be520f`: 482. After the C2 review fixes: 492. After the fixes of the review of `4e7117ae`: 498. After the fixes of the review of `a0c27a61`: 501. After C3: 512. After the fixes of the review of `837f9f9b`: 515. After C4: 515 (C4 adds no unit test). After the fixes of the review of `fd65ff87`: 524. After the fixes of the review of `34c1ba40`: 524 (no unit test changed). After the fixes of the review of `3d2badc3`: 524 (no unit test changed).
   The integration suite has 23 tests.
 - A full rebuild shows about 49 old warnings: C4840 in Prof-UIS, C5033 and
   C4018 in GIFLIB and CrystalEdit, one in a Windows SDK header, and C4996
@@ -66,8 +65,8 @@ for each step, and a follow-up commit if the review finds a problem.
 | S4 DecompileRun | done | S4a `152f4e56`; S4b `d588e499`; review fixes `d01ea1e0`; fixes of its review `4e7117ae` | S4a FIX: 6 should-fix, nits. S4b PASS with nits. Fixed: see "S4 review". Review of the fixes: FIX (2 should-fix); fixed, see "Review of the S4 fixes". Review of `4e7117ae`: FIX (1 should-fix); fixed in `837f9f9b`, see "Review of the S4 fixes, second round". Review of `837f9f9b`: FIX (1 should-fix, older); fixed in `8fc8e984`, see "Review of 837f9f9b". Review of `8fc8e984`: PASS with 6 nits and 1 question (see "Review of 8fc8e984"). |
 | C1 CLI project, `script list` | done | `68e6f43e`; review fixes `6b1bfe64` | FIX: 3 should-fix, nits. Fixed: see "C1 review". Review of the fixes: PASS with 9 nits (see "Review of the C1 fixes"). |
 | C2 `script decompile`, `script sco` | done | `37ee979b`; review fixes `3cf3e33f` | FIX: 2 should-fix, 7 nits, 2 questions. Fixed: see "C2 review". Review of the fixes: PASS with 5 nits (see "Review of the C2 fixes"). |
-| C3 `script compile` | done | `fd65ff87`; review fixes (`cd1d5ee3`) | FIX: 3 should-fix, 8 nits, 1 question. Fixed: see "Review of fd65ff87". Review of the fixes: running. |
-| C4 CI and documents | done | `34c1ba40`; review fixes (the commit after `cd1d5ee3`) | FIX: 2 should-fix (the sweep script), 9 nits, 1 question. Fixed: see "Review of 34c1ba40". |
+| C3 `script compile` | done | `fd65ff87`; review fixes (`cd1d5ee3`) | FIX: 3 should-fix, 8 nits, 1 question. Fixed: see "Review of fd65ff87". Review of the fixes: PASS with 11 nits and 1 question (see "Review of cd1d5ee3"). |
+| C4 CI and documents | done | `34c1ba40`; review fixes (`3d2badc3`) | FIX: 2 should-fix (the sweep script), 9 nits, 1 question. Fixed: see "Review of 34c1ba40". Review of the fixes: FIX, 1 should-fix (the sweep script), 9 nits, 1 question; fixed in the commit after `3d2badc3`, see "Review of 3d2badc3". |
 | E1 Core library (optional) | not started | | |
 
 ## How to work a step
@@ -1393,7 +1392,7 @@ for each step, and a follow-up commit if the review finds a problem.
   the `Objects\` folder. Question: a failed smoke step skips "Upload
   Artifacts", as a failed test step does; intended? Evidence: the
   scratch folder `c4review`.
-  The fixes (the commit after `cd1d5ee3`): (1) a row is a bug when the
+  The fixes (`3d2badc3`): (1) a row is a bug when the
   command timed out, printed a crash line or an `[internal]` error, or
   ended with an exit code that scic does not give for a result (not 0,
   2, 3, 5, 6, 7, 8 or 9); the CSV has a `Bug` column. (2) `-Work`,
@@ -1417,20 +1416,83 @@ for each step, and a follow-up commit if the review finds a problem.
   process folder (the run folder follows the PowerShell location), and
   with a stub that exits with 0xC0000409 (exit 1, 2 bugs, the compile
   "skipped").
+- Review of cd1d5ee3 (the fixes of the C3 review, 2026-09-24): PASS with
+  11 nits and 1 question, for a later commit. (1) Test gaps: no test
+  fails for the absolute `--out-dir`, the batch warnings in the count,
+  the dry-run text "would be written", or the plural texts of decompile
+  and sco. (2) The "a commit that failed lists no file" assertion tests
+  nothing (the shadow check fails in `Start`, before any outcome). (3) A
+  dry-run summary says "a run would write them" when the commit check
+  fails. (4) The summary does not count the selection and core-log
+  warnings (count them in `CliOutput`). (5) Each include error prints
+  and counts twice (`sci.sh` includes `keys.sh`, so `Update` loops again
+  and tries the failed include again). (6) A relative `--data-dir` gives
+  relative diagnostic paths. (7) The include-read error has the path in
+  lower case (`LoadScriptText` gets `GetFullPath()`). (8) `--log ""` is
+  ignored (also a nit of the review of the C1 fixes). (9) 43 test
+  asserts make their message before `Run` runs, so a failure shows no
+  output. (10) The recorder hook can keep a dangling pointer when `Run`
+  throws (an RAII guard). (11) Texts: the plan's C3 row lists
+  `objectFileChanged`; a dry run gives no pass warning; a trailing
+  backslash on the game folder prints `\\src`. Question: should "The
+  else clause must be the last clause in a cond." (the parser drops the
+  clauses before it) be a warning, not `info`? The reviewer also found
+  that a nested review worktree read the main checkout's
+  `Directory.Build.targets` of the vcpkg prototype for a short time.
+  Evidence: the scratch folder `review-ca57`.
+- Review of 3d2badc3 (the fixes of the C4 review, 2026-09-24): FIX, 1
+  should-fix, 9 nits, 1 question. (S1) A game that the sweep itself
+  could not run (a `-Scic` that is not a program, a `[` in `-Work`, a
+  copy that fails) gave a "sweep" row but exit code 0. Nits: an error in
+  `catch` or `finally` (a locked CSV, a locked copy) stopped the sweep;
+  `finally` could remove a copy that the run did not make (a run folder
+  of the same second); the compile was skipped after any bug of the
+  decompile, not only after one that did not finish; `Get-FullPath`
+  took a path that is not in the file system, made `F:\` into `F:`, and
+  `[` broke `Start-Process`; the header named only a junction and a
+  subst drive (a UNC name of a local folder passes too); the smoke step
+  counted stderr lines as scripts and passed an `[internal]` line with
+  exit 0; texts ("1 commands", a past A/B test in the header, a short
+  line in AGENTS.md); the handover's C4 entry. Question: the shipped
+  copy compiled first, so its decompile read the new patch files, not
+  the package. Evidence: the scratch folder `review-2357`.
+  The fixes (the commit after `3d2badc3`): (S1) a "sweep" row counts,
+  and the sweep exits with 1 ("N games were not swept"). Nits: `Add-Row`
+  and the removal of a copy give a warning when they fail; each run
+  gets a new run folder (`<time>-2` for a second run in the same
+  second), and `finally` removes only a copy that the run made; the
+  compile is skipped only after a decompile that did not finish (a
+  timeout, a crash line, or an exit code that is not a result code or
+  1; the CSV has a `Finished` column); `Get-FullPath` refuses a path
+  that is not in the file system and one with `[ ] * ?`, and keeps
+  `F:\`; the header names the UNC case; the smoke step counts only
+  stdout rows, fails on an `[internal]` line, and compiles the shipped
+  sources into another folder (`--out-dir`), so the decompile reads the
+  package; the texts. Tests: the sweep with a `-Scic` that is not a
+  program (exit 1, "1 game was not swept"), with the crash stub (exit
+  1, 2 bugs, the compile skipped), with `[` in `-Work` (a clear error),
+  and on a normal game (exit 0); the step body in Windows PowerShell 5.1
+  as is (exit 0, each summary "86 of 86"), with a stderr line that
+  starts with a number (still 86 scripts, exit 0), and with an
+  `[internal]` line (exit 1).
 - C4: CI and documents. `build.yaml`: a step "Smoke test scic.exe" in
   the build job, after the integration tests. It copies
   `Release\TemplateGame\SCI1.1` twice into `RUNNER_TEMP` (as it ships,
   and with no `game.ini` and no `src\`), runs `scic --version`, then
-  `script list`, `script decompile --all` and `script compile --all` on
-  each copy, and fails on an exit code that is not 0, or when the
-  second copy gets a `game.ini`. It runs when the build step
+  on each copy `script list`, `script
+  decompile --all` and `script compile --all` (the shipped copy first
+  compiles its own sources into another folder), and fails on an exit
+  code that is not 0, an `[internal]` line, a summary that does not name
+  every script that `list` found, or a `game.ini` in the second copy.
+  It runs when the build step
   succeeded, also after a failed test step (`if: !cancelled() &&
   steps.build.outcome == 'success'`; the build step has `id: build`).
   Locally, the same script body in Windows PowerShell 5.1 passes in
-  about 10 s (each compile: 0 errors, 5 warnings, 2 passes). No local
+  about 25 s (each compile: 0 errors, 5 warnings, 2 passes). No local
   `pwsh` 7; CI runs the step in `pwsh`. `UnitTests\Tools\CliCorpusSweep.ps1`
   (local): `-Source` (required), `-Work` (default: the temp folder),
-  `-Scic`, `-Include`, `-Exclude`, `-TimeoutSeconds` (900), `-Keep`. It
+  `-Scic`, `-Include`, `-Exclude`, `-Depth` (5), `-TimeoutSeconds` (900),
+  `-Keep`. It
   copies only the files of the folder that holds `resource.map`: the
   subfolders of the GOG games hold DOSBox, ScummVM, saves, CD audio and
   the user's `src\` (`GameSession::Open` reads `AUDIO\` and `AUD\` for the
@@ -1740,9 +1802,9 @@ for each step, and a follow-up commit if the review finds a problem.
 
 ## Next action
 
-The fixes of the review of C3 (`cd1d5ee3`) are under review, and the
-fixes of the review of C4 (the commit after `cd1d5ee3`) need their
-review. Then: record the results of the full corpus sweep; commits for
-the nits of the reviews of the C1 fixes, of the C2 fixes (`3cf3e33f`),
-of `ccadff0c` and of `8fc8e984`; then the optional E1 (plan section 9),
-or stop before it. Push and PRs only with the user's approval.
+The fixes of the review of the C4 fixes (the commit after `3d2badc3`)
+need their review. Then: record the results of the full corpus sweep;
+commits for the nits of the reviews of the C1 fixes, of the C2 fixes
+(`3cf3e33f`), of `ccadff0c`, of `8fc8e984` and of `cd1d5ee3`; then the
+optional E1 (plan section 9), or stop before it. Push and PRs only with
+the user's approval.

@@ -30,9 +30,8 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
 - The build puts `SCICompanion.exe`, `scic.exe` and `UnitTests.dll` in
   `Release\`. The app's post-build copies the data that they need next to
   them (for example `include\`, `Decompiler\`, `Objects\` and
-  `TemplateGame\`). `scic.exe` reads
-  `include\` and `Decompiler\` from its own folder; `--data-dir` or
-  `SCIC_DATA_DIR` gives another folder.
+  `TemplateGame\`). `scic.exe` reads `include\` and `Decompiler\` from its
+  own folder; `--data-dir` or `SCIC_DATA_DIR` gives another folder.
 
 ## Testing
 

@@ -14,32 +14,35 @@
 
     It copies no subfolder: they hold DOSBox, ScummVM, saves, CD audio and
     the user's src\. GameSession::Open reads AUDIO\ and AUD\ to find the
-    audio format, but the script commands do not use it (an A/B test on
-    LSL6 gave the same output and the same files with and without AUD\).
+    audio format, and the script commands do not use it.
 
     The script only reads the source folders. Do not use junctions in place
     of the copies: decompile writes src\ and game.ini, and compile writes
-    patch files. -Work and -Source must not be inside each other; the
-    script compares the paths as text, so do not give a junction or a
-    subst drive that points into the other. Each copy is removed after its
-    game, unless you give -Keep.
+    patch files. -Work and -Source must not be inside each other. The
+    script compares the paths as text, so do not give another name of the
+    same folder (a junction, a subst drive, or a UNC name of a local
+    folder). The paths must be file-system paths without the characters
+    [ ] * ?. Each run gets a new run folder, and each copy is removed after
+    its game, unless you give -Keep.
 
     The run folder (<Work>\<time>) gets sweep.csv and logs\. The CSV has one
     row for each game and command, written as the sweep goes: the game
     folder, the command, the exit code ("timeout" when the command ran
     longer than -TimeoutSeconds; "skipped" for a compile after a decompile
-    that was a bug), the seconds, the count of error lines ("scic: error:",
-    "scic: crash" and "path(line,col): error :"), the error codes ("format",
-    "io", ...), the summary of the report, whether the row is a bug of
-    scic, and the log file (stdout, then stderr).
+    that did not finish), the seconds, the count of error lines ("scic:
+    error:", "scic: crash" and "path(line,col): error :"), the error codes
+    ("format", "io", ...), the summary of the report, whether the row is a
+    bug of scic, and the log file (stdout, then stderr). A game that the
+    sweep itself could not run (for example a copy that failed) gets one
+    "sweep" row with the error.
 
     A bug of scic: a command that timed out; that printed a crash line or
     an "internal" error; or that ended with an exit code that scic does not
     give for a result (not 0, 2, 3, 5, 6, 7, 8 or 9: for example 1, or a
     crash code such as -1073740791, 0xC0000409, from a crash that the crash
-    filter did not see). The script then exits with 1. Other exit codes
-    (for example 5 for compile errors) can come from the game, so read the
-    CSV.
+    filter did not see). The script exits with 1 when there is a bug or a
+    "sweep" row. Other exit codes (for example 5 for compile errors) can
+    come from the game, so read the CSV.
 
     Usage:
       .\UnitTests\Tools\CliCorpusSweep.ps1 -Source 'F:\Games\Sierra', 'F:\games\gog' -Exclude '* - dev*'
@@ -64,28 +67,36 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
-# A path as the file system sees it: a relative path starts at the current
-# PowerShell folder (Set-Location), not at the folder of the process, and a
-# UNC path has no "Microsoft.PowerShell.Core\FileSystem::" in front.
-function Get-FullPath([string]$path) {
-    $full = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($path)
-    return [IO.Path]::GetFullPath($full).TrimEnd('\')
+# A file-system path as Windows sees it: a relative path starts at the
+# current PowerShell folder (Set-Location), not at the folder of the
+# process; a UNC path has no provider prefix; a drive root keeps its "\".
+function Get-FullPath([string]$path, [string]$what) {
+    if ($path.IndexOfAny([char[]]'[]*?') -ge 0) { throw "$what has one of the characters [ ] * ?, which the script cannot use: $path" }
+    $provider = $null
+    $drive = $null
+    $full = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($path, [ref]$provider, [ref]$drive)
+    if ($provider.Name -ne "FileSystem") { throw "$what is not a file-system path: $path" }
+    $full = [IO.Path]::GetFullPath($full)
+    $trimmed = $full.TrimEnd('\')
+    if ($trimmed -match '^[A-Za-z]:$') { $trimmed += '\' }
+    return $trimmed
 }
 
 function Test-Inside([string]$path, [string]$folder) {
-    return ($path -eq $folder) -or $path.StartsWith($folder + "\", [StringComparison]::OrdinalIgnoreCase)
+    $prefix = if ($folder.EndsWith('\')) { $folder } else { $folder + '\' }
+    return ($path -eq $folder) -or $path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
 }
 
 if (-not $Scic) { $Scic = Join-Path $repoRoot "Release\scic.exe" }
-$Scic = Get-FullPath $Scic
+$Scic = Get-FullPath $Scic "-Scic"
 if (-not (Test-Path -LiteralPath $Scic -PathType Leaf)) { throw "scic.exe not found: $Scic. Build the solution first, or give -Scic." }
 
 # The run folder must not be inside a source folder, and no source folder
 # may be inside the run folder (the script removes the copies).
-$workFull = Get-FullPath $Work
+$workFull = Get-FullPath $Work "-Work"
 $sources = @()
 foreach ($folder in $Source) {
-    $full = Get-FullPath $folder
+    $full = Get-FullPath $folder "-Source"
     if (-not (Test-Path -LiteralPath $full -PathType Container)) { throw "Source folder not found: $folder" }
     if ((Test-Inside $workFull $full) -or (Test-Inside $full $workFull)) {
         throw "The work folder ($workFull) and a source folder ($full) must not be inside each other."
@@ -109,9 +120,14 @@ foreach ($root in $sources) {
 }
 if ($games.Count -eq 0) { throw "No game (a folder with resource.map) matched under: $($sources -join ', ')" }
 
-$run = Join-Path $workFull (Get-Date -Format "yyyyMMdd-HHmmss")
+# A new run folder: a second run in the same second gets "-2", and so on.
+if (-not (Test-Path -LiteralPath $workFull)) { New-Item -ItemType Directory $workFull | Out-Null }
+$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$run = Join-Path $workFull $stamp
+for ($n = 2; Test-Path -LiteralPath $run; $n++) { $run = Join-Path $workFull "$stamp-$n" }
+New-Item -ItemType Directory $run | Out-Null
 $logs = Join-Path $run "logs"
-New-Item -ItemType Directory -Force $logs | Out-Null
+New-Item -ItemType Directory $logs | Out-Null
 $csv = Join-Path $run "sweep.csv"
 Write-Host "scic: $Scic"
 Write-Host "Games: $($games.Count). Run folder: $run"
@@ -127,11 +143,19 @@ $errorCodes = "format|unsupported|not-found|io|compile|write-refused|usage|cance
 $resultCodes = @("0", "2", "3", "5", "6", "7", "8", "9")
 $rows = @()
 $bugs = 0
+$sweepErrors = 0
 
 # Writes one row of the CSV at once, so a sweep that stops keeps its rows.
+# A CSV that cannot be written (for example open in another program) gives
+# a warning, and the row is only in the summary.
 function Add-Row($row) {
     $script:rows += $row
-    $row | Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8 -Append
+    try {
+        $row | Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8 -Append
+    }
+    catch {
+        Write-Warning "could not write a row to ${csv}: $_"
+    }
 }
 
 # Runs one command of scic on a copy; returns its row.
@@ -173,6 +197,9 @@ function Invoke-ScicCommand([string]$game, [string]$copy, [string]$id, $command)
         $summary = @($stderr | Where-Object { $_ -match '^(Decompiled|Compiled|Wrote|Would write) ' } | Select-Object -First 1) -join ""
     }
     $bug = ($exitCode -eq "timeout") -or $crashed -or ($codes -contains "internal") -or ($resultCodes -notcontains $exitCode)
+    # A command that ended with a result (exit code 1 included) finished;
+    # one that timed out or crashed did not.
+    $finished = ($exitCode -ne "timeout") -and -not $crashed -and ((@("1") + $resultCodes) -contains $exitCode)
     return [pscustomobject]@{
         Game = $game
         Command = $command.Name
@@ -182,6 +209,7 @@ function Invoke-ScicCommand([string]$game, [string]$copy, [string]$id, $command)
         Codes = ($codes -join " ")
         Summary = $summary
         Bug = $(if ($bug) { "yes" } else { "" })
+        Finished = $(if ($finished) { "yes" } else { "no" })
         Log = $log
     }
 }
@@ -192,41 +220,50 @@ foreach ($game in $games) {
     $id = "{0:D3}" -f $index
     # A short copy folder: scic has a MAX_PATH limit.
     $copy = Join-Path $run $id
+    $madeCopy = $false
     $line = "[$id/$($games.Count)] $($game.Name):"
     try {
         New-Item -ItemType Directory $copy | Out-Null
+        $madeCopy = $true
         foreach ($file in @(Get-ChildItem -LiteralPath $game.Folder -File)) {
             $target = Join-Path $copy $file.Name
             Copy-Item -LiteralPath $file.FullName -Destination $target
             $copied = Get-Item -LiteralPath $target
             $copied.Attributes = $copied.Attributes -band (-bnot [IO.FileAttributes]::ReadOnly)
         }
-        $decompileBug = $false
+        $decompileFinished = $true
         foreach ($command in $commands) {
-            if (($command.Name -eq "compile") -and $decompileBug) {
-                # A compile of a decompile that crashed or timed out tells
+            if (($command.Name -eq "compile") -and -not $decompileFinished) {
+                # A compile after a decompile that did not finish tells
                 # nothing.
-                $row = [pscustomobject]@{ Game = $game.Folder; Command = "compile"; ExitCode = "skipped"; Seconds = 0; Errors = 0; Codes = ""; Summary = "the decompile was a bug"; Bug = ""; Log = "" }
+                $row = [pscustomobject]@{ Game = $game.Folder; Command = "compile"; ExitCode = "skipped"; Seconds = 0; Errors = 0; Codes = ""; Summary = "the decompile did not finish"; Bug = ""; Finished = "no"; Log = "" }
             }
             else {
                 $row = Invoke-ScicCommand $game.Folder $copy $id $command
             }
             Add-Row $row
-            if ($row.Bug) {
-                $bugs++
-                if ($command.Name -eq "decompile") { $decompileBug = $true }
-            }
+            if ($row.Bug) { $bugs++ }
+            if ($command.Name -eq "decompile") { $decompileFinished = ($row.Finished -eq "yes") }
             $line += " $($command.Name) $($row.ExitCode)"
             if ($row.ExitCode -ne "skipped") { $line += " ($($row.Seconds) s)" }
         }
     }
     catch {
         # The sweep goes on with the next game; the row names the failure.
-        Add-Row ([pscustomobject]@{ Game = $game.Folder; Command = "sweep"; ExitCode = "error"; Seconds = 0; Errors = 1; Codes = ""; Summary = "$_"; Bug = ""; Log = "" })
+        $sweepErrors++
+        Add-Row ([pscustomobject]@{ Game = $game.Folder; Command = "sweep"; ExitCode = "error"; Seconds = 0; Errors = 1; Codes = ""; Summary = "$_"; Bug = ""; Finished = "no"; Log = "" })
         $line += " sweep error: $_"
     }
     finally {
-        if (-not $Keep -and (Test-Path -LiteralPath $copy)) { Remove-Item -LiteralPath $copy -Recurse -Force }
+        # Only a copy that this run made; one that cannot go gives a warning.
+        if ($madeCopy -and -not $Keep -and (Test-Path -LiteralPath $copy)) {
+            try {
+                Remove-Item -LiteralPath $copy -Recurse -Force
+            }
+            catch {
+                Write-Warning "could not remove the copy ${copy}: $_"
+            }
+        }
     }
     Write-Host $line
 }
@@ -234,8 +271,14 @@ foreach ($game in $games) {
 Write-Host ""
 $rows | Group-Object Command, ExitCode | Sort-Object Name | ForEach-Object { Write-Host ("{0,-20} {1}" -f $_.Name, $_.Count) }
 Write-Host "CSV: $csv"
+$failed = $false
 if ($bugs -gt 0) {
-    Write-Host "$bugs commands were bugs of scic: a crash, exit code 1 or another code that scic does not give, an internal error, or a timeout. See the Bug column."
-    exit 1
+    Write-Host "$(if ($bugs -eq 1) { '1 command was a bug' } else { "$bugs commands were bugs" }) of scic: a crash, exit code 1 or another code that scic does not give, an internal error, or a timeout. See the Bug column."
+    $failed = $true
 }
+if ($sweepErrors -gt 0) {
+    Write-Host "$(if ($sweepErrors -eq 1) { '1 game was' } else { "$sweepErrors games were" }) not swept: see the sweep rows."
+    $failed = $true
+}
+if ($failed) { exit 1 }
 exit 0

@@ -101,11 +101,11 @@ jobs:
     # Smoke test of the command-line tool (docs/scic-cli/plan.md, section 10).
     # Run the built scic.exe as a user does, on two copies of the SCI1.1
     # template in the runner's temp folder: the template as it ships (its
-    # own sources compile first), and a game that SCI Companion never
-    # opened (no game.ini, no src\). Each command must exit with 0, each
-    # summary must name every script that list found, and the second game
-    # must not get a game.ini. The step runs also when a test step failed,
-    # so that its result shows.
+    # own sources compile first, into another folder), and a game that SCI
+    # Companion never opened (no game.ini, no src\). Each command must exit
+    # with 0 and print no internal error, each summary must name every
+    # script that list found, and the second game must not get a game.ini.
+    # The step runs also when a test step failed, so that its result shows.
     - name: Smoke test scic.exe
       if: ${{ !cancelled() && steps.build.outcome == 'success' }}
       shell: pwsh
@@ -114,16 +114,19 @@ jobs:
         $scic = (Resolve-Path "${{ matrix.configuration }}\scic.exe").Path
         $template = "${{ matrix.configuration }}\TemplateGame\SCI1.1"
         # Runs scic and prints its output. Fails on an exit code that is not
-        # 0. Returns the lines of stdout and stderr.
+        # 0, and on an internal error (a bug of scic) with any exit code.
+        # Returns the lines of stdout (Out) and of both streams (All).
         function Invoke-Scic {
           Write-Host "> scic $args"
           # The stderr of scic is output here, not an error.
           $ErrorActionPreference = 'Continue'
-          $lines = @(& $scic @args 2>&1 | ForEach-Object { "$_" })
+          $output = @(& $scic @args 2>&1)
           $code = $LASTEXITCODE
-          $lines | ForEach-Object { Write-Host $_ }
+          $all = @($output | ForEach-Object { "$_" })
+          $all | ForEach-Object { Write-Host $_ }
           if ($code -ne 0) { throw "scic $($args -join ' ') exited with $code." }
-          return $lines
+          if ($all | Where-Object { $_.EndsWith('[internal]') }) { throw "scic $($args -join ' ') printed an internal error." }
+          return [pscustomobject]@{ Out = @($output | Where-Object { $_ -is [string] }); All = $all }
         }
         # Fails unless a line starts with the text (for example a summary).
         function Assert-Line($lines, [string]$start) {
@@ -139,15 +142,19 @@ jobs:
         Copy-Item $template $neverOpened -Recurse
         Remove-Item (Join-Path $neverOpened "game.ini")
         Remove-Item (Join-Path $neverOpened "src") -Recurse
+        $outDir = Join-Path $root "SCI1.1-out"
+        New-Item -ItemType Directory -Force $outDir | Out-Null
         foreach ($game in @($shipped, $neverOpened)) {
-          $count = @(Invoke-Scic script list $game | Where-Object { $_ -match '^\s*\d+\s' }).Count
+          # A row of the table (stdout) starts with the script number.
+          $count = @((Invoke-Scic script list $game).Out | Where-Object { $_ -match '^\s*\d+\s' }).Count
           if ($count -lt 1) { throw "scic script list found no script in $game." }
           if ($game -eq $shipped) {
-            # The sources as they ship: the decompile replaces them.
-            Assert-Line (Invoke-Scic script compile $game --all) "Compiled and wrote $count of $count scripts"
+            # The sources as they ship, into another folder: the game keeps
+            # its package for the decompile, which replaces the sources.
+            Assert-Line (Invoke-Scic script compile $game --all --out-dir $outDir).All "Compiled and wrote $count of $count scripts"
           }
-          Assert-Line (Invoke-Scic script decompile $game --all) "Decompiled and wrote $count of $count scripts."
-          Assert-Line (Invoke-Scic script compile $game --all) "Compiled and wrote $count of $count scripts"
+          Assert-Line (Invoke-Scic script decompile $game --all).All "Decompiled and wrote $count of $count scripts."
+          Assert-Line (Invoke-Scic script compile $game --all).All "Compiled and wrote $count of $count scripts"
         }
         if (Test-Path (Join-Path $neverOpened "game.ini")) { throw "scic created game.ini in a game that had none." }
 
