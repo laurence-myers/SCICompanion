@@ -8,15 +8,27 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Next
 
-- The review of the C++ fixes (`e95c6e72`, `e1b791e9`, `7dd20f62`) runs.
-- Your request (2026-09-24): de-duplicate the test helpers and the
-  asserts (`TestSupport.h`); then one review of the whole batch (Sonnet),
-  with the fix of the review of `e3a4cf9a`.
+- One review (Sonnet) of the batch since `78da9f37`: the de-duplication
+  of the tests (`TestSupport.h`), and the fixes of the reviews of
+  `e3a4cf9a` and `e95c6e72`.
 - Then the other review findings below, then the optional E1 (plan
   section 9), or stop before it.
 - Push and pull requests only with your approval.
 
 ## Review findings that are not fixed
+
+### `e95c6e72`, `e1b791e9` and `7dd20f62`: 5 nits, 1 question
+
+- When the `--log` file cannot open, a usage error after it gives 3, not
+  2 (the log opens before the other usage checks).
+- Test gaps: Ctrl+C just before the read of `list`; the usage errors
+  other than "give --all" in the log; a `.sco` name that an earlier index
+  took (`RenameContext`).
+- `--log` may overwrite a `.log` file that a game ships (EcoQuest
+  `CDW900E.LOG`).
+- A short line after a rewrap (`ScriptCatalog.cpp`, `ResetNamesOf`).
+- Question: with no game folder (`scic --log <file> --version`), `--log`
+  protects no file. Refuse every existing file that is not a `.log`?
 
 ### `630e27b6` and `e3a4cf9a` (vcpkg, the sweep script): 4 nits
 
@@ -222,8 +234,9 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 ### No test (checked by inspection only)
 
 - The Ctrl+C handler itself (the tests set the cancel flag), the core-log
-  error line, the pure-call handler, a second `abort()` on another thread,
-  the lock of `CliOutput`.
+  error line, the pure-call handler, a second `abort()` on another thread
+  (an abort of two threads at the same moment can still exit with 3), the
+  lock of `CliOutput`.
 - The compile dialog, the shadow question, the Decompile dialog,
   `MainFrm.cpp` and `ScriptDocument.cpp`; 7 of the 8 parser sites that
   give a 1-based line.

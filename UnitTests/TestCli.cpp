@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 #include "AppState.h"
 #include "Cli.h"
+#include "CliCommands.h"
 #include "CliConsole.h"
 #include "CliHost.h"
 #include "CliVersion.h"
@@ -1201,9 +1202,9 @@ namespace UnitTests
             cli::StringConsole compile = Expect(0, { "script", "compile", _copyFolder, "999", "--dry-run" });
         }
 
-        // A .sco can name two locals alike: an older decompile wrote local9
-        // at indices 6 and 9 of SysWindow.sco. The name goes to one local
-        // only, and the decompiled script compiles.
+        // A .sco can name two locals alike (here local9 at indices 6 and 9 of
+        // SysWindow.sco). The name goes to one local only, and the decompiled
+        // script compiles.
         TEST_METHOD(Decompile_Sci0SysWindow_TwoLikeNamesInTheObjectFile)
         {
             CopyTemplate("\\TemplateGame\\SCI0");
@@ -1384,6 +1385,18 @@ namespace UnitTests
             cli::StringConsole run = Expect(0, { "script", "compile", _copyFolder, "rm001" });
             Assert::IsTrue(before.at((fs::path(_copyFolder) / "src" / "rm001.sco").string()) != Snapshot(_copyFolder).at((fs::path(_copyFolder) / "src" / "rm001.sco").string()),
                 L"setup: a run changes the .sco");
+        }
+
+        // AbsolutePath removes a separator at the end, but not the one of a
+        // root: a drive, a device path or a volume.
+        TEST_METHOD(AbsolutePath_KeepsTheSeparatorOfARoot)
+        {
+            Assert::AreEqual(std::string("C:\\"), cli::AbsolutePath("C:\\"));
+            Assert::AreEqual(std::string("\\\\?\\C:\\"), cli::AbsolutePath("\\\\?\\C:\\"));
+            Assert::AreEqual(std::string("\\\\.\\C:\\"), cli::AbsolutePath("\\\\.\\C:\\"));
+            Assert::AreEqual(std::string("\\\\?\\Volume{00000000-0000-0000-0000-000000000000}\\"), cli::AbsolutePath("\\\\?\\Volume{00000000-0000-0000-0000-000000000000}\\"));
+            Assert::AreEqual(std::string("C:\\game"), cli::AbsolutePath("C:\\game\\\\"));
+            Assert::AreEqual(std::string("\\\\?\\C:\\game"), cli::AbsolutePath("\\\\?\\C:\\game\\"));
         }
 
         // A relative game folder gives absolute paths in the MSBuild lines

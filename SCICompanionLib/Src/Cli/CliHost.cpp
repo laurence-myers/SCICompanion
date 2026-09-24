@@ -28,9 +28,16 @@ namespace cli
             }
         }
 
-        // One line, then exit code 1 (plan section 6.6).
+        std::atomic<bool> g_crashed(false);
+
+        // One line, then exit code 1 (plan section 6.6). Only the first crash
+        // prints: a crash of another thread waits for it to end the process.
         void CrashLine(const char *what)
         {
+            if (g_crashed.exchange(true))
+            {
+                Sleep(INFINITE);
+            }
             char line[512];
             int length = t_currentItem[0] ?
                 _snprintf_s(line, _TRUNCATE, "scic: crash %s while %s\n", what, t_currentItem) :
@@ -57,7 +64,9 @@ namespace cli
         void __cdecl AbortHandler(int)
         {
             // The C runtime sets SIGABRT back to its default before it calls
-            // the handler: an abort of another thread must come here too.
+            // the handler, so the handler installs itself again for a later
+            // abort of another thread. An abort of two threads at the same
+            // moment can still end the process with exit code 3.
             signal(SIGABRT, AbortHandler);
             CrashLine("(abort)");
         }

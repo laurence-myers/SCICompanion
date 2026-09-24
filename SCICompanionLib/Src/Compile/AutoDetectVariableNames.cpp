@@ -121,8 +121,7 @@ public:
 			// can declare arrays in another way than the source that made the
 			// .sco, so a name at an index where no declaration starts is not used.
 			// Nor is a name that a declaration has already, or that an earlier
-			// index took: a .sco can name two indices alike (an older decompile
-			// wrote local9 at indices 6 and 9 of the SCI0 template's SysWindow).
+			// index took: a .sco can name two indices alike.
 			map<int, VariableDecl*> declarationAt;
 			set<string> usedNames;
 			int start = 0;

@@ -186,7 +186,9 @@ namespace cli
     sci::Result<ExitCode> RunScriptCompile(GameSession &session, const ScriptCompileOptions &options, const CommonOptions &common, CliOutput &output);
 
     // The full path of a folder or a file, from GetFullPathName: a relative
-    // path starts at the current folder, and the case of the path stays. An
-    // empty path, or one that GetFullPathName cannot take, stays as it is.
+    // path starts at the current folder, and the case of the path stays. A
+    // separator at the end goes, except the one of a root (C:\, \\?\C:\). An
+    // empty path stays empty; a path that GetFullPathName cannot take keeps
+    // its text, less a separator at its end.
     std::string AbsolutePath(const std::string &path);
 }

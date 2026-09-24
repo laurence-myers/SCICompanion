@@ -105,9 +105,15 @@ namespace cli
         char buffer[MAX_PATH * 4];
         DWORD length = GetFullPathNameA(path.c_str(), ARRAYSIZE(buffer), buffer, nullptr);
         std::string full = ((length > 0) && (length < ARRAYSIZE(buffer))) ? std::string(buffer, length) : path;
-        // No separator at the end, except the one of a root ("C:\"): the
-        // paths that the run makes add their own (else "game\\src").
-        while ((full.size() > 1) && ((full.back() == '\\') || (full.back() == '/')) && !std::filesystem::path(full).relative_path().empty())
+        // No separator at the end, except the one of a root ("C:\",
+        // "\\?\C:\", "\\?\Volume{...}\"): the paths that the run makes add
+        // their own (else "game\\src").
+        auto isRoot = [](const std::string &text)
+        {
+            char before = text[text.size() - 2];
+            return (before == ':') || (before == '}') || std::filesystem::path(text).relative_path().empty();
+        };
+        while ((full.size() > 1) && ((full.back() == '\\') || (full.back() == '/')) && !isRoot(full))
         {
             full.pop_back();
         }
