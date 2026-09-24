@@ -1,6 +1,5 @@
 #include "stdafx.h"
 #include "CppUnitTest.h"
-#include "AppState.h"
 #include "GameSession.h"
 #include "ResourceMap.h"
 #include "ResourceBlob.h"
@@ -16,9 +15,8 @@
 #include "Helper.h"
 #include "ResourceSources.h"
 #include "ResourceMapOperations.h"
+#include "TestSupport.h"
 #include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <map>
 #include <string>
 #include <vector>
@@ -27,22 +25,40 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace
 {
-    // Runs a test with no AppState, as the command line does.
-    struct NoAppStateInScope
-    {
-        AppState *saved;
-        NoAppStateInScope() : saved(appState) { appState = nullptr; }
-        ~NoAppStateInScope() { appState = saved; }
-    };
-
-    std::wstring WideText(const std::string &text)
-    {
-        return std::wstring(text.begin(), text.end());
-    }
-
     std::string CodeName(const sci::Error &error)
     {
         return sci::ErrorCodeName(error.code);
+    }
+
+    // The code of the sci::DataError that fn throws; "none" when fn throws
+    // nothing.
+    template<typename TFunc>
+    std::string DataErrorCode(TFunc fn)
+    {
+        try
+        {
+            fn();
+        }
+        catch (const sci::DataError &e)
+        {
+            return sci::ErrorCodeName(e.code());
+        }
+        return "none";
+    }
+
+    // The package header of text 5 of an SCI0 game.
+    ResourceHeaderAgnostic TextHeader(uint16_t compressionMethod, uint32_t compressedSize, uint32_t size)
+    {
+        ResourceHeaderAgnostic header;
+        header.Type = ResourceType::Text;
+        header.Number = 5;
+        header.PackageHint = 1;
+        header.CompressionMethod = compressionMethod;
+        header.cbCompressed = compressedSize;
+        header.cbDecompressed = size;
+        header.Version = sciVersion0;
+        header.SourceFlags = ResourceSourceFlags::ResourceMap;
+        return header;
     }
 }
 
@@ -54,16 +70,14 @@ namespace UnitTests
     // table loads give a Status.
     TEST_CLASS(TestEngineErrors)
     {
-        std::string _copyFolder;
+        GameCopy _game;
 
-        void RemoveCopy()
+        // A new copy of the template, and a session on it with the default
+        // options.
+        GameSession &OpenCopy(const char *templateFolder)
         {
-            if (!_copyFolder.empty())
-            {
-                std::error_code ec;
-                std::filesystem::remove_all(_copyFolder, ec);
-                _copyFolder.clear();
-            }
+            _game.Make(templateFolder);
+            return _game.Open(SessionOptions());
         }
 
         // In a copy of the SCI1.1 template, sets count bytes of the package
@@ -73,24 +87,18 @@ namespace UnitTests
         // Corrupted and TryCreate refuses it.
         bool DamagedHeader(ResourceType type, uint16_t number, size_t count, size_t first = 0)
         {
-            NoAppStateInScope noAppState;
-            RemoveCopy();
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            NoAppState noAppState;
             uint32_t size = 0;
             {
-                GameSession session;
-                Assert::IsTrue(session.Open(_copyFolder).has_value());
+                GameSession &session = OpenCopy(TemplateSci11);
                 std::unique_ptr<ResourceBlob> blob = session.Helper().MostRecentResource(type, number, ResourceEnumFlags::None);
                 Assert::IsTrue(blob != nullptr, L"setup: the SCI1.1 template has the resource");
                 Assert::IsTrue(blob->GetSourceFlags() == ResourceSourceFlags::ResourceMap, L"setup: the resource is in the package");
                 size = blob->GetHeader().cbDecompressed;
             }
-            std::string volumePath = _copyFolder + "\\resource.000";
-            std::vector<uint8_t> volume;
-            {
-                std::ifstream file(volumePath, std::ios::binary);
-                volume.assign((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-            }
+            _game.CloseSessions();
+            std::string volumePath = _game.Path("resource.000");
+            std::vector<uint8_t> volume = ReadFileBytes(volumePath);
             size_t header = SIZE_MAX;
             int matches = 0;
             for (size_t i = 0; (i + 9) <= volume.size(); i++)
@@ -104,41 +112,22 @@ namespace UnitTests
             }
             Assert::AreEqual(1, matches, L"setup: the header of the resource must be found once");
             std::fill(volume.begin() + header + first, volume.begin() + header + first + count, (uint8_t)0);
-            {
-                std::ofstream file(volumePath, std::ios::binary | std::ios::trunc);
-                file.write(reinterpret_cast<const char *>(volume.data()), volume.size());
-            }
+            WriteFileBytes(volumePath, volume);
 
-            GameSession session;
-            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            GameSession &session = _game.Open(SessionOptions());
             std::unique_ptr<ResourceBlob> blob = session.Helper().MostRecentResource(type, number, ResourceEnumFlags::None);
             Assert::IsTrue(blob != nullptr);
             return IsFlagSet(blob->GetStatusFlags(), ResourceLoadStatusFlags::Corrupted) && !TryCreateResourceFromResourceData(*blob).has_value();
         }
 
     public:
-        TEST_METHOD_CLEANUP(CleanUp)
-        {
-            RemoveCopy();
-        }
-
         TEST_METHOD(DataError_ReadPastTheEnd_IsFormat)
         {
             uint8_t bytes[1] = { 7 };
             sci::istream stream(bytes, 1);
             stream.setThrowExceptions(true);
             uint16_t word = 0;
-            bool threw = false;
-            try
-            {
-                stream >> word;
-            }
-            catch (const sci::DataError &e)
-            {
-                threw = true;
-                Assert::IsTrue(e.code() == sci::ErrorCode::Format);
-            }
-            Assert::IsTrue(threw, L"a read past the end must throw a DataError");
+            Assert::AreEqual(std::string("format"), DataErrorCode([&]() { stream >> word; }), L"a read past the end must throw a DataError");
         }
 
         // Some catch sites catch std::exception; a DataError must still reach them.
@@ -155,7 +144,7 @@ namespace UnitTests
                 const sci::DataError *dataError = dynamic_cast<const sci::DataError *>(&e);
                 Assert::IsNotNull(dataError, L"the exception must be a DataError");
                 Assert::IsTrue(dataError->code() == sci::ErrorCode::Unsupported);
-                Assert::IsTrue(std::string(e.what()).find("too large") != std::string::npos, WideText(e.what()).c_str());
+                Assert::IsTrue(std::string(e.what()).find("too large") != std::string::npos, Wide(e.what()).c_str());
             }
             Assert::IsTrue(threw);
         }
@@ -168,8 +157,7 @@ namespace UnitTests
 
             auto created = TryCreateResourceFromResourceData(blob);
 
-            Assert::IsTrue(created.has_value(), WideText(created ? std::string() : created.error().ToString()).c_str());
-            Assert::AreEqual(size_t(2), (*created)->GetComponent<TextComponent>().Texts.size());
+            Assert::AreEqual(size_t(2), ValueOf(created)->GetComponent<TextComponent>().Texts.size());
         }
 
         // A text whose last string has no NUL is a Format error, not the texts
@@ -200,53 +188,44 @@ namespace UnitTests
             Assert::IsFalse(created.has_value());
             Assert::AreEqual(std::string("format"), CodeName(created.error()));
             Assert::AreEqual(std::string("text 5"), created.error().where.resource);
-            Assert::IsTrue(created.error().message.find("decompressed") != std::string::npos, WideText(created.error().ToString()).c_str());
+            Assert::IsTrue(created.error().message.find("decompressed") != std::string::npos, Wide(created.error().ToString()).c_str());
         }
 
         // A truncated script: Format, with the script in the location.
         TEST_METHOD(CompiledScriptTryLoad_TruncatedScript_IsAFormatError)
         {
-            NoAppStateInScope noAppState;
-            const char *templates[] = { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" };
-            for (const char *name : templates)
+            NoAppState noAppState;
+            for (const char *name : { TemplateSci0, TemplateSci11 })
             {
-                _copyFolder = CopyGameFromModuleFolder(name);
-                {
-                    GameSession session;
-                    Assert::IsTrue(session.Open(_copyFolder).has_value());
-                    const GameFolderHelper &helper = session.Helper();
+                GameSession &session = OpenCopy(name);
+                const GameFolderHelper &helper = session.Helper();
 
-                    CompiledScript intact(0);
-                    sci::Status loaded = intact.TryLoad(helper, helper.Version, 0);
-                    Assert::IsTrue(loaded.has_value(), WideText(loaded ? std::string() : loaded.error().ToString()).c_str());
+                CompiledScript intact(0);
+                sci::Status loaded = intact.TryLoad(helper, helper.Version, 0);
+                AssertOk(loaded);
 
-                    // Write a copy of script 0 with only its first 10 bytes.
-                    std::unique_ptr<ResourceBlob> original = helper.MostRecentResource(ResourceType::Script, 0, ResourceEnumFlags::None);
-                    Assert::IsTrue(original && (original->GetLength() > 10));
-                    std::vector<uint8_t> data(original->GetData(), original->GetData() + 10);
-                    ResourceBlob truncated(helper, nullptr, ResourceType::Script, data, helper.Version.DefaultVolumeFile, 0, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags());
-                    sci::Status written = session.ResourceMap().WriteResource(truncated);
-                    Assert::IsTrue(written.has_value(), WideText(written ? std::string() : written.error().ToString()).c_str());
+                // Write a copy of script 0 with only its first 10 bytes.
+                std::unique_ptr<ResourceBlob> original = helper.MostRecentResource(ResourceType::Script, 0, ResourceEnumFlags::None);
+                Assert::IsTrue(original && (original->GetLength() > 10));
+                std::vector<uint8_t> data(original->GetData(), original->GetData() + 10);
+                ResourceBlob truncated(helper, nullptr, ResourceType::Script, data, helper.Version.DefaultVolumeFile, 0, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags());
+                AssertOk(session.ResourceMap().WriteResource(truncated));
 
-                    CompiledScript broken(0);
-                    loaded = broken.TryLoad(helper, helper.Version, 0);
-                    Assert::IsFalse(loaded.has_value(), WideText(name).c_str());
-                    Assert::AreEqual(std::string("format"), CodeName(loaded.error()), WideText(loaded.error().ToString()).c_str());
-                    Assert::AreEqual(std::string("script 0"), loaded.error().where.resource);
-                    // The stream's own text: TryLoad reads in throw mode, so a read
-                    // past the end fails at once. (Without it, the loader reads zeros.)
-                    Assert::IsTrue(loaded.error().message.find("past end of stream") != std::string::npos, WideText(loaded.error().ToString()).c_str());
-                }
-                RemoveCopy();
+                CompiledScript broken(0);
+                loaded = broken.TryLoad(helper, helper.Version, 0);
+                Assert::IsFalse(loaded.has_value(), Wide(name).c_str());
+                Assert::AreEqual(std::string("format"), CodeName(loaded.error()), Wide(loaded.error().ToString()).c_str());
+                Assert::AreEqual(std::string("script 0"), loaded.error().where.resource);
+                // The stream's own text: TryLoad reads in throw mode, so a read
+                // past the end fails at once. (Without it, the loader reads zeros.)
+                Assert::IsTrue(loaded.error().message.find("past end of stream") != std::string::npos, Wide(loaded.error().ToString()).c_str());
             }
         }
 
         TEST_METHOD(CompiledScriptTryLoad_MissingScript_IsNotFound)
         {
-            NoAppStateInScope noAppState;
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
-            GameSession session;
-            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            NoAppState noAppState;
+            GameSession &session = OpenCopy(TemplateSci0);
 
             CompiledScript missing(950);
             sci::Status loaded = missing.TryLoad(session.Helper(), session.Version(), 950);
@@ -258,32 +237,22 @@ namespace UnitTests
 
         TEST_METHOD(TablesTryLoad_Templates_Load)
         {
-            NoAppStateInScope noAppState;
-            const char *templates[] = { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" };
-            for (const char *name : templates)
+            NoAppState noAppState;
+            for (const char *name : { TemplateSci0, TemplateSci11 })
             {
-                _copyFolder = CopyGameFromModuleFolder(name);
-                {
-                    GameSession session;
-                    Assert::IsTrue(session.Open(_copyFolder).has_value());
-                    GlobalCompiledScriptLookups lookups;
-                    sci::Status lookupsLoaded = lookups.TryLoad(session.Helper());
-                    Assert::IsTrue(lookupsLoaded.has_value(), WideText(lookupsLoaded ? std::string() : lookupsLoaded.error().ToString()).c_str());
-                    CompileTables tables;
-                    sci::Status tablesLoaded = tables.TryLoad(session.ResourceMap());
-                    Assert::IsTrue(tablesLoaded.has_value(), WideText(tablesLoaded ? std::string() : tablesLoaded.error().ToString()).c_str());
-                }
-                RemoveCopy();
+                GameSession &session = OpenCopy(name);
+                GlobalCompiledScriptLookups lookups;
+                AssertOk(lookups.TryLoad(session.Helper()));
+                CompileTables tables;
+                AssertOk(tables.TryLoad(session.ResourceMap()));
             }
         }
 
         // A game with no class table (vocab 996): NotFound, with the resource.
         TEST_METHOD(CheckVocabTables_NoClassTable_IsNotFound)
         {
-            NoAppStateInScope noAppState;
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
-            GameSession session;
-            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            NoAppState noAppState;
+            GameSession &session = OpenCopy(TemplateSci0);
             std::unique_ptr<ResourceBlob> classTable = session.Helper().MostRecentResource(ResourceType::Vocab, 996, ResourceEnumFlags::None);
             Assert::IsTrue(classTable != nullptr, L"the template has a class table");
             session.ResourceMap().DeleteResource(classTable.get());
@@ -298,10 +267,8 @@ namespace UnitTests
 
         TEST_METHOD(CheckVocabTables_NoSelectorTable_IsNotFound)
         {
-            NoAppStateInScope noAppState;
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
-            GameSession session;
-            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            NoAppState noAppState;
+            GameSession &session = OpenCopy(TemplateSci0);
             std::unique_ptr<ResourceBlob> selectorTable = session.Helper().MostRecentResource(ResourceType::Vocab, 997, ResourceEnumFlags::None);
             Assert::IsTrue(selectorTable != nullptr, L"the template has a selector table");
             session.ResourceMap().DeleteResource(selectorTable.get());
@@ -318,16 +285,13 @@ namespace UnitTests
         // resource.
         TEST_METHOD(TablesTryLoad_SelectorTableNotValid_NamesTheTable)
         {
-            NoAppStateInScope noAppState;
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
-            GameSession session;
-            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            NoAppState noAppState;
+            GameSession &session = OpenCopy(TemplateSci0);
             const GameFolderHelper &helper = session.Helper();
             // A selector table that says it has 256 selectors, and has none.
             std::vector<uint8_t> data = { 0xff, 0x00 };
             ResourceBlob bad(helper, nullptr, ResourceType::Vocab, data, helper.Version.DefaultVolumeFile, 997, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags());
-            sci::Status written = session.ResourceMap().WriteResource(bad);
-            Assert::IsTrue(written.has_value(), WideText(written ? std::string() : written.error().ToString()).c_str());
+            AssertOk(session.ResourceMap().WriteResource(bad));
 
             GlobalCompiledScriptLookups lookups;
             sci::Status lookupsLoaded = lookups.TryLoad(helper);
@@ -348,34 +312,27 @@ namespace UnitTests
         // value outside its heap.
         TEST_METHOD(CompiledScriptTryLoad_AgreesWithLoad_OnEveryTemplateScript)
         {
-            NoAppStateInScope noAppState;
-            const char *templates[] = { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" };
-            for (const char *name : templates)
+            NoAppState noAppState;
+            for (const char *name : { TemplateSci0, TemplateSci11 })
             {
-                _copyFolder = CopyGameFromModuleFolder(name);
+                const GameFolderHelper &helper = OpenCopy(name).Helper();
+                std::string disagreements;
+                int scripts = 0;
+                auto container = helper.Resources(ResourceTypeFlags::Script, ResourceEnumFlags::MostRecentOnly);
+                for (auto &blob : *container)
                 {
-                    GameSession session;
-                    Assert::IsTrue(session.Open(_copyFolder).has_value());
-                    const GameFolderHelper &helper = session.Helper();
-                    std::string disagreements;
-                    int scripts = 0;
-                    auto container = helper.Resources(ResourceTypeFlags::Script, ResourceEnumFlags::MostRecentOnly);
-                    for (auto &blob : *container)
+                    scripts++;
+                    CompiledScript old((uint16_t)blob->GetNumber());
+                    bool oldLoaded = old.Load(helper, helper.Version, blob->GetNumber());
+                    CompiledScript fresh((uint16_t)blob->GetNumber());
+                    sci::Status loaded = fresh.TryLoad(helper, helper.Version, blob->GetNumber());
+                    if (oldLoaded != loaded.has_value())
                     {
-                        scripts++;
-                        CompiledScript old((uint16_t)blob->GetNumber());
-                        bool oldLoaded = old.Load(helper, helper.Version, blob->GetNumber());
-                        CompiledScript fresh((uint16_t)blob->GetNumber());
-                        sci::Status loaded = fresh.TryLoad(helper, helper.Version, blob->GetNumber());
-                        if (oldLoaded != loaded.has_value())
-                        {
-                            disagreements += (loaded ? "Load fails, TryLoad reads: script " + std::to_string(blob->GetNumber()) : loaded.error().ToString()) + "\n";
-                        }
+                        disagreements += (loaded ? "Load fails, TryLoad reads: script " + std::to_string(blob->GetNumber()) : loaded.error().ToString()) + "\n";
                     }
-                    Assert::IsTrue(scripts > 20, WideText(name).c_str());
-                    Assert::IsTrue(disagreements.empty(), WideText(std::string(name) + ":\n" + disagreements).c_str());
                 }
-                RemoveCopy();
+                Assert::IsTrue(scripts > 20, Wide(name).c_str());
+                Assert::IsTrue(disagreements.empty(), Wide(std::string(name) + ":\n" + disagreements).c_str());
             }
         }
 
@@ -384,11 +341,8 @@ namespace UnitTests
         // copy.
         TEST_METHOD(CompiledScriptTryLoad_DamagedHeap_NamesTheHeap)
         {
-            NoAppStateInScope noAppState;
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
-            GameSession session;
-            Assert::IsTrue(session.Open(_copyFolder).has_value());
-            const GameFolderHelper &helper = session.Helper();
+            NoAppState noAppState;
+            const GameFolderHelper &helper = OpenCopy(TemplateSci11).Helper();
             std::unique_ptr<ResourceBlob> script = helper.MostRecentResource(ResourceType::Script, 0, ResourceEnumFlags::None);
             std::unique_ptr<ResourceBlob> heap = helper.MostRecentResource(ResourceType::Heap, 0, ResourceEnumFlags::None);
             Assert::IsTrue(script && heap && (heap->GetLength() > 10));
@@ -399,8 +353,8 @@ namespace UnitTests
             CompiledScript first(0);
             sci::Status loaded = first.TryLoad(helper, helper.Version, 0, *script, &shortHeap);
             Assert::IsFalse(loaded.has_value());
-            Assert::AreEqual(std::string("heap 0"), loaded.error().where.resource, WideText(loaded.error().ToString()).c_str());
-            Assert::IsTrue(loaded.error().where.offset >= 10, WideText(loaded.error().ToString()).c_str());
+            Assert::AreEqual(std::string("heap 0"), loaded.error().where.resource, Wide(loaded.error().ToString()).c_str());
+            Assert::IsTrue(loaded.error().where.offset >= 10, Wide(loaded.error().ToString()).c_str());
 
             // A heap that did not decompress.
             std::vector<uint8_t> whole(heap->GetData(), heap->GetData() + heap->GetLength());
@@ -428,11 +382,8 @@ namespace UnitTests
         // caller's "no heap" would be lost.
         TEST_METHOD(CompiledScriptTryLoad_BlobsWithNoHeap_IsNotFound)
         {
-            NoAppStateInScope noAppState;
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
-            GameSession session;
-            Assert::IsTrue(session.Open(_copyFolder).has_value());
-            const GameFolderHelper &helper = session.Helper();
+            NoAppState noAppState;
+            const GameFolderHelper &helper = OpenCopy(TemplateSci11).Helper();
             std::unique_ptr<ResourceBlob> script = helper.MostRecentResource(ResourceType::Script, 0, ResourceEnumFlags::None);
             Assert::IsTrue(script != nullptr);
 
@@ -448,48 +399,30 @@ namespace UnitTests
         // first read. CheckResourceData must read it before it tests the flags.
         TEST_METHOD(TryCreateResource_DelayedBlobThatDoesNotDecompress_IsAFormatError)
         {
-            ResourceHeaderAgnostic header;
-            header.Type = ResourceType::Text;
-            header.Number = 5;
-            header.PackageHint = 1;
-            // No SCI version has compression method 7. (The SCI0 LZW decoder
-            // does not find errors, so bad LZW data is not a sure failure.)
-            header.CompressionMethod = 7;
-            header.cbCompressed = 16;
-            header.cbDecompressed = 200;
-            header.Version = sciVersion0;
-            header.SourceFlags = ResourceSourceFlags::ResourceMap;
             std::vector<uint8_t> garbage(64, 0xff);
             sci::istream stream(garbage.data(), (uint32_t)garbage.size());
             ResourceBlob blob;
-            blob.CreateFromPackageBits("", header, stream, true);
+            // No SCI version has compression method 7. (The SCI0 LZW decoder
+            // does not find errors, so bad LZW data is not a sure failure.)
+            blob.CreateFromPackageBits("", TextHeader(7, 16, 200), stream, true);
             Assert::IsFalse(IsFlagSet(blob.GetStatusFlags(), ResourceLoadStatusFlags::DecompressionFailed), L"not decompressed yet");
 
             auto created = TryCreateResourceFromResourceData(blob);
 
             Assert::IsFalse(created.has_value(), L"the data cannot be decompressed");
-            Assert::AreEqual(std::string("format"), CodeName(created.error()), WideText(created.error().ToString()).c_str());
+            Assert::AreEqual(std::string("format"), CodeName(created.error()), Wide(created.error().ToString()).c_str());
             Assert::AreEqual(std::string("text 5"), created.error().where.resource);
-            Assert::IsTrue(created.error().message.find("decompressed") != std::string::npos, WideText(created.error().ToString()).c_str());
+            Assert::IsTrue(created.error().message.find("decompressed") != std::string::npos, Wide(created.error().ToString()).c_str());
         }
 
         // A volume that ends inside the resource data: the short read marks
         // the blob Corrupted, and CheckResourceData fails.
         TEST_METHOD(ShortReadOfTheData_MarksTheBlobDamaged)
         {
-            ResourceHeaderAgnostic header;
-            header.Type = ResourceType::Text;
-            header.Number = 5;
-            header.PackageHint = 1;
-            header.CompressionMethod = 0;
-            header.cbCompressed = 100;
-            header.cbDecompressed = 100;
-            header.Version = sciVersion0;
-            header.SourceFlags = ResourceSourceFlags::ResourceMap;
             std::vector<uint8_t> tenBytes = { 'H', 'i', 0, 'H', 'i', 0, 'H', 'i', 0, 0 };
             sci::istream stream(tenBytes.data(), (uint32_t)tenBytes.size());
             ResourceBlob blob;
-            blob.CreateFromPackageBits("", header, stream, false);
+            blob.CreateFromPackageBits("", TextHeader(0, 100, 100), stream, false);
 
             Assert::IsTrue(IsFlagSet(blob.GetStatusFlags(), ResourceLoadStatusFlags::Corrupted), L"a short read marks the blob");
             sci::Status checked = CheckResourceData(blob);
@@ -500,20 +433,12 @@ namespace UnitTests
         // The same for compressed data, which the blob reads on another path.
         TEST_METHOD(ShortReadOfCompressedData_MarksTheBlobDamaged)
         {
-            ResourceHeaderAgnostic header;
-            header.Type = ResourceType::Text;
-            header.Number = 5;
-            header.PackageHint = 1;
-            header.CompressionMethod = 1;   // LZW in SCI0
-            header.cbCompressed = 100;
-            header.cbDecompressed = 200;
-            header.Version = sciVersion0;
-            header.SourceFlags = ResourceSourceFlags::ResourceMap;
             std::vector<uint8_t> tenBytes(10, 0);
             sci::istream stream(tenBytes.data(), (uint32_t)tenBytes.size());
             ResourceBlob blob;
-            // Delay the decompression, so that only the read can set the flag.
-            blob.CreateFromPackageBits("", header, stream, true);
+            // Compression method 1 is LZW in SCI0. Delay the decompression, so
+            // that only the read can set the flag.
+            blob.CreateFromPackageBits("", TextHeader(1, 100, 200), stream, true);
 
             Assert::IsTrue(IsFlagSet(blob.GetStatusFlags(), ResourceLoadStatusFlags::Corrupted), L"a short read of compressed data marks the blob");
         }
@@ -523,27 +448,22 @@ namespace UnitTests
         // flag, and TryCreate accepts it.
         TEST_METHOD(EmptyPackageResource_LoadsWithNoFlag)
         {
-            NoAppStateInScope noAppState;
-            for (const char *templateFolder : { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" })
+            NoAppState noAppState;
+            for (const char *templateFolder : { TemplateSci0, TemplateSci11 })
             {
-                RemoveCopy();
-                _copyFolder = CopyGameFromModuleFolder(templateFolder);
-                GameSession session;
-                Assert::IsTrue(session.Open(_copyFolder).has_value());
+                GameSession &session = OpenCopy(templateFolder);
                 const GameFolderHelper &helper = session.Helper();
                 std::vector<uint8_t> noData;
                 ResourceBlob empty(helper, nullptr, ResourceType::Text, noData, helper.Version.DefaultVolumeFile, 555, NoBase36, helper.Version, ResourceSourceFlags::ResourceMap);
-                sci::Status written = session.ResourceMap().WriteResource(empty);
-                Assert::IsTrue(written.has_value(), WideText(written ? std::string() : written.error().ToString()).c_str());
+                AssertOk(session.ResourceMap().WriteResource(empty));
 
                 std::unique_ptr<ResourceBlob> blob = helper.MostRecentResource(ResourceType::Text, 555, ResourceEnumFlags::None);
-                Assert::IsTrue(blob != nullptr, WideText(std::string("no text 555 in ") + templateFolder).c_str());
+                Assert::IsTrue(blob != nullptr, Wide(std::string("no text 555 in ") + templateFolder).c_str());
                 Assert::IsTrue(blob->GetSourceFlags() == ResourceSourceFlags::ResourceMap, L"setup: text 555 is in the package");
                 Assert::AreEqual(0, (int)blob->GetLength(), L"setup: text 555 is empty");
                 Assert::IsFalse(IsFlagSet(blob->GetStatusFlags(), ResourceLoadStatusFlags::Corrupted),
-                    WideText(std::string("an empty resource is not damaged: ") + templateFolder).c_str());
-                auto created = TryCreateResourceFromResourceData(*blob);
-                Assert::IsTrue(created.has_value(), WideText(created ? std::string() : created.error().ToString()).c_str());
+                    Wide(std::string("an empty resource is not damaged: ") + templateFolder).c_str());
+                AssertOk(TryCreateResourceFromResourceData(*blob));
             }
         }
 
@@ -576,16 +496,13 @@ namespace UnitTests
         // is not marked Corrupted, and a rebuild keeps it.
         TEST_METHOD(EmptyPackageResource_HighNumber_IsKept)
         {
-            NoAppStateInScope noAppState;
-            RemoveCopy();
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            NoAppState noAppState;
             {
-                GameSession session;
-                Assert::IsTrue(session.Open(_copyFolder).has_value());
+                GameSession &session = OpenCopy(TemplateSci11);
                 const GameFolderHelper &helper = session.Helper();
                 std::vector<uint8_t> noData;
                 ResourceBlob empty(helper, nullptr, ResourceType::Text, noData, helper.Version.DefaultVolumeFile, 40000, NoBase36, helper.Version, ResourceSourceFlags::ResourceMap);
-                Assert::IsTrue(session.ResourceMap().WriteResource(empty).has_value());
+                AssertOk(session.ResourceMap().WriteResource(empty));
                 std::unique_ptr<ResourceBlob> blob = helper.MostRecentResource(ResourceType::Text, 40000, ResourceEnumFlags::None);
                 Assert::IsTrue(blob != nullptr, L"setup: text 40000");
                 Assert::IsFalse(IsFlagSet(blob->GetStatusFlags(), ResourceLoadStatusFlags::Corrupted), L"an empty resource numbered 40000 is not damaged");
@@ -593,8 +510,8 @@ namespace UnitTests
                 std::map<ResourceType, RebuildStats> stats;
                 package->RebuildResources(true, *package, stats);
             }
-            GameSession session;
-            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            _game.CloseSessions();
+            GameSession &session = _game.Open(SessionOptions());
             std::unique_ptr<ResourceBlob> blob = session.Helper().MostRecentResource(ResourceType::Text, 40000, ResourceEnumFlags::None);
             Assert::IsTrue(blob != nullptr, L"the rebuild keeps text 40000");
             Assert::IsFalse(IsFlagSet(blob->GetStatusFlags(), ResourceLoadStatusFlags::Corrupted));
@@ -605,37 +522,32 @@ namespace UnitTests
         // sizes of 0.
         TEST_METHOD(EmptyPackageResource_RebuildKeepsIt_DeleteRemovesIt)
         {
-            NoAppStateInScope noAppState;
-            for (const char *templateFolder : { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" })
+            NoAppState noAppState;
+            for (const char *templateFolder : { TemplateSci0, TemplateSci11 })
             {
-                RemoveCopy();
-                _copyFolder = CopyGameFromModuleFolder(templateFolder);
                 {
-                    GameSession session;
-                    Assert::IsTrue(session.Open(_copyFolder).has_value());
+                    GameSession &session = OpenCopy(templateFolder);
                     const GameFolderHelper &helper = session.Helper();
                     std::vector<uint8_t> noData;
                     ResourceBlob empty(helper, nullptr, ResourceType::Text, noData, helper.Version.DefaultVolumeFile, 555, NoBase36, helper.Version, ResourceSourceFlags::ResourceMap);
-                    Assert::IsTrue(session.ResourceMap().WriteResource(empty).has_value());
+                    AssertOk(session.ResourceMap().WriteResource(empty));
                     // The package step of the GUI's "rebuild resources".
                     std::unique_ptr<ResourceSource> package = CreateResourceSource(ResourceTypeFlags::All, helper, ResourceSourceFlags::ResourceMap, ResourceSourceAccessFlags::ReadWrite);
                     std::map<ResourceType, RebuildStats> stats;
                     package->RebuildResources(true, *package, stats);
                 }
+                _game.CloseSessions();
                 {
-                    GameSession session;
-                    Assert::IsTrue(session.Open(_copyFolder).has_value());
+                    GameSession &session = _game.Open(SessionOptions());
                     std::unique_ptr<ResourceBlob> blob = session.Helper().MostRecentResource(ResourceType::Text, 555, ResourceEnumFlags::None);
-                    Assert::IsTrue(blob != nullptr, WideText(std::string("the rebuild dropped the empty text: ") + templateFolder).c_str());
+                    Assert::IsTrue(blob != nullptr, Wide(std::string("the rebuild dropped the empty text: ") + templateFolder).c_str());
                     Assert::IsFalse(IsFlagSet(blob->GetStatusFlags(), ResourceLoadStatusFlags::Corrupted));
                     session.ResourceMap().DeleteResource(blob.get());
                 }
-                {
-                    GameSession session;
-                    Assert::IsTrue(session.Open(_copyFolder).has_value());
-                    Assert::IsTrue(nullptr == session.Helper().MostRecentResource(ResourceType::Text, 555, ResourceEnumFlags::None),
-                        WideText(std::string("the delete left the empty text: ") + templateFolder).c_str());
-                }
+                _game.CloseSessions();
+                GameSession &session = _game.Open(SessionOptions());
+                Assert::IsTrue(nullptr == session.Helper().MostRecentResource(ResourceType::Text, 555, ResourceEnumFlags::None),
+                    Wide(std::string("the delete left the empty text: ") + templateFolder).c_str());
             }
         }
 
@@ -644,12 +556,10 @@ namespace UnitTests
         // like an empty resource).
         TEST_METHOD(TruncatedVolume_EveryDamagedResourceIsMarked)
         {
-            NoAppStateInScope noAppState;
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
-            GameSession session;
-            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            NoAppState noAppState;
+            GameSession &session = OpenCopy(TemplateSci0);
             // After the open, so that the version detection reads the whole game.
-            std::string volume = _copyFolder + "\\resource.001";
+            std::string volume = _game.Path("resource.001");
             std::filesystem::resize_file(volume, std::filesystem::file_size(volume) / 2);
 
             int damaged = 0;
@@ -671,7 +581,7 @@ namespace UnitTests
                     intact++;
                 }
             }
-            Assert::IsTrue(silent.empty(), WideText(silent).c_str());
+            Assert::IsTrue(silent.empty(), Wide(silent).c_str());
             Assert::IsTrue(damaged > 1, L"half of the volume is gone");
             Assert::IsTrue(intact > 1, L"the first half of the volume is there");
         }
@@ -699,17 +609,8 @@ namespace UnitTests
         {
             std::unique_ptr<ResourceEntity> text(CreateTextResource(sciVersion0));
             std::vector<uint8_t> data = { 'H', 'i', 0, 'B', 'y', 'e' };
-            bool threw = false;
-            try
-            {
-                text->ReadFrom(sci::istream(data.data(), (uint32_t)data.size()), std::map<BlobKey, uint32_t>());
-            }
-            catch (const sci::DataError &e)
-            {
-                threw = true;
-                Assert::IsTrue(e.code() == sci::ErrorCode::Format);
-            }
-            Assert::IsTrue(threw, L"the reader must throw, not loop");
+            std::string code = DataErrorCode([&]() { text->ReadFrom(sci::istream(data.data(), (uint32_t)data.size()), std::map<BlobKey, uint32_t>()); });
+            Assert::AreEqual(std::string("format"), code, L"the reader must throw, not loop");
         }
     };
 }

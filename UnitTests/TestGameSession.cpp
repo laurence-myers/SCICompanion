@@ -19,7 +19,7 @@
 #include "DecompileScript.h"
 #include "DecompileHelper.h"
 #include "OutputCodeHelper.h"
-#include <fstream>
+#include "TestSupport.h"
 #include <set>
 #include <sstream>
 #include <filesystem>
@@ -48,19 +48,6 @@ namespace UnitTests
         std::mutex _mutex;
     };
 
-    // Runs a test with no AppState, as the command line does.
-    struct NoAppState
-    {
-        AppState *saved;
-        NoAppState() : saved(appState) { appState = nullptr; }
-        ~NoAppState() { appState = saved; }
-    };
-
-    static std::wstring Wide(const std::string &text)
-    {
-        return std::wstring(text.begin(), text.end());
-    }
-
     // The engine works with no AppState and no dialog:
     //  - GameSession::Open gives an error with a code and a text;
     //  - with no GUI, SafeMessageBox writes the whole text to the core log,
@@ -70,22 +57,11 @@ namespace UnitTests
     TEST_CLASS(TestGameSession)
     {
         std::string _gameFolder;    // From SetUpGame: CleanUpGame also deletes its AppState.
-        std::string _copyFolder;    // From CopyGameFromModuleFolder: no AppState.
-
-        void RemoveCopy()
-        {
-            if (!_copyFolder.empty())
-            {
-                std::error_code ec;
-                std::filesystem::remove_all(_copyFolder, ec);
-                _copyFolder.clear();
-            }
-        }
+        GameCopy _game;             // A copy with no AppState.
 
     public:
         TEST_METHOD_CLEANUP(CleanUp)
         {
-            RemoveCopy();
             if (!_gameFolder.empty())
             {
                 CleanUpGame(_gameFolder);
@@ -98,22 +74,17 @@ namespace UnitTests
             NoAppState noAppState;
             const std::pair<const char *, ResourceMapFormat> templates[] =
             {
-                { "\\TemplateGame\\SCI0", ResourceMapFormat::SCI0 },
-                { "\\TemplateGame\\SCI1.1", ResourceMapFormat::SCI11 },
+                { TemplateSci0, ResourceMapFormat::SCI0 },
+                { TemplateSci11, ResourceMapFormat::SCI11 },
             };
             for (const auto &entry : templates)
             {
-                _copyFolder = CopyGameFromModuleFolder(entry.first);
-                {
-                    GameSession session;
-                    sci::Status opened = session.Open(_copyFolder);
-                    std::string text = opened ? std::string() : opened.error().ToString();
-                    Assert::IsTrue(opened.has_value(), Wide(text).c_str());
-                    Assert::IsTrue(session.ResourceMap().IsGameLoaded());
-                    Assert::AreEqual(_copyFolder, session.Helper().GameFolder);
-                    Assert::IsTrue(session.Version().MapFormat == entry.second, Wide(entry.first).c_str());
-                }
-                RemoveCopy();
+                _game.Make(entry.first);
+                GameSession session;
+                AssertOk(session.Open(_game.Folder()));
+                Assert::IsTrue(session.ResourceMap().IsGameLoaded());
+                Assert::AreEqual(_game.Folder(), session.Helper().GameFolder);
+                Assert::IsTrue(session.Version().MapFormat == entry.second, Wide(entry.first).c_str());
             }
         }
 
@@ -148,11 +119,11 @@ namespace UnitTests
         TEST_METHOD(Open_NoResourceMap_ReturnsNotFoundThatNamesTheFile)
         {
             NoAppState noAppState;
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
-            std::filesystem::remove(_copyFolder + "\\resource.map");
+            _game.Make(TemplateSci0);
+            std::filesystem::remove(_game.Path("resource.map"));
 
             GameSession session;
-            sci::Status opened = session.Open(_copyFolder);
+            sci::Status opened = session.Open(_game.Folder());
 
             Assert::IsFalse(opened.has_value(), L"a folder with no resource.map must not open");
             Assert::AreEqual(std::string("not-found"), std::string(sci::ErrorCodeName(opened.error().code)));
@@ -301,23 +272,17 @@ namespace UnitTests
     // codepage, so the compile works with no AppState.
     TEST_CLASS(TestHeadlessCompile)
     {
-        std::string _copyFolder;
+        NoAppState _noAppState;
+        GameCopy _game;
 
-        void RemoveCopy()
-        {
-            if (!_copyFolder.empty())
-            {
-                std::error_code ec;
-                std::filesystem::remove_all(_copyFolder, ec);
-                _copyFolder.clear();
-            }
-        }
-        static std::string ErrorsOf(CompileLog &log)
+        // The errors of the log, one on a line. With a text, also the other
+        // messages that have the text.
+        static std::string ErrorsOf(CompileLog &log, const std::string &text = std::string())
         {
             std::string errors;
             for (const CompileResult &result : log.Results())
             {
-                if (result.IsError())
+                if (result.IsError() || (!text.empty() && (result.GetMessage().find(text) != std::string::npos)))
                 {
                     errors += result.GetMessage() + "\n";
                 }
@@ -331,10 +296,7 @@ namespace UnitTests
         static bool CompileNewScript(GameSession &session, const std::string &name, uint16_t number, const char *text, CompileLog &log)
         {
             std::string path = session.Helper().GetScriptFileName(name);
-            {
-                std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
-                file << text;
-            }
+            WriteFileText(path, text);
             ScriptId scriptId(path.c_str());
             scriptId.SetResourceNumber(number);
             CompileTables tables;
@@ -352,95 +314,68 @@ namespace UnitTests
     public:
         TEST_METHOD_CLEANUP(CleanUp)
         {
-            RemoveCopy();
             SetTextCodepage(437);
         }
 
         TEST_METHOD(CompileAll_Templates_WorkWithNoAppState)
         {
-            NoAppState noAppState;
             CaptureLogSink sink;
             ScopedCoreLogSink scoped(sink);
-            const char *templates[] = { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" };
-            for (const char *name : templates)
+            for (const char *name : { TemplateSci0, TemplateSci11 })
             {
-                _copyFolder = CopyGameFromModuleFolder(name);
+                // The data folder of the session holds include\ (sci.sh, keys.sh).
+                GameSession &session = _game.OpenCopy(name);
+
+                std::vector<ScriptId> scripts;
+                session.ResourceMap().GetAllScripts(scripts);
+                Assert::IsFalse(scripts.empty(), Wide(name).c_str());
+
+                CompileLog log;
+                CompileTables tables;
+                Assert::IsTrue(tables.Load(session.ResourceMap()), L"the vocab tables must load");
+                PrecompiledHeaders headers(session.ResourceMap());
+                size_t compiled = 0;
+                for (ScriptId &script : scripts)
                 {
-                    // The data folder holds include\ (sci.sh, keys.sh).
-                    SessionOptions options;
-                    options.dataFolder = GetTestModuleDirectory();
-                    GameSession session(options);
-                    sci::Status opened = session.Open(_copyFolder);
-                    Assert::IsTrue(opened.has_value(), Wide(opened ? std::string() : opened.error().ToString()).c_str());
-
-                    std::vector<ScriptId> scripts;
-                    session.ResourceMap().GetAllScripts(scripts);
-                    Assert::IsFalse(scripts.empty(), Wide(name).c_str());
-
-                    CompileLog log;
-                    CompileTables tables;
-                    Assert::IsTrue(tables.Load(session.ResourceMap()), L"the vocab tables must load");
-                    PrecompiledHeaders headers(session.ResourceMap());
-                    size_t compiled = 0;
-                    for (ScriptId &script : scripts)
+                    CompileResults results(log, session.Version());
+                    if (NewCompileScript(session, results, log, tables, headers, script))
                     {
-                        CompileResults results(log, session.Version());
-                        if (NewCompileScript(session, results, log, tables, headers, script))
-                        {
-                            compiled++;
-                        }
+                        compiled++;
                     }
-                    tables.Save(session.ResourceMap());
-
-                    // A polygon that the compile cannot find is only a message, so
-                    // look for it too: the SCI1.1 template's rooms use &getpoly.
-                    std::string errors;
-                    for (const CompileResult &result : log.Results())
-                    {
-                        if (result.IsError() || (result.GetMessage().find("&getpoly") != std::string::npos))
-                        {
-                            errors += result.GetMessage() + "\n";
-                        }
-                    }
-                    Assert::IsTrue(errors.empty(), Wide(std::string(name) + ": " + errors).c_str());
-                    Assert::AreEqual(scripts.size(), compiled, Wide(name).c_str());
                 }
-                RemoveCopy();
+                tables.Save(session.ResourceMap());
+
+                // A polygon that the compile cannot find is only a message, so
+                // look for it too: the SCI1.1 template's rooms use &getpoly.
+                std::string errors = ErrorsOf(log, "&getpoly");
+                Assert::IsTrue(errors.empty(), Wide(std::string(name) + ": " + errors).c_str());
+                Assert::AreEqual(scripts.size(), compiled, Wide(name).c_str());
             }
         }
 
         TEST_METHOD(TextCodepage_ComesFromGameIni)
         {
-            NoAppState noAppState;
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
-            std::string iniFile = _copyFolder + "\\game.ini";
+            _game.Make(TemplateSci0);
             // Byte 0x81 is u-umlaut in codepage 437. In codepage 1252 it is 0xFC.
             std::string dosText = "\x81";
             std::string winText = "\xFC";
 
-            {
-                SetTextCodepage(1252);
-                GameSession session;
-                Assert::IsTrue(session.Open(_copyFolder).has_value());
-                Assert::AreEqual(437, GetTextCodepage(), L"a game.ini with no codepage gives 437");
-                Assert::AreEqual(winText, Dos2Win(dosText));
-                Assert::AreEqual(dosText, Win2Dos(winText));
-            }
+            SetTextCodepage(1252);
+            _game.Open(SessionOptions());
+            Assert::AreEqual(437, GetTextCodepage(), L"a game.ini with no codepage gives 437");
+            Assert::AreEqual(winText, Dos2Win(dosText));
+            Assert::AreEqual(dosText, Win2Dos(winText));
+            _game.CloseSessions();
 
-            Assert::IsTrue(WritePrivateProfileString("Game", "Codepage", "1252", iniFile.c_str()) != FALSE);
-            {
-                GameSession session;
-                Assert::IsTrue(session.Open(_copyFolder).has_value());
-                Assert::AreEqual(1252, GetTextCodepage(), L"the codepage must come from game.ini");
-                Assert::AreEqual(dosText, Dos2Win(dosText), L"a 1252 game keeps its text");
-            }
+            Assert::IsTrue(WritePrivateProfileString("Game", "Codepage", "1252", _game.Path("game.ini").c_str()) != FALSE);
+            _game.Open(SessionOptions());
+            Assert::AreEqual(1252, GetTextCodepage(), L"the codepage must come from game.ini");
+            Assert::AreEqual(dosText, Dos2Win(dosText), L"a 1252 game keeps its text");
         }
         TEST_METHOD(TextCodepage_FollowsTheGamePropertiesChange)
         {
-            NoAppState noAppState;
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
-            GameSession session;
-            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            _game.Make(TemplateSci0);
+            GameSession &session = _game.Open(SessionOptions());
             Assert::AreEqual(437, GetTextCodepage());
 
             // The Game Properties dialog saves the language through the helper.
@@ -454,12 +389,7 @@ namespace UnitTests
         // the class table (vocab 996) and the selector table (vocab 997).
         TEST_METHOD(Compile_NewClass_SavesTheTablesWithNoAppState)
         {
-            NoAppState noAppState;
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
-            SessionOptions options;
-            options.dataFolder = GetTestModuleDirectory();
-            GameSession session(options);
-            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            GameSession &session = _game.OpenCopy(TemplateSci0);
 
             const char *text =
                 "(script# 950)\n"
@@ -494,12 +424,7 @@ namespace UnitTests
         // and the compile does not crash.
         TEST_METHOD(Compile_UndefinedName_ReportsAnErrorWithNoAppState)
         {
-            NoAppState noAppState;
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI0");
-            SessionOptions options;
-            options.dataFolder = GetTestModuleDirectory();
-            GameSession session(options);
-            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            GameSession &session = _game.OpenCopy(TemplateSci0);
 
             const char *text =
                 "(script# 951)\n"
@@ -522,62 +447,38 @@ namespace UnitTests
     // with no AppState.
     TEST_CLASS(TestHeadlessDecompile)
     {
-        std::string _copyFolder;
-
-        void RemoveCopy()
-        {
-            if (!_copyFolder.empty())
-            {
-                std::error_code ec;
-                std::filesystem::remove_all(_copyFolder, ec);
-                _copyFolder.clear();
-            }
-        }
+        NoAppState _noAppState;
+        GameCopy _game;
 
         // Runs the test body for a session on a copy of each template.
         template<typename TBody>
         void ForEachTemplate(TBody body)
         {
-            const char *templates[] = { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" };
-            for (const char *name : templates)
+            for (const char *name : { TemplateSci0, TemplateSci11 })
             {
-                _copyFolder = CopyGameFromModuleFolder(name);
+                // The data folder of the session holds include\ (sci.sh, keys.sh).
+                GameSession &session = _game.OpenCopy(name);
+
+                GlobalCompiledScriptLookups lookups;
+                Assert::IsTrue(lookups.Load(session.Helper()), L"the lookups must load");
+                uint16_t dummy;
+                lookups.GetSelectorTable().ReverseLookup("", dummy);
+                std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(session.ResourceMap(), lookups.GetSelectorTable());
+
+                std::set<uint16_t> scriptNumbers;
+                for (CompiledScript *script : lookups.GetGlobalClassTable().GetAllScripts())
                 {
-                    // The data folder holds include\ (sci.sh, keys.sh).
-                    SessionOptions options;
-                    options.dataFolder = GetTestModuleDirectory();
-                    GameSession session(options);
-                    sci::Status opened = session.Open(_copyFolder);
-                    Assert::IsTrue(opened.has_value(), Wide(opened ? std::string() : opened.error().ToString()).c_str());
-
-                    GlobalCompiledScriptLookups lookups;
-                    Assert::IsTrue(lookups.Load(session.Helper()), L"the lookups must load");
-                    uint16_t dummy;
-                    lookups.GetSelectorTable().ReverseLookup("", dummy);
-                    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(session.ResourceMap(), lookups.GetSelectorTable());
-
-                    std::set<uint16_t> scriptNumbers;
-                    for (CompiledScript *script : lookups.GetGlobalClassTable().GetAllScripts())
-                    {
-                        scriptNumbers.insert(script->GetScriptNumber());
-                    }
-                    Assert::IsFalse(scriptNumbers.empty(), Wide(name).c_str());
-
-                    body(name, session, lookups, *config, scriptNumbers);
+                    scriptNumbers.insert(script->GetScriptNumber());
                 }
-                RemoveCopy();
+                Assert::IsFalse(scriptNumbers.empty(), Wide(name).c_str());
+
+                body(name, session, lookups, *config, scriptNumbers);
             }
         }
 
     public:
-        TEST_METHOD_CLEANUP(CleanUp)
-        {
-            RemoveCopy();
-        }
-
         TEST_METHOD(DecompileAll_Templates_WorkWithNoAppState)
         {
-            NoAppState noAppState;
             CaptureLogSink sink;
             ScopedCoreLogSink scoped(sink);
             ForEachTemplate([](const char *name, GameSession &session, GlobalCompiledScriptLookups &lookups, IDecompilerConfig &config, const std::set<uint16_t> &scriptNumbers)
@@ -593,7 +494,6 @@ namespace UnitTests
         // formatter loads its own lookups from the helper.
         TEST_METHOD(DecompileAsm_Templates_WorkWithNoAppState)
         {
-            NoAppState noAppState;
             CaptureLogSink sink;
             ScopedCoreLogSink scoped(sink);
             ForEachTemplate([](const char *name, GameSession &session, GlobalCompiledScriptLookups &lookups, IDecompilerConfig &config, const std::set<uint16_t> &scriptNumbers)
@@ -618,18 +518,14 @@ namespace UnitTests
         // from sci.sh; with no sci.sh, it gets 5.
         TEST_METHOD(DecompilerConfig_ReadsTheHeadersFromTheDataFolder)
         {
-            NoAppState noAppState;
             CaptureLogSink sink;
             ScopedCoreLogSink scoped(sink);
-            _copyFolder = CopyGameFromModuleFolder("\\TemplateGame\\SCI1.1");
+            _game.Make(TemplateSci11);
             std::error_code ec;
-            std::filesystem::copy_file(GetTestModuleDirectory() + "\\Decompiler\\Decompiler.ini", _copyFolder + "\\src\\Decompiler.ini", ec);
+            std::filesystem::copy_file(GetTestModuleDirectory() + "\\Decompiler\\Decompiler.ini", _game.Src("Decompiler.ini"), ec);
             Assert::IsFalse(static_cast<bool>(ec), L"copying Decompiler.ini failed");
 
-            SessionOptions options;
-            options.dataFolder = GetTestModuleDirectory();
-            GameSession session(options);
-            Assert::IsTrue(session.Open(_copyFolder).has_value());
+            GameSession &session = _game.Open();
             GlobalCompiledScriptLookups lookups;
             Assert::IsTrue(lookups.Load(session.Helper()), L"the lookups must load");
             uint16_t dummy;
