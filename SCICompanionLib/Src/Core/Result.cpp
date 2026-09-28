@@ -1,8 +1,19 @@
 #include "stdafx.h"
 #include "Result.h"
+#include <atomic>
+
+namespace
+{
+    std::atomic<sci::ForeignExceptionMapper> g_foreignExceptionMapper(nullptr);
+}
 
 namespace sci
 {
+    ForeignExceptionMapper SetForeignExceptionMapper(ForeignExceptionMapper mapper)
+    {
+        return g_foreignExceptionMapper.exchange(mapper);
+    }
+
     const char *ErrorCodeName(ErrorCode code)
     {
         switch (code)
@@ -177,34 +188,14 @@ namespace sci
             error.code = ErrorCode::Internal;
             error.message = e.what();
         }
-        catch (CException *e)
-        {
-            // Delete the MFC exception on every path, also if building the
-            // text below throws.
-            struct DeleteOnExit
-            {
-                CException *exception;
-                ~DeleteOnExit() { exception->Delete(); }
-            } deleteOnExit = { e };
-            if (e->IsKindOf(RUNTIME_CLASS(CMemoryException)))
-            {
-                // In an MFC program a failed new throws this, not
-                // std::bad_alloc, and it has no text.
-                error.code = ErrorCode::Internal;
-                error.message = "out of memory";
-            }
-            else
-            {
-                TCHAR text[512] = {};
-                BOOL hasText = e->GetErrorMessage(text, ARRAYSIZE(text));
-                error.code = e->IsKindOf(RUNTIME_CLASS(CFileException)) ? ErrorCode::Io : ErrorCode::Internal;
-                error.message = (hasText && text[0]) ? std::string(text) : std::string("MFC exception (no text)");
-            }
-        }
         catch (...)
         {
-            error.code = ErrorCode::Internal;
-            error.message = "unknown exception";
+            ForeignExceptionMapper mapper = g_foreignExceptionMapper.load();
+            if (mapper == nullptr || !mapper(error))
+            {
+                error.code = ErrorCode::Internal;
+                error.message = "unknown exception";
+            }
         }
         if (error.message.empty())
         {

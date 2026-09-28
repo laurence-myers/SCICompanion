@@ -8,8 +8,9 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Next
 
-- The optional E1 (plan section 9), or stop before it. The review
-  findings below are nits; fix them when their code changes.
+- The work plan of plan section 9 is done, E1 included. Left: the open
+  items below. The review findings below are nits; fix them when their
+  code changes.
 - Start a new session for each milestone (AGENTS.md, "Work with AI
   agents").
 - Push and pull requests only with your approval.
@@ -156,16 +157,12 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   at that moment); the renames before it stay done.
 - `WriteBytesToFile` is not atomic.
 - `AudioCacheResourceSource::RemoveEntries` swallows its errors, and saves
-  its audio map through the GUI `AppendResource`.
+  its audio map through `AppendResource` (the form that shows the error
+  in a message box).
 - `WriteResource(entity)` gives `Cancelled` when `PerformChecks` says no.
   With no GUI, a yes/no check gets "no", and some checks are not a choice
-  (duplicate message tuples, an audio map entry over 16 MB). The pic
-  checks open a real dialog (`CDontShowAgainDialog::DoModal`). The script
+  (duplicate message tuples, an audio map entry over 16 MB). The script
   commands do not reach them.
-- `DeleteResource` shows `AfxMessageBox` and a script dialog directly, so
-  it blocks with no GUI. The GUI command `RebuildResources` crashed in a
-  headless test: `ResourceMapOperations.cpp` uses the null `appState` for
-  a game with an audio volume. The CLI uses neither.
 - In throw mode, a struct read (`operator>>`, also for `int16_t` and
   `uint32_t`) gives zeros, and `read_data` keeps its buffer; both only set
   the fail state.
@@ -177,14 +174,36 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   `AudioCacheResourceSource.cpp`, `CodeInspector.h` (on the script paths:
   an exception ends the walk of the version detection with no message),
   `PhonemeDialog.cpp`, `LipSyncutil.cpp`, `TalkerToViewMap.cpp`, `Task.h`.
-- For E1: `Audio.cpp`, `AudioMap.cpp`, `Message.cpp`, `ResourceMap.cpp`,
-  `Sync.cpp` and `Vocab000.cpp` include `AppState.h` and do not use it.
 - The Decompile dialog's "Reset filenames" protects no file (older than
   the branch). The dialog names the scripts through `game.ini`, so it
   needs a GUI helper with no name map.
 
+### The core library (E1)
+
+- A file of `Src\Util` is in the core or in the GUI library by its project
+  (`SCICompanionCore.vcxproj`); its folder does not tell.
+- The audio cache sources that `GameFolderHelper::Resources` makes for a
+  read have no resource map: a write through one would dereference null.
+  The writes come through `CreateResourceSource`, which gives the map.
+- The MFC guard of the core (`__ATLDBGMEM_H__` in its precompiled header)
+  stops the compile with a text about `<atldbgmem.h>`.
+- The `AppState` constructor fills `g_egaColorsExtended` and
+  `g_egaColorsMixed`; with no GUI they are zero (only GUI commands use
+  them).
+- `ShowTextFile` and `ShowFile` are declared in `sci.h` and defined in the
+  GUI library (`WindowsUtil.cpp`): a core file that calls them builds, and
+  only the link of `scic.exe` fails.
+- `_IsKeyword` in `ScriptView.cpp` has no caller.
+
 ### No test (checked by inspection only)
 
+- The GUI hooks of E1: the message box, the pic-check dialog, the
+  script-removal dialog of `AppState::OnLastScriptDeleted`, the pen pattern
+  bitmap of `RasterView` (`CreatePatternBits`), and the output pane of the
+  WAV conversion notes. Before E1, the enumeration of the audio cache files
+  with no `AppState` dereferenced null, and the delete of the last copy of
+  a script opened a modal dialog: the new tests of `TestGameSession` pass,
+  but no test ran on the code before E1.
 - A Ctrl+C of `list` while it reads the scripts: the tests set the flag
   before the read (nothing prints or calls back during the read).
 - A running Visual Studio after a change of `vcpkg.json`: the build sets

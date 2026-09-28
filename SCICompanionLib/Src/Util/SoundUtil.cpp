@@ -15,7 +15,9 @@
 #include "SoundUtil.h"
 #include "Audio.h"
 #include "Sound.h"
-#include "AppState.h"
+#include "CoreLog.h"
+#include "CorePrompt.h"
+#include "CompileInterfaces.h"
 #include "ResourceEntity.h"
 #include "format.h"
 #include "CDSPResampler.h"
@@ -78,7 +80,7 @@ uint32_t GetWaveFileSizeIncludingHeader(sci::istream &stream)
 	return fileSize + sizeof(uint32_t) * 2;
 }
 
-void AudioComponentFromWaveFile(sci::istream &stream, AudioComponent &audio, AudioProcessingSettings *audioProcessingSettings, int maxSampleRate, bool limitTo8Bit)
+void AudioComponentFromWaveFile(sci::istream &stream, AudioComponent &audio, AudioProcessingSettings *audioProcessingSettings, int maxSampleRate, bool limitTo8Bit, std::vector<CompileResult> *conversionNotes)
 {
 	uint32_t riff, wave, fileSize, fmt, chunkSize, data, dataSize;
 	stream >> riff;
@@ -177,7 +179,7 @@ void AudioComponentFromWaveFile(sci::istream &stream, AudioComponent &audio, Aud
 
 	if (header.formatTag != WAVE_FORMAT_PCM)
 	{
-		AfxMessageBox("Warning: Imported .wav is not PCM.", MB_OK | MB_ICONWARNING);
+		SafeMessageBox("Warning: Imported .wav is not PCM.", MB_OK | MB_ICONWARNING);
 	}
 
 	// Set up the AudioComponent and read the data.
@@ -286,9 +288,16 @@ void AudioComponentFromWaveFile(sci::istream &stream, AudioComponent &audio, Aud
 		}
 	}
 
-	if (!conversionResults.empty())
+	if (conversionNotes)
 	{
-		appState->OutputResults(OutputPaneType::Compile, conversionResults);
+		conversionNotes->insert(conversionNotes->end(), conversionResults.begin(), conversionResults.end());
+	}
+	else
+	{
+		for (const CompileResult &note : conversionResults)
+		{
+			CoreLog(LogLevel::Info, note.GetMessage());
+		}
 	}
 
 	audio.ScanForClipped();
@@ -401,20 +410,4 @@ AudioVolumeName GetVolumeToUse(SCIVersion version, uint32_t base36Number)
 		volumeToUse = (base36Number == NoBase36) ? AudioVolumeName::Sfx : AudioVolumeName::Aud;
 	}
 	return volumeToUse;
-}
-
-std::unique_ptr<ResourceEntity> WaveResourceFromFilename(const std::string &filename)
-{
-	std::unique_ptr<ResourceEntity> resource(CreateDefaultAudioResource(appState->GetVersion()));
-	ScopedFile scopedFile(filename, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
-	sci::streamOwner owner(scopedFile.hFile);
-	AudioComponentFromWaveFile(owner.getReader(), resource->GetComponent<AudioComponent>());
-	resource->SourceFlags = ResourceSourceFlags::AudioCache;
-	return resource;
-}
-
-void AddWaveFileToGame(const std::string &filename)
-{
-	std::unique_ptr<ResourceEntity> resource = WaveResourceFromFilename(filename);
-	appState->GetResourceMap().AppendResourceAskForNumber(*resource, _NameFromFilename(filename.c_str()));
 }

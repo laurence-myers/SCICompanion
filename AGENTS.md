@@ -6,12 +6,29 @@ this before making changes.
 ## What this is
 
 SCI Companion — a Windows MFC IDE for Sierra SCI games (SCI0–SCI1.1): compiler,
-decompiler, and resource editors. Most of the code is in `SCICompanionLib\Src`;
-the `SCICompanion` project is a thin `.exe` wrapper over `SCICompanionLib`.
+decompiler, and resource editors. Most of the code is in `SCICompanionLib\Src`,
+in two static libraries:
+
+- `SCICompanionCore` (the project is in `SCICompanionCore\`, the files stay
+  in `SCICompanionLib\Src`): the engine, with no MFC. `Src\Core`,
+  `Src\Compile`, `Src\Resources` and `Src\Cli`, except the GUI files
+  `FontOperations.cpp`, `PicDrawManager.cpp` and `PicOperations.cpp`; the
+  engine files of `Src\Util`; and the vendored `CppFormat`, `CRC32`,
+  `cpptoml` and `r8brain`. `SCICompanionCore.vcxproj` lists them. Its
+  precompiled header (`SCICompanionCore\stdafx.h`) has Windows, ATL's
+  `CPoint`, `CSize` and `CRect`, and the STL; an MFC header stops the
+  compile. Add a new engine file to `SCICompanionCore.vcxproj` and its
+  `.filters`, a new GUI file to `SCICompanionLib.vcxproj` and its
+  `.filters`.
+- `SCICompanionLib`: the GUI (MFC and Prof-UIS), and the GUI files of
+  `Src\Util`.
+
+The `SCICompanion` project is a thin `.exe` wrapper over both libraries.
 The `SCICompanionCli` project is a thin wrapper too: it builds `scic.exe`,
 the command-line tool (`scic script list`, `decompile`, `sco` and
-`compile`), whose code is in `SCICompanionLib\Src\Cli`. Its design is in
-`docs\scic-cli\plan.md`. Tests are in `UnitTests`.
+`compile`), whose code is in `SCICompanionLib\Src\Cli`. It links only
+`SCICompanionCore`. Its design is in `docs\scic-cli\plan.md`. Tests are in
+`UnitTests`.
 
 ## Building
 
@@ -37,8 +54,10 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
   `vcpkg_installed\` (git ignores it) and `%LOCALAPPDATA%\vcpkg`. Do not
   copy a new library into the repository: add it to `vcpkg.json`. The two
   libraries are header-only. The projects link the C runtime statically
-  (static MFC), and the triplet `x86-windows` does not: a library that
-  vcpkg compiles needs the static triplet (`VcpkgUseStatic`).
+  (static MFC; `SCICompanionCore` and `SCICompanionCli` set `/MT`), and the
+  triplet `x86-windows` does not: a library that vcpkg compiles needs the
+  static triplet (`VcpkgUseStatic`). `SCICompanionCore` builds first and
+  runs `vcpkg install`.
 - **The first build of a new clone or worktree runs `vcpkg install`.** With
   the Visual Studio copy of vcpkg, it fetches the vcpkg registry from
   GitHub, under a lock that every build on the machine shares (a fetch can
@@ -126,13 +145,20 @@ The engine and the command-line tool follow the failure-handling model of
 - Compile errors and decompiler warnings are diagnostics: data about the
   input, not a failure of the call.
 - `sci::Guard(context, fn)` is the exception boundary. It turns an exception
-  that escapes `fn` into an error: the code of a `sci::DataError`, `Io` for
-  an MFC `CFileException`, else `Internal`. So a batch goes on with the next
-  script. Call it the "exception boundary".
+  that escapes `fn` into an error: the code of a `sci::DataError`, else
+  `Internal`. The GUI library installs a mapper for MFC exceptions
+  (`MfcExceptionMapper.h`): with it, a `CFileException` gives `Io`. So a
+  batch goes on with the next script. Call it the "exception boundary".
+- Core code shows no UI. A message for the user goes through
+  `SafeMessageBox` (`Src\Core\CorePrompt.h`): the GUI shows a message box,
+  and with no GUI the text goes to the core log. A GUI step that the engine
+  starts is a hook that the GUI installs (for example
+  `ISCIAppServices::OnLastScriptDeleted`, `SetPicCheckWarningHandler`).
 - Do not add an empty `catch (...)`, or a `throw std::exception(...)` (throw
   `sci::DataError`, or return a `Result`). In `Src\Core`, `Src\Compile` and
-  `Src\Resources`, do not add an `AfxMessageBox`; in those folders and in
-  `Src\Util`, do not use the GUI object `appState` (take the session, the
+  `Src\Resources`, do not add an `AfxMessageBox` (a core file does not
+  compile with it); in those folders and in `Src\Util`, do not use the GUI
+  object `appState` (take the session, the
   resource map or the helper as a parameter). The CI check
   `UnitTests\Tools\CheckFailureHandling.ps1` fails on a new site. Its
   allowlist holds the old sites; when you remove old sites, run the check

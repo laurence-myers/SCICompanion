@@ -237,7 +237,7 @@ void _CreateMessageFile(int scriptNumber)
 	{
 		nounSource->AddDefine("N_ROOM", 1);
 	}
-	messageHeaderFile->Commit();
+	ShowWriteError(messageHeaderFile->Commit());
 
 	// And a message resource.
 	std::unique_ptr<ResourceBlob> messageResource = appState->GetResourceMap().MostRecentResource(ResourceType::Message, scriptNumber, false);

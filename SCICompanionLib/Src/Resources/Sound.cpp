@@ -17,6 +17,7 @@
 #include "ResourceEntity.h"
 #include "Audio.h"
 #include "format.h"
+#include "CorePrompt.h"
 
 #pragma comment( lib, "winmm.lib" )
 
@@ -61,7 +62,7 @@ bool _GetDeltaTime(sci::istream &stream, DWORD *pw)
 			*pw += b;
 			break;
 		}
-		ASSERT(b != 0xfc); // TODO: we don't handle this yet
+		assert(b != 0xfc); // TODO: we don't handle this yet
 	}
 	return stream.good();
 }
@@ -442,12 +443,12 @@ uint16_t SoundComponent::_ReadMidiFileTrack(size_t nTrack, std::istream &midiFil
 			{
 				// Re-use the last one...
 				bStatus = bLastStatus;
-				ASSERT((bLastStatus & 0xF0) != 0xF0);
+				assert((bLastStatus & 0xF0) != 0xF0);
 				// Seek backwards one byte:
 				midiFile.seekg(-1, std::ios_base::cur);
 			}
 			// Use last status
-			ASSERT(bStatus);
+			assert(bStatus);
 			event.SetRawStatus(bStatus);
 
 			// Read one or two bytes
@@ -539,7 +540,7 @@ uint16_t SoundComponent::_ReadMidiFileTrack(size_t nTrack, std::istream &midiFil
 				}
 				break;
 			default:
-				ASSERT(FALSE);
+				assert(FALSE);
 				break;
 			}
 			if (event.GetChannel() != 15) // We don't support 15.  SCI uses it for cues and loops.
@@ -595,7 +596,7 @@ DWORD CombineSoundEvents(const std::vector<std::vector<SoundEvent> > &channels, 
 			if (_channelPos[i] < channelData.size())
 			{
 				// Still events remaining in this track, so it's under consideration.
-				ASSERT((_channelTimeDelta[i] + channelData[_channelPos[i]].wTimeDelta) >= dwTimeDelta);
+				assert((_channelTimeDelta[i] + channelData[_channelPos[i]].wTimeDelta) >= dwTimeDelta);
 				DWORD dwTimeToNextEvent = (_channelTimeDelta[i] + channelData[_channelPos[i]].wTimeDelta) - dwTimeDelta;
 				if (dwTimeToNextEvent < dwClosest)
 				{
@@ -726,7 +727,7 @@ SoundEvent _MakeCueEvent(CuePoint cue, DWORD dwTicksPrior)
 	if (cue.GetType() == CuePoint::Cumulative)
 	{
 		event.SetRawStatus(SoundEvent::Control | 15); // REVIEW: should we OR in 15?
-		ASSERT(cue.GetTickPos() >= dwTicksPrior);
+		assert(cue.GetTickPos() >= dwTicksPrior);
 		event.bParam1 = 0x60;
 		event.bParam2 = cue.GetValue(); // Unclear if there is a limit here...
 	}
@@ -734,7 +735,7 @@ SoundEvent _MakeCueEvent(CuePoint cue, DWORD dwTicksPrior)
 	{
 		event.SetRawStatus(SoundEvent::ProgramChange | 15);
 		event.bParam1 = cue.GetValue();
-		ASSERT(event.bParam1 < 127);
+		assert(event.bParam1 < 127);
 	}
 	assert(cue.GetTickPos() >= dwTicksPrior);
 	event.wTimeDelta = cue.GetTickPos() - dwTicksPrior;
@@ -1818,7 +1819,7 @@ bool ValidateSoundResource(const ResourceEntity &resource)
 	
 	if (!sound.GetCuePoints().empty() && (sound.GetLoopPoint() != SoundComponent::LoopPointNone))
 	{
-		save = (IDYES == AfxMessageBox("Sound contains a loop point and at least one cue. Cues won't do anything if a loop point is specified. Save anyway?", MB_ICONWARNING | MB_YESNO));
+		save = (IDYES == SafeMessageBox("Sound contains a loop point and at least one cue. Cues won't do anything if a loop point is specified. Save anyway?", MB_ICONWARNING | MB_YESNO));
 	}
 
 	if (save)
@@ -1827,7 +1828,7 @@ bool ValidateSoundResource(const ResourceEntity &resource)
 		{
 			if ((cuePoint.GetTickPos() != 0) && (cuePoint.GetValue() == 0))
 			{
-				save = (IDYES == AfxMessageBox("Sound contains a cumulative cue with a zero value after time 0. This won't trigger anything. Save anyway?", MB_ICONWARNING | MB_YESNO));
+				save = (IDYES == SafeMessageBox("Sound contains a cumulative cue with a zero value after time 0. This won't trigger anything. Save anyway?", MB_ICONWARNING | MB_YESNO));
 				break;
 			}
 		}
@@ -1837,7 +1838,7 @@ bool ValidateSoundResource(const ResourceEntity &resource)
 	{
 		if (sound.GetTrackInfos().empty())
 		{
-			save = (IDYES == AfxMessageBox("No channels have been enabled for any sound devices, so no music will play. Save anyway?", MB_ICONWARNING | MB_YESNO));
+			save = (IDYES == SafeMessageBox("No channels have been enabled for any sound devices, so no music will play. Save anyway?", MB_ICONWARNING | MB_YESNO));
 		}
 	}
 
@@ -1845,7 +1846,7 @@ bool ValidateSoundResource(const ResourceEntity &resource)
 	{
 		if (!std::any_of(sound.GetTrackInfos().begin(), sound.GetTrackInfos().end(), [](const TrackInfo &track) { return track.HasDigital; }))
 		{
-			save = (IDYES == AfxMessageBox("This sound has a digital channel but it is not used by any devices. It will be lost on saving. Save anyway?", MB_ICONWARNING | MB_YESNO));
+			save = (IDYES == SafeMessageBox("This sound has a digital channel but it is not used by any devices. It will be lost on saving. Save anyway?", MB_ICONWARNING | MB_YESNO));
 		}
 	}
 

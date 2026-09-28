@@ -33,12 +33,6 @@
 using namespace sci;
 using namespace std;
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#undef THIS_FILE
-static char THIS_FILE[] = __FILE__;
-#endif
-
 BinaryOperator GetBinaryOpFromAssignment(AssignmentOperator assignment);
 
 const char InvalidLookupError[] = "LOOKUP_ERROR";
@@ -1573,7 +1567,7 @@ std::string DecompileLookups::LookupParameterName(WORD wIndex)
 	{
 		const FunctionSignature &signature = *_pFunc->GetSignatures()[0];
 		size_t iRealIndex = (wIndex - 1);
-		ASSERT(iRealIndex < signature.GetParams().size()); // Since it was us who analyzed the code and added the right # of params
+		assert(iRealIndex < signature.GetParams().size()); // Since it was us who analyzed the code and added the right # of params
 		return signature.GetParams()[iRealIndex]->GetName();
 	}
 	else
@@ -1804,7 +1798,7 @@ void CalculateVariableRanges(const std::map<WORD, bool> &usage, WORD variableCou
 			{
 				// If we have something in process, add it now
 				currentVarRange.arraySize = (i - currentVarRange.index);
-				ASSERT(isCurrentIndexed || (currentVarRange.arraySize == 1));
+				assert(isCurrentIndexed || (currentVarRange.arraySize == 1));
 				varRanges.push_back(currentVarRange);
 			}
 

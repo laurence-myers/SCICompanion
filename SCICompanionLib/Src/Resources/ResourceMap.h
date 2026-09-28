@@ -17,9 +17,6 @@
 #include "ResourceEntity.h"
 #include "TalkerToViewMap.h"
 
-class RunLogic;
-class DebuggerThread;
-class PostBuildThread;
 struct Vocab000;
 struct AudioMapComponent;
 struct PaletteComponent;
@@ -30,6 +27,7 @@ class AppState;
 // FWD declaration
 class ResourceContainer;
 class ResourceBlob;
+class CResourceMap;
 class ResourceRecency;
 class ResourceEntity;
 class GlobalCompiledScriptLookups;
@@ -45,6 +43,9 @@ class ISCIAppServices
 public:
 	virtual void OnGameFolderUpdate() = 0;
 	virtual void SetRecentlyInteractedView(int number) = 0;
+	// The last copy of a script resource was deleted. The GUI asks whether to
+	// remove the script from game.ini, and its source file too.
+	virtual void OnLastScriptDeleted(CResourceMap &resourceMap, const ResourceBlob &script) {}
 };
 
 
@@ -56,9 +57,10 @@ class CResourceMap
 {
 public:
 	CResourceMap(ISCIAppServices *appServices, ResourceRecency *resourceRecency);
+	// The GUI's services, or null with no GUI.
+	ISCIAppServices *GetAppServices() const { return _appServices; }
 	~CResourceMap();
 
-	RunLogic &GetRunLogic();
 
 	// ResourceBlob: the raw resource bits already in a ready-to-save format.
 	// ResourceEntity: a runtime version of a resource that we can edit.
@@ -70,6 +72,8 @@ public:
 	sci::Status WriteResource(const ResourceBlob &resource);
 	// The GUI form of WriteResource: it also shows the error text.
 	HRESULT AppendResource(const ResourceBlob &resource);
+	// Ask the user for the number in a dialog, then save. In the GUI library
+	// (Dialogs\ResourceMapGui.cpp).
 	HRESULT AppendResourceAskForNumber(ResourceBlob &resource, bool warnOnOverwrite);
 	void AppendResourceAskForNumber(ResourceEntity &resource);
 	void AppendResourceAskForNumber(ResourceEntity &resource, const std::string &name, bool warnOnOverwrite = false);
@@ -102,7 +106,8 @@ public:
 	void DeleteResource(const ResourceBlob *pResource);
 
 	// Opens the game in the folder (an empty folder closes it). The GUI form:
-	// a failure shows a message box and throws a CUserException.
+	// a failure shows a message box and throws a CUserException. In the GUI
+	// library (Dialogs\ResourceMapGui.cpp).
 	void SetGameFolder(const std::string &gameFolder);
 	// Opens the game in the folder. No dialog and no exception: a failure
 	// comes back as an error, and then no game is open. An empty folder is a
@@ -161,11 +166,7 @@ public:
 
 	bool IsResourceCompatible(const ResourceBlob &resource);
 
-	void StartDebuggerThread(int optionalResourceNumber);
-	void AbortDebuggerThread();
 
-	void StartPostBuildThread();
-	void AbortPostBuildThread();
 	void PokeResourceMapReloaded();
 
 	void RepackageAudio(bool force = false);
@@ -229,10 +230,7 @@ private:
 
 	std::string _dataFolder;					 // With a final backslash; empty for the folder of the program
 
-	std::shared_ptr<DebuggerThread> _debuggerThread;
-	std::shared_ptr<PostBuildThread> _postBuildThread;
 
-	std::unique_ptr<RunLogic> _runLogic;
 };
 
 //

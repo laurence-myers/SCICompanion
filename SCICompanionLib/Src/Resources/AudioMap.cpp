@@ -16,7 +16,7 @@
 #include "ResourceEntity.h"
 #include "format.h"
 #include "ResourceSourceFlags.h"
-#include "AppState.h"
+#include "CorePrompt.h"
 
 using namespace std;
 

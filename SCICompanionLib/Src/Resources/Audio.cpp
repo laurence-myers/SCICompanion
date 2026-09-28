@@ -13,7 +13,6 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "Audio.h"
-#include "AppState.h"
 #include "ResourceEntity.h"
 #include "Sync.h"
 #include "format.h"

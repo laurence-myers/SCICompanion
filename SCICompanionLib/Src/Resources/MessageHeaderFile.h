@@ -24,7 +24,7 @@ public:
 	MessageSource *GetMessageSource(const std::string &name);
 	const MessageSource *MessageHeaderFile::GetMessageSource(const std::string &name) const;
 	MessageSource *GetMessageSource();
-	void Commit(int resourceNumber = -1);
+	sci::Status Commit(int resourceNumber = -1);
 
 	std::string GetBackingFile() const;
 

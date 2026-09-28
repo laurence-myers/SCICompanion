@@ -1239,6 +1239,9 @@ exit /b 0</Command>
     <ProjectReference Include="..\Prof-UIS.2.92\ProfUISLIB\ProfUISLIB_1000.vcxproj">
       <Project>{89cffc49-d858-481e-99c5-e312f7c1ea95}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\SCICompanionCore\SCICompanionCore.vcxproj">
+      <Project>{3b1d5c2e-7a4f-4e8b-9c61-2f0d8e5a7b34}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\SCICompanionLib\SCICompanionLib.vcxproj">
       <Project>{761de01c-57f6-45c5-aafc-ac48000c423f}</Project>
     </ProjectReference>

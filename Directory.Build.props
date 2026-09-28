@@ -55,7 +55,7 @@
     vcpkg folder: the VCPKG_ROOT environment variable, else
     VCPKG_INSTALLATION_ROOT (the GitHub runners), else the copy that the
     Visual Studio component "vcpkg package manager" installs. The packages
-    go into vcpkg_installed\, which git ignores. Only SCICompanionLib runs
+    go into vcpkg_installed\, which git ignores. Only SCICompanionCore runs
     vcpkg install; the other projects build after it and read the same
     folder. A change of vcpkg.json rebuilds the projects (see
     Directory.Build.targets).
@@ -65,7 +65,7 @@
     <ScicVcpkgRoot Condition="'$(ScicVcpkgRoot)' == '' and '$(VCPKG_INSTALLATION_ROOT)' != ''">$(VCPKG_INSTALLATION_ROOT)</ScicVcpkgRoot>
     <ScicVcpkgRoot Condition="'$(ScicVcpkgRoot)' == ''">$(VsInstallRoot)\VC\vcpkg</ScicVcpkgRoot>
     <VcpkgEnableManifest>true</VcpkgEnableManifest>
-    <VcpkgManifestInstall Condition="'$(MSBuildProjectName)' != 'SCICompanionLib'">false</VcpkgManifestInstall>
+    <VcpkgManifestInstall Condition="'$(MSBuildProjectName)' != 'SCICompanionCore'">false</VcpkgManifestInstall>
   </PropertyGroup>
   <Import Condition="!$(MSBuildProjectName.StartsWith('ProfUISLIB')) and Exists('$(ScicVcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.props')"
           Project="$(ScicVcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.props" />

@@ -17,6 +17,8 @@
 #include "stdafx.h"
 #include "AppState.h"
 #include "RemoveScriptDialog.h"
+#include "ResourceBlob.h"
+#include "ResourceMapOperations.h"
 
 
 // CRemoveScriptDialog dialog
@@ -80,4 +82,41 @@ void CRemoveScriptDialog::OnOK()
 {
 	_fAlsoDelete = (m_wndCheckDelete.GetCheck() != 0);
 	__super::OnOK();
+}
+
+// Asks whether to remove the script from game.ini, and to delete its heap
+// and its source file too. AppState calls it when the last copy of a script
+// resource was deleted.
+void AskToRemoveScript(CResourceMap &resourceMap, const ResourceBlob &data)
+{
+	const GameFolderHelper &helper = resourceMap.Helper();
+	CRemoveScriptDialog dialog(static_cast<WORD>(data.GetNumber()));
+	if (IDOK == dialog.DoModal())
+	{
+		// Remove it from the ini
+		std::string iniKey = default_reskey(data.GetNumber(), data.GetHeader().Base36Number);
+		std::string scriptTitle = helper.GetIniString("Script", iniKey);
+		ScriptId scriptId = resourceMap.Helper().GetScriptId(scriptTitle);
+		// First, remove from the [Script] section
+		WritePrivateProfileString("Script", iniKey.c_str(), nullptr, helper.GetGameIniFileName().c_str());
+		// Second, remove from the [Language] section
+		WritePrivateProfileString("Language", scriptTitle.c_str(), nullptr, helper.GetGameIniFileName().c_str());
+		if (dialog.AlsoDelete())
+		{
+			// Remove the heap too
+			std::unique_ptr<ResourceBlob> theHeapOne = resourceMap.MostRecentResource(ResourceType::Heap, data.GetNumber(), false);
+			if (theHeapOne)
+			{
+				DeleteResource(resourceMap, *theHeapOne);
+			}
+			if (!DeleteFile(scriptId.GetFullPath().c_str()))
+			{
+				char szMessage[MAX_PATH * 2];
+				char szReason[200];
+				FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, 0, (DWORD)GetLastError(), 0, szReason, ARRAYSIZE(szReason), nullptr);
+				StringCchPrintf(szMessage, ARRAYSIZE(szMessage), "Couldn't delete script file.\n%s", szReason);
+				AfxMessageBox(szMessage, MB_OK | MB_ICONEXCLAMATION | MB_APPLMODAL);
+			}
+		}
+	}
 }

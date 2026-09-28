@@ -37,7 +37,7 @@ public:
 	int IndexOf(uint16_t value) const;
 	size_t AddDefine(const std::string &newName, uint16_t newValue);
 	void DeleteDefine(size_t index);
-	void Commit();
+	sci::Status Commit();
 	std::string ValueToName(uint16_t value) const;
 	uint16_t NameToValue(const std::string &name) const;
 

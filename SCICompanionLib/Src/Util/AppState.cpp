@@ -57,6 +57,16 @@
 #include "SyntaxParser.h"
 #include "ImageUtil.h"
 #include "DependencyTracker.h"
+#include "CorePrompt.h"
+#include "MfcExceptionMapper.h"
+#include "DebuggerThread.h"
+#include "PostBuildThread.h"
+#include "RemoveScriptDialog.h"
+#include "DontShowAgainDialog.h"
+#include "Pic.h"
+
+static int GuiMessageBox(const std::string &text, unsigned int type);
+static void GuiPicCheckWarning(const std::string &text);
 
 // The one and only
 extern AppState *appState;
@@ -192,6 +202,9 @@ AppState::AppState(CWinApp *pApp) : _session(SessionOptions(), this, &_resourceR
 	{
 		SetCoreLogSink(this);
 	}
+	SetMessageBoxHandler(GuiMessageBox);
+	SetPicCheckWarningHandler(GuiPicCheckWarning);
+	InstallMfcExceptionMapper();
 }
 
 DependencyTracker &AppState::GetDependencyTracker()
@@ -250,6 +263,8 @@ void AppState::HideTipWindows()
 
 AppState::~AppState()
 {
+	SetMessageBoxHandler(nullptr);
+	SetPicCheckWarningHandler(nullptr);
 	RemoveCoreLogSink(this);
 	delete _pACThread;
 	CoTaskMemFree(_pidlFolder);
@@ -703,7 +718,7 @@ void AppState::TerminateDebuggedProcess()
 			AfxMessageBox("Unable to terminate process.", MB_OK | MB_ICONERROR);
 		}
 		_hProcessDebugged.Close();
-		GetResourceMap().AbortDebuggerThread();
+		AbortDebuggerThread();
 	}
 }
 
@@ -717,7 +732,7 @@ bool AppState::IsProcessBeingDebugged()
 		if (!stillRunning)
 		{
 			_hProcessDebugged.Close();
-			GetResourceMap().AbortDebuggerThread();
+			AbortDebuggerThread();
 		}
 	}
 	return stillRunning;
@@ -777,16 +792,16 @@ void AppState::RunGame(bool debug, int optionalResourceNumber)
 		{
 			if (debug)
 			{
-				GetResourceMap().StartDebuggerThread(optionalResourceNumber);
+				StartDebuggerThread(optionalResourceNumber);
 			}
 
 			BOOL fShellEx = FALSE;
 			std::string errors;
 			HANDLE hProcess;
-			if (!GetResourceMap().GetRunLogic().RunGame(errors, hProcess))
+			if (!GetRunLogic().RunGame(errors, hProcess))
 			{
 				AfxMessageBox(errors.c_str(), MB_OK | MB_APPLMODAL | MB_ICONEXCLAMATION);
-				GetResourceMap().AbortDebuggerThread();
+				AbortDebuggerThread();
 			}
 			else
 			{
@@ -803,12 +818,53 @@ void AppState::RunGame(bool debug, int optionalResourceNumber)
 
 void AppState::OnGameFolderUpdate()
 {
+	// The resource map opened a game, or closed it.
+	_runLogic.SetGameFolder(GetResourceMap().Helper().GameFolder);
+	AbortDebuggerThread();
 	if (_pApp)
 	{
 		CMainFrame *pMainWnd = static_cast<CMainFrame*>(_pApp->m_pMainWnd);
 		pMainWnd->RefreshExplorerTools();
 		_hProcessDebugged.Close();
 		_recentViews.clear();
+	}
+}
+
+void AppState::OnLastScriptDeleted(CResourceMap &resourceMap, const ResourceBlob &script)
+{
+	if (HasGui())
+	{
+		AskToRemoveScript(resourceMap, script);
+	}
+}
+
+void AppState::StartPostBuildThread()
+{
+	AbortPostBuildThread();
+	_postBuildThread = CreatePostBuildThread(GetResourceMap().Helper().GameFolder);
+}
+
+void AppState::AbortPostBuildThread()
+{
+	if (_postBuildThread)
+	{
+		_postBuildThread->Abort();
+		_postBuildThread.reset();
+	}
+}
+
+void AppState::StartDebuggerThread(int optionalResourceNumber)
+{
+	AbortDebuggerThread();
+	_debuggerThread = CreateDebuggerThread(GetResourceMap().Helper().GameFolder, optionalResourceNumber);
+}
+
+void AppState::AbortDebuggerThread()
+{
+	if (_debuggerThread)
+	{
+		_debuggerThread->Abort();
+		_debuggerThread.reset();
 	}
 }
 
@@ -909,41 +965,34 @@ bool AppState::HasGui() const
 	return (_pApp != nullptr) && (_pApp->m_pMainWnd != nullptr);
 }
 
-int SafeMessageBox(const std::string &text, UINT type)
+// The GUI's warning of the pic checks (Pic.h): a dialog with a "do not show
+// again" box, which sets _fDontCheckPic.
+static void GuiPicCheckWarning(const std::string &text)
+{
+	if (appState != nullptr && appState->_fDontCheckPic)
+	{
+		return;
+	}
+	if (appState != nullptr && appState->HasGui())
+	{
+		CDontShowAgainDialog dialog(text.c_str(), appState->_fDontCheckPic);
+		dialog.DoModal();
+	}
+	else
+	{
+		CoreLog(LogLevel::Warning, text);
+	}
+}
+
+// The GUI's message box for engine code (CorePrompt.h). Shows nothing (0)
+// while there is no main window, so the text goes to the core log.
+static int GuiMessageBox(const std::string &text, unsigned int type)
 {
 	if (appState != nullptr && appState->HasGui())
 	{
 		return AfxMessageBox(text.c_str(), type);
 	}
-	// No GUI: send the whole text to the core log, instead of a modal dialog
-	// that would block a headless run (the command line, unit tests) or appear
-	// as a stray window. Return the non-destructive default so a yes/no prompt
-	// does not "proceed" unattended.
-	LogLevel level = LogLevel::Info;
-	switch (type & MB_ICONMASK)
-	{
-		case MB_ICONERROR:
-			level = LogLevel::Error;
-			break;
-		case MB_ICONWARNING:
-			level = LogLevel::Warning;
-			break;
-	}
-	CoreLog(level, text);
-	switch (type & MB_TYPEMASK)
-	{
-		case MB_OKCANCEL:
-		case MB_YESNOCANCEL:
-		case MB_RETRYCANCEL:
-		case MB_CANCELTRYCONTINUE:
-			return IDCANCEL;
-		case MB_YESNO:
-			return IDNO;
-		case MB_ABORTRETRYIGNORE:
-			return IDABORT;
-		default:
-			return IDOK;
-	}
+	return 0;
 }
 
 // AppState message handlers

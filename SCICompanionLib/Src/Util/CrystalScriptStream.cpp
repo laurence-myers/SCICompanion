@@ -18,17 +18,6 @@
 // Limit: y is inclusize, x is exclusive.
 // e.g. a limit of (1, 2) would mean that we can read all of line 0, and 2 characters of line 1.
 
-CPoint GetNaturalLimit(CCrystalTextBuffer *pBuffer)
-{
-	CPoint limit;
-	limit.y = pBuffer->GetLineCount() - 1;
-	if (limit.y >= 0)
-	{
-		limit.x = pBuffer->GetLineLength(limit.y);
-	}
-	return limit;
-}
-
 ReadOnlyTextBuffer::ReadOnlyTextBuffer(const ScriptText &text)
 {
 	static const std::string emptyLine;
@@ -38,16 +27,6 @@ ReadOnlyTextBuffer::ReadOnlyTextBuffer(const ScriptText &text)
 	limit.line = (lineCount > 0) ? (lineCount - 1) : 0;
 	limit.column = (int)lineAt(limit.line).size();
 	_Init([&](int nLine) { return (int)lineAt(nLine).size(); }, [&](int nLine) { return lineAt(nLine).c_str(); }, limit, 0);
-}
-
-ReadOnlyTextBuffer::ReadOnlyTextBuffer(CCrystalTextBuffer *pBuffer) : ReadOnlyTextBuffer(pBuffer, GetNaturalLimit(pBuffer), 0) {}
-
-ReadOnlyTextBuffer::ReadOnlyTextBuffer(CCrystalTextBuffer *pBuffer, CPoint limit, int extraSpace)
-{
-	TextPos textLimit;
-	textLimit.line = limit.y;
-	textLimit.column = limit.x;
-	_Init([pBuffer](int nLine) { return pBuffer->GetLineLength(nLine); }, [pBuffer](int nLine) { return pBuffer->GetLineChars(nLine); }, textLimit, extraSpace);
 }
 
 void ReadOnlyTextBuffer::_Init(const std::function<int(int)> &lineLength, const std::function<PCTSTR(int)> &lineChars, TextPos limit, int extraSpace)
@@ -111,20 +90,6 @@ PCTSTR ReadOnlyTextBuffer::GetLineChars(int nLine)
 CScriptStreamLimiter::CScriptStreamLimiter(const ScriptText &text)
 {
 	_pBuffer = std::make_unique<ReadOnlyTextBuffer>(text);
-	_pCallback = nullptr;
-	_fCancel = false;
-}
-
-CScriptStreamLimiter::CScriptStreamLimiter(CCrystalTextBuffer *pBuffer)
-{
-	_pBuffer = std::make_unique<ReadOnlyTextBuffer>(pBuffer);
-	_pCallback = nullptr;
-	_fCancel = false;
-}
-
-CScriptStreamLimiter::CScriptStreamLimiter(CCrystalTextBuffer *pBuffer, CPoint ptLimit, int extraSpace)
-{
-	_pBuffer = std::make_unique<ReadOnlyTextBuffer>(pBuffer, ptLimit, extraSpace);
 	_pCallback = nullptr;
 	_fCancel = false;
 }

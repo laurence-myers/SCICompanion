@@ -16,6 +16,7 @@
 //
 
 #include "stdafx.h"
+#include "CCrystalTextBuffer.h"
 #include "AppState.h"
 #include "InsertObject.h"
 #include "ScriptOMAll.h"

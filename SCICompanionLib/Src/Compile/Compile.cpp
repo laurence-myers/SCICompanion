@@ -25,12 +25,6 @@
 #include "PMachine.h"
 #include "Operators.h"
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#undef THIS_FILE
-static char THIS_FILE[] = __FILE__;
-#endif
-
 //
 // Potential optimizations
 // 1) Switch statements where the cases are sequential.  We can save 2 bytes per case if we

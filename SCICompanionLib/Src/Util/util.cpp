@@ -15,7 +15,6 @@
 #include "stdafx.h"
 #include <math.h>
 #include "format.h"
-#include "WindowsUtil.h"
 #include "TlHelp32.h"
 #include <filesystem>
 
@@ -141,6 +140,15 @@ RGBQUAD _ToLinear(RGBQUAD color)
 	return color;
 }
 
+RGBQUAD _Combine(RGBQUAD color1, RGBQUAD color2)
+{
+	RGBQUAD colorRet;
+	colorRet.rgbBlue = (BYTE)((((WORD)color1.rgbBlue) + ((WORD)color2.rgbBlue)) / 2);
+	colorRet.rgbRed = (BYTE)((((WORD)color1.rgbRed) + ((WORD)color2.rgbRed)) / 2);
+	colorRet.rgbGreen = (BYTE)((((WORD)color1.rgbGreen) + ((WORD)color2.rgbGreen)) / 2);
+	return colorRet;
+}
+
 RGBQUAD _CombineGamma(RGBQUAD color1, RGBQUAD color2)
 {
 	color1 = _ToLinear(color1);
@@ -167,7 +175,7 @@ void FillCOLORREFArray()
 		for (int j = i; j < 16; j++)
 		{
 			// Calculate the 136 unique colours
-			ASSERT(iIndex < ARRAYSIZE(g_rg136ToByte));
+			assert(iIndex < ARRAYSIZE(g_rg136ToByte));
 			RGBQUAD rgbq = _Combine(g_egaColors[i], g_egaColors[j]);
 
 			// Darker color in top left - might look better side-by-side
@@ -345,7 +353,7 @@ EGACOLOR GetClosestEGAColorFromSet(int iAlgorithm, bool gammaCorrected, COLORREF
 	if (!g_bFilledCOLORREFArray)
 	{
 		FillCOLORREFArray();
-		ASSERT(g_bFilledCOLORREFArray);
+		assert(g_bFilledCOLORREFArray);
 	}
 
 	COLORREF *rgColorCombos = gammaCorrected ? g_rgColorCombosGamma : g_rgColorCombos;
@@ -376,7 +384,7 @@ EGACOLOR GetClosestEGAColorFromSet(int iAlgorithm, bool gammaCorrected, COLORREF
 			closeness = GetColorDistance5(rgColorCombosHSL[egaIndex], rgColorCombos[egaIndex], color);
 			break;
 		default:
-			ASSERT(FALSE);
+			assert(FALSE);
 		}
 
 		if (closeness <= closest)
@@ -428,7 +436,7 @@ EGACOLOR GetClosestEGAColor(int iAlgorithm, bool gammaCorrected, int iPalette, C
 		cEntries = g_cSmoothEntries;
 		break;
 	default:
-		ASSERT(FALSE);
+		assert(FALSE);
 	}
 	return GetClosestEGAColorFromSet(iAlgorithm, gammaCorrected, color, pPalette, cEntries);
 }
@@ -558,35 +566,6 @@ std::string MakeTextFile(PCSTR pszContent, const std::string &filename)
 	}
 }
 
-//
-// Given a stringstream, put it into a temporary text file and show it.
-//
-void ShowTextFile(PCSTR pszContent, const std::string &filename)
-{
-	std::string actualPath = MakeTextFile(pszContent, filename);
-	ShowFile(actualPath);
-}
-
-void ShowFile(const std::string &actualPath)
-{
-	if (!actualPath.empty())
-	{
-		bool fError = true;
-		if (((INT_PTR)ShellExecute(AfxGetMainWnd()->GetSafeHwnd(), "open", actualPath.c_str(), NULL, NULL, SW_SHOWNORMAL)) > 32)
-		{
-			fError = false;
-		}
-
-		if (fError)
-		{
-			char szMsg[200];
-			DWORD_PTR arg = (DWORD_PTR)actualPath.c_str();
-			FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY, 0, GetLastError(), 0, szMsg, ARRAYSIZE(szMsg), (va_list*)&arg);
-			AfxMessageBox(szMsg, MB_OK | MB_APPLMODAL);
-		}
-	}
-}
-
 bool Save8BitBmp(const std::string &filename, const BITMAPINFO &info, BYTE *pBits, DWORD id)
 {
 	std::ofstream bmpFile(filename.c_str(), std::ios::out | std::ios::binary);
@@ -601,7 +580,7 @@ bool Save8BitBmp(const std::string &filename, const BITMAPINFO &info, BYTE *pBit
 		if (dwSize == 0)
 		{
 			// Calculate it.
-			ASSERT(info.bmiHeader.biCompression == BI_RGB);
+			assert(info.bmiHeader.biCompression == BI_RGB);
 			dwSize = (info.bmiHeader.biBitCount / 8) * CX_ACTUAL(info.bmiHeader.biWidth) * info.bmiHeader.biHeight;
 		}
 
@@ -757,13 +736,13 @@ void ScriptId::_Init(PCTSTR pszFullFileName, WORD wScriptNum)
 		//_strFileName = fullPath.filename();
 		//_strFolder = fullPath.parent_path();
 		// Sigh Microsoft... std::tr2::sys doesn't work with UNC shares...
-		CString str = pszFullFileName;
+		std::string str = pszFullFileName;
 		// A path can use '\' or '/', as "src/rm110.sc". The folder keeps
 		// only '\', so == gives one answer for both forms of a path.
-		str.Replace('/', '\\');
-		int iIndexBS = str.ReverseFind('\\');
-		_strFolder = str.Left(iIndexBS);
-		_strFileName = str.Right(str.GetLength() - iIndexBS - 1);
+		std::replace(str.begin(), str.end(), '/', '\\');
+		size_t iIndexBS = str.rfind('\\');
+		_strFolder = (iIndexBS == std::string::npos) ? std::string() : str.substr(0, iIndexBS);
+		_strFileName = (iIndexBS == std::string::npos) ? str : str.substr(iIndexBS + 1);
 
 		_strFolderOrig = _strFolder;
 		_strFileNameOrig = _strFileName;
@@ -855,7 +834,7 @@ void ScriptId::_MakeLower()
 
 void ScriptId::SetResourceNumber(WORD wScriptNum)
 {
-	ASSERT((_wScriptNum == InvalidResourceNumber) || (_wScriptNum == wScriptNum));
+	assert((_wScriptNum == InvalidResourceNumber) || (_wScriptNum == wScriptNum));
 	_wScriptNum = wScriptNum;
 }
 
@@ -1089,119 +1068,6 @@ bool DeleteDirectory(HWND hwnd, const std::string &folder)
 	fileOp.pTo = nullptr;
 	fileOp.fFlags = FOF_SILENT | FOF_NOCONFIRMATION | FOF_NOERRORUI;
 	return (SHFileOperation(&fileOp) == 0);
-}
-
-#define VK_A		65
-#define VK_C		67
-#define VK_V		86
-#define VK_X		88
-#define VK_Z		90
-
-BOOL HandleEditBoxCommands(MSG* pMsg, CEdit &wndEdit)
-{
-	BOOL fRet = FALSE;
-	if (!fRet)
-	{
-		if ((pMsg->message >= WM_KEYFIRST) && (pMsg->message <= WM_KEYLAST))
-		{
-			// Fwd the delete key to the edit control
-			if ((pMsg->message != WM_CHAR) && (pMsg->wParam == VK_DELETE))
-			{
-				::SendMessage(wndEdit.GetSafeHwnd(), pMsg->message, pMsg->wParam, pMsg->lParam);
-				fRet = TRUE; // Don't dispatch message, we handled it.
-			}
-		}
-	}
-	if (!fRet)
-	{
-		if (pMsg->message == WM_KEYDOWN)
-		{
-			if (GetKeyState(VK_CONTROL) & 0x8000)
-			{
-				if (pMsg->wParam == VK_C)
-				{
-					wndEdit.Copy();
-					fRet = TRUE;
-				}
-				if (pMsg->wParam == VK_V)
-				{
-					wndEdit.Paste();
-					fRet = TRUE;
-				}
-				if (pMsg->wParam == VK_X)
-				{
-					wndEdit.Cut();
-					fRet = TRUE;
-				}
-				if (pMsg->wParam == VK_Z)
-				{
-					wndEdit.Undo();
-					fRet = TRUE;
-				}
-				if (pMsg->wParam == VK_A)
-				{
-					wndEdit.SetSel(0xffff0000);
-					fRet = TRUE;
-				}
-			}
-		}
-	}
-	return fRet;
-}
-
-// Decide whether the compile-dialog pump should dispatch a pumped message.
-// Always dispatch paint: an undispatched WM_PAINT is returned again and again
-// (it clears only when the window validates), so skipping one would spin the
-// pump. Otherwise dispatch only the dialog's own input, so its Cancel button
-// stays live; drop input aimed at other windows, whose command handlers could
-// re-enter the resource map while the compile batches appends. (#55)
-bool ShouldDispatchCompilePumpMessage(const MSG &msg, HWND hDialog)
-{
-	if (msg.message == WM_PAINT)
-	{
-		return true;
-	}
-	if (hDialog == NULL)
-	{
-		return false;
-	}
-	return (msg.hwnd == hDialog) || (::IsChild(hDialog, msg.hwnd) != FALSE);
-}
-
-// Pump paint and input while a compile runs, but dispatch only the messages
-// ShouldDispatchCompilePumpMessage allows.
-//
-// Compile All drives itself with a self-reposted UWM_STARTCOMPILE. A posted
-// message outranks queued hardware input in GetMessage, so the modal loop would
-// service the repost forever and never dispatch a Cancel click -- the operation
-// would be uncancellable. A PeekMessage that includes PM_QS_INPUT pulls that
-// input out of the queue regardless of the pending posted message, which is what
-// keeps Cancel responsive. Dispatch is gated so a foreign command cannot run
-// re-entrantly. Dropping foreign input is safe: DoModal disables the owner, so
-// the dialog is the only window the user can drive.
-//
-// A PeekMessage filtered to paint and input does not surface WM_QUIT (it is in
-// neither category), so a pending quit simply stays in the queue for the modal
-// loop, which ends DoModal -- it is not dispatched and lost. The WM_QUIT branch
-// is therefore defensive: on any platform that does surface WM_QUIT here, repost
-// it with PostQuitMessage and return true so the caller stops. Returns false when
-// the queue drains normally. (#55)
-bool PumpCompileDialogMessagesQuitPending(HWND hDialog)
-{
-	MSG msg;
-	while (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE | PM_QS_PAINT | PM_QS_INPUT))
-	{
-		if (msg.message == WM_QUIT)
-		{
-			::PostQuitMessage((int)msg.wParam);
-			return true;
-		}
-		if (ShouldDispatchCompilePumpMessage(msg, hDialog))
-		{
-			::DispatchMessage(&msg);
-		}
-	}
-	return false;
 }
 
 std::set<DWORD> CollectProcessTreeToKill(const std::unordered_map<DWORD, DWORD> &childToParent, DWORD killId, bool *outCycleDetected)

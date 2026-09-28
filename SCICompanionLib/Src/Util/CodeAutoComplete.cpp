@@ -12,6 +12,7 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
+#include "CCrystalTextBuffer.h"
 #include "ClassBrowser.h"
 #include "ScriptOMAll.h"
 #include "CrystalScriptStream.h"

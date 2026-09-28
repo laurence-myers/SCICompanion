@@ -18,14 +18,20 @@ struct AudioComponent;
 struct SoundComponent;
 struct AudioProcessingSettings;
 class ResourceEntity;
+class CompileResult;
 enum class ResourceSourceFlags;
 enum class AudioVolumeName : uint8_t;
 
 extern const int MaxSierraSampleRate;
 
-void AudioComponentFromWaveFile(sci::istream &stream, AudioComponent &audio, AudioProcessingSettings *audioProcessingSettings = nullptr, int maxSampleRate = MaxSierraSampleRate, bool limitTo8Bit = false);
-std::unique_ptr<ResourceEntity> WaveResourceFromFilename(const std::string &filename);
+// conversionNotes gets a line for each change of the audio (a channel
+// left out, fewer bits, a lower sample rate). With no list, the lines go to
+// the core log.
+void AudioComponentFromWaveFile(sci::istream &stream, AudioComponent &audio, AudioProcessingSettings *audioProcessingSettings = nullptr, int maxSampleRate = MaxSierraSampleRate, bool limitTo8Bit = false, std::vector<CompileResult> *conversionNotes = nullptr);
 std::string _NameFromFilename(PCSTR pszFilename);
+// In the GUI library (SoundUIUtil.cpp): they show the conversion notes in
+// the output pane.
+std::unique_ptr<ResourceEntity> WaveResourceFromFilename(const std::string &filename);
 void AddWaveFileToGame(const std::string &filename);
 AudioVolumeName GetVolumeToUse(SCIVersion version, uint32_t base36Number);
 std::string GetAudioVolumePath(const std::string &gameFolder, bool bak, AudioVolumeName volumeToUse, ResourceSourceFlags *sourceFlags = nullptr);

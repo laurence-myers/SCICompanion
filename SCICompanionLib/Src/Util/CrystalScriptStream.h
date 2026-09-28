@@ -13,10 +13,11 @@
 ***************************************************************************/
 #pragma once
 
-#include "CCrystalTextBuffer.h"
 #include "CompileInterfaces.h"
 #include "ScriptText.h"
 #include <functional>
+
+class CCrystalTextBuffer;
 
 class ISyntaxParserCallback
 {
@@ -30,7 +31,8 @@ class ReadOnlyTextBuffer
 public:
 	// All of the text, with no editor buffer (the engine's form).
 	explicit ReadOnlyTextBuffer(const ScriptText &text);
-	// The editor's text (the GUI's form), all of it or up to a limit.
+	// The editor's text (the GUI's form), all of it or up to a limit. In the
+	// GUI library (CrystalScriptStreamGui.cpp).
 	ReadOnlyTextBuffer(CCrystalTextBuffer *pBuffer);
 	ReadOnlyTextBuffer(CCrystalTextBuffer *pBuffer, CPoint limit, int extraSpace);
 
@@ -101,7 +103,7 @@ public:
 		int iLength = 0;
 		if (nLine == _nLineLimit + 1)
 		{
-			ASSERT(FALSE);
+			assert(FALSE);
 		}
 		if (nLine == _nLineLimit)
 		{

@@ -13,8 +13,6 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "SCIProps.h"
-#include "ClassBrowser.h"
-#include "AppState.h"
 #include "ScriptOMAll.h"
 
 using namespace sci;
@@ -45,7 +43,7 @@ bool _EnumSendCallsInSegments(const std::vector<std::unique_ptr<SyntaxNode>> *pS
 			fFound = (*pfnSend)(pszMethodSelector, pSendProposed, ppSendParam);
 			if (fFound)
 			{
-				ASSERT(*ppSendParam);
+				assert(*ppSendParam);
 				*ppSendCall = pSendProposed;
 			}
 		}

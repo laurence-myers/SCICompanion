@@ -28,12 +28,6 @@ const uint16_t KQ5CD_BadExport = 0xfffe;
 using namespace std;
 using namespace sci;
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#undef THIS_FILE
-static char THIS_FILE[] = __FILE__;
-#endif
-
 // Turn on/off decompiler, which is a work in progress.
 #define DECOMPILE
 
@@ -767,7 +761,7 @@ bool CompiledScript::_LoadSCI0_SCI1(sci::istream &byteStream)
 			}
 			if (fRet)
 			{
-				ASSERT(wSectionSize > 0); // else we'll never get anywhere.
+				assert(wSectionSize > 0); // else we'll never get anywhere.
 				if (wSectionSize > 0)
 				{
 					byteStream.seekg(dwSavePos + wSectionSize);
@@ -950,7 +944,7 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 	*pwOffset = static_cast<uint16_t>(stream.tellg());
 	_fInstance = !fClass;
 	uint16_t wMagic;
-	stream >> wMagic; //  ASSERT(wMagic == 0x1234);
+	stream >> wMagic; //  assert(wMagic == 0x1234);
 	if (wMagic != 0x1234)
 	{
 		return false; // We'll hit this when loading KQ4 for example, which uses a different format
@@ -1042,7 +1036,7 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 		stream >> wZero;
 		if (stream.good())
 		{
-			ASSERT(wZero == 0); // There is supposed to be a zero here.
+			assert(wZero == 0); // There is supposed to be a zero here.
 			while (stream.good() && wNumFunctionSelectors)
 			{
 				uint16_t wPtr;
@@ -1051,7 +1045,7 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 				{
 					// These are supposed to be offsets to within the script resource, so they
 					// had better be smaller!
-					ASSERT(stream.GetDataSize() > wPtr);
+					assert(stream.GetDataSize() > wPtr);
 					_functionOffsetsTO.push_back(wPtr + TEST_OFFSET);
 				}
 				wNumFunctionSelectors--;
@@ -1193,7 +1187,7 @@ bool CompiledScript::_ReadStrings(sci::istream &stream, uint16_t wDataSize)
 		stream >> str;
 		if (stream.good())
 		{
-			ASSERT(dwOffset <= 0xffff);
+			assert(dwOffset <= 0xffff);
 			_stringsOffset.push_back(static_cast<uint16_t>(dwOffset));
 			_strings.push_back(Dos2Win(str));
 		}
@@ -1329,7 +1323,7 @@ std::string CompiledObject::LookupPropertyName(ICompiledScriptLookups *pLookup, 
 		// We might be a "private" class.  So use our own list... (REVIEW: can't we always do this?)
 		propertySelectorList = _propertySelectors;
 	}
-	//ASSERT((wPropertyIndex %2) == 0);
+	//assert((wPropertyIndex %2) == 0);
 	// REVIEW: Leisure Suit Larry 3, room 22, hits this ASSERT. As does SQ5 script 201.
 	wPropertyIndex /= 2;
 	if (wPropertyIndex < propertySelectorList.size())
@@ -1610,7 +1604,7 @@ bool ObjectFileScriptLookups::_GetSCOFile(WORD wScript, CSCOFile &scoFile)
 	if (!fRet)
 	{
 		fRet = _LoadSCOFile(wScript);
-		ASSERT(!fRet || (_mapScriptToObject.find(wScript) != _mapScriptToObject.end()));
+		assert(!fRet || (_mapScriptToObject.find(wScript) != _mapScriptToObject.end()));
 	}
 	if (fRet)
 	{

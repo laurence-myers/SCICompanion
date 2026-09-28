@@ -19,7 +19,7 @@
 #include "PaletteOperations.h"
 #include "CoreLog.h"
 #include "format.h"
-#include "ImageUtil.h"
+#include "ImageData.h"
 
 using namespace std;
 

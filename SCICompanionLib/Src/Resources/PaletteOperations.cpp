@@ -12,10 +12,11 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
+#include "MemoryDC.h"
 #include "PaletteOperations.h"
 #include "ResourceEntity.h"
 #include "CoreLog.h"
-#include "ImageUtil.h"
+#include "ImageData.h"
 #include "GameFolderHelper.h"
 
 using namespace std;
@@ -248,13 +249,13 @@ HBITMAP CreateBitmapFromPaletteComponent(const PaletteComponent &palette, SCIBit
 		reallyUsedCount = CountActualUsedColors(*imageCels, reallyUsed);
 	}
 
-	CDC dc;
-	if (dc.CreateCompatibleDC(nullptr))
+	MemoryDC dc;
+	if (dc)
 	{
 		SCIBitmapInfo bmi(cx, cy, palette.Colors, ARRAYSIZE(palette.Colors));
 		bmi.bmiHeader.biHeight = -bmi.bmiHeader.biHeight;
 		uint8_t *pBitsDest;
-		CBitmap bitmap;
+		HBITMAP bitmap = nullptr;
 
 		// Allow for callers to specify a "transparent" color to render unused palette entries.
 		uint8_t transparentIndex = 0;
@@ -274,7 +275,7 @@ HBITMAP CreateBitmapFromPaletteComponent(const PaletteComponent &palette, SCIBit
 			}
 		}
 
-		if (bitmap.Attach(CreateDIBSection((HDC)dc, &bmi, DIB_RGB_COLORS, (void**)&pBitsDest, nullptr, 0)))
+		if ((bitmap = CreateDIBSection((HDC)dc, &bmi, DIB_RGB_COLORS, (void**)&pBitsDest, nullptr, 0)) != nullptr)
 		{
 			for (int y = 0; y < 16; y++)
 			{
@@ -314,7 +315,7 @@ HBITMAP CreateBitmapFromPaletteComponent(const PaletteComponent &palette, SCIBit
 				}
 			}
 
-			hbmpRet = (HBITMAP)bitmap.Detach();
+			hbmpRet = bitmap;
 			*pbmi = bmi;
 			*ppBitsDest = pBitsDest;
 		}

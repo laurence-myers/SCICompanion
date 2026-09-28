@@ -12,6 +12,7 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
+#include "MemoryDC.h"
 
 #include "Components.h"
 #include "RasterOperations.h"
@@ -132,7 +133,7 @@ void ReallocBits(
 	}
 	else
 	{
-		//ASSERT(fCopy == FALSE); // We could fix this - but at the moment, we aren't copying in this case.
+		//assert(fCopy == FALSE); // We could fix this - but at the moment, we aren't copying in this case.
 	}
 }
 
@@ -164,8 +165,8 @@ HBITMAP GetBitmap(
 	uint16_t width = cel.size.cx;
 
 	HBITMAP hbm = nullptr;
-	CDC dc;
-	if (dc.CreateCompatibleDC(nullptr))
+	MemoryDC dc;
+	if (dc)
 	{
 		int iZoomIn = 1;
 		int iZoomOut = 1;
@@ -1068,8 +1069,8 @@ HBITMAP CreateBitmapFromResource(const ResourceEntity &resource, CelIndex celInd
 	cy--;
 
 	// Now we have a bitmap size.
-	CDC dc;
-	if (dc.CreateCompatibleDC(nullptr))
+	MemoryDC dc;
+	if (dc)
 	{
 		// For EGA (16 color), we'll dupe the 16 colors 16 times, to allow for using the
 		// high nibble to stash extra information for export.
@@ -1085,8 +1086,8 @@ HBITMAP CreateBitmapFromResource(const ResourceEntity &resource, CelIndex celInd
 		SCIBitmapInfo bmi(cx, cy, paletteEntries, paletteCount);
 
 		BYTE *pBitsDest;
-		CBitmap bitmap;
-		if (bitmap.Attach(CreateDIBSection((HDC)dc, &bmi, DIB_RGB_COLORS, (void**)&pBitsDest, NULL, 0)))
+		HBITMAP bitmap = nullptr;
+		if ((bitmap = CreateDIBSection((HDC)dc, &bmi, DIB_RGB_COLORS, (void**)&pBitsDest, NULL, 0)) != nullptr)
 		{
 			memset(pBitsDest, 0x0, CX_ACTUAL(cx) * cy); // Fill with black
 			std::unique_ptr<BYTE[]> buffer = std::make_unique<BYTE[]>(cBytesMax);
@@ -1116,7 +1117,7 @@ HBITMAP CreateBitmapFromResource(const ResourceEntity &resource, CelIndex celInd
 				}
 				top += loopHeights[endLoop - nLoop - 1];
 			}
-			hbmpRet = (HBITMAP)bitmap.Detach();
+			hbmpRet = bitmap;
 			*pbmi = bmi;
 			*ppBitsDest = pBitsDest;
 		}

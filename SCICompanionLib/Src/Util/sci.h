@@ -518,6 +518,7 @@ extern CPrecisionTimer g_compileObjFileTimer;
 extern CPrecisionTimer g_compileAppendTimer;
 
 const std::string MakeFile(PCSTR pszContent, const std::string &filename);
+// Opens the file in its program. In the GUI library (WindowsUtil.cpp).
 void ShowTextFile(PCSTR pszContent, const std::string &filename);
 void ShowFile(const std::string &actualPath);
 std::string MakeTextFile(PCSTR pszContent, const std::string &filename);

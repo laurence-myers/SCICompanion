@@ -153,3 +153,48 @@ bool MatchesResourceFilenameFormat(const std::string &filename, SCIVersion versi
 	}
 	return false;
 }
+
+const TCHAR* g_szResourceSpecByType[(int)ResourceType::Max] =
+{
+	PATCH_FILE_VIEW,
+	PATCH_FILE_PIC,
+	PATCH_FILE_SCRIPT,
+	PATCH_FILE_TEXT,
+	PATCH_FILE_SOUND,
+	PATCH_FILE_MEMORY,
+	PATCH_FILE_VOCAB,
+	PATCH_FILE_FONT,
+	PATCH_FILE_CURSOR,
+	PATCH_FILE_PATCH,
+	PATCH_FILE_BITMAP,
+	PATCH_FILE_PALETTE,
+	PATCH_FILE_CDAUDIO,
+	PATCH_FILE_AUDIO,
+	PATCH_FILE_SYNC,
+	PATCH_FILE_MESSAGE,
+	PATCH_FILE_AUDIOMAP,
+	PATCH_FILE_HEAP
+};
+
+int ResourceNumberFromFileName(PCTSTR pszFileName)
+{
+	int iNumber = -1;
+	PCTSTR pszExt = PathFindExtension(pszFileName);
+	if (pszExt && *pszExt && *(pszExt + 1))
+	{
+		if (isdigit(*(pszExt + 1)))
+		{
+			iNumber = StrToInt(pszExt + 1);
+		}
+		else
+		{
+			PCTSTR pszJustFileName = PathFindFileName(pszFileName);
+			if (pszJustFileName && *pszJustFileName && isdigit(*pszJustFileName))
+			{
+				iNumber = StrToInt(pszJustFileName);
+			}
+		}
+
+	}
+	return iNumber;
+}

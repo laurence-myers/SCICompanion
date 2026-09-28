@@ -193,7 +193,7 @@ void CSCOFile::Save(vector<BYTE> &output) const
 	output.push_back(_bBuild);
 	output.push_back(_bSCIVersion);
 	output.push_back(_bAlignment);
-	ASSERT((output.size() % 2) == 0); // alignment should have made it even.
+	assert((output.size() % 2) == 0); // alignment should have made it even.
 
 	// Script number
 	push_word(output, _wScriptNumber);
@@ -340,7 +340,7 @@ void CSCOFile::ReplaceObject(const CSCOObjectClass &object)
 			return;
 		}
 	}
-	ASSERT(FALSE); // Should always be found.
+	assert(FALSE); // Should always be found.
 }
 
 bool CSCOFile::GetClass(std::string className, const CSCOObjectClass **ppClass) const

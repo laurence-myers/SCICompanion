@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 #include "Result.h"
 #include "TestSupport.h"
+#include "MfcExceptionMapper.h"
 #include <string>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -161,8 +162,59 @@ namespace UnitTests
             Assert::IsTrue(Contains(status.error().message, "list not sorted"));
         }
 
+        // Installs a foreign exception mapper for the life of the object.
+        struct ScopedMapper
+        {
+            explicit ScopedMapper(ForeignExceptionMapper mapper) : previous(SetForeignExceptionMapper(mapper)) {}
+            ~ScopedMapper() { SetForeignExceptionMapper(previous); }
+            ForeignExceptionMapper previous;
+        };
+
+        // A mapper for the tests: it knows an int.
+        static bool MapInt(Error &error)
+        {
+            try
+            {
+                throw;
+            }
+            catch (int value)
+            {
+                error.code = ErrorCode::Unsupported;
+                error.message = "int " + std::to_string(value);
+                return true;
+            }
+            catch (...)
+            {
+                return false;
+            }
+        }
+
+        TEST_METHOD(Guard_ForeignMapper_MapsItsException)
+        {
+            ScopedMapper mapper(MapInt);
+            Status status = Guard("reading", []() -> Status { throw 7; });
+            AssertCode(ErrorCode::Unsupported, status.error());
+            Assert::AreEqual(std::string("int 7"), status.error().message);
+            Assert::AreEqual(std::string("reading"), status.error().context.at(0));
+        }
+
+        TEST_METHOD(Guard_ForeignMapper_LeavesOtherExceptions)
+        {
+            // An exception that the mapper does not know, and a std::exception
+            // (the core maps it before the mapper), keep their texts.
+            ScopedMapper mapper(MapInt);
+            Status unknown = Guard("", []() -> Status { throw 'c'; });
+            AssertCode(ErrorCode::Internal, unknown.error());
+            Assert::AreEqual(std::string("unknown exception"), unknown.error().message);
+            Status standard = Guard("", []() -> Status { throw std::runtime_error("broken"); });
+            AssertCode(ErrorCode::Internal, standard.error());
+            Assert::AreEqual(std::string("broken"), standard.error().message);
+        }
+
+        // The MFC exceptions: the GUI library installs MapMfcException.
         TEST_METHOD(Guard_CFileException_IsIo)
         {
+            ScopedMapper mapper(MapMfcException);
             Status status = Guard("", []() -> Status { AfxThrowFileException(CFileException::fileNotFound, -1, _T("missing.txt")); });
             AssertCode(ErrorCode::Io, status.error());
             Assert::IsFalse(status.error().message.empty());
@@ -171,6 +223,7 @@ namespace UnitTests
         TEST_METHOD(Guard_CUserException_IsInternal)
         {
             // SetGameFolder throws this one, with no text.
+            ScopedMapper mapper(MapMfcException);
             Status status = Guard("", []() -> Status { AfxThrowUserException(); return Ok(); });
             AssertCode(ErrorCode::Internal, status.error());
             Assert::AreEqual(std::string("MFC exception (no text)"), status.error().message);
@@ -180,6 +233,7 @@ namespace UnitTests
         {
             // In an MFC program, a failed new throws CMemoryException*, not
             // std::bad_alloc.
+            ScopedMapper mapper(MapMfcException);
             Status status = Guard("reading a big file", []() -> Status { AfxThrowMemoryException(); return Ok(); });
             AssertCode(ErrorCode::Internal, status.error());
             Assert::AreEqual(std::string("out of memory"), status.error().message);

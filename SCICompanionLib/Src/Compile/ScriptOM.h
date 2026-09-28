@@ -480,7 +480,7 @@ namespace sci
 	class TypedNode
 	{
 	public:
-		void SetDataType(const std::string &type) { ASSERT(_innerType.empty()); _innerType = type; }
+		void SetDataType(const std::string &type) { assert(_innerType.empty()); _innerType = type; }
 		const std::string &GetDataType() const { return _innerType; }
 	protected:
 		std::string _innerType;
@@ -599,13 +599,13 @@ namespace sci
 		Define(const std::string &label, uint16_t w) : _label(label), _flags(IntegerFlags::None), _wValue(w) {}
 		const std::string &GetLabel() const { return _label; }
 		const std::string &GetName() const { return _label; }
-		uint16_t GetValue() const { ASSERT(_strValue.empty()); return _wValue; }
+		uint16_t GetValue() const { assert(_strValue.empty()); return _wValue; }
 		bool Match(const std::string &label) { return label == _label; }
 
 		IntegerFlags GetFlags() const { return _flags; }
 		void SetLabel(const std::string &label) { _label = label; }
 		void SetValue(uint16_t w) { _wValue = w; }
-		void SetValue(int iNumber, IntegerFlags flags) { ASSERT(iNumber <= 0xFFFF); _wValue = static_cast<uint16_t>(iNumber); _flags = flags; }
+		void SetValue(int iNumber, IntegerFlags flags) { assert(iNumber <= 0xFFFF); _wValue = static_cast<uint16_t>(iNumber); _flags = flags; }
 		void SetValue(const std::string &value) { _strValue = value; };
 		
 

@@ -20,6 +20,10 @@
 #include "DecompileHelper.h"
 #include "OutputCodeHelper.h"
 #include "TestSupport.h"
+#include "Pic.h"
+#include "ResourceEntity.h"
+#include "ResourceBlob.h"
+#include "ResourceContainer.h"
 #include <set>
 #include <sstream>
 #include <filesystem>
@@ -292,6 +296,59 @@ namespace UnitTests
             Assert::AreEqual(IDCANCEL, SafeMessageBox("e", MB_RETRYCANCEL));
             Assert::AreEqual(IDABORT, SafeMessageBox("f", MB_ABORTRETRYIGNORE));
             Assert::AreEqual(size_t(6), sink.lines.size());
+        }
+
+        TEST_METHOD(PicCheck_NoGui_WarnsInTheCoreLog)
+        {
+            // An EGA pic with no Set Palette command: the check before the
+            // save warns. With no GUI, the warning goes to the core log, and
+            // the pic is saved.
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            CaptureLogSink sink;
+            ScopedCoreLogSink scoped(sink);
+            std::unique_ptr<ResourceEntity> pic(CreatePicResource(session.Version()));
+
+            AssertOk(session.ResourceMap().WriteResource(*pic, 1, 900, ""));
+
+            bool warned = false;
+            for (const auto &line : sink.lines)
+            {
+                warned = warned || ((line.first == LogLevel::Warning) && (line.second.find("Set Palette") != std::string::npos));
+            }
+            Assert::IsTrue(warned, L"the missing Set Palette command must be in the core log");
+            Assert::IsTrue(session.ResourceMap().MostRecentResource(ResourceType::Pic, 900, false) != nullptr);
+        }
+
+        TEST_METHOD(AudioCacheFiles_EnumerateWithNoAppState)
+        {
+            // The audio cache files are a source of audio resources. With no
+            // AppState, the enumeration still works.
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci11);
+            std::unique_ptr<ResourceContainer> audio = session.ResourceMap().Resources(ResourceTypeFlags::Audio, ResourceEnumFlags::IncludeCacheFiles);
+            Assert::IsTrue(audio != nullptr);
+            for (auto &blob : *audio)
+            {
+                Assert::IsTrue(blob != nullptr);
+            }
+        }
+
+        TEST_METHOD(DeleteResource_LastScript_NoGui_AsksNothing)
+        {
+            // The GUI asks whether to remove the last copy of a script from
+            // game.ini, and its source file too. With no GUI, nothing asks:
+            // the resource goes, and game.ini and the source stay.
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            std::unique_ptr<ResourceBlob> script = session.ResourceMap().MostRecentResource(ResourceType::Script, 973, false);
+            Assert::IsTrue(script != nullptr);
+
+            session.ResourceMap().DeleteResource(script.get());
+
+            Assert::IsTrue(session.ResourceMap().MostRecentResource(ResourceType::Script, 973, false) == nullptr);
+            Assert::IsTrue(_game.Has("src\\Avoid.sc"));
+            Assert::IsTrue(ReadFileText(_game.Path("game.ini")).find("n973=Avoid") != std::string::npos);
         }
 
         TEST_METHOD(DependencyTracker_FollowsTheSettingAfterConstruction)

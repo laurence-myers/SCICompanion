@@ -5,9 +5,13 @@ Official website:
 http://scicompanion.com
 
 General notes:
-The bulk of the code is in SCICompanionLib\Src
+The bulk of the code is in SCICompanionLib\Src. The engine (the compiler,
+the decompiler and the resource formats) builds into SCICompanionCore, a
+library with no MFC; the GUI builds into SCICompanionLib.
 
 SCICompanion is the .exe which is just a thin wrapper over SCICompanionLib
+and SCICompanionCore. scic.exe, the command-line tool, links only
+SCICompanionCore.
 
 ## Building
 
@@ -15,7 +19,7 @@ SCI Companion builds with **Visual Studio 2022** and the **v143** platform
 toolset. You need:
 
 * Visual Studio 2022 with the **Desktop development with C++** workload,
-* the **MFC** component (the app and library are MFC),
+* the **MFC** component (the app and the GUI library are MFC),
 * the **Windows 10 SDK** (10.0.26100 or later), and
 * **vcpkg**: the vcpkg component of Visual Studio, or a vcpkg folder in the
   `VCPKG_ROOT` environment variable. The first build downloads the
@@ -56,7 +60,8 @@ modernizing the build. Broad highlights since the previous release:
   and prints each error in the format that Visual Studio and VS Code can
   open. `scic help` shows the commands, `--dry-run` writes nothing, and
   the exit code tells a build script what happened. It refuses a game whose
-  `resource.map` is damaged or empty.
+  `resource.map` is damaged or empty. It has none of the GUI code in it:
+  the engine is now a library of its own, with no MFC.
 * **Eliminated most `asm` fallbacks in the decompiler.** When the decompiler
   could not reconstruct a function's control flow it used to give up and emit
   raw `asm` disassembly. It now rebuilds the control flow into real source, so

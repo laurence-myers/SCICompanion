@@ -395,14 +395,14 @@ jobs:
           -Path "$installPath\VC\Tools\MSVC\14.44.*\atlmfc\lib\x86\mfc140.lib"
         if (-not $mfc) { throw "MFC for the 14.44 toolset was not found after the install." }
 
-    # Build the first-party library with Code Analysis on. continue-on-error: the
+    # Build the first-party libraries with Code Analysis on. continue-on-error: the
     # analysis reports a backlog today, so it must not fail the build. A clean-up
     # pass and a promotion to a hard gate are follow-on work (#80).
     - name: Build with MSVC Code Analysis
       shell: pwsh
       continue-on-error: true
       run: |
-        msbuild SCICompanion.sln -m -t:SCICompanionLib -p:Configuration=Release -p:Platform=Win32 -p:RunCodeAnalysis=true -v:normal |
+        msbuild SCICompanion.sln -m "-t:SCICompanionCore;SCICompanionLib" -p:Configuration=Release -p:Platform=Win32 -p:RunCodeAnalysis=true -v:normal |
           Tee-Object -FilePath analyze.log
         $warns = @(Select-String -Path analyze.log -Pattern 'warning C(6|26|28)\d\d\d').Count
         Write-Host "MSVC Code Analysis warnings: $warns"

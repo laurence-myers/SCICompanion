@@ -103,15 +103,6 @@ RGBQUAD _Redden(RGBQUAD color)
 	return colorRet;
 }
 
-RGBQUAD _Combine(RGBQUAD color1, RGBQUAD color2)
-{
-	RGBQUAD colorRet;
-	colorRet.rgbBlue = (BYTE)((((WORD)color1.rgbBlue) + ((WORD)color2.rgbBlue)) / 2);
-	colorRet.rgbRed = (BYTE)((((WORD)color1.rgbRed) + ((WORD)color2.rgbRed)) / 2);
-	colorRet.rgbGreen = (BYTE)((((WORD)color1.rgbGreen) + ((WORD)color2.rgbGreen)) / 2);
-	return colorRet;
-}
-
 RGBQUAD _Darker(RGBQUAD color)
 {
 	RGBQUAD colorRet;

@@ -22,12 +22,6 @@
 #include <atomic>
 #include "format.h"
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#undef THIS_FILE
-static char THIS_FILE[] = __FILE__;
-#endif
-
 bool DoesPackageFormatIncludeHeaderInCompressedSize(SCIVersion version)
 {
 	return version.PackageFormat != ResourcePackageFormat::SCI11 && version.PackageFormat != ResourcePackageFormat::SCI2;

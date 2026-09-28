@@ -382,7 +382,7 @@ void MessageEditorListCtrl::_Commit()
 	if (source)
 	{
 		assert((_sourceType == MessageSourceType::Verbs || _sourceType == MessageSourceType::Talkers) && "Other types should go through components.");
-		source->Commit();
+		ShowWriteError(source->Commit());
 		if (_pDoc)
 		{
 			// Send out notification. Be lazy and just say "all message files".

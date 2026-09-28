@@ -156,10 +156,18 @@ namespace sci
     [[noreturn]] void ThrowLastError(const std::string &what);
 
     // Call only inside a catch block. Turns the exception in flight into an
-    // Error. DataError keeps its code; a CFileException gives Io; any other
-    // exception gives Internal. It deletes an MFC CException* (do not call
-    // Delete() on it again).
+    // Error. DataError keeps its code; any other exception gives Internal,
+    // unless the foreign exception mapper knows it.
     Error ErrorFromCurrentException(const std::string &context);
+
+    // Maps an exception that is not a std::exception, for a library that the
+    // core does not know (the GUI library installs one for MFC's
+    // CException*: a CFileException gives Io). Called inside a catch block:
+    // it rethrows with "throw;", and for an exception that it knows, it
+    // fills the code and the text of the error and returns true.
+    using ForeignExceptionMapper = bool (*)(Error &error);
+    // Installs the mapper (null removes it) and returns the mapper before it.
+    ForeignExceptionMapper SetForeignExceptionMapper(ForeignExceptionMapper mapper);
 
     // The exception boundary. Runs fn, which returns a Result or a Status. If
     // an exception escapes fn, returns it as an Error instead. A lambda that

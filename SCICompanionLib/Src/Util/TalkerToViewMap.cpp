@@ -13,7 +13,6 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "TalkerToViewMap.h"
-#include "AppState.h"
 #include "cpptoml.h"
 #include "format.h"
 

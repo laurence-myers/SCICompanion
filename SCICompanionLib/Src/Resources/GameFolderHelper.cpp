@@ -22,7 +22,6 @@
 #include "AudioResourceSource.h"
 #include "AudioCacheResourceSource.h"
 #include "PatchResourceSource.h"
-#include "AppState.h"
 #include "SoundUtil.h"
 #include "Text.h"
 
@@ -376,7 +375,8 @@ std::unique_ptr<ResourceContainer> GameFolderHelper::Resources(ResourceTypeFlags
 			// Our audio cache files take precedence
 			if (IsFlagSet(types, ResourceTypeFlags::Audio))
 			{
-				mapAndVolumes->push_back(move(make_unique<AudioCacheResourceSource>(&appState->GetResourceMap(), *this, mapContext, ResourceSourceAccessFlags::Read)));
+				// A read source: it needs no resource map (the map is for writes).
+				mapAndVolumes->push_back(move(make_unique<AudioCacheResourceSource>(nullptr, *this, mapContext, ResourceSourceAccessFlags::Read)));
 			}
 
 			// Audiomaps can come from the cache files folder too... but we can re-use PatchFilesResourceSource for this
