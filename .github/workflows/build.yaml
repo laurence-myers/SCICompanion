@@ -18,6 +18,25 @@ jobs:
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
 
+    # The build installs the packages of vcpkg.json with the runner's vcpkg
+    # (VCPKG_INSTALLATION_ROOT; see Directory.Build.props). vcpkg.json pins a
+    # registry baseline and package versions, so the vcpkg clone needs those
+    # commits: fetch them, with all the history when the clone is shallow.
+    - name: Fetch the vcpkg registry
+      shell: pwsh
+      run: |
+        # The vcpkg of the build: VCPKG_ROOT, else VCPKG_INSTALLATION_ROOT
+        # (Directory.Build.props).
+        $root = $env:VCPKG_ROOT
+        if (-not $root) { $root = $env:VCPKG_INSTALLATION_ROOT }
+        if (-not $root) { throw "Neither VCPKG_ROOT nor VCPKG_INSTALLATION_ROOT is set." }
+        if ((git -C $root rev-parse --is-shallow-repository) -eq 'true') {
+          git -C $root fetch --quiet --unshallow origin
+        } else {
+          git -C $root fetch --quiet origin
+        }
+        if ($LASTEXITCODE -ne 0) { throw "git fetch of the vcpkg registry failed ($LASTEXITCODE)." }
+
     # The image ships the v143 toolset (MSVC 14.44) and the Windows 11 SDK.
     # MFC is installed per toolset version, and the image only has MFC for
     # its latest toolset. Add MFC and ATL for 14.44. This is a small install.
@@ -122,6 +141,25 @@ jobs:
 
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
+
+    # The build installs the packages of vcpkg.json with the runner's vcpkg
+    # (VCPKG_INSTALLATION_ROOT; see Directory.Build.props). vcpkg.json pins a
+    # registry baseline and package versions, so the vcpkg clone needs those
+    # commits: fetch them, with all the history when the clone is shallow.
+    - name: Fetch the vcpkg registry
+      shell: pwsh
+      run: |
+        # The vcpkg of the build: VCPKG_ROOT, else VCPKG_INSTALLATION_ROOT
+        # (Directory.Build.props).
+        $root = $env:VCPKG_ROOT
+        if (-not $root) { $root = $env:VCPKG_INSTALLATION_ROOT }
+        if (-not $root) { throw "Neither VCPKG_ROOT nor VCPKG_INSTALLATION_ROOT is set." }
+        if ((git -C $root rev-parse --is-shallow-repository) -eq 'true') {
+          git -C $root fetch --quiet --unshallow origin
+        } else {
+          git -C $root fetch --quiet origin
+        }
+        if ($LASTEXITCODE -ne 0) { throw "git fetch of the vcpkg registry failed ($LASTEXITCODE)." }
 
     # Same MFC/ATL install as the build job (a separate job gets a clean runner).
     - name: Install MFC and ATL for the 14.44 toolset
@@ -256,6 +294,25 @@ jobs:
 
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
+
+    # The build installs the packages of vcpkg.json with the runner's vcpkg
+    # (VCPKG_INSTALLATION_ROOT; see Directory.Build.props). vcpkg.json pins a
+    # registry baseline and package versions, so the vcpkg clone needs those
+    # commits: fetch them, with all the history when the clone is shallow.
+    - name: Fetch the vcpkg registry
+      shell: pwsh
+      run: |
+        # The vcpkg of the build: VCPKG_ROOT, else VCPKG_INSTALLATION_ROOT
+        # (Directory.Build.props).
+        $root = $env:VCPKG_ROOT
+        if (-not $root) { $root = $env:VCPKG_INSTALLATION_ROOT }
+        if (-not $root) { throw "Neither VCPKG_ROOT nor VCPKG_INSTALLATION_ROOT is set." }
+        if ((git -C $root rev-parse --is-shallow-repository) -eq 'true') {
+          git -C $root fetch --quiet --unshallow origin
+        } else {
+          git -C $root fetch --quiet origin
+        }
+        if ($LASTEXITCODE -ne 0) { throw "git fetch of the vcpkg registry failed ($LASTEXITCODE)." }
 
     - name: Install MFC and ATL for the 14.44 toolset
       shell: pwsh
