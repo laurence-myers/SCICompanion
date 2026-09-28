@@ -1,6 +1,6 @@
 # `scic` CLI work: open items
 
-Branch `feat/scic-cli`, from `master` at `0dc1fef5`; not pushed. This file
+Branch `feat/scic-cli`, from `master` at `958048a9`. This file
 lists only the open items: the next work, the review findings that are not
 fixed yet, the known gaps, the questions for you, and the work outside the
 branch. The commit messages record each step, each review and its fixes;
