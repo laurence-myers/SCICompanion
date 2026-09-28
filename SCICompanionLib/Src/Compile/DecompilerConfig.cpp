@@ -35,7 +35,8 @@ class DummyLog : public ICompileLog
 };
 
 // The defines of a header of the include folder. A header that cannot be read
-// or parsed gives an empty script, and a warning in warnings.
+// gives an empty script, and one that does not parse the defines before its
+// error; each gives a warning in warnings.
 unique_ptr<Script> GetDefinesScript(const GameFolderHelper &helper, const std::string &includeFolder, const std::string &name, std::vector<std::string> &warnings)
 {
 	DummyLog log;
@@ -51,8 +52,8 @@ unique_ptr<Script> GetDefinesScript(const GameFolderHelper &helper, const std::s
 	CCrystalScriptStream stream(&limiter);
 	if (!SyntaxParser_Parse(*script, stream, PreProcessorDefinesFromSCIVersion(helper.Version), &log))
 	{
-		warnings.push_back(fmt::format("{0} has syntax errors, so the decompiled scripts have no names of its defines", scriptId.GetFullPath()));
-		return make_unique<Script>(scriptId);
+		// The defines before the error stay.
+		warnings.push_back(fmt::format("{0} has syntax errors, so the decompiled scripts can lack names of its defines", scriptId.GetFullPath()));
 	}
 	return script;
 }

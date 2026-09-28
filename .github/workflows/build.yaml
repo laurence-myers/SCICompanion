@@ -48,6 +48,7 @@ jobs:
         New-Item -ItemType Directory -Force $downloads, $archives | Out-Null
         "VCPKG_DOWNLOADS=$downloads" >> $env:GITHUB_ENV
         "VCPKG_DEFAULT_BINARY_CACHE=$archives" >> $env:GITHUB_ENV
+        "VCPKG_CACHE_IMAGE=$env:ImageVersion" >> $env:GITHUB_ENV
 
     - name: Cache vcpkg
       uses: actions/cache@v4
@@ -55,7 +56,9 @@ jobs:
         path: |
           ${{ runner.temp }}\vcpkg-downloads
           ${{ runner.temp }}\vcpkg-archives
-        key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+        # The image version: a new image can have another compiler, so the
+        # packages need another build.
+        key: vcpkg-${{ runner.os }}-${{ env.VCPKG_CACHE_IMAGE }}-${{ hashFiles('vcpkg.json') }}
 
     # The image ships the v143 toolset (MSVC 14.44) and the Windows 11 SDK.
     # MFC is installed per toolset version, and the image only has MFC for
@@ -252,6 +255,7 @@ jobs:
         New-Item -ItemType Directory -Force $downloads, $archives | Out-Null
         "VCPKG_DOWNLOADS=$downloads" >> $env:GITHUB_ENV
         "VCPKG_DEFAULT_BINARY_CACHE=$archives" >> $env:GITHUB_ENV
+        "VCPKG_CACHE_IMAGE=$env:ImageVersion" >> $env:GITHUB_ENV
 
     - name: Cache vcpkg
       uses: actions/cache@v4
@@ -259,7 +263,9 @@ jobs:
         path: |
           ${{ runner.temp }}\vcpkg-downloads
           ${{ runner.temp }}\vcpkg-archives
-        key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+        # The image version: a new image can have another compiler, so the
+        # packages need another build.
+        key: vcpkg-${{ runner.os }}-${{ env.VCPKG_CACHE_IMAGE }}-${{ hashFiles('vcpkg.json') }}
 
     # Same MFC/ATL install as the build job (a separate job gets a clean runner).
     - name: Install MFC and ATL for the 14.44 toolset
@@ -427,6 +433,7 @@ jobs:
         New-Item -ItemType Directory -Force $downloads, $archives | Out-Null
         "VCPKG_DOWNLOADS=$downloads" >> $env:GITHUB_ENV
         "VCPKG_DEFAULT_BINARY_CACHE=$archives" >> $env:GITHUB_ENV
+        "VCPKG_CACHE_IMAGE=$env:ImageVersion" >> $env:GITHUB_ENV
 
     - name: Cache vcpkg
       uses: actions/cache@v4
@@ -434,7 +441,9 @@ jobs:
         path: |
           ${{ runner.temp }}\vcpkg-downloads
           ${{ runner.temp }}\vcpkg-archives
-        key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+        # The image version: a new image can have another compiler, so the
+        # packages need another build.
+        key: vcpkg-${{ runner.os }}-${{ env.VCPKG_CACHE_IMAGE }}-${{ hashFiles('vcpkg.json') }}
 
     - name: Install MFC and ATL for the 14.44 toolset
       shell: pwsh

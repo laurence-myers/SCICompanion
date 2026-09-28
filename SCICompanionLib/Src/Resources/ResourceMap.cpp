@@ -1411,10 +1411,12 @@ sci::Status CResourceMap::_CheckResourceMap()
 		{
 			break;
 		}
-		if (std::all_of(raw.begin(), raw.end(), [](uint8_t value) { return value == 0xff; }))
+		// The terminator of an SCI0 map, which its reader gives as an entry:
+		// all 0xFF, or an id of 0xFFFF (the early SCI0 form of KQ4).
+		bool sci0Map = (Helper().Version.MapFormat == ResourceMapFormat::SCI0) || (Helper().Version.MapFormat == ResourceMapFormat::SCI0_LayoutSCI1);
+		if (std::all_of(raw.begin(), raw.end(), [](uint8_t value) { return value == 0xff; }) ||
+			(sci0Map && (raw.size() >= 2) && (raw[0] == 0xff) && (raw[1] == 0xff)))
 		{
-			// The terminator of an SCI0 map, which its reader gives as an
-			// entry.
 			continue;
 		}
 		tried++;

@@ -148,6 +148,9 @@ namespace UnitTests
             Assert::AreEqual(-1, SplitScriptText("(a)\r\n(b)\r\n").firstOtherBreakLine);
             // A file with CR alone is one line.
             Assert::AreEqual(0, SplitScriptText(";(a)\r(b)\r").firstOtherBreakLine);
+            // In an LF file, a CR LF leaves a CR at the end of its line: the
+            // lines do not move.
+            Assert::AreEqual(-1, SplitScriptText("(a)\n(b)\r\n(c)").firstOtherBreakLine);
         }
 
         TEST_METHOD(LoadScriptText_MissingFile_ReturnsNotFound)

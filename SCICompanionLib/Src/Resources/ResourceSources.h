@@ -205,23 +205,27 @@ struct FileDescriptorBase
 
 	void WriteAndReplaceMapAndVolumes(const sci::ostream &mapStream, const std::unordered_map<int, sci::ostream> &volumeWriteStreams) const
 	{
-		// Each .bak file that is written and not yet moved: a failure removes them, so no .bak file stays. The game
-		// stays consistent: the map changes last.
+		// The .bak files that this write made and has not moved yet. A failure before the first volume moves
+		// removes them: the game did not change. After it, they stay and the error names them: a rebuild or a
+		// removal moves resources inside a volume, so the old map does not match a new volume.
 		std::vector<std::string> baks;
+		bool volumeMoved = false;
 		try
 		{
 			{
 				// Write the volumes to their bak files.
 				for (const auto &volumeStream : volumeWriteStreams)
 				{
-					baks.push_back(_GetVolumeFilenameBak(volumeStream.first));
-					ScopedFile holderPackage(baks.back(), GENERIC_WRITE, 0, CREATE_ALWAYS);
+					std::string bak = _GetVolumeFilenameBak(volumeStream.first);
+					ScopedFile holderPackage(bak, GENERIC_WRITE, 0, CREATE_ALWAYS);
+					baks.push_back(bak);
 					holderPackage.Write(volumeStream.second.GetInternalPointer(), volumeStream.second.GetDataSize());
 				}
 
 				// Now the map
-				baks.push_back(_GetMapFilenameBak());
-				ScopedFile holderMap(baks.back(), GENERIC_WRITE, 0, CREATE_ALWAYS);
+				std::string mapBak = _GetMapFilenameBak();
+				ScopedFile holderMap(mapBak, GENERIC_WRITE, 0, CREATE_ALWAYS);
+				baks.push_back(mapBak);
 				holderMap.Write(mapStream.GetInternalPointer(), mapStream.GetDataSize());
 			}
 
@@ -233,6 +237,7 @@ struct FileDescriptorBase
 				std::string package_name = _GetVolumeFilename( volumeStream.first);
 				replacefile(_GetVolumeFilenameBak( volumeStream.first), package_name);
 				baks.erase(baks.begin());
+				volumeMoved = true;
 			}
 
 			// Replace the map last, so it only changes once every volume is in place.
@@ -241,11 +246,22 @@ struct FileDescriptorBase
 		}
 		catch (...)
 		{
+			if (!volumeMoved)
+			{
+				for (const std::string &bak : baks)
+				{
+					DeleteFileA(bak.c_str());
+				}
+				throw;
+			}
+			sci::Error error = sci::ErrorFromCurrentException("");
+			std::string kept;
 			for (const std::string &bak : baks)
 			{
-				DeleteFileA(bak.c_str());
+				kept += (kept.empty() ? "" : ", ") + bak;
 			}
-			throw;
+			error.context.push_back("a volume was replaced, and the files that match it stay: " + kept + " (rename each one to its name without .bak)");
+			throw sci::DataError(error);
 		}
 	}
 };

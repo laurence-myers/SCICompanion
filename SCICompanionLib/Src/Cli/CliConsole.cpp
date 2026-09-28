@@ -33,14 +33,26 @@ namespace cli
             // Text that another part (the help of CLI11) wrote to the stream
             // comes first.
             fflush(stream);
-            std::wstring wide = AnsiToWide(text);
+            // CR LF, as the text mode of the C runtime writes it: a console
+            // with DISABLE_NEWLINE_AUTO_RETURN needs the CR.
+            std::wstring wide;
+            for (wchar_t ch : AnsiToWide(text))
+            {
+                if (ch == L'\n')
+                {
+                    wide += L'\r';
+                }
+                wide += ch;
+            }
             for (size_t done = 0; done < wide.size();)
             {
                 DWORD written = 0;
                 DWORD chunk = (DWORD)std::min<size_t>(wide.size() - done, 16384);
                 if (!WriteConsoleW(handle, wide.data() + done, chunk, &written, nullptr) || (written == 0))
                 {
-                    break;
+                    // Nothing went to the console: the bytes go to the
+                    // stream. After a part, the rest is lost.
+                    return done > 0;
                 }
                 done += written;
             }

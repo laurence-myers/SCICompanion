@@ -132,8 +132,9 @@ modernizing the build. Broad highlights since the previous release:
   `.sco`, `.scd` or `.sc` file, and a compile that cannot write its output
   fails and writes nothing of that script, so the game never gets a
   script without its class table. A compile whose write is refused puts
-  back the `.sco` and `.scd` files that it changed, and a failed write of
-  the package leaves no `.bak` file. Before a compile writes into the game's package, it asks what to do
+  back the `.sco` and `.scd` files that it changed. A write of the package
+  that fails before it changes the game leaves no `.bak` file; one that
+  fails after it names the `.bak` files that put the game right. Before a compile writes into the game's package, it asks what to do
   with patch files that would hide the new resources (the game reads a patch
   file first), and it can move them aside to a `replaced-patches` folder.
   When the Decompile dialog prepares the `src` folder, it copies the

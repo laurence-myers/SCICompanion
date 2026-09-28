@@ -1759,7 +1759,8 @@ namespace UnitTests
 
         // A dry run into the package checks the package files as the write
         // would, so a read-only volume or map fails the dry run as it fails
-        // the real run. The real run removes its .bak files.
+        // the real run. The real run removes its .bak files, except the map
+        // that matches a volume that it replaced.
         TEST_METHOD(DryRun_Package_ChecksTheFiles)
         {
             NoAppState noAppState;
@@ -1781,8 +1782,13 @@ namespace UnitTests
                     Assert::IsTrue(report->scripts[0].status.has_value(), Wide(facts).c_str());
                     Assert::IsFalse(report->commit.has_value(), Wide(facts).c_str());
                     Assert::IsTrue(report->commit.error().ToString().find(file) != std::string::npos, Wide(facts).c_str());
-                    // The failed write leaves no .bak file.
-                    Assert::IsFalse(_game.Has("resource.001.bak") || _game.Has("resource.map.bak"), Wide(facts).c_str());
+                    // A write that fails before a volume moves leaves no .bak
+                    // file. After the volume moved, the map that matches it
+                    // stays as resource.map.bak, and the error names it.
+                    bool mapFailed = (std::string(file) == "resource.map") && !dryRun;
+                    Assert::IsFalse(_game.Has("resource.001.bak"), Wide(facts).c_str());
+                    Assert::AreEqual(mapFailed, _game.Has("resource.map.bak"), Wide(facts).c_str());
+                    Assert::IsTrue(!mapFailed || (report->commit.error().ToString().find("resource.map.bak") != std::string::npos), Wide(facts).c_str());
                     _game.CloseSessions();
                 }
             }

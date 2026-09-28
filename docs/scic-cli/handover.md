@@ -26,6 +26,15 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   or put the two procedures and the export back into the sources. Which
   one?
 
+## Review findings that are not fixed
+
+### `2b795d63` (the open items of the handover): 1 nit
+
+- The `.scd` capture of a batch goes by the script number, and the `.sco`
+  capture by the title. Two sources that declare one number (the GUI's
+  compile-all does not refuse a name conflict): after a refused commit,
+  the second one puts back the `.scd` that the first one wrote.
+
 ## Known gaps
 
 ### Command line
@@ -107,6 +116,15 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   With no GUI, a yes/no check gets "no", and some checks are not a choice
   (duplicate message tuples, an audio map entry over 16 MB). The script
   commands do not reach them.
+- In throw mode, a struct read (`operator>>`, also for `int16_t` and
+  `uint32_t`) gives zeros, and `read_data` keeps its buffer; both only set
+  the fail state. Real resources rely on it: with a throw, audio 15 of
+  Hoyle Classic Card Games and audio 200 of the SQ6 demo no longer load (a
+  corpus run of the review of `2b795d63`). A change needs a corpus sweep
+  of every type.
+- A failed write of the package after a volume moved (the map cannot be
+  replaced) keeps `resource.map.bak` and the `.bak` files that did not
+  move, and its error names them; a rename puts the game right.
 - The SCI0 LZW decoder fails on a token that is not in its table; other
   damage (a stream that ends before its output is full) still gives no
   error.
@@ -135,7 +153,9 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   before the read (nothing prints or calls back during the read).
 - A Ctrl+C of a compile that comes after the second abort check of a new
   pass: the `Step` that starts a pass compiles its first script with no
-  other check (no test can set the flag between the two).
+  other check, so the commit has that script of the new pass, as after an
+  abort at any later script (the pass before is withdrawn; no test can set
+  the flag between the two checks).
 - A running Visual Studio after a change of `vcpkg.json`: the build sets
   the hash at each build, and a read tlog names `vcpkg.json` for the
   up-to-date check (checked from the command line, not in Visual Studio).

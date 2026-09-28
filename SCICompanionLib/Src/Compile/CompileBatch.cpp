@@ -562,8 +562,10 @@ sci::Status CompileBatch::_RestoreObjectFiles()
         bool unreadableNow;
         std::vector<uint8_t> bytesNow;
         ReadFileBefore(before.debugPath, existsNow, unreadableNow, bytesNow);
-        if ((existsNow == before.debugExisted) && !unreadableNow && (bytesNow == before.debugBytes))
+        bool same = (existsNow == before.debugExisted) && (unreadableNow == before.debugUnreadable) && (bytesNow == before.debugBytes);
+        if (same)
         {
+            // Also a file that could not be read then and cannot be read now.
             continue;
         }
         if (before.debugUnreadable)
