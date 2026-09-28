@@ -134,7 +134,12 @@ struct ScriptObjectsForNaming
 // after that in the rare case that the suffixed name is taken too). A name
 // in ownedNames is taken for every script but its owner (for example, the
 // title of a file in src that a script has, so that a reset does not give
-// another script that file).
+// another script that file). Two names of ownedNames that differ only in
+// case are one name: the owner of the one that comes last in the map wins.
 std::map<uint16_t, std::string> SuggestScriptNames(std::vector<ScriptObjectsForNaming> scripts,
     const std::vector<std::string> &reservedNames = std::vector<std::string>(),
     const std::map<std::string, uint16_t> &ownedNames = std::map<std::string, uint16_t>());
+
+// True when the two names are one name, as Windows compares file names:
+// without case, also for the letters outside ASCII.
+bool SameScriptName(const std::string &a, const std::string &b);

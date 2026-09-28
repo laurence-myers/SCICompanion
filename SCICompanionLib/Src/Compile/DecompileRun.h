@@ -59,10 +59,12 @@ struct DecompileRunOptions
     // of a run that writes: the stale scripts (read from the sources in
     // memory), the groups of updateStale (each starts from the main .sco
     // of the group before), and the list of the files that the run would
-    // write, with main's .sco, game.ini and the src folder. A later script
-    // of the run still reads the .sco files that are on disk, so a source
-    // can differ a little from the source of a run that writes. Ignored
-    // with an output.
+    // write, with main's .sco, game.ini and the src folder. It checks each
+    // write as the write does: a .sc, a .sco, main's .sco or a game.ini
+    // that the write could not replace fails as in a run, and so does a
+    // file named src. A later script of the run still reads the .sco files
+    // that are on disk, so a source can differ a little from the source of
+    // a run that writes. Ignored with an output.
     bool dryRun = false;
     // After an abort (or a batch that threw), find the scripts whose files
     // still use a global of the run by its old name (report.stale); the
@@ -87,6 +89,10 @@ struct DecompileOutcome
     // output). Else why the script failed; Cancelled when the run stopped
     // before it.
     sci::Status status;
+    // The run wrote the .sco of the script with new bytes (with dryRun:
+    // would write it). False when the .sco has the bytes already: the
+    // write does not change it.
+    bool objectFileChanged = false;
 };
 
 struct DecompileReport
@@ -100,7 +106,8 @@ struct DecompileReport
     // The globals that the run named: (standard name, new name).
     std::vector<std::pair<std::string, std::string>> globalRenames;
     // The scripts that use a global of the run by its old name: without
-    // updateStale, the scripts that the run did not decompile; after an
+    // updateStale, the scripts that the run did not decompile, and those
+    // that failed (a script can name a global before it fails); after an
     // abort or a batch that threw (with no output), every script whose file
     // still uses one, also a script that the run wrote before it stopped.
     std::set<uint16_t> stale;
@@ -122,7 +129,7 @@ struct DecompileReport
     // The files that the run wrote, or with dryRun would write, other than
     // the .sc and .sco of each script in scripts: the decompiler files that
     // the run copies into the src folder, main's .sco with the new global
-    // names, and game.ini. Empty with an output.
+    // names (when its bytes change), and game.ini. Empty with an output.
     std::vector<std::string> files;
 
     size_t WrittenCount() const;

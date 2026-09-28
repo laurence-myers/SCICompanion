@@ -789,6 +789,11 @@ vector<pair<string, string>> VariableNamer::Run()
 	return renameContext.IsMainDirty();
 }
 
+vector<pair<string, string>> VariableNamer::GlobalRenames() const
+{
+	return _context->IsMainDirty();
+}
+
 void AutoDetectVariableNames(Script &script, const IDecompilerConfig *config, CSCOFile *mainSCO, CSCOFile *scriptSCO, vector<pair<string, string>> &mainDirtyRenames)
 {
 	VariableNamer namer(script, config, mainSCO, scriptSCO);

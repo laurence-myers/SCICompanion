@@ -122,7 +122,7 @@ namespace UnitTests
 
             TestDecompilerResults results;
             DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
-            batch.Run({ 950, 951 });
+            Assert::IsTrue(batch.Run({ 950, 951 }).has_value());
 
             Assert::AreEqual(2, (int)batch.GetWrittenScripts().size(), L"both scripts should be written");
             Assert::AreEqual(0, results.fallbacks, L"the fixtures should not fall back");
@@ -184,7 +184,7 @@ namespace UnitTests
             TestDecompilerResults results;
             {
                 DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
-                batch.Run({ 950, 951 });
+                Assert::IsTrue(batch.Run({ 950, 951 }).has_value());
                 Assert::IsFalse(batch.GetGlobalRenames().empty(), L"the first run should name globals");
             }
             std::string firstA = ReadTextFile(helper.GetScriptFileName(950));
@@ -192,7 +192,7 @@ namespace UnitTests
 
             {
                 DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
-                batch.Run({ 950, 951 });
+                Assert::IsTrue(batch.Run({ 950, 951 }).has_value());
                 Assert::IsTrue(batch.GetGlobalRenames().empty(), L"the second run should find every global already named");
             }
             Assert::AreEqual(firstA, ReadTextFile(helper.GetScriptFileName(950)), L"script 950 should decompile the same the second time");
@@ -327,7 +327,7 @@ namespace UnitTests
             ULONGLONG start = GetTickCount64();
             {
                 DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
-                batch.Run(numbers);
+                Assert::IsTrue(batch.Run(numbers).has_value());
                 results.lines.push_back(fmt::format("Wrote {0} of {1} scripts, {2} of them twice; {3} globals named", batch.GetWrittenScripts().size(), numbers.size(), batch.GetRewrittenScripts().size(), batch.GetGlobalRenames().size()));
             }
             results.lines.push_back(fmt::format("Elapsed: {0} s", (GetTickCount64() - start) / 1000));

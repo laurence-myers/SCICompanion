@@ -533,7 +533,7 @@ namespace UnitTests
             {
                 TestDecompilerResults results;
                 DecompileBatch batch(&config, lookups, session.ResourceMap(), results);
-                batch.Run(scriptNumbers);
+                AssertOk(batch.Run(scriptNumbers), name);
                 Assert::AreEqual(scriptNumbers.size(), batch.GetWrittenScripts().size(), Wide(name).c_str());
             });
         }

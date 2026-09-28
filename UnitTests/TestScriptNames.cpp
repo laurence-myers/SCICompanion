@@ -478,7 +478,7 @@ namespace UnitTests
             std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(session.ResourceMap(), lookups.GetSelectorTable());
             TestDecompilerResults decompilerResults;
             DecompileBatch batch(config.get(), lookups, session.ResourceMap(), decompilerResults);
-            batch.Run({ 100 });
+            AssertOk(batch.Run({ 100 }));
 
             Assert::IsTrue(std::filesystem::exists(path), L"the decompile writes src\\TitleScreen.sc");
             std::string text = ReadFileText(path);

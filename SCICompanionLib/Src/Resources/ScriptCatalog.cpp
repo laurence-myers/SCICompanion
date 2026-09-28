@@ -573,6 +573,13 @@ namespace
                 uint16_t owner;
                 if (names->NumberOf(title, owner) && (chosen.find(owner) != chosen.end()))
                 {
+                    // SuggestScriptNames ignores case: a key that differs
+                    // only in case (a name of the loop above) could come
+                    // later in the map and give the title to its number.
+                    for (auto other = owned.begin(); other != owned.end();)
+                    {
+                        other = SameScriptName(other->first, title) ? owned.erase(other) : std::next(other);
+                    }
                     owned[title] = owner;
                 }
                 else

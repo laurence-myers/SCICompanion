@@ -35,6 +35,12 @@ class IDecompileOutput
 public:
 	virtual ~IDecompileOutput() = default;
 	virtual void OnSource(uint16_t scriptNumber, const std::string &source) = 0;
+	// True for a dry run: the batch also checks each file that a run would
+	// write, as the write does, and writes none. A .sc or .sco that the
+	// write could not replace fails the script, and so does main's .sco; a
+	// .sco that has the bytes already would not change. The output gets
+	// only the source of a .sc that the write could replace.
+	virtual bool ChecksTheWrites() const { return false; }
 };
 
 // Decompiles a set of scripts and writes their .sc and .sco files.
@@ -78,13 +84,20 @@ public:
 	// and a script whose write came before the abort counts as written, with
 	// its renames.
 	// A script that fails to decompile is reported and dropped, and the rest
-	// go on. Each script runs inside an exception boundary.
-	void Run(const std::set<uint16_t> &scriptNumbers);
+	// go on. Each script runs inside an exception boundary. Returns Ok, or
+	// the error of an exception outside the boundary of a script (for
+	// example, in a message between two scripts): the batch then stops, but
+	// main's .sco still gets the global names found before it.
+	sci::Status Run(const std::set<uint16_t> &scriptNumbers);
 
 	// The globals this run named: (standard name, new name).
 	const std::vector<std::pair<std::string, std::string>> &GetGlobalRenames() const { return _globalRenames; }
 	// The scripts whose files this run wrote.
 	const std::set<uint16_t> &GetWrittenScripts() const { return _written; }
+	// Of the scripts whose files this run wrote (with an output that checks
+	// the writes: would write), those whose .sco got new bytes. The write
+	// does not change a .sco that has the bytes already.
+	const std::set<uint16_t> &GetChangedObjectFiles() const { return _changedObjectFiles; }
 	// Of those, the scripts decompiled and written a second time because a
 	// later naming round changed something they can see.
 	const std::set<uint16_t> &GetRewrittenScripts() const { return _rewritten; }
@@ -94,15 +107,17 @@ public:
 	// in GetWrittenScripts too: a file of it was written.
 	const std::map<uint16_t, sci::Error> &GetFailedScripts() const { return _failed; }
 	// The write of main's .sco with the new global names at the end of the
-	// run: Ok, also when it was not needed.
+	// run (with an output that checks the writes, its check): Ok, also when
+	// it was not needed.
 	const sci::Status &GetMainObjectFileStatus() const { return _mainObjectFile; }
 	// The scripts that needed a second write with the new global names, and
 	// that an abort stopped before it: their files still use the old names.
 	const std::set<uint16_t> &GetSkippedRewrites() const { return _skippedRewrites; }
-	// A global gained a name that script 0's own .sco does not carry: the
-	// batch wrote main's .sco with the names (with an output, a batch that
-	// writes files would write it).
-	bool MainObjectFileNeeded() const { return _mainObjectFileNeeded; }
+	// A global gained a name that script 0's own .sco does not carry, and
+	// the batch wrote main's .sco with new bytes (with an output that checks
+	// the writes: would write it). False with an output that does not check
+	// the writes.
+	bool MainObjectFileChanged() const { return _mainObjectFileChanged; }
 
 	// With an output (a dry run of several groups): the main .sco that Run
 	// starts from instead of the file (null: the file), and the one that it
@@ -114,6 +129,13 @@ public:
 private:
 	class Item;
 
+	// Pass 1, the naming rounds and pass 2. mainSCO gets main's .sco; it
+	// outlives the items, whose namers point at it.
+	void _RunPasses(const std::set<uint16_t> &scriptNumbers, std::unique_ptr<CSCOFile> &mainSCO);
+	// Writes main's .sco when a global gained a name that it needs. The
+	// error of an exception in a message, after the write.
+	sci::Status _UpdateMainObjectFile(CSCOFile *mainSCO);
+
 	const IDecompilerConfig *_config;
 	GlobalCompiledScriptLookups &_scriptLookups;
 	CResourceMap &_resourceMap;
@@ -124,11 +146,12 @@ private:
 
 	std::vector<std::pair<std::string, std::string>> _globalRenames;
 	std::set<uint16_t> _written;
+	std::set<uint16_t> _changedObjectFiles;
 	std::set<uint16_t> _rewritten;
 	std::map<uint16_t, sci::Error> _failed;
 	sci::Status _mainObjectFile;
 	std::set<uint16_t> _skippedRewrites;
-	bool _mainObjectFileNeeded = false;
+	bool _mainObjectFileChanged = false;
 	std::unique_ptr<CSCOFile> _mainSCO;
 };
 

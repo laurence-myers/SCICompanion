@@ -348,7 +348,13 @@ namespace cli
                 if (outcome.status)
                 {
                     written++;
-                    std::string files = helper.GetScriptFileName(outcome.name) + " and " + helper.GetScriptObjectFileName(outcome.name);
+                    // The write does not change a .sco that has the bytes
+                    // already.
+                    std::string files = helper.GetScriptFileName(outcome.name);
+                    if (outcome.objectFileChanged)
+                    {
+                        files += " and " + helper.GetScriptObjectFileName(outcome.name);
+                    }
                     if (dryRun)
                     {
                         output.Message("would write " + files);

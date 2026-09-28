@@ -713,6 +713,11 @@ bool ScriptNameMap::NumberOf(const std::string &name, uint16_t &number) const
     return false;
 }
 
+bool SameScriptName(const std::string &a, const std::string &b)
+{
+    return NameKey(a) == NameKey(b);
+}
+
 std::map<uint16_t, std::string> SuggestScriptNames(std::vector<ScriptObjectsForNaming> scripts, const std::vector<std::string> &reservedNames,
     const std::map<std::string, uint16_t> &ownedNames)
 {

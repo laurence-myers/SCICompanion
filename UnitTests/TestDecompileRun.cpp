@@ -1261,22 +1261,82 @@ namespace UnitTests
 
         // In a name conflict, the script that the name map finds first (the
         // lowest number) owns the title of the file, so the --derived column
-        // gives it the plain name: 979 gets MenuBar, not MenuBar_979.
+        // gives it the plain name: 979 gets MenuBar, not MenuBar_979. The
+        // spelling of the file does not change that (MENUBAR.sc).
         TEST_METHOD(ResetNames_ANameConflict_TheLowestNumberOwnsTheTitle)
         {
-            _game.Make(TemplateSci0);
-            Assert::IsTrue(WritePrivateProfileString("Script", "n979", "MenuBar", _game.Path("game.ini").c_str()) != 0);
-            GameSession &session = _game.Open();
-            auto rows = ListScripts(session, true);
-            std::string derived;
-            for (const ScriptRow &row : ValueOf(rows))
+            for (const char *title : { "menubar", "MENUBAR" })
             {
-                if (row.number == 979)
+                _game.Make(TemplateSci0);
+                Assert::IsTrue(WritePrivateProfileString("Script", "n979", "MenuBar", _game.Path("game.ini").c_str()) != 0);
+                fs::rename(_game.Src("menubar.sc"), _game.Src(std::string(title) + ".sc"));
+                fs::rename(_game.Src("menubar.sco"), _game.Src(std::string(title) + ".sco"));
+                GameSession &session = _game.Open();
+                auto rows = ListScripts(session, true);
+                std::string derived;
+                for (const ScriptRow &row : ValueOf(rows))
                 {
-                    derived = row.derivedName;
+                    if (row.number == 979)
+                    {
+                        derived = row.derivedName;
+                    }
                 }
+                Assert::AreEqual(std::string("MenuBar"), derived, Wide(title).c_str());
             }
-            Assert::AreEqual(std::string("MenuBar"), derived);
+        }
+
+        // A batch that throws outside the exception boundary of a script,
+        // after a naming, still writes main's .sco with the names: 960 uses
+        // the new name of global5. The throw comes at the message of main's
+        // .sco, or in pass 2 before 959. The report does not succeed (the
+        // batch part of Succeeded), also when every script was written.
+        TEST_METHOD(BatchThrowsAfterANaming_MainScoGetsTheNames)
+        {
+            std::string failures;
+            for (const char *message : { "Updating global variables in script 0", "Decompiling script 959 again" })
+            {
+                PrepareStaleFixtures(_game);
+                GameSession &session = _game.Open();
+                RunResults results;
+                results.throwOnMessage = message;
+                auto report = RunDecompile(session, { 959, 960 }, DecompileRunOptions(), results);
+                AssertOk(report);
+                std::string facts = std::string(message) + ":\n" + DescribeRun(*report);
+                Assert::IsFalse(report->batch.has_value(), Wide("setup: the batch threw:\n" + facts).c_str());
+                Assert::AreEqual((size_t)0, report->FailedCount(), Wide(facts).c_str());
+                Assert::IsFalse(report->Succeeded(), Wide(facts).c_str());
+                Assert::IsTrue(report->mainObjectFile.has_value(), Wide(facts).c_str());
+                GlobalCompiledScriptLookups lookups;
+                AssertOk(lookups.TryLoad(session.Helper()));
+                std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(session.Helper(), 0, lookups.GetSelectorTable());
+                Assert::IsNotNull(mainSCO.get());
+                std::string name = mainSCO->GetVariables()[5].GetName();
+                if ((name == "global5") || !ContainsIdentifier(ReadFileText(session.Helper().GetScriptFileName((WORD)960)), name))
+                {
+                    failures += std::string(message) + ": main's .sco has " + name + ", and 960 does not use it\n";
+                }
+                _game.CloseSessions();
+            }
+            Assert::AreEqual(std::string(), failures, Wide(failures).c_str());
+        }
+
+        // The stale check after a group also reads the scripts of the group
+        // that failed: 960 names global5 and fails (its .sc is read-only),
+        // and its old file still uses global5.
+        TEST_METHOD(StaleCheck_AFailedScriptOfTheGroup)
+        {
+            PrepareStaleFixtures(_game);
+            Assert::IsTrue(SetFileAttributesA(_game.Src("BatchGlobalsB.sc").c_str(), FILE_ATTRIBUTE_READONLY) != 0);
+            GameSession &session = _game.Open();
+            RunResults results;
+            auto report = RunDecompile(session, { 960 }, DecompileRunOptions(), results);
+            AssertOk(report);
+            std::string facts = DescribeRun(*report);
+            const DecompileOutcome *second = OutcomeOf(*report, 960);
+            Assert::IsTrue((second != nullptr) && !second->status.has_value(), Wide("setup: 960 fails:\n" + facts).c_str());
+            Assert::IsFalse(report->globalRenames.empty(), Wide("setup: 960 names global5:\n" + facts).c_str());
+            Assert::AreEqual((size_t)1, report->stale.count(960), Wide(facts).c_str());
+            Assert::AreEqual((size_t)1, report->stale.count(959), Wide(facts).c_str());
         }
     };
 }

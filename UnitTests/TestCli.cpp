@@ -204,6 +204,24 @@ namespace UnitTests
             _copyFolder = _game.Folder();
         }
 
+        // A patch file of the script: the script of the package, with 1 added
+        // to its byte at index.
+        void WriteChangedScript(uint16_t number, size_t index)
+        {
+            std::vector<uint8_t> bytes;
+            {
+                std::unique_ptr<ResourceBlob> blob = _game.Open().Helper().MostRecentResource(ResourceType::Script, number, ResourceEnumFlags::None);
+                Assert::IsNotNull(blob.get(), L"setup: the script");
+                bytes.assign(blob->GetData(), blob->GetData() + blob->GetLength());
+                _game.CloseSessions();
+            }
+            Assert::IsTrue(index < bytes.size(), L"setup: the byte");
+            bytes[index]++;
+            // The header of an SCI0 patch file.
+            bytes.insert(bytes.begin(), { (uint8_t)(0x80 | (uint8_t)ResourceType::Script), 0 });
+            WriteFileBytes((fs::path(_copyFolder) / ("script." + std::to_string(number))).string(), bytes);
+        }
+
     public:
         // Plan section 8: the mapping of an error before the first script.
         TEST_METHOD(ExitCodes_StartErrors)
@@ -279,6 +297,16 @@ namespace UnitTests
             Assert::AreEqual(6, (int)cli::ExitCodeForReport(written, 1), L"a decompiler error");
             written.cancelled = true;
             Assert::AreEqual(7, (int)cli::ExitCodeForReport(written, 1), L"the order of plan section 8");
+            // A batch that threw, with every script written: an exception
+            // is Internal (1); the code of a sci::DataError gives what it
+            // gives in the status of a script.
+            DecompileReport batchThrew;
+            batchThrew.scripts.resize(1);
+            batchThrew.batch = sci::Fail(sci::ErrorCode::Internal, "an exception");
+            Assert::AreEqual(1, (int)cli::ExitCodeForReport(batchThrew), L"a batch that threw");
+            batchThrew.batch = sci::Fail(sci::ErrorCode::Format, "a damaged resource");
+            Assert::AreEqual(6, (int)cli::ExitCodeForReport(batchThrew), L"a sci::DataError of the batch");
+            Assert::IsFalse(batchThrew.Succeeded(), L"a report whose batch threw does not succeed");
 
             // A step that writes and fails is a failed write (9), with any
             // code but Internal, WriteRefused and Cancelled; also with Format
@@ -1075,20 +1103,23 @@ namespace UnitTests
             Assert::IsTrue(same, L"the compile gives the same message");
         }
 
-        // After the scripts, the crash line of decompile and of sco names the
-        // step of the run ("printing the report"), not the last script.
+        // The crash line of decompile and of sco names each step of the run:
+        // each script (also its second decompile), the naming, main's .sco,
+        // the stale check, game.ini, and the report.
         TEST_METHOD(DecompileAndSco_TheCrashItemFollowsTheSteps)
         {
-            CopyTemplate("\\TemplateGame\\SCI0");
-            cli::SetCurrentItem("");
-            cli::StringConsole decompile = Expect(0, { "script", "decompile", _copyFolder, "974" });
-            std::string afterDecompile = cli::CurrentItem();
-            cli::SetCurrentItem("");
-            cli::StringConsole sco = Expect(0, { "script", "sco", _copyFolder, "rm001" });
-            std::string afterSco = cli::CurrentItem();
-            cli::SetCurrentItem("");
-            Assert::AreEqual(std::string("printing the report"), afterDecompile);
-            Assert::AreEqual(std::string("printing the report"), afterSco);
+            PrepareStaleFixtures();
+            {
+                RecordedItems recorded;
+                cli::StringConsole decompile = Expect(0, { "script", "decompile", _copyFolder, "959", "960" });
+                std::vector<std::string> expected = { "decompiling script 959", "decompiling script 960", "naming the variables of the decompiled scripts",
+                    "decompiling script 959 again with the new global names", "writing main's .sco", "finding the stale scripts", "writing game.ini", "printing the report" };
+                Assert::IsTrue(recorded.items == expected, Wide(recorded.Text() + "\n" + decompile.err).c_str());
+            }
+            RecordedItems recorded;
+            cli::StringConsole sco = Expect(0, { "script", "sco", _copyFolder, "BatchGlobalsA", "BatchGlobalsB" });
+            std::vector<std::string> expected = { "making the .sco of script 959 (BatchGlobalsA)", "making the .sco of script 960 (BatchGlobalsB)", "printing the report" };
+            Assert::IsTrue(recorded.items == expected, Wide(recorded.Text() + "\n" + sco.err).c_str());
         }
 
         // The dumps of a debug option print plainly, not as warnings, so
@@ -1096,9 +1127,121 @@ namespace UnitTests
         TEST_METHOD(Decompile_DebugDumps_PrintPlainly)
         {
             CopyTemplate("\\TemplateGame\\SCI0");
-            cli::StringConsole console = Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout", "--debug-control-flow", "-q" });
-            Assert::IsTrue(console.err.find("graph (raw):") != std::string::npos, Wide(console.err.substr(0, 2000)).c_str());
-            Assert::IsTrue(console.err.find("scic: warning: ") == std::string::npos, L"a dump is not a warning");
+            for (bool quiet : { false, true })
+            {
+                std::vector<std::string> args = { "script", "decompile", _copyFolder, "974", "--stdout", "--debug-control-flow" };
+                if (quiet)
+                {
+                    args.push_back("-q");
+                }
+                cli::StringConsole console = Expect(0, args);
+                Assert::IsTrue(console.err.find("graph (raw):") != std::string::npos, Wide(console.err.substr(0, 2000)).c_str());
+                Assert::IsTrue(console.err.find("scic: warning: ") == std::string::npos, quiet ? L"-q: a dump is not a warning" : L"a dump is not a warning");
+            }
+        }
+
+        // Plan section 8: an error of the decompiler in a script that it
+        // wrote is exit code 6. Here byte 7 of script 974 (in a patch file)
+        // gives a branch a target that is not an instruction, so the second
+        // try of the function (a tighter bound) fails too: "Invalid branch
+        // target.", once (the first try fails with no message). The script
+        // is written.
+        TEST_METHOD(Decompile_ADecompilerError_ExitsWith6)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            WriteChangedScript(974, 7);
+            cli::StringConsole console = Expect(6, { "script", "decompile", _copyFolder, "974" });
+            size_t errors = 0;
+            for (const std::string &line : Lines(console.err))
+            {
+                errors += (line == "scic: error: Invalid branch target.") ? 1 : 0;
+            }
+            Assert::AreEqual((size_t)1, errors, Wide(console.err).c_str());
+            Assert::IsTrue(console.err.find("Decompiled and wrote 1 of 1 scripts.") != std::string::npos, Wide(console.err).c_str());
+        }
+
+        // A dry run checks each write as the run does, and gives the exit
+        // code of the run: a read-only .sc, a read-only .sco that would
+        // change, a read-only main's .sco or game.ini (9), and a file named
+        // src (3). The dry run writes nothing.
+        TEST_METHOD(Decompile_DryRun_ChecksTheWrites)
+        {
+            struct Case { const char *what; int exitCode; };
+            std::string failures;
+            for (const Case &check : { Case{ "sc", 9 }, Case{ "sco", 9 }, Case{ "main sco", 9 }, Case{ "game.ini", 9 }, Case{ "src", 3 } })
+            {
+                std::vector<std::string> args;
+                std::string what = check.what;
+                if (what == "main sco")
+                {
+                    // 960 names a global: main's .sco gets the name.
+                    PrepareStaleFixtures();
+                    std::string mainSco = (fs::path(_copyFolder) / "src" / "Main.sco").string();
+                    Assert::IsTrue(SetFileAttributesA(mainSco.c_str(), FILE_ATTRIBUTE_READONLY) != 0, L"setup: Main.sco");
+                    args = { "script", "decompile", _copyFolder, "960" };
+                }
+                else
+                {
+                    CopyTemplate("\\TemplateGame\\SCI0");
+                    fs::path src = fs::path(_copyFolder) / "src";
+                    args = { "script", "decompile", _copyFolder, "974" };
+                    if (what == "sc")
+                    {
+                        Assert::IsTrue(SetFileAttributesA((src / "door.sc").string().c_str(), FILE_ATTRIBUTE_READONLY) != 0, L"setup: door.sc");
+                    }
+                    else if (what == "sco")
+                    {
+                        WriteReadOnlyFile((src / "door.sco").string(), "not the new object file");
+                    }
+                    else if (what == "game.ini")
+                    {
+                        std::string ini = (fs::path(_copyFolder) / "game.ini").string();
+                        Assert::IsTrue(WritePrivateProfileStringA("Script", "n974", nullptr, ini.c_str()) != 0, L"setup: game.ini needs n974");
+                        Assert::IsTrue(SetFileAttributesA(ini.c_str(), FILE_ATTRIBUTE_READONLY) != 0, L"setup: game.ini");
+                    }
+                    else
+                    {
+                        fs::remove_all(src);
+                        WriteFileText(src.string(), "a file named src");
+                    }
+                }
+                auto before = Snapshot(_copyFolder);
+                std::vector<std::string> dryArgs = args;
+                dryArgs.push_back("--dry-run");
+                cli::StringConsole dryRun;
+                int dryRunCode = Run(dryArgs, dryRun);
+                Assert::IsTrue(before == Snapshot(_copyFolder), Wide(what + ": the dry run writes nothing: " + dryRun.err).c_str());
+                cli::StringConsole run;
+                int runCode = Run(args, run);
+                std::string facts = what + "\ndry run:\n" + dryRun.err + "\nrun:\n" + run.err;
+                Assert::AreEqual(check.exitCode, runCode, Wide("setup: the run fails: " + facts).c_str());
+                if (dryRunCode != check.exitCode)
+                {
+                    // One short line for each case: the assert text has a
+                    // limit.
+                    failures += fmt::format("{0}: the dry run gives {1}; its last line: {2}\n", what, dryRunCode, Lines(dryRun.err).empty() ? std::string() : Lines(dryRun.err).back());
+                }
+            }
+            Assert::AreEqual(std::string(), failures, Wide(failures).c_str());
+        }
+
+        // A "wrote" or "would write" line names a .sco only when its bytes
+        // change: the write does not change a .sco that has them already.
+        // Here the second decompile of 974 gives the .sco of the first.
+        TEST_METHOD(Decompile_TheFileLines_OnlyAChangedObjectFile)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            Expect(0, { "script", "decompile", _copyFolder, "974" });
+            std::string objectFile = (fs::path(_copyFolder) / "src" / "door.sco").string();
+            auto written = fs::last_write_time(objectFile);
+            cli::StringConsole dryRun = Expect(0, { "script", "decompile", _copyFolder, "974", "--dry-run" });
+            cli::StringConsole run = Expect(0, { "script", "decompile", _copyFolder, "974", "-v" });
+            std::string facts = "dry run:\n" + dryRun.err + "\nrun:\n" + run.err;
+            Assert::IsTrue(written == fs::last_write_time(objectFile), Wide("setup: the run does not write the .sco: " + facts).c_str());
+            std::set<std::string> wouldWrite = ListedFiles(dryRun.err, "would write ");
+            std::set<std::string> wrote = ListedFiles(run.err, "wrote ");
+            Assert::IsTrue(HasFileNamed(wrote, "door.sc") && HasFileNamed(wouldWrite, "door.sc"), Wide(facts).c_str());
+            Assert::IsFalse(HasFileNamed(wrote, "door.sco") || HasFileNamed(wouldWrite, "door.sco"), Wide(facts).c_str());
         }
 
         // compile --all on a template copy with no game.ini compiles every

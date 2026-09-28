@@ -14,6 +14,7 @@
 #include "SyntaxParser.h"
 #include "ScriptText.h"
 #include "SCO.h"
+#include "FileWrite.h"
 #include "format.h"
 #include <algorithm>
 #include <filesystem>
@@ -61,16 +62,25 @@ namespace
     };
 
     // The last source of each script: pass 2 of the batch can give a script
-    // again.
+    // again. For a dry run, the batch checks the writes.
     class LastSources : public IDecompileOutput
     {
     public:
+        explicit LastSources(bool dryRun) : _dryRun(dryRun) {}
+
         void OnSource(uint16_t scriptNumber, const std::string &source) override
         {
             sources[scriptNumber] = source;
         }
+        bool ChecksTheWrites() const override
+        {
+            return _dryRun;
+        }
 
         std::map<uint16_t, std::string> sources;
+
+    private:
+        bool _dryRun;
     };
 
     // The includes of a script, as the compiler reads them
@@ -367,6 +377,13 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             sci::Result<std::vector<std::pair<fs::path, fs::path>>> copies = DecompilerFilesToCopy(helper.GetSrcFolder(), resourceMap.GetDecompilerFolder());
             if (dryRun)
             {
+                // The check of the preparation: it cannot make the folder
+                // where a file has its name.
+                std::error_code ec;
+                if (fs::exists(helper.GetSrcFolder(), ec) && !fs::is_directory(helper.GetSrcFolder(), ec))
+                {
+                    return sci::Fail(sci::ErrorCode::Io, fmt::format("could not make the folder {0}: a file has this name", helper.GetSrcFolder()));
+                }
                 SCI_TRY(copies);
             }
             else
@@ -442,7 +459,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         }
 
         CountingResults counting(results, report.stats);
-        LastSources sources;
+        LastSources sources(dryRun);
         // The outcome of each script in report.scripts: a script that a later
         // group decompiles again gets the outcome of that group, when the
         // group reached it.
@@ -464,19 +481,19 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             {
                 batch.SetMainObjectFile(std::move(carriedMain));
             }
-            // Each script has its own exception boundary in the batch; this one
-            // keeps the report of the scripts that were written when the batch
-            // itself throws.
+            // Each script has its own exception boundary in the batch, and so
+            // has the batch; this one keeps the report of the scripts that were
+            // written when the batch itself throws.
             sci::Status ran = sci::Guard("", [&]() -> sci::Status
             {
-                batch.Run(toDo);
-                return sci::Ok();
+                return batch.Run(toDo);
             });
             for (uint16_t number : toDo)
             {
                 DecompileOutcome outcome;
                 outcome.number = number;
                 outcome.name = helper.GetScriptTitle(number);
+                outcome.objectFileChanged = (batch.GetChangedObjectFiles().find(number) != batch.GetChangedObjectFiles().end());
                 // This group wrote the script, or it failed in this group.
                 bool reached = true;
                 auto failed = batch.GetFailedScripts().find(number);
@@ -509,6 +526,8 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
                 }
                 else
                 {
+                    // A .sco that an earlier group changed stays changed.
+                    outcome.objectFileChanged = outcome.objectFileChanged || report.scripts[index->second].objectFileChanged;
                     report.scripts[index->second] = std::move(outcome);
                 }
             }
@@ -516,7 +535,7 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             {
                 report.mainObjectFile = batch.GetMainObjectFileStatus();
             }
-            mainWritten = mainWritten || (batch.MainObjectFileNeeded() && batch.GetMainObjectFileStatus().has_value());
+            mainWritten = mainWritten || batch.MainObjectFileChanged();
             if (dryRun)
             {
                 carriedMain = batch.TakeMainObjectFile();
@@ -555,14 +574,17 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             }
             // Plan section 4.4: the scripts that still use a global of this
             // group by its old name. That is every other script, also a script
-            // of an earlier group: a later group can name a global that an
-            // earlier script uses.
+            // of an earlier group (a later group can name a global that an
+            // earlier script uses), and a script of this group that failed:
+            // it can have named a global before it failed, and its old file
+            // still uses the old name.
             std::set<uint16_t> candidates;
             for (CompiledScript *compiled : lookups.GetGlobalClassTable().GetAllScripts())
             {
-                if (toDo.find(compiled->GetScriptNumber()) == toDo.end())
+                uint16_t number = compiled->GetScriptNumber();
+                if ((toDo.find(number) == toDo.end()) || (batch.GetFailedScripts().find(number) != batch.GetFailedScripts().end()))
                 {
-                    candidates.insert(compiled->GetScriptNumber());
+                    candidates.insert(number);
                 }
             }
             std::set<uint16_t> stale;
@@ -681,7 +703,13 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             }
             if (!GameIniEntriesToWrite(helper, names, options.gameIni).empty())
             {
-                if (!dryRun)
+                if (dryRun)
+                {
+                    // The check of the write: a game.ini that it could not
+                    // replace fails the run.
+                    report.gameIni = CheckFileCanBeReplaced(helper.GetGameIniFileName(), FILE_SHARE_READ | FILE_SHARE_WRITE);
+                }
+                else
                 {
                     results.AddResult(DecompilerResultType::Update, "Writing the script names into game.ini");
                     report.gameIni = WriteScriptNamesToGameIni(helper, names, options.gameIni);

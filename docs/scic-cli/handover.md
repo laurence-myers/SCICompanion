@@ -8,9 +8,10 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Next
 
-- The other review findings below, one milestone at a time: the decompile
-  batch (`8fc8e984`, `3cf3e33f`), then the nits of the tests and of the
-  build. Then the optional E1 (plan section 9), or stop before it.
+- The other review findings below, one milestone at a time: the nits of
+  the tests and of the build (the de-duplication batch, `e95c6e72` and
+  the others, `630e27b6` and `e3a4cf9a`). Then the optional E1 (plan
+  section 9), or stop before it.
 - Start a new session for each milestone (AGENTS.md, "Work with AI
   agents").
 - Push and pull requests only with your approval.
@@ -68,32 +69,6 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   projects (MSB4184); add an `Exists` condition.
 - "A vcpkg clone in `VCPKG_ROOT` avoids the fetch" (AGENTS.md) is true
   only for a full clone that has the baseline commit.
-
-### The C2 fixes (`3cf3e33f`): 3 nits
-
-- A decompile dry run does not check that the run can write. A read-only
-  `.sc`, `.sco`, main's `.sco` or `game.ini`, or a file named `src`, makes
-  the run give 9 or 3, and the dry run 0.
-- A "wrote" or "would write" line names a `.sco` that keeps its bytes
-  (`SaveSCOFile` does not write it; 26 of 63 files for SCI0 `--all`).
-- Tests: the crash item test reads only the last item; no test gives exit
-  6 for a decompiler error (a probe: add 1 to byte 7 of script 974 in a
-  patch file); the dump test uses `-q`, so "a dump is not a warning" cannot
-  fail; no test for the "Invalid branch target." gate.
-
-### `8fc8e984` (the decompile batch): 5 nits
-
-- A batch that throws after a naming, outside the exception boundary of a
-  script (for example at "Updating global variables in script 0"), does
-  not write main's `.sco`. A written script then uses a name that main's
-  `.sco` does not have, and the summary still prints "Globals named".
-- No test covers the batch part of `Succeeded()` or of the exit code.
-- The owner rule of a file title depends on its spelling: `owned` is
-  case-sensitive, so `MENUBAR.sc` gives `MenuBar_979`.
-- The stale check after a group skips the failed scripts of the group. A
-  failed script can change main's `.sco`; its old file then uses the old
-  name and is not listed.
-- A throw in any namer loses names, not only in the naming rounds.
 
 ## Known gaps
 
@@ -225,6 +200,13 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   of every script, also of the scripts whose renames were done.
 - The core-log warnings in the count of the compile summary (the test
   covers a warning of the selection).
+- A throw inside a namer keeps the global names that it found
+  (`VariableNamer::GlobalRenames`): no test can make the namer throw.
+- A function whose first try fails and whose second try (the tighter
+  bound) works gives no "Invalid branch target.": no fixture has it (of
+  the 710 bytes of script 974 of the SCI0 template, each +1, 43 give the
+  message, and in each both tries fail). The test checks one message
+  for a function whose two tries fail.
 
 ## Outside this branch
 
