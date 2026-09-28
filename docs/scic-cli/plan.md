@@ -867,7 +867,7 @@ Options:
 | `--passes <n>` | With `--all` (else a usage error: a compile of named scripts is one pass): the largest number of passes (default 5). `--passes 1` is one pass, as in the GUI. |
 | `--fail-fast` | Stop at the first script with errors. |
 | `--no-warn-unused` | Turn off the "unused instance" warning. It is on by default, as in the GUI. |
-| `--dry-run` | Compile, but write no resource, table, `.sco` or `.scd`, and list what a run would write. Later scripts in the same run then read the old `.sco` of earlier scripts, so a dry run is one pass; it warns when a run would change a `.sco`. It checks each file as a run would write it. |
+| `--dry-run` | Compile, but write no resource, table, `.sco` or `.scd`, and list what a run would write. Later scripts in the same run then read the old `.sco` of earlier scripts, so a dry run is one pass; it warns when a run would change a `.sco`. It checks the `.sco` files, the files of an output folder and the patch files as a run would write them (not the package: a read-only `resource.001` fails only the run). |
 
 Diagnostics use the MSBuild format. Visual Studio and the VS Code
 `$msCompile` problem matcher can then go to the line:

@@ -91,8 +91,8 @@ namespace
         // Sets abort when a script of this pass or of a later pass is done
         // (0: no abort).
         int abortFromPass = 0;
-        // Sets abort in OnPassStart (the GUI's Cancel button while the
-        // batch starts a pass).
+        // Sets abort in OnPassStart (as Ctrl+C of scic can, from another
+        // thread, while the batch starts a pass).
         bool abortAtPassStart = false;
         std::vector<size_t> started;
         size_t done = 0;
@@ -879,9 +879,9 @@ namespace UnitTests
             Assert::IsTrue(report->passLimit, L"the abort reports the pass limit");
         }
 
-        // An abort that comes while OnPassStart runs (the GUI's Cancel
-        // button) keeps the pass that finished, as an abort between the
-        // passes does.
+        // An abort that comes while OnPassStart runs (Ctrl+C of scic, from
+        // another thread) keeps the pass that finished, as an abort between
+        // the passes does.
         TEST_METHOD(Abort_InOnPassStart_KeepsTheFinishedPass)
         {
             NoAppState noAppState;

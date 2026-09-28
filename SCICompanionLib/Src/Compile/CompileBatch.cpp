@@ -220,8 +220,8 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
         }
         // An abort between two passes keeps the pass that finished: these
         // checks come before the next pass withdraws its writes. The second
-        // one sees an abort that came while OnPassStart ran (the GUI's
-        // Cancel button).
+        // one sees an abort that came while OnPassStart ran (an events
+        // object that sets it, or Ctrl+C of scic from another thread).
         if (abort.load())
         {
             _report.cancelled = true;

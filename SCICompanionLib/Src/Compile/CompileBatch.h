@@ -94,8 +94,10 @@ struct CompileReport
     // file that could not move (it still hides the package write).
     sci::Status moves;
     // The .sco files that the batch changed for a script that the commit
-    // does not write (all of them when the commit is refused or fails
-    // before its first write, or in a dry run) go back to their bytes from
+    // does not write (all of them when the commit is refused or fails, or
+    // in a dry run; a write into an output folder that fails part of the
+    // way keeps the .sco of each script whose files it wrote) go back to
+    // their bytes from
     // before the batch: Ok, or an Io error that names each file that could
     // not go back (it describes a script that the game does not have).
     sci::Status objectFiles;
@@ -232,8 +234,7 @@ private:
     // compiled. The commit writes the last pass. In a dry run: the
     // resources that a real run would write, for the patch-file check.
     std::vector<StagedOutputFile> _passFiles;
-    // With an output folder: the index in _scripts of the script of each
-    // file of _passFiles.
+    // The index in _scripts of the script of each file of _passFiles.
     std::vector<size_t> _passFileOwners;
     // The scripts of this pass that compiled, by their compiled number,
     // with the scripts whose .sco files each one read.

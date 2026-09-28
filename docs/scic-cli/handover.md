@@ -8,8 +8,6 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Next
 
-- The review of the compile-batch milestone (the commit after
-  `9c390b53`), if it is not done yet.
 - The other review findings below, one milestone at a time: the decompile
   batch (`8fc8e984`, `3cf3e33f`), then the nits of the tests and of the
   build. Then the optional E1 (plan section 9), or stop before it.
@@ -18,6 +16,21 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 - Push and pull requests only with your approval.
 
 ## Review findings that are not fixed
+
+### `5cf8c32e` (the nits of the compile batch): 3 nits
+
+- Ctrl+C of scic (another thread) that comes after the second abort check
+  of a new pass, while `Step` withdraws the finished pass, is seen at the
+  check before the first script of the new pass: the finished pass is
+  lost, the commit writes nothing, and `-v` has printed "Pass 2" while
+  `report.passes` is 1. The window is as small as the one that was fixed.
+  A fix: no abort check in the `Step` that has just started a pass.
+- A write into an output folder that fails part of the way keeps its
+  files, and its error names them, but the summary says "wrote none" and
+  no "wrote" line lists them.
+- A dry run with `--to package` does not check the package files: a
+  read-only `resource.001` fails the run (exit 9), and the dry run gives
+  0.
 
 ### `847e59cc` (the answers to the questions, `--log`): 2 nits
 
