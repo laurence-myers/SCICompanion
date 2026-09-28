@@ -55,7 +55,8 @@ modernizing the build. Broad highlights since the previous release:
   batch, into patch files (the default), the package or another folder,
   and prints each error in the format that Visual Studio and VS Code can
   open. `scic help` shows the commands, `--dry-run` writes nothing, and
-  the exit code tells a build script what happened.
+  the exit code tells a build script what happened. It refuses a game whose
+  `resource.map` is damaged or empty.
 * **Eliminated most `asm` fallbacks in the decompiler.** When the decompiler
   could not reconstruct a function's control flow it used to give up and emit
   raw `asm` disassembly. It now rebuilds the control flow into real source, so
@@ -96,7 +97,9 @@ modernizing the build. Broad highlights since the previous release:
   line (some parser messages were one line early), the error and warning
   counts are exact, and a script file that cannot be read gives an error. A
   compile that cannot start, or cannot save the class and selector tables,
-  says why in the compile output.
+  says why in the compile output. An `else` clause that is not the last
+  clause of a `cond` is a warning: the compiler drops it and the clauses
+  before it.
 * **Fewer crashes on bad or corrupt data.** The decompiler, compiler and
   resource loaders are hardened against malformed, truncated or crafted game
   files, so opening a damaged game no longer crashes the app. Damaged data is

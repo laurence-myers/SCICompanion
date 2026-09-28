@@ -150,6 +150,10 @@ public:
 	// problem to the user instead of silently showing an empty game (#117).
 	// Sources with no such table (patch files, audio) return false.
 	virtual bool IsResourceMapCorrupt() { return false; }
+	// True when this source's SCI1+ lookup table ends after the end of the
+	// map (a truncated map). The GUI still shows the entries that the file
+	// has.
+	virtual bool IsResourceMapTruncated() { return false; }
 };
 
 typedef std::vector<std::unique_ptr<ResourceSource>> ResourceSourceArray;
@@ -268,6 +272,11 @@ public:
 		// Ask the navigator whether the lookup table is corrupt/truncated. The
 		// SCI0 navigator has no such table and reports false (#117).
 		return _TNavigator::IsLookupTableCorrupt(GetMapStream());
+	}
+
+	bool IsResourceMapTruncated() override
+	{
+		return _TNavigator::IsMapShorterThanItsTable(GetMapStream());
 	}
 
 	sci::istream GetHeaderAndPositionedStream(const ResourceMapEntryAgnostic &mapEntry, ResourceHeaderAgnostic &headerEntry) override

@@ -101,8 +101,8 @@ struct DecompileReport
     std::vector<std::pair<std::string, std::string>> globalRenames;
     // The scripts that use a global of the run by its old name: without
     // updateStale, the scripts that the run did not decompile; after an
-    // abort (with no output), every script whose file still uses one, also
-    // a script that the run wrote before the abort.
+    // abort or a batch that threw (with no output), every script whose file
+    // still uses one, also a script that the run wrote before it stopped.
     std::set<uint16_t> stale;
     DecompileStats stats;
     bool cancelled = false;
@@ -114,15 +114,15 @@ struct DecompileReport
     sci::Status mainObjectFile;
     // The write of the names into game.ini.
     sci::Status gameIni;
-    // The batch of a group: Ok, or the error of a batch that threw
-    // (Internal). The scripts that it did not reach keep an earlier
+    // The batch of a group: Ok, or the error of a batch that threw (the
+    // code of a sci::DataError, else Internal). The scripts that it did not reach keep an earlier
     // outcome, or get the error; the stale check of an abort runs, and the
     // report does not succeed.
     sci::Status batch;
     // The files that the run wrote, or with dryRun would write, other than
-    // the .sc and .sco of each script in scripts: the src folder and the
-    // decompiler files that the run copies into it, main's .sco with the
-    // new global names, and game.ini. Empty with an output.
+    // the .sc and .sco of each script in scripts: the decompiler files that
+    // the run copies into the src folder, main's .sco with the new global
+    // names, and game.ini. Empty with an output.
     std::vector<std::string> files;
 
     size_t WrittenCount() const;
@@ -138,8 +138,9 @@ struct DecompileReport
 // script that decompiled goes to it at the end, in number order, and nothing
 // is written: no .sc, no .sco, no src folder, no game.ini; the run finds no
 // stale script (--stdout), and a reset of the names gives no warning about
-// the old files. After an abort, no source goes to the output: the source
-// of a part of a run is not the source of a run.
+// the old files. After an abort or a batch that threw, no source goes to the
+// output (the source of a part of a run is not the source of a run), and a
+// script that decompiled gets Cancelled or the error of the batch.
 sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<uint16_t> &scripts, const DecompileRunOptions &options,
     IDecompilerResults &results, IDecompileOutput *output = nullptr);
 

@@ -622,7 +622,7 @@ Common options (all commands):
 |---|---|
 | `-q`, `--quiet` | Show errors only. |
 | `-v`, `--verbose` | Show more detail: each file written, memory use, warnings for each function. |
-| `--log <file>` | Also write all messages to a file. Not a file of the game folder, except a `.log` file. An error in the options themselves (a parse error, or a bad `--log`) is not in the log; a usage error after it is. |
+| `--log <file>` | Also write all messages to a file. The log starts with the line `scic <version> log`. `--log` writes over an existing file only when the file is empty or starts with that line (in any folder, with any extension); else it is a usage error. So it does not truncate `resource.map`, or a `.log` file that a game ships. An error in the options themselves (a parse error, or a bad `--log`) is not in the log; the other usage errors are. |
 | `--data-dir <folder>` | The folder that holds `include\` and `Decompiler\`. Default: the exe folder. |
 | `--dry-run` | Do the work in memory. Write nothing. Show what a real run would write. |
 
@@ -893,8 +893,8 @@ every script uses another one.
   PR K2 fix).
 - It does not compile and does not change a resource.
 - With `--all`, a script with a source file and no compiled resource,
-  or with a name in `game.ini` and no source file, is skipped and
-  listed (review of `37ee979b`: before, `--all` left it out with no
+  or with a name (from `game.ini` or a `.sco`) and no source file, is
+  skipped and listed (review of `37ee979b`: before, `--all` left it out with no
   message). A named script like that is a usage error (exit 2). A
   parse error is a failure of that script (exit 6).
 - The public block is checked as the compiler checks it (C2): a slot
@@ -1238,7 +1238,8 @@ exception).
 `RunCli` (in the library):
 
 1. Parse the arguments. A usage error exits with 2 before `scic` opens the
-   game. The `--log` file opens first, so it gets the usage errors after it.
+   game. The `--log` file opens after the usage checks, and it gets their
+   errors. When it cannot open, a usage error still gives 2 (else 3).
 2. Make sure that `<data folder>\include\sci.sh` exists (exit 3 if not).
    The data folder is made absolute, as the game folder is.
 3. Install a console log sink (`SetCoreLogSink`): warnings go to stderr,
@@ -1275,7 +1276,7 @@ section 5.3, which section 5.22 uses), plus code 9.
 | 0 | Success |
 | 1 | Internal error (a bug, or an escaped exception) |
 | 2 | Usage error: bad option, unknown script, header file given to `compile` |
-| 3 | Cannot open the game or start the batch, or the data folder is missing |
+| 3 | Cannot open the game (also a damaged or empty `resource.map`) or start the batch, or the data folder is missing |
 | 5 | Compile errors |
 | 6 | Partial failure: some scripts failed for a reason that is not a compile error, or the decompiler reported an error in a script that it wrote |
 | 7 | Cancelled |

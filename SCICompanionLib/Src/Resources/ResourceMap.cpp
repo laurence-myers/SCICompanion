@@ -48,6 +48,7 @@
 #include "ResourceBlob.h"
 #include "DependencyTracker.h"
 #include "VersionDetectionHelper.h"
+#include <filesystem>
 
 using namespace std;
 
@@ -1461,7 +1462,64 @@ sci::Status CResourceMap::TryOpen(const std::string &gameFolder)
 	}
 	// The whole open is inside the exception boundary: the parts before and after the
 	// version sniff can also throw (for example, out of memory).
-	return sci::Guard("opening the game in " + gameFolder, [&]() { return _OpenGameFolder(gameFolder); });
+	sci::Status opened = sci::Guard("opening the game in " + gameFolder, [&]() -> sci::Status
+	{
+		SCI_TRY(_OpenGameFolder(gameFolder));
+		return _CheckResourceMap();
+	});
+	if (!opened)
+	{
+		// No game is open now.
+		_gameFolderHelper.GameFolder = "";
+	}
+	return opened;
+}
+
+sci::Status CResourceMap::_CheckResourceMap()
+{
+	sci::ErrorLocation where;
+	where.file = Helper().GameFolder + "\\resource.map";
+	std::error_code ec;
+	if (std::filesystem::file_size(where.file, ec) == 0)
+	{
+		return sci::Fail(sci::ErrorCode::Format, "resource.map is empty", where);
+	}
+	std::unique_ptr<ResourceSource> source = CreateResourceSource(ResourceTypeFlags::All, _gameFolderHelper, ResourceSourceFlags::ResourceMap);
+	if (!source)
+	{
+		return sci::Fail(sci::ErrorCode::Unsupported, "the format of resource.map is not supported", where);
+	}
+	if (source->IsResourceMapCorrupt())
+	{
+		return sci::Fail(sci::ErrorCode::Format, "resource.map is damaged: its lookup table has no end", where);
+	}
+	if (source->IsResourceMapTruncated())
+	{
+		return sci::Fail(sci::ErrorCode::Format, "resource.map is damaged: the file ends before the end that its lookup table gives", where);
+	}
+	// A map is good when a volume file holds one of its first entries: the
+	// header at the offset of the entry has the type and the number of the
+	// entry. An empty map, or a map of other volumes, has no such entry.
+	const int entriesToTry = 256;
+	int tried = 0;
+	IteratorState state;
+	ResourceMapEntryAgnostic entry;
+	while ((tried < entriesToTry) && source->ReadNextEntry(ResourceTypeFlags::All, state, entry, nullptr))
+	{
+		tried++;
+		sci::Result<bool> held = sci::Guard("reading the header of an entry of resource.map", [&]() -> sci::Result<bool>
+		{
+			ResourceHeaderAgnostic header;
+			sci::istream stream = source->GetHeaderAndPositionedStream(entry, header);
+			return stream.good() && (header.Type == entry.Type) && ((uint16_t)header.Number == entry.Number);
+		});
+		if (held && *held)
+		{
+			return sci::Ok();
+		}
+	}
+	return sci::Fail(sci::ErrorCode::Format, (tried == 0) ? std::string("resource.map is damaged or empty: it has no entry") :
+		fmt::format("resource.map is damaged: no volume file holds any of its first {0} entries", tried), where);
 }
 
 sci::Status CResourceMap::_OpenGameFolder(const string &gameFolder)

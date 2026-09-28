@@ -10,6 +10,7 @@
 #include "format.h"
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <mutex>
 // CLI11 (from vcpkg, BSD-3-Clause), the argument parser, with no
@@ -94,36 +95,22 @@ namespace cli
             return ExeFolder();
         }
 
-        // An existing file in the game folder, at any depth, that --log would
-        // overwrite: "" when there is none. So --log <game>\resource.map does
-        // not truncate the map. A .log file is not one, so that a second run
-        // can write the log of the first again (a .txt file can be one: the
-        // SCI0 template has game.txt). The check compares folders: a hard
-        // link outside the game folder to a file of the game is not found.
-        std::string GameFileOf(const std::string &logFile, const std::string &gameFolder)
+        // True when --log may write over the file: there is no such file, the
+        // file is empty, or it is a log of scic (its first line is the header
+        // of LogFile). So --log <game>\resource.map, or a .log file that a
+        // game ships, is refused. A name that is not a file (a folder, NUL)
+        // goes to the open.
+        bool MayOverwriteLog(const std::string &path)
         {
             std::error_code ec;
-            if (gameFolder.empty() || !fs::is_regular_file(logFile, ec))
+            if (!fs::is_regular_file(path, ec) || (fs::file_size(path, ec) == 0))
             {
-                return std::string();
+                return true;
             }
-            if (_stricmp(fs::path(logFile).extension().string().c_str(), ".log") == 0)
-            {
-                return std::string();
-            }
-            fs::path file = fs::absolute(logFile, ec);
-            for (fs::path folder = file.parent_path(); !folder.empty(); folder = folder.parent_path())
-            {
-                if (fs::equivalent(folder, gameFolder, ec))
-                {
-                    return file.string();
-                }
-                if (folder == folder.root_path())
-                {
-                    break;
-                }
-            }
-            return std::string();
+            std::ifstream file(path, std::ios::binary);
+            char start[64] = {};
+            file.read(start, sizeof(start) - 1);
+            return IsLogHeader(std::string(start, (size_t)file.gcount()));
         }
 
         const char *CommonFooter =
@@ -174,7 +161,6 @@ namespace cli
     {
         CommonOptions common;
         bool version = false;
-        std::vector<std::string> helpTopic;
         ScriptListOptions listOptions;
         ScriptDecompileOptions decompileOptions;
         ScriptScoOptions scoOptions;
@@ -188,7 +174,7 @@ namespace cli
         app.require_subcommand(0, 1);
         app.add_flag("-q,--quiet", common.quiet, "Show errors only.");
         app.add_flag("-v,--verbose", common.verbose, "Show more detail.");
-        CLI::Option *logOption = app.add_option("--log", common.logFile, "Also write all messages to a file (not a file of the game, except a .log file).");
+        CLI::Option *logOption = app.add_option("--log", common.logFile, "Also write all messages to a file: a new file, an empty file, or a log of scic.");
         CLI::Option *dataFolderOption = app.add_option("--data-dir", common.dataFolder, "The folder that holds include\\ and Decompiler\\. Default: SCIC_DATA_DIR, or the folder of scic.exe.");
         app.add_flag("--dry-run", common.dryRun, "Do the work in memory, and write nothing.");
         app.add_flag("--version", version, "Show the version.");
@@ -272,68 +258,116 @@ namespace cli
             return (int)ExitCode::Usage;
         }
 
-        // The log opens first, so that it gets the usage errors after it. An
-        // error of --log itself does not go into a log.
+        // An error of --log itself does not go into a log.
         if ((logOption->count() > 0) && common.logFile.empty())
         {
             output.Error("--log needs a file");
             return (int)ExitCode::Usage;
         }
-        // The game folder of the command.
-        std::string gameFolder = decompile->parsed() ? decompileOptions.gameFolder :
-            (sco->parsed() ? scoOptions.gameFolder : (compile->parsed() ? compileOptions.gameFolder : listOptions.gameFolder));
+        if (!common.logFile.empty() && !MayOverwriteLog(common.logFile))
+        {
+            output.Error("--log would overwrite " + common.logFile + ", which is not a log of scic (its first line is not \"scic <version> log\"); give a new file, an empty file, or a log of scic");
+            return (int)ExitCode::Usage;
+        }
+
+        // The other usage errors that need no game (plan section 8). They are
+        // found before the log opens, so that a log that cannot open does not
+        // change their exit code; the log then gets them.
+        compileOptions.passesGiven = (passesOption->count() > 0);
+        compileOptions.toGiven = (toOption->count() > 0);
+        std::string helpAfterUsageError;
+        CLI::App *helpTopic = &app;
+        std::string helpTopicName = "scic";
+        auto findUsageError = [&]() -> std::string
+        {
+            if ((dataFolderOption->count() > 0) && common.dataFolder.empty())
+            {
+                // An empty --data-dir is an error: the folder of scic.exe does
+                // not take its place.
+                return "--data-dir needs a folder";
+            }
+            if ((outDirOption->count() > 0) && compileOptions.outDir.empty())
+            {
+                // An empty --out-dir (for example an unset variable in a build
+                // script) is an error, so that the compile does not write into
+                // the game, as with no --out-dir.
+                return "--out-dir needs a folder";
+            }
+            // Plan section 4.2: decompile, sco and compile take --all or one or
+            // more scripts, not both and not neither.
+            for (const auto &command : { std::make_pair(decompile, std::make_pair(decompileOptions.all, !decompileOptions.selectors.empty())),
+                std::make_pair(sco, std::make_pair(scoOptions.all, !scoOptions.selectors.empty())),
+                std::make_pair(compile, std::make_pair(compileOptions.all, !compileOptions.selectors.empty())) })
+            {
+                if (command.first->parsed() && (command.second.first == command.second.second))
+                {
+                    return command.second.first ? "give --all or scripts, not both" : "give --all, or one or more scripts";
+                }
+            }
+            if (decompile->parsed() && decompileOptions.toStdout && decompileOptions.all)
+            {
+                return "--stdout takes one script, not --all";
+            }
+            if (version)
+            {
+                return std::string();
+            }
+            if (help->parsed())
+            {
+                for (const std::string &name : help->remaining())
+                {
+                    CLI::App *child = nullptr;
+                    try
+                    {
+                        child = helpTopic->get_subcommand(name);
+                    }
+                    catch (const CLI::OptionNotFound &)
+                    {
+                    }
+                    // "scic help help" shows the help of help: the root help
+                    // lists help as a command.
+                    if (!child)
+                    {
+                        return "no help for \"" + name + "\"";
+                    }
+                    helpTopic = child;
+                    helpTopicName += " " + name;
+                }
+                return std::string();
+            }
+            if (!script->parsed())
+            {
+                helpAfterUsageError = HelpOf(&app, "scic");
+                return "give a command";
+            }
+            return std::string();
+        };
+        std::string usageError = findUsageError();
+
         std::unique_ptr<LogFile> logFile;
         if (!common.logFile.empty())
         {
-            std::string gameFile = GameFileOf(common.logFile, gameFolder);
-            if (!gameFile.empty())
-            {
-                output.Error("--log would overwrite " + gameFile + ", a file of the game; give a .log file, or a file outside the game folder");
-                return (int)ExitCode::Usage;
-            }
             logFile = std::make_unique<LogFile>(common.logFile);
             if (!logFile->IsOpen())
             {
-                // Plan section 8: an error before the first script that is
-                // not a usage error.
                 output.Error("cannot open the log file " + common.logFile);
-                return (int)ExitCode::CannotStart;
+                if (usageError.empty())
+                {
+                    // Plan section 8: an error before the first script that
+                    // is not a usage error.
+                    return (int)ExitCode::CannotStart;
+                }
+                logFile.reset();
             }
         }
         CliOutput logged(console, common, logFile.get());
-
-        if ((dataFolderOption->count() > 0) && common.dataFolder.empty())
+        if (!usageError.empty())
         {
-            // An empty --data-dir is an error: the folder of scic.exe does
-            // not take its place.
-            logged.Error("--data-dir needs a folder");
-            return (int)ExitCode::Usage;
-        }
-        compileOptions.passesGiven = (passesOption->count() > 0);
-        compileOptions.toGiven = (toOption->count() > 0);
-        if ((outDirOption->count() > 0) && compileOptions.outDir.empty())
-        {
-            // An empty --out-dir (for example an unset variable in a build
-            // script) is an error, so that the compile does not write into
-            // the game, as with no --out-dir.
-            logged.Error("--out-dir needs a folder");
-            return (int)ExitCode::Usage;
-        }
-        // Plan section 4.2: decompile, sco and compile take --all or one or
-        // more scripts, not both and not neither.
-        for (const auto &command : { std::make_pair(decompile, std::make_pair(decompileOptions.all, !decompileOptions.selectors.empty())),
-            std::make_pair(sco, std::make_pair(scoOptions.all, !scoOptions.selectors.empty())),
-            std::make_pair(compile, std::make_pair(compileOptions.all, !compileOptions.selectors.empty())) })
-        {
-            if (command.first->parsed() && (command.second.first == command.second.second))
+            logged.Error(usageError);
+            if (!helpAfterUsageError.empty())
             {
-                logged.Error(command.second.first ? "give --all or scripts, not both" : "give --all, or one or more scripts");
-                return (int)ExitCode::Usage;
+                logged.HelpAfterError(helpAfterUsageError);
             }
-        }
-        if (decompile->parsed() && decompileOptions.toStdout && decompileOptions.all)
-        {
-            logged.Error("--stdout takes one script, not --all");
             return (int)ExitCode::Usage;
         }
 
@@ -344,37 +378,8 @@ namespace cli
         }
         if (help->parsed())
         {
-            helpTopic = help->remaining();
-            CLI::App *topic = &app;
-            std::string fullName = "scic";
-            for (const std::string &name : helpTopic)
-            {
-                CLI::App *child = nullptr;
-                try
-                {
-                    child = topic->get_subcommand(name);
-                }
-                catch (const CLI::OptionNotFound &)
-                {
-                }
-                // "scic help help" shows the help of help: the root help lists
-                // help as a command.
-                if (!child)
-                {
-                    logged.Error("no help for \"" + name + "\"");
-                    return (int)ExitCode::Usage;
-                }
-                topic = child;
-                fullName += " " + name;
-            }
-            logged.Help(HelpOf(topic, fullName));
+            logged.Help(HelpOf(helpTopic, helpTopicName));
             return (int)ExitCode::Success;
-        }
-        if (!script->parsed())
-        {
-            logged.Error("give a command");
-            logged.HelpAfterError(HelpOf(&app, "scic"));
-            return (int)ExitCode::Usage;
         }
         if (!list->parsed() && !decompile->parsed() && !sco->parsed() && !compile->parsed())
         {
@@ -402,6 +407,8 @@ namespace cli
         // An absolute folder: the paths of the report are then absolute, as
         // the VS Code problem matcher needs (the matcher cannot open a
         // relative path such as ".\src\rm001.sc").
+        std::string gameFolder = decompile->parsed() ? decompileOptions.gameFolder :
+            (sco->parsed() ? scoOptions.gameFolder : (compile->parsed() ? compileOptions.gameFolder : listOptions.gameFolder));
         sci::Status opened = session.Open(AbsolutePath(gameFolder));
         if (!opened)
         {

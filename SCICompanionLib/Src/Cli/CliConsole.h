@@ -39,8 +39,13 @@ namespace cli
         std::string err;
     };
 
+    // True when the text starts with the header line of a log of scic, of
+    // any version: "scic <version> log".
+    bool IsLogHeader(const std::string &text);
+
     // --log: a file that gets every message, whatever the verbosity: -q and
-    // the absence of -v do not filter the log.
+    // the absence of -v do not filter the log. Its first line is the header
+    // "scic <version> log", so that a later --log can write over it.
     class LogFile
     {
     public:

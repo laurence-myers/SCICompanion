@@ -620,17 +620,27 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
 
         if (output)
         {
-            // Not after an abort: when Ctrl+C comes before pass 2, the
-            // source of pass 1 is not the source of the run.
-            if (!report.cancelled)
+            // Not after an abort or a batch that threw: the source of pass 1
+            // is not the source of the run. The script then did not
+            // decompile: Cancelled, or the error of the batch.
+            for (DecompileOutcome &outcome : report.scripts)
             {
-                for (const DecompileOutcome &outcome : report.scripts)
+                if (!outcome.status)
                 {
-                    auto source = sources.sources.find(outcome.number);
-                    if (outcome.status && (source != sources.sources.end()))
-                    {
-                        output->OnSource(outcome.number, source->second);
-                    }
+                    continue;
+                }
+                auto source = sources.sources.find(outcome.number);
+                if (report.cancelled)
+                {
+                    outcome.status = sci::Fail(sci::ErrorCode::Cancelled, "the run stopped before it printed the source");
+                }
+                else if (!report.batch)
+                {
+                    outcome.status = report.batch;
+                }
+                else if (source != sources.sources.end())
+                {
+                    output->OnSource(outcome.number, source->second);
                 }
             }
         }

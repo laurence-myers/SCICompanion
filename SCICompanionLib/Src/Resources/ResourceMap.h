@@ -106,7 +106,7 @@ public:
 	void SetGameFolder(const std::string &gameFolder);
 	// Opens the game in the folder. No dialog and no exception: a failure
 	// comes back as an error, and then no game is open. An empty folder is a
-	// Usage error.
+	// Usage error; a damaged or empty resource.map is a Format error.
 	sci::Status TryOpen(const std::string &gameFolder);
 	// True when the game's resource map is corrupt or truncated (an SCI1+ lookup
 	// table with no terminator). Safe to call on the UI thread after a game is
@@ -176,6 +176,9 @@ public:
 private:
 	void _SniffSCIVersion();
 	sci::Status _OpenGameFolder(const std::string &gameFolder);
+	// Format when resource.map is damaged: its lookup table has no end, or a
+	// volume file holds none of its first entries (also an empty map).
+	sci::Status _CheckResourceMap();
 
 	void BeginDeferAppend();
 	sci::Status EndDeferAppend();

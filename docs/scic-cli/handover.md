@@ -8,12 +8,12 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Next
 
-- The fixes of the review of the de-duplication batch (the commit after
-  `54d92c25`) go into the next batch review.
-- Start a new session for the next milestone (AGENTS.md, "Work with AI
+- The other review findings below, one milestone at a time: the compile
+  batch (`ccadff0c`, `cd1d5ee3`), the decompile batch (`8fc8e984`,
+  `3cf3e33f`), then the nits of the tests and of the build. Then the
+  optional E1 (plan section 9), or stop before it.
+- Start a new session for each milestone (AGENTS.md, "Work with AI
   agents").
-- Then the other review findings below, then the optional E1 (plan
-  section 9), or stop before it.
 - Push and pull requests only with your approval.
 
 ## Review findings that are not fixed
@@ -28,18 +28,10 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 - Six tests of TestDecompileRun leave a read-only file for `GameCopy` to
   delete (`RemoveFolder` clears the attribute).
 
-### `e95c6e72`, `e1b791e9` and `7dd20f62`: 5 nits, 1 question
+### `e95c6e72`, `e1b791e9` and `7dd20f62`: 1 nit
 
-- When the `--log` file cannot open, a usage error after it gives 3, not
-  2 (the log opens before the other usage checks).
-- Test gaps: Ctrl+C just before the read of `list`; the usage errors
-  other than "give --all" in the log; a `.sco` name that an earlier index
-  took (`RenameContext`).
-- `--log` may overwrite a `.log` file that a game ships (EcoQuest
-  `CDW900E.LOG`).
-- A short line after a rewrap (`ScriptCatalog.cpp`, `ResetNamesOf`).
-- Question: with no game folder (`scic --log <file> --version`), `--log`
-  protects no file. Refuse every existing file that is not a `.log`?
+- Test gaps: Ctrl+C just before the read of `list`; a `.sco` name that an
+  earlier index took (`RenameContext`).
 
 ### `630e27b6` and `e3a4cf9a` (vcpkg, the sweep script): 4 nits
 
@@ -52,7 +44,7 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 - "A vcpkg clone in `VCPKG_ROOT` avoids the fetch" (AGENTS.md) is true
   only for a full clone that has the baseline commit.
 
-### The C2 fixes (`3cf3e33f`): 4 nits
+### The C2 fixes (`3cf3e33f`): 3 nits
 
 - A decompile dry run does not check that the run can write. A read-only
   `.sc`, `.sco`, main's `.sco` or `game.ini`, or a file named `src`, makes
@@ -63,9 +55,6 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   6 for a decompiler error (a probe: add 1 to byte 7 of script 974 in a
   patch file); the dump test uses `-q`, so "a dump is not a warning" cannot
   fail; no test for the "Invalid branch target." gate.
-- Texts: `DecompileRun.h` says that `files` lists "the src folder"; plan
-  4.6 says that `sco --all` lists a `game.ini` name with no source (it
-  also lists a name from a `.sco`).
 
 ### `ccadff0c` (the compile batch): 7 nits
 
@@ -87,7 +76,7 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   puts back the `.sco` of every script (inspection only).
 - An abort in `OnPassStart` loses the pass that finished (older).
 
-### `8fc8e984` (the decompile batch): 7 nits, 1 question
+### `8fc8e984` (the decompile batch): 5 nits
 
 - A batch that throws after a naming, outside the exception boundary of a
   script (for example at "Updating global variables in script 0"), does
@@ -100,14 +89,8 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   failed script can change main's `.sco`; its old file then uses the old
   name and is not listed.
 - A throw in any namer loses names, not only in the naming rounds.
-- `--stdout` after Ctrl+C says "Decompiled 1 of 1 scripts", and prints no
-  source.
-- Texts: the comment of `stale` does not name a batch that threw;
-  "(Internal)" is wrong for a `DataError`, which keeps its code.
-- Question: with `--stdout`, a batch that throws after pass 1 prints the
-  pass-1 source, with exit 1. Print nothing?
 
-### `cd1d5ee3` (the C3 fixes): 7 nits, 1 question
+### `cd1d5ee3` (the C3 fixes): 7 nits
 
 - Test gaps: no test fails for the absolute `--out-dir`, for the batch
   warnings in the count, for the dry-run text "would be written", or for
@@ -125,18 +108,11 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   no output.
 - Texts: the plan's C3 row lists `objectFileChanged`; a dry run gives no
   pass warning.
-- Question: should "The else clause must be the last clause in a cond."
-  be a warning? The parser drops the clauses before it; today it is
-  `info`, and `-q` hides it.
 
 ## Known gaps
 
 ### Command line
 
-- A damaged or empty `resource.map` opens: `list` shows no script, with
-  warnings, and exits with 0 (the format detection is permissive).
-- A hard link outside the game folder to a file of the game passes the
-  `--log` check, which compares folders.
 - Names go to the console as bytes of the ANSI code page, with no
   conversion.
 - A compile prints its diagnostics at the end, not as they come. A script
@@ -155,7 +131,8 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   the decompiler reports errors in scripts that it wrote for Longbow, GK
   and the KQ4 `patch\NEW` folder (exit 6); 86 of 93 decompiled games do
   not compile back with 0 errors (limits of the decompiler); Willy
-  Beamish is not supported.
+  Beamish is not supported (its map does not open: exit 3, "its lookup
+  table has no end").
 
 ### Compile and decompile
 
@@ -255,14 +232,6 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   guard of 100 groups, the `NoDbugStr` path.
 - The tables-first order of an output-folder write, and the change count
   of a compile that throws.
-
-## Questions for you
-
-- A damaged `resource.map`: should `list` exit with 3 ("cannot open the
-  game") and not 0?
-- The `info` line for "The else clause must be the last clause in a
-  cond." (see `cd1d5ee3`).
-- `--stdout` after a batch that throws (see `8fc8e984`).
 
 ## Outside this branch
 

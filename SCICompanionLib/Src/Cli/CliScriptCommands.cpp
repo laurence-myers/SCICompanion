@@ -216,10 +216,10 @@ namespace cli
         // A compiler diagnostic in the MSBuild format (plan section 4.5):
         // "path(line,col): error : message", with a 1-based column. One with
         // no source file has no position. A message with a position is an
-        // "info" line, shown unless --quiet: such a message can tell that
-        // the parser dropped code (for example "The else clause must be the
-        // last clause in a cond."). A message with no position (for example
-        // the summary of a compile) shows with --verbose only.
+        // "info" line, shown unless --quiet, as the GUI shows it (for example
+        // "An iteration variable can not be indexed."). A message with no
+        // position (for example the summary of a compile) shows with
+        // --verbose only.
         void PrintDiagnostic(const CompileResult &result, CliOutput &output)
         {
             ScriptId script = result.GetScript();

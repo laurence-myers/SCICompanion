@@ -28,9 +28,9 @@ namespace cli
     {
         Error,
         Warning,
-        // A message with a script and a line (for example "The else clause
-        // must be the last clause in a cond."): shown unless --quiet, as the
-        // GUI shows it.
+        // A message with a script and a line (for example "An iteration
+        // variable can not be indexed."): shown unless --quiet, as the GUI
+        // shows it.
         Info,
         // A message with no line: with --verbose only.
         Message,

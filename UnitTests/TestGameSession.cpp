@@ -132,6 +132,54 @@ namespace UnitTests
             Assert::IsFalse(session.ResourceMap().IsGameLoaded(), L"after a failed open, no game is open");
         }
 
+        // A damaged or empty resource.map does not open: Format, and no game
+        // is open. Empty, garbage, and an SCI1.1 map cut in half (its
+        // lookup table is whole, and its first entries are good).
+        TEST_METHOD(Open_DamagedResourceMap_IsAFormatError)
+        {
+            NoAppState noAppState;
+            const std::vector<std::pair<const char *, std::string>> cases = {
+                { TemplateSci0, "empty" },
+                { TemplateSci11, "empty" },
+                { TemplateSci0, "garbage" },
+                { TemplateSci11, "garbage" },
+                { TemplateSci11, "half" },
+            };
+            for (const auto &entry : cases)
+            {
+                _game.Make(entry.first);
+                std::string map = _game.Path("resource.map");
+                std::string bytes = ReadFileText(map);
+                if (entry.second == "empty")
+                {
+                    bytes.clear();
+                }
+                else if (entry.second == "half")
+                {
+                    bytes.resize(bytes.size() / 2);
+                }
+                else
+                {
+                    uint32_t value = 12345;
+                    for (char &ch : bytes)
+                    {
+                        value = value * 1103515245 + 12345;
+                        ch = (char)(value >> 16);
+                    }
+                }
+                WriteFileText(map, bytes);
+                std::string what = std::string(entry.first) + " " + entry.second;
+                {
+                    GameSession session;
+                    sci::Status opened = session.Open(_game.Folder());
+                    Assert::IsFalse(opened.has_value(), Wide(what).c_str());
+                    Assert::AreEqual(std::string("format"), std::string(sci::ErrorCodeName(opened.error().code)), Wide(what + ": " + opened.error().ToString()).c_str());
+                    Assert::IsTrue(opened.error().ToString().find("resource.map") != std::string::npos, Wide(opened.error().ToString()).c_str());
+                    Assert::IsFalse(session.ResourceMap().IsGameLoaded(), Wide(what).c_str());
+                }
+            }
+        }
+
         TEST_METHOD(DataFolder_GivesTheIncludeAndDecompilerFolders)
         {
             NoAppState noAppState;

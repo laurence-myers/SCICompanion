@@ -1781,7 +1781,10 @@ void PostProcessScript(ICompileLog *pLog, Script &script)
 				{
 					if (pLog)
 					{
-						pLog->ReportResult(CompileResult("The else clause must be the last clause in a cond.", script.GetScriptId(), clause->GetPosition().Line() + 1));
+						// A warning: the else clause and the clauses before it
+						// are not compiled.
+						pLog->ReportResult(CompileResult("The else clause must be the last clause in a cond; it and the clauses before it are not compiled.", script.GetScriptId(),
+							clause->GetPosition().Line() + 1, clause->GetPosition().Column(), CompileResult::CRT_Warning));
 					}
 					break;
 				}

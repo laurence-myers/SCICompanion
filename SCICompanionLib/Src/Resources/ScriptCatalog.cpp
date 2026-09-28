@@ -635,8 +635,8 @@ sci::Result<std::map<uint16_t, std::string>> DeriveScriptNames(GameSession &sess
                     used.push_back(entry.second.name);
                 }
             }
-            // Also the file of a script in a conflict, and any other file in
-            // src: a decompile must not write over it.
+            // Also the file of a script in a conflict, and any other file in src:
+            // a decompile must not write over it.
             used.insert(used.end(), names->FileTitles().begin(), names->FileTitles().end());
         }
         return SuggestScriptNames(std::move(toName), used);

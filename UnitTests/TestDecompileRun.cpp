@@ -955,6 +955,28 @@ namespace UnitTests
             Assert::IsFalse(ContainsIdentifier(first, "global5"), Wide(first).c_str());
         }
 
+        // With an output, a batch that throws after pass 1 (at the naming)
+        // gives no source: the source of pass 1 is not the source of the
+        // run. Each script gets the error of the batch.
+        TEST_METHOD(Output_BatchThrowsAfterPass1_NoSource)
+        {
+            PrepareStaleFixtures(_game);
+            GameSession &session = _game.Open();
+            RunResults results;
+            results.throwOnMessage = "Naming variables";
+            CollectSources output;
+            auto report = RunDecompile(session, { 959, 960 }, DecompileRunOptions(), results, &output);
+            AssertOk(report);
+            std::string facts = DescribeRun(*report);
+            Assert::IsFalse(report->batch.has_value(), Wide("setup: the batch threw:\n" + facts).c_str());
+            Assert::IsTrue(output.sources.empty(), Wide("no source of pass 1:\n" + facts).c_str());
+            Assert::AreEqual((size_t)2, report->scripts.size(), Wide(facts).c_str());
+            for (const DecompileOutcome &outcome : report->scripts)
+            {
+                Assert::IsTrue(!outcome.status.has_value() && (outcome.status.error().message == report->batch.error().message), Wide(facts).c_str());
+            }
+        }
+
         // A game.ini that cannot be written fails the run.
         TEST_METHOD(GameIniWriteError_FailsTheRun)
         {

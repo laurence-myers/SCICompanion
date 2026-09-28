@@ -453,6 +453,11 @@ namespace UnitTests
             Assert::IsTrue(emptyEnvironment.err.find(empty.string()) != std::string::npos, Wide(emptyEnvironment.err).c_str());
             Assert::AreEqual(3, longEnvironmentCode, Wide(longEnvironment.err).c_str());
             Assert::IsTrue(longEnvironment.err.find(longFolder) != std::string::npos, Wide("the long folder is the data folder:\n" + longEnvironment.err).c_str());
+
+            // An empty resource.map: the game does not open.
+            WriteFileText((fs::path(_copyFolder) / "resource.map").string(), "");
+            cli::StringConsole emptyMap = Expect(3, { "script", "list", _copyFolder });
+            Assert::IsTrue(emptyMap.out.empty() && (emptyMap.err.find("cannot open the game: resource.map is empty") != std::string::npos), Wide(emptyMap.out + emptyMap.err).c_str());
         }
 
         // Ctrl+C while list reads the scripts: no table, and exit code 7.
@@ -594,6 +599,73 @@ namespace UnitTests
 
             cli::StringConsole noLog = Expect(3, { "script", "list", _copyFolder, "--log", _copyFolder + "\\NoSuchFolder\\log.txt" });
             Assert::IsTrue(noLog.err.find("cannot open the log file") != std::string::npos, Wide(noLog.err).c_str());
+        }
+
+        // The log starts with "scic <version> log". --log writes over a file
+        // only when it is empty or a log of scic, in any folder: not a .log
+        // file that a game ships, and not another file with no game folder.
+        TEST_METHOD(Log_OverwritesOnlyALogOfScic)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            std::string gameLog = _copyFolder + "\\CDW900E.LOG";
+            WriteFileText(gameLog, "a log that the game ships\r\n");
+            cli::StringConsole shipped = Expect(2, { "script", "list", _copyFolder, "--log", gameLog });
+            Assert::IsTrue(shipped.err.find("not a log of scic") != std::string::npos, Wide(shipped.err).c_str());
+            Assert::AreEqual(std::string("a log that the game ships\r\n"), ReadFileText(gameLog));
+
+            // With no game folder.
+            fs::path outside = fs::path(_copyFolder) / "notes.txt";
+            WriteFileText(outside.string(), "notes\r\n");
+            cli::StringConsole noGame = Expect(2, { "--version", "--log", outside.string() });
+            Assert::IsTrue(noGame.out.empty(), Wide(noGame.out).c_str());
+            Assert::AreEqual(std::string("notes\r\n"), ReadFileText(outside.string()));
+            // A log of another version of scic, and an empty file, are written over.
+            WriteFileText(outside.string(), "scic 3.9.1 log\r\nold text\r\n");
+            Expect(0, { "--version", "--log", outside.string() });
+            std::string logged = ReadFileText(outside.string());
+            Assert::AreEqual(std::string("scic " SCIC_VERSION_TEXT " log\r\n"), logged.substr(0, logged.find('\n') + 1), Wide(logged).c_str());
+            Assert::IsTrue(logged.find("old text") == std::string::npos, Wide(logged).c_str());
+            WriteFileText(outside.string(), "");
+            Expect(0, { "--version", "--log", outside.string() });
+            Assert::IsTrue(cli::IsLogHeader(ReadFileText(outside.string())), Wide(ReadFileText(outside.string())).c_str());
+
+            Assert::IsTrue(cli::IsLogHeader("scic 4.0.0 log\r\n") && cli::IsLogHeader("scic x log\n"));
+            Assert::IsFalse(cli::IsLogHeader("scic 4.0.0 log") || cli::IsLogHeader("scic  log\n") || cli::IsLogHeader("scic 4 0 log\n") || cli::IsLogHeader("scic log\n") ||
+                cli::IsLogHeader(" scic 4.0.0 log\n") || cli::IsLogHeader("scic 4.0.0 logs\n"));
+        }
+
+        // The usage errors are found before the log opens: with a log that
+        // cannot open, a usage error is still exit code 2. The log gets each
+        // usage error that needs no game.
+        TEST_METHOD(Log_UsageErrorsBeforeTheLogOpens)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            std::string badLog = _copyFolder + "\\NoSuchFolder\\scic.log";
+            cli::StringConsole both = Expect(2, { "script", "decompile", _copyFolder, "--log", badLog });
+            Assert::IsTrue((both.err.find("cannot open the log file") != std::string::npos) && (both.err.find("give --all, or one or more scripts") != std::string::npos),
+                Wide(both.err).c_str());
+            Expect(2, { "--log", badLog, "help", "nosuchtopic" });
+            Expect(2, { "--log", badLog });
+
+            std::string log = _copyFolder + "\\scic.log";
+            const std::vector<std::pair<std::vector<std::string>, std::string>> cases = {
+                { { "script", "decompile", _copyFolder, "--all", "--stdout" }, "scic: error: --stdout takes one script, not --all" },
+                { { "script", "compile", _copyFolder, "rm001", "--out-dir", "" }, "scic: error: --out-dir needs a folder" },
+                { { "script", "sco", _copyFolder, "rm001", "--all" }, "scic: error: give --all or scripts, not both" },
+                { { "help", "nosuchtopic" }, "scic: error: no help for \"nosuchtopic\"" },
+            };
+            for (const auto &entry : cases)
+            {
+                // Before the command: the words after "help" are its topic.
+                std::vector<std::string> args = { "--log", log };
+                args.insert(args.end(), entry.first.begin(), entry.first.end());
+                Expect(2, args);
+                std::string logged = ReadFileText(log);
+                Assert::IsTrue(logged.find(entry.second) != std::string::npos, Wide(entry.second + "\n" + logged).c_str());
+            }
+            cli::StringConsole emptyData;
+            Assert::AreEqual(2, cli::RunCli({ "script", "list", _copyFolder, "--data-dir", "", "--log", log }, emptyData), Wide(emptyData.err).c_str());
+            Assert::IsTrue(ReadFileText(log).find("scic: error: --data-dir needs a folder") != std::string::npos, Wide(ReadFileText(log)).c_str());
         }
 
         // A game that SCI Companion never opened (no game.ini, no src):
@@ -862,6 +934,32 @@ namespace UnitTests
             Assert::IsTrue(decompile.err.find("Stopped by Ctrl+C") != std::string::npos, Wide(decompile.err).c_str());
             cli::StringConsole sco = Expect(7, { "script", "sco", _copyFolder, "rm001" });
             Assert::IsTrue(sco.err.find("Stopped by Ctrl+C") != std::string::npos, Wide(sco.err).c_str());
+        }
+
+        // Ctrl+C after --stdout decompiled its script (at the memory line of
+        // -v): no source, the summary counts the script as not decompiled,
+        // and exit code 7.
+        TEST_METHOD(Decompile_StdoutCtrlCAfterTheScript_NoSource)
+        {
+            struct CancelAfterTheScript : public cli::StringConsole
+            {
+                void Err(const std::string &text) override
+                {
+                    StringConsole::Err(text);
+                    if (text.find("Memory after decompiling") != std::string::npos)
+                    {
+                        cli::CancelFlag().store(true);
+                    }
+                }
+            };
+            CopyTemplate("\\TemplateGame\\SCI0");
+            CancelAfterTheScript console;
+            int code = Run({ "script", "decompile", _copyFolder, "974", "--stdout", "-v" }, console);
+            bool flagged = cli::CancelFlag().exchange(false);
+            Assert::IsTrue(flagged, Wide("setup: the memory line sets the flag:\n" + console.err).c_str());
+            Assert::AreEqual(7, code, Wide(console.err).c_str());
+            Assert::IsTrue(console.out.empty(), Wide(console.out).c_str());
+            Assert::IsTrue(console.err.find("Decompiled 0 of 1 scripts. Stopped by Ctrl+C: 1 script was not decompiled.") != std::string::npos, Wide(console.err).c_str());
         }
 
         // A .sco that cannot be written is exit code 9, also in a dry run,
@@ -1325,17 +1423,35 @@ namespace UnitTests
         }
 
         // A message of the parser with a line prints as an "info" line in the
-        // MSBuild format, also without -v (the GUI always shows it, and it
-        // can tell of code that the parser drops), and --quiet hides it.
+        // MSBuild format, also without -v (the GUI always shows it), and
+        // --quiet hides it.
         TEST_METHOD(Compile_AParserMessage_PrintsUnlessQuiet)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            std::string source = (fs::path(_copyFolder) / "src" / "rm001.sc").string();
+            ReplaceFirst(source, "(public\r\n\trm001 0\r\n)\r\n",
+                "(public\r\n\trm001 0\r\n)\r\n(procedure (c3Each &tmp [arr 3])\r\n\t(foreach x arr\r\n\t\t(= [x 0] 1)\r\n\t)\r\n)\r\n");
+            cli::StringConsole console;
+            Run({ "script", "compile", _copyFolder, "rm001", "--dry-run" }, console);
+            Assert::IsTrue(console.err.find(source + "(27,1): info : An iteration variable can not be indexed.") != std::string::npos, Wide(console.err).c_str());
+            cli::StringConsole quiet;
+            Run({ "script", "compile", _copyFolder, "rm001", "--dry-run", "-q" }, quiet);
+            Assert::IsTrue(quiet.err.find("iteration variable") == std::string::npos, Wide(quiet.err).c_str());
+        }
+
+        // An else clause that is not the last clause of a cond is a warning,
+        // with its line and column: the parser drops it and the clauses
+        // before it. The summary counts it; --quiet hides it.
+        TEST_METHOD(Compile_AnElseClauseNotLast_IsAWarning)
         {
             CopyTemplate("\\TemplateGame\\SCI0");
             std::string source = (fs::path(_copyFolder) / "src" / "rm001.sc").string();
             ReplaceFirst(source, "(public\r\n\trm001 0\r\n)\r\n",
                 "(public\r\n\trm001 0\r\n)\r\n(procedure (c3Cond x)\r\n\t(cond\r\n\t\t((== x 1) (return 1))\r\n\t\t(else (return 2))\r\n\t\t((== x 3) (return 3))\r\n\t)\r\n)\r\n");
             cli::StringConsole console = Expect(0, { "script", "compile", _copyFolder, "rm001", "--dry-run" });
-            Assert::IsTrue(console.err.find(source + "(") != std::string::npos, Wide(console.err).c_str());
-            Assert::IsTrue(console.err.find("): info : The else clause must be the last clause in a cond.") != std::string::npos, Wide(console.err).c_str());
+            std::string line = source + "(28,4): warning : The else clause must be the last clause in a cond; it and the clauses before it are not compiled.";
+            Assert::IsTrue(console.err.find(line) != std::string::npos, Wide(console.err).c_str());
+            Assert::IsTrue(console.err.find("(0 errors, 1 warning)") != std::string::npos, Wide(console.err).c_str());
             cli::StringConsole quiet = Expect(0, { "script", "compile", _copyFolder, "rm001", "--dry-run", "-q" });
             Assert::IsTrue(quiet.err.find("The else clause") == std::string::npos, Wide(quiet.err).c_str());
         }
