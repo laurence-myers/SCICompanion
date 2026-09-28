@@ -75,6 +75,18 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   names it; the up-to-date check of Visual Studio may then see the
   projects as never up to date, until a Clean (not tried).
 
+### `b2866e18` (E1): 3 nits
+
+- No test checks that `AppState` installs the MFC exception mapper: the
+  `TestResult` tests install it themselves. Without the call, a
+  `CFileException` in the GUI gives Internal, and the `CException` leaks.
+- `CreateBitmapFromResource` (`RasterOperations.cpp`): when the
+  `make_unique` of the copy buffer throws, the DIB section of
+  `CreateDIBSection` leaks (the `CBitmap` destructor freed it before).
+- `ScriptId::_Init` and `GetScriptNumber` compare bytes (`rfind`,
+  `_stricmp`); the `CString` forms before knew double-byte characters, so
+  a Shift-JIS path whose trail byte is `\` splits in another place.
+
 ## Known gaps
 ### Command line
 

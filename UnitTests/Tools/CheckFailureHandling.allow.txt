@@ -2,7 +2,7 @@
 # Format: <rule> <path under SCICompanionLib\Src> <count>. Lower a count when you remove a site.
 appstate-in-engine Resources\PicDrawManager.cpp 1
 appstate-in-engine Resources\PicOperations.cpp 2
-appstate-in-engine Util\AppState.cpp 8
+appstate-in-engine Util\AppState.cpp 9
 appstate-in-engine Util\AppState.h 1
 appstate-in-engine Util\AudioRecording.cpp 2
 appstate-in-engine Util\ClassBrowser.cpp 21

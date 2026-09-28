@@ -1,6 +1,5 @@
 // The precompiled header of SCICompanionCore: Windows, the ATL point and
-// size types, and the STL. It has no MFC, so a core file cannot use the GUI
-// (docs/scic-cli/plan.md, section 9, phase E).
+// size types, and the STL. It has no MFC, so a core file cannot use the GUI.
 
 #pragma once
 
