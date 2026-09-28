@@ -1320,6 +1320,39 @@ namespace UnitTests
             Assert::AreEqual(std::string(), failures, Wide(failures).c_str());
         }
 
+        // report.files lists main's .sco when it changes and the line of
+        // script 0 does not name it. Here the .sco of script 0 keeps its
+        // bytes in pass 1, 994 names globals, the batch throws before the
+        // second decompile of script 0, and main's .sco then gets the names.
+        TEST_METHOD(MainObjectFile_ListedWhenTheLineOfScript0DoesNotNameIt)
+        {
+            _game.Make(TemplateSci0);
+            for (const auto &entry : fs::directory_iterator(_game.Src("")))
+            {
+                if (_stricmp(entry.path().extension().string().c_str(), ".sco") == 0)
+                {
+                    fs::remove(entry.path());
+                }
+            }
+            {
+                RunResults results;
+                AssertSucceeded(RunDecompile(_game.Open(), { 0 }, DecompileRunOptions(), results));
+                _game.CloseSessions();
+            }
+            std::string mainSco = MainObjectFile();
+            std::string before = ReadFileText(mainSco);
+            GameSession &session = _game.Open();
+            RunResults results;
+            results.throwOnMessage = "Decompiling script 0 again";
+            auto report = RunDecompile(session, { 0, 994 }, DecompileRunOptions(), results);
+            AssertOk(report);
+            std::string facts = DescribeRun(*report) + "files:\n" + JoinLines(report->files);
+            const DecompileOutcome *main = OutcomeOf(*report, 0);
+            Assert::IsTrue(!report->batch.has_value() && (main != nullptr) && main->status.has_value() && !main->objectFileChanged, Wide("setup: the batch threw after pass 1:\n" + facts).c_str());
+            Assert::AreNotEqual(before, ReadFileText(mainSco), Wide("setup: main's .sco changed:\n" + facts).c_str());
+            Assert::IsTrue(Upper(JoinLines(report->files)).find("\\MAIN.SCO\n") != std::string::npos, Wide(facts).c_str());
+        }
+
         // The stale check after a group also reads the scripts of the group
         // that failed: 960 names global5 and fails (its .sc is read-only),
         // and its old file still uses global5.

@@ -271,6 +271,30 @@ namespace
     // named before, so the loop ends; this stops only a loop that a bug made
     // endless.
     const int MaxStaleGroups = 100;
+
+    // The check of WriteScriptNamesToGameIni: WritePrivateProfileString
+    // opens the game.ini that is there (also a hidden or system file), so
+    // the check opens it for writing. With no game.ini, Ok: Create makes
+    // it.
+    sci::Status CheckGameIniCanBeWritten(const std::string &iniFile)
+    {
+        DWORD attributes = GetFileAttributesA(iniFile.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES)
+        {
+            return sci::Ok();
+        }
+        if (attributes & FILE_ATTRIBUTE_DIRECTORY)
+        {
+            return sci::Fail(sci::ErrorCode::Io, "writing " + iniFile + ": a folder has this name");
+        }
+        HANDLE file = CreateFileA(iniFile.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE)
+        {
+            return sci::Fail(sci::FromWin32(GetLastError(), "writing " + iniFile));
+        }
+        CloseHandle(file);
+        return sci::Ok();
+    }
 }
 
 size_t DecompileReport::WrittenCount() const
@@ -695,9 +719,11 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
             {
                 names[written.first] = written.second;
             }
-            // Main's .sco, unless script 0 wrote it (its line has it).
+            // Main's .sco, unless the line of script 0 names it (script 0
+            // wrote it, and its own .sco changed).
             auto mainOutcome = outcomeIndex.find(0);
-            if (mainWritten && ((mainOutcome == outcomeIndex.end()) || !report.scripts[mainOutcome->second].status))
+            bool mainInItsLine = (mainOutcome != outcomeIndex.end()) && report.scripts[mainOutcome->second].status && report.scripts[mainOutcome->second].objectFileChanged;
+            if (mainWritten && !mainInItsLine)
             {
                 report.files.push_back(helper.GetScriptObjectFileName(helper.GetScriptTitle(0)));
             }
@@ -706,8 +732,8 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
                 if (dryRun)
                 {
                     // The check of the write: a game.ini that it could not
-                    // replace fails the run.
-                    report.gameIni = CheckFileCanBeReplaced(helper.GetGameIniFileName(), FILE_SHARE_READ | FILE_SHARE_WRITE);
+                    // write fails the run.
+                    report.gameIni = CheckGameIniCanBeWritten(helper.GetGameIniFileName());
                 }
                 else
                 {

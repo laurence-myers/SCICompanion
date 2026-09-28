@@ -37,9 +37,10 @@ public:
 	virtual void OnSource(uint16_t scriptNumber, const std::string &source) = 0;
 	// True for a dry run: the batch also checks each file that a run would
 	// write, as the write does, and writes none. A .sc or .sco that the
-	// write could not replace fails the script, and so does main's .sco; a
-	// .sco that has the bytes already would not change. The output gets
-	// only the source of a .sc that the write could replace.
+	// write could not replace fails the script; a main's .sco that it could
+	// not replace is in GetMainObjectFileStatus. A .sco that has the bytes
+	// already would not change. The output gets only the source of a .sc
+	// that the write could replace.
 	virtual bool ChecksTheWrites() const { return false; }
 };
 

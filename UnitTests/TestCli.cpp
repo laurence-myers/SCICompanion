@@ -1163,12 +1163,13 @@ namespace UnitTests
         // A dry run checks each write as the run does, and gives the exit
         // code of the run: a read-only .sc, a read-only .sco that would
         // change, a read-only main's .sco or game.ini (9), and a file named
-        // src (3). The dry run writes nothing.
+        // src (3); a hidden game.ini is no error, as the run writes it (0).
+        // The dry run writes nothing.
         TEST_METHOD(Decompile_DryRun_ChecksTheWrites)
         {
             struct Case { const char *what; int exitCode; };
             std::string failures;
-            for (const Case &check : { Case{ "sc", 9 }, Case{ "sco", 9 }, Case{ "main sco", 9 }, Case{ "game.ini", 9 }, Case{ "src", 3 } })
+            for (const Case &check : { Case{ "sc", 9 }, Case{ "sco", 9 }, Case{ "main sco", 9 }, Case{ "game.ini", 9 }, Case{ "hidden game.ini", 0 }, Case{ "src", 3 } })
             {
                 std::vector<std::string> args;
                 std::string what = check.what;
@@ -1193,11 +1194,11 @@ namespace UnitTests
                     {
                         WriteReadOnlyFile((src / "door.sco").string(), "not the new object file");
                     }
-                    else if (what == "game.ini")
+                    else if ((what == "game.ini") || (what == "hidden game.ini"))
                     {
                         std::string ini = (fs::path(_copyFolder) / "game.ini").string();
                         Assert::IsTrue(WritePrivateProfileStringA("Script", "n974", nullptr, ini.c_str()) != 0, L"setup: game.ini needs n974");
-                        Assert::IsTrue(SetFileAttributesA(ini.c_str(), FILE_ATTRIBUTE_READONLY) != 0, L"setup: game.ini");
+                        Assert::IsTrue(SetFileAttributesA(ini.c_str(), (what == "game.ini") ? FILE_ATTRIBUTE_READONLY : FILE_ATTRIBUTE_HIDDEN) != 0, L"setup: game.ini");
                     }
                     else
                     {
@@ -1214,7 +1215,7 @@ namespace UnitTests
                 cli::StringConsole run;
                 int runCode = Run(args, run);
                 std::string facts = what + "\ndry run:\n" + dryRun.err + "\nrun:\n" + run.err;
-                Assert::AreEqual(check.exitCode, runCode, Wide("setup: the run fails: " + facts).c_str());
+                Assert::AreEqual(check.exitCode, runCode, Wide("setup: the exit code of the run: " + facts).c_str());
                 if (dryRunCode != check.exitCode)
                 {
                     // One short line for each case: the assert text has a

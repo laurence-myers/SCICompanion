@@ -18,6 +18,21 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Review findings that are not fixed
 
+### `0577fab0` (the nits of the decompile batch): 1 nit
+
+- Test gaps: no test covers three parts of the decompile run. A
+  negative check that broke all three together passed TestCli and
+  TestDecompileRun.
+  - A dry run gives the stale check only the source of a `.sc` that
+    passed its write check. A dry-run form of
+    `StaleCheck_AFailedScriptOfTheGroup` would cover it.
+  - Pass 2 records a `.sco` that it changed (`_changedObjectFiles`).
+    Without it, `decompile 0 994 -v` on the SCI0 template, after
+    `decompile 0` with no `.sco` files, prints no line for `Main.sco`,
+    which changed.
+  - A `.sco` that an earlier group changed stays changed
+    (`objectFileChanged` across groups).
+
 ### `5cf8c32e` (the nits of the compile batch): 3 nits
 
 - Ctrl+C of scic (another thread) that comes after the second abort check
