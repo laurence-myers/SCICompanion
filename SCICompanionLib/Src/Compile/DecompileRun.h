@@ -115,9 +115,9 @@ struct DecompileReport
     // The write of the names into game.ini.
     sci::Status gameIni;
     // The batch of a group: Ok, or the error of a batch that threw (the
-    // code of a sci::DataError, else Internal). The scripts that it did not reach keep an earlier
-    // outcome, or get the error; the stale check of an abort runs, and the
-    // report does not succeed.
+    // code of a sci::DataError, else Internal). The scripts that it did not
+    // reach keep an earlier outcome, or get the error; the stale check of an
+    // abort runs, and the report does not succeed.
     sci::Status batch;
     // The files that the run wrote, or with dryRun would write, other than
     // the .sc and .sco of each script in scripts: the decompiler files that

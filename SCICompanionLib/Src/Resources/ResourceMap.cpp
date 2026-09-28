@@ -1469,7 +1469,10 @@ sci::Status CResourceMap::TryOpen(const std::string &gameFolder)
 	});
 	if (!opened)
 	{
-		// No game is open now.
+		// No game is open now (IsGameLoaded is false). The rest of the state of
+		// the open stays (the run logic, the codepage, the version), and the
+		// listeners got OnResourceMapReloaded: only GameSession::Open calls
+		// this, and its caller drops a session that did not open.
 		_gameFolderHelper.GameFolder = "";
 	}
 	return opened;

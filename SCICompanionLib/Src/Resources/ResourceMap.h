@@ -176,8 +176,9 @@ public:
 private:
 	void _SniffSCIVersion();
 	sci::Status _OpenGameFolder(const std::string &gameFolder);
-	// Format when resource.map is damaged: its lookup table has no end, or a
-	// volume file holds none of its first entries (also an empty map).
+	// Format when resource.map is empty or damaged: its lookup table has no
+	// end, the table ends after the end of the file, or a volume file holds
+	// none of its first entries.
 	sci::Status _CheckResourceMap();
 
 	void BeginDeferAppend();

@@ -18,6 +18,17 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Review findings that are not fixed
 
+### `847e59cc` (the answers to the questions, `--log`): 2 nits
+
+- A good map whose volume file is missing (a CD install with the volumes
+  on the CD) gives "resource.map is damaged: no volume file holds any of
+  its first N entries": the text blames the map. A map with only a
+  terminator says "its first 1 entries".
+- In the GUI output pane, the warning "The else clause must be the last
+  clause in a cond; ..." has only its raw text (no "Warning:", file or
+  line), as the "not implemented" warnings of `SCISyntaxParser.cpp`; the
+  warnings of `CompileContext::_ReportThing` have that form.
+
 ### The de-duplication batch (`4a5cdfaa` to `54d92c25`): 3 nits
 
 - `AbsolutePath` removes the separator of a UNC root (`\\server\share\`,
