@@ -8,10 +8,8 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Next
 
-- The other review findings below, one milestone at a time: the nits of
-  the tests and of the build (the de-duplication batch, `e95c6e72` and
-  the others, `630e27b6` and `e3a4cf9a`). Then the optional E1 (plan
-  section 9), or stop before it.
+- The optional E1 (plan section 9), or stop before it. The review
+  findings below are nits; fix them when their code changes.
 - Start a new session for each milestone (AGENTS.md, "Work with AI
   agents").
 - Push and pull requests only with your approval.
@@ -59,31 +57,6 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   line), as the "not implemented" warnings of `SCISyntaxParser.cpp`; the
   warnings of `CompileContext::_ReportThing` have that form.
 
-### The de-duplication batch (`4a5cdfaa` to `54d92c25`): 3 nits
-
-- `AbsolutePath` removes the separator of a UNC root (`\\server\share\`,
-  `\\?\UNC\server\share\`); no test covers a UNC root.
-- The licence copy excludes `License.txt`, `COPYING` and `COPYING2` from
-  the mirror of `Files\Licenses`: a notice of that name there would not
-  be copied.
-- Six tests of TestDecompileRun leave a read-only file for `GameCopy` to
-  delete (`RemoveFolder` clears the attribute).
-
-### `e95c6e72`, `e1b791e9` and `7dd20f62`: 1 nit
-
-- Test gaps: Ctrl+C just before the read of `list`; a `.sco` name that an
-  earlier index took (`RenameContext`).
-
-### `630e27b6` and `e3a4cf9a` (vcpkg, the sweep script): 4 nits
-
-- A write of several rows that fails part of the way (a full disk) puts
-  those rows into `sweep.csv` again at the next write.
-- A running Visual Studio does not see a change of `vcpkg.json` until the
-  solution reloads (the design-time build skips `InitializeBuildStatus`).
-- With no `vcpkg.json`, the `ProjectStateLine` read fails the load of the
-  projects (MSB4184); add an `Exists` condition.
-- "A vcpkg clone in `VCPKG_ROOT` avoids the fetch" (AGENTS.md) is true
-  only for a full clone that has the baseline commit.
 
 ## Known gaps
 
@@ -197,6 +170,13 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ### No test (checked by inspection only)
 
+- A Ctrl+C of `list` while it reads the scripts: the tests set the flag
+  before the read (nothing prints or calls back during the read).
+- A running Visual Studio after a change of `vcpkg.json`: the build sets
+  the hash at each build, and a read tlog names `vcpkg.json` for the
+  up-to-date check (checked from the command line, not in Visual Studio).
+- A write of `sweep.csv` that fails part of the way: a test with an
+  injected failure only (no full disk).
 - The Ctrl+C handler itself (the tests set the cancel flag), the core-log
   error line, the pure-call handler, a second `abort()` on another thread
   (an abort of two threads at the same moment can still exit with 3), the

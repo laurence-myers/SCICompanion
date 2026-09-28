@@ -101,8 +101,9 @@ robocopy "$(ProjectDir)Files\Plugins" "$(OutDir)Plugins" /MIR /NFL /NDL /NJH /NJ
 if %errorlevel% geq 8 exit /b 1
 robocopy "$(ProjectDir)Tools" "$(OutDir)Tools" /MIR /NFL /NDL /NJH /NJS /NP
 if %errorlevel% geq 8 exit /b 1
-rem The licences of the bundled third-party code go with the binaries.
-robocopy "$(ProjectDir)Files\Licenses" "$(OutDir)Licenses" /MIR /XF License.txt COPYING COPYING2 /NFL /NDL /NJH /NJS /NP
+rem The licences of the bundled third-party code go with the binaries. /XF
+rem names the paths of the copies below, so the mirror keeps them.
+robocopy "$(ProjectDir)Files\Licenses" "$(OutDir)Licenses" /MIR /XF "$(OutDir)Licenses\License.txt" "$(OutDir)Licenses\COPYING" "$(OutDir)Licenses\COPYING2" /NFL /NDL /NJH /NJS /NP
 if %errorlevel% geq 8 exit /b 1
 rem SCI Companion's own licence, which Licenses\README.txt names.
 robocopy "$(ProjectDir)Files" "$(OutDir)Licenses" License.txt COPYING COPYING2 /NFL /NDL /NJH /NJS /NP
@@ -168,8 +169,9 @@ robocopy "$(ProjectDir)Files\Plugins" "$(OutDir)Plugins" /MIR /NFL /NDL /NJH /NJ
 if %errorlevel% geq 8 exit /b 1
 robocopy "$(ProjectDir)Tools" "$(OutDir)Tools" /MIR /NFL /NDL /NJH /NJS /NP
 if %errorlevel% geq 8 exit /b 1
-rem The licences of the bundled third-party code go with the binaries.
-robocopy "$(ProjectDir)Files\Licenses" "$(OutDir)Licenses" /MIR /XF License.txt COPYING COPYING2 /NFL /NDL /NJH /NJS /NP
+rem The licences of the bundled third-party code go with the binaries. /XF
+rem names the paths of the copies below, so the mirror keeps them.
+robocopy "$(ProjectDir)Files\Licenses" "$(OutDir)Licenses" /MIR /XF "$(OutDir)Licenses\License.txt" "$(OutDir)Licenses\COPYING" "$(OutDir)Licenses\COPYING2" /NFL /NDL /NJH /NJS /NP
 if %errorlevel% geq 8 exit /b 1
 rem SCI Companion's own licence, which Licenses\README.txt names.
 robocopy "$(ProjectDir)Files" "$(OutDir)Licenses" License.txt COPYING COPYING2 /NFL /NDL /NJH /NJS /NP

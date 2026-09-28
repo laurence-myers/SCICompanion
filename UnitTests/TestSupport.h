@@ -94,6 +94,9 @@ std::string Upper(std::string text);
 // The texts, one on a line.
 std::string JoinLines(const std::vector<std::string> &lines);
 
+// Makes the file read-only; an assert fails when it cannot. The file can
+// stay read-only: GameCopy deletes read-only files too.
+void MakeReadOnly(const std::string &path);
 // Writes the file, and makes it read-only.
 void WriteReadOnlyFile(const std::string &path, const std::string &text);
 

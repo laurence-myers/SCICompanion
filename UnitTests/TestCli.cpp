@@ -1473,6 +1473,34 @@ namespace UnitTests
             cli::StringConsole compile = Expect(0, { "script", "compile", _copyFolder, "990", "--dry-run" });
         }
 
+        // A .sco can give two indices a name that no declaration has (here
+        // c3Twin at indices 6 and 9 of SysWindow.sco). The earlier index
+        // takes it, and the decompiled script compiles.
+        TEST_METHOD(Decompile_Sci0SysWindow_ANameOfTwoIndices)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            {
+                SessionOptions sessionOptions;
+                sessionOptions.dataFolder = GetTestModuleDirectory();
+                GameSession session(sessionOptions);
+                Assert::IsTrue(session.Open(_copyFolder).has_value(), L"setup: the copy must open");
+                GlobalCompiledScriptLookups lookups;
+                Assert::IsTrue(lookups.TryLoad(session.Helper()).has_value());
+                std::unique_ptr<CSCOFile> sysWindow = GetExistingSCOFromScriptNumber(session.Helper(), 990, lookups.GetSelectorTable());
+                Assert::IsNotNull(sysWindow.get(), L"setup: SysWindow.sco");
+                Assert::IsTrue(sysWindow->GetVariables().size() > 9, L"setup: SysWindow.sco has index 9");
+                sysWindow->GetVariables()[6].SetName("c3Twin");
+                sysWindow->GetVariables()[9].SetName("c3Twin");
+                Assert::IsTrue(SaveSCOFile(session.Helper(), *sysWindow).has_value());
+            }
+            cli::StringConsole source = Expect(0, { "script", "decompile", _copyFolder, "990", "--stdout" });
+            std::vector<std::string> lines = Lines(source.out);
+            Assert::AreEqual((size_t)1, (size_t)std::count(lines.begin(), lines.end(), std::string("\tc3Twin")), Wide(source.out).c_str());
+            Assert::AreEqual((size_t)1, (size_t)std::count(lines.begin(), lines.end(), std::string("\tlocal9")), Wide(source.out).c_str());
+            cli::StringConsole decompile = Expect(0, { "script", "decompile", _copyFolder, "990" });
+            cli::StringConsole compile = Expect(0, { "script", "compile", _copyFolder, "990", "--dry-run" });
+        }
+
         // Plan section 4.5: --out-dir and --raw write the plain data into the
         // folder, and the game does not change.
         TEST_METHOD(Compile_OutDirRaw)
@@ -1667,7 +1695,7 @@ namespace UnitTests
         }
 
         // AbsolutePath removes a separator at the end, but not the one of a
-        // root: a drive, a device path or a volume.
+        // root: a drive, a device path, a volume or a UNC share.
         TEST_METHOD(AbsolutePath_KeepsTheSeparatorOfARoot)
         {
             Assert::AreEqual(std::string("C:\\"), cli::AbsolutePath("C:\\"));
@@ -1677,6 +1705,10 @@ namespace UnitTests
             Assert::AreEqual(std::string("C:\\game"), cli::AbsolutePath("C:\\game\\\\"));
             Assert::AreEqual(std::string("C:\\game{1}"), cli::AbsolutePath("C:\\game{1}\\"));
             Assert::AreEqual(std::string("\\\\?\\C:\\game"), cli::AbsolutePath("\\\\?\\C:\\game\\"));
+            Assert::AreEqual(std::string("\\\\server\\share\\"), cli::AbsolutePath("\\\\server\\share\\"));
+            Assert::AreEqual(std::string("\\\\?\\UNC\\server\\share\\"), cli::AbsolutePath("\\\\?\\UNC\\server\\share\\"));
+            Assert::AreEqual(std::string("\\\\server\\share\\game"), cli::AbsolutePath("\\\\server\\share\\game\\"));
+            Assert::AreEqual(std::string("\\\\?\\UNC\\server\\share\\game"), cli::AbsolutePath("\\\\?\\UNC\\server\\share\\game\\"));
         }
 
         // A relative game folder gives absolute paths in the MSBuild lines

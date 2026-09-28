@@ -452,7 +452,7 @@ namespace UnitTests
         TEST_METHOD(WriteError_FailsTheScript)
         {
             _game.Make(TemplateSci0);
-            Assert::IsTrue(SetFileAttributes(_game.Src("door.sc").c_str(), FILE_ATTRIBUTE_READONLY) != 0);
+            MakeReadOnly(_game.Src("door.sc"));
             GameSession &session = _game.Open();
             RunResults results;
             auto report = RunDecompile(session, { 974, 983 }, DecompileRunOptions(), results);
@@ -889,7 +889,7 @@ namespace UnitTests
         {
             PrepareStaleFixtures(_game);
             std::string mainSco = MainObjectFile();
-            Assert::IsTrue(SetFileAttributes(mainSco.c_str(), FILE_ATTRIBUTE_READONLY) != 0, L"setup: a read-only Main.sco");
+            MakeReadOnly(mainSco);
             GameSession &session = _game.Open();
             RunResults results;
             auto report = RunDecompile(session, { 960 }, DecompileRunOptions(), results);
@@ -919,7 +919,7 @@ namespace UnitTests
         TEST_METHOD(Pass2WriteError_FailsTheScript)
         {
             PrepareStaleFixtures(_game);
-            Assert::IsTrue(SetFileAttributes(_game.Src("BatchGlobalsA.sc").c_str(), FILE_ATTRIBUTE_READONLY) != 0);
+            MakeReadOnly(_game.Src("BatchGlobalsA.sc"));
             GameSession &session = _game.Open();
             RunResults results;
             auto report = RunDecompile(session, { 959, 960 }, DecompileRunOptions(), results);
@@ -983,7 +983,7 @@ namespace UnitTests
             _game.Make(TemplateSci0);
             std::string ini = _game.Path("game.ini");
             Assert::IsTrue(WritePrivateProfileString("Script", "n974", nullptr, ini.c_str()) != 0);
-            Assert::IsTrue(SetFileAttributes(ini.c_str(), FILE_ATTRIBUTE_READONLY) != 0);
+            MakeReadOnly(ini);
             GameSession &session = _game.Open();
             RunResults results;
             auto report = RunDecompile(session, { 974 }, DecompileRunOptions(), results);
@@ -1136,7 +1136,7 @@ namespace UnitTests
         TEST_METHOD(Abort_AFailureOfAnEarlierGroupStays)
         {
             PrepareEarlierGroupFixtures();
-            Assert::IsTrue(SetFileAttributesA(_game.Src("StaleFirst.sc").c_str(), FILE_ATTRIBUTE_READONLY) != 0);
+            MakeReadOnly(_game.Src("StaleFirst.sc"));
             GameSession &session = _game.Open();
             RunResults results;
             results.abortOnMessage = "Decompiling script 0";
@@ -1359,7 +1359,7 @@ namespace UnitTests
         TEST_METHOD(StaleCheck_AFailedScriptOfTheGroup)
         {
             PrepareStaleFixtures(_game);
-            Assert::IsTrue(SetFileAttributesA(_game.Src("BatchGlobalsB.sc").c_str(), FILE_ATTRIBUTE_READONLY) != 0);
+            MakeReadOnly(_game.Src("BatchGlobalsB.sc"));
             GameSession &session = _game.Open();
             RunResults results;
             auto report = RunDecompile(session, { 960 }, DecompileRunOptions(), results);

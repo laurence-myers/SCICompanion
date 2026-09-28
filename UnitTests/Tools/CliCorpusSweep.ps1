@@ -174,6 +174,37 @@ function RowsText([int]$count) {
     return "$count rows"
 }
 
+# Appends the rows that wait to the CSV (UTF-8 with a BOM, and the header
+# row when the file is empty), in one write. A write that fails part of
+# the way (a full disk) cuts the file back to its old length, so the next
+# try does not write the same rows twice. Throws when the write fails.
+function Write-PendingRows {
+    $lines = @($script:pendingRows | ConvertTo-Csv -NoTypeInformation)
+    $stream = New-Object System.IO.FileStream($csv, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::Read)
+    try {
+        $start = $stream.Length
+        $encoding = New-Object System.Text.UTF8Encoding($true)
+        if ($start -eq 0) {
+            $bytes = $encoding.GetPreamble() + $encoding.GetBytes(($lines -join "`r`n") + "`r`n")
+        }
+        else {
+            $bytes = $encoding.GetBytes((($lines | Select-Object -Skip 1) -join "`r`n") + "`r`n")
+        }
+        [void]$stream.Seek(0, [IO.SeekOrigin]::End)
+        try {
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush()
+        }
+        catch {
+            $stream.SetLength($start)
+            throw
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
 # Writes each row into the CSV at once, so a sweep that stops keeps its
 # rows. A row that cannot be written (for example while another program
 # has the CSV open) waits, and the next write tries it again.
@@ -182,7 +213,7 @@ function Add-Row($row) {
     $script:rows += $row
     [void]$script:pendingRows.Add($row)
     try {
-        $script:pendingRows | Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8 -Append
+        Write-PendingRows
         $script:pendingRows.Clear()
     }
     catch {
@@ -197,7 +228,7 @@ function Save-PendingRows {
     if ($count -eq 0) { return $true }
     $written = $false
     try {
-        $script:pendingRows | Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8 -Append
+        Write-PendingRows
         $written = $true
     }
     catch {

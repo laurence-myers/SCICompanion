@@ -43,7 +43,9 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
   the Visual Studio copy of vcpkg, it fetches the vcpkg registry from
   GitHub, under a lock that every build on the machine shares (a fetch can
   take 15 minutes, and the other builds wait). A vcpkg clone in
-  `VCPKG_ROOT` avoids the fetch. So does a copy of `vcpkg_installed\` from
+  `VCPKG_ROOT` avoids the fetch when it has the `builtin-baseline` commit of
+  `vcpkg.json`: a full clone (not a shallow one) of that commit or later.
+  So does a copy of `vcpkg_installed\` from
   another checkout of the same `vcpkg.json`, with
   `-p:VcpkgManifestInstall=false`. Keep the checkout path short (about 120
   characters or less): the Visual Studio copy of vcpkg builds under

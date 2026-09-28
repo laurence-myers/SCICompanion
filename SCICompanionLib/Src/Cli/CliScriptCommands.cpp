@@ -107,11 +107,12 @@ namespace cli
         DWORD length = GetFullPathNameA(path.c_str(), ARRAYSIZE(buffer), buffer, nullptr);
         std::string full = ((length > 0) && (length < ARRAYSIZE(buffer))) ? std::string(buffer, length) : path;
         // No separator at the end, except the one of a root ("C:\",
-        // "\\?\C:\", "\\?\Volume{...}\"): the paths that the run makes add
-        // their own (else "game\\src").
+        // "\\?\C:\", "\\?\Volume{...}\", "\\server\share\",
+        // "\\?\UNC\server\share\"): the paths that the run makes add their
+        // own (else "game\\src").
         auto isRoot = [](const std::string &text)
         {
-            static const std::regex root(R"(^(\\\\[?.]\\)?([A-Za-z]:|Volume\{[^\\]*\})[\\/]$)", std::regex::icase);
+            static const std::regex root(R"(^((\\\\[?.]\\)?([A-Za-z]:|Volume\{[^\\]*\})|(\\\\|\\\\\?\\UNC\\)[^\\/?.][^\\/]*[\\/][^\\/]+)[\\/]$)", std::regex::icase);
             return std::regex_match(text, root) || std::filesystem::path(text).relative_path().empty();
         };
         while ((full.size() > 1) && ((full.back() == '\\') || (full.back() == '/')) && !isRoot(full))

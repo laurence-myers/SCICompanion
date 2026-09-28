@@ -195,10 +195,15 @@ std::string JoinLines(const std::vector<std::string> &lines)
     return text;
 }
 
+void MakeReadOnly(const std::string &path)
+{
+    Assert::IsTrue(SetFileAttributesA(path.c_str(), FILE_ATTRIBUTE_READONLY) != 0, Wide("setup: " + path + " is read-only").c_str());
+}
+
 void WriteReadOnlyFile(const std::string &path, const std::string &text)
 {
     WriteFileText(path, text);
-    Assert::IsTrue(SetFileAttributesA(path.c_str(), FILE_ATTRIBUTE_READONLY) != 0, Wide("setup: " + path + " is read-only").c_str());
+    MakeReadOnly(path);
 }
 
 ScriptId ScriptAt(const std::string &path, uint16_t number)
