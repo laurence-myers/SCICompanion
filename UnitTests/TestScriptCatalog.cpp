@@ -329,6 +329,19 @@ namespace UnitTests
             Assert::AreEqual(std::string("TitleScreen"), names.NameOf(100), L"the other names are there");
         }
 
+        // A name of game.ini with a folder in it is not a file name: the map
+        // does not use it (the name comes from src), and reports it.
+        TEST_METHOD(GameIniNameWithAFolder_IsIgnored)
+        {
+            _game.Make(TemplateSci11);
+            Assert::IsTrue(WritePrivateProfileStringA("Script", "n100", "src\\TitleScreen", _game.Path("game.ini").c_str()) != 0);
+            GameSession &session = _game.Open(SessionOptions());
+            const ScriptNameMap &names = *session.Helper().ScriptNames;
+            Assert::AreEqual(std::string("TitleScreen"), names.NameOf(100), L"the name of the source");
+            Assert::AreEqual(size_t(1), names.IgnoredGameIniNames().size());
+            Assert::IsTrue(names.IgnoredGameIniNames()[0].find("src\\TitleScreen") != std::string::npos, Wide(names.IgnoredGameIniNames()[0]).c_str());
+        }
+
         // A number and a path for one script are an error: the path does not
         // take the place of the script's own file. One file in two spellings
         // is one script.

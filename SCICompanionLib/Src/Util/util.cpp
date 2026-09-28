@@ -14,6 +14,7 @@
 
 #include "stdafx.h"
 #include <math.h>
+#include <mbstring.h>
 #include "format.h"
 #include "TlHelp32.h"
 #include <filesystem>
@@ -740,7 +741,10 @@ void ScriptId::_Init(PCTSTR pszFullFileName, WORD wScriptNum)
 		// A path can use '\' or '/', as "src/rm110.sc". The folder keeps
 		// only '\', so == gives one answer for both forms of a path.
 		std::replace(str.begin(), str.end(), '/', '\\');
-		size_t iIndexBS = str.rfind('\\');
+		// The last '\' as a character of the multibyte code page: the second
+		// byte of a double-byte character can be 0x5C (Shift-JIS).
+		const unsigned char *lastSeparator = _mbsrchr(reinterpret_cast<const unsigned char *>(str.c_str()), '\\');
+		size_t iIndexBS = lastSeparator ? (size_t)(lastSeparator - reinterpret_cast<const unsigned char *>(str.c_str())) : std::string::npos;
 		_strFolder = (iIndexBS == std::string::npos) ? std::string() : str.substr(0, iIndexBS);
 		_strFileName = (iIndexBS == std::string::npos) ? str : str.substr(iIndexBS + 1);
 

@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstdarg>
 #include <cstdio>
+#include <exception>
 
 namespace
 {
@@ -97,4 +98,25 @@ void CoreLogFormat(LogLevel level, const char *format, ...)
     va_start(args, format);
     CoreLogFormatV(level, format, args);
     va_end(args);
+}
+
+void CoreLogCurrentException(const std::string &context)
+{
+    // The boundary gives the error of the exception in flight; it never
+    // throws (with no memory, its error is "out of memory").
+    std::exception_ptr current = std::current_exception();
+    sci::Status failed = sci::Guard(context, [&]() -> sci::Status
+    {
+        std::rethrow_exception(current);
+    });
+    if (!failed)
+    {
+        std::string text;
+        sci::Status built = sci::Guard("", [&]() -> sci::Status
+        {
+            text = failed.error().ToString();
+            return sci::Ok();
+        });
+        CoreLog(LogLevel::Warning, built ? text : failed.error().message);
+    }
 }

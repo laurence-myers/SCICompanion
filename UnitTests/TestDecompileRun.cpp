@@ -1371,5 +1371,96 @@ namespace UnitTests
             Assert::AreEqual((size_t)1, report->stale.count(960), Wide(facts).c_str());
             Assert::AreEqual((size_t)1, report->stale.count(959), Wide(facts).c_str());
         }
+
+        // The same in a dry run: the stale check reads the old file of 960,
+        // not the source that the run would write, because the write check
+        // of 960 fails.
+        TEST_METHOD(StaleCheck_AFailedScriptOfTheGroup_DryRun)
+        {
+            PrepareStaleFixtures(_game);
+            MakeReadOnly(_game.Src("BatchGlobalsB.sc"));
+            GameSession &session = _game.Open();
+            RunResults results;
+            DecompileRunOptions options;
+            options.dryRun = true;
+            auto report = RunDecompile(session, { 960 }, options, results);
+            AssertOk(report);
+            std::string facts = DescribeRun(*report);
+            const DecompileOutcome *second = OutcomeOf(*report, 960);
+            Assert::IsTrue((second != nullptr) && !second->status.has_value(), Wide("setup: 960 fails its write check:\n" + facts).c_str());
+            Assert::IsFalse(report->globalRenames.empty(), Wide("setup: 960 names global5:\n" + facts).c_str());
+            Assert::AreEqual((size_t)1, report->stale.count(960), Wide(facts).c_str());
+            Assert::AreEqual((size_t)1, report->stale.count(959), Wide(facts).c_str());
+        }
+
+        // A keys.sh that does not parse is a warning of the run: the
+        // decompiled scripts have none of its names.
+        TEST_METHOD(BrokenKeysHeader_IsAWarning)
+        {
+            _game.Make(TemplateSci0);
+            fs::path data = fs::path(_game.Folder()) / "data";
+            fs::create_directories(data / "include");
+            fs::copy_file(fs::path(GetTestModuleDirectory()) / "include" / "sci.sh", data / "include" / "sci.sh");
+            WriteFileText((data / "include" / "keys.sh").string(), "(define\r\n");
+            SessionOptions options = TestSessionOptions();
+            options.dataFolder = data.string();
+            GameSession &session = _game.Open(options);
+            RunResults results;
+            auto report = RunDecompile(session, { 974 }, DecompileRunOptions(), results);
+            AssertOk(report);
+            Assert::IsTrue(AnyContains(report->warnings, "keys.sh has syntax errors"), Wide(DescribeRun(*report)).c_str());
+            Assert::IsTrue(AnyContains(results.problems, "keys.sh has syntax errors"), L"the warning goes to the results");
+        }
+
+        // Pass 2 records a .sco that it changed: after a run of script 0
+        // alone, a run of 0 and 994 writes the same Main.sco in pass 1, 994
+        // names globals, and pass 2 writes Main.sco again with the names.
+        TEST_METHOD(ObjectFileChanged_InPass2)
+        {
+            _game.Make(TemplateSci0);
+            for (const auto &entry : fs::directory_iterator(_game.Src("")))
+            {
+                if (_stricmp(entry.path().extension().string().c_str(), ".sco") == 0)
+                {
+                    fs::remove(entry.path());
+                }
+            }
+            {
+                RunResults results;
+                AssertSucceeded(RunDecompile(_game.Open(), { 0 }, DecompileRunOptions(), results));
+                _game.CloseSessions();
+            }
+            std::string mainSco = MainObjectFile();
+            std::string before = ReadFileText(mainSco);
+            RunResults results;
+            std::vector<std::string> messages;
+            results.onMessage = [&messages](const std::string &message) { messages.push_back(message); };
+            auto report = RunDecompile(_game.Open(), { 0, 994 }, DecompileRunOptions(), results);
+            AssertSucceeded(report);
+            std::string facts = DescribeRun(*report);
+            Assert::IsTrue(AnyContains(messages, "Decompiling script 0 again"), Wide("setup: pass 2 writes script 0 again:\n" + facts).c_str());
+            Assert::AreNotEqual(before, ReadFileText(mainSco), Wide("setup: main's .sco changed:\n" + facts).c_str());
+            const DecompileOutcome *main = OutcomeOf(*report, 0);
+            Assert::IsTrue((main != nullptr) && main->objectFileChanged, Wide(facts).c_str());
+        }
+
+        // A .sco that an earlier group changed stays changed when a later
+        // group writes it again with the same bytes: group 1 writes the
+        // missing StaleFirst.sco of 965, and group 3 decompiles 965 again.
+        TEST_METHOD(ObjectFileChanged_StaysAcrossGroups)
+        {
+            PrepareEarlierGroupFixtures();
+            fs::remove(_game.Src("StaleFirst.sco"));
+            GameSession &session = _game.Open();
+            RunResults results;
+            int decompiles965 = 0;
+            results.onMessage = [&decompiles965](const std::string &message) { decompiles965 += (message == "Decompiling script 965") ? 1 : 0; };
+            auto report = RunDecompile(session, { 965 }, UpdateStaleOptions(), results);
+            AssertSucceeded(report);
+            std::string facts = DescribeRun(*report);
+            Assert::AreEqual(2, decompiles965, Wide("setup: two groups decompile 965:\n" + facts).c_str());
+            const DecompileOutcome *first = OutcomeOf(*report, 965);
+            Assert::IsTrue((first != nullptr) && first->objectFileChanged, Wide(facts).c_str());
+        }
     };
 }

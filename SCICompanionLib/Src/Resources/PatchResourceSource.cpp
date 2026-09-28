@@ -14,6 +14,7 @@
 #include "stdafx.h"
 #include "PatchResourceSource.h"
 #include "ResourceBlob.h"
+#include "FileWrite.h"
 
 PatchFilesResourceSource::PatchFilesResourceSource(ResourceTypeFlags types, SCIVersion version, const std::string &gameFolder, ResourceSourceFlags sourceFlags) :
 	_gameFolder(gameFolder),
@@ -177,6 +178,15 @@ sci::Status CheckPatchFileCanBeReplaced(const std::string &path)
 		return sci::Fail(std::move(error));
 	}
 	return sci::Ok();
+}
+
+sci::Status CheckPackageCanBeReplaced(const std::string &gameFolder, int volume)
+{
+	FileDescriptorResourceMap files(gameFolder);
+	SCI_TRY(CheckFileCanBeReplaced(files._GetVolumeFilenameBak(volume), 0));
+	SCI_TRY(CheckFileCanBeReplaced(files._GetMapFilenameBak(), 0));
+	SCI_TRY(CheckPatchFileCanBeReplaced(files._GetVolumeFilename(volume)));
+	return CheckPatchFileCanBeReplaced(files._GetMapFilename());
 }
 
 namespace

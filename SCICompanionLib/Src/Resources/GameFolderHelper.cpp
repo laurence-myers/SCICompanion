@@ -112,6 +112,11 @@ std::string GameFolderHelper::GetScriptDebugFileName(uint16_t wScript) const
 	return fmt::format("{0}\\{1:03d}.scd", debugFolder, wScript);
 }
 
+std::string GameFolderHelper::GetScriptDebugFilePath(uint16_t wScript) const
+{
+	return fmt::format("{0}\\{1:03d}.scd", _GetSubfolder("debug"), wScript);
+}
+
 std::string GameFolderHelper::GetScriptSymbolFileName(uint16_t wScript) const
 {
 	std::string debugFolder = _GetSubfolder("debug");

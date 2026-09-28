@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "ImageData.h"
 
 // The EGA color tables, and the bitmap headers that use them.
 
@@ -127,6 +128,27 @@ RGBQUAD g_egaColorsPlusOne[17] = {
 
 RGBQUAD g_egaColorsExtended[256];
 RGBQUAD g_egaColorsMixed[256];
+
+namespace
+{
+	// The tables of g_egaColors, filled when the program starts (the GUI and
+	// scic): g_egaColorsExtended is the 16 colors 16 times, and
+	// g_egaColorsMixed the gamma-corrected mix of each pair.
+	struct EgaTables
+	{
+		EgaTables()
+		{
+			for (int i = 0; i < 256; i += 16)
+			{
+				memcpy(g_egaColorsExtended + i, g_egaColors, sizeof(g_egaColors));
+			}
+			for (int i = 0; i < 256; i++)
+			{
+				g_egaColorsMixed[i] = _CombineGamma(g_egaColors[i / 16], g_egaColors[i % 16]);
+			}
+		}
+	} egaTables;
+}
 
 RGBQUAD g_continuousPriorityColors[256];
 

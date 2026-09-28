@@ -205,34 +205,48 @@ struct FileDescriptorBase
 
 	void WriteAndReplaceMapAndVolumes(const sci::ostream &mapStream, const std::unordered_map<int, sci::ostream> &volumeWriteStreams) const
 	{
-		// TODO: Verify we can write to the orignal files. Or do we need to bother? We'll produce nice error messages anyway.
-		// The only time it might be necessary is for .scr and .hep files, since we need those to both succeed or both fail
-
+		// Each .bak file that is written and not yet moved: a failure removes them, so no .bak file stays. The game
+		// stays consistent: the map changes last.
+		std::vector<std::string> baks;
+		try
 		{
-			// Write the volumes to their bak files.
-			for (const auto &volumeStream : volumeWriteStreams)
 			{
-				ScopedFile holderPackage(_GetVolumeFilenameBak(volumeStream.first), GENERIC_WRITE, 0, CREATE_ALWAYS);
-				holderPackage.Write(volumeStream.second.GetInternalPointer(), volumeStream.second.GetDataSize());
+				// Write the volumes to their bak files.
+				for (const auto &volumeStream : volumeWriteStreams)
+				{
+					baks.push_back(_GetVolumeFilenameBak(volumeStream.first));
+					ScopedFile holderPackage(baks.back(), GENERIC_WRITE, 0, CREATE_ALWAYS);
+					holderPackage.Write(volumeStream.second.GetInternalPointer(), volumeStream.second.GetDataSize());
+				}
+
+				// Now the map
+				baks.push_back(_GetMapFilenameBak());
+				ScopedFile holderMap(baks.back(), GENERIC_WRITE, 0, CREATE_ALWAYS);
+				holderMap.Write(mapStream.GetInternalPointer(), mapStream.GetDataSize());
 			}
 
-			// Now the map
-			ScopedFile holderMap(_GetMapFilenameBak(), GENERIC_WRITE, 0, CREATE_ALWAYS);
-			holderMap.Write(mapStream.GetInternalPointer(), mapStream.GetDataSize());
-		}
+			// Move the volumes over. replacefile is one atomic operation, so there is
+			// no moment where a volume file is missing -- a failed move after a delete
+			// would have lost that file.
+			for (const auto &volumeStream : volumeWriteStreams)
+			{
+				std::string package_name = _GetVolumeFilename( volumeStream.first);
+				replacefile(_GetVolumeFilenameBak( volumeStream.first), package_name);
+				baks.erase(baks.begin());
+			}
 
-		// Move the volumes over. replacefile is one atomic operation, so there is
-		// no moment where a volume file is missing -- a failed move after a delete
-		// would have lost that file.
-		for (const auto &volumeStream : volumeWriteStreams)
+			// Replace the map last, so it only changes once every volume is in place.
+			std::string resmap_name = _GetMapFilename();
+			replacefile(_GetMapFilenameBak(), resmap_name);
+		}
+		catch (...)
 		{
-			std::string package_name = _GetVolumeFilename( volumeStream.first);
-			replacefile(_GetVolumeFilenameBak( volumeStream.first), package_name);
+			for (const std::string &bak : baks)
+			{
+				DeleteFileA(bak.c_str());
+			}
+			throw;
 		}
-
-		// Replace the map last, so it only changes once every volume is in place.
-		std::string resmap_name = _GetMapFilename();
-		replacefile(_GetMapFilenameBak(), resmap_name);
 	}
 };
 

@@ -93,6 +93,10 @@ public:
     // does not have (shown with '?'). The map skips them, so such a file
     // does not stop the open of the game.
     const std::vector<std::string> &SkippedFiles() const { return _skippedFiles; }
+    // The names of game.ini [Script] that are not file names (with '\', '/'
+    // or another character that a file name cannot have), as texts for a
+    // warning. The map does not use them.
+    const std::vector<std::string> &IgnoredGameIniNames() const { return _ignoredGameIniNames; }
 
 private:
     std::map<uint16_t, Entry> _entries;
@@ -100,6 +104,7 @@ private:
     std::vector<NameConflict> _conflicts;
     std::vector<std::string> _fileTitles;
     std::vector<std::string> _skippedFiles;
+    std::vector<std::string> _ignoredGameIniNames;
 };
 
 // The number that a source file declares with (script# X), where X is a

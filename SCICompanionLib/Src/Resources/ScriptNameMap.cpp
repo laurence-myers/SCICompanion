@@ -477,9 +477,16 @@ sci::Result<ScriptNameMap> ScriptNameMap::Build(const GameFolderHelper &helper)
         return map;
     }
 
-    // Rule 1: game.ini [Script].
+    // Rule 1: game.ini [Script]. A name is the title of the script's files,
+    // so a name that is not a file name (a folder in it, as "src\rm110")
+    // gives no name.
     for (const auto &script : ReadGameIniScripts(helper.GetGameIniFileName()))
     {
+        if (script.second.find_first_of("\\/:*?\"<>|") != std::string::npos)
+        {
+            map._ignoredGameIniNames.push_back(fmt::format("game.ini names script {0} \"{1}\", which is not a file name; the name is not used", script.first, script.second));
+            continue;
+        }
         map._entries[script.first] = { script.second, NameSource::GameIni };
         map._gameIniOrder.push_back(script.first);
     }

@@ -20,7 +20,12 @@ namespace cli
         virtual void Err(const std::string &text) = 0;
     };
 
-    // The stdout and stderr of the process.
+    // The text of the ANSI code page, in UTF-16.
+    std::wstring AnsiToWide(const std::string &text);
+
+    // The stdout and stderr of the process. A console gets the characters of
+    // the text (its code page can be another one than the ANSI code page); a
+    // file or a pipe gets the bytes of the ANSI code page.
     class StdConsole : public ICliConsole
     {
     public:

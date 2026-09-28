@@ -288,6 +288,32 @@ namespace
 		bool _quiet;
 	};
 
+	// The messages of one script: an error or a warning names the script
+	// ("Script 974: Invalid branch target."), unless its text names it.
+	class ScriptResults : public IDecompilerResults
+	{
+	public:
+		ScriptResults(IDecompilerResults &inner, uint16_t number) : _inner(inner), _prefix(fmt::format("Script {0}", number)) {}
+		void AddResult(DecompilerResultType type, const std::string &message) override
+		{
+			bool named = (message.rfind(_prefix, 0) == 0) && ((message.size() == _prefix.size()) || !isdigit((unsigned char)message[_prefix.size()]));
+			if (((type == DecompilerResultType::Error) || (type == DecompilerResultType::Warning)) && !named)
+			{
+				_inner.AddResult(type, _prefix + ": " + message);
+			}
+			else
+			{
+				_inner.AddResult(type, message);
+			}
+		}
+		bool IsAborted() override { return _inner.IsAborted(); }
+		void InformStats(bool functionSuccessful, int byteCount) override { _inner.InformStats(functionSuccessful, byteCount); }
+		void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override { _inner.SetGlobalVarsUpdated(renames); }
+	private:
+		IDecompilerResults &_inner;
+		std::string _prefix;
+	};
+
 	// Everything one decompile of a script needs, for as long as its tree is
 	// in use. DecompileLookups points at the other members.
 	struct DecompileState
@@ -318,7 +344,8 @@ public:
 		_resourceMap(resourceMap),
 		_helper(resourceMap.Helper()),
 		_number(scriptNumber),
-		_results(results),
+		_scriptResults(results, scriptNumber),
+		_results(_scriptResults),
 		_options(options),
 		_output(output)
 	{
@@ -596,6 +623,8 @@ private:
 	CResourceMap &_resourceMap;
 	const GameFolderHelper &_helper;
 	uint16_t _number;
+	ScriptResults _scriptResults;
+	// The messages of the item go through _scriptResults.
 	IDecompilerResults &_results;
 	DecompileOptions _options; // Our own copy: the lookups point into DebugFunctionMatch.
 	IDecompileOutput *_output;

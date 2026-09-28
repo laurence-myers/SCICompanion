@@ -242,11 +242,9 @@ int decompressLZW(BYTE *dest, BYTE *src, int length, int complength)
 				if (token > 0xff) {
 				  if (token >= tokenctr)
 					{
-#ifdef _SCI_DECOMPRESS_DEBUG
-					  fprintf(stderr, "decompressLZW: Bad token %x!\n", token);
-#endif
-					  /* Well this is really bad  */
-					  /* May be it should throw something like SCI_ERROR_DECOMPRESSION_INSANE */
+					  // A token that is not in the table yet: the data is damaged
+					  // (ScummVM fails here too).
+					  return -1;
 					} else
 					  {
 					tokenlastlength = tokenlengthlist[token]+1;

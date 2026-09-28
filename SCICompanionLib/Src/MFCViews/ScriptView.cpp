@@ -338,17 +338,6 @@ CCrystalTextBuffer *CScriptView::LocateTextBuffer()
 
 //	SCI keywords
 
-bool _IsKeyword(const std::string &word, std::vector<std::string> &sortedVector, LPTSTR *rg_OrigList, size_t size)
-{
-	if (sortedVector.empty())
-	{
-		// First time caller...
-		sortedVector.insert(sortedVector.begin(), rg_OrigList, &rg_OrigList[size]);
-		sort(sortedVector.begin(), sortedVector.end());
-	}
-	return binary_search(sortedVector.begin(), sortedVector.end(), word);
-}
-
 static BOOL IsSCISelectorLiteral(LPCTSTR pszChars, int nLength)
 {
 	BOOL bRet = FALSE;

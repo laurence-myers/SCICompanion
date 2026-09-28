@@ -32,6 +32,10 @@ namespace
         // The editor copies each line as a C string, so a NUL ends it.
         size_t nul = line.find('\0');
         text.lines.push_back((nul == std::string::npos) ? line : line.substr(0, nul));
+        if ((text.firstOtherBreakLine < 0) && (text.lines.back().find_first_of("\r\n") != std::string::npos))
+        {
+            text.firstOtherBreakLine = (int)text.lines.size() - 1;
+        }
     }
 }
 

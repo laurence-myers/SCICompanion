@@ -1140,6 +1140,11 @@ namespace UnitTests
             }
             Assert::IsNotNull(elseMessage, Wide(Describe(*report)).c_str());
             Assert::AreEqual(8, elseMessage->GetLineNumber(), L"the else clause is on line 8 (1-based)");
+            // The GUI text of the parser's warning has the form of the
+            // compiler's.
+            Assert::IsTrue((elseMessage->GetMessage().find("Warning: (S2cLines.sc) The else clause") == 0) && (elseMessage->GetMessage().find("  Line: 8, col: ") != std::string::npos),
+                Wide(elseMessage->GetMessage()).c_str());
+            Assert::IsTrue(elseMessage->GetRawMessage().find("The else clause") == 0, Wide(elseMessage->GetRawMessage()).c_str());
             Assert::IsNotNull(undeclared, Wide(Describe(*report)).c_str());
             Assert::AreEqual(11, undeclared->GetLineNumber());
             const std::string &raw = undeclared->GetRawMessage();
@@ -1685,13 +1690,16 @@ namespace UnitTests
 
         // A dry run into the game's patch files checks each patch file as
         // the write would, so a read-only patch file fails the dry run as it
-        // fails the real run.
+        // fails the real run. The real run removes the debug file that it
+        // wrote.
         TEST_METHOD(DryRun_PatchFiles_ChecksTheFiles)
         {
             NoAppState noAppState;
             for (bool dryRun : { false, true })
             {
                 GameSession &session = _game.OpenCopy(TemplateSci0);
+                // The compile writes debug\904.scd.
+                Assert::IsTrue(WritePrivateProfileStringA("Game", "GenerateDebugInfo", "true", _game.Path("game.ini").c_str()) != 0);
                 std::vector<ScriptId> scripts = { WriteScript(session, "S2Good904", 904, GoodText(904)) };
                 WriteFileBytes(_game.Path("script.904"), ScriptPatch);
                 Assert::IsTrue(SetFileAttributesA(_game.Path("script.904").c_str(), FILE_ATTRIBUTE_READONLY) != 0, L"setup: a read-only patch file");
@@ -1704,6 +1712,79 @@ namespace UnitTests
                 Assert::IsTrue(report->scripts[0].status.has_value(), Wide(facts).c_str());
                 Assert::IsFalse(report->commit.has_value(), Wide(facts).c_str());
                 Assert::IsTrue(report->commit.error().ToString().find("script.904") != std::string::npos, Wide(facts).c_str());
+                // The commit wrote nothing, so the debug file of the script
+                // goes too.
+                Assert::IsFalse(fs::exists(session.Helper().GetScriptDebugFilePath(904)), Wide("no debug file: " + facts).c_str());
+            }
+        }
+
+        // A line break of another style than the first one of the file does
+        // not end a line (the editor's rule): a warning at its line.
+        TEST_METHOD(OtherLineBreak_IsAWarning)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            // The first break is CR LF; the others are LF alone.
+            std::string text = std::string("(script# 904)\r\n") + (GoodText(904) + std::string(GoodText(904)).find('\n') + 1);
+            auto report = Compile(session, { WriteScript(session, "S2Good904", 904, text) }, ToPatchFiles());
+            AssertOk(report);
+            std::string facts = Describe(*report);
+            const CompileResult *warning = FindDiagnostic(report->scripts[0], DiagnosticKind::Warning, "line break of another style");
+            Assert::IsNotNull(warning, Wide(facts).c_str());
+            Assert::AreEqual(2, warning->GetLineNumber(), Wide(facts).c_str());
+        }
+
+        // A game.sh that does not parse gives its syntax errors to the first
+        // script of the batch that includes it, and one line to the others.
+        TEST_METHOD(BrokenHeader_ItsErrorsOnce)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            std::string header = _game.Src("game.sh");
+            WriteFileText(header, ReadFileText(header) + "\r\n(define\r\n");
+            std::vector<ScriptId> scripts = { WriteScript(session, "S2Good904", 904, GoodText(904)), WriteScript(session, "S2Good906", 906, GoodText(906)) };
+            auto report = Compile(session, scripts, ToPatchFiles());
+            AssertOk(report);
+            std::string facts = Describe(*report);
+            Assert::AreEqual((size_t)2, report->FailedCount(), Wide("both scripts fail: " + facts).c_str());
+            std::vector<size_t> headerErrors;
+            for (const ScriptOutcome &outcome : report->scripts)
+            {
+                headerErrors.push_back((size_t)std::count_if(outcome.diagnostics.begin(), outcome.diagnostics.end(),
+                    [](const CompileResult &result) { return result.IsError() && (_stricmp(result.GetScript().GetFileNameOrig().c_str(), "game.sh") == 0); }));
+            }
+            Assert::IsTrue((headerErrors[0] > 0) && (headerErrors[1] == 0), Wide("the syntax errors of game.sh come once: " + facts).c_str());
+            Assert::IsTrue(FindDiagnostic(report->scripts[1], DiagnosticKind::Error, "listed for the first script that includes it") != nullptr, Wide(facts).c_str());
+        }
+
+        // A dry run into the package checks the package files as the write
+        // would, so a read-only volume or map fails the dry run as it fails
+        // the real run. The real run removes its .bak files.
+        TEST_METHOD(DryRun_Package_ChecksTheFiles)
+        {
+            NoAppState noAppState;
+            for (const char *file : { "resource.001", "resource.map" })
+            {
+                for (bool dryRun : { false, true })
+                {
+                    GameSession &session = _game.OpenCopy(TemplateSci0);
+                    std::vector<ScriptId> scripts = { WriteScript(session, "S2Good904", 904, GoodText(904)) };
+                    std::string path = _game.Path(file);
+                    Assert::IsTrue(SetFileAttributesA(path.c_str(), FILE_ATTRIBUTE_READONLY) != 0, L"setup: a read-only package file");
+                    CompileOptions options;
+                    options.write.saveTo = ResourceSaveLocation::Package;
+                    MakeDry(options, dryRun);
+                    auto report = Compile(session, scripts, options);
+                    SetFileAttributesA(path.c_str(), FILE_ATTRIBUTE_NORMAL);
+                    AssertOk(report);
+                    std::string facts = std::string(file) + (dryRun ? ", dry run: " : ", real run: ") + Describe(*report);
+                    Assert::IsTrue(report->scripts[0].status.has_value(), Wide(facts).c_str());
+                    Assert::IsFalse(report->commit.has_value(), Wide(facts).c_str());
+                    Assert::IsTrue(report->commit.error().ToString().find(file) != std::string::npos, Wide(facts).c_str());
+                    // The failed write leaves no .bak file.
+                    Assert::IsFalse(_game.Has("resource.001.bak") || _game.Has("resource.map.bak"), Wide(facts).c_str());
+                    _game.CloseSessions();
+                }
             }
         }
 

@@ -28,6 +28,21 @@ int g_debugCelRLE;
 uint8_t g_egaPaletteMapping[16] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
 uint8_t g_vgaPaletteMapping[256];
 
+namespace
+{
+	// Each color maps to itself; filled when the program starts.
+	struct VgaPaletteMapping
+	{
+		VgaPaletteMapping()
+		{
+			for (int i = 0; i < 256; i++)
+			{
+				g_vgaPaletteMapping[i] = (uint8_t)i;
+			}
+		}
+	} vgaPaletteMapping;
+}
+
 
 
 bool IsMirror(uint16_t nLoop, uint16_t mask)

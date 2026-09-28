@@ -46,6 +46,12 @@ void CoreLog(LogLevel level, const std::string &text);
 void CoreLogFormat(LogLevel level, _Printf_format_string_ const char *format, ...);
 void CoreLogFormatV(LogLevel level, const char *format, va_list args);
 
+// Call only inside a catch block: logs the exception in flight as a
+// warning, with the text of its error (sci::ErrorFromCurrentException) after
+// the context. For a boundary that goes on after a failure (a worker
+// thread, a best-effort read). Never throws.
+void CoreLogCurrentException(const std::string &context);
+
 // Installs a sink for the life of this object, then puts back the one before.
 // The sink before must live longer than this object.
 class ScopedCoreLogSink

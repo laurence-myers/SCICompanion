@@ -182,7 +182,10 @@ function RowsText([int]$count) {
 # a failure there has no cut-back. Throws when the write fails.
 function Write-PendingRows {
     $lines = @($script:pendingRows | ConvertTo-Csv -NoTypeInformation)
-    $stream = New-Object System.IO.FileStream($csv, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::Read)
+    # A buffer of 1 byte: Write gives the error of a write that fails, so
+    # the catch below cuts the file back (a buffered write would fail later,
+    # in the Flush of SetLength or of Dispose).
+    $stream = New-Object System.IO.FileStream($csv, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::Read, 1)
     try {
         $start = $stream.Length
         $encoding = New-Object System.Text.UTF8Encoding($true)

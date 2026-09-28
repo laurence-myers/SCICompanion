@@ -108,11 +108,12 @@ namespace cli
         std::string full = ((length > 0) && (length < ARRAYSIZE(buffer))) ? std::string(buffer, length) : path;
         // No separator at the end, except the one of a root ("C:\",
         // "\\?\C:\", "\\?\Volume{...}\", "\\server\share\",
-        // "\\?\UNC\server\share\"): the paths that the run makes add their
-        // own (else "game\\src").
+        // "\\?\UNC\server\share\", "\\.\UNC\server\share\",
+        // "\\?\GLOBALROOT\Device\HarddiskVolume1\"): the paths that the run
+        // makes add their own (else "game\\src").
         auto isRoot = [](const std::string &text)
         {
-            static const std::regex root(R"(^((\\\\[?.]\\)?([A-Za-z]:|Volume\{[^\\]*\})|(\\\\|\\\\\?\\UNC\\)[^\\/?.][^\\/]*[\\/][^\\/]+)[\\/]$)", std::regex::icase);
+            static const std::regex root(R"(^((\\\\[?.]\\)?([A-Za-z]:|Volume\{[^\\]*\})|(\\\\|\\\\[?.]\\UNC\\)[^\\/?.][^\\/]*[\\/][^\\/]+|\\\\[?.]\\GLOBALROOT\\Device\\[^\\/]+)[\\/]$)", std::regex::icase);
             return std::regex_match(text, root) || std::filesystem::path(text).relative_path().empty();
         };
         while ((full.size() > 1) && ((full.back() == '\\') || (full.back() == '/')) && !isRoot(full))
@@ -132,6 +133,10 @@ namespace cli
         for (const std::string &skipped : helper.ScriptNames->SkippedFiles())
         {
             output.Warning(skipped + " has a character in its name that the ANSI code page does not have; scic does not read it");
+        }
+        for (const std::string &ignored : helper.ScriptNames->IgnoredGameIniNames())
+        {
+            output.Warning(ignored);
         }
         for (const NameConflict &conflict : helper.ScriptNames->Conflicts())
         {
@@ -562,17 +567,28 @@ namespace cli
     namespace
     {
         // The progress of a compile, with --verbose. The crash line names the
-        // script (plan section 6.6).
+        // script (plan section 6.6). A run of one pass prints the diagnostics
+        // of each script when it is done: they are the ones of the report.
         class CliCompileEvents : public ICompileEvents
         {
         public:
-            explicit CliCompileEvents(CliOutput &output) : _output(output) {}
+            CliCompileEvents(CliOutput &output, bool diagnosticsAsTheyCome) : _output(output), _diagnosticsAsTheyCome(diagnosticsAsTheyCome) {}
 
             void OnScriptStart(size_t index, size_t count, const ScriptId &script) override
             {
                 std::string name = ScriptText(script.GetResourceNumber(), script.GetTitle());
                 SetCurrentItem("compiling script " + name);
                 _output.Detail(fmt::format("[{0}/{1}] Compiling {2}", index + 1, count, name));
+            }
+            void OnScriptDone(const ScriptOutcome &outcome) override
+            {
+                if (_diagnosticsAsTheyCome)
+                {
+                    for (const CompileResult &diagnostic : outcome.diagnostics)
+                    {
+                        PrintDiagnostic(diagnostic, _output);
+                    }
+                }
             }
             void OnPassStart(int pass) override
             {
@@ -585,6 +601,7 @@ namespace cli
 
         private:
             CliOutput &_output;
+            bool _diagnosticsAsTheyCome;
         };
 
         // The resources go into the package (not an output folder).
@@ -627,15 +644,19 @@ namespace cli
 
         // Plan section 4.5, step 6: the diagnostics of the last pass (a script
         // that failed in an earlier pass, and compiled in the last, has no
-        // error), what went where, and the totals.
+        // error), unless the events printed them, what went where, and the
+        // totals.
         void PrintCompileReport(const CompileReport &report, size_t scriptCount, const GameFolderHelper &helper, const CompileWriteOptions &write, bool dryRun, bool all,
-            CliOutput &output)
+            bool diagnosticsPrinted, CliOutput &output)
         {
             for (const ScriptOutcome &outcome : report.scripts)
             {
                 for (const CompileResult &diagnostic : outcome.diagnostics)
                 {
-                    PrintDiagnostic(diagnostic, output);
+                    if (!diagnosticsPrinted)
+                    {
+                        PrintDiagnostic(diagnostic, output);
+                    }
                 }
             }
             // What the commit wrote (a dry run: would write). A commit that
@@ -688,6 +709,17 @@ namespace cli
                 }
             }
             listWrites(report.tablesWritten);
+            // A write into an output folder that failed part of the way: the
+            // files that stay (its error names them too).
+            if (!report.keptWrites.empty())
+            {
+                std::vector<std::string> kept;
+                for (const WrittenResource &resource : report.keptWrites)
+                {
+                    kept.push_back(WrittenText(resource, helper, write));
+                }
+                output.Detail("wrote " + ListText(kept, kept.size()));
+            }
             // A table failure refuses the commit: one error line (as the GUI).
             bool refusedByTables = !report.tables && !report.commit && (report.commit.error().message == report.tables.error().message);
             if (!report.tables)
@@ -751,8 +783,11 @@ namespace cli
             std::string destination = DestinationText(helper, write);
             // With no compiled script, or a commit that failed (a dry run: its
             // checks), nothing is written: a dry run says "a run would write
-            // none".
-            std::string summary = ((compiled == 0) || !report.commit) ?
+            // none". A write into an output folder can fail after some files.
+            std::string summary = !report.keptWrites.empty() ?
+                fmt::format("Compiled {0} of {1} scripts, and wrote only {2} {3} before the write failed", compiled, scriptCount,
+                    CountText(report.keptWrites.size(), "file"), destination) :
+                ((compiled == 0) || !report.commit) ?
                 fmt::format("Compiled {0} of {1} scripts, and {2} none", compiled, scriptCount, dryRun ? "a run would write" : "wrote") :
                 (dryRun ? fmt::format("Compiled {0} of {1} scripts; a run would write them {2}", compiled, scriptCount, destination) :
                 fmt::format("Compiled and wrote {0} of {1} scripts {2}", compiled, scriptCount, destination));
@@ -820,11 +855,14 @@ namespace cli
         compile.failFast = options.failFast;
         compile.passes = options.all ? options.passes : 1;
         compile.shadows = options.replacePatches ? ShadowPolicy::Replace : ShadowPolicy::Refuse;
-        CliCompileEvents events(output);
+        // One pass (a dry run has one): the diagnostics of each script are
+        // final when it is done, so they print then.
+        bool diagnosticsAsTheyCome = (compile.passes == 1) || common.dryRun;
+        CliCompileEvents events(output, diagnosticsAsTheyCome);
         SetCurrentItem("starting the compile");
         SCI_TRY_ASSIGN(CompileReport report, CompileScripts(session, selection.scripts, compile, CancelFlag(), events));
         SetCurrentItem("printing the report");
-        PrintCompileReport(report, selection.scripts.size(), session.Helper(), compile.write, common.dryRun, options.all, output);
+        PrintCompileReport(report, selection.scripts.size(), session.Helper(), compile.write, common.dryRun, options.all, diagnosticsAsTheyCome, output);
         return ExitCodeForReport(report);
     }
 }

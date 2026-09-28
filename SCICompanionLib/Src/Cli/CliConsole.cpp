@@ -5,16 +5,65 @@
 
 namespace cli
 {
+    std::wstring AnsiToWide(const std::string &text)
+    {
+        if (text.empty())
+        {
+            return std::wstring();
+        }
+        int length = MultiByteToWideChar(CP_ACP, 0, text.data(), (int)text.size(), nullptr, 0);
+        std::wstring wide(length, L'\0');
+        MultiByteToWideChar(CP_ACP, 0, text.data(), (int)text.size(), &wide[0], length);
+        return wide;
+    }
+
+    namespace
+    {
+        // The text has the ANSI code page, and a console shows its own code
+        // page (often the OEM one): the console gets the characters. A file
+        // or a pipe gets the bytes. False when the handle is not a console.
+        bool WriteToConsole(DWORD which, FILE *stream, const std::string &text)
+        {
+            HANDLE handle = GetStdHandle(which);
+            DWORD mode;
+            if ((handle == nullptr) || (handle == INVALID_HANDLE_VALUE) || !GetConsoleMode(handle, &mode))
+            {
+                return false;
+            }
+            // Text that another part (the help of CLI11) wrote to the stream
+            // comes first.
+            fflush(stream);
+            std::wstring wide = AnsiToWide(text);
+            for (size_t done = 0; done < wide.size();)
+            {
+                DWORD written = 0;
+                DWORD chunk = (DWORD)std::min<size_t>(wide.size() - done, 16384);
+                if (!WriteConsoleW(handle, wide.data() + done, chunk, &written, nullptr) || (written == 0))
+                {
+                    break;
+                }
+                done += written;
+            }
+            return true;
+        }
+    }
+
     void StdConsole::Out(const std::string &text)
     {
-        fwrite(text.data(), 1, text.size(), stdout);
-        fflush(stdout);
+        if (!WriteToConsole(STD_OUTPUT_HANDLE, stdout, text))
+        {
+            fwrite(text.data(), 1, text.size(), stdout);
+            fflush(stdout);
+        }
     }
 
     void StdConsole::Err(const std::string &text)
     {
-        fwrite(text.data(), 1, text.size(), stderr);
-        fflush(stderr);
+        if (!WriteToConsole(STD_ERROR_HANDLE, stderr, text))
+        {
+            fwrite(text.data(), 1, text.size(), stderr);
+            fflush(stderr);
+        }
     }
 
     bool IsLogHeader(const std::string &text)

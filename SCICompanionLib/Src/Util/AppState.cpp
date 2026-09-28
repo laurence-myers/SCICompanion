@@ -159,29 +159,8 @@ AppState::AppState(CWinApp *pApp) : _session(SessionOptions(), this, &_resourceR
 	_pACThread = new AutoCompleteThread2();
 	_pHoverTipScheduler = std::make_unique<BackgroundScheduler<HoverTipPayload, HoverTipResponse>>();
 
-	crcInit();
-
-	// Prepare g_egaColorsExtended
-	for (int i = 0; i < 256; i += 16)
-	{
-		CopyMemory(g_egaColorsExtended + i, g_egaColors, sizeof(g_egaColors));
-	}
-	// Fake EGA palette for when it's needed.
-	memcpy(g_egaDummyPalette.Colors, g_egaColors, sizeof(g_egaColors));
-
-	// Gamma-corrected mixed ega colors
-	for (int i = 0; i < 256; i++)
-	{
-		int iA = i / 16;
-		int iB = i % 16;
-		g_egaColorsMixed[i] = _CombineGamma(g_egaColors[iA], g_egaColors[iB]);
-	}
-
-	// Prepare g_vgaPaletteMapping
-	for (int i = 0; i < 256; i++)
-	{
-		g_vgaPaletteMapping[i] = (uint8_t)i;
-	}
+	// The core fills its own tables when the program starts: the CRC table,
+	// the EGA tables, the dummy EGA palette and the VGA mapping.
 
 	// A greenish palette for continuous priority
 	for (int i = 0; i < 256; i++)

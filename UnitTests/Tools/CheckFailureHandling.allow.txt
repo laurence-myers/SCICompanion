@@ -14,9 +14,3 @@ appstate-in-engine Util\MidiPlayer.cpp 1
 appstate-in-engine Util\PhonemeMap.cpp 8
 appstate-in-engine Util\PhonemeMap.h 4
 appstate-in-engine Util\WordEnumString.cpp 1
-empty-catch-all Compile\CodeInspector.h 1
-empty-catch-all Dialogs\PhonemeDialog.cpp 1
-empty-catch-all Resources\AudioCacheResourceSource.cpp 2
-empty-catch-all Util\LipSyncutil.cpp 1
-empty-catch-all Util\TalkerToViewMap.cpp 1
-empty-catch-all Util\Task.h 2

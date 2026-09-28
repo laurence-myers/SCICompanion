@@ -76,6 +76,43 @@ namespace
         return (size_t)std::count_if(diagnostics.begin(), diagnostics.end(),
             [errors](const CompileResult &result) { return errors ? result.IsError() : result.IsWarning(); });
     }
+
+    // The state of a file before the batch writes it: there or not, and its
+    // bytes. A file that is there and cannot be read is unreadable.
+    void ReadFileBefore(const std::string &path, bool &existed, bool &unreadable, std::vector<uint8_t> &bytes)
+    {
+        std::error_code ec;
+        existed = fs::exists(path, ec) || ec;
+        unreadable = false;
+        bytes.clear();
+        if (existed)
+        {
+            std::ifstream file(path, std::ios::binary);
+            unreadable = !file;
+            if (file)
+            {
+                bytes.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+                unreadable = file.bad();
+            }
+        }
+    }
+
+    // Puts the file back to its bytes from before the batch, or removes it
+    // when there was none.
+    sci::Status PutFileBack(const std::string &path, bool existed, const std::vector<uint8_t> &bytes)
+    {
+        if (existed)
+        {
+            return WriteBytesToFile(path, bytes);
+        }
+        std::error_code ec;
+        fs::remove(path, ec);
+        if (ec)
+        {
+            return sci::Fail(sci::ErrorCode::Io, fmt::format("Removing {0}: {1}", path, ec.message()));
+        }
+        return sci::Ok();
+    }
 }
 
 size_t CompileReport::CompiledCount() const
@@ -206,6 +243,7 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
     {
         return false;
     }
+    bool startedPass = false;
     if (_next >= _scripts.size())
     {
         // The end of a pass. Another pass when a .sco file changed (plan
@@ -248,6 +286,8 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
         _passDefer = std::make_unique<DeferResourceAppend>(_session.ResourceMap());
         _passFiles.clear();
         _passFileOwners.clear();
+        // The report has the new pass only, so it needs the errors again.
+        _headers->ForgetUnparsedHeaders();
         _passObjectFileUses.clear();
         _passCompiled.clear();
         _passFailed.clear();
@@ -256,8 +296,12 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
         _passChangedObjectFile = false;
         _anyCompiled = false;
         _report.scripts.clear();
+        startedPass = true;
     }
-    if (abort.load())
+    // The Step that starts a pass compiles its first script with no other
+    // check: an abort that comes after the checks above stops the pass at
+    // the next Step, as in any other script of the pass.
+    if (!startedPass && abort.load())
     {
         _report.cancelled = true;
         return false;
@@ -462,17 +506,11 @@ void CompileBatch::_CaptureObjectFile(size_t index, const ScriptId &script)
     }
     before.captured = true;
     before.path = _session.Helper().GetScriptObjectFileName(script.GetTitle());
-    std::error_code ec;
-    before.existed = fs::exists(before.path, ec) || ec;
-    if (before.existed)
+    ReadFileBefore(before.path, before.existed, before.unreadable, before.bytes);
+    if (_options.write.writeDebugInfo && (script.GetResourceNumber() != InvalidResourceNumber))
     {
-        std::ifstream file(before.path, std::ios::binary);
-        before.unreadable = !file;
-        if (file)
-        {
-            before.bytes.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
-            before.unreadable = file.bad();
-        }
+        before.debugPath = _session.Helper().GetScriptDebugFilePath(script.GetResourceNumber());
+        ReadFileBefore(before.debugPath, before.debugExisted, before.debugUnreadable, before.debugBytes);
     }
 }
 
@@ -499,20 +537,7 @@ sci::Status CompileBatch::_RestoreObjectFiles()
                 notRestored.push_back(before.path + ": the file could not be read before the compile");
                 continue;
             }
-            sci::Status restored = sci::Ok();
-            if (before.existed)
-            {
-                restored = WriteBytesToFile(before.path, before.bytes);
-            }
-            else
-            {
-                std::error_code ec;
-                fs::remove(before.path, ec);
-                if (ec)
-                {
-                    restored = sci::Fail(sci::ErrorCode::Io, fmt::format("Removing {0}: {1}", before.path, ec.message()));
-                }
-            }
+            sci::Status restored = PutFileBack(before.path, before.existed, before.bytes);
             if (restored)
             {
                 (before.existed ? _report.restoredObjectFiles : _report.removedObjectFiles).push_back(before.path);
@@ -524,6 +549,38 @@ sci::Status CompileBatch::_RestoreObjectFiles()
             }
         }
     }
+    // The debug file of each script that the commit does not write, when the
+    // batch changed it (the .sco can keep its bytes when the code changes).
+    for (size_t index = 0; index < _objectFilesBefore.size(); index++)
+    {
+        const ObjectFileBefore &before = _objectFilesBefore[index];
+        if (!before.captured || before.debugPath.empty() || (_writtenScripts.count(index) != 0))
+        {
+            continue;
+        }
+        bool existsNow;
+        bool unreadableNow;
+        std::vector<uint8_t> bytesNow;
+        ReadFileBefore(before.debugPath, existsNow, unreadableNow, bytesNow);
+        if ((existsNow == before.debugExisted) && !unreadableNow && (bytesNow == before.debugBytes))
+        {
+            continue;
+        }
+        if (before.debugUnreadable)
+        {
+            notRestored.push_back(before.debugPath + ": the file could not be read before the compile");
+            continue;
+        }
+        sci::Status restored = PutFileBack(before.debugPath, before.debugExisted, before.debugBytes);
+        if (restored)
+        {
+            (before.debugExisted ? _report.restoredObjectFiles : _report.removedObjectFiles).push_back(before.debugPath);
+        }
+        else
+        {
+            notRestored.push_back(restored.error().message);
+        }
+    }
     if (notRestored.empty())
     {
         return sci::Ok();
@@ -533,7 +590,7 @@ sci::Status CompileBatch::_RestoreObjectFiles()
     {
         text += (text.empty() ? "" : "; ") + file;
     }
-    return sci::Fail(sci::ErrorCode::Io, "these .sco files could not go back to their state before the compile, so they describe scripts that the game "
+    return sci::Fail(sci::ErrorCode::Io, "these .sco and .scd files could not go back to their state before the compile, so they describe scripts that the game "
         "does not have: " + text);
 }
 
@@ -806,11 +863,17 @@ void CompileBatch::_Commit()
             {
                 return _WriteOutputFolder(tableFiles);
             }
+            const GameFolderHelper &helper = _session.Helper();
+            if (!_options.write.writeResources && _toPackage && (!tableFiles.empty() || !_passFiles.empty()))
+            {
+                // A dry run into the package checks the files of the package
+                // write: the compile writes into the default volume.
+                return CheckPackageCanBeReplaced(helper.GameFolder, helper.Version.DefaultVolumeFile);
+            }
             if (!_options.write.writeResources && !_toPackage)
             {
                 // A dry run into the game's patch files checks each patch
                 // file as the write would (PatchFilesResourceSource).
-                const GameFolderHelper &helper = _session.Helper();
                 for (const std::vector<StagedOutputFile> *files : { &tableFiles, &_passFiles })
                 {
                     for (const StagedOutputFile &file : *files)
@@ -845,6 +908,10 @@ sci::Status CompileBatch::_WriteOutputFolder(const std::vector<StagedOutputFile>
     }
     size_t written = 0;
     sci::Status wrote = WriteStagedOutputFiles(_session.Helper(), _options.write, files, &written);
+    for (size_t i = 0; !wrote && (i < written); i++)
+    {
+        _report.keptWrites.push_back({ files[i].type, files[i].number });
+    }
     if (!wrote && (written > tableFiles.size()))
     {
         // A write that fails after the check (a full disk) keeps the files

@@ -24,6 +24,12 @@ enum class ResourceTypeFlags;
 // open without delete sharing. A dry run checks the patch files with it.
 sci::Status CheckPatchFileCanBeReplaced(const std::string &path);
 
+// Whether the package write of the game's resource.map (MapAndPackageSource,
+// WriteAndReplaceMapAndVolumes) can write into this volume: the .bak files
+// that it makes (no sharing, CREATE_ALWAYS), and the volume and the map that
+// its renames replace. A dry run into the package checks them with it.
+sci::Status CheckPackageCanBeReplaced(const std::string &gameFolder, int volume);
+
 // ResourceSource for isolated patch files
 class PatchFilesResourceSource : public ResourceSource
 {

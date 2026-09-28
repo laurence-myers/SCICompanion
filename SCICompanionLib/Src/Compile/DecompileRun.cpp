@@ -145,11 +145,7 @@ namespace
     // (CompileContext::_ReportThing): a 1-based line, and the raw message.
     CompileResult DiagnosticAt(const ScriptId &script, const ISourceCodePosition &position, bool error, const std::string &message)
     {
-        int line = position.GetLineNumber() + 1;
-        CompileResult result(fmt::format("{0}: ({1}) {2}  Line: {3}, col: {4}", error ? "Error" : "Warning", script.GetFileNameOrig(), message, line, position.GetColumnNumber()),
-            script, line, position.GetColumnNumber(), error ? CompileResult::CRT_Error : CompileResult::CRT_Warning);
-        result.SetRawMessage(message);
-        return result;
+        return CompileResult::AtLine(error, script, position.GetLineNumber() + 1, position.GetColumnNumber(), message);
     }
 
     std::string SlotsText(const std::set<int> &slots)
@@ -220,10 +216,8 @@ namespace
             if (parsed.GetExports().empty())
             {
                 // No entry to point at: the start of the file.
-                std::string message = fmt::format("The source has no public block, and compiled script {0} exports the slots {1}.", number, SlotsText(compiledSlots));
-                CompileResult result(fmt::format("Warning: ({0}) {1}  Line: 1, col: 0", script.GetFileNameOrig(), message), script, 1, 0, CompileResult::CRT_Warning);
-                result.SetRawMessage(message);
-                diagnostics.push_back(result);
+                diagnostics.push_back(CompileResult::AtLine(false, script, 1, 0,
+                    fmt::format("The source has no public block, and compiled script {0} exports the slots {1}.", number, SlotsText(compiledSlots))));
             }
             else
             {
@@ -478,6 +472,11 @@ sci::Result<DecompileReport> RunDecompile(GameSession &session, const std::set<u
         if (!config->error.empty())
         {
             std::string warning = "Decompiler.ini: " + config->error;
+            report.warnings.push_back(warning);
+            results.AddResult(DecompilerResultType::Warning, warning);
+        }
+        for (const std::string &warning : config->headerWarnings)
+        {
             report.warnings.push_back(warning);
             results.AddResult(DecompilerResultType::Warning, warning);
         }

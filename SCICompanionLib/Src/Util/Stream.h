@@ -89,13 +89,16 @@ namespace sci
 		istream &operator>> (uint8_t &b);
 		istream &operator>> (std::string &str);
 		void getRLE(std::string &str);
+		// A read past the end sets the fail state, and throws in throw mode.
 		void read_data(uint8_t *pBuffer, uint32_t cbBytes)
 		{
 			if (!_Read(pBuffer, cbBytes))
 			{
-				_state = std::ios_base::eofbit | std::ios_base::failbit;
+				_OnReadPastEnd();
 			}
 		}
+		// A read past the end gives zeros and sets the fail state, and throws
+		// in throw mode.
 		template<class _T>
 		istream &operator>> (typename _T &t)
 		{
@@ -104,7 +107,7 @@ namespace sci
 			{
 				seekg(dwSave);
 				memset(&t, 0, sizeof(t));
-				_state = std::ios_base::eofbit | std::ios_base::failbit;
+				_OnReadPastEnd();
 			}
 			return *this;
 		}

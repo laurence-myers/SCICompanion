@@ -220,6 +220,24 @@ namespace UnitTests
             Assert::IsTrue(checked > 0, L"No shipped script files were found to check");
         }
 
+        // The post-build mirrors Files\Licenses into Licenses, and then copies
+        // SCI Companion's own licence there (License.txt, COPYING and
+        // COPYING2): a third-party notice with one of these names would be
+        // replaced in each build.
+        TEST_METHOD(ThirdPartyNotices_DoNotTakeTheNamesOfTheOwnLicence)
+        {
+            std::string notices = ModuleSub("..\\SCICompanion\\Files\\Licenses");
+            Assert::IsTrue(std::filesystem::is_directory(notices), ToW("setup: " + notices).c_str());
+            for (const auto &entry : std::filesystem::directory_iterator(notices))
+            {
+                std::string name = entry.path().filename().string();
+                for (const char *own : { "License.txt", "COPYING", "COPYING2" })
+                {
+                    Assert::IsTrue(_stricmp(name.c_str(), own) != 0, ToW("rename the third-party notice " + entry.path().string()).c_str());
+                }
+            }
+        }
+
     private:
         std::string _gameFolder;
     };

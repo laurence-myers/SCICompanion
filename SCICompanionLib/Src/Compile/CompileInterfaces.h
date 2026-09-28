@@ -146,6 +146,17 @@ public:
 		_resourceType = ResourceType::None;
 	}
 
+	// An error or a warning at a 1-based line of the script, in the form of
+	// the compiler's (CompileContext::_ReportThing): "Warning: (file) message
+	// Line: N, col: C", with the message as the raw message.
+	static CompileResult AtLine(bool error, const ScriptId &script, int line, int column, const std::string &message)
+	{
+		CompileResult result(std::string(error ? "Error" : "Warning") + ": (" + script.GetFileNameOrig() + ") " + message + "  Line: " + std::to_string(line) +
+			", col: " + std::to_string(column), script, line, column, error ? CRT_Error : CRT_Warning);
+		result.SetRawMessage(message);
+		return result;
+	}
+
 	bool IsError() const { return (_type == CRT_Error); }
 	bool IsWarning() const { return (_type == CRT_Warning); }
 	ScriptId GetScript() const { return _script; }

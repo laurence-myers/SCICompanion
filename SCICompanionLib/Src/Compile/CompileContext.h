@@ -94,6 +94,9 @@ public:
 
 	// Call this each time you compile a new script
 	void Update(CompileContext &context, sci::Script &script);
+	// A new pass of a batch: the first script that includes a header that
+	// did not parse gets its syntax errors again.
+	void ForgetUnparsedHeaders() { _unparsedHeaders.clear(); }
 
 	bool LookupDefine(const std::string &str, WORD &wValue);
 private:
@@ -102,6 +105,11 @@ private:
 
 	// Filename (not full path) which maps a header to its Script object.
 	header_map _allHeaders;
+
+	// The includes that did not parse, with the error that a later script
+	// gets: the first script that includes one gets its syntax errors, and
+	// the others one line (a batch parses it once).
+	std::map<std::string, std::string> _unparsedHeaders;
 
 	// A set of the names of all the last script's header includes.
 	std::set<std::string> _curHeaderList;
@@ -329,6 +337,10 @@ public:
 	void FixupAsmLabelBranches();
 	void TrackCallOffsetInstruction(WORD wProcIndex);
 	void PreScanSaid(const std::string &theSaid, const ISourceCodePosition *pPos);
+	// True when the game has no vocabulary resource: the first call of the
+	// compile reports it once, as an error that names "what" (for example,
+	// "a synonym") and the resource.
+	bool ReportIfNoVocabulary(const ISourceCodePosition *pPos, const char *what);
 	void PushVariableLookupContext(const IVariableLookupContext *pVarContext);
 	void PopVariableLookupContext();
 	void SetClassPropertyLookupContext(const IVariableLookupContext *pVarContext);

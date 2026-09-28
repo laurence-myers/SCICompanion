@@ -44,6 +44,7 @@
 #include "DependencyTracker.h"
 #include "VersionDetectionHelper.h"
 #include <filesystem>
+#include <mbstring.h>
 
 using namespace std;
 
@@ -1008,7 +1009,10 @@ HRESULT CResourceMap::GetScriptNumber(ScriptId script, WORD &wScript)
 			{
 				size_t cch = strlen(psz);
 				char *pszEq = StrChr(psz, TEXT('='));
-				if (pszEq && (0 == _stricmp(script.GetTitle().c_str(), pszEq + 1)))
+				// A compare of the characters of the multibyte code page, not
+				// of bytes: the second byte of a double-byte character can be
+				// a letter.
+				if (pszEq && (0 == _mbsicmp(reinterpret_cast<const unsigned char *>(script.GetTitle().c_str()), reinterpret_cast<const unsigned char *>(pszEq + 1))))
 				{
 					// We have a match in script name... find the number
 					TCHAR *pszNumber = StrChr(psz, TEXT('n'));
@@ -1391,13 +1395,30 @@ sci::Status CResourceMap::_CheckResourceMap()
 	// A map is good when a volume file holds one of its first entries: the
 	// header at the offset of the entry has the type and the number of the
 	// entry. An empty map, or a map of other volumes, has no such entry.
+	// A good map whose volume files are not there (a CD install that keeps
+	// them on the CD) is not damaged: the error names the files.
 	const int entriesToTry = 256;
 	int tried = 0;
+	std::set<int> volumes;
 	IteratorState state;
 	ResourceMapEntryAgnostic entry;
-	while ((tried < entriesToTry) && source->ReadNextEntry(ResourceTypeFlags::All, state, entry, nullptr))
+	std::vector<uint8_t> raw;
+	bool more = true;
+	while (tried < entriesToTry)
 	{
+		more = source->ReadNextEntry(ResourceTypeFlags::All, state, entry, &raw);
+		if (!more)
+		{
+			break;
+		}
+		if (std::all_of(raw.begin(), raw.end(), [](uint8_t value) { return value == 0xff; }))
+		{
+			// The terminator of an SCI0 map, which its reader gives as an
+			// entry.
+			continue;
+		}
 		tried++;
+		volumes.insert(entry.PackageNumber);
 		sci::Result<bool> held = sci::Guard("reading the header of an entry of resource.map", [&]() -> sci::Result<bool>
 		{
 			ResourceHeaderAgnostic header;
@@ -1409,8 +1430,31 @@ sci::Status CResourceMap::_CheckResourceMap()
 			return sci::Ok();
 		}
 	}
-	return sci::Fail(sci::ErrorCode::Format, (tried == 0) ? std::string("resource.map is damaged or empty: it has no entry") :
-		fmt::format("resource.map is damaged: no volume file holds any of its first {0} entries", tried), where);
+	if (tried == 0)
+	{
+		return sci::Fail(sci::ErrorCode::Format, "resource.map is damaged or empty: it has no entry", where);
+	}
+	FileDescriptorResourceMap files(Helper().GameFolder);
+	std::string missing;
+	bool anyThere = false;
+	for (int volume : volumes)
+	{
+		if (files.DoesVolumeExist(volume))
+		{
+			anyThere = true;
+		}
+		else
+		{
+			missing += (missing.empty() ? "" : ", ") + std::filesystem::path(files._GetVolumeFilename(volume)).filename().string();
+		}
+	}
+	if (!anyThere)
+	{
+		return sci::Fail(sci::ErrorCode::NotFound, fmt::format("the game folder does not have the volume files that resource.map names: {0} "
+			"(a CD install can keep them on the CD)", missing), where);
+	}
+	std::string entries = more ? fmt::format("any of its first {0} entries", tried) : ((tried == 1) ? std::string("its only entry") : fmt::format("any of its {0} entries", tried));
+	return sci::Fail(sci::ErrorCode::Format, fmt::format("resource.map is damaged: no volume file holds {0}", entries), where);
 }
 
 sci::Status CResourceMap::_OpenGameFolder(const string &gameFolder)

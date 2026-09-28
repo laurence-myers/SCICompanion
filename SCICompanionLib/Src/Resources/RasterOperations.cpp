@@ -1089,6 +1089,10 @@ HBITMAP CreateBitmapFromResource(const ResourceEntity &resource, CelIndex celInd
 		HBITMAP bitmap = nullptr;
 		if ((bitmap = CreateDIBSection((HDC)dc, &bmi, DIB_RGB_COLORS, (void**)&pBitsDest, NULL, 0)) != nullptr)
 		{
+			// Deletes the DIB section when the copy below throws (the buffer
+			// can fail to allocate).
+			struct DeleteBitmap { void operator()(std::remove_pointer_t<HBITMAP> *handle) const { DeleteObject(handle); } };
+			std::unique_ptr<std::remove_pointer_t<HBITMAP>, DeleteBitmap> owner(bitmap);
 			memset(pBitsDest, 0x0, CX_ACTUAL(cx) * cy); // Fill with black
 			std::unique_ptr<BYTE[]> buffer = std::make_unique<BYTE[]>(cBytesMax);
 			int top = 0;
@@ -1117,7 +1121,7 @@ HBITMAP CreateBitmapFromResource(const ResourceEntity &resource, CelIndex celInd
 				}
 				top += loopHeights[endLoop - nLoop - 1];
 			}
-			hbmpRet = bitmap;
+			hbmpRet = owner.release();
 			*pbmi = bmi;
 			*ppBitsDest = pBitsDest;
 		}

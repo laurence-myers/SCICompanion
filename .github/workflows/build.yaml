@@ -37,6 +37,26 @@ jobs:
         }
         if ($LASTEXITCODE -ne 0) { throw "git fetch of the vcpkg registry failed ($LASTEXITCODE)." }
 
+    # vcpkg keeps its downloads (its tools and the sources) and the packages
+    # that it builds in these folders. The cache restores them, so a job
+    # downloads them only when vcpkg.json changes.
+    - name: Set the vcpkg cache folders
+      shell: pwsh
+      run: |
+        $downloads = Join-Path $env:RUNNER_TEMP 'vcpkg-downloads'
+        $archives = Join-Path $env:RUNNER_TEMP 'vcpkg-archives'
+        New-Item -ItemType Directory -Force $downloads, $archives | Out-Null
+        "VCPKG_DOWNLOADS=$downloads" >> $env:GITHUB_ENV
+        "VCPKG_DEFAULT_BINARY_CACHE=$archives" >> $env:GITHUB_ENV
+
+    - name: Cache vcpkg
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.temp }}\vcpkg-downloads
+          ${{ runner.temp }}\vcpkg-archives
+        key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+
     # The image ships the v143 toolset (MSVC 14.44) and the Windows 11 SDK.
     # MFC is installed per toolset version, and the image only has MFC for
     # its latest toolset. Add MFC and ATL for 14.44. This is a small install.
@@ -221,6 +241,26 @@ jobs:
         }
         if ($LASTEXITCODE -ne 0) { throw "git fetch of the vcpkg registry failed ($LASTEXITCODE)." }
 
+    # vcpkg keeps its downloads (its tools and the sources) and the packages
+    # that it builds in these folders. The cache restores them, so a job
+    # downloads them only when vcpkg.json changes.
+    - name: Set the vcpkg cache folders
+      shell: pwsh
+      run: |
+        $downloads = Join-Path $env:RUNNER_TEMP 'vcpkg-downloads'
+        $archives = Join-Path $env:RUNNER_TEMP 'vcpkg-archives'
+        New-Item -ItemType Directory -Force $downloads, $archives | Out-Null
+        "VCPKG_DOWNLOADS=$downloads" >> $env:GITHUB_ENV
+        "VCPKG_DEFAULT_BINARY_CACHE=$archives" >> $env:GITHUB_ENV
+
+    - name: Cache vcpkg
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.temp }}\vcpkg-downloads
+          ${{ runner.temp }}\vcpkg-archives
+        key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+
     # Same MFC/ATL install as the build job (a separate job gets a clean runner).
     - name: Install MFC and ATL for the 14.44 toolset
       shell: pwsh
@@ -375,6 +415,26 @@ jobs:
           git -C $root fetch --quiet origin
         }
         if ($LASTEXITCODE -ne 0) { throw "git fetch of the vcpkg registry failed ($LASTEXITCODE)." }
+
+    # vcpkg keeps its downloads (its tools and the sources) and the packages
+    # that it builds in these folders. The cache restores them, so a job
+    # downloads them only when vcpkg.json changes.
+    - name: Set the vcpkg cache folders
+      shell: pwsh
+      run: |
+        $downloads = Join-Path $env:RUNNER_TEMP 'vcpkg-downloads'
+        $archives = Join-Path $env:RUNNER_TEMP 'vcpkg-archives'
+        New-Item -ItemType Directory -Force $downloads, $archives | Out-Null
+        "VCPKG_DOWNLOADS=$downloads" >> $env:GITHUB_ENV
+        "VCPKG_DEFAULT_BINARY_CACHE=$archives" >> $env:GITHUB_ENV
+
+    - name: Cache vcpkg
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.temp }}\vcpkg-downloads
+          ${{ runner.temp }}\vcpkg-archives
+        key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
 
     - name: Install MFC and ATL for the 14.44 toolset
       shell: pwsh

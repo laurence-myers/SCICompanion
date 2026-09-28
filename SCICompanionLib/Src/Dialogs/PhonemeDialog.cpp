@@ -18,6 +18,7 @@
 #include "sapi_lipsync.h"
 #include "LipSyncUtil.h"
 #include "AppState.h"
+#include "CoreLog.h"
 #include "Audio.h"
 #include "SoundUtil.h"
 
@@ -81,7 +82,11 @@ BOOL PhonemeDialog::OnInitDialog()
 				}
 			}
 		}
-		catch (...) {}
+		catch (...)
+		{
+			// The dialog shows no sample sentence.
+			CoreLogCurrentException("loading the sample sentence of the phoneme dialog");
+		}
 	}
 	SetAudioComponents(g_samplePhonemeSentenceAudio->TryGetComponent<AudioComponent>(), _syncComponent.get());
 	_UpdateLipSync();

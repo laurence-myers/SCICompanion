@@ -85,6 +85,12 @@ sci::Status CompileScriptFile(GameSession &session, CompileResults &results, Com
 		log.CalculateErrors();
 		return sci::Fail(text.error());
 	}
+	if (text->firstOtherBreakLine >= 0)
+	{
+		// The script editor's line rule (SplitScriptText).
+		log.ReportResult(CompileResult::AtLine(false, script, text->firstOtherBreakLine + 1, 0,
+			"This line has a line break of another style than the first one of the file, which does not end a line here, so a line number can differ from other editors."));
+	}
 
 	// Until the code is made: the errors are in the log.
 	sci::Error compileErrors;

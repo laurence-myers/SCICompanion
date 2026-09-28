@@ -143,6 +143,11 @@ namespace UnitTests
             Assert::AreEqual(std::string("(a)"), text.lines[0]);
             Assert::AreEqual(std::string("(b)\n(c)"), text.lines[1]);
             Assert::AreEqual(std::string("(d)\r(e)"), text.lines[2]);
+            // The first line that holds a break of another style.
+            Assert::AreEqual(1, text.firstOtherBreakLine);
+            Assert::AreEqual(-1, SplitScriptText("(a)\r\n(b)\r\n").firstOtherBreakLine);
+            // A file with CR alone is one line.
+            Assert::AreEqual(0, SplitScriptText(";(a)\r(b)\r").firstOtherBreakLine);
         }
 
         TEST_METHOD(LoadScriptText_MissingFile_ReturnsNotFound)

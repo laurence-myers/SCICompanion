@@ -22,6 +22,15 @@
 #include <atomic>
 #include "format.h"
 
+namespace
+{
+	// The table of crcFast, filled when the program starts.
+	struct CrcTableFill
+	{
+		CrcTableFill() { crcInit(); }
+	} crcTableFill;
+}
+
 bool DoesPackageFormatIncludeHeaderInCompressedSize(SCIVersion version)
 {
 	return version.PackageFormat != ResourcePackageFormat::SCI11 && version.PackageFormat != ResourcePackageFormat::SCI2;

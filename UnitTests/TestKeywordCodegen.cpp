@@ -349,6 +349,26 @@ namespace UnitTests
             Assert::IsTrue(error.find("vocab 900") != npos, W("expected an error that names vocab 900, got: " + error).c_str());
         }
 
+        // Synonyms in a game with no vocabulary give one error for the
+        // compile, not one for each word.
+        TEST_METHOD(SynonymsWithNoVocabulary_OneError)
+        {
+            _gameFolder = SetUpGameSCI0();
+            CResourceMap &resourceMap = appState->GetResourceMap();
+            std::unique_ptr<ResourceBlob> vocabulary = resourceMap.Helper().MostRecentResource(ResourceType::Vocab, 0, ResourceEnumFlags::None);
+            Assert::IsTrue(vocabulary != nullptr, L"the SCI0 template has vocab.000");
+            resourceMap.DeleteResource(vocabulary.get());
+            resourceMap.ClearVocab000();
+            Assert::IsTrue(nullptr == resourceMap.GetVocab000(), L"setup: no vocabulary");
+            std::string source = KTest("", "\t(return 0)\n", "(synonyms\n\t(door gate portal)\n\t(look see)\n)\n");
+            std::string error;
+            std::vector<std::string> errors;
+            bool compiled = CompileSource(902, "kTest", source, error, nullptr, &errors);
+            Assert::IsFalse(compiled, L"a synonym needs the vocabulary");
+            Assert::AreEqual((size_t)1, errors.size(), W("expected one error, got:\n" + JoinLines(errors)).c_str());
+            Assert::IsTrue((errors[0].find("vocab 0") != npos) && (errors[0].find("a synonym") != npos), W(errors[0]).c_str());
+        }
+
         // The auto-complete word list of the script editor's "Add as synonym
         // of" dialog is empty in a game with no vocabulary.
         TEST_METHOD(WordList_GameWithNoVocabulary_IsEmpty)

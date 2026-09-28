@@ -34,20 +34,25 @@ class DummyLog : public ICompileLog
 	void ReportResult(const CompileResult &result) override {} 
 };
 
-unique_ptr<Script> GetDefinesScript(const GameFolderHelper &helper, const std::string &includeFolder, const std::string &name)
+// The defines of a header of the include folder. A header that cannot be read
+// or parsed gives an empty script, and a warning in warnings.
+unique_ptr<Script> GetDefinesScript(const GameFolderHelper &helper, const std::string &includeFolder, const std::string &name, std::vector<std::string> &warnings)
 {
 	DummyLog log;
 	ScriptId scriptId(includeFolder + "\\" + name);
 	unique_ptr<Script> script = make_unique<Script>(scriptId);
 	sci::Result<ScriptText> text = LoadScriptText(scriptId.GetFullPath());
-	if (text)
+	if (!text)
 	{
-		CScriptStreamLimiter limiter(*text);
-		CCrystalScriptStream stream(&limiter);
-		if (!SyntaxParser_Parse(*script, stream, PreProcessorDefinesFromSCIVersion(helper.Version), &log))
-		{
-			assert(false);
-		}
+		warnings.push_back(fmt::format("{0} could not be read, so the decompiled scripts have no names of its defines: {1}", scriptId.GetFullPath(), text.error().ToString()));
+		return script;
+	}
+	CScriptStreamLimiter limiter(*text);
+	CCrystalScriptStream stream(&limiter);
+	if (!SyntaxParser_Parse(*script, stream, PreProcessorDefinesFromSCIVersion(helper.Version), &log))
+	{
+		warnings.push_back(fmt::format("{0} has syntax errors, so the decompiled scripts have no names of its defines", scriptId.GetFullPath()));
+		return make_unique<Script>(scriptId);
 	}
 	return script;
 }
@@ -57,8 +62,8 @@ class DecompilerConfig : public IDecompilerConfig
 public:
 	DecompilerConfig(const GameFolderHelper &helper, const std::string &includeFolder, const std::string &decompilerIniPath, const SelectorTable &selectorTable) : _selectorTable(selectorTable)
 	{
-		unique_ptr<Script> definesScript = GetDefinesScript(helper, includeFolder, "sci.sh");
-		unique_ptr<Script> keysScript = GetDefinesScript(helper, includeFolder, "keys.sh");
+		unique_ptr<Script> definesScript = GetDefinesScript(helper, includeFolder, "sci.sh", headerWarnings);
+		unique_ptr<Script> keysScript = GetDefinesScript(helper, includeFolder, "keys.sh", headerWarnings);
 
 		try
 		{

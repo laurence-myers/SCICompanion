@@ -60,8 +60,11 @@ modernizing the build. Broad highlights since the previous release:
   and prints each error in the format that Visual Studio and VS Code can
   open. `scic help` shows the commands, `--dry-run` writes nothing, and
   the exit code tells a build script what happened. It refuses a game whose
-  `resource.map` is damaged or empty. It has none of the GUI code in it:
-  the engine is now a library of its own, with no MFC.
+  `resource.map` is damaged or empty, and names the volume files when they
+  are missing. A compile of named scripts prints each error when its script
+  is done, and a decompile warning names its script. A console shows names
+  with their own characters. It has none of the GUI code in it: the engine
+  is now a library of its own, with no MFC.
 * **Eliminated most `asm` fallbacks in the decompiler.** When the decompiler
   could not reconstruct a function's control flow it used to give up and emit
   raw `asm` disassembly. It now rebuilds the control flow into real source, so
@@ -104,7 +107,10 @@ modernizing the build. Broad highlights since the previous release:
   compile that cannot start, or cannot save the class and selector tables,
   says why in the compile output. An `else` clause that is not the last
   clause of a `cond` is a warning: the compiler drops it and the clauses
-  before it.
+  before it. A header that does not parse gives its errors once for a
+  compile of many scripts, a game with no vocabulary gives one error for
+  its synonyms, and a line break of another style than the file's first one
+  is a warning (it does not end a line, as in the script editor).
 * **Fewer crashes on bad or corrupt data.** The decompiler, compiler and
   resource loaders are hardened against malformed, truncated or crafted game
   files, so opening a damaged game no longer crashes the app. Damaged data is
@@ -125,7 +131,9 @@ modernizing the build. Broad highlights since the previous release:
   written. A compile or decompile now also reports a failed write of its
   `.sco`, `.scd` or `.sc` file, and a compile that cannot write its output
   fails and writes nothing of that script, so the game never gets a
-  script without its class table. Before a compile writes into the game's package, it asks what to do
+  script without its class table. A compile whose write is refused puts
+  back the `.sco` and `.scd` files that it changed, and a failed write of
+  the package leaves no `.bak` file. Before a compile writes into the game's package, it asks what to do
   with patch files that would hide the new resources (the game reads a patch
   file first), and it can move them aside to a `replaced-patches` folder.
   When the Decompile dialog prepares the `src` folder, it copies the

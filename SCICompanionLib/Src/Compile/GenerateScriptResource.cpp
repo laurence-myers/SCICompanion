@@ -633,7 +633,8 @@ void _Section3_Synonyms(Script &script, CompileContext &context, vector<BYTE> &o
 	size_t beginning = output.size();
 
 	const SynonymVector &synonyms = script.GetSynonyms();
-	if (!synonyms.empty())
+	// With no vocabulary, one error for the section, not one for each word.
+	if (!synonyms.empty() && !context.ReportIfNoVocabulary(synonyms.front().get(), "a synonym"))
 	{
 		push_word(output, 3);		   // 3 = synonyms
 		uint16_t totalSize = 4 + 2;	 // header plus terminator

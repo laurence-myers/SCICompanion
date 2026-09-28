@@ -51,7 +51,10 @@ public:
 	std::string GetScriptFileName(uint16_t wScript) const;
 	std::string GetScriptObjectFileName(const std::string &title) const;
 	std::string GetScriptObjectFileName(uint16_t wScript) const;
+	// Makes the debug folder, if it is not there.
 	std::string GetScriptDebugFileName(uint16_t wScript) const;
+	// The same path, and no folder is made.
+	std::string GetScriptDebugFilePath(uint16_t wScript) const;
 	std::string GetScriptSymbolFileName(uint16_t wScript) const;
 	std::string GameFolderHelper::GetSrcFolder(const std::string *prefix = nullptr) const;
 	std::string GameFolderHelper::GetMsgFolder(const std::string *prefix = nullptr) const;

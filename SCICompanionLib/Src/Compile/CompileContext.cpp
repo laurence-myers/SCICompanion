@@ -25,6 +25,7 @@
 #include "ResourceMap.h"
 #include "ResourceContainer.h"
 #include "ResourceUtil.h"
+#include "ScriptNameMap.h"
 #include "SyntaxParser.h"
 #include <unordered_map>
 #include "Text.h"
@@ -236,8 +237,16 @@ CompileContext::CompileContext(GameSession &session, Script &script, Precompiled
 	// Load all the sco files for the "use" statements.
 	//
 	const vector<string> &uses = _script.GetUses();
+	const std::shared_ptr<const ScriptNameMap> &names = _resourceMap.Helper().ScriptNames;
 	for (const string &use : uses)
 	{
+		// The .sco of a name in a conflict can be the file of another script
+		// of the conflict.
+		uint16_t conflictNumber;
+		if (names && names->ConflictNumberOf(use, conflictNumber))
+		{
+			ReportWarning(_pErrorScript, "%s is in a name conflict (see scic script list), so the compile can read the .sco file of another script", use.c_str());
+		}
 		_LoadSCO(use, true);
 	}
 
@@ -1095,18 +1104,26 @@ void CompileContext::FixupLocalCalls()
 }
 void CompileContext::PreScanSaid(const std::string &theSaid, const ISourceCodePosition *pPos)
 {
-	if (_tables.Vocab())
+	if (!ReportIfNoVocabulary(pPos, "a Said string"))
 	{
 		ParseSaidString(this, *this, theSaid, nullptr, pPos);
 	}
-	else if (!_reportedNoVocabulary)
+	GetTempToken(ValueType::Said, theSaid);
+}
+bool CompileContext::ReportIfNoVocabulary(const ISourceCodePosition *pPos, const char *what)
+{
+	if (_tables.Vocab())
+	{
+		return false;
+	}
+	if (!_reportedNoVocabulary)
 	{
 		// One error that names the resource, not an error for each word.
 		_reportedNoVocabulary = true;
-		ReportError(pPos, "The game has no vocabulary resource (%s), so a Said string cannot be compiled.",
-			DescribeResource(ResourceType::Vocab, Helper().Version.MainVocabResource).c_str());
+		ReportError(pPos, "The game has no vocabulary resource (%s), so %s cannot be compiled.",
+			DescribeResource(ResourceType::Vocab, Helper().Version.MainVocabResource).c_str(), what);
 	}
-	GetTempToken(ValueType::Said, theSaid);
+	return true;
 }
 void CompileContext::TrackCallOffsetInstruction(WORD wProcIndex)
 {
@@ -1330,7 +1347,14 @@ void PrecompiledHeaders::Update(CompileContext &context, Script &script)
 			if (oldHeader == _allHeaders.end())
 			{
 				auto encounteredIt = nonHeadersEncountered.find(*curHeaderIt);
-				if ((encounteredIt == nonHeadersEncountered.end()) && (failedIncludes.find(*curHeaderIt) == failedIncludes.end()))
+				auto failedBefore = _unparsedHeaders.find(*curHeaderIt);
+				if ((failedBefore != _unparsedHeaders.end()) && failedIncludes.insert(*curHeaderIt).second)
+				{
+					// Its errors are in the log of the first script that
+					// included it: one line here.
+					context.ReportResult(CompileResult(failedBefore->second, CompileResult::CRT_Error));
+				}
+				else if ((encounteredIt == nonHeadersEncountered.end()) && (failedIncludes.find(*curHeaderIt) == failedIncludes.end()))
 				{
 					// It's a header we have not yet encountered. Parse it.
 					std::string includePath = _resourceMap.GetIncludePath(*curHeaderIt);
@@ -1364,6 +1388,7 @@ void PrecompiledHeaders::Update(CompileContext &context, Script &script)
 							ss << "Parsing errors while loading " << scriptId.GetFullPathOrig() << ".";
 							context.ReportResult(CompileResult(ss.str(), CompileResult::CRT_Error));
 							failedIncludes.insert(*curHeaderIt);
+							_unparsedHeaders[*curHeaderIt] = "Parsing errors while loading " + scriptId.GetFullPathOrig() + " (listed for the first script that includes it).";
 						}
 					}
 					else

@@ -488,6 +488,32 @@ namespace UnitTests
             Assert::IsTrue(emptyMap.out.empty() && (emptyMap.err.find("cannot open the game: resource.map is empty") != std::string::npos), Wide(emptyMap.out + emptyMap.err).c_str());
         }
 
+        // A good map whose volume file is not there: the error names the
+        // volume, not a damaged map. A map whose one entry no volume holds
+        // says "its only entry", and a map with only the SCI0 terminator
+        // has no entry.
+        TEST_METHOD(OpenErrors_NameTheVolumeOrTheEntries)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            fs::path map = fs::path(_copyFolder) / "resource.map";
+            fs::path volume = fs::path(_copyFolder) / "resource.001";
+            fs::path moved = fs::path(_copyFolder) / "moved.001";
+            fs::rename(volume, moved);
+            cli::StringConsole noVolume = Expect(3, { "script", "list", _copyFolder });
+            Assert::IsTrue(noVolume.err.find("does not have the volume files that resource.map names: resource.001") != std::string::npos, Wide(noVolume.err).c_str());
+            fs::rename(moved, volume);
+
+            // Script 1 at offset 0 of volume 1 (the header there is another
+            // resource), then the terminator.
+            WriteFileBytes(map.string(), { 0x01, 0x10, 0x00, 0x00, 0x00, 0x04, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff });
+            cli::StringConsole oneEntry = Expect(3, { "script", "list", _copyFolder });
+            Assert::IsTrue(oneEntry.err.find("no volume file holds its only entry") != std::string::npos, Wide(oneEntry.err).c_str());
+
+            WriteFileBytes(map.string(), { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff });
+            cli::StringConsole terminatorOnly = Expect(3, { "script", "list", _copyFolder });
+            Assert::IsTrue(terminatorOnly.err.find("it has no entry") != std::string::npos, Wide(terminatorOnly.err).c_str());
+        }
+
         // Ctrl+C while list reads the scripts: no table, and exit code 7.
         TEST_METHOD(List_CtrlC_ExitsWith7)
         {
@@ -1144,8 +1170,8 @@ namespace UnitTests
         // wrote is exit code 6. Here byte 7 of script 974 (in a patch file)
         // gives a branch a target that is not an instruction, so the second
         // try of the function (a tighter bound) fails too: "Invalid branch
-        // target.", once (the first try fails with no message). The script
-        // is written.
+        // target.", once (the first try fails with no message), with the
+        // script in its text. The script is written.
         TEST_METHOD(Decompile_ADecompilerError_ExitsWith6)
         {
             CopyTemplate("\\TemplateGame\\SCI0");
@@ -1154,7 +1180,7 @@ namespace UnitTests
             size_t errors = 0;
             for (const std::string &line : Lines(console.err))
             {
-                errors += (line == "scic: error: Invalid branch target.") ? 1 : 0;
+                errors += (line == "scic: error: Script 974: Invalid branch target.") ? 1 : 0;
             }
             Assert::AreEqual((size_t)1, errors, Wide(console.err).c_str());
             Assert::IsTrue(console.err.find("Decompiled and wrote 1 of 1 scripts.") != std::string::npos, Wide(console.err).c_str());
@@ -1634,6 +1660,35 @@ namespace UnitTests
             Assert::IsTrue(quiet.err.find("iteration variable") == std::string::npos, Wide(quiet.err).c_str());
         }
 
+        // A compile of one pass prints the diagnostics of each script when
+        // the script is done, not at the end of the run.
+        TEST_METHOD(Compile_OnePass_DiagnosticsAsTheyCome)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            // Door (974) compiles first.
+            std::string source = (fs::path(_copyFolder) / "src" / "door.sc").string();
+            WriteFileText(source, ReadFileText(source) + "\r\n(procedure (c3Undeclared)\r\n\t(return c3NoSuchName)\r\n)\r\n");
+            cli::StringConsole console;
+            Run({ "script", "compile", _copyFolder, "rm001", "door", "--dry-run", "-v" }, console);
+            size_t error = console.err.find("c3NoSuchName");
+            size_t first = console.err.find("] Compiling ");
+            size_t second = (first == std::string::npos) ? std::string::npos : console.err.find("] Compiling ", first + 1);
+            Assert::IsTrue((error != std::string::npos) && (second != std::string::npos) && (first < error) && (error < second), Wide(console.err).c_str());
+        }
+
+        // A script that uses a script in a name conflict gets a warning: the
+        // .sco of the name can be the file of the other script.
+        TEST_METHOD(Compile_AUseOfANameInAConflict_IsAWarning)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            // With no game.ini, the two sources of script 974 give it two
+            // names.
+            fs::remove(fs::path(_copyFolder) / "game.ini");
+            fs::copy_file(fs::path(_copyFolder) / "src" / "door.sc", fs::path(_copyFolder) / "src" / "DoorCopy.sc");
+            cli::StringConsole console = Expect(0, { "script", "compile", _copyFolder, "rm001", "--dry-run" });
+            Assert::IsTrue(console.err.find("warning : door is in a name conflict") != std::string::npos, Wide(console.err).c_str());
+        }
+
         // An else clause that is not the last clause of a cond is a warning,
         // with its line and column: the parser drops it and the clauses
         // before it. The summary counts it; --quiet hides it.
@@ -1694,6 +1749,19 @@ namespace UnitTests
                 L"setup: a run changes the .sco");
         }
 
+        // A console gets the characters of the ANSI code page, not its bytes:
+        // in code page 1252, the byte E9 is e with an acute accent.
+        TEST_METHOD(AnsiToWide_GivesTheCharacters)
+        {
+            if (GetACP() != 1252)
+            {
+                Logger::WriteMessage(L"skipped: the ANSI code page is not 1252");
+                return;
+            }
+            Assert::IsTrue(std::wstring(L"caf\x00E9") == cli::AnsiToWide("caf\xE9"));
+            Assert::IsTrue(cli::AnsiToWide("").empty());
+        }
+
         // AbsolutePath removes a separator at the end, but not the one of a
         // root: a drive, a device path, a volume or a UNC share.
         TEST_METHOD(AbsolutePath_KeepsTheSeparatorOfARoot)
@@ -1709,6 +1777,10 @@ namespace UnitTests
             Assert::AreEqual(std::string("\\\\?\\UNC\\server\\share\\"), cli::AbsolutePath("\\\\?\\UNC\\server\\share\\"));
             Assert::AreEqual(std::string("\\\\server\\share\\game"), cli::AbsolutePath("\\\\server\\share\\game\\"));
             Assert::AreEqual(std::string("\\\\?\\UNC\\server\\share\\game"), cli::AbsolutePath("\\\\?\\UNC\\server\\share\\game\\"));
+            Assert::AreEqual(std::string("\\\\.\\UNC\\server\\share\\"), cli::AbsolutePath("\\\\.\\UNC\\server\\share\\"));
+            Assert::AreEqual(std::string("\\\\.\\UNC\\server\\share\\game"), cli::AbsolutePath("\\\\.\\UNC\\server\\share\\game\\"));
+            Assert::AreEqual(std::string("\\\\?\\GLOBALROOT\\Device\\HarddiskVolume1\\"), cli::AbsolutePath("\\\\?\\GLOBALROOT\\Device\\HarddiskVolume1\\"));
+            Assert::AreEqual(std::string("\\\\?\\GLOBALROOT\\Device\\HarddiskVolume1\\game"), cli::AbsolutePath("\\\\?\\GLOBALROOT\\Device\\HarddiskVolume1\\game\\"));
         }
 
         // A relative game folder gives absolute paths in the MSBuild lines

@@ -78,6 +78,15 @@ namespace UnitTests
             Assert::AreEqual((int)0xCD, (int)dest[5], L"must not write past declared size");
         }
 
+        // A token that is not in the table yet (here 0x1FF, the first token)
+        // is damaged data: the decoder fails.
+        TEST_METHOD(LZW_TokenNotInTheTable_Fails)
+        {
+            BYTE src[] = { 0xFF, 0x01 };
+            BYTE dest[4] = {};
+            Assert::AreEqual(-1, decompressLZW(dest, src, (int)sizeof(dest), (int)sizeof(src)));
+        }
+
         // (b)+(a) STAC/LZS: putByte had no output bound. Declare the unpacked
         // size smaller than the literal run the stream produces; the surplus
         // literals must be dropped, not written past the buffer.

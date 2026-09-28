@@ -223,7 +223,7 @@ void CMessageDoc::PostSuccessfulSave(const ResourceEntity *pResource)
 		{
 			int mapContext = pResource->ResourceNumber;
 			std::unique_ptr<AudioCacheResourceSource> resourceSource = std::make_unique<AudioCacheResourceSource>(&map, map.Helper(), mapContext, ResourceSourceAccessFlags::ReadWrite);
-			resourceSource->SaveOrRemoveNegatives(audioNegatives);
+			ShowWriteError(resourceSource->SaveOrRemoveNegatives(audioNegatives));
 		}
 
 		// Ok, we've commited the modified/new entries.
@@ -243,7 +243,7 @@ void CMessageDoc::PostSuccessfulSave(const ResourceEntity *pResource)
 		{
 			int mapContext = pResource->ResourceNumber;
 			std::unique_ptr<AudioCacheResourceSource> resourceSource = std::make_unique<AudioCacheResourceSource>(&map, map.Helper(), mapContext, ResourceSourceAccessFlags::ReadWrite);
-			resourceSource->RemoveEntries(mapContext, deletedTuples);
+			ShowWriteError(resourceSource->RemoveEntries(mapContext, deletedTuples));
 		}
 
 		// Keep our list of original tuples up-to-date

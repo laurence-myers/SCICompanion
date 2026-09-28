@@ -122,6 +122,25 @@ namespace UnitTests
             Assert::AreEqual(std::string("format"), DataErrorCode([&]() { stream >> word; }), L"a read past the end must throw a DataError");
         }
 
+        // The same for a struct read (the template operator>>) and read_data.
+        TEST_METHOD(DataError_StructAndDataReadPastTheEnd_IsFormat)
+        {
+            uint8_t bytes[3] = { 1, 2, 3 };
+            sci::istream stream(bytes, 3);
+            stream.setThrowExceptions(true);
+            uint32_t value = 0;
+            Assert::AreEqual(std::string("format"), DataErrorCode([&]() { stream >> value; }), L"a struct read past the end must throw");
+            Assert::AreEqual(0u, stream.tellg(), L"the failed read puts the index back");
+            uint8_t buffer[4] = {};
+            Assert::AreEqual(std::string("format"), DataErrorCode([&]() { stream.read_data(buffer, 4); }), L"read_data past the end must throw");
+
+            // Without throw mode, the struct is zero and the state fails.
+            sci::istream quiet(bytes, 3);
+            value = 5;
+            quiet >> value;
+            Assert::IsTrue((value == 0) && !quiet.good());
+        }
+
         // Some catch sites catch std::exception; a DataError must still reach them.
         TEST_METHOD(DataError_TooLarge_IsUnsupportedAndAStdException)
         {

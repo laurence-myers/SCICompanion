@@ -19,6 +19,9 @@ struct TextPos
 struct ScriptText
 {
     std::vector<std::string> lines; // At least one line.
+    // The first line (0-based) whose text has a CR or an LF: a line break of
+    // another style than the file's, which does not end a line. -1 for none.
+    int firstOtherBreakLine = -1;
 };
 
 // Splits file contents into lines as the script editor does

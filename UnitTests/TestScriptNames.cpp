@@ -17,6 +17,7 @@
 #include "TestSupport.h"
 #include <filesystem>
 #include <map>
+#include <mbctype.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -393,7 +394,43 @@ namespace UnitTests
         NoAppState _noAppState;
         GameCopy _game;
 
+        // Sets the multibyte code page of the C runtime for its life.
+        struct MultibyteCodePage
+        {
+            explicit MultibyteCodePage(int codePage) : previous(_getmbcp()) { Assert::AreEqual(0, _setmbcp(codePage), L"setup: the code page"); }
+            ~MultibyteCodePage() { _setmbcp(previous); }
+            int previous;
+        };
+
     public:
+        // In code page 932 (Shift-JIS), the second byte of the character 83 5C
+        // is '\': it does not split the file name from the folder.
+        TEST_METHOD(ScriptId_ADoubleByteCharacterEndsWith5C)
+        {
+            MultibyteCodePage shiftJis(932);
+            const std::string name = std::string("\x83\x5C") + "x.sc";
+            ScriptId script("C:\\game\\src\\" + name);
+            Assert::AreEqual(name, script.GetFileNameOrig());
+            Assert::AreEqual(std::string("C:\\game\\src\\") + name, script.GetFullPathOrig());
+        }
+
+        // GetScriptNumber compares the names of game.ini by characters: in
+        // code page 932, 83 41 and 83 61 are two characters whose second
+        // bytes differ only in case.
+        TEST_METHOD(GetScriptNumber_ComparesDoubleByteCharacters)
+        {
+            MultibyteCodePage shiftJis(932);
+            _game.Make(TemplateSci0);
+            const std::string listed = std::string("\x83\x61") + "room";
+            const std::string other = std::string("\x83\x41") + "room";
+            Assert::IsTrue(WritePrivateProfileStringA("Script", "n901", listed.c_str(), _game.Path("game.ini").c_str()) != 0);
+            GameSession &session = _game.Open(SessionOptions());
+            WORD number = 0;
+            Assert::IsTrue(SUCCEEDED(session.ResourceMap().GetScriptNumber(ScriptId(_game.Src(listed + ".sc")), number)));
+            Assert::AreEqual((WORD)901, number);
+            Assert::IsTrue(FAILED(session.ResourceMap().GetScriptNumber(ScriptId(_game.Src(other + ".sc")), number)), L"another character");
+        }
+
         // With no game.ini, the file names come from src\.
         TEST_METHOD(NoGameIni_TheHelperNamesTheFilesFromSrc)
         {

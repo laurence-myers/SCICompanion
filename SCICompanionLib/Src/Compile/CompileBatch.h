@@ -66,7 +66,8 @@ struct ScriptOutcome
     // an earlier pass stays until Finish, which writes nothing when a script
     // of the commit uses it, and then puts back the .sco of each script that
     // the commit does not write. The debug file comes after the .sco, and
-    // one that cannot be written is a warning; it is not put back.
+    // one that cannot be written is a warning; Finish puts it back with the
+    // .sco.
     sci::Status status;
     std::vector<CompileResult> diagnostics;
     // The sizes of the compiled script (the GUI shows them).
@@ -90,21 +91,26 @@ struct CompileReport
     // The tables that the commit writes (a dry run: would write): vocab 996
     // and 997 when they changed.
     std::vector<WrittenResource> tablesWritten;
+    // A write into an output folder that failed part of the way (commit is
+    // then its error): the files that it wrote before the failure. They
+    // stay.
+    std::vector<WrittenResource> keptWrites;
     // With ShadowPolicy::Replace: Ok, or an Io error that names each patch
     // file that could not move (it still hides the package write).
     sci::Status moves;
-    // The .sco files that the batch changed for a script that the commit
-    // does not write (all of them when the commit is refused or fails, or
-    // in a dry run; a write into an output folder that fails part of the
-    // way keeps the .sco of each script whose files it wrote) go back to
-    // their bytes from
-    // before the batch: Ok, or an Io error that names each file that could
-    // not go back (it describes a script that the game does not have).
+    // The .sco and .scd files that the batch changed for a script that the
+    // commit does not write (all of them when the commit is refused or
+    // fails, or in a dry run; a write into an output folder that fails part
+    // of the way keeps the files of each script whose files it wrote) go
+    // back to their bytes from before the batch: Ok, or an Io error that
+    // names each file that could not go back (it describes a script that the
+    // game does not have).
     sci::Status objectFiles;
-    // The .sco files that went back to their bytes from before the batch.
-    std::vector<std::string> restoredObjectFiles;
-    // The new .sco files that went, because there was no file before the
+    // The .sco and .scd files that went back to their bytes from before the
     // batch.
+    std::vector<std::string> restoredObjectFiles;
+    // The new .sco and .scd files that went, because there was no file
+    // before the batch.
     std::vector<std::string> removedObjectFiles;
     // The abort flag stopped the batch.
     bool cancelled = false;
@@ -200,6 +206,7 @@ public:
     // writes the files of the tables, then those of the scripts that
     // compiled (WriteStagedOutputFiles; a dry run checks them only). A dry
     // run into the game's patch files checks that each patch file can be
+    // replaced, and one into the package that the map and the volume can be
     // replaced. Then it puts back the .sco files of the scripts that the
     // commit does not write (report.objectFiles): a write of the output
     // folder that fails part of the way keeps the .sco of each script whose
@@ -262,6 +269,12 @@ private:
         // It existed, and could not be read: it is not put back.
         bool unreadable = false;
         std::vector<uint8_t> bytes;
+        // The debug file (.scd), the same way, when the batch writes debug
+        // files: it goes back with the .sco, when it changed.
+        std::string debugPath;
+        bool debugExisted = false;
+        bool debugUnreadable = false;
+        std::vector<uint8_t> debugBytes;
     };
     std::vector<ObjectFileBefore> _objectFilesBefore;
     // The patch files that the policy or askShadows answered for, so the

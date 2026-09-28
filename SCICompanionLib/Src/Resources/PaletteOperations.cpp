@@ -28,6 +28,19 @@ const uint16_t palVersion = 0x0300;
 
 PaletteComponent g_egaDummyPalette;
 
+namespace
+{
+	// The EGA colors in a palette, for when one is needed; filled when the
+	// program starts.
+	struct EgaDummyPalette
+	{
+		EgaDummyPalette()
+		{
+			memcpy(g_egaDummyPalette.Colors, g_egaColors, sizeof(g_egaColors));
+		}
+	} egaDummyPalette;
+}
+
 uint32_t ToUint32(const char *marker)
 {
 	return *static_cast<const uint32_t *>(static_cast<const void *>(marker));

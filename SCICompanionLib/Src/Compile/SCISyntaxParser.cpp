@@ -1783,8 +1783,8 @@ void PostProcessScript(ICompileLog *pLog, Script &script)
 					{
 						// A warning: the else clause and the clauses before it
 						// are not compiled.
-						pLog->ReportResult(CompileResult("The else clause must be the last clause in a cond; it and the clauses before it are not compiled.", script.GetScriptId(),
-							clause->GetPosition().Line() + 1, clause->GetPosition().Column(), CompileResult::CRT_Warning));
+						pLog->ReportResult(CompileResult::AtLine(false, script.GetScriptId(), clause->GetPosition().Line() + 1, clause->GetPosition().Column(),
+							"The else clause must be the last clause in a cond; it and the clauses before it are not compiled."));
 					}
 					break;
 				}
@@ -1873,8 +1873,7 @@ void PostProcessScript(ICompileLog *pLog, Script &script)
 	{
 		for (auto &warning : unimplementedWarnings)
 		{
-			std::string text = warning + " ignored - not implemented";
-			pLog->ReportResult(CompileResult(text, script.GetScriptId(), 1, 0, CompileResult::CompileResultType::CRT_Warning));
+			pLog->ReportResult(CompileResult::AtLine(false, script.GetScriptId(), 1, 0, warning + " ignored - not implemented"));
 		}
 	}
 }

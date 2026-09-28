@@ -9,99 +9,34 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 ## Next
 
 - The work plan of plan section 9 is done, E1 included. Left: the open
-  items below. The review findings below are nits; fix them when their
-  code changes.
+  items below, most of them limits with a reason.
 - Start a new session for each milestone (AGENTS.md, "Work with AI
   agents").
 - Push and pull requests only with your approval.
 
-## Review findings that are not fixed
+## Questions for you
 
-### `0577fab0` (the nits of the decompile batch): 1 nit
-
-- Test gaps: no test covers three parts of the decompile run. A
-  negative check that broke all three together passed TestCli and
-  TestDecompileRun.
-  - A dry run gives the stale check only the source of a `.sc` that
-    passed its write check. A dry-run form of
-    `StaleCheck_AFailedScriptOfTheGroup` would cover it.
-  - Pass 2 records a `.sco` that it changed (`_changedObjectFiles`).
-    Without it, `decompile 0 994 -v` on the SCI0 template, after
-    `decompile 0` with no `.sco` files, prints no line for `Main.sco`,
-    which changed.
-  - A `.sco` that an earlier group changed stays changed
-    (`objectFileChanged` across groups).
-
-### `5cf8c32e` (the nits of the compile batch): 3 nits
-
-- Ctrl+C of scic (another thread) that comes after the second abort check
-  of a new pass, while `Step` withdraws the finished pass, is seen at the
-  check before the first script of the new pass: the finished pass is
-  lost, the commit writes nothing, and `-v` has printed "Pass 2" while
-  `report.passes` is 1. The window is as small as the one that was fixed.
-  A fix: no abort check in the `Step` that has just started a pass.
-- A write into an output folder that fails part of the way keeps its
-  files, and its error names them, but the summary says "wrote none" and
-  no "wrote" line lists them.
-- A dry run with `--to package` does not check the package files: a
-  read-only `resource.001` fails the run (exit 9), and the dry run gives
-  0.
-
-### `847e59cc` (the answers to the questions, `--log`): 2 nits
-
-- A good map whose volume file is missing (a CD install with the volumes
-  on the CD) gives "resource.map is damaged: no volume file holds any of
-  its first N entries": the text blames the map. A map with only a
-  terminator says "its first 1 entries".
-- In the GUI output pane, the warning "The else clause must be the last
-  clause in a cond; ..." has only its raw text (no "Warning:", file or
-  line), as the "not implemented" warnings of `SCISyntaxParser.cpp`; the
-  warnings of `CompileContext::_ReportThing` have that form.
-
-### `8cf2f927` (the nits of the tests and of the build): 4 nits
-
-- A third-party notice named `License.txt`, `COPYING` or `COPYING2` in
-  `Files\Licenses` is copied by the mirror, and the next copy (SCI
-  Companion's own licence) replaces it in each build. No file there has
-  such a name now.
-- `AbsolutePath` removes the separator of `\\.\UNC\server\share\` and of
-  `\\?\GLOBALROOT\Device\HarddiskVolume1\`.
-- `Write-PendingRows` of the sweep script: a write smaller than the
-  buffer of the `FileStream` (4 KB) fails in the flush of `SetLength` or
-  of `Dispose`, so there is no cut-back, and the error is the one of
-  `Dispose`. A fix: a stream with a buffer of 1 byte.
-- When `vcpkg.json` is gone (for example a checkout of `master`), the
-  read tlog `ScicVcpkgManifest.read.1u.tlog` of each project stays and
-  names it; the up-to-date check of Visual Studio may then see the
-  projects as never up to date, until a Clean (not tried).
-
-### `b2866e18` (E1): 3 nits
-
-- No test checks that `AppState` installs the MFC exception mapper: the
-  `TestResult` tests install it themselves. Without the call, a
-  `CFileException` in the GUI gives Internal, and the `CException` leaks.
-- `CreateBitmapFromResource` (`RasterOperations.cpp`): when the
-  `make_unique` of the copy buffer throws, the DIB section of
-  `CreateDIBSection` leaks (the `CBitmap` destructor freed it before).
-- `ScriptId::_Init` and `GetScriptNumber` compare bytes (`rfind`,
-  `_stricmp`); the `CString` forms before knew double-byte characters, so
-  a Shift-JIS path whose trail byte is `\` splits in another place.
+- The shipped SCI1.1 template is out of date: its compiled `Main` exports
+  15 slots and `Main.sc` lists 13 (the compiled script has the procedures
+  `AddPolygonsToRoom` and `CreateNewPolygon`, which `Main.sc` does not
+  have); the compiled `DebugHandler` exports `dInvD` in slot 1, which its
+  source does not list (`script sco` warns). A fix changes the shipped
+  game: compile the template again from its sources (the decompile
+  snapshots of `UnitTests\Files\Decompile\Snapshots\SCI1.1` then change),
+  or put the two procedures and the export back into the sources. Which
+  one?
 
 ## Known gaps
+
 ### Command line
 
-- Names go to the console as bytes of the ANSI code page, with no
-  conversion.
-- A compile prints its diagnostics at the end, not as they come. A script
-  that failed only in an earlier pass has no error line.
-- One error in `game.sh` prints once for each script of `--all` (the
-  header cache keeps only the headers that parsed). An error in an include
-  that is not a header names the including script and the line of the
-  include.
-- The debug files (`.scd`) do not go back after a refused commit.
-- The decompile summary names the failed scripts by number (their errors
-  printed when they happened). A decompile warning has no script in its
-  text (`-v` shows the progress line).
+- A compile of `--all` with more than one pass prints its diagnostics at
+  the end (those of the last pass: a script that failed only in an earlier
+  pass compiled in the last, so it has no error line). A run of one pass
+  prints them as each script is done.
+- An error in an include that is not a header names the including script
+  and the line of the include (the merge moves the include's code into the
+  script).
 - The corpus sweep of 2026-09-24 (93 folders): script 755 of KQ5 (EGA and
   floppy) fails with "invalid map<K, T> key" `[internal]` (a task of
   another session works on it); script 995 of Hoyle 3 cannot be read;
@@ -110,31 +45,28 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   not compile back with 0 errors (limits of the decompiler); Willy
   Beamish is not supported (its map does not open: exit 3, "its lookup
   table has no end").
+- A decompile warning of the naming rounds (between the passes) has no
+  script in its text: the rounds give no message for each script.
 
 ### Compile and decompile
 
-- The decompiler's config does not report a missing or broken `sci.sh`
-  or `keys.sh`: the enum names are lost with no message
-  (`GetDefinesScript`).
-- The editor's line rule stays: a bare LF in a CR LF file does not start a
-  line, so the line of a diagnostic can differ from other editors. A
-  CR-only file is one line; one that starts with `;` compiles to an empty
-  script with no error. No warning tells about such a file.
+- The editor's line rule stays (the GUI and the compiler agree on the
+  lines): a bare LF in a CR LF file, or a CR alone, does not start a line.
+  The compile warns at the first such line.
 - A `(script# X)` whose define comes from an include outside `src\` is not
-  read; the name then comes from the `.sco`, or is `nNNN`.
-- A script that uses a script in a name conflict compiles with the `.sco`
-  that the two names share, with no warning.
+  read; the name then comes from the `.sco`, or is `nNNN`. The name map
+  has no data folder, so it does not read the headers of `include\`.
 - An old `.sco` that lacks an export: with no slot 1 in the `Obj.sco` of
   the SCI0 template, the procedure is `proc999_1` but its calls stay
   `localproc_0022` ("Unknown procedure"); with no slot 2, two procedures
   get the name `proc999_2` (older than the branch).
-- A script name in `game.ini` with `\` or `/` is not supported.
-  `ScriptId("rm110.sc").GetFullPath()` gives `\rm110.sc`.
+- The GUI reads `game.ini` itself, so a script name there with `\` or `/`
+  still gives it a path; `scic` does not use such a name, and `list` warns.
 - The class-table changes of a script that fails stay in the tables of the
   batch (a species with no class; nothing uses it).
 - The `.sco` files that `script sco` makes have other string property
-  values than the compiler's, so the first compile after `script sco`
-  writes them again.
+  values than the compiler's (the compiler writes temporary string tokens
+  there), so the first compile after `script sco` writes them again.
 - The compiler gives each class its species by position
   (`GenerateScriptResource.cpp`): a leftover class, or classes that moved
   in a source, move species. `SpeciesTable::Load` keeps the positional
@@ -144,48 +76,43 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   syntax colouring shows `#dungeon#` as `#dungeon` and `#`. An instance
   named `if#x` or `if_x` does not compile again (`KeywordP` ends a keyword
   at any character that is not a letter or a digit).
-- A synonym in a game with no vocabulary gives one error for each word.
-- The shipped SCI1.1 template is out of date: the compiled `Main` has 15
-  exports and `Main.sc` lists 13; `DebugHandler` exports `dInvD@1`, which
-  its source does not have (`script sco` warns).
 - The decompile run loads the lookups for each run, and the stale check
   reads every `.sc` of the game, except those of the group, once for each
   group (time only).
 
 ### Build and CI
 
-- CI has no vcpkg cache: each job downloads the tools and the sources of
-  vcpkg (about 175 MB) and builds the two ports.
+- The CI cache of vcpkg (`VCPKG_DOWNLOADS` and the binary cache, keyed on
+  `vcpkg.json`) is checked by inspection only: the next CI run shows it.
 - The CI fetch step of the vcpkg registry is checked by inspection only:
   vcpkg reads the baseline and the ports from the git objects that the
   fetch gives. A runner image that is older than the baseline was not
   tried.
+- When `vcpkg.json` is gone (for example a checkout of `master`), the
+  read tlog `ScicVcpkgManifest.read.1u.tlog` of each project stays and
+  names it; the up-to-date check of Visual Studio may then see the
+  projects as never up to date, until a Clean (not tried). The build of
+  `master` does not run the target of this branch, so only the merge (or
+  a Clean) ends it.
 
 ### Engine and resources
 
-- The package writer leaves `resource.map.bak` and `resource.00N.bak` when
-  it cannot replace a volume or the map (the game stays consistent).
 - A patch rename can fail after the checks (another program locks the file
   at that moment); the renames before it stay done.
-- `WriteBytesToFile` is not atomic.
-- `AudioCacheResourceSource::RemoveEntries` swallows its errors, and saves
-  its audio map through `AppendResource` (the form that shows the error
-  in a message box).
+- `WriteBytesToFile` is not atomic: it writes the file in place, with the
+  sharing that the dry-run checks copy (`CheckFileCanBeReplaced`). A write
+  through a temporary file and a rename would change the sharing and the
+  attributes of the file.
 - `WriteResource(entity)` gives `Cancelled` when `PerformChecks` says no.
   With no GUI, a yes/no check gets "no", and some checks are not a choice
   (duplicate message tuples, an audio map entry over 16 MB). The script
   commands do not reach them.
-- In throw mode, a struct read (`operator>>`, also for `int16_t` and
-  `uint32_t`) gives zeros, and `read_data` keeps its buffer; both only set
-  the fail state.
-- The SCI0 LZW decoder finds no errors in bad data.
+- The SCI0 LZW decoder fails on a token that is not in its table; other
+  damage (a stream that ends before its output is full) still gives no
+  error.
 - An SCI2.1 package header has no type mark, so a zeroed header of view 0
   reads as a valid empty resource. Damage that sets only the two sizes to
   0 reads as an empty resource.
-- Empty `catch (...)` blocks stay in the allowlist:
-  `AudioCacheResourceSource.cpp`, `CodeInspector.h` (on the script paths:
-  an exception ends the walk of the version detection with no message),
-  `PhonemeDialog.cpp`, `LipSyncutil.cpp`, `TalkerToViewMap.cpp`, `Task.h`.
 - The Decompile dialog's "Reset filenames" protects no file (older than
   the branch). The dialog names the scripts through `game.ini`, so it
   needs a GUI helper with no name map.
@@ -194,39 +121,31 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 - A file of `Src\Util` is in the core or in the GUI library by its project
   (`SCICompanionCore.vcxproj`); its folder does not tell.
-- The audio cache sources that `GameFolderHelper::Resources` makes for a
-  read have no resource map: a write through one would dereference null.
-  The writes come through `CreateResourceSource`, which gives the map.
 - The MFC guard of the core (`__ATLDBGMEM_H__` in its precompiled header)
-  stops the compile with a text about `<atldbgmem.h>`.
-- The `AppState` constructor fills `g_egaColorsExtended` and
-  `g_egaColorsMixed`; with no GUI they are zero (only GUI commands use
-  them).
-- `ShowTextFile` and `ShowFile` are declared in `sci.h` and defined in the
-  GUI library (`WindowsUtil.cpp`): a core file that calls them builds, and
-  only the link of `scic.exe` fails.
-- `_IsKeyword` in `ScriptView.cpp` has no caller.
+  stops the compile with a text about `<atldbgmem.h>` (the text of
+  `afx.h`; the comment in the header explains it).
 
 ### No test (checked by inspection only)
 
 - The GUI hooks of E1: the message box, the pic-check dialog, the
   script-removal dialog of `AppState::OnLastScriptDeleted`, the pen pattern
   bitmap of `RasterView` (`CreatePatternBits`), and the output pane of the
-  WAV conversion notes. Before E1, the enumeration of the audio cache files
-  with no `AppState` dereferenced null, and the delete of the last copy of
-  a script opened a modal dialog: the new tests of `TestGameSession` pass,
-  but no test ran on the code before E1.
+  WAV conversion notes.
 - A Ctrl+C of `list` while it reads the scripts: the tests set the flag
   before the read (nothing prints or calls back during the read).
+- A Ctrl+C of a compile that comes after the second abort check of a new
+  pass: the `Step` that starts a pass compiles its first script with no
+  other check (no test can set the flag between the two).
 - A running Visual Studio after a change of `vcpkg.json`: the build sets
   the hash at each build, and a read tlog names `vcpkg.json` for the
   up-to-date check (checked from the command line, not in Visual Studio).
-- A write of `sweep.csv` that fails part of the way: a test with an
-  injected failure only (no full disk).
+- A write of `sweep.csv` that fails part of the way (the stream now has a
+  buffer of 1 byte, so the write gives the error and the cut-back runs).
 - The Ctrl+C handler itself (the tests set the cancel flag), the core-log
   error line, the pure-call handler, a second `abort()` on another thread
   (an abort of two threads at the same moment can still exit with 3), the
-  lock of `CliOutput`.
+  lock of `CliOutput`. The console output of `StdConsole` (a console gets
+  UTF-16 with `WriteConsoleW`; the tests use a string console).
 - The compile dialog, the shadow question, the Decompile dialog,
   `MainFrm.cpp` and `ScriptDocument.cpp`; 7 of the 8 parser sites that
   give a 1-based line.
@@ -235,10 +154,11 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 - The tables-first order of an output-folder write, and the change count
   of a compile that throws.
 - A write into an output folder that fails after its check (a full disk):
-  the `.sco` of each script whose files it wrote stays, and the error
-  names the files that stay. No test can make the write fail after the
-  check. A patch rename that fails after the checks puts back the `.sco`
-  of every script, also of the scripts whose renames were done.
+  the files of each script that it wrote stay, the error names them, the
+  summary counts them and `-v` lists them (`report.keptWrites`). No test
+  can make the write fail after the check. A patch rename that fails after
+  the checks puts back the `.sco` of every script, also of the scripts
+  whose renames were done.
 - The core-log warnings in the count of the compile summary (the test
   covers a warning of the selection).
 - A throw inside a namer keeps the global names that it found
@@ -248,6 +168,11 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   the 710 bytes of script 974 of the SCI0 template, each +1, 43 give the
   message, and in each both tries fail). The test checks one message
   for a function whose two tries fail.
+- The DIB section of `CreateBitmapFromResource` that goes when the copy
+  buffer cannot be allocated; the audio cache source made for a read that
+  refuses a write (Internal); `RemoveEntries` and `SaveOrRemoveNegatives`
+  of the audio cache, which give their errors to the GUI; the empty
+  `catch (...)` blocks that now log through `CoreLogCurrentException`.
 
 ## Outside this branch
 
@@ -259,6 +184,8 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   its fix. Delete them?
 - The local branch `backup/scic-cli-before-vcpkg` has the history before
   the vcpkg change, with the copied headers. Delete it?
+- The manual worktree `I:\Code\Esoteric\scic-rv1` (detached at `847e59cc`,
+  with a partial copy of `vcpkg_installed`). Delete it?
 - 49 files that `master` added in 2026 have a copyright header; your rule
   says that a new file has none. A task on `master` can remove them.
 - The `.gitignore` of `master` does not ignore `vcpkg_installed/`: after a

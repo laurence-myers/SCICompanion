@@ -3,6 +3,8 @@
 #include "Result.h"
 #include "TestSupport.h"
 #include "MfcExceptionMapper.h"
+#include "AppState.h"
+#include <memory>
 #include <string>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -218,6 +220,15 @@ namespace UnitTests
             Status status = Guard("", []() -> Status { AfxThrowFileException(CFileException::fileNotFound, -1, _T("missing.txt")); });
             AssertCode(ErrorCode::Io, status.error());
             Assert::IsFalse(status.error().message.empty());
+        }
+
+        // The GUI installs the mapper: AppState's constructor does it.
+        TEST_METHOD(AppState_InstallsTheMfcMapper)
+        {
+            ScopedMapper none(nullptr);
+            std::unique_ptr<AppState> app = std::make_unique<AppState>(nullptr);
+            Status status = Guard("", []() -> Status { AfxThrowFileException(CFileException::fileNotFound, -1, _T("missing.txt")); });
+            AssertCode(ErrorCode::Io, status.error());
         }
 
         TEST_METHOD(Guard_CUserException_IsInternal)

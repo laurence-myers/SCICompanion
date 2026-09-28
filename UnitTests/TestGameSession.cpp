@@ -24,6 +24,9 @@
 #include "ResourceEntity.h"
 #include "ResourceBlob.h"
 #include "ResourceContainer.h"
+#include "PaletteOperations.h"
+#include "View.h"
+#include "crc.h"
 #include <set>
 #include <sstream>
 #include <filesystem>
@@ -71,6 +74,18 @@ namespace UnitTests
                 CleanUpGame(_gameFolder);
                 _gameFolder.clear();
             }
+        }
+
+        // The core fills its tables when the program starts, not the
+        // AppState: scic has none.
+        TEST_METHOD(CoreTables_FilledAtTheStart)
+        {
+            Assert::IsTrue(memcmp(g_egaColorsExtended + 240, g_egaColors, sizeof(g_egaColors)) == 0, L"g_egaColorsExtended");
+            Assert::IsTrue(g_egaColorsMixed[0xff].rgbBlue > 0xf0, L"g_egaColorsMixed: white with white");
+            Assert::IsTrue(memcmp(g_egaDummyPalette.Colors, g_egaColors, sizeof(g_egaColors)) == 0, L"g_egaDummyPalette");
+            Assert::AreEqual(255, (int)g_vgaPaletteMapping[255], L"g_vgaPaletteMapping");
+            unsigned char data[] = { '1', '2', '3', '4', '5', '6', '7', '8', '9' };
+            Assert::AreNotEqual(0u, (unsigned)crcFast(data, (int)sizeof(data)), L"the CRC table");
         }
 
         TEST_METHOD(Open_Templates_WorkWithNoAppState)
