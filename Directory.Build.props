@@ -51,20 +51,25 @@
   </PropertyGroup>
 
   <!--
-    vcpkg gives the header-only libraries in vcpkg.json (manifest mode). The
-    vcpkg folder: the VCPKG_ROOT environment variable, else
+    vcpkg gives the libraries in vcpkg.json (manifest mode). The vcpkg
+    folder: the VCPKG_ROOT environment variable, else
     VCPKG_INSTALLATION_ROOT (the GitHub runners), else the copy that the
     Visual Studio component "vcpkg package manager" installs. The packages
     go into vcpkg_installed\, which git ignores. Only SCICompanionCore runs
     vcpkg install; the other projects build after it and read the same
     folder. A change of vcpkg.json rebuilds the projects (see
-    Directory.Build.targets).
+    Directory.Build.targets). The triplet is triplets\x86-windows-static-v143
+    (an overlay that vcpkg.json names): vcpkg compiles CLI11 into
+    CLI11.lib with the toolset of the projects and the static C runtime
+    (/MT), as the projects link it; vcpkg links the library into each
+    program.
   -->
   <PropertyGroup Condition="!$(MSBuildProjectName.StartsWith('ProfUISLIB'))">
     <ScicVcpkgRoot Condition="'$(VCPKG_ROOT)' != ''">$(VCPKG_ROOT)</ScicVcpkgRoot>
     <ScicVcpkgRoot Condition="'$(ScicVcpkgRoot)' == '' and '$(VCPKG_INSTALLATION_ROOT)' != ''">$(VCPKG_INSTALLATION_ROOT)</ScicVcpkgRoot>
     <ScicVcpkgRoot Condition="'$(ScicVcpkgRoot)' == ''">$(VsInstallRoot)\VC\vcpkg</ScicVcpkgRoot>
     <VcpkgEnableManifest>true</VcpkgEnableManifest>
+    <VcpkgTriplet>x86-windows-static-v143</VcpkgTriplet>
     <VcpkgManifestInstall Condition="'$(MSBuildProjectName)' != 'SCICompanionCore'">false</VcpkgManifestInstall>
   </PropertyGroup>
   <Import Condition="!$(MSBuildProjectName.StartsWith('ProfUISLIB')) and Exists('$(ScicVcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.props')"

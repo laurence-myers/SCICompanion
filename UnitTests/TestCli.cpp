@@ -595,13 +595,13 @@ namespace UnitTests
 
             cli::StringConsole help;
             Assert::AreEqual(0, cli::RunCli({ "help" }, help));
-            Assert::IsTrue(help.out.find("Usage: scic") != std::string::npos && help.out.find("script") != std::string::npos, Wide(help.out).c_str());
+            Assert::IsTrue(help.out.find("\nscic [OPTIONS]") != std::string::npos && help.out.find("script") != std::string::npos, Wide(help.out).c_str());
             cli::StringConsole helpList;
             Assert::AreEqual(0, cli::RunCli({ "help", "script", "list" }, helpList));
-            Assert::IsTrue(helpList.out.find("Usage: scic script list") != std::string::npos, Wide(helpList.out).c_str());
+            Assert::IsTrue(helpList.out.find("\nscic script list [OPTIONS]") != std::string::npos, Wide(helpList.out).c_str());
             cli::StringConsole dashH;
             Assert::AreEqual(0, cli::RunCli({ "script", "list", "-h" }, dashH));
-            Assert::IsTrue(dashH.out.find("Usage: scic script list") != std::string::npos, Wide(dashH.out).c_str());
+            Assert::IsTrue(dashH.out.find("\nscic script list [OPTIONS]") != std::string::npos, Wide(dashH.out).c_str());
             cli::StringConsole group;
             Assert::AreEqual(0, cli::RunCli({ "script" }, group));
             Assert::IsTrue(group.out.find("list") != std::string::npos, Wide(group.out).c_str());
@@ -609,7 +609,7 @@ namespace UnitTests
             cli::StringConsole helpHelp;
             int code = cli::RunCli({ "help", "help" }, helpHelp);
             Assert::AreEqual(0, code, Wide(helpHelp.err).c_str());
-            Assert::IsTrue(helpHelp.out.find("Usage: scic help") != std::string::npos, Wide(helpHelp.out).c_str());
+            Assert::IsTrue(helpHelp.out.find("\nscic help [OPTIONS]") != std::string::npos, Wide(helpHelp.out).c_str());
         }
 
         // --log gets every message, whatever -q and -v say, also a usage
@@ -640,9 +640,9 @@ namespace UnitTests
             logged = ReadFileText(log);
             Assert::IsTrue(logged.find("scic: error: give --all, or one or more scripts") != std::string::npos, Wide("a usage error goes into the log:\n" + logged).c_str());
             cli::StringConsole noCommand = Expect(2, { "--log", log });
-            Assert::IsTrue(noCommand.out.empty() && (noCommand.err.find("Usage: scic") != std::string::npos), Wide("the help goes to stderr:\n" + noCommand.err).c_str());
+            Assert::IsTrue(noCommand.out.empty() && (noCommand.err.find("\nscic [OPTIONS]") != std::string::npos), Wide("the help goes to stderr:\n" + noCommand.err).c_str());
             logged = ReadFileText(log);
-            Assert::IsTrue((logged.find("scic: error: give a command") != std::string::npos) && (logged.find("Usage: scic") != std::string::npos),
+            Assert::IsTrue((logged.find("scic: error: give a command") != std::string::npos) && (logged.find("\nscic [OPTIONS]") != std::string::npos),
                 Wide("the error and the help go into the log:\n" + logged).c_str());
 
             cli::StringConsole loud = Expect(0, { "script", "list", _copyFolder });

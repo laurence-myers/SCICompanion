@@ -14,18 +14,6 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   agents").
 - Push and pull requests only with your approval.
 
-## Questions for you
-
-- The shipped SCI1.1 template is out of date: its compiled `Main` exports
-  15 slots and `Main.sc` lists 13 (the compiled script has the procedures
-  `AddPolygonsToRoom` and `CreateNewPolygon`, which `Main.sc` does not
-  have); the compiled `DebugHandler` exports `dInvD` in slot 1, which its
-  source does not list (`script sco` warns). A fix changes the shipped
-  game: compile the template again from its sources (the decompile
-  snapshots of `UnitTests\Files\Decompile\Snapshots\SCI1.1` then change),
-  or put the two procedures and the export back into the sources. Which
-  one?
-
 ## Review findings that are not fixed
 
 ### `2b795d63` (the open items of the handover): 1 nit
@@ -91,6 +79,10 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ### Build and CI
 
+- CLI11 2.6.2 builds as a library, with the overlay triplet
+  `triplets\x86-windows-static-v143` (the v143 toolset). Checked locally,
+  also the ASan link of the unit tests; the CI runners are checked by
+  inspection only (they have the v143 toolset; the next CI run shows it).
 - The CI cache of vcpkg (`VCPKG_DOWNLOADS` and the binary cache, keyed on
   `vcpkg.json`) is checked by inspection only: the next CI run shows it.
 - The CI fetch step of the vcpkg registry is checked by inspection only:
@@ -196,12 +188,13 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Outside this branch
 
+- The compiled scripts of the SCI1.1 template do not match their sources
+  (`Main` exports 15 slots and `Main.sc` lists 13; `DebugHandler` exports
+  `dInvD`): issue laurence-myers/SCICompanion#201.
 - Local branches from `master`, not pushed: `fix/test-resource-temp-folders`
   (`fdd7f780`: two TestResource tests remove their temp folder),
   `fix/test-assert-order` (`98a7bccf`) and `refactor/remove-if-true-stubs`
   (`4e0b7123`: the three `if (true)` stubs of `Compile.cpp`).
-- `%TEMP%` has 811 empty `SCI*.tmp` folders that TestResource left before
-  its fix. Delete them?
 - The local branch `backup/scic-cli-before-vcpkg` has the history before
   the vcpkg change, with the copied headers. Delete it?
 - The manual worktree `I:\Code\Esoteric\scic-rv1` (detached at `847e59cc`,
@@ -215,8 +208,6 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   shows no text: `TestKeywordCodegen.cpp` lines 133, 146, 605, 610, 641,
   681, 711 and 745, `TestDecompile.cpp` 97 and 113,
   `TestDecompileBatch.cpp` 89 and 90.
-- CLI11 is pinned at 2.0.0 (2021). A newer version is a download, which
-  needs your permission.
 - The first vcpkg build downloaded more than the list that you approved:
   PowerShell 7.6.3 (about 100 MB) and two msys2 packages.
 - When this branch merges, take the baseline of the QfG4 golden dump

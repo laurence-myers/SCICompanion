@@ -52,12 +52,15 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
   "vcpkg package manager" installs (recommended in the C++ workloads). The
   first build downloads the packages and the tools of vcpkg, into
   `vcpkg_installed\` (git ignores it) and `%LOCALAPPDATA%\vcpkg`. Do not
-  copy a new library into the repository: add it to `vcpkg.json`. The two
-  libraries are header-only. The projects link the C runtime statically
-  (static MFC; `SCICompanionCore` and `SCICompanionCli` set `/MT`), and the
-  triplet `x86-windows` does not: a library that vcpkg compiles needs the
-  static triplet (`VcpkgUseStatic`). `SCICompanionCore` builds first and
-  runs `vcpkg install`.
+  copy a new library into the repository: add it to `vcpkg.json`.
+  tl::expected is header-only; vcpkg compiles CLI11 into `CLI11.lib`, and
+  links it into each program. The projects link the C runtime statically
+  (static MFC; `SCICompanionCore` and `SCICompanionCli` set `/MT`) with the
+  v143 toolset, so the triplet is the overlay
+  `triplets\x86-windows-static-v143.cmake` (static C runtime, static
+  libraries, v143): with the newest toolset of Visual Studio, a compiled
+  library needs STL functions that the v143 runtime does not have.
+  `SCICompanionCore` builds first and runs `vcpkg install`.
 - **The first build of a new clone or worktree runs `vcpkg install`.** With
   the Visual Studio copy of vcpkg, it fetches the vcpkg registry from
   GitHub, under a lock that every build on the machine shares (a fetch can
@@ -68,7 +71,7 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
   another checkout of the same `vcpkg.json`, with
   `-p:VcpkgManifestInstall=false`. Keep the checkout path short (about 120
   characters or less): the Visual Studio copy of vcpkg builds under
-  `vcpkg_installed\x86-windows\vcpkg\`, and a path longer than 260
+  `vcpkg_installed\x86-windows-static-v143\vcpkg\`, and a path longer than 260
   characters fails while Windows long paths are off.
 - The build puts `SCICompanion.exe`, `scic.exe` and `UnitTests.dll` in
   `Release\`. The app's post-build copies the data that they need next to
