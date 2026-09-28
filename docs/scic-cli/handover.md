@@ -57,9 +57,24 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   line), as the "not implemented" warnings of `SCISyntaxParser.cpp`; the
   warnings of `CompileContext::_ReportThing` have that form.
 
+### `8cf2f927` (the nits of the tests and of the build): 4 nits
+
+- A third-party notice named `License.txt`, `COPYING` or `COPYING2` in
+  `Files\Licenses` is copied by the mirror, and the next copy (SCI
+  Companion's own licence) replaces it in each build. No file there has
+  such a name now.
+- `AbsolutePath` removes the separator of `\\.\UNC\server\share\` and of
+  `\\?\GLOBALROOT\Device\HarddiskVolume1\`.
+- `Write-PendingRows` of the sweep script: a write smaller than the
+  buffer of the `FileStream` (4 KB) fails in the flush of `SetLength` or
+  of `Dispose`, so there is no cut-back, and the error is the one of
+  `Dispose`. A fix: a stream with a buffer of 1 byte.
+- When `vcpkg.json` is gone (for example a checkout of `master`), the
+  read tlog `ScicVcpkgManifest.read.1u.tlog` of each project stays and
+  names it; the up-to-date check of Visual Studio may then see the
+  projects as never up to date, until a Clean (not tried).
 
 ## Known gaps
-
 ### Command line
 
 - Names go to the console as bytes of the ANSI code page, with no

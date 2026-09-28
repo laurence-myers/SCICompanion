@@ -175,9 +175,11 @@ function RowsText([int]$count) {
 }
 
 # Appends the rows that wait to the CSV (UTF-8 with a BOM, and the header
-# row when the file is empty), in one write. A write that fails part of
-# the way (a full disk) cuts the file back to its old length, so the next
-# try does not write the same rows twice. Throws when the write fails.
+# row when the file is empty), in one write. When Write fails part of the
+# way (a full disk), the file is cut back to its old length, so the next
+# try does not write the same rows twice. Rows smaller than the stream
+# buffer (4 KB) go to the file only in the flush of SetLength or Dispose;
+# a failure there has no cut-back. Throws when the write fails.
 function Write-PendingRows {
     $lines = @($script:pendingRows | ConvertTo-Csv -NoTypeInformation)
     $stream = New-Object System.IO.FileStream($csv, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::Read)
