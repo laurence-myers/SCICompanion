@@ -42,13 +42,36 @@ sci::Status WriteBytesToFile(const std::string &path, const std::vector<uint8_t>
     return WriteBytesToFile(path, data.data(), data.size());
 }
 
+size_t FullPathLength(const std::string &path)
+{
+    int length = MultiByteToWideChar(CP_ACP, 0, path.c_str(), (int)path.size(), nullptr, 0);
+    if (length <= 0)
+    {
+        return path.size();
+    }
+    std::wstring wide(length, L'\0');
+    MultiByteToWideChar(CP_ACP, 0, path.c_str(), (int)path.size(), &wide[0], length);
+    // The size with the terminating null, for a buffer that is too small.
+    DWORD needed = GetFullPathNameW(wide.c_str(), 0, nullptr, nullptr);
+    if (needed == 0)
+    {
+        return wide.size();
+    }
+    std::wstring full(needed, L'\0');
+    DWORD fullLength = GetFullPathNameW(wide.c_str(), needed, &full[0], nullptr);
+    return ((fullLength > 0) && (fullLength < needed)) ? (size_t)fullLength : wide.size();
+}
+
 sci::Status CheckFileCanBeReplaced(const std::string &path, unsigned long shareMode)
 {
-    // The write opens the path with no "\\?\" prefix, so it cannot write a
-    // path of MAX_PATH characters or more: the check refuses it too.
-    if (path.size() >= MAX_PATH)
+    // The write goes through the ANSI functions, so it cannot write a path
+    // whose full form (a relative path joins the current folder) has
+    // MAX_PATH characters or more: the check refuses it too. It counts
+    // characters, not the bytes of the ANSI code page.
+    size_t characters = FullPathLength(path);
+    if (characters >= MAX_PATH)
     {
-        return sci::Fail(sci::ErrorCode::Io, fmt::format("Writing {0}: the path has {1} characters, and a write takes at most {2}", path, path.size(), MAX_PATH - 1));
+        return sci::Fail(sci::ErrorCode::Io, fmt::format("Writing {0}: the full path has {1} characters, and a write takes at most {2}", path, characters, MAX_PATH - 1));
     }
     DWORD attributes = GetFileAttributesA(path.c_str());
     if (attributes == INVALID_FILE_ATTRIBUTES)

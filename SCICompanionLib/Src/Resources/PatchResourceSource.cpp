@@ -152,34 +152,43 @@ void PatchFilesResourceSource::RemoveEntry(const ResourceMapEntryAgnostic &mapEn
 	deletefile(fullPath);
 }
 
+sci::Status CheckPatchFileCanBeReplaced(const std::string &path)
+{
+	DWORD attributes = GetFileAttributesA(path.c_str());
+	if (attributes == INVALID_FILE_ATTRIBUTES)
+	{
+		return sci::Ok(); // A new file: nothing to replace.
+	}
+	if (attributes & FILE_ATTRIBUTE_READONLY)
+	{
+		sci::Error error;
+		error.code = sci::ErrorCode::Io;
+		error.message = "The file is read-only, so it cannot be replaced";
+		error.where.file = path;
+		return sci::Fail(std::move(error));
+	}
+	ScopedHandle handle;
+	handle.hFile = CreateFileA(path.c_str(), DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+	if (handle.hFile == INVALID_HANDLE_VALUE)
+	{
+		DWORD lastError = GetLastError();
+		sci::Error error = sci::FromWin32(lastError, "Replacing " + path);
+		error.where.file = path;
+		return sci::Fail(std::move(error));
+	}
+	return sci::Ok();
+}
+
 namespace
 {
 	// Throws if the rename in AppendResources cannot replace this existing
-	// file: MoveFileEx fails for a read-only file, and for a file that another
-	// program holds open without delete sharing.
+	// file.
 	void _CheckCanReplace(const std::string &path)
 	{
-		DWORD attributes = GetFileAttributesA(path.c_str());
-		if (attributes == INVALID_FILE_ATTRIBUTES)
+		sci::Status replaceable = CheckPatchFileCanBeReplaced(path);
+		if (!replaceable)
 		{
-			return; // A new file: nothing to replace.
-		}
-		if (attributes & FILE_ATTRIBUTE_READONLY)
-		{
-			sci::Error error;
-			error.code = sci::ErrorCode::Io;
-			error.message = "The file is read-only, so it cannot be replaced";
-			error.where.file = path;
-			throw sci::DataError(std::move(error));
-		}
-		ScopedHandle handle;
-		handle.hFile = CreateFileA(path.c_str(), DELETE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-		if (handle.hFile == INVALID_HANDLE_VALUE)
-		{
-			DWORD lastError = GetLastError();
-			sci::Error error = sci::FromWin32(lastError, "Replacing " + path);
-			error.where.file = path;
-			throw sci::DataError(std::move(error));
+			throw sci::DataError(replaceable.error());
 		}
 	}
 }

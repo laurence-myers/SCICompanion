@@ -9,6 +9,7 @@
 #include "CompileBatch.h"
 #include "ScriptCatalog.h"
 #include "CompileBatchGui.h"
+#include "ExitCodes.h"
 #include "FileWrite.h"
 #include "Vocab99x.h"
 #include "ResourceBlob.h"
@@ -90,6 +91,9 @@ namespace
         // Sets abort when a script of this pass or of a later pass is done
         // (0: no abort).
         int abortFromPass = 0;
+        // Sets abort in OnPassStart (the GUI's Cancel button while the
+        // batch starts a pass).
+        bool abortAtPassStart = false;
         std::vector<size_t> started;
         size_t done = 0;
         int passesStarted = 0;
@@ -99,6 +103,10 @@ namespace
         {
             passesStarted++;
             pass = newPass;
+            if (abortAtPassStart)
+            {
+                abort.store(true);
+            }
         }
 
         void OnScriptStart(size_t index, size_t count, const ScriptId &script) override
@@ -402,21 +410,95 @@ namespace UnitTests
             Assert::IsFalse(_game.Has("vocab.996") || _game.Has("vocab.997"), L"the tables must not be saved when no script compiled");
         }
 
-        // A batch that is not finished withdraws its queued writes.
+        // A batch that is not finished withdraws its queued writes, and puts
+        // back the .sco files that it changed: a new one goes, and one that
+        // was there gets its old bytes.
         TEST_METHOD(UnfinishedBatch_WithdrawsItsWrites)
         {
             NoAppState noAppState;
             GameSession &session = _game.OpenCopy(TemplateSci0);
-            std::vector<ScriptId> scripts = { WriteScript(session, "S2Good904", 904, GoodText(904)) };
+            ScriptId old = WriteScript(session, "S2Good906", 906, GoodText(906));
+            AssertSucceeded(Compile(session, { old }, ToPatchFiles()), "setup: S2Good906 has a .sco");
+            std::string oldSco = session.Helper().GetScriptObjectFileName("S2Good906");
+            std::vector<uint8_t> oldScoBytes = ReadFileBytes(oldSco);
+            // A new export name: the .sco of S2Good906 changes.
+            std::vector<ScriptId> scripts = {
+                WriteScript(session, "S2Good904", 904, GoodText(904)),
+                WriteScript(session, "S2Good906", 906,
+                    "(script# 906)\n(include sci.sh)\n(include game.sh)\n(use main)\n(public s2Other906 0)\n(procedure (s2Other906)\n    (return 7)\n)\n"),
+            };
+            std::string newSco = session.Helper().GetScriptObjectFileName("S2Good904");
             std::vector<uint8_t> map = ReadFileBytes(_game.Path("resource.map"));
+            std::vector<uint8_t> oldPatch = ReadFileBytes(_game.Path("script.906"));
             {
-                auto batch = CompileBatch::Start(session, scripts, CompileOptions());
+                auto batch = CompileBatch::Start(session, scripts, ToPatchFiles());
                 AssertOk(batch);
                 TestCompileEvents events;
                 Assert::IsTrue((*batch)->Step(events.abort, events));
+                Assert::IsTrue((*batch)->Step(events.abort, events));
+                Assert::IsTrue(fs::exists(newSco), L"setup: the batch writes the new .sco");
+                Assert::IsTrue(oldScoBytes != ReadFileBytes(oldSco), L"setup: the batch changes the old .sco");
             }
             Assert::IsTrue(map == ReadFileBytes(_game.Path("resource.map")), L"the package must not change");
+            Assert::IsFalse(_game.Has("script.904"), L"no new patch file");
+            Assert::IsTrue(oldPatch == ReadFileBytes(_game.Path("script.906")), L"the patch file must not change");
             Assert::IsFalse(session.ResourceMap().IsDeferring(), L"the batch must close its deferred writes");
+            Assert::IsFalse(fs::exists(newSco), L"the new .sco goes");
+            Assert::IsTrue(oldScoBytes == ReadFileBytes(oldSco), L"the old .sco gets its old bytes");
+        }
+
+        // Two scripts that compile to one number: the .sco of each goes back,
+        // not only that of the first.
+        TEST_METHOD(ObjectFiles_TwoScriptsWithOneNumber_EachGoesBack)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            // S2TwinB declares 904 too (a warning).
+            std::vector<ScriptId> scripts = {
+                WriteScript(session, "S2TwinA", 904, GoodText(904)),
+                WriteScript(session, "S2TwinB", 905, GoodText(904)),
+            };
+            std::string scoA = session.Helper().GetScriptObjectFileName("S2TwinA");
+            std::string scoB = session.Helper().GetScriptObjectFileName("S2TwinB");
+            CompileOptions options = ToPatchFiles();
+            options.write.writeResources = false;
+            auto report = Compile(session, scripts, options);
+            AssertOk(report);
+            std::string facts = Describe(*report);
+            Assert::AreEqual((size_t)2, report->CompiledCount(), Wide("setup: both compile: " + facts).c_str());
+            Assert::IsFalse(fs::exists(scoA) || fs::exists(scoB), Wide("both new .sco files go: " + facts).c_str());
+            Assert::AreEqual((size_t)2, report->removedObjectFiles.size(), Wide(facts).c_str());
+        }
+
+        // A .sco that cannot go back is an Io error in report.objectFiles:
+        // the batch did not succeed, and scic exits with 9. The text has one
+        // error code.
+        TEST_METHOD(ObjectFiles_ARestoreThatFails_IsAnIoError)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            std::vector<ScriptId> scripts = { WriteScript(session, "S2PassA", 904, GoodText(904)) };
+            AssertSucceeded(Compile(session, scripts, ToPatchFiles()), "setup: S2PassA has a .sco");
+            WriteScript(session, "S2PassA", 904, PassAText);
+            std::string sco = session.Helper().GetScriptObjectFileName("S2PassA");
+            CompileOptions options = ToPatchFiles();
+            options.write.writeResources = false;
+            auto batch = CompileBatch::Start(session, scripts, options);
+            AssertOk(batch);
+            TestCompileEvents events;
+            Assert::IsTrue((*batch)->Step(events.abort, events));
+            Assert::IsTrue(SetFileAttributesA(sco.c_str(), FILE_ATTRIBUTE_READONLY) != 0, L"setup: a read-only .sco");
+            CompileReport report = (*batch)->Finish();
+            SetFileAttributesA(sco.c_str(), FILE_ATTRIBUTE_NORMAL);
+            std::string facts = Describe(report);
+            Assert::IsTrue(report.scripts[0].status.has_value() && report.commit.has_value(), Wide("setup: " + facts).c_str());
+            Assert::IsFalse(report.objectFiles.has_value(), Wide(facts).c_str());
+            Assert::IsTrue(report.objectFiles.error().code == sci::ErrorCode::Io, Wide(facts).c_str());
+            std::string error = report.objectFiles.error().ToString();
+            Assert::IsTrue(error.find(sco) != std::string::npos, Wide(error).c_str());
+            Assert::AreEqual((size_t)1, CountOf(error, "[io]"), Wide(error).c_str());
+            Assert::IsFalse(report.Succeeded(), L"a .sco that did not go back is not a success");
+            Assert::AreEqual((int)cli::ExitCode::WriteFailed, (int)cli::ExitCodeForReport(report), Wide(facts).c_str());
         }
 
         // The batch cannot start with the package of a patch-mode game, or
@@ -767,7 +849,8 @@ namespace UnitTests
                 // The pass-1 .sco of S2PassX, which the commit does not write,
                 // goes (there was none before the batch).
                 Assert::IsFalse(fs::exists(session.Helper().GetScriptObjectFileName("S2PassX")), Wide("S2PassX.sco goes: " + Describe(*report)).c_str());
-                Assert::IsTrue(report->objectFiles.has_value() && (report->restoredObjectFiles.size() == 1), Wide(Describe(*report)).c_str());
+                Assert::IsTrue(report->objectFiles.has_value() && (report->removedObjectFiles.size() == 1) && report->restoredObjectFiles.empty(),
+                    Wide(Describe(*report)).c_str());
             }
         }
 
@@ -794,6 +877,32 @@ namespace UnitTests
             // That pass changed a .sco, and no pass comes after it, so a
             // script of the commit can use an old one.
             Assert::IsTrue(report->passLimit, L"the abort reports the pass limit");
+        }
+
+        // An abort that comes while OnPassStart runs (the GUI's Cancel
+        // button) keeps the pass that finished, as an abort between the
+        // passes does.
+        TEST_METHOD(Abort_InOnPassStart_KeepsTheFinishedPass)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            std::vector<ScriptId> scripts = {
+                WriteScript(session, "S2PassB", 906, PassBText),
+                WriteScript(session, "S2PassA", 904, PassAText),
+            };
+            CompileOptions options = ToPatchFiles();
+            options.passes = 5;
+            TestCompileEvents events;
+            events.abortAtPassStart = true;
+            auto report = Compile(session, scripts, options, events);
+            AssertOk(report);
+            std::string facts = Describe(*report);
+            Assert::AreEqual(1, events.passesStarted, Wide("setup: pass 2 starts: " + facts).c_str());
+            Assert::IsTrue(report->cancelled && (report->passes == 1), Wide(facts).c_str());
+            Assert::AreEqual((size_t)2, report->scripts.size(), Wide("the report has the pass that finished: " + facts).c_str());
+            Assert::IsTrue(report->commit.has_value(), Wide(facts).c_str());
+            Assert::IsTrue(_game.Has("script.904"), Wide("the finished pass is written: " + facts).c_str());
+            Assert::IsTrue(report->passLimit, Wide(facts).c_str());
         }
 
         // Options that would write into the game, or fail each script after
@@ -938,6 +1047,21 @@ namespace UnitTests
             Assert::AreEqual((size_t)1, refusedLog.Results().size(), L"one line for a table failure");
             Assert::IsTrue(refusedLog.Results()[0].IsError() && (refusedLog.Results()[0].GetMessage().find("so no compiled resource was written") != std::string::npos),
                 Wide(refusedLog.Results()[0].GetMessage()).c_str());
+
+            // The .sco files: "Put back" for a file with its old bytes,
+            // "Removed" for a new file that went, and an error line for a
+            // file that could not go back.
+            CompileReport objectFiles;
+            objectFiles.restoredObjectFiles = { "src\\old.sco" };
+            objectFiles.removedObjectFiles = { "src\\new.sco" };
+            objectFiles.objectFiles = sci::Fail(sci::ErrorCode::Io, "src\\held.sco");
+            CompileLog objectFilesLog;
+            ReportCompileBatch(objectFiles, objectFilesLog, "Write problem: ");
+            std::vector<CompileResult> &objectFileLines = objectFilesLog.Results();
+            Assert::AreEqual((size_t)3, objectFileLines.size());
+            Assert::IsTrue(!objectFileLines[0].IsError() && (objectFileLines[0].GetMessage().find("Put back src\\old.sco") == 0), Wide(objectFileLines[0].GetMessage()).c_str());
+            Assert::IsTrue(!objectFileLines[1].IsError() && (objectFileLines[1].GetMessage().find("Removed src\\new.sco") == 0), Wide(objectFileLines[1].GetMessage()).c_str());
+            Assert::IsTrue(objectFileLines[2].IsError() && (objectFileLines[2].GetMessage().find("src\\held.sco") != std::string::npos), Wide(objectFileLines[2].GetMessage()).c_str());
 
             Assert::IsFalse(StartFailureLine(sci::Fail(sci::ErrorCode::Cancelled, "x").value()).IsError(), L"Cancel at the start is not an error");
             Assert::IsTrue(StartFailureLine(sci::Fail(sci::ErrorCode::NotFound, "x").value()).IsError());
@@ -1274,7 +1398,13 @@ namespace UnitTests
                 Assert::IsTrue(report->scripts[1].status.has_value(), Wide("setup: S2UseX compiles in pass 2: " + facts).c_str());
                 Assert::IsFalse(report->commit.has_value(), Wide("the commit writes nothing: " + facts).c_str());
                 Assert::IsTrue(report->commit.error().code == sci::ErrorCode::WriteRefused, Wide(facts).c_str());
-                Assert::IsTrue(report->commit.error().ToString().find("S2UseX (906) uses S2UseY (904)") != std::string::npos, Wide(facts).c_str());
+                std::string refusal = report->commit.error().ToString();
+                Assert::IsTrue(refusal.find("S2UseX (906) uses S2UseY (904), which failed") != std::string::npos, Wide(facts).c_str());
+                // The refusal comes before the .sco files go back: the report
+                // names them.
+                Assert::IsTrue(refusal.find(" are back") == std::string::npos, Wide(refusal).c_str());
+                Assert::IsTrue(refusal.find("Correct the scripts that failed") != std::string::npos, Wide(refusal).c_str());
+                Assert::AreEqual((size_t)2, report->restoredObjectFiles.size(), Wide(facts).c_str());
                 Assert::IsTrue(oldYScript == ReadFileBytes(_game.Path("script.904")), L"S2UseY in the game does not change");
                 Assert::IsTrue(oldXScript == ReadFileBytes(_game.Path("script.906")), L"S2UseX in the game does not change");
                 if (toFolder)
@@ -1330,7 +1460,11 @@ namespace UnitTests
             Assert::AreEqual((size_t)1, report->scripts.size(), Wide(facts).c_str());
             Assert::IsTrue(report->scripts[0].status.has_value(), Wide("setup: S2AbortX compiles in pass 2: " + facts).c_str());
             Assert::IsFalse(report->commit.has_value(), Wide("the commit writes nothing: " + facts).c_str());
-            Assert::IsTrue(report->commit.error().ToString().find("S2AbortX (906) uses S2AbortY (904)") != std::string::npos, Wide(facts).c_str());
+            std::string refusal = report->commit.error().ToString();
+            Assert::IsTrue(refusal.find("S2AbortX (906) uses S2AbortY (904), which did not run") != std::string::npos, Wide(facts).c_str());
+            // No script failed: the advice names none.
+            Assert::IsTrue(refusal.find("Correct the scripts that failed") == std::string::npos, Wide(refusal).c_str());
+            Assert::IsTrue(refusal.find("Compile again.") != std::string::npos, Wide(refusal).c_str());
             Assert::IsFalse(_game.Has("script.906"), L"S2AbortX is not written");
             Assert::IsTrue(oldYScript == ReadFileBytes(_game.Path("script.904")), L"S2AbortY in the game does not change");
         }
@@ -1545,7 +1679,89 @@ namespace UnitTests
             auto report = Compile(session, scripts, options);
             AssertSucceeded(report);
             Assert::IsFalse(fs::exists(sco), L"the .sco of the dry run goes");
-            Assert::AreEqual((size_t)1, report->restoredObjectFiles.size());
+            Assert::AreEqual((size_t)1, report->removedObjectFiles.size());
+            Assert::IsTrue(report->restoredObjectFiles.empty(), L"a file that was not there is not put back");
+        }
+
+        // A dry run into the game's patch files checks each patch file as
+        // the write would, so a read-only patch file fails the dry run as it
+        // fails the real run.
+        TEST_METHOD(DryRun_PatchFiles_ChecksTheFiles)
+        {
+            NoAppState noAppState;
+            for (bool dryRun : { false, true })
+            {
+                GameSession &session = _game.OpenCopy(TemplateSci0);
+                std::vector<ScriptId> scripts = { WriteScript(session, "S2Good904", 904, GoodText(904)) };
+                WriteFileBytes(_game.Path("script.904"), ScriptPatch);
+                Assert::IsTrue(SetFileAttributesA(_game.Path("script.904").c_str(), FILE_ATTRIBUTE_READONLY) != 0, L"setup: a read-only patch file");
+                CompileOptions options = ToPatchFiles();
+                MakeDry(options, dryRun);
+                auto report = Compile(session, scripts, options);
+                SetFileAttributesA(_game.Path("script.904").c_str(), FILE_ATTRIBUTE_NORMAL);
+                AssertOk(report);
+                std::string facts = std::string(dryRun ? "dry run: " : "real run: ") + Describe(*report);
+                Assert::IsTrue(report->scripts[0].status.has_value(), Wide(facts).c_str());
+                Assert::IsFalse(report->commit.has_value(), Wide(facts).c_str());
+                Assert::IsTrue(report->commit.error().ToString().find("script.904") != std::string::npos, Wide(facts).c_str());
+            }
+        }
+
+        // A dry run writes no .sco, so it runs one pass; a .sco that a run
+        // would change sets passLimit. A .sco that a run could not write
+        // fails the script (Io), as in a run.
+        TEST_METHOD(DryRun_AnObjectFileThatWouldChange)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            std::vector<ScriptId> scripts = {
+                WriteScript(session, "S2PassB", 906, PassBText),
+                WriteScript(session, "S2PassA", 904, PassAText),
+            };
+            CompileOptions options = ToPatchFiles();
+            options.passes = 5;
+            MakeDry(options);
+            auto report = Compile(session, scripts, options);
+            AssertOk(report);
+            std::string facts = Describe(*report);
+            Assert::AreEqual(1, report->passes, Wide(facts).c_str());
+            Assert::IsTrue(report->passLimit, Wide("a run would change S2PassA.sco: " + facts).c_str());
+            Assert::IsFalse(fs::exists(session.Helper().GetScriptObjectFileName("S2PassA")), L"the dry run writes no .sco");
+
+            WriteReadOnlyFile(session.Helper().GetScriptObjectFileName("S2PassA"), "not the new object file");
+            for (bool dryRun : { false, true })
+            {
+                CompileOptions one = ToPatchFiles();
+                MakeDry(one, dryRun);
+                auto readOnly = Compile(session, { scripts[1] }, one);
+                AssertOk(readOnly);
+                std::string readOnlyFacts = std::string(dryRun ? "dry run: " : "real run: ") + Describe(*readOnly);
+                Assert::IsFalse(readOnly->scripts[0].status.has_value(), Wide(readOnlyFacts).c_str());
+                Assert::IsTrue(readOnly->scripts[0].status.error().code == sci::ErrorCode::Io, Wide(readOnlyFacts).c_str());
+            }
+        }
+
+        // The length check measures the full path: a relative path joins the
+        // current folder.
+        TEST_METHOD(FileWrite_TheLengthCheckMeasuresTheFullPath)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            // A folder of 245 characters: "\script.907.bin" ends at 260, and
+            // "\script.97.bin" at 259.
+            Assert::IsTrue(_game.Folder().size() < 200, L"setup: a short copy folder");
+            fs::path folder = _game.Folder() + "\\" + std::string(245 - _game.Folder().size() - 1, 'o');
+            fs::create_directories(folder);
+            fs::path saved = fs::current_path();
+            fs::current_path(folder);
+            sci::Status tooLong = CheckFileCanBeReplaced("script.907.bin", FILE_SHARE_READ | FILE_SHARE_WRITE);
+            sci::Status fits = CheckFileCanBeReplaced("script.97.bin", FILE_SHARE_READ | FILE_SHARE_WRITE);
+            size_t length = FullPathLength("script.907.bin");
+            fs::current_path(saved);
+            Assert::AreEqual((size_t)260, length);
+            Assert::IsFalse(tooLong.has_value(), L"260 characters are too many");
+            Assert::IsTrue(tooLong.error().ToString().find("260") != std::string::npos, Wide(tooLong.error().ToString()).c_str());
+            AssertOk(fits, "259 characters fit");
         }
     };
 }

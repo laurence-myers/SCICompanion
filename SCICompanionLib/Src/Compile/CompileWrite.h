@@ -73,8 +73,10 @@ sci::Status WriteCompiledResource(CResourceMap &resourceMap, const CompileWriteO
 // read-only, hidden or system file, a folder with the file's name, or a
 // file that another program holds, fails the write before the first file;
 // so does a path that is too long. A write that fails after that check (a
-// full disk) leaves the files before it.
-sci::Status WriteStagedOutputFiles(const GameFolderHelper &helper, const CompileWriteOptions &options, const std::vector<StagedOutputFile> &files);
+// full disk) leaves the files before it, and its error names them. When
+// written is set, it gets the count of the files that were written.
+sci::Status WriteStagedOutputFiles(const GameFolderHelper &helper, const CompileWriteOptions &options, const std::vector<StagedOutputFile> &files,
+    size_t *written = nullptr);
 
 // The check of WriteStagedOutputFiles before its first write, with no write
 // (a dry run).

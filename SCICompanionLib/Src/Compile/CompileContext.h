@@ -559,6 +559,7 @@ public:
 	void SetAutoTextNumber(uint16_t autoTextNumber);
 	// The compile wrote a .sco file whose bytes differ from the file before
 	// (a pass that changes no .sco file ends the passes; plan section 4.5).
+	// In a dry run (no .sco and no resource write): a run would write one.
 	bool ObjectFileChanged() const { return _objectFileChanged; }
 	void SetObjectFileChanged(bool changed) { _objectFileChanged = changed; }
 	// The scripts whose .sco files the compile read (not its own). A batch

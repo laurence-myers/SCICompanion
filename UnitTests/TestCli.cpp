@@ -664,7 +664,8 @@ namespace UnitTests
                 Assert::IsTrue(logged.find(entry.second) != std::string::npos, Wide(entry.second + "\n" + logged).c_str());
             }
             cli::StringConsole emptyData;
-            Assert::AreEqual(2, cli::RunCli({ "script", "list", _copyFolder, "--data-dir", "", "--log", log }, emptyData), Wide(emptyData.err).c_str());
+            int emptyDataCode = cli::RunCli({ "script", "list", _copyFolder, "--data-dir", "", "--log", log }, emptyData);
+            Assert::AreEqual(2, emptyDataCode, Wide(emptyData.err).c_str());
             Assert::IsTrue(ReadFileText(log).find("scic: error: --data-dir needs a folder") != std::string::npos, Wide(ReadFileText(log)).c_str());
         }
 
@@ -930,10 +931,15 @@ namespace UnitTests
                 CtrlC() { cli::CancelFlag().store(true); }
                 ~CtrlC() { cli::CancelFlag().store(false); }
             } ctrlC;
+            // The text for one script, and for two.
             cli::StringConsole decompile = Expect(7, { "script", "decompile", _copyFolder, "974" });
-            Assert::IsTrue(decompile.err.find("Stopped by Ctrl+C") != std::string::npos, Wide(decompile.err).c_str());
+            Assert::IsTrue(decompile.err.find("Stopped by Ctrl+C: 1 script was not decompiled.") != std::string::npos, Wide(decompile.err).c_str());
+            cli::StringConsole decompileTwo = Expect(7, { "script", "decompile", _copyFolder, "974", "rm001" });
+            Assert::IsTrue(decompileTwo.err.find("Stopped by Ctrl+C: 2 scripts were not decompiled.") != std::string::npos, Wide(decompileTwo.err).c_str());
             cli::StringConsole sco = Expect(7, { "script", "sco", _copyFolder, "rm001" });
-            Assert::IsTrue(sco.err.find("Stopped by Ctrl+C") != std::string::npos, Wide(sco.err).c_str());
+            Assert::IsTrue(sco.err.find("Stopped by Ctrl+C: 1 script was not done.") != std::string::npos, Wide(sco.err).c_str());
+            cli::StringConsole scoTwo = Expect(7, { "script", "sco", _copyFolder, "rm001", "974" });
+            Assert::IsTrue(scoTwo.err.find("Stopped by Ctrl+C: 2 scripts were not done.") != std::string::npos, Wide(scoTwo.err).c_str());
         }
 
         // Ctrl+C after --stdout decompiled its script (at the memory line of
@@ -1135,7 +1141,8 @@ namespace UnitTests
                         args.push_back("--to");
                         args.push_back("package");
                     }
-                    Assert::AreEqual(0, Run(args, console), Wide(console.err).c_str());
+                    int code = Run(args, console);
+                    Assert::AreEqual(0, code, Wide(console.err).c_str());
                     Assert::AreEqual(way == 0, fs::exists(fs::path(_copyFolder) / "script.001"), Wide(console.err).c_str());
                     Assert::AreEqual(way == 0, map == ReadFileText((fs::path(_copyFolder) / "resource.map").string()), L"only --to package changes the package");
                 }
@@ -1379,7 +1386,8 @@ namespace UnitTests
                 { "script", "compile", _copyFolder, "Main", "--to", "patch", "--into-volume" } })
             {
                 cli::StringConsole usage;
-                Assert::AreEqual(2, Run(args, usage), Wide(args.back() + ": " + usage.err).c_str());
+                int code = Run(args, usage);
+                Assert::AreEqual(2, code, Wide(args.back() + ": " + usage.err).c_str());
             }
             Assert::IsTrue(before == Snapshot(_copyFolder), L"a usage error writes nothing");
         }
@@ -1412,10 +1420,25 @@ namespace UnitTests
             Assert::IsTrue(broken.err.find("Failed: 1 (rm001).") != std::string::npos, Wide(broken.err).c_str());
             Assert::IsFalse(fs::exists(fs::path(_copyFolder) / "script.001"), Wide("the script is not written: " + broken.err).c_str());
 
+            // One error line for the include: sci.sh includes keys.sh, so the
+            // includes are read again, and a failed one is not tried again.
+            Assert::AreEqual((size_t)1, CountOf(broken.err, "Parsing errors while loading"), Wide(broken.err).c_str());
+
             WriteFileText(header, headerText);
+            // A read error names the include, and its path keeps its case.
+            HANDLE held = CreateFileA(header.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+            Assert::IsTrue(held != INVALID_HANDLE_VALUE, L"setup: game.sh is held");
+            cli::StringConsole unreadable;
+            int unreadableCode = Run({ "script", "compile", _copyFolder, "rm001", "--dry-run" }, unreadable);
+            CloseHandle(held);
+            Assert::AreEqual(5, unreadableCode, Wide(unreadable.err).c_str());
+            Assert::IsTrue(unreadable.err.find("Unable to load the include file game.sh: Opening " + header + ":") != std::string::npos, Wide(header + " | " + unreadable.err).c_str());
+            Assert::AreEqual((size_t)1, CountOf(unreadable.err, "Unable to load the include file"), Wide(unreadable.err).c_str());
+
             ReplaceFirst((fs::path(_copyFolder) / "src" / "rm001.sc").string(), "(include game.sh)", "(include game.sh)\r\n(include c3missing.sh)");
             cli::StringConsole missing = Expect(5, { "script", "compile", _copyFolder, "rm001" });
             Assert::IsTrue(missing.err.find("The include file c3missing.sh is not in the include folder or in src.") != std::string::npos, Wide(missing.err).c_str());
+            Assert::AreEqual((size_t)1, CountOf(missing.err, "The include file c3missing.sh"), Wide(missing.err).c_str());
             Assert::IsTrue(missing.err.find("Compiled 0 of 1 scripts, and wrote none (") != std::string::npos, Wide(missing.err).c_str());
             Assert::IsFalse(fs::exists(fs::path(_copyFolder) / "script.001"), Wide("the script is not written: " + missing.err).c_str());
             cli::StringConsole dryRun = Expect(5, { "script", "compile", _copyFolder, "rm001", "--dry-run" });
@@ -1469,7 +1492,7 @@ namespace UnitTests
         }
 
         // A script whose .sco cannot be written prints its error once (exit
-        // code 9).
+        // code 9), also in a dry run.
         TEST_METHOD(Compile_AWriteError_PrintsOnce)
         {
             CopyTemplate("\\TemplateGame\\SCI0");
@@ -1478,6 +1501,9 @@ namespace UnitTests
             Assert::IsTrue(SetFileAttributesA(sco.c_str(), FILE_ATTRIBUTE_READONLY) != 0, L"setup: a read-only .sco");
             cli::StringConsole console = Expect(9, { "script", "compile", _copyFolder, "rm001" });
             Assert::AreEqual((size_t)1, CountOf(console.err, "Access is denied"), Wide(console.err).c_str());
+            // A dry run checks the .sco as the write would.
+            cli::StringConsole dryRun = Expect(9, { "script", "compile", _copyFolder, "rm001", "--dry-run" });
+            Assert::AreEqual((size_t)1, CountOf(dryRun.err, "Access is denied"), Wide(dryRun.err).c_str());
         }
 
         // A dry run of a script whose .sco would change writes no .sco.
@@ -1580,9 +1606,65 @@ namespace UnitTests
             fs::copy_file(fs::path(_copyFolder) / "script.001", fs::path(_copyFolder) / "1.scr");
             cli::StringConsole dryRun = Expect(0, { "script", "compile", _copyFolder, "rm001", "--dry-run" });
             Assert::IsTrue(dryRun.err.find("1.scr is a patch file with another name for a compiled resource") != std::string::npos, Wide(dryRun.err).c_str());
+            // The count has the warning of the batch.
+            size_t dryRunWarnings = CountOf(dryRun.err, ": warning : ") + CountOf(dryRun.err, "scic: warning: ");
+            Assert::IsTrue(dryRun.err.find(fmt::format(", {0} warning{1}", dryRunWarnings, (dryRunWarnings == 1) ? "" : "s")) != std::string::npos, Wide(dryRun.err).c_str());
 
-            cli::StringConsole refused = Expect(8, { "script", "compile", _copyFolder, "rm001", "--to", "package", "-v" });
-            Assert::IsTrue(ListedFiles(refused.err, "wrote ").empty(), Wide(refused.err).c_str());
+            // A commit that fails after the scripts compiled (a read-only file
+            // in the output folder) lists no file, and a dry run of it says
+            // that a run would write none.
+            fs::path out = fs::path(_copyFolder) / "c3out";
+            fs::create_directories(out);
+            WriteReadOnlyFile((out / "script.001").string(), "an old file");
+            cli::StringConsole failed = Expect(9, { "script", "compile", _copyFolder, "rm001", "--out-dir", out.string(), "-v" });
+            Assert::IsTrue(failed.err.find("Compiled 1 of 1 scripts, and wrote none") != std::string::npos, Wide(failed.err).c_str());
+            Assert::IsTrue(ListedFiles(failed.err, "wrote ").empty(), Wide(failed.err).c_str());
+            cli::StringConsole failedDryRun = Expect(9, { "script", "compile", _copyFolder, "rm001", "--out-dir", out.string(), "--dry-run" });
+            Assert::IsTrue(failedDryRun.err.find("Compiled 1 of 1 scripts, and a run would write none") != std::string::npos, Wide(failedDryRun.err).c_str());
+            Assert::IsTrue(ListedFiles(failedDryRun.err, "would write ").empty(), Wide(failedDryRun.err).c_str());
+        }
+
+        // The summary counts every warning that printed: also a warning of
+        // the selection (a script of game.ini with no source).
+        TEST_METHOD(Compile_TheSummaryCountsTheWarningsOfTheSelection)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            fs::remove(fs::path(_copyFolder) / "src" / "rm001.sc");
+            cli::StringConsole console = Expect(0, { "script", "compile", _copyFolder, "--all", "--dry-run" });
+            size_t warnings = CountOf(console.err, ": warning : ") + CountOf(console.err, "scic: warning: ");
+            Assert::IsTrue(console.err.find("scic: warning: ") != std::string::npos, Wide("setup: the selection warns: " + console.err).c_str());
+            Assert::IsTrue(console.err.find(fmt::format(", {0} warning{1}", warnings, (warnings == 1) ? "" : "s")) != std::string::npos, Wide(console.err).c_str());
+        }
+
+        // A relative --out-dir gives absolute paths in the report.
+        TEST_METHOD(Compile_ARelativeOutDir_PrintsAbsolutePaths)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            fs::create_directories(fs::path(_copyFolder) / "c3out");
+            fs::path saved = fs::current_path();
+            fs::current_path(_copyFolder);
+            cli::StringConsole console;
+            int code = Run({ "script", "compile", _copyFolder, "rm001", "--out-dir", "c3out", "--dry-run" }, console);
+            fs::current_path(saved);
+            Assert::AreEqual(0, code, Wide(console.err).c_str());
+            std::string expected = "would write " + (fs::path(_copyFolder) / "c3out" / "script.001").string();
+            Assert::IsTrue(console.err.find(expected) != std::string::npos, Wide(expected + " | " + console.err).c_str());
+        }
+
+        // A dry run gives the warnings of a run in its own words: the tables
+        // "would be written" as patch files of a game that keeps its
+        // resources in the package, and a .sco that a run would change.
+        TEST_METHOD(Compile_DryRun_TheWarningsOfARun)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            ReplaceFirst((fs::path(_copyFolder) / "src" / "rm001.sc").string(), "(public\r\n\trm001 0\r\n)\r\n",
+                "(public\r\n\trm001 0\r\n)\r\n(class C3Widget of Obj\r\n\t(properties\r\n\t\tc3WidgetSize 0\r\n\t)\r\n)\r\n");
+            cli::StringConsole dryRun = Expect(0, { "script", "compile", _copyFolder, "rm001", "--dry-run" });
+            Assert::IsTrue(dryRun.err.find("the class and selector tables would be written as patch files") != std::string::npos, Wide(dryRun.err).c_str());
+            Assert::IsTrue(dryRun.err.find("a run would change a .sco file, so the scripts that use it would be out of date") != std::string::npos, Wide(dryRun.err).c_str());
+            cli::StringConsole run = Expect(0, { "script", "compile", _copyFolder, "rm001" });
+            Assert::IsTrue(run.err.find("the class and selector tables were written as patch files") != std::string::npos, Wide(run.err).c_str());
+            Assert::IsTrue(run.err.find("a .sco file changed, so the scripts that use it can be out of date") != std::string::npos, Wide(run.err).c_str());
         }
 
         // The text of a Windows error has no line break of its own, so no

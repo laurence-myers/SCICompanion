@@ -9,6 +9,7 @@
 #include "CoreLog.h"
 #include "format.h"
 #include "FileWrite.h"
+#include "PatchResourceSource.h"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -125,7 +126,8 @@ CompileBatch::~CompileBatch()
     {
         sci::Status restored = sci::Guard("putting back the .sco files", [&]() -> sci::Status
         {
-            return _RestoreObjectFiles(false);
+            // Nothing was written: _writtenScripts is empty.
+            return _RestoreObjectFiles();
         });
         if (!restored)
         {
@@ -208,31 +210,24 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
     {
         // The end of a pass. Another pass when a .sco file changed (plan
         // section 4.5): the scripts that use it are right only then.
-        if (_scripts.empty() || !_passChangedObjectFile || (_pass >= _options.passes))
+        // With no .sco write (a dry run), another pass compiles against the
+        // same .sco files, so it gives the same result.
+        if (_scripts.empty() || !_passChangedObjectFile || (_pass >= _options.passes) || !_options.write.writeObjectFile)
         {
             // A .sco file changed in the last pass that the options allow.
             _report.passLimit = !_scripts.empty() && _passChangedObjectFile;
             return false;
         }
+        // An abort between two passes keeps the pass that finished: these
+        // checks come before the next pass withdraws its writes. The second
+        // one sees an abort that came while OnPassStart ran (the GUI's
+        // Cancel button).
         if (abort.load())
         {
-            // An abort between two passes keeps the pass that finished: this
-            // check comes before the next pass withdraws its writes.
             _report.cancelled = true;
             return false;
         }
-        // The next pass writes every script again; the writes of this pass
-        // go, so the commit holds the last pass.
-        _passDefer.reset();
-        _passDefer = std::make_unique<DeferResourceAppend>(_session.ResourceMap());
-        _passFiles.clear();
-        _passObjectFileUses.clear();
-        _pass++;
-        _next = 0;
-        _passChangedObjectFile = false;
-        _anyCompiled = false;
-        _report.scripts.clear();
-        int pass = _pass;
+        int pass = _pass + 1;
         sci::Status notified = sci::Guard("reporting a new pass", [&]() -> sci::Status
         {
             events.OnPassStart(pass);
@@ -242,6 +237,25 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
         {
             CoreLog(LogLevel::Warning, notified.error().ToString());
         }
+        if (abort.load())
+        {
+            _report.cancelled = true;
+            return false;
+        }
+        // The next pass writes every script again; the writes of this pass
+        // go, so the commit holds the last pass.
+        _passDefer.reset();
+        _passDefer = std::make_unique<DeferResourceAppend>(_session.ResourceMap());
+        _passFiles.clear();
+        _passFileOwners.clear();
+        _passObjectFileUses.clear();
+        _passCompiled.clear();
+        _passFailed.clear();
+        _pass = pass;
+        _next = 0;
+        _passChangedObjectFile = false;
+        _anyCompiled = false;
+        _report.scripts.clear();
     }
     if (abort.load())
     {
@@ -294,6 +308,7 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
         if (compiled)
         {
             _passFiles.insert(_passFiles.end(), scriptFiles.begin(), scriptFiles.end());
+            _passFileOwners.insert(_passFileOwners.end(), scriptFiles.size(), index);
             outcome.written = results->Written();
         }
         return compiled;
@@ -307,13 +322,16 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
         _compiledTitles[compiledNumber] = script.GetTitle();
     }
     _passChangedObjectFile = _passChangedObjectFile || objectFileChanged;
-    if (objectFileChanged)
+    // In a dry run, the change is one that a run would make: the file does
+    // not change.
+    if (objectFileChanged && _options.write.writeObjectFile)
     {
-        _changedObjectFiles.emplace(compiledNumber, index);
+        _changedObjectFiles[compiledNumber].insert(index);
     }
     if (outcome.status)
     {
         _anyCompiled = true;
+        _passCompiled.insert(index);
         if (compiledNumber != InvalidResourceNumber)
         {
             _passObjectFileUses[compiledNumber] = std::move(usedObjectFiles);
@@ -321,6 +339,7 @@ bool CompileBatch::Step(const std::atomic<bool> &abort, ICompileEvents &events)
     }
     else
     {
+        _passFailed.insert(index);
         if (!returned)
         {
             // An exception escaped the compile: the log does not have it.
@@ -387,14 +406,19 @@ sci::Status CompileBatch::_DecideAbout(const std::vector<std::string> &files, bo
 sci::Status CompileBatch::_CheckObjectFileUses() const
 {
     std::string uses;
+    bool anyFailed = false;
     for (const auto &user : _passObjectFileUses)
     {
         std::string changed;
         for (uint16_t used : user.second)
         {
-            if ((_changedObjectFiles.count(used) != 0) && (_passObjectFileUses.count(used) == 0))
+            auto changedScripts = _changedObjectFiles.find(used);
+            if ((changedScripts != _changedObjectFiles.end()) && (_passObjectFileUses.count(used) == 0))
             {
-                changed += (changed.empty() ? "" : ", ") + _LabelOf(used);
+                bool failed = std::any_of(changedScripts->second.begin(), changedScripts->second.end(),
+                    [this](size_t index) { return _passFailed.count(index) != 0; });
+                anyFailed = anyFailed || failed;
+                changed += (changed.empty() ? "" : " and ") + _LabelOf(used) + (failed ? ", which failed" : ", which did not run");
             }
         }
         if (!changed.empty())
@@ -407,10 +431,10 @@ sci::Status CompileBatch::_CheckObjectFileUses() const
         return sci::Ok();
     }
     // Finish then puts back the .sco files, so that the next compile does
-    // not use the new ones.
+    // not use the new ones; its report names each file.
     return sci::Fail(sci::ErrorCode::WriteRefused, "no compiled resource was written, because these scripts compiled against the new .sco file "
-        "of a script that failed in the last pass, or did not run in it, so the commit does not write it: " + uses +
-        ". The .sco files are back as they were before the compile. Correct the scripts that failed, then compile again.");
+        "of a script that the commit does not write (it failed in the last pass, or did not run in it): " + uses + "." +
+        (anyFailed ? " Correct the scripts that failed, then compile again." : " Compile again."));
 }
 
 // "Name (N)" for a compiled number: the script of the batch that compiled
@@ -457,43 +481,47 @@ void CompileBatch::_CaptureObjectFile(size_t index, const ScriptId &script)
 // leaves a new .sco that describes a script the game does not have, and the
 // next compile would use it. Each such .sco goes back to its bytes from
 // before the batch, or goes when there was no file.
-sci::Status CompileBatch::_RestoreObjectFiles(bool committed)
+sci::Status CompileBatch::_RestoreObjectFiles()
 {
     std::vector<std::string> notRestored;
     for (const auto &changed : _changedObjectFiles)
     {
-        if (committed && (_passObjectFileUses.find(changed.first) != _passObjectFileUses.end()))
+        for (size_t index : changed.second)
         {
-            // The commit wrote the script.
-            continue;
-        }
-        const ObjectFileBefore &before = _objectFilesBefore[changed.second];
-        if (!before.captured || before.unreadable)
-        {
-            notRestored.push_back(before.path + ": the file could not be read before the compile");
-            continue;
-        }
-        sci::Status restored = sci::Ok();
-        if (before.existed)
-        {
-            restored = WriteBytesToFile(before.path, before.bytes);
-        }
-        else
-        {
-            std::error_code ec;
-            fs::remove(before.path, ec);
-            if (ec)
+            if (_writtenScripts.count(index) != 0)
             {
-                restored = sci::Fail(sci::ErrorCode::Io, fmt::format("Removing {0}: {1}", before.path, ec.message()));
+                // The commit wrote the script.
+                continue;
             }
-        }
-        if (restored)
-        {
-            _report.restoredObjectFiles.push_back(before.path);
-        }
-        else
-        {
-            notRestored.push_back(restored.error().ToString());
+            const ObjectFileBefore &before = _objectFilesBefore[index];
+            if (!before.captured || before.unreadable)
+            {
+                notRestored.push_back(before.path + ": the file could not be read before the compile");
+                continue;
+            }
+            sci::Status restored = sci::Ok();
+            if (before.existed)
+            {
+                restored = WriteBytesToFile(before.path, before.bytes);
+            }
+            else
+            {
+                std::error_code ec;
+                fs::remove(before.path, ec);
+                if (ec)
+                {
+                    restored = sci::Fail(sci::ErrorCode::Io, fmt::format("Removing {0}: {1}", before.path, ec.message()));
+                }
+            }
+            if (restored)
+            {
+                (before.existed ? _report.restoredObjectFiles : _report.removedObjectFiles).push_back(before.path);
+            }
+            else
+            {
+                // The text with no code: the error of the list has it.
+                notRestored.push_back(restored.error().message);
+            }
         }
     }
     if (notRestored.empty())
@@ -683,10 +711,13 @@ CompileReport CompileBatch::Finish()
         _Commit();
         // The .sco files of the scripts that the commit does not write go
         // back (all of them without a commit).
-        bool committed = _report.commit.has_value() && _options.write.writeResources;
+        if (_report.commit.has_value() && _options.write.writeResources)
+        {
+            _writtenScripts = _passCompiled;
+        }
         _report.objectFiles = sci::Guard("putting back the .sco files", [&]() -> sci::Status
         {
-            return _RestoreObjectFiles(committed);
+            return _RestoreObjectFiles();
         });
         // An abort or failFast after a pass that changed a .sco: a script of
         // the commit can use an old one.
@@ -771,20 +802,24 @@ void CompileBatch::_Commit()
         _report.commit = sci::Guard("writing the compiled resources", [&]() -> sci::Status
         {
             SCI_TRY(_defer->Commit());
-            if (_options.write.outDir.empty())
+            if (!_options.write.outDir.empty())
             {
-                return sci::Ok();
+                return _WriteOutputFolder(tableFiles);
             }
-            // The tables first: a script without its tables is worse than
-            // tables without the script.
-            std::vector<StagedOutputFile> files = tableFiles;
-            files.insert(files.end(), _passFiles.begin(), _passFiles.end());
-            if (!_options.write.writeResources)
+            if (!_options.write.writeResources && !_toPackage)
             {
-                // A dry run checks the files as the write would.
-                return CheckStagedOutputFiles(_session.Helper(), _options.write, files);
+                // A dry run into the game's patch files checks each patch
+                // file as the write would (PatchFilesResourceSource).
+                const GameFolderHelper &helper = _session.Helper();
+                for (const std::vector<StagedOutputFile> *files : { &tableFiles, &_passFiles })
+                {
+                    for (const StagedOutputFile &file : *files)
+                    {
+                        SCI_TRY(CheckPatchFileCanBeReplaced(helper.GameFolder + "\\" + GetFileNameFor(file.type, file.number, NoBase36, helper.Version)));
+                    }
+                }
             }
-            return WriteStagedOutputFiles(_session.Helper(), _options.write, files);
+            return sci::Ok();
         });
         g_compileAppendTimer.Stop();
         g_compileIOTimer.Stop();
@@ -794,6 +829,38 @@ void CompileBatch::_Commit()
             _AddWarnings();
         }
     }
+}
+
+// The commit into an output folder: the files of the tables, then those of
+// the scripts. A dry run checks the files as the write would.
+sci::Status CompileBatch::_WriteOutputFolder(const std::vector<StagedOutputFile> &tableFiles)
+{
+    // The tables first: a script without its tables is worse than tables
+    // without the script.
+    std::vector<StagedOutputFile> files = tableFiles;
+    files.insert(files.end(), _passFiles.begin(), _passFiles.end());
+    if (!_options.write.writeResources)
+    {
+        return CheckStagedOutputFiles(_session.Helper(), _options.write, files);
+    }
+    size_t written = 0;
+    sci::Status wrote = WriteStagedOutputFiles(_session.Helper(), _options.write, files, &written);
+    if (!wrote && (written > tableFiles.size()))
+    {
+        // A write that fails after the check (a full disk) keeps the files
+        // before it: the scripts whose files are all there keep their .sco.
+        std::set<size_t> notWritten;
+        for (size_t i = 0; i < _passFiles.size(); i++)
+        {
+            if (tableFiles.size() + i >= written)
+            {
+                notWritten.insert(_passFileOwners[i]);
+            }
+        }
+        std::set_difference(_passCompiled.begin(), _passCompiled.end(), notWritten.begin(), notWritten.end(),
+            std::inserter(_writtenScripts, _writtenScripts.end()));
+    }
+    return wrote;
 }
 sci::Result<CompileReport> CompileScripts(GameSession &session, std::vector<ScriptId> scripts, const CompileOptions &options,
     const std::atomic<bool> &abort, ICompileEvents &events)

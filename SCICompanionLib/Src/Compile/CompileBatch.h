@@ -94,13 +94,16 @@ struct CompileReport
     // file that could not move (it still hides the package write).
     sci::Status moves;
     // The .sco files that the batch changed for a script that the commit
-    // does not write (all of them when the commit is refused or fails, or
-    // in a dry run) go back to their bytes from before the batch: Ok, or
-    // an Io error that names each file that could not go back (it
-    // describes a script that the game does not have).
+    // does not write (all of them when the commit is refused or fails
+    // before its first write, or in a dry run) go back to their bytes from
+    // before the batch: Ok, or an Io error that names each file that could
+    // not go back (it describes a script that the game does not have).
     sci::Status objectFiles;
-    // The .sco files that went back.
+    // The .sco files that went back to their bytes from before the batch.
     std::vector<std::string> restoredObjectFiles;
+    // The new .sco files that went, because there was no file before the
+    // batch.
+    std::vector<std::string> removedObjectFiles;
     // The abort flag stopped the batch.
     bool cancelled = false;
     // failFast stopped the batch after a script that failed.
@@ -109,7 +112,10 @@ struct CompileReport
     int passes = 0;
     // The last pass that ran changed a .sco file, and no pass came after
     // it (the limit of options.passes, an abort, or failFast), so a script
-    // of the commit that uses it can still be out of date.
+    // of the commit that uses it can still be out of date. With no
+    // writeObjectFile and no writeResources (a dry run): a run would change
+    // a .sco file; the batch runs one pass, because the .sco files do not
+    // change.
     bool passLimit = false;
     // Patch files with another name for a written resource, and patch
     // tables that hide later package saves of the GUI.
@@ -173,7 +179,8 @@ public:
     // stopped the batch. After the last script of a pass that changed a .sco
     // file, it starts the next pass (if options.passes allows): the writes of
     // the pass before are withdrawn, and the report has the new pass only.
-    // An abort between two passes keeps the pass that finished. Each script
+    // An abort between two passes (also one that OnPassStart sets) keeps
+    // the pass that finished. Each script
     // is a savepoint: a script that fails withdraws the writes that it
     // queued, so the commit never writes a script without its tables.
     bool Step(const std::atomic<bool> &abort, ICompileEvents &events);
@@ -189,9 +196,12 @@ public:
     // Replace, it moves only the patch files that hide a resource that the
     // commit wrote (a dry run moves none). With an output folder, the commit
     // writes the files of the tables, then those of the scripts that
-    // compiled (WriteStagedOutputFiles; a dry run checks them only). Then it
-    // puts back the .sco files of the scripts that the commit does not write
-    // (report.objectFiles). Call it once.
+    // compiled (WriteStagedOutputFiles; a dry run checks them only). A dry
+    // run into the game's patch files checks that each patch file can be
+    // replaced. Then it puts back the .sco files of the scripts that the
+    // commit does not write (report.objectFiles): a write of the output
+    // folder that fails part of the way keeps the .sco of each script whose
+    // files it wrote. Call it once.
     CompileReport Finish();
 
     size_t Count() const { return _scripts.size(); }
@@ -222,12 +232,23 @@ private:
     // compiled. The commit writes the last pass. In a dry run: the
     // resources that a real run would write, for the patch-file check.
     std::vector<StagedOutputFile> _passFiles;
+    // With an output folder: the index in _scripts of the script of each
+    // file of _passFiles.
+    std::vector<size_t> _passFileOwners;
     // The scripts of this pass that compiled, by their compiled number,
     // with the scripts whose .sco files each one read.
     std::map<uint16_t, std::set<uint16_t>> _passObjectFileUses;
+    // The scripts of this pass that compiled, and those that failed, by
+    // their index in _scripts.
+    std::set<size_t> _passCompiled;
+    std::set<size_t> _passFailed;
     // The scripts whose .sco files the batch changed, in any pass, by their
-    // compiled number, with their index in _scripts.
-    std::map<uint16_t, size_t> _changedObjectFiles;
+    // compiled number, with their indexes in _scripts (two scripts can
+    // compile to one number).
+    std::map<uint16_t, std::set<size_t>> _changedObjectFiles;
+    // The scripts whose resources the commit wrote, by their index in
+    // _scripts: their .sco files stay.
+    std::set<size_t> _writtenScripts;
     // The titles of the scripts by their compiled number, for the texts.
     std::map<uint16_t, std::string> _compiledTitles;
     // The .sco of each script (by its index) as it was before the batch,
@@ -254,7 +275,8 @@ private:
     std::string _LabelOf(uint16_t number) const;
     void _CaptureObjectFile(size_t index, const ScriptId &script);
     void _Commit();
-    sci::Status _RestoreObjectFiles(bool committed);
+    sci::Status _WriteOutputFolder(const std::vector<StagedOutputFile> &tableFiles);
+    sci::Status _RestoreObjectFiles();
     sci::Status _CheckQueuedWrites(const std::vector<StagedOutputFile> &tableFiles);
     void _MoveShadowingPatches();
     void _AddWarnings();

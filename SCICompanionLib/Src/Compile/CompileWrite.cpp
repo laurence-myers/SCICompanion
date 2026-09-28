@@ -97,12 +97,33 @@ sci::Status CheckStagedOutputFiles(const GameFolderHelper &helper, const Compile
     return sci::Ok();
 }
 
-sci::Status WriteStagedOutputFiles(const GameFolderHelper &helper, const CompileWriteOptions &options, const std::vector<StagedOutputFile> &files)
+sci::Status WriteStagedOutputFiles(const GameFolderHelper &helper, const CompileWriteOptions &options, const std::vector<StagedOutputFile> &files, size_t *written)
 {
-    SCI_TRY(CheckStagedOutputFiles(helper, options, files));
-    for (const StagedOutputFile &file : files)
+    if (written)
     {
-        SCI_TRY(WriteOutputFile(helper, options, file.type, file.number, file.data));
+        *written = 0;
+    }
+    SCI_TRY(CheckStagedOutputFiles(helper, options, files));
+    for (size_t i = 0; i < files.size(); i++)
+    {
+        sci::Status wrote = WriteOutputFile(helper, options, files[i].type, files[i].number, files[i].data);
+        if (!wrote)
+        {
+            if (i > 0)
+            {
+                std::string kept;
+                for (size_t j = 0; j < i; j++)
+                {
+                    kept += (kept.empty() ? "" : ", ") + CompiledResourceFileName(files[j].type, files[j].number, helper.Version, options.raw);
+                }
+                wrote.error().context.push_back(fmt::format("{0} of {1} files were written, and they stay ({2})", i, files.size(), kept));
+            }
+            return wrote;
+        }
+        if (written)
+        {
+            (*written)++;
+        }
     }
     return sci::Ok();
 }

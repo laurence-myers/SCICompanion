@@ -185,6 +185,20 @@ sci::Status CompileScriptFile(GameSession &session, CompileResults &results, Com
 					check(SaveSCOFile(helper, results.GetSCO(), script, &changed));
 					results.SetObjectFileChanged(changed);
 				}
+				else if (!options.writeObjectFile && !options.writeResources && status)
+				{
+					// A dry run: the change that a run would make, and the
+					// failure of a .sco that a run could not write.
+					sci::Result<bool> wouldChange = SCOFileWouldChange(helper, results.GetSCO(), script);
+					if (wouldChange)
+					{
+						results.SetObjectFileChanged(*wouldChange);
+					}
+					else
+					{
+						check(sci::Fail(wouldChange.error()));
+					}
+				}
 				g_compileObjFileTimer.Stop();
 				g_compileDebugSymbolTimer.Start();
 				if (options.writeDebugInfo && status && !results.GetDebugInfo().empty())

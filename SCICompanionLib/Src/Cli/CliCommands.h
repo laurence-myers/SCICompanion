@@ -6,6 +6,7 @@
 #include "CliConsole.h"
 #include "ExitCodes.h"
 #include "Result.h"
+#include <atomic>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -52,7 +53,11 @@ namespace cli
         // To stderr, always.
         void Error(const std::string &text) { _Write("scic: error: " + text + "\n", true, false); }
         // To stderr, unless --quiet.
-        void Warning(const std::string &text) { _Write("scic: warning: " + text + "\n", !_options.quiet, false); }
+        void Warning(const std::string &text)
+        {
+            _warnings++;
+            _Write("scic: warning: " + text + "\n", !_options.quiet, false);
+        }
         void Message(const std::string &text) { _Write(text + "\n", !_options.quiet, false); }
         // To stderr, with --verbose only.
         void Detail(const std::string &text) { _Write(text + "\n", _options.verbose && !_options.quiet, false); }
@@ -70,8 +75,15 @@ namespace cli
         {
             bool show = (level == DiagnosticLevel::Error) || (((level == DiagnosticLevel::Warning) || (level == DiagnosticLevel::Info)) && !_options.quiet) ||
                 ((level == DiagnosticLevel::Message) && _options.verbose && !_options.quiet);
+            if (level == DiagnosticLevel::Warning)
+            {
+                _warnings++;
+            }
             _Write(text + "\n", show, false);
         }
+        // The warnings so far (Warning and a warning diagnostic), also those
+        // that --quiet hides: a summary counts them.
+        size_t Warnings() const { return _warnings.load(); }
 
     private:
         void _Write(const std::string &text, bool toConsole, bool toStdout)
@@ -98,6 +110,7 @@ namespace cli
         const CommonOptions &_options;
         LogFile *_log;
         std::mutex _mutex;
+        std::atomic<size_t> _warnings{ 0 };
     };
 
     // scic script list (plan section 4.3).

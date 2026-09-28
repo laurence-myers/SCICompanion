@@ -704,6 +704,10 @@ namespace cli
             {
                 output.Message("put back " + restored + ": its script was not written");
             }
+            for (const std::string &removed : report.removedObjectFiles)
+            {
+                output.Message("removed " + removed + ": its script was not written");
+            }
             if (!report.objectFiles)
             {
                 output.Error(report.objectFiles.error().ToString());
@@ -715,25 +719,40 @@ namespace cli
             if (report.passLimit)
             {
                 // A compile of named scripts is one pass: a .sco that changes is
-                // expected, and the scripts that use it are not in the run.
-                output.Warning((report.cancelled || report.stopped) ?
-                    std::string("the run stopped after a pass that changed a .sco file, so a script can use an old one: compile again") :
-                    (all ? fmt::format("pass {0}, the last, still changed a .sco file, so a script can use an old one: compile again, or give more --passes", report.passes) :
-                    std::string("a .sco file changed, so the scripts that use it can be out of date: compile them too, or give --all")));
+                // expected, and the scripts that use it are not in the run. A
+                // dry run writes no .sco, so it compiles one pass.
+                std::string text;
+                if (dryRun)
+                {
+                    text = all ? "a run would change a .sco file; a dry run compiles one pass, so a run can need more passes, and its scripts that use the .sco can compile otherwise" :
+                        "a run would change a .sco file, so the scripts that use it would be out of date: compile them too, or give --all";
+                }
+                else if (report.cancelled || report.stopped)
+                {
+                    text = "the run stopped after a pass that changed a .sco file, so a script can use an old one: compile again";
+                }
+                else
+                {
+                    text = all ? fmt::format("pass {0}, the last, still changed a .sco file, so a script can use an old one: compile again, or give more --passes", report.passes) :
+                        "a .sco file changed, so the scripts that use it can be out of date: compile them too, or give --all";
+                }
+                output.Warning(text);
             }
 
             size_t compiled = report.CompiledCount();
             size_t notReached = scriptCount - report.scripts.size();
             std::string destination = DestinationText(helper, write);
-            // With no compiled script, nothing is written: a dry run says "a
-            // run would write none".
-            std::string summary = (compiled == 0) ? fmt::format("Compiled 0 of {0} scripts, and {1} none", scriptCount, dryRun ? "a run would write" : "wrote") :
+            // With no compiled script, or a commit that failed (a dry run: its
+            // checks), nothing is written: a dry run says "a run would write
+            // none".
+            std::string summary = ((compiled == 0) || !report.commit) ?
+                fmt::format("Compiled {0} of {1} scripts, and {2} none", compiled, scriptCount, dryRun ? "a run would write" : "wrote") :
                 (dryRun ? fmt::format("Compiled {0} of {1} scripts; a run would write them {2}", compiled, scriptCount, destination) :
-                (report.commit ? fmt::format("Compiled and wrote {0} of {1} scripts {2}", compiled, scriptCount, destination) :
-                fmt::format("Compiled {0} of {1} scripts, and wrote none", compiled, scriptCount)));
-            // The warnings of the scripts, and the warnings of the batch that
-            // printed above (also the warning of the pass limit).
-            size_t warnings = report.WarningCount() + report.warnings.size() + (report.passLimit ? 1 : 0);
+                fmt::format("Compiled and wrote {0} of {1} scripts {2}", compiled, scriptCount, destination));
+            // Every warning that printed before: of the selection, of the
+            // core log, of the scripts and of the batch (also the warning of
+            // the pass limit).
+            size_t warnings = output.Warnings();
             summary += fmt::format(" ({0}, {1}{2}).", CountText(report.ErrorCount(), "error"), CountText(warnings, "warning"),
                 (report.passes > 1) ? fmt::format(", {0} passes", report.passes) : std::string());
             if (!failed.empty())

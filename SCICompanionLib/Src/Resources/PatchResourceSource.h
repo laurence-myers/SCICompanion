@@ -14,8 +14,15 @@
 #pragma once
 
 #include "ResourceSources.h"
+#include "Result.h"
 class ResourceBlob;
 enum class ResourceTypeFlags;
+
+// Whether the rename of PatchFilesResourceSource::AppendResources can
+// replace this patch file: Ok for a new file; Io for a read-only file (which
+// MoveFileEx does not replace), and for a file that another program holds
+// open without delete sharing. A dry run checks the patch files with it.
+sci::Status CheckPatchFileCanBeReplaced(const std::string &path);
 
 // ResourceSource for isolated patch files
 class PatchFilesResourceSource : public ResourceSource

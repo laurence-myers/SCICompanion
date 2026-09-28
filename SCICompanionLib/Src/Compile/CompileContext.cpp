@@ -1313,6 +1313,9 @@ void PrecompiledHeaders::Update(CompileContext &context, Script &script)
 	headerScanList.insert(GetDefaultHeaders(script).begin(), GetDefaultHeaders(script).end());
 	headerScanList.insert(script.GetIncludes().begin(), script.GetIncludes().end());
 	set<string> nonHeadersEncountered;
+	// The includes that did not load or parse: each gives its error once,
+	// also when the loop below runs again for the includes of a header.
+	set<string> failedIncludes;
 	// Now also include any headers that *those* headers include.  To do so, we'll need to parse
 	// the header - ideally we can use the pre-parsed versions.
 	bool fDone = false;
@@ -1327,12 +1330,13 @@ void PrecompiledHeaders::Update(CompileContext &context, Script &script)
 			if (oldHeader == _allHeaders.end())
 			{
 				auto encounteredIt = nonHeadersEncountered.find(*curHeaderIt);
-				if (encounteredIt == nonHeadersEncountered.end())
+				if ((encounteredIt == nonHeadersEncountered.end()) && (failedIncludes.find(*curHeaderIt) == failedIncludes.end()))
 				{
 					// It's a header we have not yet encountered. Parse it.
 					std::string includePath = _resourceMap.GetIncludePath(*curHeaderIt);
 					ScriptId scriptId(includePath);
-					sci::Result<ScriptText> text = LoadScriptText(scriptId.GetFullPath());
+					// The path in its own case, for the text of a read error.
+					sci::Result<ScriptText> text = LoadScriptText(scriptId.GetFullPathOrig());
 					if (text)
 					{
 						CScriptStreamLimiter limiter(*text);
@@ -1359,6 +1363,7 @@ void PrecompiledHeaders::Update(CompileContext &context, Script &script)
 							std::stringstream ss;
 							ss << "Parsing errors while loading " << scriptId.GetFullPathOrig() << ".";
 							context.ReportResult(CompileResult(ss.str(), CompileResult::CRT_Error));
+							failedIncludes.insert(*curHeaderIt);
 						}
 					}
 					else
@@ -1375,6 +1380,7 @@ void PrecompiledHeaders::Update(CompileContext &context, Script &script)
 							ss << "Unable to load the include file " << *curHeaderIt << ": " << text.error().message;
 						}
 						context.ReportResult(CompileResult(ss.str(), CompileResult::CRT_Error));
+						failedIncludes.insert(*curHeaderIt);
 					}
 				}
 			}

@@ -8,10 +8,11 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 
 ## Next
 
-- The other review findings below, one milestone at a time: the compile
-  batch (`ccadff0c`, `cd1d5ee3`), the decompile batch (`8fc8e984`,
-  `3cf3e33f`), then the nits of the tests and of the build. Then the
-  optional E1 (plan section 9), or stop before it.
+- The review of the compile-batch milestone (the commit after
+  `9c390b53`), if it is not done yet.
+- The other review findings below, one milestone at a time: the decompile
+  batch (`8fc8e984`, `3cf3e33f`), then the nits of the tests and of the
+  build. Then the optional E1 (plan section 9), or stop before it.
 - Start a new session for each milestone (AGENTS.md, "Work with AI
   agents").
 - Push and pull requests only with your approval.
@@ -67,26 +68,6 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   patch file); the dump test uses `-q`, so "a dump is not a warning" cannot
   fail; no test for the "Invalid branch target." gate.
 
-### `ccadff0c` (the compile batch): 7 nits
-
-- Two scripts with one compiled number: only one `.sco` goes back
-  (`_changedObjectFiles` keeps one script for each number).
-- The length check (`FileWrite.cpp`) measures the path as it is given, and
-  counts bytes, not characters. The CLI gives absolute paths; a relative
-  path of another caller passes the check, and the write fails after the
-  tables.
-- The refusal says "The .sco files are back" before the restore runs; the
-  `objectFiles` text repeats "[io]"; after an abort, "Correct the scripts
-  that failed" has no failed script; the GUI says "Put back" for a file
-  that it removed.
-- A dry run into the game's patch files checks nothing: with a read-only
-  `script.904`, the run fails and the dry run passes (older).
-- No test: the restore of the destructor, `objectFiles` in the exit code
-  and in `Succeeded()`, the GUI lines, a restore that fails.
-- A write that fails after the check can keep files, and `Finish` then
-  puts back the `.sco` of every script (inspection only).
-- An abort in `OnPassStart` loses the pass that finished (older).
-
 ### `8fc8e984` (the decompile batch): 5 nits
 
 - A batch that throws after a naming, outside the exception boundary of a
@@ -100,25 +81,6 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   failed script can change main's `.sco`; its old file then uses the old
   name and is not listed.
 - A throw in any namer loses names, not only in the naming rounds.
-
-### `cd1d5ee3` (the C3 fixes): 7 nits
-
-- Test gaps: no test fails for the absolute `--out-dir`, for the batch
-  warnings in the count, for the dry-run text "would be written", or for
-  the plural texts of decompile and sco.
-- The assert "a commit that failed lists no file" tests nothing: the
-  shadow check fails in `Start`, before any outcome.
-- A dry-run summary says "a run would write them" when the commit check
-  fails.
-- The summary does not count the warnings of the selection and of the core
-  log.
-- Each include error prints and counts twice: `sci.sh` includes `keys.sh`,
-  so `Update` loops again and tries the failed include again.
-- The include-read error has its path in lower case.
-- 43 test asserts make their message before `Run` runs, so a failure shows
-  no output.
-- Texts: the plan's C3 row lists `objectFileChanged`; a dry run gives no
-  pass warning.
 
 ## Known gaps
 
@@ -243,6 +205,13 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   guard of 100 groups, the `NoDbugStr` path.
 - The tables-first order of an output-folder write, and the change count
   of a compile that throws.
+- A write into an output folder that fails after its check (a full disk):
+  the `.sco` of each script whose files it wrote stays, and the error
+  names the files that stay. No test can make the write fail after the
+  check. A patch rename that fails after the checks puts back the `.sco`
+  of every script, also of the scripts whose renames were done.
+- The core-log warnings in the count of the compile summary (the test
+  covers a warning of the selection).
 
 ## Outside this branch
 

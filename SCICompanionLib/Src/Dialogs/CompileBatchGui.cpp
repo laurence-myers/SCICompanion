@@ -160,6 +160,11 @@ void ReportCompileBatch(const CompileReport &report, ICompileLog &log, const std
     {
         log.ReportResult(CompileResult("Put back " + restored + ": its script was not written"));
     }
+    // A new .sco that was not there before the compile goes.
+    for (const std::string &removed : report.removedObjectFiles)
+    {
+        log.ReportResult(CompileResult("Removed " + removed + ": its script was not written"));
+    }
     if (!report.objectFiles)
     {
         log.ReportResult(CompileResult("Error: " + report.objectFiles.error().ToString(), CompileResult::CRT_Error));
