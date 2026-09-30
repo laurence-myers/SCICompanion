@@ -111,6 +111,7 @@ exit /b 0</Command>
   <ItemGroup>
     <ClCompile Include="TestCliIntegration.cpp" />
     <ClCompile Include="TestStructuralCompare.cpp" />
+    <ClCompile Include="TestScopeVerify.cpp" />
     <ClCompile Include="TestScopeCode.cpp" />
     <ClCompile Include="ScopeAsm.cpp" />
     <ClCompile Include="TestCli.cpp" />

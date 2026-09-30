@@ -16,19 +16,22 @@ namespace scope
 	// A failure of a stage of the scope engine. The message is
 	// "[scope:<stage>:<id>]"; the id is stable, so that a report can count
 	// the failures of one kind. The offset is the address of the
-	// instruction that stopped the stage, or -1.
+	// instruction that stopped the stage, or -1. The detail is a text for a
+	// person (it is not in the message).
 	class ScopeError : public sci::DataError
 	{
 	public:
-		ScopeError(const std::string &stage, const std::string &id, int offset);
+		ScopeError(const std::string &stage, const std::string &id, int offset, const std::string &detail = std::string());
 		const std::string &Stage() const { return _stage; }
 		const std::string &Id() const { return _id; }
 		int Offset() const { return _offset; }
+		const std::string &Detail() const { return _detail; }
 
 	private:
 		std::string _stage;
 		std::string _id;
 		int _offset;
+		std::string _detail;
 	};
 
 	// No instruction: a branch target of an instruction that is not a branch,

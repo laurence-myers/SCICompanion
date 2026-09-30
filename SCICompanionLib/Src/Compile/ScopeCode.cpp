@@ -7,9 +7,9 @@
 
 namespace scope
 {
-	ScopeError::ScopeError(const std::string &stage, const std::string &id, int offset) :
+	ScopeError::ScopeError(const std::string &stage, const std::string &id, int offset, const std::string &detail) :
 		sci::DataError(fmt::format("[scope:{0}:{1}]", stage, id), sci::ErrorCode::Unsupported),
-		_stage(stage), _id(id), _offset(offset)
+		_stage(stage), _id(id), _offset(offset), _detail(detail)
 	{
 	}
 

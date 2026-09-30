@@ -50,6 +50,9 @@
     <ClCompile Include="TestStructuralCompare.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestScopeVerify.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestScopeCode.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

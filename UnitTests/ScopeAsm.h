@@ -2,6 +2,7 @@
 
 #include <list>
 #include <map>
+#include <memory>
 #include <string>
 #include "Version.h"
 #include "scii.h"
@@ -23,3 +24,12 @@ public:
 private:
 	std::map<std::string, int> _labels;
 };
+
+namespace scope
+{
+	struct Region;
+}
+
+// A region tree from the text of scope::Dump. Each address is the index of
+// an instruction (a ScopeAsm address). Asserts that the text is valid.
+std::unique_ptr<scope::Region> ParseRegions(const std::string &text);
