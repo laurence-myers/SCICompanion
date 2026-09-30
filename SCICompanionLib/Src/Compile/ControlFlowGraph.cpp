@@ -1627,9 +1627,9 @@ static bool _IsPendingJoin(ControlFlowNode *node)
 }
 
 // A node that is only a "bt" to target, and that is a pending join: the
-// end of an and whose last operand is an or. Sierra's compiler sends the
-// or's own "bt" past this node, straight to target: the accumulator is true
-// there, so this "bt" is taken too.
+// end of an and (or of an or) whose last operand is an or. Sierra's compiler
+// sends the inner or's own "bt" past this node, straight to target: the
+// accumulator is true there, so this "bt" is taken too.
 static bool _IsPendingBtJoinTo(ControlFlowNode *node, ControlFlowNode *target)
 {
 	if ((node->Type != CFGNodeType::RawCode) || !node->endsWith(Opcode::BT))
@@ -1928,7 +1928,9 @@ bool ControlFlowGraph::_TryAndMerge(ControlFlowNode *structure, ControlFlowNode 
 
 // first: a bt whose target is its post-dominator (the join), with a one-way
 // chain from its fall-through to the join. That is an "or": first, then the
-// chain. The or is a one-way node whose value flows to the join.
+// chain. The or is a one-way node whose value flows to the join. When first
+// is a bt, the chain can also end at a pending "bt" to the join (see
+// _IsPendingBtJoinTo); that "bt" is then the or's join.
 bool ControlFlowGraph::_TryOrCollapse(ControlFlowNode *structure, ControlFlowNode *first, const map<ControlFlowNode*, ControlFlowNode*> &ipdom, const NodeSet *testChain)
 {
 	// first is a bt, or an and whose last term ended in a bt (the and is the
