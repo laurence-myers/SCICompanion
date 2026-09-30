@@ -277,6 +277,17 @@ namespace UnitTests
             AssertDecompileMatchesExpected("F16_SharedHeadOneLoop", 938);
         }
 
+        // An or that ends where the and around it ends: Sierra's compiler
+        // sends the or's "bt" past that join, to the outer or's end. The
+        // structurer moves the "bt" back onto the join, so the or builds.
+        // No round trip: SCI Companion's compiler also sends the "bnt" of the
+        // and past that join, and the structurer does not build that shape.
+        TEST_METHOD(ThreadedOrJoin)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F17_ThreadedOrJoin", 939, false);
+        }
+
         // Return values take the golden shape: an if whose branches return is
         // not itself returned; a value-shaped if at the end of the function
         // is; a ++ before the final ret is not a return value.

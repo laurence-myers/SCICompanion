@@ -469,9 +469,21 @@ static std::string NormalizeWs(const std::string &text)
     return out;
 }
 
-DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, uint16_t scriptNumber)
+DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, uint16_t scriptNumber, bool roundTrip)
 {
-    DecompileOutput first = DecompileAndRoundTrip(fixtureName, scriptNumber);
+    DecompileOutput first;
+    if (roundTrip)
+    {
+        first = DecompileAndRoundTrip(fixtureName, scriptNumber);
+    }
+    else
+    {
+        AddFixtureScript(fixtureName);
+        std::string compileError;
+        bool compiled = CompileFixture(scriptNumber, fixtureName, &compileError);
+        Assert::IsTrue(compiled, ToWString("Compile failed: " + fixtureName + ": " + compileError).c_str());
+        first = DecompileToText(scriptNumber);
+    }
     if (first.fallbacks != 0)
     {
         std::string msg = fixtureName + " warnings:";
