@@ -2625,7 +2625,11 @@ bool TryToStealOrCloneSomething(ConsumptionNode *originalChild, ConsumptionNode 
 	bool done = false;
 	while (!done && parent)
 	{
-		if (IsNodeStructureWithInstructionSequence(parent))
+		// The second operand of an and or an or is a chain too: its earlier
+		// nodes run just before, as the push of x in
+		// (and a (!= x (if b 1 else 2))). The search upward stops there,
+		// because a second operand does not always run.
+		if (IsNodeStructureWithInstructionSequence(parent) || (parent->GetType() == ChunkType::Second))
 		{
 			int index = parent->GetIndexOf(child); // Start with previous peer of parent
 			for (int i = index - 1; i >= 0; i--)

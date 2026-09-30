@@ -1273,7 +1273,13 @@ void ControlFlowGraph::_MergeLatchTrampolines()
 			continue;
 		}
 		ControlFlowNode *latch = loop->MaybeGet(SemId::Latch);
+		// A loop body that starts with a switch has the switch as its head;
+		// the loop's first instruction is at the start of the switch's head.
 		ControlFlowNode *head = (*loop)[SemId::Head];
+		if (head->Type == CFGNodeType::Switch)
+		{
+			head = (*head)[SemId::Head];
+		}
 		if (!latch || (latch->Type != CFGNodeType::CommonLatch) || (head->Type != CFGNodeType::RawCode))
 		{
 			continue;
@@ -1626,6 +1632,39 @@ static bool _IsPendingJoin(ControlFlowNode *node)
 	return false;
 }
 
+// The join of an if with an else, used as an operand, that has not been
+// built yet: a node that the then's "jmp" and the else's fall-through reach,
+// and whose first instruction takes the value of the if as an operand: a
+// binary operator, as in (!= x (if a 1 else 2)), or a push for a later one
+// or for a call. An and or an or that starts there loses the if from its
+// first operand, and so does an if whose "bt" is the first operand of an or.
+// A join that starts with a store is not one: the value if is a statement,
+// (= g (if a 1 else 2)), and the code after it tests the stored value.
+static bool _IsPendingValueIfJoin(ControlFlowNode *node)
+{
+	if ((node->Type != CFGNodeType::RawCode) || (node->Predecessors().size() < 2))
+	{
+		return false;
+	}
+	Opcode first = static_cast<RawCodeNode*>(node)->start->get_opcode();
+	bool takesOperand = ((first >= Opcode::ADD) && (first <= Opcode::OR)) ||
+		((first >= Opcode::EQ) && (first <= Opcode::ULE)) || (first == Opcode::PUSH);
+	if (!takesOperand)
+	{
+		return false;
+	}
+	uint16_t address = node->GetStartingAddress();
+	for (ControlFlowNode *pred : node->Predecessors())
+	{
+		if ((pred->Type == CFGNodeType::RawCode) && pred->endsWith(Opcode::JMP) &&
+			(pred->getLastInstruction().get_branch_target()->get_final_offset_dontcare() == address))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 // A node that is only a "bt" to target, and that is a pending join: the
 // end of an and (or of an or) whose last operand is an or. Sierra's compiler
 // sends the inner or's own "bt" past this node, straight to target: the
@@ -1842,7 +1881,7 @@ bool ControlFlowGraph::_TryAndMerge(ControlFlowNode *structure, ControlFlowNode 
 	{
 		return false;
 	}
-	if (_IsPendingJoin(first))
+	if (_IsPendingJoin(first) || _IsPendingValueIfJoin(first))
 	{
 		return false;
 	}
@@ -1891,7 +1930,7 @@ bool ControlFlowGraph::_TryAndMerge(ControlFlowNode *structure, ControlFlowNode 
 	{
 		return false;
 	}
-	if (_IsPendingJoin(last))
+	if (_IsPendingJoin(last) || _IsPendingValueIfJoin(last))
 	{
 		return false;
 	}
@@ -1947,7 +1986,7 @@ bool ControlFlowGraph::_TryOrCollapse(ControlFlowNode *structure, ControlFlowNod
 	{
 		return false;
 	}
-	if (_IsPendingJoin(first))
+	if (_IsPendingJoin(first) || _IsPendingValueIfJoin(first))
 	{
 		return false;
 	}
@@ -2026,7 +2065,7 @@ bool ControlFlowGraph::_TryOrCollapse(ControlFlowNode *structure, ControlFlowNod
 // if-else) whose follow is the post-dominator.
 bool ControlFlowGraph::_TryBuildIf(ControlFlowNode *structure, ControlFlowNode *head, const map<ControlFlowNode*, ControlFlowNode*> &ipdom)
 {
-	if (_IsPendingJoin(head))
+	if (_IsPendingJoin(head) || (head->endsWith(Opcode::BT) && _IsPendingValueIfJoin(head)))
 	{
 		return false;
 	}
@@ -2397,8 +2436,10 @@ void _UnchainBtToBnt(code_pos start, code_pos end)
 
 // Sierra's compiler chains a bnt whose target is another bnt straight to the
 // final target. Inside an or operand that hides the operand's join. For each
-// forward bt that targets a forward bnt T, any bnt between them that targets
-// T's target is retargeted onto T (P; bt L; Q; bnt L; R; L: bnt X).
+// forward bt that targets a bnt T, any bnt between them that targets T's
+// target is retargeted onto T (P; bt L; Q; bnt X; R; L: bnt X). T's target
+// can be behind: the loop head, when the or is the test of an if that ends
+// a loop body.
 void _DeoptimizeBtChains(code_pos start, code_pos end)
 {
 	code_pos cur = start;
@@ -2408,7 +2449,7 @@ void _DeoptimizeBtChains(code_pos start, code_pos end)
 		if ((cur->get_opcode() == Opcode::BT) && cur->is_forward_branch())
 		{
 			code_pos tail = cur->get_branch_target();
-			if ((tail != end) && (tail->get_opcode() == Opcode::BNT) && tail->is_forward_branch())
+			if ((tail != end) && (tail->get_opcode() == Opcode::BNT))
 			{
 				code_pos tailTarget = tail->get_branch_target();
 				code_pos i = cur;
