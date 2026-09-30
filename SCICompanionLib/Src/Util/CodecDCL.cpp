@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include "Codec.h"
-#include "AppState.h"
+#include "CoreLog.h"
 #include "CodecDecompressor.h"
 
 void debug(int number, PCTSTR pszMessage, ...)
@@ -246,12 +246,12 @@ bool DecompressorDCL::unpack(ReadStream *src, byte *dest, uint32_t nPacked, uint
 	int length_param = getByteLSB();
 
 	if (mode != DCL_BINARY_MODE && mode != DCL_ASCII_MODE) {
-		appState->LogInfo("DCL-INFLATE: Error: Encountered mode %02x, expected 00 or 01", mode);
+		CoreLogFormat(LogLevel::Warning, "DCL-INFLATE: Error: Encountered mode %02x, expected 00 or 01", mode);
 		return false;
 	}
 
 	if (length_param < 3 || length_param > 6)
-		appState->LogInfo("Unexpected length_param value %d (expected in [3,6])", length_param);
+		CoreLogFormat(LogLevel::Warning, "Unexpected length_param value %d (expected in [3,6])", length_param);
 
 	while (_dwWrote < _szUnpacked) {
 		if (getBitsLSB(1)) { // (length,distance) pair
@@ -275,13 +275,13 @@ bool DecompressorDCL::unpack(ReadStream *src, byte *dest, uint32_t nPacked, uint
 			debug(8, "\nCOPY(%d from %d)\n", val_length, val_distance);
 
 			if (val_length + _dwWrote > _szUnpacked) {
-				appState->LogInfo("DCL-INFLATE Error: Write out of bounds while copying %d bytes (declared unpacked size is %d bytes, current is %d + %d bytes)",
+				CoreLogFormat(LogLevel::Warning, "DCL-INFLATE Error: Write out of bounds while copying %d bytes (declared unpacked size is %d bytes, current is %d + %d bytes)",
 					val_length, _szUnpacked, _dwWrote, val_length);
 				return false;
 			}
 
 			if (_dwWrote < val_distance) {
-				appState->LogInfo("DCL-INFLATE Error: Attempt to copy from before beginning of input stream (declared unpacked size is %d bytes, current is %d bytes)",
+				CoreLogFormat(LogLevel::Warning, "DCL-INFLATE Error: Attempt to copy from before beginning of input stream (declared unpacked size is %d bytes, current is %d bytes)",
 					_szUnpacked, _dwWrote);
 				return false;
 			}

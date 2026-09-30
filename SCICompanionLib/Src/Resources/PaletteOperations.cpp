@@ -12,10 +12,11 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
+#include "MemoryDC.h"
 #include "PaletteOperations.h"
 #include "ResourceEntity.h"
-#include "AppState.h"
-#include "ImageUtil.h"
+#include "CoreLog.h"
+#include "ImageData.h"
 #include "GameFolderHelper.h"
 
 using namespace std;
@@ -26,6 +27,19 @@ const char palMarker[] = "PAL ";
 const uint16_t palVersion = 0x0300;
 
 PaletteComponent g_egaDummyPalette;
+
+namespace
+{
+	// The EGA colors in a palette, for when one is needed; filled when the
+	// program starts.
+	struct EgaDummyPalette
+	{
+		EgaDummyPalette()
+		{
+			memcpy(g_egaDummyPalette.Colors, g_egaColors, sizeof(g_egaColors));
+		}
+	} egaDummyPalette;
+}
 
 uint32_t ToUint32(const char *marker)
 {
@@ -248,13 +262,13 @@ HBITMAP CreateBitmapFromPaletteComponent(const PaletteComponent &palette, SCIBit
 		reallyUsedCount = CountActualUsedColors(*imageCels, reallyUsed);
 	}
 
-	CDC dc;
-	if (dc.CreateCompatibleDC(nullptr))
+	MemoryDC dc;
+	if (dc)
 	{
 		SCIBitmapInfo bmi(cx, cy, palette.Colors, ARRAYSIZE(palette.Colors));
 		bmi.bmiHeader.biHeight = -bmi.bmiHeader.biHeight;
 		uint8_t *pBitsDest;
-		CBitmap bitmap;
+		HBITMAP bitmap = nullptr;
 
 		// Allow for callers to specify a "transparent" color to render unused palette entries.
 		uint8_t transparentIndex = 0;
@@ -274,7 +288,7 @@ HBITMAP CreateBitmapFromPaletteComponent(const PaletteComponent &palette, SCIBit
 			}
 		}
 
-		if (bitmap.Attach(CreateDIBSection((HDC)dc, &bmi, DIB_RGB_COLORS, (void**)&pBitsDest, nullptr, 0)))
+		if ((bitmap = CreateDIBSection((HDC)dc, &bmi, DIB_RGB_COLORS, (void**)&pBitsDest, nullptr, 0)) != nullptr)
 		{
 			for (int y = 0; y < 16; y++)
 			{
@@ -314,7 +328,7 @@ HBITMAP CreateBitmapFromPaletteComponent(const PaletteComponent &palette, SCIBit
 				}
 			}
 
-			hbmpRet = (HBITMAP)bitmap.Detach();
+			hbmpRet = bitmap;
 			*pbmi = bmi;
 			*ppBitsDest = pBitsDest;
 		}
@@ -501,12 +515,12 @@ void ReadPalette(PaletteComponent &palette, sci::istream &byteStream)
 			}
 			else
 			{
-				throw std::exception("Invalid palette.");
+				throw sci::DataError("Invalid palette.");
 			}
 		}
 		else
 		{
-			appState->LogInfo("Corrupt palette.");
+			CoreLog(LogLevel::Warning, "Corrupt palette.");
 			end = 0; // So we fill in with black below...
 		}
 	}

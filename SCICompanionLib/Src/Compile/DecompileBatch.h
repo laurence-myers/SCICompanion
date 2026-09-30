@@ -1,10 +1,21 @@
 #pragma once
 
+#include "Result.h"
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace sci { class Script; }
 class IDecompilerConfig;
 class IDecompilerResults;
+class CSCOFile;
 class GlobalCompiledScriptLookups;
 class GameFolderHelper;
+class CResourceMap;
 
 struct DecompileOptions
 {
@@ -13,6 +24,24 @@ struct DecompileOptions
 	std::string DebugFunctionMatch;
 	bool DecompileAsm = false;
 	bool SubstituteTextTuples = false;
+};
+
+// Instead of the files: the source of each script (the command line's
+// --stdout and --dry-run). With it, the batch writes no .sc and no .sco file,
+// and not main's .sco. A script that the batch decompiles again (pass 2)
+// gives its source again; the last one counts.
+class IDecompileOutput
+{
+public:
+	virtual ~IDecompileOutput() = default;
+	virtual void OnSource(uint16_t scriptNumber, const std::string &source) = 0;
+	// True for a dry run: the batch also checks each file that a run would
+	// write, as the write does, and writes none. A .sc or .sco that the
+	// write could not replace fails the script; a main's .sco that it could
+	// not replace is in GetMainObjectFileStatus. A .sco that has the bytes
+	// already would not change. The output gets only the source of a .sc
+	// that the write could replace.
+	virtual bool ChecksTheWrites() const { return false; }
 };
 
 // Decompiles a set of scripts and writes their .sc and .sco files.
@@ -41,7 +70,10 @@ struct DecompileOptions
 class DecompileBatch
 {
 public:
-	DecompileBatch(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, const GameFolderHelper &helper, IDecompilerResults &results, const DecompileOptions &options = DecompileOptions());
+	// The resource map gives the game (its helper), the text resources and
+	// vocab.000.
+	DecompileBatch(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, IDecompilerResults &results, const DecompileOptions &options = DecompileOptions(),
+		IDecompileOutput *output = nullptr);
 	~DecompileBatch();
 	DecompileBatch(const DecompileBatch &) = delete;
 	DecompileBatch &operator=(const DecompileBatch &) = delete;
@@ -49,31 +81,79 @@ public:
 	// Decompiles the scripts, names their variables together, and writes each
 	// one's .sc and .sco, plus main's .sco when a global gained a name (unless
 	// script 0 is in the batch, whose own .sco then carries the names).
-	// An abort stops the batch where it is; the scripts already written stay.
+	// An abort stops the batch where it is; the scripts already written stay,
+	// and a script whose write came before the abort counts as written, with
+	// its renames.
 	// A script that fails to decompile is reported and dropped, and the rest
-	// go on.
-	void Run(const std::set<uint16_t> &scriptNumbers);
+	// go on. Each script runs inside an exception boundary. Returns Ok, or
+	// the error of an exception outside the boundary of a script (for
+	// example, in a message between two scripts): the batch then stops, but
+	// main's .sco still gets the global names found before it.
+	sci::Status Run(const std::set<uint16_t> &scriptNumbers);
 
 	// The globals this run named: (standard name, new name).
 	const std::vector<std::pair<std::string, std::string>> &GetGlobalRenames() const { return _globalRenames; }
 	// The scripts whose files this run wrote.
 	const std::set<uint16_t> &GetWrittenScripts() const { return _written; }
+	// Of the scripts whose files this run wrote (with an output that checks
+	// the writes: would write), those whose .sco got new bytes. The write
+	// does not change a .sco that has the bytes already.
+	const std::set<uint16_t> &GetChangedObjectFiles() const { return _changedObjectFiles; }
 	// Of those, the scripts decompiled and written a second time because a
 	// later naming round changed something they can see.
 	const std::set<uint16_t> &GetRewrittenScripts() const { return _rewritten; }
+	// The scripts that failed, and why: the compiled script did not load, an
+	// exception in the decompiler or the naming, or a .sc or .sco file that
+	// could not be written (the first error of the script). A script can be
+	// in GetWrittenScripts too: a file of it was written.
+	const std::map<uint16_t, sci::Error> &GetFailedScripts() const { return _failed; }
+	// The write of main's .sco with the new global names at the end of the
+	// run (with an output that checks the writes, its check): Ok, also when
+	// it was not needed.
+	const sci::Status &GetMainObjectFileStatus() const { return _mainObjectFile; }
+	// The scripts that needed a second write with the new global names, and
+	// that an abort stopped before it: their files still use the old names.
+	const std::set<uint16_t> &GetSkippedRewrites() const { return _skippedRewrites; }
+	// A global gained a name that script 0's own .sco does not carry, and
+	// the batch wrote main's .sco with new bytes (with an output that checks
+	// the writes: would write it). False with an output that does not check
+	// the writes.
+	bool MainObjectFileChanged() const { return _mainObjectFileChanged; }
+
+	// With an output (a dry run of several groups): the main .sco that Run
+	// starts from instead of the file (null: the file), and the one that it
+	// ended with, so that the next group sees the names of this one, as it
+	// reads them from the file after a run that writes.
+	void SetMainObjectFile(std::unique_ptr<CSCOFile> mainSCO);
+	std::unique_ptr<CSCOFile> TakeMainObjectFile();
 
 private:
 	class Item;
 
+	// Pass 1, the naming rounds and pass 2. mainSCO gets main's .sco; it
+	// outlives the items, whose namers point at it.
+	void _RunPasses(const std::set<uint16_t> &scriptNumbers, std::unique_ptr<CSCOFile> &mainSCO);
+	// Writes main's .sco when a global gained a name that it needs. The
+	// error of an exception in a message, after the write.
+	sci::Status _UpdateMainObjectFile(CSCOFile *mainSCO);
+
 	const IDecompilerConfig *_config;
 	GlobalCompiledScriptLookups &_scriptLookups;
+	CResourceMap &_resourceMap;
 	const GameFolderHelper &_helper;
 	IDecompilerResults &_results;
 	DecompileOptions _options;
+	IDecompileOutput *_output;
 
 	std::vector<std::pair<std::string, std::string>> _globalRenames;
 	std::set<uint16_t> _written;
+	std::set<uint16_t> _changedObjectFiles;
 	std::set<uint16_t> _rewritten;
+	std::map<uint16_t, sci::Error> _failed;
+	sci::Status _mainObjectFile;
+	std::set<uint16_t> _skippedRewrites;
+	bool _mainObjectFileChanged = false;
+	std::unique_ptr<CSCOFile> _mainSCO;
 };
 
 // The naming skeleton of a decompiled script: what the variable namer reads
@@ -91,5 +171,7 @@ bool ContainsIdentifier(const std::string &text, const std::string &identifier);
 // Of the candidate scripts, those whose .sc file on disk refers to any of the
 // renamed globals by its old (standard) name. They were decompiled before the
 // global was named and need decompiling again. A script with no source file is
-// never stale.
-std::set<uint16_t> FindScriptsReferencingGlobals(const GameFolderHelper &helper, const std::set<uint16_t> &candidates, const std::vector<std::pair<std::string, std::string>> &renames);
+// never stale. A script in sources is read from there, not from its file (a
+// dry run: the source that a run that writes would have written).
+std::set<uint16_t> FindScriptsReferencingGlobals(const GameFolderHelper &helper, const std::set<uint16_t> &candidates, const std::vector<std::pair<std::string, std::string>> &renames,
+	const std::map<uint16_t, std::string> *sources = nullptr);

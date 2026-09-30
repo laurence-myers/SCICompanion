@@ -15,6 +15,7 @@
 #include "CppUnitTest.h"
 #include "ResourceMap.h"
 #include "AppState.h"
+#include "ClassBrowser.h"
 #include "ScriptOM.h"
 #include "CompileContext.h"
 #include "Helper.h"
@@ -102,12 +103,12 @@ namespace UnitTests
 
             CompileLog log;
             CompileTables tables;
-            tables.Load(appState->GetVersion());
+            tables.Load(appState->GetResourceMap());
             PrecompiledHeaders headers(appState->GetResourceMap());
-            CompileResults results(log);
+            CompileResults results(log, appState->GetVersion());
 
             // Runs MergeScripts, then script.PreScan() (the use-after-free site).
-            GenerateScriptResource(appState->GetVersion(), *mainScript, headers, tables, results, false);
+            GenerateScriptResource(appState->GetSession(), *mainScript, headers, tables, results, false);
             log.CalculateErrors();
 
             bool hasErrors = log.HasErrors();
@@ -203,14 +204,25 @@ namespace UnitTests
             CompileLog log;
             // TODO: Clear errors?
             CompileTables tables;
-            tables.Load(appState->GetVersion());
+            tables.Load(appState->GetResourceMap());
             PrecompiledHeaders headers(appState->GetResourceMap());
             for (auto &script : scripts)
             {
-                CompileResults results(log);
-                NewCompileScript(results, log, tables, headers, script);
+                CompileResults results(log, appState->GetVersion());
+                // As the GUI does: the class browser's background reload must not
+                // run during the compile.
+                ClassBrowserLock lock(appState->GetClassBrowser());
+                lock.Lock();
+                NewCompileScript(appState->GetSession(), results, log, tables, headers, script);
             }
             Assert::IsFalse(log.HasErrors());
+            // A polygon that the compile cannot find is only a message, so look
+            // for it too: the SCI1.1 template's rooms use &getpoly.
+            for (const CompileResult &result : log.Results())
+            {
+                const std::string &message = result.GetMessage();
+                Assert::IsTrue(message.find("&getpoly") == std::string::npos, std::wstring(message.begin(), message.end()).c_str());
+            }
         }
 
         void _DoIt()

@@ -16,11 +16,13 @@
 #include "Helper.h"
 #include "DecompileHelper.h"
 #include "AppState.h"
+#include "ClassBrowser.h"
 #include "ResourceMap.h"
 #include "CompiledScript.h"
 #include "CompileContext.h"
 #include "ScriptOMAll.h"
 #include "DecompilerCore.h"
+#include "DecompileScript.h"
 #include "DecompilerConfig.h"
 #include "ResourceContainer.h"
 #include "format.h"
@@ -129,7 +131,7 @@ void AddFixtureScript(const std::string &fixtureName)
         ToWString("Could not copy fixture: " + src).c_str());
 }
 
-bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::string *outError, std::vector<std::string> *outWarnings)
+bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::string *outError, std::vector<std::string> *outWarnings, std::vector<std::string> *outErrors)
 {
     CResourceMap &rm = appState->GetResourceMap();
     rm.AssignName(ResourceType::Script, scriptNumber, NoBase36, fixtureName.c_str());
@@ -140,18 +142,26 @@ bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::
     DeferResourceAppend defer(rm);
     CompileLog log;
     CompileTables tables;
-    tables.Load(appState->GetVersion());
+    tables.Load(rm);
     PrecompiledHeaders headers(rm);
-    CompileResults results(log);
-    bool ok = NewCompileScript(results, log, tables, headers, scriptId);
+    GameSession &session = appState->GetSession();
+    CompileResults results(log, session.Version());
+    bool ok = false;
+    {
+        // As the GUI does: the class browser's background reload must not run
+        // during the compile.
+        ClassBrowserLock lock(appState->GetClassBrowser());
+        lock.Lock();
+        ok = NewCompileScript(session, results, log, tables, headers, scriptId);
+    }
     if (ok)
     {
-        tables.Save();
+        tables.Save(rm);
     }
     // Commit persists the compiled resource. A failure here must fail the
     // compile, or a later decompile reads a stale resource.
-    HRESULT hr = defer.Commit();
-    bool success = ok && !log.HasErrors() && SUCCEEDED(hr);
+    sci::Status committed = defer.Commit();
+    bool success = ok && !log.HasErrors() && committed.has_value();
     if (outWarnings)
     {
         for (const CompileResult &r : log.Results())
@@ -159,6 +169,16 @@ bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::
             if (r.IsWarning())
             {
                 outWarnings->push_back(r.GetMessage());
+            }
+        }
+    }
+    if (outErrors)
+    {
+        for (const CompileResult &r : log.Results())
+        {
+            if (r.IsError())
+            {
+                outErrors->push_back(r.GetMessage());
             }
         }
     }
@@ -176,7 +196,7 @@ bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::
         }
         if (outError->empty())
         {
-            *outError = fmt::format("(compiled={0} commit={1:#x})", ok, (unsigned)hr);
+            *outError = fmt::format("(compiled={0} commit={1})", ok, committed ? std::string("ok") : committed.error().ToString());
             for (const CompileResult &r : log.Results())
             {
                 *outError += "\n  " + r.GetMessage();
@@ -196,7 +216,7 @@ DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks, bool de
     uint16_t dummy;
     lookups.GetSelectorTable().ReverseLookup("", dummy);
 
-    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(rm, lookups.GetSelectorTable());
 
     DecompileOutput out;
     CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
@@ -208,7 +228,7 @@ DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks, bool de
 
     TestDecompilerResults results;
     std::unique_ptr<sci::Script> pScript = DecompileScript(
-        config.get(), lookups, helper, scriptNumber, compiled, results,
+        config.get(), lookups, rm, scriptNumber, compiled, results,
         debugControlFlow, debugChunks, nullptr, false, false);
 
     std::stringstream ss;
@@ -286,7 +306,7 @@ int CountFallbacksAllScripts(std::vector<std::string> *outFailedScripts, int *ou
     lookups.Load(helper);
     uint16_t dummy;
     lookups.GetSelectorTable().ReverseLookup("", dummy);
-    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(rm, lookups.GetSelectorTable());
 
     std::vector<ScriptId> scripts;
     rm.GetAllScripts(scripts);
@@ -304,7 +324,7 @@ int CountFallbacksAllScripts(std::vector<std::string> *outFailedScripts, int *ou
         processed++;
         TestDecompilerResults results;
         std::unique_ptr<sci::Script> pScript = DecompileScript(
-            config.get(), lookups, helper, number, compiled, results,
+            config.get(), lookups, rm, number, compiled, results,
             false, false, nullptr, false, false);
         std::stringstream ss;
         sci::SourceCodeWriter writer(ss, pScript.get());
@@ -372,7 +392,7 @@ int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
     lookups.Load(helper);
     uint16_t dummy;
     lookups.GetSelectorTable().ReverseLookup("", dummy);
-    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(rm, lookups.GetSelectorTable());
 
     std::map<int, std::string> names;
     if (!nameMapDir.empty())
@@ -395,7 +415,7 @@ int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
         processed++;
         TestDecompilerResults results;
         std::unique_ptr<sci::Script> pScript = DecompileScript(
-            config.get(), lookups, helper, static_cast<uint16_t>(number), compiled, results,
+            config.get(), lookups, rm, static_cast<uint16_t>(number), compiled, results,
             false, false, nullptr, false, false);
         std::stringstream ss;
         sci::SourceCodeWriter writer(ss, pScript.get());
@@ -497,7 +517,7 @@ SnapshotResult CompareTemplateSnapshots()
     lookups.Load(helper);
     uint16_t dummy;
     lookups.GetSelectorTable().ReverseLookup("", dummy);
-    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+    std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(rm, lookups.GetSelectorTable());
 
     std::string expectedDir = GetTestFileDirectory("Decompile\\Snapshots\\SCI1.1");
     std::string actualDir = GetTestModuleDirectory() + "\\SnapshotActuals\\SCI1.1";
@@ -519,7 +539,7 @@ SnapshotResult CompareTemplateSnapshots()
 
         TestDecompilerResults results;
         std::unique_ptr<sci::Script> pScript = DecompileScript(
-            config.get(), lookups, helper, number, compiled, results,
+            config.get(), lookups, rm, number, compiled, results,
             false, false, nullptr, false, false);
         std::stringstream ss;
         sci::SourceCodeWriter writer(ss, pScript.get());

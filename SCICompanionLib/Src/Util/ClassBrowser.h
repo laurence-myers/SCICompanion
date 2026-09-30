@@ -15,6 +15,7 @@
 
 #include "Vocab99x.h"
 #include "CompileInterfaces.h"
+#include "ClassHints.h"
 #include <unordered_map>
 #include "Task.h"
 #include "TokenDatabase.h"
@@ -48,11 +49,14 @@ class DependencyTracker;
 //
 // Usage: AddScript's to it.
 //
-class SCIClassBrowser : public ICompileLog
+class SCIClassBrowser : public ICompileLog, public IClassHints
 {
 public:
 	SCIClassBrowser(DependencyTracker &dependencyTracker);
 	~SCIClassBrowser();
+
+	// IClassHints, for compile error messages. Takes the lock itself.
+	std::string ScriptThatExports(const std::string &identifier) override;
 
 	void SetClassBrowserEvents(IClassBrowserEvents *pEvents);
 

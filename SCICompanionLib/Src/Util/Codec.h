@@ -1,6 +1,8 @@
 
 #pragma once
 
+#include "Result.h"
+
 enum class DecompressionAlgorithm
 {
 	None = 0,
@@ -53,7 +55,7 @@ public:
 	{
 		if ((index < 0) || (index >= _length))
 		{
-			throw std::exception("Array out of bounds.");
+			throw sci::DataError("Array out of bounds.");
 		}
 		return _data[index];
 	}
@@ -84,7 +86,7 @@ public:
 	{
 		if (_length < 1)
 		{
-			throw std::exception("Dereferencing past end of data.");
+			throw sci::DataError("Dereferencing past end of data.");
 		}
 		return *_data;
 	}
@@ -104,7 +106,7 @@ public:
 	{
 		if (_length < requiredLength)
 		{
-			throw std::exception("Insufficient space in array.");
+			throw sci::DataError("Insufficient space in array.");
 		}
 		return _data;
 	}

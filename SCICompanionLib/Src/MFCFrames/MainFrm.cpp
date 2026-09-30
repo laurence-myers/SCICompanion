@@ -16,6 +16,7 @@
 //
 
 #include "stdafx.h"
+#include "ResourceUtil.h"
 #include "AppState.h"
 #include "Pic.h"
 #include "PicDoc.h"
@@ -1678,69 +1679,7 @@ void CMainFrame::OnFileNewSound()
 // decode with the game's own view/pic format, so recognise them as loose
 // patches. (Amiga *.v32/*.v64/*.p32/*.p64 are intentionally omitted: their
 // bitplane format is not supported.)
-#define PATCH_FILE_VIEW "view.*;*.v56;*.v16"
-#define PATCH_FILE_PIC "pic.*;*.p56;*.p16"
-#define PATCH_FILE_SCRIPT "script.*;*.scr"
-#define PATCH_FILE_TEXT "text.*;*.tex"
-#define PATCH_FILE_SOUND "sound.*;*.snd"
-#define PATCH_FILE_MEMORY ""
-#define PATCH_FILE_VOCAB "vocab.*;*.voc"
-#define PATCH_FILE_FONT "font.*;*.fon"
-#define PATCH_FILE_CURSOR "cursor.*;*.cur"
-#define PATCH_FILE_PATCH "patch.*;*.pat"
-#define PATCH_FILE_BITMAP "*.bit"
-#define PATCH_FILE_PALETTE "*.pal"
-#define PATCH_FILE_CDAUDIO "*.cda"
-#define PATCH_FILE_AUDIO "*.aud"
-#define PATCH_FILE_SYNC "*.syn"
-#define PATCH_FILE_MESSAGE "*.msg"
-#define PATCH_FILE_AUDIOMAP "*.map"
-#define PATCH_FILE_HEAP "*.hep"
-
-//#define PATCH_FILE_TYPES "pic.*;view.*;vocab.*;font.*;cursor.*;text.*;sound.*;patch.*;script.*;*.v56;*.p56;*.scr;*.tex;*.snd;*.voc;*.fon;*.cur;*.pat;*.bit;*.pal;*.cda;*.aud;*.syn;*.msg;*.hep;*.map"
-
-#define PATCH_FILE_TYPES PATCH_FILE_VIEW ";"\
- PATCH_FILE_PIC ";" \
-PATCH_FILE_SCRIPT ";" \
-PATCH_FILE_TEXT ";" \
-PATCH_FILE_SOUND ";" \
-PATCH_FILE_MEMORY ";" \
-PATCH_FILE_VOCAB ";" \
-PATCH_FILE_FONT ";" \
-PATCH_FILE_CURSOR ";" \
-PATCH_FILE_PATCH ";" \
-PATCH_FILE_BITMAP ";" \
-PATCH_FILE_PALETTE ";" \
-PATCH_FILE_CDAUDIO ";" \
-PATCH_FILE_AUDIO ";" \
-PATCH_FILE_SYNC ";"  \
-PATCH_FILE_MESSAGE ";" \
-PATCH_FILE_AUDIOMAP ";" \
-PATCH_FILE_HEAP
-
 const TCHAR g_szResourceSpec[] = PATCH_FILE_TYPES;
-
-const TCHAR* g_szResourceSpecByType[(int)ResourceType::Max] =
-{
-	PATCH_FILE_VIEW,
-	PATCH_FILE_PIC,
-	PATCH_FILE_SCRIPT,
-	PATCH_FILE_TEXT,
-	PATCH_FILE_SOUND,
-	PATCH_FILE_MEMORY,
-	PATCH_FILE_VOCAB,
-	PATCH_FILE_FONT,
-	PATCH_FILE_CURSOR,
-	PATCH_FILE_PATCH,
-	PATCH_FILE_BITMAP,
-	PATCH_FILE_PALETTE,
-	PATCH_FILE_CDAUDIO,
-	PATCH_FILE_AUDIO,
-	PATCH_FILE_SYNC,
-	PATCH_FILE_MESSAGE,
-	PATCH_FILE_AUDIOMAP,
-	PATCH_FILE_HEAP
-};
 
 const TCHAR g_szResourceFilter[] = TEXT("All resources|" PATCH_FILE_TYPES "||"
 	"Pics (pic.*)|pic.*;*.p56;*.p16||"
@@ -1778,29 +1717,6 @@ void CMainFrame::OnFileOpenResource()
 			DisplayFileError(hr, TRUE, strFileName);
 		}
 	}
-}
-
-int ResourceNumberFromFileName(PCTSTR pszFileName)
-{
-	int iNumber = -1;
-	PCTSTR pszExt = PathFindExtension(pszFileName);
-	if (pszExt && *pszExt && *(pszExt + 1))
-	{
-		if (isdigit(*(pszExt + 1)))
-		{
-			iNumber = StrToInt(pszExt + 1);
-		}
-		else
-		{
-			PCTSTR pszJustFileName = PathFindFileName(pszFileName);
-			if (pszJustFileName && *pszJustFileName && isdigit(*pszJustFileName))
-			{
-				iNumber = StrToInt(pszJustFileName);
-			}
-		}
-
-	}
-	return iNumber;
 }
 
 //
@@ -1974,13 +1890,13 @@ void CMainFrame::OnShowAudioPreferences()
 	}
 }
 
-HRESULT RebuildResources(const GameFolderHelper &helper, SCIVersion version, BOOL fShowUI, ResourceSaveLocation saveLocation, std::map<ResourceType, RebuildStats> &stats);
+HRESULT RebuildResources(CResourceMap &resourceMap, const GameFolderHelper &helper, SCIVersion version, BOOL fShowUI, ResourceSaveLocation saveLocation, std::map<ResourceType, RebuildStats> &stats);
 
 void PurgeUnnecessaryResources()
 {
 	std::map<ResourceType, RebuildStats> stats;
 	const GameFolderHelper &helper = appState->GetResourceMap().Helper();
-	HRESULT hr = RebuildResources(helper, helper.Version, TRUE, helper.GetResourceSaveLocation(ResourceSaveLocation::Default), stats);
+	HRESULT hr = RebuildResources(appState->GetResourceMap(), helper, helper.Version, TRUE, helper.GetResourceSaveLocation(ResourceSaveLocation::Default), stats);
 	if (SUCCEEDED(hr))
 	{
 		size_t totalSize = 0;
@@ -2003,7 +1919,7 @@ void PurgeUnnecessaryResources()
 		}
 		appState->OutputResults(OutputPaneType::Compile, statResults);
 
-		appState->GetResourceMap().StartPostBuildThread();
+		appState->StartPostBuildThread();
 		appState->GetResourceMap().PokeResourceMapReloaded();
 	}
 }
@@ -2023,9 +1939,10 @@ void CMainFrame::OnRebuildClassTable()
 	if (IDYES == AfxMessageBox("Rebuilding the class table will purge old deleted classes from the class table.\nAfterwards, you will need to compile all. Go ahead?", MB_APPLMODAL | MB_ICONQUESTION | MB_YESNO))
 	{
 		SpeciesTable speciesTable;
-		if (speciesTable.Load(appState->GetResourceMap().Helper()))
+		// The purge reads only the script of each species.
+		if (speciesTable.Load(appState->GetResourceMap().Helper(), false))
 		{
-			speciesTable.PurgeOldClasses(appState->GetResourceMap().Helper());
+			speciesTable.PurgeOldClasses(appState->GetResourceMap());
 		}
 	}
 }
@@ -2100,21 +2017,54 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 	// Clear out results
 	appState->ShowOutputPane(OutputPaneType::Compile);
 	appState->OutputClearResults(OutputPaneType::Compile);
+
+	CompileLog log;
+	std::vector<ScriptId> scripts = ScriptsToCompile(appState->GetResourceMap(), scriptsToRecompile);
+	if (!scripts.empty())
 	{
-		DeferResourceAppend defer(appState->GetResourceMap());
-		CNewCompileDialog dialog(scriptsToRecompile);
-		dialog.DoModal();
-		result = !dialog.HasErrors();
-		g_compileIOTimer.Start();
-		g_compileAppendTimer.Start();
-		defer.Commit();
-		g_compileIOTimer.Stop();
-		g_compileAppendTimer.Stop();
+		// One batch for the scripts. It saves the tables when a script
+		// compiled, and writes the resources in one commit, also after
+		// Cancel. It asks before a package save that a patch file would hide.
+		CompileOptions options;
+		options.askShadows = AskAboutShadowingPatches;
+		sci::Result<std::unique_ptr<CompileBatch>> batch = CompileBatch::Start(appState->GetSession(), scripts, options);
+		if (batch)
+		{
+			CNewCompileDialog dialog(**batch);
+			dialog.DoModal();
+			// Finish times its write (the timers).
+			CompileReport report = (*batch)->Finish();
+			if (report.commit)
+			{
+				// The scripts are written: they are not out of date. Only a
+				// commit that succeeded clears them.
+				for (const ScriptId &script : dialog.CompiledScripts())
+				{
+					appState->GetDependencyTracker().ClearScript(script);
+				}
+			}
+			// The result for the caller (for example, the run after a compile):
+			// false for a script that did not compile, a failed save, or Cancel
+			// (in the dialog, the scripts after it did not compile; in the
+			// question, nothing was written), so a run asks whether to run the
+			// game anyway. The line for Cancel is a message, not an error.
+			result = !report.cancelled && (report.FailedCount() == 0) && report.tables && report.commit && report.moves;
+			log.ReportResult(CompileResult(fmt::format("{0} scripts compiled.", report.scripts.size())));
+			ReportCompileBatch(report, log, "There was a problem writing the compiled scripts: ");
+		}
+		else
+		{
+			result = false;
+			log.ReportResult(StartFailureLine(batch.error()));
+		}
+	}
+	else
+	{
+		log.ReportResult(CompileResult("0 scripts compiled."));
 	}
 
 	timer.Stop();
 
-	CompileLog log;
 	log.ReportResult(CompileResult("--------------------------------"));
 	std::stringstream strMessage;
 	strMessage << "Time elapsed: " << fmt::format("{0:.2f}", (float)timer.GetElapsed()) << " seconds.";
@@ -2863,7 +2813,7 @@ void CMainFrame::OnValidateAllSaids()
 	if (vocab)
 	{
 		CompileLog log;
-		ValidateSaids(log, *vocab);
+		ValidateSaids(appState->GetResourceMap(), log, *vocab);
 		appState->OutputResults(OutputPaneType::Compile, log.Results());
 	}
 }
@@ -2876,7 +2826,7 @@ void CMainFrame::ExtractAllText()
 	std::vector<std::string> allStrings;
 	for (ScriptId &script : scripts)
 	{
-		ExtractScriptStrings(log, script, allStrings);
+		ExtractScriptStrings(appState->GetVersion(), log, script, allStrings);
 	}
 	// TODO: show compile errors
 	std::stringstream ss;

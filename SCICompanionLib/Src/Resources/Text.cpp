@@ -14,7 +14,7 @@
 #include "stdafx.h"
 #include "Text.h"
 #include "ResourceEntity.h"
-#include "AppState.h"
+#include <atomic>
 
 using namespace std;
 
@@ -35,9 +35,24 @@ const unsigned char win2dosTable[] = {
 };
 //Wait, where's 0xE1/U+00DF, the Sharp S? It's so separate from the rest that I can't be arsed, and just hardcode it.
 
+namespace
+{
+	std::atomic<int> g_textCodepage(437);
+}
+
+void SetTextCodepage(int codepage)
+{
+	g_textCodepage = (codepage == 1252) ? 1252 : 437;
+}
+
+int GetTextCodepage()
+{
+	return g_textCodepage;
+}
+
 std::string Dos2Win(std::string &str)
 {
-	if (appState->GetResourceMap().Helper().GetCodepage() == 1252)
+	if (GetTextCodepage() == 1252)
 		return str;
 	std::string ret;
 	for (size_t i = 0; i < str.length(); i++)
@@ -53,7 +68,7 @@ std::string Dos2Win(std::string &str)
 
 std::string Win2Dos(const std::string &str)
 {
-	if (appState->GetResourceMap().Helper().GetCodepage() == 1252)
+	if (GetTextCodepage() == 1252)
 		return str;
 	std::string ret;
 	for (size_t i = 0; i < str.length(); i++)
@@ -191,22 +206,25 @@ void TextReadFrom(ResourceEntity &resource, sci::istream &byteStream, const std:
 	TextComponent &text = resource.GetComponent<TextComponent>();
 	assert(text.Texts.empty());
 	text.Flags = MessagePropertyFlags::None;
-	// Catch our own exceptions.
-	try
+	// A last string with no NUL is a read past the end: a Format error for the
+	// caller, not a silent partial read.
+	while (byteStream.has_more_data())
 	{
-		while (byteStream.has_more_data())
+		string str;
+		byteStream >> str;
+		if (byteStream.good())
 		{
-			string str;
-			byteStream >> str;
-			if (byteStream.good())
-			{
-				TextEntry entry = { 0 };				
-				entry.Text = Dos2Win(str);
-				text.Texts.push_back(entry);
-			}
+			TextEntry entry = { 0 };
+			entry.Text = Dos2Win(str);
+			text.Texts.push_back(entry);
+		}
+		else
+		{
+			// Outside throw mode (ResourceEntity::ReadFrom), the read rewinds, so
+			// the loop would read the same place again.
+			throw sci::DataError("the last text of the resource has no end (no NUL)");
 		}
 	}
-	catch (...) {}
 }
 
 ResourceTraits textTraits =

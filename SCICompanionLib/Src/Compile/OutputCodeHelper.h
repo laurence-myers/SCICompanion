@@ -16,6 +16,7 @@
 #include "ScriptOMAll.h"
 
 class GlobalCompiledScriptLookups;
+class GameFolderHelper;
 
 //
 // Handles an indentation scope
@@ -239,5 +240,9 @@ std::string _DeduceReturnType(sci::FunctionBase &function);
 
 void EndStatement(sci::SourceCodeWriter &out);
 
-void ConvertToSCISyntaxHelper(sci::Script &script, GlobalCompiledScriptLookups *lookups = nullptr);
+// Prepares a script for output in SCI syntax. The lookups (the game's classes)
+// tell a property from a method in a send; with null lookups, nothing does.
+void ConvertToSCISyntaxHelper(sci::Script &script, GlobalCompiledScriptLookups *lookups);
+// The same, with the lookups loaded from the game of the helper.
+void ConvertToSCISyntaxHelper(sci::Script &script, const GameFolderHelper &helper);
 

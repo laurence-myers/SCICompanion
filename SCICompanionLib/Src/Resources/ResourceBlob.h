@@ -16,6 +16,7 @@
 #include "ResourceUtil.h"
 #include "Version.h"
 #include "ResourceSourceFlags.h"
+#include "Result.h"	// Two precompiled headers include this file before Result.h.
 #include <limits>
 
 class GameFolderHelper;
@@ -28,6 +29,11 @@ bool IsValidPackageNumber(int iPackageNumber);
 
 static const DWORD MaxResourceSize = 0xffef; // (0xfff0 - 1)
 static const DWORD MaxResourceSizeLarge = 0xffffef; // I just made this up to test things
+
+// The largest resource of this type that this game's format can hold.
+DWORD MaxResourceSizeFor(const SCIVersion &version, ResourceType type);
+// Ok, or an Unsupported error that quotes the limit of this game's format.
+sci::Status CheckResourceSize(const SCIVersion &version, DWORD cb, ResourceType type);
 static const DWORD SCIResourceBitmapMarker = (('S' << 24) + ('C' << 16) + ('I' << 8) + 'R');
 
 // Common way to talk about resource map entries that is SCI version agnostic.
@@ -141,6 +147,8 @@ struct RESOURCEHEADER_SCI0
 	uint16_t iMethod;		   // Compression method.
 
 	ResourceType GetType() { return (ResourceType)iType; }
+	// The SCI0 header has no mark on its type.
+	bool HasTypeMark() const { return true; }
 
 	ResourceHeaderAgnostic ToAgnostic(const SCIVersion &version, ResourceSourceFlags sourceFlags, uint16_t packageHint)
 	{
@@ -264,6 +272,10 @@ struct RESOURCEHEADERBASE
 	{
 		return (std::numeric_limits<_TDataSizeSize>::max)();
 	}
+
+	// The type byte has the mark of its format (0x80 in SCI1 to SCI2). A
+	// zeroed header has none.
+	bool HasTypeMark() const { return (TypeAdornment == 0) || ((bType & TypeAdornment) == TypeAdornment); }
 
 	ResourceHeaderAgnostic ToAgnostic(SCIVersion version, ResourceSourceFlags sourceFlags, int packageHint)
 	{

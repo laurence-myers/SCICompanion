@@ -17,9 +17,6 @@
 #include "ResourceEntity.h"
 #include "TalkerToViewMap.h"
 
-class RunLogic;
-class DebuggerThread;
-class PostBuildThread;
 struct Vocab000;
 struct AudioMapComponent;
 struct PaletteComponent;
@@ -30,6 +27,7 @@ class AppState;
 // FWD declaration
 class ResourceContainer;
 class ResourceBlob;
+class CResourceMap;
 class ResourceRecency;
 class ResourceEntity;
 class GlobalCompiledScriptLookups;
@@ -45,6 +43,9 @@ class ISCIAppServices
 public:
 	virtual void OnGameFolderUpdate() = 0;
 	virtual void SetRecentlyInteractedView(int number) = 0;
+	// The last copy of a script resource was deleted. The GUI asks whether to
+	// remove the script from game.ini, and its source file too.
+	virtual void OnLastScriptDeleted(CResourceMap &resourceMap, const ResourceBlob &script) {}
 };
 
 
@@ -56,16 +57,33 @@ class CResourceMap
 {
 public:
 	CResourceMap(ISCIAppServices *appServices, ResourceRecency *resourceRecency);
+	// The GUI's services, or null with no GUI.
+	ISCIAppServices *GetAppServices() const { return _appServices; }
 	~CResourceMap();
 
-	RunLogic &GetRunLogic();
 
 	// ResourceBlob: the raw resource bits already in a ready-to-save format.
 	// ResourceEntity: a runtime version of a resource that we can edit.
+	//
+	// WriteResource writes a resource into the game: into the package or as a
+	// patch file, as the blob's source flags say. While a DeferResourceAppend
+	// batch is open, it only queues the resource (a second copy of the same
+	// resource replaces the first), and the batch's Commit writes it. No UI.
+	sci::Status WriteResource(const ResourceBlob &resource);
+	// The GUI form of WriteResource: it also shows the error text.
 	HRESULT AppendResource(const ResourceBlob &resource);
+	// Ask the user for the number in a dialog, then save. In the GUI library
+	// (Dialogs\ResourceMapGui.cpp).
 	HRESULT AppendResourceAskForNumber(ResourceBlob &resource, bool warnOnOverwrite);
 	void AppendResourceAskForNumber(ResourceEntity &resource);
 	void AppendResourceAskForNumber(ResourceEntity &resource, const std::string &name, bool warnOnOverwrite = false);
+	// WriteResource for an entity: it serializes the entity, checks its size,
+	// and writes it as WriteResource(blob) does. No UI. An entity whose own
+	// checks fail (PerformChecks, which can ask the user) gives Cancelled.
+	sci::Status WriteResource(const ResourceEntity &resource, int packageNumber, int resourceNumber, const std::string &name, uint32_t base36Header = NoBase36, int *pChecksum = nullptr);
+	// The same, with the entity's own package, number and base-36 number.
+	sci::Status WriteResource(const ResourceEntity &resource, int *pChecksum = nullptr);
+	// The GUI forms: they also show the error text.
 	bool AppendResource(const ResourceEntity &resource, int *pChecksum = nullptr);
 	bool AppendResource(const ResourceEntity &resource, int packageNumber, int resourceNumber, const std::string &name, uint32_t base36Header = NoBase36, int *pChecksum = nullptr);
 
@@ -87,7 +105,14 @@ public:
 
 	void DeleteResource(const ResourceBlob *pResource);
 
+	// Opens the game in the folder (an empty folder closes it). The GUI form:
+	// a failure shows a message box and throws a CUserException. In the GUI
+	// library (Dialogs\ResourceMapGui.cpp).
 	void SetGameFolder(const std::string &gameFolder);
+	// Opens the game in the folder. No dialog and no exception: a failure
+	// comes back as an error, and then no game is open. An empty folder is a
+	// Usage error; a damaged or empty resource.map is a Format error.
+	sci::Status TryOpen(const std::string &gameFolder);
 	// True when the game's resource map is corrupt or truncated (an SCI1+ lookup
 	// table with no terminator). Safe to call on the UI thread after a game is
 	// opened; the enumeration itself degrades to zero entries either way (#117).
@@ -96,7 +121,7 @@ public:
 	TalkerToViewMap &GetTalkerToViewMap();
 
 	std::string GetGameFolder() const;
-	std::string GetIncludeFolder();
+	std::string GetIncludeFolder() const;
 	std::string GetIncludePath(const std::string &includeFileName);
 	std::string GetTemplateFolder();
 	std::string GetSamplesFolder();
@@ -109,6 +134,9 @@ public:
 	const SCIVersion &GetSCIVersion() const;
 	void SetVersion(const SCIVersion &version);
 	const GameFolderHelper &Helper() const { return _gameFolderHelper; }
+	// The script names of a GameSession (docs/scic-cli/plan.md section 3.4).
+	// An open clears them. The GUI sets none.
+	void SetScriptNames(std::shared_ptr<const ScriptNameMap> names);
 	const Vocab000 *GetVocab000();
 	const PaletteComponent *GetPalette999();
 	void SaveAudioMap65535(const AudioMapComponent &newAudioMap, int mapContext);
@@ -127,7 +155,9 @@ public:
 	std::unique_ptr<ResourceEntity> CreateResourceFromNumber(ResourceType type, int wNumber, uint32_t base36Number = NoBase36, int mapContext = -1);
 	void GetAllScripts(std::vector<ScriptId> &scripts);
 	void GetNumberToNameMap(std::unordered_map<WORD, std::string> &scos);
-	void SetIncludeFolderForTest(const std::string &folder) { _includeFolderOverride = folder; }
+	// The folder that holds include\ and Decompiler\. By default, the folder
+	// of the program.
+	void SetDataFolder(const std::string &folder);
 	bool CanSaveResourcesToMap();
 	void SkipNextVersionSniff() { _skipVersionSniffOnce = true; }
 
@@ -136,20 +166,24 @@ public:
 
 	bool IsResourceCompatible(const ResourceBlob &resource);
 
-	void StartDebuggerThread(int optionalResourceNumber);
-	void AbortDebuggerThread();
 
-	void StartPostBuildThread();
-	void AbortPostBuildThread();
 	void PokeResourceMapReloaded();
 
 	void RepackageAudio(bool force = false);
 
+	// True while a DeferResourceAppend batch is open: writes only queue.
+	bool IsDeferring() const { return !_deferLevels.empty(); }
+
 private:
 	void _SniffSCIVersion();
+	sci::Status _OpenGameFolder(const std::string &gameFolder);
+	// Format when resource.map is empty or damaged: its lookup table has no
+	// end, the table ends after the end of the file, or a volume file holds
+	// none of its first entries.
+	sci::Status _CheckResourceMap();
 
 	void BeginDeferAppend();
-	HRESULT EndDeferAppend();
+	sci::Status EndDeferAppend();
 	void AbandonAppend();
 	friend class DeferResourceAppend;
 
@@ -176,49 +210,78 @@ private:
 	std::unique_ptr<GlobalCompiledScriptLookups> _globalCompiledScriptLookups;
 
 	// Defer appending resources when you are appending a lot (E.g. during compiling).
-	BOOL _cDeferAppend;
-	std::vector<ResourceBlob> _deferredResources;
+	// One level for each open DeferResourceAppend batch, the outermost first.
+	struct DeferLevel
+	{
+		size_t queuedAtStart = 0;	// The queue length when the level opened.
+		// The queued copies from before this level that this level replaced,
+		// with their queue index. Abandoning the level puts them back.
+		std::vector<std::pair<size_t, std::unique_ptr<ResourceBlob>>> replaced;
+		bool HasReplaced(size_t index) const;
+	};
+	std::vector<DeferLevel> _deferLevels;
+	// Pointers, so that to put back a replaced copy cannot throw (an abandon
+	// runs in a destructor).
+	std::vector<std::unique_ptr<ResourceBlob>> _deferredResources;
 
 	GameFolderHelper _gameFolderHelper;
 
 	bool _skipVersionSniffOnce;					 // Skip version sniffing when loading a game the next time.
 
-	std::string _includeFolderOverride;			 // For unit-testing
+	std::string _dataFolder;					 // With a final backslash; empty for the folder of the program
 
-	std::shared_ptr<DebuggerThread> _debuggerThread;
-	std::shared_ptr<PostBuildThread> _postBuildThread;
 
-	std::unique_ptr<RunLogic> _runLogic;
 };
 
 //
 // Defer the actual writing of resources so it happens in one big batch at the end.
 //
+// Batches nest. Only the outermost Commit writes; an inner Commit only closes
+// the inner batch and keeps its resources for the outer one. A batch that is
+// destroyed without a Commit abandons its level: the resources that it queued
+// are withdrawn, and the queued copies that it replaced come back. For the
+// outermost batch, that discards the whole queue.
+//
 class DeferResourceAppend
 {
 public:
-	DeferResourceAppend(CResourceMap &map, bool fDoIt = true) : _map(map)
+	DeferResourceAppend(CResourceMap &map, bool fDoIt = true) : _map(map), _fDoIt(fDoIt), _closed(false)
 	{
 		if (fDoIt)
 		{
 			_map.BeginDeferAppend();
 		}
-		_fDoIt = fDoIt;
 	}
-	HRESULT Commit()
+	DeferResourceAppend(const DeferResourceAppend &) = delete;
+	DeferResourceAppend &operator=(const DeferResourceAppend &) = delete;
+
+	// Writes the queued resources, one rewrite for each destination, and
+	// returns the first failure. The resources of a destination that failed
+	// are not named in game.ini.
+	sci::Status Commit()
 	{
-		if (_fDoIt)
+		if (!_fDoIt || _closed)
 		{
-			return _map.EndDeferAppend();
+			return sci::Ok();
 		}
-		else
-		{
-			return S_OK;
-		}
+		_closed = true;
+		return _map.EndDeferAppend();
 	}
+
+	// The resources queued so far, by this batch and by any batch around it.
+	std::vector<const ResourceBlob*> Pending() const
+	{
+		std::vector<const ResourceBlob*> pending;
+		for (const auto &queued : _map._deferredResources)
+		{
+			pending.push_back(queued.get());
+		}
+		return pending;
+	}
+
 	~DeferResourceAppend()
 	{
-		if (_fDoIt)
+		if (_fDoIt && !_closed)
 		{
 			_map.AbandonAppend();
 		}
@@ -226,4 +289,10 @@ public:
 private:
 	CResourceMap &_map;
 	bool _fDoIt;
+	bool _closed;
 };
+
+// Shows a failed write to the user (a message box with a GUI, the log
+// without one). For GUI code that has nowhere else to report it. A Cancelled
+// error is not shown: the user chose it.
+void ShowWriteError(const sci::Status &status);

@@ -51,6 +51,13 @@ struct PicComponent : ResourceComponent
 
 bool IsSame(const PicComponent *one, const PicComponent *two);
 
+// A warning of the checks before a pic is saved (a missing palette or
+// priority bars command). The GUI installs a handler: a dialog with a "do
+// not show again" box. With no handler, the warning goes to the core log.
+using PicCheckWarningHandler = void (*)(const std::string &text);
+// Installs the handler (null removes it) and returns the handler before it.
+PicCheckWarningHandler SetPicCheckWarningHandler(PicCheckWarningHandler handler);
+
 template<typename TPoint>
 TPoint GameResolutionToScreenResolution(TPoint point, NativeResolution resolution)
 {

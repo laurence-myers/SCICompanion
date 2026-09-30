@@ -18,6 +18,7 @@
 #include "Vocab000.h"
 #include "Vocab99x.h"
 #include "ScriptOMSmall.h"
+#include "CompileWrite.h"
 
 class ResourceEntity;
 class ILookupSaids;
@@ -55,7 +56,10 @@ class CResourceMap;
 class IOutputByteCode;
 class CompileTables;
 class ICompileLog;
-class SCIClassBrowser;
+class GameFolderHelper;
+class GameSession;
+class IClassHints;
+struct SessionOptions;
 class ISourceCodePosition;
 class CompileContext;
 
@@ -90,6 +94,9 @@ public:
 
 	// Call this each time you compile a new script
 	void Update(CompileContext &context, sci::Script &script);
+	// A new pass of a batch: the first script that includes a header that
+	// did not parse gets its syntax errors again.
+	void ForgetUnparsedHeaders() { _unparsedHeaders.clear(); }
 
 	bool LookupDefine(const std::string &str, WORD &wValue);
 private:
@@ -98,6 +105,11 @@ private:
 
 	// Filename (not full path) which maps a header to its Script object.
 	header_map _allHeaders;
+
+	// The includes that did not parse, with the error that a later script
+	// gets: the first script that includes one gets its syntax errors, and
+	// the others one line (a batch parses it once).
+	std::map<std::string, std::string> _unparsedHeaders;
 
 	// A set of the names of all the last script's header includes.
 	std::set<std::string> _curHeaderList;
@@ -133,7 +145,9 @@ struct CompileStats
 class CompileContext : public ICompileLog, public ILookupDefine, public ITrackCodeSink, public ILookupSaids
 {
 public:
-	CompileContext(SCIVersion version, sci::Script &script, PrecompiledHeaders &headers, CompileTables &tables, ICompileLog &results, bool generateDebugInfo);
+	// The session gives the version, the resource map, the options and the
+	// optional class hints.
+	CompileContext(GameSession &session, sci::Script &script, PrecompiledHeaders &headers, CompileTables &tables, ICompileLog &results, bool generateDebugInfo);
 	CompileContext(const CompileContext &src) = delete;
 	CompileContext operator=(const CompileContext &src) = delete;
 	~CompileContext() = default;
@@ -194,7 +208,8 @@ private:
 	std::set<uint16_t> _scrSinks;
 
 
-	SCIClassBrowser &_browser;
+	GameSession &_session;
+	IClassHints *_classHints;	// Null if there are none.
 	CResourceMap &_resourceMap;
 	sci::Script &_script;	   // Script being compiled
 	sci::Script *_pErrorScript;  // Current script used for error reporting (could be header file)
@@ -234,6 +249,8 @@ public:
 	bool LookupDefine(const std::string &str, WORD &wValue);
 	void AddDefine(sci::Define *pDefine);
 	const SCIVersion &GetVersion() { return _version; }
+	const GameFolderHelper &Helper() const;
+	const SessionOptions &Options() const;
 	//
 	// wIndex - index of the item.  Valid for all.
 	// pwScript - script of the item.  Only valid for ResolvedToken::ExportInstance (wIndex and wScript)
@@ -267,6 +284,7 @@ public:
 	// ProcedureLocal:	  classOwner
 	// ProcedureMain:	   wIndex
 	// ProcedureExternal:   wScript, wIndex
+	// ProcedureMissingScript: wScript, wIndex (proc<N>_<M>, and the game has no script N)
 	//
 	// pSignatures - optional: accepts the list of function signatures for this call.
 	ProcedureType LookupProc(const std::string &str, WORD &wScript, WORD &wIndex, std::string &classOwner);
@@ -319,6 +337,10 @@ public:
 	void FixupAsmLabelBranches();
 	void TrackCallOffsetInstruction(WORD wProcIndex);
 	void PreScanSaid(const std::string &theSaid, const ISourceCodePosition *pPos);
+	// True when the game has no vocabulary resource: the first call of the
+	// compile reports it once, as an error that names "what" (for example,
+	// "a synonym") and the resource.
+	bool ReportIfNoVocabulary(const ISourceCodePosition *pPos, const char *what);
 	void PushVariableLookupContext(const IVariableLookupContext *pVarContext);
 	void PopVariableLookupContext();
 	void SetClassPropertyLookupContext(const IVariableLookupContext *pVarContext);
@@ -345,6 +367,8 @@ public:
 	void AddSCOPublics(CSCOPublicExport scoPublic);
 	std::vector<CSCOObjectClass> &GetInstanceSCOs();
 	CSCOFile &GetScriptSCO();
+	// The scripts whose .sco files this compile read, not its own.
+	std::set<uint16_t> LoadedObjectFiles() const;
 	std::string LookupSelectorName(WORD wIndex) const;
 	std::vector<WORD> GetRelocations();
 
@@ -400,6 +424,17 @@ private:
 
 	// Class names declared by classdef, mapped to their species number.
 	std::unordered_map<std::string, uint16_t> _classDefSpecies;
+
+	// A call to proc<N>_<M> that no other name resolves, in a game that has
+	// no script N (a script that Sierra removed, as script 911 of KQ6), is a
+	// call to export M of script N. Returns false for other names, and when
+	// the game has script N (the call then stays an error).
+	bool _LookupMissingScriptProc(const std::string &name, WORD &wScript, WORD &wIndex);
+	bool _ScriptExists(uint16_t number);
+	// The script numbers of the game, read at the first use.
+	std::unique_ptr<std::set<uint16_t>> _scriptNumbers;
+	// The "no vocabulary" error is given once.
+	bool _reportedNoVocabulary = false;
 };
 
 template<typename T>
@@ -493,8 +528,15 @@ private:
 class CompileTables
 {
 public:
-	bool Load(SCIVersion version);
-	void Save();
+	bool Load(CResourceMap &resourceMap);
+	// Load, with the reason for a failure (see CheckVocabTables).
+	sci::Status TryLoad(CResourceMap &resourceMap);
+	// Writes the tables that changed to the destination of the options. It
+	// tries both, and gives the first failure.
+	sci::Status Save(CResourceMap &resourceMap, const CompileWriteOptions &options);
+	// The same with the game's destination; a failure shows a message (the
+	// GUI).
+	void Save(CResourceMap &resourceMap);
 	const Vocab000 *Vocab() { return _pVocab; }
 	const KernelTable &Kernels() { return _kernels; }
 	SpeciesTable &Species() { return _species; }
@@ -516,7 +558,7 @@ private:
 class CompileResults
 {
 public:
-	CompileResults(ICompileLog &log);
+	CompileResults(ICompileLog &log, const SCIVersion &version);
 	std::vector<uint8_t> &GetScriptResource() { return _outputScr; }
 	std::vector<uint8_t> &GetHeapResource() { return _outputHep; }
 	std::vector<uint8_t> &GetDebugInfo() { return _outputDebug; }
@@ -527,16 +569,33 @@ public:
 	ResourceEntity &GetTextResource() { return *_text; }
 	TextComponent &GetTextComponent();
 	void SetAutoTextNumber(uint16_t autoTextNumber);
+	// The compile wrote a .sco file whose bytes differ from the file before
+	// (a pass that changes no .sco file ends the passes; plan section 4.5).
+	// In a dry run (no .sco and no resource write): a run would write one.
+	bool ObjectFileChanged() const { return _objectFileChanged; }
+	void SetObjectFileChanged(bool changed) { _objectFileChanged = changed; }
+	// The scripts whose .sco files the compile read (not its own). A batch
+	// uses them to see which scripts depend on a .sco that it changed.
+	const std::set<uint16_t> &LoadedObjectFiles() const { return _loadedObjectFiles; }
+	void SetLoadedObjectFiles(std::set<uint16_t> scripts) { _loadedObjectFiles = std::move(scripts); }
+	// The resources that the compile wrote (in a batch: queued or staged):
+	// the script, the heap and a changed auto text.
+	const std::vector<WrittenResource> &Written() const { return _written; }
+	void AddWritten(ResourceType type, uint16_t number) { _written.push_back({ type, number }); }
 	CompileStats Stats;
 
 private:
 	std::vector<uint8_t> _outputScr;
 	std::vector<uint8_t> _outputHep;
 	std::vector<uint8_t> _outputDebug;
-	WORD _wScriptNumber;
+	// Set by the compile; InvalidResourceNumber when it stopped before it.
+	WORD _wScriptNumber = InvalidResourceNumber;
 	CSCOFile _sco;
 	ICompileLog &_log;
 	std::unique_ptr<ResourceEntity> _text;
+	bool _objectFileChanged = false;
+	std::set<uint16_t> _loadedObjectFiles;
+	std::vector<WrittenResource> _written;
 };
 
 
@@ -565,10 +624,22 @@ private:
 // The be-all end-all function for compiling a script.
 // Returns true if there were no errors.
 //
-bool GenerateScriptResource(SCIVersion version, sci::Script &script, PrecompiledHeaders &headers, CompileTables &tables, CompileResults &results, bool generateDebugInfo);
+bool GenerateScriptResource(GameSession &session, sci::Script &script, PrecompiledHeaders &headers, CompileTables &tables, CompileResults &results, bool generateDebugInfo);
 void ErrorHelper(CompileContext &context, const ISourceCodePosition *pPos, const std::string &text, const std::string &identifier, bool checkUse = true);
-bool NewCompileScript(CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script);
-std::unique_ptr<sci::Script> SimpleCompile(CompileLog &log, ScriptId &scriptId, bool addCommentsToOM = false);
+// Compiles one script file of the session's game and writes its resources,
+// its .sco file and its debug information (CompileScript.cpp), as the
+// options say (the GUI passes the defaults). Ok; Compile when the script has
+// errors; or the error of a source file that could not be read or of the
+// first write that failed. Every failure is also an error in the log.
+sci::Status CompileScriptFile(GameSession &session, CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script,
+	const CompileWriteOptions &options = CompileWriteOptions());
+// The same, as true for Ok.
+bool NewCompileScript(GameSession &session, CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script,
+	const CompileWriteOptions &options = CompileWriteOptions());
+// Parses a script or header file only (no code), with the preprocessor
+// defines of the version, or with the defines given.
+std::unique_ptr<sci::Script> SimpleCompile(const SCIVersion &version, CompileLog &log, ScriptId &scriptId, bool addCommentsToOM = false);
+std::unique_ptr<sci::Script> SimpleCompile(const std::unordered_set<std::string> &preProcessorDefines, CompileLog &log, ScriptId &scriptId, bool addCommentsToOM = false);
 void MergeScripts(sci::Script &mainScript, sci::Script &scriptToBeMerged);
 void ParseSaidString(CompileContext *contextOpt, ILookupSaids &context, const std::string &stringCode, std::vector<uint8_t> *output, const ISourceCodePosition *pos, std::vector<std::string> *wordsOptional = nullptr);
 void TrackArraySizes(CompileContext &context, sci::Script &script);

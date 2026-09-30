@@ -18,18 +18,12 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "GameFolderHelper.h"
 #include "ScriptOMAll.h"
 #include "CompileInterfaces.h"
 #include "CompileContext.h"
 #include "PMachine.h"
 #include "Operators.h"
-
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#undef THIS_FILE
-static char THIS_FILE[] = __FILE__;
-#endif
 
 //
 // Potential optimizations
@@ -100,6 +94,14 @@ void ErrorHelper(CompileContext &context, const ISourceCodePosition *pPos, const
 		strError += "\"?";
 	}
 	context.ReportError(pPos, strError.c_str(), identifier.c_str());
+}
+
+// A call to proc<N>_<M> in a game with no script N compiles, with a
+// warning. The call fails if the game runs it.
+void _WarnMissingScript(CompileContext &context, const ISourceCodePosition *pPos, const string &name, WORD wScript, WORD wIndex)
+{
+	context.ReportWarning(pPos, "The game has no script %d, so '%s' compiles to calle %d %d. The call fails if the game runs it.",
+		(int)wScript, name.c_str(), (int)wScript, (int)wIndex);
 }
 
 void ReportKeywordError(CompileContext &context, const ISourceCodePosition *pPos, const string &text, const string &use)
@@ -830,12 +832,11 @@ CodeResult SingleStatementVectorOutputHelper(const SyntaxNodeVector &statements,
 	return CodeResult(wBytes, returnType);
 }
 
-// We pull the code out, because we need to use the exact same code in another case
-// pFailure is optional.
-CodeResult _OutputCodeForIfStatement(CompileContext &context, const SyntaxNode &condition, const SyntaxNode &success, const SyntaxNode *pFailure, bool fMeaning = false)
+// The code of an if statement. pFailure (the else) is optional.
+CodeResult _OutputCodeForIfStatement(CompileContext &context, const SyntaxNode &condition, const SyntaxNode &success, const SyntaxNode *pFailure)
 {
 	declare_conditional isCondition(context, false);
-	change_meaning meaning(context, fMeaning);
+	change_meaning meaning(context, true);
 	// Begin two branch blocks.
 	branch_block blockTrue(context, BranchBlockIndex::Success);
 	branch_block blockFalse(context, BranchBlockIndex::Failure);
@@ -1251,7 +1252,10 @@ CodeResult PropertyValueBase::OutputByteCode(CompileContext &context) const
 						// we'll look up the "undeclared identifier" here, and see if it's a function name.
 						WORD wScript, wIndex;
 						string classOwner;
-						if (ProcedureUnknown != context.LookupProc(_stringValue, wScript, wIndex, classOwner))
+						ProcedureType procType = context.LookupProc(_stringValue, wScript, wIndex, classOwner);
+						// A proc<N>_<M> of a missing script is a procedure only in a
+						// call: as a value it is an undeclared name.
+						if ((procType != ProcedureUnknown) && (procType != ProcedureMissingScript))
 						{
 							context.ReportError(this, "The '(' character must immediately follow the function call '%s'.", _stringValue.c_str());
 						}
@@ -1764,7 +1768,7 @@ CodeResult ProcedureCall::OutputByteCode(CompileContext &context) const
 
 	if (_innerName == "DbugStr" && procType == ProcedureType::ProcedureKernel)
 	{
-		if (appState->GetResourceMap().Helper().GetNoDbugStr())
+		if (context.Helper().GetNoDbugStr())
 		{
 			context.ReportWarning(this, "DbugStr disabled");
 			return 0;
@@ -1795,6 +1799,11 @@ CodeResult ProcedureCall::OutputByteCode(CompileContext &context) const
 	case ProcedureMain:
 		// We're calling something in the main script. "callb"
 		context.code().inst(GetLineNumber(), Opcode::CALLB, wIndex, wCallBytes);
+		break;
+
+	case ProcedureMissingScript:
+		_WarnMissingScript(context, this, _innerName, wScript, wIndex);
+		context.code().inst(GetLineNumber(), Opcode::CALLE, wScript, wIndex, wCallBytes);
 		break;
 
 	case ProcedureExternal:
@@ -2274,32 +2283,6 @@ vector<pair<BinaryOperator, BinaryOperator>> c_unsignedOps =
 	{ BinaryOperator::LessThan, BinaryOperator::UnsignedLessThan },
 };
 
-CodeResult _WriteFakeIfStatement(CompileContext &context, const BinaryOp &binary)
-{
-	// When the user writes:
-	// x = (a && b)
-	// then for (a && b) we do
-	// if (a && b)
-	// {
-	//	 1;
-	// } // else being 0 is implicit.
-	PropertyValue success;
-	success.SetValue(1);
-
-	{
-		// Put the result of the if into the accumulator - we'll push to stack as necessary.
-		COutputContext accContext(context, OC_Accumulator);
-		// We need to put this inside a ConditionalExpression for the code output to work.
-		// We can't move the BinaryOp into another syntax node, so we'll use WeakSyntaxNode as
-		// the bridge.
-		ConditionalExpression expression(make_unique<WeakSyntaxNode>(&binary));
-		// true -> give this meaning, otherwise the compiler will complain that the '1' value
-		// has no effect on code.  It actually does, because we're playing tricks.
-		_OutputCodeForIfStatement(context, expression, success, nullptr, true);
-	}
-	return CodeResult(PushToStackIfAppropriate(context, binary.GetLineNumber()), DataTypeBool);
-}
-
 // An n-ary operation is any operator that takes n operands.
 // Technically +, *, |, ^ and & all do this, but those are converted to nested
 // BinaryOp's before compilation. So all we deal with here are the comparison operators
@@ -2367,35 +2350,34 @@ CodeResult BinaryOp::OutputByteCode(CompileContext &context) const
 	{
 		if (Operator == BinaryOperator::LogicalAnd || Operator == BinaryOperator::LogicalOr)
 		{
-			// A logical and/or used for its value, not as a condition.
-			if (true)
+			// A logical and/or used for its value, not as a condition. Sierra
+			// semantics (MakeAnd and MakeOr in Sierra's sc): the value is the last
+			// operand evaluated by the short circuit, not a normalized 1 or 0.
+			// Sierra's own scripts rely on this (e.g. (Log 1 {x} (and i (i name:)))).
+			// Evaluate the expression as a condition, but resolve both the success
+			// and failure exits to the end of the expression, so whichever operand
+			// the short circuit stops on is left in the accumulator.
+			// A nest of the other operator ((or (and a b) c)) gives Sierra's
+			// value, but not Sierra's bytes: the inner bnt goes straight to the
+			// next operand of the or. Sierra's optimizer does not take a bnt
+			// through a bt, so sc gives "a; bnt O1; b; O1: bt O; c; O:".
+			branch_block blockSuccess(context, BranchBlockIndex::Success);
+			branch_block blockFailure(context, BranchBlockIndex::Failure);
 			{
-				// Sierra semantics: the value is the last operand evaluated by the
-				// short circuit, not a normalized 1 or 0. Sierra's own scripts rely
-				// on this (e.g. (Log 1 {x} (and i (i name:)))). Evaluate the
-				// expression as a condition, but resolve both the success and
-				// failure exits to the end of the expression, so whichever operand
-				// the short circuit stops on is left in the accumulator.
-				branch_block blockSuccess(context, BranchBlockIndex::Success);
-				branch_block blockFailure(context, BranchBlockIndex::Failure);
+				declare_conditional isCondition(context, true);
+				if (Operator == BinaryOperator::LogicalAnd)
 				{
-					declare_conditional isCondition(context, true);
-					if (Operator == BinaryOperator::LogicalAnd)
-					{
-						_OutputByteCodeAnd(context);
-					}
-					else
-					{
-						_OutputByteCodeOr(context);
-					}
+					_OutputByteCodeAnd(context);
 				}
-				// Both exits land here, at the end of the expression.
-				blockFailure.leave();
-				blockSuccess.leave();
-				return CodeResult(PushToStackIfAppropriate(context, GetLineNumber()), DataTypeAny);
+				else
+				{
+					_OutputByteCodeOr(context);
+				}
 			}
-			// SCI Studio syntax: write an "if statement" that evaluates to 1 or 0.
-			return _WriteFakeIfStatement(context, *this);
+			// Both exits land here, at the end of the expression.
+			blockFailure.leave();
+			blockSuccess.leave();
+			return CodeResult(PushToStackIfAppropriate(context, GetLineNumber()), DataTypeAny);
 		}
 		else
 		{
@@ -2678,7 +2660,7 @@ CodeResult IfStatement::OutputByteCode(CompileContext &context) const
 	// Put result in accumulator.
 	{
 		COutputContext accContext(context, OC_Accumulator);
-		result = _OutputCodeForIfStatement(context, *_innerCondition.get(), *_statement1, _statement2.get(), true);
+		result = _OutputCodeForIfStatement(context, *_innerCondition.get(), *_statement1, _statement2.get());
 	}
 	WORD wBytes = PushToStackIfAppropriate(context, GetLineNumber());
 	return CodeResult(wBytes, result.GetType());
@@ -3256,8 +3238,12 @@ CodeResult Asm::OutputByteCode(CompileContext &context) const
 								context.code().inst(GetLineNumber(), opcode, wIndex, pNumParams->GetNumberValue());
 								context.TrackLocalProcCall(pValue->GetStringValue());
 							}
-							else if ((procType == ProcedureExternal) && (opcode == Opcode::CALLE))
+							else if (((procType == ProcedureExternal) || (procType == ProcedureMissingScript)) && (opcode == Opcode::CALLE))
 							{
+								if (procType == ProcedureMissingScript)
+								{
+									_WarnMissingScript(context, this, pValue->GetStringValue(), wScript, wIndex);
+								}
 								context.code().inst(GetLineNumber(), opcode, wScript, wIndex, pNumParams->GetNumberValue());
 							}
 							else
@@ -3949,16 +3935,6 @@ void Asm::PreScan(CompileContext &context)
 		context.ReportLabelName(this, _label);
 	}
 	ForwardPreScan2(_segments, context);
-}
-
-void WeakSyntaxNode::PreScan(CompileContext &context)
-{
-	assert(false);
-}
-CodeResult WeakSyntaxNode::OutputByteCode(CompileContext &context) const
-{
-	if (WeakNode) { return WeakNode->OutputByteCode(context); }
-	return 0;
 }
 
 // Converts a flat list of statements and andOrs into a tree of binary operations.

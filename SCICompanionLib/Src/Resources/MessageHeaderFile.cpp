@@ -14,7 +14,6 @@
 #include "stdafx.h"
 #include "MessageHeaderFile.h"
 #include "format.h"
-#include "AppState.h"
 
 using namespace std;
 
@@ -172,7 +171,7 @@ std::string MessageHeaderFile::GetBackingFile() const
 	return _filePath;
 }
 
-void MessageHeaderFile::Commit(int resourceNumber)
+sci::Status MessageHeaderFile::Commit(int resourceNumber)
 {
 	if ((resourceNumber != -1) && !_folderPath.empty())
 	{
@@ -208,18 +207,12 @@ void MessageHeaderFile::Commit(int resourceNumber)
 		}
 
 		file.close();
-		try
+		return sci::Guard(fmt::format("saving {0}", _filePath), [&]() -> sci::Status
 		{
 			deletefile(_filePath);
 			movefile(bakFile, _filePath);
-		}
-		catch (std::exception &e)
-		{
-			AfxMessageBox(e.what(), MB_ICONWARNING | MB_OK);
-		}
+			return sci::Ok();
+		});
 	}
-	else
-	{
-		AfxMessageBox(fmt::format("Unable to open {0} for writing.", bakFile).c_str(), MB_ICONWARNING | MB_OK);
-	}
+	return sci::Fail(sci::ErrorCode::Io, fmt::format("Unable to open {0} for writing.", bakFile));
 }

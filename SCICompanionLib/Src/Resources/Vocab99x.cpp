@@ -12,7 +12,7 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
-#include "AppState.h"
+#include "CoreLog.h"
 #include "Vocab99x.h"
 #include "ResourceMap.h"
 #include "CompiledScript.h"
@@ -20,9 +20,10 @@
 #include "GameFolderHelper.h"
 #include "ResourceContainer.h"
 #include "ResourceBlob.h"
+#include "ResourceUtil.h"
 
-const static int VocabClassTable = 996;
-const static int VocabSelectorNames = 997;
+const int VocabClassTable = 996;
+const int VocabSelectorNames = 997;
 const int VocabKernelNames = 999;
 
 using namespace std;
@@ -32,6 +33,26 @@ ResourceBlob *_GetVocabData(const GameFolderHelper &helper, int iVocab)
 	return helper.MostRecentResource(ResourceType::Vocab, iVocab, ResourceEnumFlags::None).release();
 }
 
+sci::Status CheckVocabTables(const GameFolderHelper &helper)
+{
+	struct VocabTable { int number; bool required; const char *name; };
+	const VocabTable tables[] = { { VocabClassTable, true, "class table" }, { VocabSelectorNames, true, "selector table" }, { VocabKernelNames, false, "kernel table" } };
+	for (const VocabTable &table : tables)
+	{
+		std::unique_ptr<ResourceBlob> blob(_GetVocabData(helper, table.number));
+		if (blob)
+		{
+			SCI_TRY(CheckResourceData(*blob));
+		}
+		else if (table.required)
+		{
+			sci::ErrorLocation where;
+			where.resource = DescribeResource(ResourceType::Vocab, table.number);
+			return sci::Fail(sci::ErrorCode::NotFound, std::string("the game has no ") + table.name, where);
+		}
+	}
+	return sci::Ok();
+}
 // Default kernal name table, taken from ScummVM source.
 // We use vocab999, and if that's not present, then we use this.
 static const char *const s_defaultKernelNames[] = {
@@ -698,7 +719,7 @@ bool SelectorTable::Load(const GameFolderHelper &helper)
 	}
 	if (!fRet)
 	{
-		appState->LogInfo("Failed to load selector names from vocab resource");
+		CoreLogFormat(LogLevel::Warning, "Failed to load selector names from vocab resource");
 	}
 	return fRet;
 }
@@ -744,60 +765,62 @@ bool SelectorTable::IsDefaultSelector(uint16_t value)
 	return _defaultSelectors.find(value) != _defaultSelectors.end();
 }
 
-void SelectorTable::Save()
+std::vector<uint8_t> SelectorTable::MakeResourceData() const
 {
-	if (_fDirty)
+	uint16_t cItems = (uint16_t)_indices.size();
+	vector<BYTE> output;
+	push_word(output, cItems - 1);  // This is total size minus one (max index)
+	// Then come the offsets - we can run through the strings to calculate these.
+	uint16_t wOffset = (uint16_t)output.size() + cItems * 2; // the strings will start after the offsets.
+	uint16_t badSelOffset = 0xffff;
+	bool needBAD_SELECTOR = _firstInvalidSelector < _indices.size();
+	if (needBAD_SELECTOR)
 	{
-		// Save ourselves
-		uint16_t cItems = (uint16_t)_indices.size();
-		vector<BYTE> output;
-		push_word(output, cItems - 1);  // This is total size minus one (max index)
-		// Then come the offsets - we can run through the strings to calculate these.
-		uint16_t wOffset = (uint16_t)output.size() + cItems * 2; // the strings will start after the offsets.
-		uint16_t badSelOffset = 0xffff;
-		bool needBAD_SELECTOR = _firstInvalidSelector < _indices.size();
-		if (needBAD_SELECTOR)
+		badSelOffset = wOffset;
+		wOffset += lstrlen(c_szBadSelector) + 2;
+	}
+	for (int index : _indices)
+	{
+		if (index != -1)
 		{
-			badSelOffset = wOffset;
-			wOffset += lstrlen(c_szBadSelector) + 2;
+			push_word(output, wOffset);
+			wOffset += (uint16_t)(_names[index].length() + 2); // Increase by size of rle string.
 		}
-		for (int index : _indices)
+		else
 		{
-			if (index != -1)
+			if (_version.HasOldSCI0ScriptHeader)
 			{
-				push_word(output, wOffset);
-				wOffset += (uint16_t)(_names[index].length() + 2); // Increase by size of rle string.
+				// This is normal operation - odd selectors are invalid in this case.
+				// TODO: assert we're odd.
 			}
 			else
 			{
-				if (_version.HasOldSCI0ScriptHeader)
-				{
-					// This is normal operation - odd selectors are invalid in this case.
-					// TODO: assert we're odd.
-				}
-				else
-				{
-					assert(needBAD_SELECTOR);
-					push_word(output, badSelOffset);
-				}
+				assert(needBAD_SELECTOR);
+				push_word(output, badSelOffset);
 			}
 		}
+	}
 
-		// Now write the strings
-		if (needBAD_SELECTOR)
+	// Now write the strings
+	if (needBAD_SELECTOR)
+	{
+		push_string_rle(output, c_szBadSelector);
+	}
+	for (int index : _indices)
+	{
+		if (index != -1)
 		{
-			push_string_rle(output, c_szBadSelector);
+			push_string_rle(output, _names[index]);
 		}
-		for (int index : _indices)
-		{
-			if (index != -1)
-			{
-				push_string_rle(output, _names[index]);
-			}
-		}
+	}
+	return output;
+}
 
-		// Now create a resource data for it and save it.
-		appState->GetResourceMap().AppendResource(ResourceBlob(appState->GetResourceMap().Helper(), nullptr, ResourceType::Vocab, output, _version.DefaultVolumeFile, VocabSelectorNames, NoBase36, appState->GetVersion(), appState->GetResourceMap().Helper().GetDefaultSaveSourceFlags()));
+void SelectorTable::Save(CResourceMap &resourceMap)
+{
+	if (_fDirty)
+	{
+		resourceMap.AppendResource(ResourceBlob(resourceMap.Helper(), nullptr, ResourceType::Vocab, MakeResourceData(), _version.DefaultVolumeFile, VocabSelectorNames, NoBase36, resourceMap.GetSCIVersion(), resourceMap.Helper().GetDefaultSaveSourceFlags()));
 	}
 }
 
@@ -833,7 +856,7 @@ bool KernelTable::Load(const GameFolderHelper &helper)
 		// if the normal kind of create fails, we will try that instead...
 		if (!fRet)
 		{
-			appState->LogInfo("Failed to load kernel names from vocab resource - trying alternate KQ1-style method");
+			CoreLogFormat(LogLevel::Warning, "Failed to load kernel names from vocab resource - trying alternate KQ1-style method");
 			sci::istream byteStream = blob->GetReadStream();
 			while (byteStream.good())
 			{
@@ -875,7 +898,7 @@ bool KernelTable::Load(const GameFolderHelper &helper)
 				break;
 		}
 		_names.reserve(kernelCount);
-		assert(appState->GetVersion().MapFormat != ResourceMapFormat::SCI0); // Shouldn't happen for SCI0
+		assert(helper.Version.MapFormat != ResourceMapFormat::SCI0); // Shouldn't happen for SCI0
 		for (size_t i = 0; i < kernelCount; i++)
 		{
 			_names.push_back(kernelNames[i]);
@@ -888,24 +911,27 @@ bool KernelTable::Load(const GameFolderHelper &helper)
 bool GlobalClassTable::Load(const GameFolderHelper &helper)
 {
 	SpeciesTable speciesTable;
-	bool fRet = speciesTable.Load(helper);
+	// _Create needs only the script of each species, not its place in the
+	// script, so the table is not aligned to the compiled scripts: the
+	// alignment would make this load 1.3 to 1.9 times slower.
+	bool fRet = speciesTable.Load(helper, false);
 	if (fRet)
 	{
-		fRet = _Create(speciesTable);
+		fRet = _Create(speciesTable, helper);
 	}
 	if (!fRet)
 	{
-		appState->LogInfo("Failed to load class table from vocab resource");
+		CoreLogFormat(LogLevel::Warning, "Failed to load class table from vocab resource");
 	}
 	return fRet;
 }
 
-bool GlobalClassTable::_Create(const SpeciesTable &speciesTable)
+bool GlobalClassTable::_Create(const SpeciesTable &speciesTable, const GameFolderHelper &helper)
 {
 	// Collect the heap/script pairs first, since fetching the heap individually for each script is a performance issue.
 	// Patch files win out.
 	unordered_map<uint16_t, pair<unique_ptr<ResourceBlob>, unique_ptr<ResourceBlob>>> heapScriptPairs;
-	auto scriptContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::Script | ResourceTypeFlags::Heap, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+	auto scriptContainer = helper.Resources(ResourceTypeFlags::Script | ResourceTypeFlags::Heap, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
 	for (auto &scriptResource : *scriptContainer)
 	{
 		uint16_t scriptNumber = (uint16_t)scriptResource->GetNumber();
@@ -923,7 +949,7 @@ bool GlobalClassTable::_Create(const SpeciesTable &speciesTable)
 	for (auto &numberToPair : heapScriptPairs)
 	{
 		pair<unique_ptr<ResourceBlob>, unique_ptr<ResourceBlob>> &scriptAndHeap = numberToPair.second;
-		if (!appState->GetVersion().SeparateHeapResources ||
+		if (!helper.Version.SeparateHeapResources ||
 			(scriptAndHeap.first && scriptAndHeap.second))	  // Must have both script and heap if SCI1.1
 		{
 			int emptyNameClassIndex = 0;
@@ -941,7 +967,7 @@ bool GlobalClassTable::_Create(const SpeciesTable &speciesTable)
 				heapStream.reset(new sci::istream(scriptAndHeap.second->GetData(), scriptAndHeap.second->GetLength()));
 			}
 			// Load the script.
-			if (compiledScript->Load(appState->GetResourceMap().Helper(), appState->GetVersion(), scriptNumber, scriptAndHeap.first->GetReadStream(), heapStream.get()))
+			if (compiledScript->Load(helper, helper.Version, scriptNumber, scriptAndHeap.first->GetReadStream(), heapStream.get()))
 			{
 				CompiledScript *pCompiledScriptWeak = compiledScript.get();
 				_scripts.push_back(move(compiledScript));
@@ -965,7 +991,7 @@ bool GlobalClassTable::_Create(const SpeciesTable &speciesTable)
 						{
 							// Some games have scripts with classed defined in them which aren't in the global class table.
 							// These are probably leftovers that were never removed from the game (e.g. script 997 in KQ5CD)
-							appState->LogInfo("Ignoring class %d since it's not in the class table.", compiledObject->GetName().c_str());
+							CoreLogFormat(LogLevel::Info, "Ignoring class %s since it's not in the class table.", compiledObject->GetName().c_str());
 						}
 					}
 				}
@@ -1068,7 +1094,79 @@ std::vector<uint16_t> GlobalClassTable::GetSubclassesOf(uint16_t baseClass)
 	return subclasses;
 }
 
-bool SpeciesTable::Load(const GameFolderHelper &helper)
+// vocab.996 gives the script of each species, so _map lists a script's
+// species in number order. The compiler and the .sco number a script's
+// classes in the order of its source; for a decompiled script, that is the
+// order of the compiled script. A game can have its classes in another order
+// (LB2 script 0); with the species in number order, a recompile would give
+// two classes each other's species. So each script's list starts with the
+// species that the table gives the script, in the order of the script's
+// compiled classes; the table's other species for the script follow, in
+// number order (The Colonel's Bequest has a species for script 999 that
+// script 999 does not have). A compiled class whose species the table does
+// not give the script (a leftover class) is left out: to give it that
+// species would give a new class there the species of another script's
+// class. A script that does not load keeps its order.
+void SpeciesTable::_AlignToCompiledScripts(const GameFolderHelper &helper)
+{
+	// Find the scripts and their heaps in one pass: a lookup for each script
+	// is slow.
+	unordered_map<uint16_t, pair<unique_ptr<ResourceBlob>, unique_ptr<ResourceBlob>>> scriptsAndHeaps;
+	auto container = helper.Resources(ResourceTypeFlags::Script | ResourceTypeFlags::Heap, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+	for (auto &resource : *container)
+	{
+		pair<unique_ptr<ResourceBlob>, unique_ptr<ResourceBlob>> &scriptAndHeap = scriptsAndHeaps[(uint16_t)resource->GetNumber()];
+		if (resource->GetType() == ResourceType::Script)
+		{
+			scriptAndHeap.first = move(resource);
+		}
+		else
+		{
+			scriptAndHeap.second = move(resource);
+		}
+	}
+
+	for (auto &scriptAndSpecies : _map)
+	{
+		vector<uint16_t> &species = scriptAndSpecies.second;
+		if (species.size() < 2)
+		{
+			continue;   // Nothing to order.
+		}
+		auto found = scriptsAndHeaps.find(scriptAndSpecies.first);
+		if ((found == scriptsAndHeaps.end()) || !found->second.first)
+		{
+			continue;
+		}
+		CompiledScript compiledScript(scriptAndSpecies.first);
+		if (!compiledScript.TryLoad(helper, helper.Version, scriptAndSpecies.first, *found->second.first, found->second.second.get()))
+		{
+			continue;
+		}
+		unordered_set<uint16_t> inTable(species.begin(), species.end());
+		vector<uint16_t> ordered;
+		unordered_set<uint16_t> placed;
+		for (const auto &object : compiledScript.GetObjects())
+		{
+			uint16_t objectSpecies = object->GetSpecies();
+			if (!object->IsInstance() && inTable.count(objectSpecies) && !placed.count(objectSpecies))
+			{
+				ordered.push_back(objectSpecies);
+				placed.insert(objectSpecies);
+			}
+		}
+		for (uint16_t tableSpecies : species)
+		{
+			if (!placed.count(tableSpecies))
+			{
+				ordered.push_back(tableSpecies);
+			}
+		}
+		species = ordered;
+	}
+}
+
+bool SpeciesTable::Load(const GameFolderHelper &helper, bool alignToCompiledScripts)
 {
 	bool fRet = false;
 	unique_ptr<ResourceBlob> blob(_GetVocabData(helper, VocabClassTable));
@@ -1076,32 +1174,40 @@ bool SpeciesTable::Load(const GameFolderHelper &helper)
 	{
 		fRet = _Create(blob->GetReadStream());
 	}
+	if (fRet && alignToCompiledScripts)
+	{
+		_AlignToCompiledScripts(helper);
+	}
 	if (!fRet)
 	{
-		appState->LogInfo("Failed to load class table from vocab resource");
+		CoreLogFormat(LogLevel::Warning, "Failed to load class table from vocab resource");
 	}
 	return fRet;
 }
 
-void SpeciesTable::Save()
+std::vector<uint8_t> SpeciesTable::MakeResourceData() const
+{
+	vector<BYTE> output;
+	output.reserve(4 * _direct.size());
+	for (vector<uint16_t>::const_iterator speciesIt = _direct.begin(); speciesIt != _direct.end(); ++speciesIt)
+	{
+		push_word(output, 0);
+		push_word(output, *speciesIt);
+	}
+	return output;
+}
+
+void SpeciesTable::Save(CResourceMap &resourceMap)
 {
 	if (_fDirty)
 	{
-		// Save ourselves
-		vector<BYTE> output;
-		output.reserve(4 * _direct.size());
-		for (vector<uint16_t>::const_iterator speciesIt = _direct.begin(); speciesIt != _direct.end(); ++speciesIt)
-		{
-			push_word(output, 0);
-			push_word(output, *speciesIt);
-		}
-		// Now create a resource data for it
-		appState->GetResourceMap().AppendResource(ResourceBlob(appState->GetResourceMap().Helper(), nullptr, ResourceType::Vocab, output, appState->GetVersion().DefaultVolumeFile, VocabClassTable, NoBase36, appState->GetVersion(), appState->GetResourceMap().Helper().GetDefaultSaveSourceFlags()));
+		resourceMap.AppendResource(ResourceBlob(resourceMap.Helper(), nullptr, ResourceType::Vocab, MakeResourceData(), resourceMap.GetSCIVersion().DefaultVolumeFile, VocabClassTable, NoBase36, resourceMap.GetSCIVersion(), resourceMap.Helper().GetDefaultSaveSourceFlags()));
 	}
 }
 
-void SpeciesTable::PurgeOldClasses(const GameFolderHelper &helper)
+void SpeciesTable::PurgeOldClasses(CResourceMap &resourceMap)
 {
+	const GameFolderHelper &helper = resourceMap.Helper();
 	vector<uint16_t> newTable;
 	GlobalClassTable globalClassTable;
 	if (globalClassTable.Load(helper))
@@ -1139,13 +1245,13 @@ void SpeciesTable::PurgeOldClasses(const GameFolderHelper &helper)
 		// Save it!
 		_fDirty = true;
 		_direct = newTable;
-		this->Save();
+		this->Save(resourceMap);
 		// Then reload.
 		_map.clear();
 		_direct.clear();
 		_wNewSpeciesIndex = 0;
 		_fDirty = false;
-		this->Load(helper);
+		this->Load(helper, false);   // No caller reads the species order after a purge.
 	}
 }
 

@@ -39,3 +39,16 @@ struct Vocab000;
 std::unique_ptr<sci::Script> DecompileToAst(const GameFolderHelper &helper, const CompiledScript &compiledScript, DecompileLookups &lookups, const Vocab000 *pWords);
 void FinishDecompiledScript(const GameFolderHelper &helper, sci::Script &script, const CompiledScript &compiledScript, DecompileLookups &lookups);
 sci::Script *Decompile(const GameFolderHelper &helper, const CompiledScript &compiledScript, DecompileLookups &lookups, const Vocab000 *pWords);
+
+class IDecompilerConfig;
+class IDecompilerResults;
+class GlobalCompiledScriptLookups;
+class CResourceMap;
+class SelectorTable;
+
+// Decompiles one script with Decompile(), and prepares it for output in SCI
+// syntax. The resource map gives the game (its helper), the script's text
+// resource and vocab.000.
+std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, uint16_t wScript, CompiledScript &compiledScript, IDecompilerResults &results, bool debugControlFlow = false, bool debugInstConsumption = false, PCSTR pszDebugFilter = nullptr, bool decompileAsm = false, bool substituteTextTuples = false);
+// Gives objects that share a name distinct names (name_a, name_b, ...), keeping the original as the name property.
+void FixDuplicateObjectNames(CompiledScript &compiledScript, const SelectorTable &selectorTable);

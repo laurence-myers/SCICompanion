@@ -16,6 +16,9 @@
 #include "resource.h"	   // main symbols
 #include "ResourceMap.h"
 #include "ResourceRecency.h"
+#include "GameSession.h"
+#include "CoreLog.h"
+#include <mutex>
 #include "IntellisenseListBox.h"
 #include "ColoredToolTip.h"
 #include "CompileInterfaces.h"
@@ -37,6 +40,8 @@ class CResourceListDoc;
 class AppState;
 class SCIClassBrowser;
 class DependencyTracker;
+class DebuggerThread;
+class PostBuildThread;
 struct AudioProcessingSettings;
 
 template<typename _TPayload, typename _TResponse>
@@ -52,7 +57,9 @@ public:
 	virtual void InitialUpdateFrame(CFrameWnd *pFrame, CDocument *pDoc, BOOL bMakeVisible);
 };
 
-class AppState : public ISCIAppServices
+// The GUI's state. It owns the GameSession, and it is the core log sink: the
+// log goes to the file given on the command line, if any.
+class AppState : public ISCIAppServices, public ILogSink
 {
 public:
 	AppState(CWinApp *pApp = nullptr);
@@ -85,8 +92,16 @@ public:
 	void ReopenScriptDocument(uint16_t wNum);
 	void OpenMostRecentResourceAt(ResourceType type, uint16_t number, int index);
 	void SetScriptFrame(CFrameWnd *pScriptFrame) { _pScriptFrame = pScriptFrame; }
-	CResourceMap &GetResourceMap() { return _resourceMap; }
-	const SCIVersion &GetVersion() const { return _resourceMap.GetSCIVersion(); }
+	// The game session. The GUI's compile preference goes into its options
+	// here, so that a change in the Preferences dialog takes effect at once.
+	GameSession &GetSession() { _session.SetWarnOnUnusedInstances(!!_fWarnOnUnusedInstances); return _session; }
+	CResourceMap &GetResourceMap() { return _session.ResourceMap(); }
+	RunLogic &GetRunLogic() { return _runLogic; }
+	void StartDebuggerThread(int optionalResourceNumber);
+	void AbortDebuggerThread();
+	void StartPostBuildThread();
+	void AbortPostBuildThread();
+	const SCIVersion &GetVersion() const { return _session.Version(); }
 	UINT GetCommandClipboardFormat() { return _uClipboardFormat; }
 	CDocument* OpenDocumentFile(PCTSTR lpszFileName);
 	int GetSelectedViewResourceNumber();
@@ -146,8 +161,13 @@ public:
 	// ISCIAppServices
 	void OnGameFolderUpdate() override;
 	void SetRecentlyInteractedView(int resourceNumber) override;
+	void OnLastScriptDeleted(CResourceMap &resourceMap, const ResourceBlob &script) override;
 
-	void LogInfo(const TCHAR *pszFormat, ...);
+	// Sends the text to the core log (CoreLog), at the Info level.
+	void LogInfo(_Printf_format_string_ const TCHAR *pszFormat, ...);
+
+	// ILogSink
+	void Write(LogLevel level, const std::string &text) override;
 
 	// Global settings:
 	int _cxFakeEgo;
@@ -239,11 +259,12 @@ public: // TODO for now
 	ResourceType _shownType;
 	CFrameWnd *_pExplorerFrame;
 
-	CResourceMap _resourceMap;
+	GameSession _session;
 
 	UINT _uClipboardFormat;
 
 	CFile _logFile;
+	std::mutex _logFileMutex;	// Codecs log from worker threads.
 
 	// Last folder for exporting resources
 	LPITEMIDLIST _pidlFolder;
@@ -257,6 +278,8 @@ public: // TODO for now
 	ScopedHandle _hProcessDebugged;
 
 	RunLogic _runLogic;
+	std::shared_ptr<DebuggerThread> _debuggerThread;
+	std::shared_ptr<PostBuildThread> _postBuildThread;
 
 	std::unique_ptr<DependencyTracker> _dependencyTracker;
 	std::unique_ptr<SCIClassBrowser> _classBrowser;
@@ -266,10 +289,5 @@ public: // TODO for now
 
 extern AppState *appState;
 
-// A message box that is safe to call from library code that also runs headless.
-// When there is an interactive GUI it behaves exactly like AfxMessageBox. When
-// there is none (unit tests, batch, any future CLI) it logs the text instead of
-// popping a modal dialog that would block or appear stray, and returns the
-// non-destructive default (IDNO for a yes/no prompt, otherwise IDOK). Use this
-// for warnings raised while loading or rebuilding resources. (#182)
-int SafeMessageBox(const std::string &text, UINT type);
+// SafeMessageBox: a message box that also works with no GUI.
+#include "CorePrompt.h"

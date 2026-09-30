@@ -14,6 +14,10 @@
 #pragma once
 
 std::string SetUpGame(const std::string &name);
+// Copies a game from under the test module folder (for example
+// "\\TemplateGame\\SCI0") to a new temp folder, and returns that folder. It
+// does not open the game and makes no AppState. CleanUpGame removes the copy.
+std::string CopyGameFromModuleFolder(const std::string &name);
 std::string GetTestFileDirectory(const std::string &subDirectory);
 // The directory of the test module (the build output folder). Snapshot actuals
 // are written under here so RunTests.ps1 -UpdateSnapshots can copy them back.

@@ -105,20 +105,28 @@ bool operator!=(const IteratorStatePrivate &one, const IteratorStatePrivate &two
 	return !(one == two);
 }
 
-sci::istream ResourceContainer::ResourceIterator::_GetResourceHeaderAndPackage(ResourceHeaderAgnostic &rh) const
+sci::istream ResourceContainer::ResourceIterator::_GetResourceHeaderAndPackage(ResourceHeaderAgnostic &rh, bool *headerUnreadable) const
 {
 	if (_atEnd)
 	{
-		throw std::exception("invalid iterator!");
+		throw sci::DataError("invalid iterator!", sci::ErrorCode::Internal);
 	}
 
 	sci::istream temp;
 	try
 	{
+		// A valid empty resource reads as a header with sizes 0 (the package
+		// source checks its type and number).
 		temp = (*_container->_mapAndVolumes)[_state.mapIndex]->GetHeaderAndPositionedStream(_currentEntry, rh);
 	}
 	catch (std::exception)
 	{
+		// No header at the map's offset, no volume, or a damaged header: the
+		// caller marks the empty blob as corrupt.
+		if (headerUnreadable)
+		{
+			*headerUnreadable = true;
+		}
 		rh.Type = _currentEntry.Type;
 		rh.cbCompressed = 0;
 		rh.cbDecompressed = 0;
@@ -155,12 +163,13 @@ ResourceContainer::ResourceIterator::reference ResourceContainer::ResourceIterat
 ResourceContainer::ResourceIterator::reference ResourceContainer::ResourceIterator::_CreateHelper(bool delayDecompression) const
 {
 	ResourceHeaderAgnostic rh;
-	sci::istream packageByteStream = _GetResourceHeaderAndPackage(rh);
+	bool headerUnreadable = false;
+	sci::istream packageByteStream = _GetResourceHeaderAndPackage(rh, &headerUnreadable);
 
 	// We should validate against the type here.
 	if (!IsFlagSet(_container->_resourceTypes, ResourceTypeToFlag(rh.Type)))
 	{
-		throw std::exception("Corrupt resource header - mismatched types.");
+		throw sci::DataError("Corrupt resource header - mismatched types.");
 	}
 
 	std::string name;
@@ -175,6 +184,11 @@ ResourceContainer::ResourceIterator::reference ResourceContainer::ResourceIterat
 		rh,
 		packageByteStream,
 		delayDecompression);
+	if (headerUnreadable)
+	{
+		// The volume has no readable header at the map's offset.
+		blob->AddStatusFlags(ResourceLoadStatusFlags::Corrupted);
+	}
 
 	if (_container->_pResourceRecency)
 	{
@@ -187,7 +201,7 @@ ResourceContainer::ResourceIterator& ResourceContainer::ResourceIterator::operat
 {
 	if (_atEnd)
 	{
-		throw std::exception("Can't increment an iterator past the end");
+		throw sci::DataError("Can't increment an iterator past the end", sci::ErrorCode::Internal);
 	}
 	_GetNextEntry();
 	return *this;
@@ -198,7 +212,7 @@ ResourceContainer::ResourceIterator ResourceContainer::ResourceIterator::operato
 	// This is actually the heavy weight thingy.
 	if (_atEnd)
 	{
-		throw std::exception("Can't increment an iterator past the end");
+		throw sci::DataError("Can't increment an iterator past the end", sci::ErrorCode::Internal);
 	}
 	return ResourceIterator(_container, _atEnd, _state);
 }

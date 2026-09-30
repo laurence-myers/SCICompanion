@@ -96,3 +96,9 @@ ResourceEntity *CreateDefaultTextResource(SCIVersion version);
 
 std::string Dos2Win(std::string &str);
 std::string Win2Dos(const std::string &str);
+
+// The codepage of the open game's text: 437 (DOS) or 1252 (Windows). Dos2Win and
+// Win2Dos use it. Opening a game folder sets it from game.ini, and it is 437 when
+// there is no game.ini. Like the core log sink, it is a process-wide setting.
+void SetTextCodepage(int codepage);
+int GetTextCodepage();

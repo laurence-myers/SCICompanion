@@ -389,7 +389,7 @@ void OutputFunctionRSTHelper(DocScript &docScript, fmt::MemoryWriter &w, sci::Fu
 				std::string functionName = sub.substr(0, endPos);
 				if (functionName != function.GetName())
 				{
-					throw std::exception((functionName + " doesn't match " + function.GetName()).c_str());
+					throw sci::DataError(functionName + " doesn't match " + function.GetName(), sci::ErrorCode::Format);
 				}
 				sub = sub.substr(endPos);
 			}

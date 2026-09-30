@@ -21,6 +21,7 @@
 #include <locale>
 #include <codecvt>
 #include "SoundUtil.h"
+#include "CoreLog.h"
 #include "AppState.h"
 #include <regex>
 
@@ -211,6 +212,8 @@ void CreateLipSyncDataFromWav(const std::string &wavePath, const std::string &op
 		catch (...)
 		{
 			// The scope guard balances CoInitialize; nothing else to undo here.
+			// The results stay empty.
+			CoreLogCurrentException("making the lip sync data");
 		}
 	}
 }

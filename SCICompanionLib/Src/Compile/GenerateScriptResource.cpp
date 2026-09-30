@@ -18,7 +18,7 @@
 #include "SCO.h"
 #include "ScriptOMAll.h"
 #include "Text.h"
-#include "AppState.h"
+#include "GameSession.h"
 #include "PMachine.h"
 
 using namespace std;
@@ -633,7 +633,8 @@ void _Section3_Synonyms(Script &script, CompileContext &context, vector<BYTE> &o
 	size_t beginning = output.size();
 
 	const SynonymVector &synonyms = script.GetSynonyms();
-	if (!synonyms.empty())
+	// With no vocabulary, one error for the section, not one for each word.
+	if (!synonyms.empty() && !context.ReportIfNoVocabulary(synonyms.front().get(), "a synonym"))
 	{
 		push_word(output, 3);		   // 3 = synonyms
 		uint16_t totalSize = 4 + 2;	 // header plus terminator
@@ -1219,12 +1220,12 @@ void CommonScriptPrep(Script &script, CompileContext &context, CompileResults &r
 	// Ok, now we should have been told about all the saids and strings.
 }
 
-bool GenerateScriptResource_SCI0(Script &script, PrecompiledHeaders &headers, CompileTables &tables, CompileResults &results, bool generateDebugInfo)
+bool GenerateScriptResource_SCI0(GameSession &session, Script &script, PrecompiledHeaders &headers, CompileTables &tables, CompileResults &results, bool generateDebugInfo)
 {
 	vector<BYTE> &output = results.GetScriptResource();
 
 	// Create our "CompileContext", which holds state during the compilation.
-	CompileContext context(appState->GetVersion(), script, headers, tables, results.GetLog(), generateDebugInfo);
+	CompileContext context(session, script, headers, tables, results.GetLog(), generateDebugInfo);
 
 	_Section3_Synonyms(script, context, output, results);
 
@@ -1310,6 +1311,9 @@ bool GenerateScriptResource_SCI0(Script &script, PrecompiledHeaders &headers, Co
 		}
 	}
 
+	// The .sco files that the script used: a batch sees which scripts
+	// depend on a .sco that it changed.
+	results.SetLoadedObjectFiles(context.LoadedObjectFiles());
 	return !context.HasErrors();
 }
 
@@ -1401,7 +1405,7 @@ void WriteClassToHeap(const CSCOObjectClass &oClass, bool isInstance, vector<uin
 	}
 }
 
-bool GenerateScriptResource_SCI11(Script &script, PrecompiledHeaders &headers, CompileTables &tables, CompileResults &results, bool generateDebugInfo)
+bool GenerateScriptResource_SCI11(GameSession &session, Script &script, PrecompiledHeaders &headers, CompileTables &tables, CompileResults &results, bool generateDebugInfo)
 {
 	vector<BYTE> &outputScr = results.GetScriptResource();
 	vector<BYTE> &outputHeap = results.GetHeapResource();
@@ -1422,7 +1426,7 @@ bool GenerateScriptResource_SCI11(Script &script, PrecompiledHeaders &headers, C
 	vector<uint16_t> trackMethodCodePointerOffsets;
 
 	// Create our "CompileContext", which holds state during the compilation.
-	CompileContext context(appState->GetVersion(), script, headers, tables, results.GetLog(), generateDebugInfo);
+	CompileContext context(session, script, headers, tables, results.GetLog(), generateDebugInfo);
 
 	CommonScriptPrep(script, context, results);
 	// Errors above could mean crashes below. Bail out now.
@@ -1560,7 +1564,7 @@ bool GenerateScriptResource_SCI11(Script &script, PrecompiledHeaders &headers, C
 		}
 	}
 
-	if (appState->_fWarnOnUnusedInstances)
+	if (context.Options().warnOnUnusedInstances)
 	{
 		// Some validation
 		for (const auto &instance : script.GetClasses())
@@ -1579,20 +1583,23 @@ bool GenerateScriptResource_SCI11(Script &script, PrecompiledHeaders &headers, C
 		}
 	}
 
+	// The .sco files that the script used: a batch sees which scripts
+	// depend on a .sco that it changed.
+	results.SetLoadedObjectFiles(context.LoadedObjectFiles());
 	return !context.HasErrors();
 }
 
-bool GenerateScriptResource(SCIVersion version, sci::Script &script, PrecompiledHeaders &headers, CompileTables &tables, CompileResults &results, bool generateDebugInfo)
+bool GenerateScriptResource(GameSession &session, sci::Script &script, PrecompiledHeaders &headers, CompileTables &tables, CompileResults &results, bool generateDebugInfo)
 {
 	bool fRet;
 	g_compileCodeGenTimer.Start();
-	if (version.SeparateHeapResources)
+	if (session.Version().SeparateHeapResources)
 	{
-		fRet = GenerateScriptResource_SCI11(script, headers, tables, results, generateDebugInfo);
+		fRet = GenerateScriptResource_SCI11(session, script, headers, tables, results, generateDebugInfo);
 	}
 	else
 	{
-		fRet = GenerateScriptResource_SCI0(script, headers, tables, results, generateDebugInfo);
+		fRet = GenerateScriptResource_SCI0(session, script, headers, tables, results, generateDebugInfo);
 	}
 	g_compileCodeGenTimer.Stop();
 	return fRet;

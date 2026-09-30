@@ -22,11 +22,14 @@
 #include <atomic>
 #include "format.h"
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#undef THIS_FILE
-static char THIS_FILE[] = __FILE__;
-#endif
+namespace
+{
+	// The table of crcFast, filled when the program starts.
+	struct CrcTableFill
+	{
+		CrcTableFill() { crcInit(); }
+	} crcTableFill;
+}
 
 bool DoesPackageFormatIncludeHeaderInCompressedSize(SCIVersion version)
 {
@@ -65,14 +68,25 @@ bool IsValidResourceName(PCTSTR pszName)
 	return true;
 }
 
+DWORD MaxResourceSizeFor(const SCIVersion &version, ResourceType type)
+{
+	return ((type == ResourceType::Audio) || (version.MapFormat >= ResourceMapFormat::SCI1)) ? MaxResourceSizeLarge : MaxResourceSize;
+}
+
 bool IsValidResourceSize(const SCIVersion &version, DWORD cb, ResourceType type)
 {
-	bool fRet = true;
-	if (cb > ((type == ResourceType::Audio) ? MaxResourceSizeLarge : ((version.MapFormat >= ResourceMapFormat::SCI1) ? MaxResourceSizeLarge : MaxResourceSize)))
+	return cb <= MaxResourceSizeFor(version, type);
+}
+
+sci::Status CheckResourceSize(const SCIVersion &version, DWORD cb, ResourceType type)
+{
+	if (IsValidResourceSize(version, cb, type))
 	{
-		fRet = false;
+		return sci::Ok();
 	}
-	return fRet;
+	return sci::Fail(sci::ErrorCode::Unsupported,
+		fmt::format("{0} resources can have at most {1} bytes in this game's format; this one has {2} bytes",
+			GetResourceTypeTitle(type), MaxResourceSizeFor(version, type), cb));
 }
 
 int g_dwID = 0;
@@ -367,6 +381,11 @@ void ResourceBlob::_DecompressFromBits(sci::istream &byteStream, bool delay)
 			if (header.cbDecompressed > 0)
 			{
 				byteStream.read_data(&_pData[0], header.cbDecompressed);
+				if (!byteStream.good())
+				{
+					// The volume ends inside the data: the rest is not the resource.
+					_resourceLoadStatus |= ResourceLoadStatusFlags::Corrupted;
+				}
 			}
 		}
 		else
@@ -374,6 +393,11 @@ void ResourceBlob::_DecompressFromBits(sci::istream &byteStream, bool delay)
 			assert(_pDataCompressed.empty()); // Verify no leaks
 			_pDataCompressed.allocate(cbCompressedRemaining);
 			byteStream.read_data(&_pDataCompressed[0], cbCompressedRemaining);
+			if (!byteStream.good())
+			{
+				// The volume ends inside the data.
+				_resourceLoadStatus |= ResourceLoadStatusFlags::Corrupted;
+			}
 			_resourceLoadStatus |= ResourceLoadStatusFlags::Delayed;
 			if (!delay)
 			{
@@ -716,6 +740,6 @@ void ThrowExceptionIfOverflow(uint32_t sizeNeeded, uint32_t sizeAvailable, const
 {
 	if (sizeNeeded > sizeAvailable)
 	{
-		throw std::exception(fmt::format("{} ({} bytes) is too large for this version of SCI. Reduce the size to {} bytes or less.", name, sizeNeeded, sizeAvailable).c_str());
+		throw sci::DataError(fmt::format("{} ({} bytes) is too large for this version of SCI. Reduce the size to {} bytes or less.", name, sizeNeeded, sizeAvailable), sci::ErrorCode::Unsupported);
 	}
 }

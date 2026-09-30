@@ -6,7 +6,7 @@
 #include "ResourceContainer.h"
 #include "Vocab000.h"
 #include "CompileContext.h"
-#include "AppState.h"
+#include "ResourceMap.h"
 #include "ScriptOM.h"
 #include <format.h>
 
@@ -238,7 +238,7 @@ private:
 	map<string, int> _roots;
 };
 
-void ListMostPopularVerbs(CompileLog &log, const map<string, int> &rootsUsedInScript)
+void ListMostPopularVerbs(CompileLog &log, uint16_t mainVocab, const map<string, int> &rootsUsedInScript)
 {
 	// Let's just output it alphabetically for now
 	for (auto pair : rootsUsedInScript)
@@ -251,14 +251,14 @@ void ListMostPopularVerbs(CompileLog &log, const map<string, int> &rootsUsedInSc
 		log.ReportResult(CompileResult(
 			errorMessage,
 			ResourceType::Vocab,
-			appState->GetVersion().MainVocabResource,
+			mainVocab,
 			0
 		));
 	}
 
 }
 
-void ListMostPopularOfType(CompileLog &log, const Vocab000 &vocab000, WordClass wordClass, const map<uint16_t, int> &saidsUsedInScripts)
+void ListMostPopularOfType(CompileLog &log, uint16_t mainVocab, const Vocab000 &vocab000, WordClass wordClass, const map<uint16_t, int> &saidsUsedInScripts)
 {
 	multimap<int, uint16_t> sortedSaids;
 	for (const auto &pair : saidsUsedInScripts)
@@ -280,13 +280,13 @@ void ListMostPopularOfType(CompileLog &log, const Vocab000 &vocab000, WordClass 
 		log.ReportResult(CompileResult(
 			errorMessage,
 			ResourceType::Vocab,
-			appState->GetVersion().MainVocabResource,
+			mainVocab,
 			(int)it->second
 		));
 	}
 }
 
-void ListUnusedOfType(CompileLog &log, const Vocab000 &vocab000, WordClass wordClass, const std::map<uint16_t, int> &saidsUsedInScripts)
+void ListUnusedOfType(CompileLog &log, uint16_t mainVocab, const Vocab000 &vocab000, WordClass wordClass, const std::map<uint16_t, int> &saidsUsedInScripts)
 {
 	std::string wordClassName = GetWordClassString(wordClass);
 
@@ -310,7 +310,7 @@ void ListUnusedOfType(CompileLog &log, const Vocab000 &vocab000, WordClass wordC
 				log.ReportResult(CompileResult(
 					errorMessage,
 					ResourceType::Vocab,
-					appState->GetVersion().MainVocabResource,
+					mainVocab,
 					(int)dwGroup
 				));
 			}
@@ -320,13 +320,15 @@ void ListUnusedOfType(CompileLog &log, const Vocab000 &vocab000, WordClass wordC
 
 }
 
-void ValidateSaids(CompileLog &log, const Vocab000 &vocab000)
+void ValidateSaids(CResourceMap &resourceMap, CompileLog &log, const Vocab000 &vocab000)
 {
 	std::map<uint16_t, int> saidsUsedInScripts;
 	std::map<string, int> rootsUsedInScripts;
 
 	std::vector<ScriptId> scripts;
-	appState->GetResourceMap().GetAllScripts(scripts);
+	resourceMap.GetAllScripts(scripts);
+	const SCIVersion &version = resourceMap.GetSCIVersion();
+	uint16_t mainVocab = version.MainVocabResource;
 	std::unique_ptr<Script> mainScript;
 	std::unique_ptr<ExtractSaids> mainSaids;
 	for (ScriptId script : scripts)
@@ -334,7 +336,7 @@ void ValidateSaids(CompileLog &log, const Vocab000 &vocab000)
 		if (script.GetResourceNumber() == 0)
 		{
 			// Main
-			mainScript = SimpleCompile(log, script);
+			mainScript = SimpleCompile(version, log, script);
 			mainSaids = std::make_unique<ExtractSaids>(script, log, vocab000);
 			mainScript->Traverse(*mainSaids);
 			mainSaids->GrabWordGroups(saidsUsedInScripts);
@@ -349,7 +351,7 @@ void ValidateSaids(CompileLog &log, const Vocab000 &vocab000)
 		{
 			if (scriptId.GetResourceNumber() != 0)
 			{
-				std::unique_ptr<Script> script = SimpleCompile(log, scriptId);
+				std::unique_ptr<Script> script = SimpleCompile(version, log, scriptId);
 				ExtractSaids scriptSaids(scriptId, log, vocab000);
 				script->Traverse(scriptSaids);
 				scriptSaids.GrabWordGroups(saidsUsedInScripts);
@@ -369,10 +371,10 @@ void ValidateSaids(CompileLog &log, const Vocab000 &vocab000)
 	uint16_t wordClass = (uint16_t)WordClass::ImperativeVerb;
 	while (wordClass)
 	{
-		ListUnusedOfType(log, vocab000, (WordClass)wordClass, saidsUsedInScripts);
+		ListUnusedOfType(log, mainVocab, vocab000, (WordClass)wordClass, saidsUsedInScripts);
 		wordClass >>= 1;
 	}
 
-	//ListMostPopularOfType(log, vocab000, WordClass::ImperativeVerb, saidsUsedInScripts);
-	ListMostPopularVerbs(log, rootsUsedInScripts);
+	//ListMostPopularOfType(log, mainVocab, vocab000, WordClass::ImperativeVerb, saidsUsedInScripts);
+	ListMostPopularVerbs(log, mainVocab, rootsUsedInScripts);
 }

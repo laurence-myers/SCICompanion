@@ -16,6 +16,9 @@
 #include "ScriptOM.h"
 #include "CompiledScript.h"
 #include "GameFolderHelper.h"
+#include "FileWrite.h"
+#include <fstream>
+#include <iterator>
 
 using namespace std;
 using namespace sci;
@@ -190,7 +193,7 @@ void CSCOFile::Save(vector<BYTE> &output) const
 	output.push_back(_bBuild);
 	output.push_back(_bSCIVersion);
 	output.push_back(_bAlignment);
-	ASSERT((output.size() % 2) == 0); // alignment should have made it even.
+	assert((output.size() % 2) == 0); // alignment should have made it even.
 
 	// Script number
 	push_word(output, _wScriptNumber);
@@ -337,7 +340,7 @@ void CSCOFile::ReplaceObject(const CSCOObjectClass &object)
 			return;
 		}
 	}
-	ASSERT(FALSE); // Should always be found.
+	assert(FALSE); // Should always be found.
 }
 
 bool CSCOFile::GetClass(std::string className, const CSCOObjectClass **ppClass) const
@@ -627,26 +630,64 @@ void CSCOObjectClass::Save(std::vector<BYTE> &output, SCOVersion version) const
 	for_each(_methods.begin(), _methods.end(), [&output](uint16_t w) { push_word(output, w); });
 }
 
-void SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco)
+sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco)
 {
-	// Ask the question
-	std::string keyName = default_reskey(sco.GetScriptNumber(), NoBase36);
-	std::string scriptTitle = helper.GetIniString("Script", keyName, keyName.c_str());
+	// The script's name: game.ini, or the session's script-name map.
+	std::string scriptTitle = helper.GetScriptTitle(sco.GetScriptNumber());
 	ScriptId script = helper.GetScriptId(scriptTitle);
-	SaveSCOFile(helper, sco, script);
+	return SaveSCOFile(helper, sco, script);
 }
 
-void SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco, ScriptId script)
+namespace
+{
+	// The file already has these bytes.
+	bool HasBytes(const std::string &path, const vector<BYTE> &bytes)
+	{
+		std::ifstream existing(path, std::ios::binary);
+		if (!existing)
+		{
+			return false;
+		}
+		vector<BYTE> before((std::istreambuf_iterator<char>(existing)), std::istreambuf_iterator<char>());
+		return before == bytes;
+	}
+}
+
+sci::Result<bool> SCOFileWouldChange(const GameFolderHelper &helper, const CSCOFile &sco, ScriptId script)
 {
 	vector<BYTE> scoOutput;
-	// First save the .sco file
 	sco.Save(scoOutput);
-	// Copy these bytes to a stream...
-	std::string scoFileName = helper.GetScriptObjectFileName(script.GetTitle());
-	ofstream scoFile(scoFileName.c_str(), ios::out | ios::binary);
-	// REVIEW: yucky
-	scoFile.write((const char *)&scoOutput[0], (std::streamsize)scoOutput.size());
-	scoFile.close();
+	std::string path = helper.GetScriptObjectFileName(script.GetTitle());
+	if (HasBytes(path, scoOutput))
+	{
+		return false;
+	}
+	// WriteBytesToFile shares read and write.
+	SCI_TRY(CheckFileCanBeReplaced(path, FILE_SHARE_READ | FILE_SHARE_WRITE));
+	return true;
+}
+
+sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco, ScriptId script, bool *changed)
+{
+	vector<BYTE> scoOutput;
+	sco.Save(scoOutput);
+	std::string path = helper.GetScriptObjectFileName(script.GetTitle());
+	if (HasBytes(path, scoOutput))
+	{
+		if (changed)
+		{
+			*changed = false;
+		}
+		return sci::Ok();
+	}
+	// Changed only when the new file was written: a .sco that cannot be
+	// written is not a change that needs another pass.
+	sci::Status written = WriteBytesToFile(path, scoOutput);
+	if (changed)
+	{
+		*changed = written.has_value();
+	}
+	return written;
 }
 
 unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const Script &script, const CompiledScript &compiledScript)
@@ -728,8 +769,33 @@ unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const Script &script, const 
 		scoObjects.push_back(newSCOObject);
 	}
 
-	// Now public procedures and instances. Get their names from the script first.
-	// We assume the ordering in the script corresponds to the ordering in the compiled script.
+	// Now public procedures and instances. A (public name N ...) block gives each
+	// export its slot, and the compiler uses the same slots: record them as they
+	// are, a name that is in several slots included (the decompiler names a
+	// "calle script slot" call from it). Pairing the names with the export table
+	// in definition order is wrong when the source defines them in another
+	// order (in KQ5 Interface.sc, every public procedure name would move to
+	// another slot, and a call would go to the wrong procedure).
+	if (!script.GetExports().empty())
+	{
+		// In slot order, as the compiler writes its .sco: GetExportIndex gives
+		// the first entry of a name, so a name in several slots must give its
+		// lowest slot here too.
+		std::vector<std::pair<uint16_t, std::string>> slots;
+		for (const auto &entry : script.GetExports())
+		{
+			slots.emplace_back((uint16_t)entry->Slot, entry->Name);
+		}
+		std::stable_sort(slots.begin(), slots.end(), [](const std::pair<uint16_t, std::string> &a, const std::pair<uint16_t, std::string> &b) { return a.first < b.first; });
+		for (const auto &slot : slots)
+		{
+			sco->GetExports().emplace_back(slot.second, slot.first);
+		}
+		return sco;
+	}
+
+	// With no public block, get the names from the script, and pair them with
+	// the export table in definition order.
 	uint16_t exportIndex = 0;
 	vector<string> publicInstanceNames;
 	for (const auto &classDef : script.GetClasses())

@@ -13,12 +13,11 @@
 ***************************************************************************/
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "CorePrompt.h"
 #include "ResourceContainer.h"
 #include "ResourceMap.h"
+#include "ScriptNameMap.h"
 #include "ResourceRecency.h"
-#include "SaveResourceDialog.h"
-#include "RemoveScriptDialog.h"
 #include "View.h"
 #include "Cursor.h"
 #include "Font.h"
@@ -41,20 +40,13 @@
 #include "MessageSource.h"
 #include "format.h"
 #include "ResourceMapEvents.h"
-#include "DebuggerThread.h"
-#include "PostBuildThread.h"
-#include "RunLogic.h"
 #include "ResourceBlob.h"
 #include "DependencyTracker.h"
 #include "VersionDetectionHelper.h"
+#include <filesystem>
+#include <mbstring.h>
 
 using namespace std;
-
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#undef THIS_FILE
-static char THIS_FILE[] = __FILE__;
-#endif
 
 std::string ResourceDisplayNameFromType(ResourceType type);
 
@@ -69,9 +61,8 @@ void deletefile(const string &filename)
 	{
 		if (!DeleteFile(filename.c_str()))
 		{
-			std::string details = "Deleting ";
-			details += filename;
-			throw std::exception(GetMessageFromLastError(details).c_str());
+			DWORD error = GetLastError();
+			sci::ThrowWin32(error, "Deleting " + filename);
 		}
 	}
 }
@@ -170,7 +161,7 @@ ResourceType ResourceFlagToType(ResourceTypeFlags dwFlags)
 	return (ResourceType)iShifts;
 }
 
-HRESULT RebuildResources(const GameFolderHelper &helper, SCIVersion version, BOOL fShowUI, ResourceSaveLocation saveLocation, std::map<ResourceType, RebuildStats> &stats)
+HRESULT RebuildResources(CResourceMap &resourceMap, const GameFolderHelper &helper, SCIVersion version, BOOL fShowUI, ResourceSaveLocation saveLocation, std::map<ResourceType, RebuildStats> &stats)
 {
 	try
 	{
@@ -178,7 +169,7 @@ HRESULT RebuildResources(const GameFolderHelper &helper, SCIVersion version, BOO
 		// (and RebuildResource should clean out the old ones)
 		if (version.AudioVolumeName != AudioVolumeName::None)
 		{
-			std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, helper, ResourceSourceFlags::AudioCache);
+			std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, helper, ResourceSourceFlags::AudioCache, ResourceSourceAccessFlags::Read, -1, &resourceMap);
 			resourceSource->RebuildResources(true, *resourceSource, stats);
 		}
 
@@ -214,11 +205,9 @@ HRESULT RebuildResources(const GameFolderHelper &helper, SCIVersion version, BOO
 //
 CResourceMap::CResourceMap(ISCIAppServices *appServices, ResourceRecency *resourceRecency) : _appServices(appServices), _resourceRecency(resourceRecency)
 {
-	_runLogic = std::make_unique<RunLogic>();
 	_paletteListNeedsUpdate = true;
 	_skipVersionSniffOnce = false;
 	_pVocab000 = nullptr;
-	_cDeferAppend = 0;
 	_gameFolderHelper.Version = sciVersion0;	// By default
 	_deferredResources.reserve(300);			// So we don't need to resize much it when adding
 	_emptyPalette = std::make_unique<PaletteComponent>();
@@ -228,7 +217,7 @@ CResourceMap::CResourceMap(ISCIAppServices *appServices, ResourceRecency *resour
 CResourceMap::~CResourceMap()
 {
 	assert(_syncs.empty()); // They should remove themselves.
-	assert(_cDeferAppend == 0);
+	assert(_deferLevels.empty());
 }
 
 //
@@ -260,90 +249,225 @@ void CResourceMap::AssignName(ResourceType type, int iResourceNumber, uint32_t b
 	}
 }
 
+bool CResourceMap::DeferLevel::HasReplaced(size_t index) const
+{
+	return std::any_of(replaced.begin(), replaced.end(),
+		[index](const std::pair<size_t, std::unique_ptr<ResourceBlob>> &entry) { return entry.first == index; });
+}
+
 void CResourceMap::BeginDeferAppend()
 {
-	ASSERT((_cDeferAppend > 0) || _deferredResources.empty());
-	++_cDeferAppend;
+	assert(!_deferLevels.empty() || _deferredResources.empty());
+	DeferLevel level;
+	level.queuedAtStart = _deferredResources.size();
+	_deferLevels.push_back(std::move(level));
 }
+
 void CResourceMap::AbandonAppend()
 {
-	// Abandon all the resources we were piling up.
-	if (_cDeferAppend)
+	// Withdraw what this level queued, and put back the copies from before
+	// this level that it replaced. For the outermost level, the queue is then
+	// empty. Nothing here allocates: this runs in a destructor.
+	if (_deferLevels.empty())
 	{
-		--_cDeferAppend;
-		if (_cDeferAppend == 0)
+		return;
+	}
+	DeferLevel &level = _deferLevels.back();
+	// The queue is never shorter than a level's start; check it anyway.
+	size_t start = (level.queuedAtStart < _deferredResources.size()) ? level.queuedAtStart : _deferredResources.size();
+	_deferredResources.erase(_deferredResources.begin() + start, _deferredResources.end());
+	for (auto &replaced : level.replaced)
+	{
+		if (replaced.first < _deferredResources.size())
 		{
-			_deferredResources.clear();
+			_deferredResources[replaced.first] = std::move(replaced.second);
 		}
+	}
+	_deferLevels.pop_back();
+}
+
+namespace
+{
+	// "the resource package", "the audio cache", ...
+	std::string _DescribeDestination(ResourceSourceFlags sourceFlags)
+	{
+		if (IsFlagSet(sourceFlags, ResourceSourceFlags::AudioCache) || IsFlagSet(sourceFlags, ResourceSourceFlags::AudioMapCache))
+		{
+			return "the audio cache";
+		}
+		if (IsFlagSet(sourceFlags, ResourceSourceFlags::PatchFile))
+		{
+			return "patch files";
+		}
+		if (IsFlagSet(sourceFlags, ResourceSourceFlags::MessageMap))
+		{
+			return "the message package";
+		}
+		if (IsFlagSet(sourceFlags, ResourceSourceFlags::Aud) || IsFlagSet(sourceFlags, ResourceSourceFlags::Sfx))
+		{
+			return "the audio volume";
+		}
+		return "the resource package";
+	}
+
+	// "writing Text 901 to the patch file 901.tex", "writing Script 110 to the resource package"
+	std::string _DescribeWrite(const ResourceBlob &blob)
+	{
+		std::string destination = (blob.GetSourceFlags() == ResourceSourceFlags::PatchFile) ?
+			("the patch file " + GetFileNameFor(blob)) : _DescribeDestination(blob.GetSourceFlags());
+		return fmt::format("writing {0} {1} to {2}", GetResourceTypeTitle(blob.GetType()), blob.GetNumber(), destination);
+	}
+
+	// One resource as _DescribeWrite does; more as "writing 3 resources to
+	// patch files". The error message names the file that failed.
+	std::string _DescribeBucket(const std::vector<const ResourceBlob*> &blobs)
+	{
+		if (blobs.size() == 1)
+		{
+			return _DescribeWrite(*blobs[0]);
+		}
+		return fmt::format("writing {0} resources to {1}", blobs.size(), _DescribeDestination(blobs[0]->GetSourceFlags()));
+	}
+
+	// The same resource for the same destination: a second copy in one batch
+	// replaces the first. Two copies would give the map two entries (SCI1) or
+	// keep the older copy (SCI0).
+	bool _IsSameQueuedResource(const ResourceBlob &a, const ResourceBlob &b)
+	{
+		return (a.GetType() == b.GetType()) && (a.GetNumber() == b.GetNumber()) &&
+			(a.GetBase36() == b.GetBase36()) && (a.GetSourceFlags() == b.GetSourceFlags());
 	}
 }
-HRESULT CResourceMap::EndDeferAppend()
+
+sci::Status CResourceMap::EndDeferAppend()
 {
-	HRESULT hr = S_OK;
-	if (_cDeferAppend)
+	if (_deferLevels.empty())
 	{
-		--_cDeferAppend;
-		if (_cDeferAppend == 0)
+		return sci::Ok();
+	}
+	DeferLevel level = std::move(_deferLevels.back());
+	_deferLevels.pop_back();
+	if (!_deferLevels.empty())
+	{
+		// An inner batch: the outermost Commit writes the queue. If the outer
+		// level is abandoned, it must still put back the copies that this
+		// level replaced and that were queued before the outer level opened.
+		return sci::Guard("closing a nested resource batch", [&]() -> sci::Status
 		{
-			if (!_deferredResources.empty())
+			DeferLevel &outer = _deferLevels.back();
+			for (auto &replaced : level.replaced)
 			{
-				// TODO: Assert that all defereed resources come from the same source.
-				// Or rather we could support from multiple sources. The defer append only happens during
-				// "compile all". Which actually might eventually support auto-generating message resources, so this is
-				// probably something we'll need to handle. And now also audiomaps
-
-				// Bucketize the resources by resourcesource and map context.
-				std::map<uint64_t, std::vector<const ResourceBlob*>> keyToIndices;
-				for (size_t i = 0; i < _deferredResources.size(); i++)
+				if ((replaced.first < outer.queuedAtStart) && !outer.HasReplaced(replaced.first))
 				{
-					uint32_t mapContext = (uint32_t)((_deferredResources[i].GetBase36() == NoBase36) ? -1 : _deferredResources[i].GetNumber());
-					uint64_t bucketKey = (uint64_t)_deferredResources[i].GetSourceFlags() | (((uint64_t)mapContext) << 32);
-					keyToIndices[bucketKey].push_back(&_deferredResources[i]);
-				}
-
-				for (auto &pair : keyToIndices)
-				{
-					// For each bucket, create a resourcesource and save them.
-					std::vector<const ResourceBlob*> &blobsForThisSource = pair.second;
-					ResourceSourceFlags sourceFlags = blobsForThisSource[0]->GetSourceFlags();
-
-					int mapContext = (blobsForThisSource[0]->GetBase36() == NoBase36) ? -1 : blobsForThisSource[0]->GetNumber();
-					// Enumerate resources and write the ones we have not already encountered.
-					std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, _gameFolderHelper, sourceFlags, ResourceSourceAccessFlags::ReadWrite, mapContext);
-
-					try
-					{
-						// We're going to tell the relevant folks to reload completely, so we
-						// don't care about the return value here (replace or append)
-						resourceSource->AppendResources(blobsForThisSource);
-					}
-					catch (std::exception &e)
-					{
-						SafeMessageBox(e.what(), MB_OK | MB_ICONWARNING);
-					}
-				}
-
-				bool reload[NumResourceTypes] = {};
-				for (ResourceBlob &blob : _deferredResources)
-				{
-					AssignName(blob);
-					reload[(int)blob.GetType()] = true;
-				}
-
-				_deferredResources.clear();
-
-				// Tell the views that might have changed, to reload:
-				for (int iType = 0; iType < ARRAYSIZE(reload); iType++)
-				{
-					if (reload[iType])
-					{
-						NotifyToReloadResourceType((ResourceType)iType);
-					}
+					outer.replaced.push_back(std::move(replaced));
 				}
 			}
-		}
+			return sci::Ok();
+		});
 	}
-	return hr;
+
+	// Take the queue first, so a failure below cannot leave it behind.
+	std::vector<std::unique_ptr<ResourceBlob>> queued;
+	queued.swap(_deferredResources);
+	if (queued.empty())
+	{
+		return sci::Ok();
+	}
+
+	sci::Status firstFailure = sci::Ok();
+	std::vector<const ResourceBlob*> written;
+	sci::Status writeStatus = sci::Guard("writing the queued resources", [&]() -> sci::Status
+	{
+		// Bucketize the resources by resource source and map context. Each
+		// bucket is one rewrite of its destination.
+		std::map<uint64_t, std::vector<const ResourceBlob*>> keyToIndices;
+		for (const auto &blob : queued)
+		{
+			uint32_t mapContext = (uint32_t)((blob->GetBase36() == NoBase36) ? -1 : blob->GetNumber());
+			uint64_t bucketKey = (uint64_t)blob->GetSourceFlags() | (((uint64_t)mapContext) << 32);
+			keyToIndices[bucketKey].push_back(blob.get());
+		}
+
+		for (auto &pair : keyToIndices)
+		{
+			std::vector<const ResourceBlob*> &blobsForThisSource = pair.second;
+			ResourceSourceFlags sourceFlags = blobsForThisSource[0]->GetSourceFlags();
+			int mapContext = (blobsForThisSource[0]->GetBase36() == NoBase36) ? -1 : blobsForThisSource[0]->GetNumber();
+			sci::Status status = sci::Guard(_DescribeBucket(blobsForThisSource), [&]() -> sci::Status
+			{
+				std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, _gameFolderHelper, sourceFlags, ResourceSourceAccessFlags::ReadWrite, mapContext, this);
+				if (!resourceSource)
+				{
+					return sci::Fail(sci::ErrorCode::Unsupported, "no writer for this destination");
+				}
+				resourceSource->AppendResources(blobsForThisSource);
+				return sci::Ok();
+			});
+			if (status)
+			{
+				written.insert(written.end(), blobsForThisSource.begin(), blobsForThisSource.end());
+			}
+			else if (firstFailure)
+			{
+				firstFailure = status;
+			}
+		}
+		return sci::Ok();
+	});
+	if (!writeStatus && firstFailure)
+	{
+		firstFailure = writeStatus;
+	}
+
+	// Name only what was written; a failed write must not change game.ini.
+	sci::Status nameStatus = sci::Guard("naming the written resources in game.ini", [&]() -> sci::Status
+	{
+		for (const ResourceBlob *blob : written)
+		{
+			AssignName(*blob);
+		}
+		return sci::Ok();
+	});
+	if (!nameStatus && firstFailure)
+	{
+		firstFailure = nameStatus;
+	}
+
+	// Tell the views to reload every queued type, also after a failure: a
+	// destination that failed can be partly written.
+	sci::Status reloadStatus = sci::Guard("reloading the resource views", [&]() -> sci::Status
+	{
+		bool reload[NumResourceTypes] = {};
+		for (const auto &blob : queued)
+		{
+			int type = (int)blob->GetType();
+			if ((type >= 0) && (type < NumResourceTypes))
+			{
+				reload[type] = true;
+			}
+		}
+		for (int iType = 0; iType < ARRAYSIZE(reload); iType++)
+		{
+			if (reload[iType])
+			{
+				NotifyToReloadResourceType((ResourceType)iType);
+			}
+		}
+		return sci::Ok();
+	});
+	if (!reloadStatus && firstFailure)
+	{
+		firstFailure = reloadStatus;
+	}
+	return firstFailure;
+}
+
+void ShowWriteError(const sci::Status &status)
+{
+	if (!status && (status.error().code != sci::ErrorCode::Cancelled))
+	{
+		SafeMessageBox(status.error().ToString(), MB_OK | MB_ICONWARNING);
+	}
 }
 
 //
@@ -377,32 +501,12 @@ bool CResourceMap::IsResourceCompatible(const ResourceBlob &resource)
 	return Helper().IsResourceCompatible(resource);
 }
 
-void CResourceMap::StartPostBuildThread()
-{
-	AbortPostBuildThread();
-	_postBuildThread = CreatePostBuildThread(Helper().GameFolder);
-}
-
-void CResourceMap::AbortPostBuildThread()
-{
-	if (_postBuildThread)
-	{
-		_postBuildThread->Abort();
-		_postBuildThread.reset();
-	}
-}
-
 void CResourceMap::PokeResourceMapReloaded()
 {
 	// Refresh everything.
 	for_each(_syncs.begin(), _syncs.end(), bind2nd(mem_fun(&IResourceMapEvents::OnResourceMapReloaded), false));
 }
 
-void CResourceMap::StartDebuggerThread(int optionalResourceNumber)
-{
-	AbortDebuggerThread();
-	_debuggerThread = CreateDebuggerThread(Helper().GameFolder, optionalResourceNumber);
-}
  
 void CResourceMap::RepackageAudio(bool force)
 {
@@ -411,72 +515,8 @@ void CResourceMap::RepackageAudio(bool force)
 	if (GetSCIVersion().AudioVolumeName != AudioVolumeName::None)
 	{
 		std::map<ResourceType, RebuildStats> stats;
-		std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, Helper(), ResourceSourceFlags::AudioCache);
+		std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, Helper(), ResourceSourceFlags::AudioCache, ResourceSourceAccessFlags::Read, -1, this);
 		resourceSource->RebuildResources(force, *resourceSource, stats);
-	}
-}
-
-void CResourceMap::AbortDebuggerThread()
-{
-	if (_debuggerThread)
-	{
-		_debuggerThread->Abort();
-		_debuggerThread.reset();
-	}
-}
-
-void CResourceMap::AppendResourceAskForNumber(ResourceEntity &resource)
-{
-	AppendResourceAskForNumber(resource, "", false);
-}
-
-void CResourceMap::AppendResourceAskForNumber(ResourceEntity &resource, const std::string &name, bool warnOnOverwrite)
-{
-	// Invoke dialog to suggest/ask for a resource number
-	SaveResourceDialog srd(warnOnOverwrite, resource.GetType());
-	srd.Init(-1, SuggestResourceNumber(resource.GetType()), name);
-	if (IDOK == srd.DoModal())
-	{
-		// Assign it.
-		resource.ResourceNumber = srd.GetResourceNumber();
-		resource.PackageNumber = srd.GetPackageNumber();
-		AssignName(resource.GetType(), resource.ResourceNumber, NoBase36, srd.GetName().c_str());
-		AppendResource(resource);
-	}
-}
-
-//
-// Ask the user where to save the resource... and then save it.
-//
-HRESULT CResourceMap::AppendResourceAskForNumber(ResourceBlob &resource, bool warnOnOverwrite)
-{
-	if (!IsVersionCompatible(resource.GetType(), resource.GetVersion(), GetSCIVersion()))
-	{
-		if (IDNO == AfxMessageBox("The version of the resource being added does not match the version of the game.\nAdding it might cause the game to be corrupted.\nDo you want to go ahead anyway?", MB_YESNO))
-		{
-			return E_FAIL;
-		}
-	}
-	// Invoke dialog to suggest/ask for a resource number
-	SaveResourceDialog srd(warnOnOverwrite, resource.GetType());
-	srd.Init(-1, SuggestResourceNumber(resource.GetType()), resource.GetName());
-	if (IDOK == srd.DoModal())
-	{
-		// Assign it.
-		resource.SetNumber(srd.GetResourceNumber());
-		resource.SetPackage(srd.GetPackageNumber());
-		resource.SetName(nullptr);
-		if (!srd.GetName().empty())
-		{
-			resource.SetName(srd.GetName().c_str());
-		}
-
-		// Save it.
-		return AppendResource(resource);
-	}
-	else
-	{
-		return E_FAIL; // User cancelled.
 	}
 }
 
@@ -493,85 +533,99 @@ ResourceSaveLocation CResourceMap::GetDefaultResourceSaveLocation()
 // and compressed length). So the blob is stale after this call: do not reuse it to,
 // for example, locate and delete the resource by header comparison. Re-read the
 // resource from the map instead. The blob is only valid for the length of this call.
-HRESULT CResourceMap::AppendResource(const ResourceBlob &resource)
+sci::Status CResourceMap::WriteResource(const ResourceBlob &resource)
 {
-	HRESULT hr;
-	if (_cDeferAppend)
+	if (!_deferLevels.empty())
 	{
-		// If resource appends are deferred, then just add it to a list.
-		_deferredResources.push_back(resource);
-		hr = S_OK;
+		// If resource appends are deferred, then just add it to the queue.
+		return sci::Guard("queuing a resource write", [&]() -> sci::Status
+		{
+			DeferLevel &level = _deferLevels.back();
+			std::unique_ptr<ResourceBlob> copy = std::make_unique<ResourceBlob>(resource);
+			for (size_t i = 0; i < _deferredResources.size(); i++)
+			{
+				if (_IsSameQueuedResource(*_deferredResources[i], resource))
+				{
+					// Keep a copy that was queued before this level, so that
+					// abandoning this level can put it back.
+					if ((i < level.queuedAtStart) && !level.HasReplaced(i))
+					{
+						level.replaced.emplace_back(i, std::move(_deferredResources[i]));
+					}
+					_deferredResources[i] = std::move(copy);
+					return sci::Ok();
+				}
+			}
+			_deferredResources.push_back(std::move(copy));
+			return sci::Ok();
+		});
 	}
-	else
+
+	AppendBehavior appendBehavior = AppendBehavior::Append;
+	sci::Status status = sci::Guard("writing a resource", [&]() -> sci::Status
+	{
+		return sci::Guard(_DescribeWrite(resource), [&]() -> sci::Status
+		{
+			int mapContext = (resource.GetBase36() == NoBase36) ? -1 : resource.GetNumber();
+			std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, _gameFolderHelper, resource.GetSourceFlags(), ResourceSourceAccessFlags::ReadWrite, mapContext, this);
+			if (!resourceSource)
+			{
+				return sci::Fail(sci::ErrorCode::Unsupported, "no writer for this destination");
+			}
+			std::vector<const ResourceBlob*> blobs;
+			blobs.push_back(&resource);
+			appendBehavior = resourceSource->AppendResources(blobs);
+			return sci::Ok();
+		});
+	});
+	if (!status)
+	{
+		// A failed write must not change game.ini.
+		return status;
+	}
+
+	return sci::Guard("naming the written resource and updating the views", [&]() -> sci::Status
 	{
 		if (_appServices && (resource.GetType() == ResourceType::View))
 		{
 			_appServices->SetRecentlyInteractedView(resource.GetNumber());
 		}
 
-		// Enumerate resources and write the ones we have not already encountered.
-		int mapContext = (resource.GetBase36() == NoBase36) ? -1 : resource.GetNumber();
-		std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeFlags::All, _gameFolderHelper, resource.GetSourceFlags(), ResourceSourceAccessFlags::ReadWrite, mapContext);
-		std::vector<const ResourceBlob*> blobs;
-		blobs.push_back(&resource);
-
-		AppendBehavior appendBehavior = AppendBehavior::Append;
-		hr = E_FAIL;
-		try
-		{
-			appendBehavior = resourceSource->AppendResources(blobs);
-			hr = S_OK;
-		}
-		catch (std::exception &e)
-		{
-			SafeMessageBox(e.what(), MB_OK | MB_ICONWARNING);
-		}
-
 		AssignName(resource);
 
-		if (SUCCEEDED(hr))
+		if (resource.GetType() == ResourceType::Script)
 		{
-			if (resource.GetType() == ResourceType::Script)
-			{
-				// We'll need to re-gen this:
-				_globalCompiledScriptLookups.reset(nullptr);
-			}
+			// We'll need to re-gen this:
+			_globalCompiledScriptLookups.reset(nullptr);
+		}
 
-			if (resource.GetType() == ResourceType::Palette)
+		if (resource.GetType() == ResourceType::Palette)
+		{
+			_paletteListNeedsUpdate = true;
+			if (resource.GetNumber() == 999)
 			{
-				_paletteListNeedsUpdate = true;
-				if (resource.GetNumber() == 999)
-				{
-					_pPalette999.reset(nullptr);
-				}
-			}
-
-			// pResource is only valid for the length of this call.  Nonetheless, call our syncs
-			for (auto &sync : _syncs)
-			{
-				sync->OnResourceAdded(&resource, appendBehavior);
+				_pPalette999.reset(nullptr);
 			}
 		}
 
-#if 0
-		if (FAILED(hr))
+		// pResource is only valid for the length of this call.  Nonetheless, call our syncs
+		for (auto &sync : _syncs)
 		{
-			// Prepare error.
-			TCHAR szError[MAX_PATH];
-			szError[0] = 0;
-			FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, 0, HRESULT_CODE(hr), 0, szError, ARRAYSIZE(szError), nullptr);
-			if (hr == E_ACCESSDENIED)
-			{
-				StringCchCat(szError, ARRAYSIZE(szError), TEXT("\nThe file may be in use. Maybe the game is running?"));
-			}
-
-			TCHAR szMessage[MAX_PATH];
-			StringCchPrintf(szMessage, ARRAYSIZE(szMessage), TEXT("There was an error writing the resource: 0x%x\n%s"), hr, szError);
-			AfxMessageBox(szMessage, MB_OK | MB_ICONEXCLAMATION | MB_APPLMODAL, 0);
+			sync->OnResourceAdded(&resource, appendBehavior);
 		}
-#endif
+		return sci::Ok();
+	});
+}
+
+HRESULT CResourceMap::AppendResource(const ResourceBlob &resource)
+{
+	sci::Status status = WriteResource(resource);
+	if (!status)
+	{
+		ShowWriteError(status);
+		return E_FAIL;
 	}
-	return hr;
+	return S_OK;
 }
 
 bool CResourceMap::AppendResource(const ResourceEntity &resource, int *pChecksum)
@@ -579,54 +633,64 @@ bool CResourceMap::AppendResource(const ResourceEntity &resource, int *pChecksum
 	return AppendResource(resource, resource.PackageNumber, resource.ResourceNumber, "", resource.Base36Number, pChecksum);
 }
 
-bool ValidateResourceSize(const SCIVersion &version, DWORD cb, ResourceType type)
+sci::Status CResourceMap::WriteResource(const ResourceEntity &resource, int packageNumber, int resourceNumber, const std::string &name, uint32_t base36Number, int *pChecksum)
 {
-	// The maximum resource size increases with SCI versions, as the map and resource package header size/offset bit widths increased.
-	// Audio is special, because it was stored with a custom map format.
-	// There are probably actual values that are correct, but we'll use 64K for earlier SCI versions,
-	// and a much larger value for later SCI versions. If we wanted to be "perfect", we could base it off the
-	// bit-width of the map offsets/package resource size fields.
-	bool fRet = IsValidResourceSize(version, cb, type);
-	if (!fRet)
+	ResourceBlob data;
+	std::string context = fmt::format("preparing {0} {1}", GetResourceTypeTitle(resource.GetType()), resourceNumber);
+	SCI_TRY(sci::Guard(context, [&]() -> sci::Status
 	{
-		TCHAR szBuffer[MAX_PATH];
-		StringCchPrintf(szBuffer, ARRAYSIZE(szBuffer), TEXT("Resources can't be bigger than %d bytes.  This resource is %d bytes."), MaxResourceSize, cb);
-		AfxMessageBox(szBuffer, MB_ERRORFLAGS);
-		fRet = false;
+		if (!resource.PerformChecks())
+		{
+			// The check has already told the user why: a message, or a
+			// question that the user answered "no" (with no GUI, the answer
+			// is always "no"). Some checks are not a choice, for example
+			// duplicate message tuples; they give Cancelled too.
+			return sci::Fail(sci::ErrorCode::Cancelled, "the resource did not pass its checks");
+		}
+
+		sci::ostream serial;
+		resource.WriteTo(serial, true, resourceNumber, data.GetPropertyBag());
+		// The maximum resource size grows with the SCI version, as the map and
+		// package size and offset fields widened. Audio has its own map format.
+		SCI_TRY(sci::WithContext(CheckResourceSize(Helper().Version, serial.tellp(), resource.GetType()), context));
+
+		sci::istream readStream = istream_from_ostream(serial);
+		ResourceSourceFlags sourceFlags = resource.SourceFlags;
+		if (sourceFlags == ResourceSourceFlags::Invalid)
+		{
+			sourceFlags = (GetDefaultResourceSaveLocation() == ResourceSaveLocation::Patch) ? ResourceSourceFlags::PatchFile : ResourceSourceFlags::ResourceMap;
+		}
+		HRESULT hr = data.CreateFromBits(Helper(), nullptr, resource.GetType(), &readStream, packageNumber, resourceNumber, base36Number, _gameFolderHelper.Version, sourceFlags);
+		if (FAILED(hr))
+		{
+			// Only a null stream fails, so this is a bug.
+			return sci::Fail(sci::ErrorCode::Internal, "could not make the resource data");
+		}
+		if (!name.empty())
+		{
+			data.SetName(name.c_str());
+		}
+		return sci::Ok();
+	}));
+
+	sci::Status status = WriteResource(data);
+	if (pChecksum)
+	{
+		*pChecksum = data.GetChecksum();
 	}
-	return fRet;
+	return status;
+}
+
+sci::Status CResourceMap::WriteResource(const ResourceEntity &resource, int *pChecksum)
+{
+	return WriteResource(resource, resource.PackageNumber, resource.ResourceNumber, "", resource.Base36Number, pChecksum);
 }
 
 bool CResourceMap::AppendResource(const ResourceEntity &resource, int packageNumber, int resourceNumber, const std::string &name, uint32_t base36Number, int *pChecksum)
 {
-	bool success = false;
-	if (resource.PerformChecks())
-	{
-		ResourceBlob data;
-		sci::ostream serial;
-		resource.WriteTo(serial, true, resourceNumber, data.GetPropertyBag());
-		if (ValidateResourceSize(Helper().Version, serial.tellp(), resource.GetType()))
-		{
-			sci::istream readStream = istream_from_ostream(serial);
-			ResourceSourceFlags sourceFlags = resource.SourceFlags;
-			if (sourceFlags == ResourceSourceFlags::Invalid)
-			{
-				sourceFlags = (GetDefaultResourceSaveLocation() == ResourceSaveLocation::Patch) ? ResourceSourceFlags::PatchFile : ResourceSourceFlags::ResourceMap;
-			}
-
-			data.CreateFromBits(Helper(), nullptr, resource.GetType(), &readStream, packageNumber, resourceNumber, base36Number, _gameFolderHelper.Version, sourceFlags);
-			if (!name.empty())
-			{
-				data.SetName(name.c_str());
-			}
-			success = SUCCEEDED(AppendResource(data));
-			if (pChecksum)
-			{
-				*pChecksum = data.GetChecksum();
-			}
-		}
-	}
-	return success;
+	sci::Status status = WriteResource(resource, packageNumber, resourceNumber, name, base36Number, pChecksum);
+	ShowWriteError(status);
+	return status.has_value();
 }
 
 std::unique_ptr<ResourceContainer> CResourceMap::Resources(ResourceTypeFlags types, ResourceEnumFlags enumFlags, int mapContext)
@@ -721,7 +785,7 @@ void CResourceMap::DeleteResource(const ResourceBlob *pData)
 	// (and also... we won't have a global palette)
 	if ((pData->GetType() == ResourceType::Palette) && (pData->GetNumber() == 999))
 	{
-		AfxMessageBox("Palette 999 is the global palette and cannot be deleted.", MB_OK | MB_ICONERROR);
+		SafeMessageBox("Palette 999 is the global palette and cannot be deleted.", MB_OK | MB_ICONERROR);
 		return;
 	}
 
@@ -774,15 +838,22 @@ std::string CResourceMap::GetGameFolder() const
 //
 // Gets the include folder that has read-only headers
 //
-std::string CResourceMap::GetIncludeFolder()
+std::string CResourceMap::GetIncludeFolder() const
 {
-	std::string includeFolder = _includeFolderOverride;
-	if (includeFolder.empty())
+	if (_dataFolder.empty())
 	{
 		return _gameFolderHelper.GetIncludeFolder();
 	}
-	includeFolder += "include";
-	return includeFolder;
+	return _dataFolder + "include";
+}
+
+void CResourceMap::SetDataFolder(const std::string &folder)
+{
+	_dataFolder = folder;
+	if (!_dataFolder.empty() && (_dataFolder.back() != '\\') && (_dataFolder.back() != '/'))
+	{
+		_dataFolder += "\\";
+	}
 }
 
 //
@@ -835,7 +906,7 @@ std::string CResourceMap::GetObjectsFolder()
 
 std::string CResourceMap::GetDecompilerFolder()
 {
-	return GetExeSubFolder("Decompiler");
+	return _dataFolder.empty() ? GetExeSubFolder("Decompiler") : (_dataFolder + "Decompiler");
 }
 
 bool hasEnding(std::string const &fullString, std::string const &ending) {
@@ -938,15 +1009,17 @@ HRESULT CResourceMap::GetScriptNumber(ScriptId script, WORD &wScript)
 			{
 				size_t cch = strlen(psz);
 				char *pszEq = StrChr(psz, TEXT('='));
-				CString strTitle = script.GetTitle().c_str();
-				if (pszEq && (0 == strTitle.CompareNoCase(pszEq + 1)))
+				// A compare of the characters of the multibyte code page, not
+				// of bytes: the second byte of a double-byte character can be
+				// a letter.
+				if (pszEq && (0 == _mbsicmp(reinterpret_cast<const unsigned char *>(script.GetTitle().c_str()), reinterpret_cast<const unsigned char *>(pszEq + 1))))
 				{
 					// We have a match in script name... find the number
 					TCHAR *pszNumber = StrChr(psz, TEXT('n'));
 					if (pszNumber)
 					{
 						wScript = (WORD)StrToInt(pszNumber + 1);
-						ASSERT(script.GetResourceNumber() == InvalidResourceNumber ||
+						assert(script.GetResourceNumber() == InvalidResourceNumber ||
 							   script.GetResourceNumber() == wScript);
 						hr = S_OK;
 					}
@@ -1175,8 +1248,22 @@ void CResourceMap::GetAllScripts(std::vector<ScriptId> &scripts)
 	}
 }
 
+void CResourceMap::SetScriptNames(std::shared_ptr<const ScriptNameMap> names)
+{
+	_gameFolderHelper.ScriptNames = std::move(names);
+}
+
 void CResourceMap::GetNumberToNameMap(std::unordered_map<WORD, std::string> &scos)
 {
+	if (_gameFolderHelper.ScriptNames)
+	{
+		// A session's names: game.ini when it exists, and the files of src\.
+		for (const auto &entry : _gameFolderHelper.ScriptNames->Entries())
+		{
+			scos[entry.first] = entry.second.name;
+		}
+		return;
+	}
 	TCHAR szIniFile[MAX_PATH];
 	if (SUCCEEDED(GetGameIni(szIniFile, ARRAYSIZE(szIniFile))))
 	{
@@ -1235,11 +1322,6 @@ MessageSource *CResourceMap::GetTalkersMessageSource(bool reload)
 	return _talkersHeaderFile->GetMessageSource();
 }
 
-RunLogic &CResourceMap::GetRunLogic()
-{
-	return *_runLogic;
-}
-
 //
 // Called when we open a new game.
 //
@@ -1263,10 +1345,127 @@ bool CResourceMap::IsResourceMapCorrupt()
 	}
 }
 
-void CResourceMap::SetGameFolder(const string &gameFolder)
+sci::Status CResourceMap::TryOpen(const std::string &gameFolder)
 {
-	_runLogic->SetGameFolder(gameFolder);
+	if (gameFolder.empty())
+	{
+		// For SetGameFolder, an empty folder closes the game; here it is a mistake.
+		return sci::Fail(sci::ErrorCode::Usage, "No game folder was given");
+	}
+	// The whole open is inside the exception boundary: the parts before and after the
+	// version sniff can also throw (for example, out of memory).
+	sci::Status opened = sci::Guard("opening the game in " + gameFolder, [&]() -> sci::Status
+	{
+		SCI_TRY(_OpenGameFolder(gameFolder));
+		return _CheckResourceMap();
+	});
+	if (!opened)
+	{
+		// No game is open now (IsGameLoaded is false). The rest of the state of
+		// the open stays (the run logic, the codepage, the version), and the
+		// listeners got OnResourceMapReloaded: only GameSession::Open calls
+		// this, and its caller drops a session that did not open.
+		_gameFolderHelper.GameFolder = "";
+	}
+	return opened;
+}
+
+sci::Status CResourceMap::_CheckResourceMap()
+{
+	sci::ErrorLocation where;
+	where.file = Helper().GameFolder + "\\resource.map";
+	std::error_code ec;
+	if (std::filesystem::file_size(where.file, ec) == 0)
+	{
+		return sci::Fail(sci::ErrorCode::Format, "resource.map is empty", where);
+	}
+	std::unique_ptr<ResourceSource> source = CreateResourceSource(ResourceTypeFlags::All, _gameFolderHelper, ResourceSourceFlags::ResourceMap);
+	if (!source)
+	{
+		return sci::Fail(sci::ErrorCode::Unsupported, "the format of resource.map is not supported", where);
+	}
+	if (source->IsResourceMapCorrupt())
+	{
+		return sci::Fail(sci::ErrorCode::Format, "resource.map is damaged: its lookup table has no end", where);
+	}
+	if (source->IsResourceMapTruncated())
+	{
+		return sci::Fail(sci::ErrorCode::Format, "resource.map is damaged: the file ends before the end that its lookup table gives", where);
+	}
+	// A map is good when a volume file holds one of its first entries: the
+	// header at the offset of the entry has the type and the number of the
+	// entry. An empty map, or a map of other volumes, has no such entry.
+	// A good map whose volume files are not there (a CD install that keeps
+	// them on the CD) is not damaged: the error names the files.
+	const int entriesToTry = 256;
+	int tried = 0;
+	std::set<int> volumes;
+	IteratorState state;
+	ResourceMapEntryAgnostic entry;
+	std::vector<uint8_t> raw;
+	bool more = true;
+	while (tried < entriesToTry)
+	{
+		more = source->ReadNextEntry(ResourceTypeFlags::All, state, entry, &raw);
+		if (!more)
+		{
+			break;
+		}
+		// The terminator of an SCI0 map, which its reader gives as an entry:
+		// all 0xFF, or an id of 0xFFFF (the early SCI0 form of KQ4).
+		bool sci0Map = (Helper().Version.MapFormat == ResourceMapFormat::SCI0) || (Helper().Version.MapFormat == ResourceMapFormat::SCI0_LayoutSCI1);
+		if (std::all_of(raw.begin(), raw.end(), [](uint8_t value) { return value == 0xff; }) ||
+			(sci0Map && (raw.size() >= 2) && (raw[0] == 0xff) && (raw[1] == 0xff)))
+		{
+			continue;
+		}
+		tried++;
+		volumes.insert(entry.PackageNumber);
+		sci::Result<bool> held = sci::Guard("reading the header of an entry of resource.map", [&]() -> sci::Result<bool>
+		{
+			ResourceHeaderAgnostic header;
+			sci::istream stream = source->GetHeaderAndPositionedStream(entry, header);
+			return stream.good() && (header.Type == entry.Type) && ((uint16_t)header.Number == entry.Number);
+		});
+		if (held && *held)
+		{
+			return sci::Ok();
+		}
+	}
+	if (tried == 0)
+	{
+		return sci::Fail(sci::ErrorCode::Format, "resource.map is damaged or empty: it has no entry", where);
+	}
+	FileDescriptorResourceMap files(Helper().GameFolder);
+	std::string missing;
+	bool anyThere = false;
+	for (int volume : volumes)
+	{
+		if (files.DoesVolumeExist(volume))
+		{
+			anyThere = true;
+		}
+		else
+		{
+			missing += (missing.empty() ? "" : ", ") + std::filesystem::path(files._GetVolumeFilename(volume)).filename().string();
+		}
+	}
+	if (!anyThere)
+	{
+		return sci::Fail(sci::ErrorCode::NotFound, fmt::format("the game folder does not have the volume files that resource.map names: {0} "
+			"(a CD install can keep them on the CD)", missing), where);
+	}
+	std::string entries = more ? fmt::format("any of its first {0} entries", tried) : ((tried == 1) ? std::string("its only entry") : fmt::format("any of its {0} entries", tried));
+	return sci::Fail(sci::ErrorCode::Format, fmt::format("resource.map is damaged: no volume file holds {0}", entries), where);
+}
+
+sci::Status CResourceMap::_OpenGameFolder(const string &gameFolder)
+{
 	_gameFolderHelper.GameFolder = gameFolder;
+	// The names of the game that was open before do not apply.
+	_gameFolderHelper.ScriptNames.reset();
+	// The text codepage comes from game.ini (437 when there is none).
+	SetTextCodepage(gameFolder.empty() ? 437 : Helper().GetCodepage());
 	_talkerToView = TalkerToViewMap(Helper().GetLipSyncFolder());
 	ClearVocab000();
 	_pPalette999.reset(nullptr);					// REVIEW: also do this if global palette is edited.
@@ -1275,7 +1474,7 @@ void CResourceMap::SetGameFolder(const string &gameFolder)
 	_verbsHeaderFile.reset(nullptr);
 	if (!gameFolder.empty())
 	{
-		try
+		sci::Status status = sci::Guard("opening the game in " + gameFolder, [&]() -> sci::Status
 		{
 			// We get here when we close documents.
 			_SniffSCIVersion();
@@ -1284,21 +1483,21 @@ void CResourceMap::SetGameFolder(const string &gameFolder)
 			for_each(_syncs.begin(), _syncs.end(), bind2nd(mem_fun(&IResourceMapEvents::OnResourceMapReloaded), true));
 
 			_paletteListNeedsUpdate = true;
-		}
-		catch (std::exception &e)
+			return sci::Ok();
+		});
+		if (!status)
 		{
-			SafeMessageBox(fmt::format("Unable to open resource map: {0}", e.what()), MB_OK | MB_ICONWARNING);
+			// No game is open now.
 			_gameFolderHelper.GameFolder = "";
-			AfxThrowUserException();
+			return status;
 		}
 	}
-
-	AbortDebuggerThread();
 
 	if (_appServices)
 	{
 		_appServices->OnGameFolderUpdate();
 	}
+	return sci::Ok();
 }
 
 TalkerToViewMap &CResourceMap::GetTalkerToViewMap()
@@ -1387,4 +1586,42 @@ std::unique_ptr<ResourceEntity> CreateResourceFromResourceData(const ResourceBlo
 		break;
 	}
 	return nullptr;
+}
+
+sci::Status CheckResourceData(const ResourceBlob &data)
+{
+	// A blob that delayed its decompression decompresses when its data is read.
+	data.GetReadStream();
+	sci::ErrorLocation where;
+	where.resource = DescribeResource(data.GetType(), data.GetNumber());
+	if (IsFlagSet(data.GetStatusFlags(), ResourceLoadStatusFlags::Corrupted))
+	{
+		return sci::Fail(sci::ErrorCode::Format, "the resource is damaged: its header or its data could not be read", where);
+	}
+	if (IsFlagSet(data.GetStatusFlags(), ResourceLoadStatusFlags::DecompressionFailed))
+	{
+		return sci::Fail(sci::ErrorCode::Format, "the resource data could not be decompressed", where);
+	}
+	return sci::Ok();
+}
+
+sci::Result<std::unique_ptr<ResourceEntity>> TryCreateResourceFromResourceData(const ResourceBlob &data)
+{
+	std::string resource = DescribeResource(data.GetType(), data.GetNumber());
+	// The context does not name the resource: the location does.
+	sci::Result<std::unique_ptr<ResourceEntity>> created = sci::Guard("the resource could not be read", [&]() -> sci::Result<std::unique_ptr<ResourceEntity>>
+	{
+		SCI_TRY(CheckResourceData(data));
+		std::unique_ptr<ResourceEntity> entity = CreateResourceFromResourceData(data, false);
+		if (!entity)
+		{
+			return sci::Fail(sci::ErrorCode::Unsupported, "this type of resource cannot be read");
+		}
+		return std::move(entity);
+	});
+	if (!created && created.error().where.resource.empty())
+	{
+		created.error().where.resource = resource;
+	}
+	return created;
 }

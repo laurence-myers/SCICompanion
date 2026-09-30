@@ -8,7 +8,6 @@
 #include "format.h"
 #include "ScriptMakerHelper.h"
 #include "Polygon.h"
-#include "AppState.h"
 
 using namespace sci;
 using namespace std;
@@ -40,7 +39,8 @@ bool IntegerNonZeroP(const ParserSCI *pParser, SyntaxContext *pContext, _It &str
 
 // Selectors, as far as I can tell, look like this:
 // A-Za-z0-9_-
-// But they must have at least one letter and not start with a number
+// But they must have at least one letter and not start with a number. A #
+// may follow the first character: KQ6 names selector 879 "dungeon#".
 template<typename _It>
 bool SelectorP(const ParserSCI *pParser, SyntaxContext *pContext, _It &stream)
 {
@@ -54,7 +54,7 @@ bool SelectorP(const ParserSCI *pParser, SyntaxContext *pContext, _It &stream)
 		fRet = true;
 		str += ch;
 		ch = *(++stream);
-		while (isalnum((unsigned char)ch) || (ch == '_') || (ch == '-'))  // Then any alphanumeric character is fine.
+		while (isalnum((unsigned char)ch) || (ch == '_') || (ch == '-') || (ch == '#'))  // Then any alphanumeric character is fine, and #.
 		{
 			hadAlpha = hadAlpha || isalpha((unsigned char)ch);
 			fRet = true;
@@ -1373,7 +1373,7 @@ void _ReplaceIterationVariable(ICompileLog &log, Script &script, ForEachLoop &th
 			// This is us
 			if (lValue.HasIndexer())
 			{
-				log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), lValue.GetPosition().Line()));
+				log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), lValue.GetPosition().Line() + 1));
 			}
 			lValue.SetName(newIterationVariable);
 		}
@@ -1386,7 +1386,7 @@ void _ReplaceIterationVariable(ICompileLog &log, Script &script, ForEachLoop &th
 			// This is us
 			if (propValue.GetIndexer())
 			{
-				log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), propValue.GetPosition().Line()));
+				log.ReportResult(CompileResult("An iteration variable can not be indexed.", script.GetScriptId(), propValue.GetPosition().Line() + 1));
 			}
 			propValue.SetValue(newIterationVariable, ValueType::Token);
 		}
@@ -1449,12 +1449,12 @@ void _ProcessForEach(ICompileLog &log, Script &script, FunctionBase &func, ForEa
 		}
 		else
 		{
-			log.ReportResult(CompileResult("The collection must be a temp or local array.", script.GetScriptId(), collection.GetPosition().Line()));
+			log.ReportResult(CompileResult("The collection must be a temp or local array.", script.GetScriptId(), collection.GetPosition().Line() + 1));
 		}
 	}
 	else
 	{
-		log.ReportResult(CompileResult("The collection must be a temp or local array!", script.GetScriptId(), theForEach.GetStatement1()->GetPosition().Line()));
+		log.ReportResult(CompileResult("The collection must be a temp or local array!", script.GetScriptId(), theForEach.GetStatement1()->GetPosition().Line() + 1));
 	}
 	// else it would be some statement...
 
@@ -1603,6 +1603,23 @@ void _ProcessForEaches(ICompileLog &log, Script &script)
 	});
 }
 
+// The game's polygon folder: the one that the compile gave the script, else
+// "poly" next to the script's folder (the scripts are in <game>\src). Empty
+// when the script's path has no parent folder.
+std::string _PolyFolderFor(const Script &script)
+{
+	if (!script.GetPolyFolder().empty())
+	{
+		return script.GetPolyFolder();
+	}
+	std::string path = script.GetScriptId().GetFullPath();
+	size_t lastSlash = path.find_last_of("\\/");
+	std::string scriptFolder = (lastSlash == std::string::npos) ? std::string() : path.substr(0, lastSlash);
+	size_t parentSlash = scriptFolder.find_last_of("\\/");
+	std::string gameFolder = (parentSlash == std::string::npos) ? std::string() : scriptFolder.substr(0, parentSlash);
+	return gameFolder.empty() ? std::string() : (gameFolder + "\\poly");
+}
+
 void _ProcessGetPoly(ICompileLog &log, Script &script, FunctionBase &func, GetPolyStatement &theGetPoly)
 {
 	if (theGetPoly.GetStatement1()->GetNodeType() == sci::NodeType::NodeTypeComplexValue)
@@ -1616,7 +1633,10 @@ void _ProcessGetPoly(ICompileLog &log, Script &script, FunctionBase &func, GetPo
 				ourPolyName = "";
 			
 			//TODO: Load polygon data for current script, find ourPolyName, and USE THAT BITCH
-			auto polyComponent = CreatePolygonComponent(appState->GetResourceMap().Helper().GetPolyFolder(), ourScriptNum);
+			// With no polygon folder, there is no polygon file to read (and an
+			// empty folder would read the root of the drive).
+			std::string polyFolder = _PolyFolderFor(script);
+			std::unique_ptr<PolygonComponent> polyComponent = polyFolder.empty() ? std::make_unique<PolygonComponent>(polyFolder, -1) : CreatePolygonComponent(polyFolder, ourScriptNum);
 
 			const SCIPolygon *ourPolygon = nullptr;
 			for (const SCIPolygon &poly : polyComponent->Polygons())
@@ -1672,17 +1692,17 @@ void _ProcessGetPoly(ICompileLog &log, Script &script, FunctionBase &func, GetPo
 			}
 			else
 			{
-				log.ReportResult(CompileResult(fmt::format("Unknown polygon name {} in &getpoly.", cpv.GetStringValue()), script.GetScriptId(), cpv.GetPosition().Line()));
+				log.ReportResult(CompileResult(fmt::format("Unknown polygon name {} in &getpoly.", cpv.GetStringValue()), script.GetScriptId(), cpv.GetPosition().Line() + 1));
 			}
 		}
 		else
 		{
-			log.ReportResult(CompileResult("&getpoly must have a polygon name as a string parameter, without the P_ in front, or an empty string for Default.", script.GetScriptId(), cpv.GetPosition().Line()));
+			log.ReportResult(CompileResult("&getpoly must have a polygon name as a string parameter, without the P_ in front, or an empty string for Default.", script.GetScriptId(), cpv.GetPosition().Line() + 1));
 		}
 	}
 	else
 	{
-		log.ReportResult(CompileResult("&getpoly must have a polygon name as a string parameter, without the P_ in front, or an empty string for Default.", script.GetScriptId(), theGetPoly.GetLineNumber()));
+		log.ReportResult(CompileResult("&getpoly must have a polygon name as a string parameter, without the P_ in front, or an empty string for Default.", script.GetScriptId(), theGetPoly.GetLineNumber() + 1));
 	}
 }
 
@@ -1761,7 +1781,10 @@ void PostProcessScript(ICompileLog *pLog, Script &script)
 				{
 					if (pLog)
 					{
-						pLog->ReportResult(CompileResult("The else clause must be the last clause in a cond.", script.GetScriptId(), clause->GetPosition().Line()));
+						// A warning: the else clause and the clauses before it
+						// are not compiled.
+						pLog->ReportResult(CompileResult::AtLine(false, script.GetScriptId(), clause->GetPosition().Line() + 1, clause->GetPosition().Column(),
+							"The else clause must be the last clause in a cond; it and the clauses before it are not compiled."));
 					}
 					break;
 				}
@@ -1850,8 +1873,7 @@ void PostProcessScript(ICompileLog *pLog, Script &script)
 	{
 		for (auto &warning : unimplementedWarnings)
 		{
-			std::string text = warning + " ignored - not implemented";
-			pLog->ReportResult(CompileResult(text, script.GetScriptId(), 1, 0, CompileResult::CompileResultType::CRT_Warning));
+			pLog->ReportResult(CompileResult::AtLine(false, script.GetScriptId(), 1, 0, warning + " ignored - not implemented"));
 		}
 	}
 }
@@ -1892,42 +1914,58 @@ bool SCISyntaxParser::Parse(Script &script, streamIt &stream, std::unordered_set
 	{
 		// With regards to syntax errors - there can really only be one, because we can't
 		// recover afterwards.
-		std::string strError = "Error: (" + script.GetScriptId().GetFileNameOrig() + ") ";
-		strError += context.GetErrorText();
+		std::string rawError = context.GetErrorText();
 		streamIt errorPos = context.GetErrorPosition();
-
-		strError += fmt::format(" ({}, {})", errorPos.GetLineNumber(), errorPos.GetColumnNumber());
+		// Add one to line#, since editor lines are 1-based. The text of the
+		// message uses this line too.
+		int errorLine = errorPos.GetLineNumber() + 1;
 
 		// We can maybe improve the error by extracting a token here and seeing if it's a keyword.
 		std::string maybeKeyword;
 		streamIt errorPosCopy = errorPos;
 		ExtractSomeToken(maybeKeyword, errorPosCopy);
+		// The hint of the GUI text, and of the raw text: the raw hint is a
+		// sentence of its own, because the raw error can end with a full
+		// stop ('Expected variable.').
+		std::string hint;
+		std::string rawHint;
 		if (!maybeKeyword.empty())
 		{
 			if (std::find(SCIStatementKeywords.begin(), SCIStatementKeywords.end(), maybeKeyword) != SCIStatementKeywords.end())
 			{
-				strError += fmt::format(" (Statements must being with a parenthesis: \"({0}\").", maybeKeyword);
+				hint = fmt::format(" (Statements must being with a parenthesis: \"({0}\").", maybeKeyword);
+				rawHint = fmt::format(" A statement must begin with a parenthesis: \"({0}\".", maybeKeyword);
 			}
 			else if (IsOperator(maybeKeyword, sciNameToBinaryOp) || IsOperator(maybeKeyword, sciNameToAssignmentOp) || IsOperator(maybeKeyword, sciNameToUnaryOp))
 			{
-				strError += fmt::format(" (Operator expressions must begin with a parenthesis: \"({0}\").", maybeKeyword);
+				hint = fmt::format(" (Operator expressions must begin with a parenthesis: \"({0}\").", maybeKeyword);
+				rawHint = fmt::format(" An operator expression must begin with a parenthesis: \"({0}\".", maybeKeyword);
 			}
 			else if (maybeKeyword == "else")
 			{
-				strError += ": \"else\" cannot appear here.";
+				hint = ": \"else\" cannot appear here.";
+				rawHint = " \"else\" cannot appear here.";
 			}
 			// Maybe more?
 			else
 			{
-				strError += fmt::format(": \"{0}\"", maybeKeyword);
+				hint = fmt::format(": \"{0}\"", maybeKeyword);
+				rawHint = fmt::format(" The text there is \"{0}\".", maybeKeyword);
 			}
 		}
+		std::string strError = "Error: (" + script.GetScriptId().GetFileNameOrig() + ") " + rawError;
+		strError += fmt::format(" ({}, {})", errorLine, errorPos.GetColumnNumber());
+		strError += hint;
 
-		ScriptId scriptId(script.GetPath().c_str());
+		// The script's own id keeps the case of its path: GetPath() has the
+		// folder in lower case.
+		ScriptId scriptId = script.GetScriptId();
 		if (pError)
 		{
-			// Add one to line#, since editor lines are 1-based
-			pError->ReportResult(CompileResult(strError, scriptId, errorPos.GetLineNumber() + 1, errorPos.GetColumnNumber(), CompileResult::CRT_Error));
+			CompileResult result(strError, scriptId, errorLine, errorPos.GetColumnNumber(), CompileResult::CRT_Error);
+			// For the command line: no "Error: (file)" and no position.
+			result.SetRawMessage(rawError + rawHint);
+			pError->ReportResult(result);
 		}
 	}
 	g_compileSyntaxParseTimer.Stop();
@@ -1956,7 +1994,9 @@ bool SCISyntaxParser::ParseHeader(Script &script, streamIt &stream, std::unorder
 	{
 		std::string strError = context.GetErrorText();
 		streamIt errorPos = context.GetErrorPosition();
-		ScriptId scriptId(script.GetPath().c_str());
+		// The script's own id keeps the case of its path: GetPath() has the
+		// folder in lower case.
+		ScriptId scriptId = script.GetScriptId();
 		if (pError)
 		{
 			pError->ReportResult(CompileResult(strError, scriptId, errorPos.GetLineNumber() + 1, errorPos.GetColumnNumber(), CompileResult::CRT_Error));

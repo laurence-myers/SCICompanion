@@ -59,15 +59,19 @@ public:
 	AppendBehavior AppendResources(const std::vector<const ResourceBlob*> &blobs) override;
 	void RebuildResources(bool force, ResourceSource &source, std::map<ResourceType, RebuildStats> &stats) override;
 
-	// A way to call RemoveEntry directly, for more efficiency.
-	void RemoveEntries(int number, const std::vector<uint32_t> tuples);
-	void SaveOrRemoveNegatives(const std::vector<ResourceEntity*> negatives);
+	// A way to call RemoveEntry directly, for more efficiency. It saves the audio map, then deletes the files of
+	// the entries.
+	sci::Status RemoveEntries(int number, const std::vector<uint32_t> tuples);
+	sci::Status SaveOrRemoveNegatives(const std::vector<ResourceEntity*> negatives);
 	void MaybeAddNegative(ResourceEntity &resource);
 
 	void Clear();
 
 private:
 	std::unique_ptr<ResourceEntity> _PrepareForAddOrRemove();
+	// The resource map, for a write. A source that CreateResourceSource made for a read has none: this throws
+	// (Internal).
+	CResourceMap &_MapForWrite() const;
 	void _EnsureEnumInitialized();
 
 	SCIVersion _version;

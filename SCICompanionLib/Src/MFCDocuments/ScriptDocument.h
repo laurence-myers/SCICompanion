@@ -19,6 +19,7 @@
 class CompileTables;
 class PrecompiledHeaders;
 class ICompileLog;
+class CompileLog;
 class DependencyTracker;
 
 // CScriptDocument document
@@ -102,7 +103,7 @@ private:
 	// Other...
 	void OnFileSave();
 	void OnFileSaveAs();
-	void _DoErrorSummary(ICompileLog &log);
+	void _DoErrorSummary(CompileLog &log);
 	void _ClearErrorCount();
 	void _OnUpdateTitle();
 
@@ -112,6 +113,3 @@ private:
 };
 
 void DisassembleScript(WORD wScript);
-class IDecompilerResults;
-class GameFolderHelper;
-void DecompileScript(const GameFolderHelper &helper, WORD wScript, IDecompilerResults &results);

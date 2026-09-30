@@ -17,7 +17,7 @@
 
 // Simple dependency tracker for script's include and uses.
 
-DependencyTracker::DependencyTracker(BOOL fTrackHeaderFiles) : _fTrackHeaderFiles(fTrackHeaderFiles) {}
+DependencyTracker::DependencyTracker(BOOL &fTrackHeaderFiles) : _fTrackHeaderFiles(fTrackHeaderFiles) {}
 
 void DependencyTracker::Clear()
 {

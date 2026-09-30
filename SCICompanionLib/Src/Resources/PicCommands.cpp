@@ -21,12 +21,6 @@
 #include <limits>
 #include "PicCommands.h"
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#undef THIS_FILE
-static char THIS_FILE[] = __FILE__;
-#endif
-
 // As long as these values are unsigned, there's no need to check for 0
 #define CHECK_RECT(cx, cy, x,y)\
 	( x < cx && y < cy )
@@ -983,7 +977,7 @@ void _DrawPattern(PicData *pData, int16_t x, int16_t y, typename _TFormat::Pixel
 
 #define CX_ACTUAL_MONO(cx) (((cx) + 7) / 8)
 
-bool CreatePatternBitmap(CBitmap &bitmapOut, uint8_t patternSize, uint8_t patternNR, bool rectangle, bool pattern)
+std::vector<uint8_t> CreatePatternBits(uint8_t patternSize, uint8_t patternNR, bool rectangle, bool pattern, int &sideLength)
 {
 	uint16_t wSize = (uint16_t)patternSize;
 	uint16_t actualSize = wSize * 2 + 1;
@@ -1018,9 +1012,8 @@ bool CreatePatternBitmap(CBitmap &bitmapOut, uint8_t patternSize, uint8_t patter
 	// For some reason, the mono bitmap stride must be at least 2 bytes (not 1 or 4).
 	size_t bitDataWidth = max(CX_ACTUAL_MONO(actualSize), 2);
 	size_t bitDataSize = bitDataWidth * actualSize;
-	std::unique_ptr<uint8_t[]> bitBuffer = std::make_unique<uint8_t[]>(bitDataSize);
-	memset(bitBuffer.get(), 0, bitDataSize);
-	uint8_t *destRaw = bitBuffer.get();
+	std::vector<uint8_t> bitBuffer(bitDataSize, 0);
+	uint8_t *destRaw = bitBuffer.data();
 	uint8_t *srcRaw = buffer.get();
 	for (size_t y = 0; y < actualSize; y++)
 	{
@@ -1036,8 +1029,8 @@ bool CreatePatternBitmap(CBitmap &bitmapOut, uint8_t patternSize, uint8_t patter
 		//srcRaw += CX_ACTUAL(actualSize);
 		srcRaw += actualSize;
 	}
-	BOOL result = bitmapOut.CreateBitmap(actualSize, actualSize, 1, 1, bitBuffer.get());
-	return !!result;
+	sideLength = actualSize;
+	return bitBuffer;
 }
 
 //
@@ -2457,7 +2450,7 @@ void DrawVisualBitmap_Serialize(sci::ostream *pSerial, const PicCommand *pComman
 	//if (finalSize > (std::numeric_limits<uint16_t>::max()))
 	if (finalSize > 0xffff)
 	{
-		throw std::exception("Resource too large");
+		throw sci::DataError("Resource too large", sci::ErrorCode::Unsupported);
 	}
 	*(reinterpret_cast<uint16_t*>(pSerial->GetInternalPointer() + currentOffset)) = (uint16_t)finalSize;
 }

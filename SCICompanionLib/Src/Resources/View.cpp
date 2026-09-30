@@ -17,9 +17,9 @@
 #include "View.h"
 #include "ResourceEntity.h"
 #include "PaletteOperations.h"
-#include "AppState.h"
+#include "CoreLog.h"
 #include "format.h"
-#include "ImageUtil.h"
+#include "ImageData.h"
 
 using namespace std;
 
@@ -27,6 +27,21 @@ int g_debugCelRLE;
 
 uint8_t g_egaPaletteMapping[16] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
 uint8_t g_vgaPaletteMapping[256];
+
+namespace
+{
+	// Each color maps to itself; filled when the program starts.
+	struct VgaPaletteMapping
+	{
+		VgaPaletteMapping()
+		{
+			for (int i = 0; i < 256; i++)
+			{
+				g_vgaPaletteMapping[i] = (uint8_t)i;
+			}
+		}
+	} vgaPaletteMapping;
+}
 
 
 
@@ -68,7 +83,7 @@ void ReadImageDataWorker(sci::istream &byteStreamRLE, Cel &cel, bool isVGA, sci:
 
 	if (dataSize > ReasonableLimit)
 	{
-		throw std::exception("Corrupt raster resource.");
+		throw sci::DataError("Corrupt raster resource.");
 	}
 
 	// The image starts from the bottom left, not the top left:
@@ -240,11 +255,8 @@ void ReadCelFrom(ResourceEntity &resource, sci::istream byteStream, Cel &cel, bo
 		// still loads. Each cel is read from its own offset in ReadLoopFrom, so
 		// returning early here does not disturb the other cels. ScummVM likewise
 		// does not reject a view over a cel size at load. Warn so the corruption is
-		// visible (appState is null in headless/unit-test loads). (#182)
-		if (appState != nullptr)
-		{
-			appState->LogInfo("Corrupt cel in view %d (package %d): replaced with a 1x1 placeholder.", resource.ResourceNumber, resource.PackageNumber);
-		}
+		// visible. The core log works with no GUI. (#182)
+		CoreLogFormat(LogLevel::Warning, "Corrupt cel in view %d (package %d): replaced with a 1x1 placeholder.", resource.ResourceNumber, resource.PackageNumber);
 		// Set the transparent colour explicitly first: we return before reading it
 		// from the (corrupt) stream, and Cel() leaves it indeterminate. Fill the 1x1
 		// pixel with that same colour so the placeholder is fully transparent and its
@@ -290,7 +302,7 @@ void ReadLoopFrom(ResourceEntity &resource, sci::istream byteStream, Loop &loop,
 	}
 	if (nCels > ReasonableCelCount)
 	{
-		throw std::exception("Too many cels.");
+		throw sci::DataError("Too many cels.");
 	}
 	loop.Cels.assign(nCels, Cel()); // Just a bunch of empty ones.
 	byteStream >> loop.UnknownData; // Skip 2 bytes (function unknown) - store just in case
@@ -582,7 +594,7 @@ void WriteLoopTo(const ResourceEntity &resource, sci::ostream &byteStream, const
 		// Cel offsets are stored 16-bit; reject rather than silently truncate.
 		if (byteStream.tellp() > 0xffff)
 		{
-			throw std::exception("View resource is too large");
+			throw sci::DataError("View resource is too large", sci::ErrorCode::Unsupported);
 		}
 		pOffsets[i] = ((uint16_t)(byteStream.tellp()));
 		WriteCelTo(resource, byteStream, loop.Cels[i], isVGA);
@@ -607,14 +619,14 @@ void PostReadProcessing(ResourceEntity &resource, RasterComponent &raster)
 		Loop &loop = raster.Loops[i];
 		if (loop.Cels.size() == 0)
 		{
-			appState->LogInfo("Empty loop found: view: %d, loop %d.", resource.ResourceNumber, i);
+			CoreLogFormat(LogLevel::Warning, "Empty loop found: view: %d, loop %zu.", resource.ResourceNumber, i);
 			// Make degenerate
 			loop.Cels.push_back(Cel());
 			CreateDegenerate(loop.Cels[0], loop.Cels[0].TransparentColor);
 		}
 		if (loop.IsMirror && (loop.MirrorOf >= (uint8_t)raster.Loops.size()))
 		{
-			throw std::exception("Invalid mirror.");
+			throw sci::DataError("Invalid mirror.");
 		}
 	}
 }
@@ -635,7 +647,7 @@ void ViewReadFromVersioned(ResourceEntity &resource, sci::istream &byteStream, b
 
 	if ((nLoops == 0) || nLoops > ReasonableLoopCount)
 	{
-		throw std::exception("None, or too many loops - corrupt resource?");
+		throw sci::DataError("None, or too many loops - corrupt resource?");
 	}
 	raster.Loops.assign(nLoops, Loop()); // Just empty ones for now
 	byteStream >> mirrorMask;
@@ -795,7 +807,7 @@ void ReadCelFromVGA11(sci::istream &byteStream, Cel &cel, bool isPic)
 		size_t rawDataSize = (size_t)CX_ACTUAL(celHeader.size.cx) * (size_t)celHeader.size.cy;
 		if (rawDataSize > ReasonableLimit)
 		{
-			throw std::exception("Corrupt raster resource.");
+			throw sci::DataError("Corrupt raster resource.");
 		}
 		cel.Data.allocate(max(1, rawDataSize));
 		for (int y = cel.size.cy - 1; y >= 0; y--)
@@ -1184,7 +1196,7 @@ void ViewWriteTo(const ResourceEntity &resource, sci::ostream &byteStream, bool 
 			// Loop offsets are stored 16-bit; reject rather than silently truncate.
 			if (byteStream.tellp() > 0xffff)
 			{
-				throw std::exception("View resource is too large");
+				throw sci::DataError("View resource is too large", sci::ErrorCode::Unsupported);
 			}
 			pOffsets[i] = ((uint16_t)(byteStream.tellp()));
 
@@ -1213,7 +1225,7 @@ void ViewWriteTo(const ResourceEntity &resource, sci::ostream &byteStream, bool 
 	{
 		if (byteStream.tellp() > 0xffff)
 		{
-			throw std::exception("View resource is too large");
+			throw sci::DataError("View resource is too large", sci::ErrorCode::Unsupported);
 		}
 		// Write the offset to the palette
 		*(reinterpret_cast<uint16_t*>(byteStream.GetInternalPointer() + paletteOffsetPosition)) = (uint16_t)byteStream.tellp();

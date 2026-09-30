@@ -57,6 +57,16 @@
 #include "SyntaxParser.h"
 #include "ImageUtil.h"
 #include "DependencyTracker.h"
+#include "CorePrompt.h"
+#include "MfcExceptionMapper.h"
+#include "DebuggerThread.h"
+#include "PostBuildThread.h"
+#include "RemoveScriptDialog.h"
+#include "DontShowAgainDialog.h"
+#include "Pic.h"
+
+static int GuiMessageBox(const std::string &text, unsigned int type);
+static void GuiPicCheckWarning(const std::string &text);
 
 // The one and only
 extern AppState *appState;
@@ -77,11 +87,15 @@ void CMultiDocTemplateWithNonViews::InitialUpdateFrame(CFrameWnd *pFrame, CDocum
 	__super::InitialUpdateFrame(pFrame, pDoc, bMakeVisible);
 }
 
-AppState::AppState(CWinApp *pApp) : _resourceMap(this, &_resourceRecency)
+AppState::AppState(CWinApp *pApp) : _session(SessionOptions(), this, &_resourceRecency)
 {
+	// The tracker keeps a reference to this setting, so set it first.
+	_fTrackHeaderFiles = TRUE;
 	_dependencyTracker = std::make_unique<DependencyTracker>(_fTrackHeaderFiles);
 	// This is a pointer because we don't want a dependency on it in the header file.
 	_classBrowser = std::make_unique<SCIClassBrowser>(*_dependencyTracker);
+	// The compiler's error messages use it for hints.
+	_session.SetClassHints(_classBrowser.get());
 
 	_pApp = pApp;
 	_audioProcessing = std::make_unique<AudioProcessingSettings>();
@@ -105,7 +119,6 @@ AppState::AppState(CWinApp *pApp) : _resourceMap(this, &_resourceRecency)
 	_fShowTabs = FALSE;
 	_fShowToolTips = TRUE;
 	_fSaveScriptsBeforeRun = TRUE;
-	_fTrackHeaderFiles = TRUE;
 	_fCompileDirtyScriptsBeforeRun = TRUE;
 	_onionLeftTint = 0x80FF8080;
 	_onionRightTint = 0x808080FF;
@@ -146,29 +159,8 @@ AppState::AppState(CWinApp *pApp) : _resourceMap(this, &_resourceRecency)
 	_pACThread = new AutoCompleteThread2();
 	_pHoverTipScheduler = std::make_unique<BackgroundScheduler<HoverTipPayload, HoverTipResponse>>();
 
-	crcInit();
-
-	// Prepare g_egaColorsExtended
-	for (int i = 0; i < 256; i += 16)
-	{
-		CopyMemory(g_egaColorsExtended + i, g_egaColors, sizeof(g_egaColors));
-	}
-	// Fake EGA palette for when it's needed.
-	memcpy(g_egaDummyPalette.Colors, g_egaColors, sizeof(g_egaColors));
-
-	// Gamma-corrected mixed ega colors
-	for (int i = 0; i < 256; i++)
-	{
-		int iA = i / 16;
-		int iB = i % 16;
-		g_egaColorsMixed[i] = _CombineGamma(g_egaColors[iA], g_egaColors[iB]);
-	}
-
-	// Prepare g_vgaPaletteMapping
-	for (int i = 0; i < 256; i++)
-	{
-		g_vgaPaletteMapping[i] = (uint8_t)i;
-	}
+	// The core fills its own tables when the program starts: the CRC table,
+	// the EGA tables, the dummy EGA palette and the VGA mapping.
 
 	// A greenish palette for continuous priority
 	for (int i = 0; i < 256; i++)
@@ -182,7 +174,16 @@ AppState::AppState(CWinApp *pApp) : _resourceMap(this, &_resourceRecency)
 	EGAPaletteColorsClipboardFormat = RegisterClipboardFormat("SCICompanionEGAPaletteColors");
 	LoadSyntaxHighlightingColors();
 
-	InitializeSyntaxParsers();
+	// The session loaded the compiler's grammars. The GUI's core log comes
+	// here. An AppState with no app (the tests) has no log file, so it does
+	// not take the sink from its host.
+	if (pApp != nullptr)
+	{
+		SetCoreLogSink(this);
+	}
+	SetMessageBoxHandler(GuiMessageBox);
+	SetPicCheckWarningHandler(GuiPicCheckWarning);
+	InstallMfcExceptionMapper();
 }
 
 DependencyTracker &AppState::GetDependencyTracker()
@@ -241,6 +242,9 @@ void AppState::HideTipWindows()
 
 AppState::~AppState()
 {
+	SetMessageBoxHandler(nullptr);
+	SetPicCheckWarningHandler(nullptr);
+	RemoveCoreLogSink(this);
 	delete _pACThread;
 	CoTaskMemFree(_pidlFolder);
 }
@@ -299,7 +303,7 @@ void AppState::OpenScriptHeader(std::string strName)
 {
 	if (_pApp && _pScriptTemplate)
 	{
-		std::string fullPath = _resourceMap.GetIncludePath(strName);
+		std::string fullPath = _session.ResourceMap().GetIncludePath(strName);
 		ScriptId scriptId(fullPath);
 		if (!scriptId.IsNone())
 		{
@@ -344,7 +348,7 @@ void AppState::OpenScript(std::string strName, const ResourceBlob *pData, WORD w
 {
 	if (_pScriptTemplate && _pApp)
 	{
-		ScriptId scriptId = _resourceMap.Helper().GetScriptId(strName);
+		ScriptId scriptId = _session.ResourceMap().Helper().GetScriptId(strName);
 		if (!scriptId.IsNone())
 		{
 			if (wScriptNum == InvalidResourceNumber)
@@ -486,7 +490,7 @@ void AppState::OpenMostRecentResource(ResourceType type, uint16_t wNum)
 	CResourceDocument *pDocAlready = pMainWnd->Tabs().ActivateResourceDocument(type, wNum);
 	if (pDocAlready == nullptr)
 	{
-		std::unique_ptr<ResourceBlob> blob = move(_resourceMap.MostRecentResource(type, wNum, true));
+		std::unique_ptr<ResourceBlob> blob = move(_session.ResourceMap().MostRecentResource(type, wNum, true));
 		OpenResource(blob.get());
 		_resourceRecency.AddResourceToRecency(blob.get());
 	}
@@ -693,7 +697,7 @@ void AppState::TerminateDebuggedProcess()
 			AfxMessageBox("Unable to terminate process.", MB_OK | MB_ICONERROR);
 		}
 		_hProcessDebugged.Close();
-		GetResourceMap().AbortDebuggerThread();
+		AbortDebuggerThread();
 	}
 }
 
@@ -707,7 +711,7 @@ bool AppState::IsProcessBeingDebugged()
 		if (!stillRunning)
 		{
 			_hProcessDebugged.Close();
-			GetResourceMap().AbortDebuggerThread();
+			AbortDebuggerThread();
 		}
 	}
 	return stillRunning;
@@ -759,7 +763,7 @@ void AppState::RunGame(bool debug, int optionalResourceNumber)
 		{
 			if (!CompileABunchOfScripts(this, &GetDependencyTracker()))
 			{
-				goAhead = (IDYES == AfxMessageBox("There were errors compiling the scripts. Run game anyway?", MB_ICONWARNING | MB_YESNO));
+				goAhead = (IDYES == AfxMessageBox("The scripts were not all compiled and written (see the compile output). Run the game anyway?", MB_ICONWARNING | MB_YESNO));
 			}
 		}
 
@@ -767,16 +771,16 @@ void AppState::RunGame(bool debug, int optionalResourceNumber)
 		{
 			if (debug)
 			{
-				GetResourceMap().StartDebuggerThread(optionalResourceNumber);
+				StartDebuggerThread(optionalResourceNumber);
 			}
 
 			BOOL fShellEx = FALSE;
 			std::string errors;
 			HANDLE hProcess;
-			if (!GetResourceMap().GetRunLogic().RunGame(errors, hProcess))
+			if (!GetRunLogic().RunGame(errors, hProcess))
 			{
 				AfxMessageBox(errors.c_str(), MB_OK | MB_APPLMODAL | MB_ICONEXCLAMATION);
-				GetResourceMap().AbortDebuggerThread();
+				AbortDebuggerThread();
 			}
 			else
 			{
@@ -793,12 +797,53 @@ void AppState::RunGame(bool debug, int optionalResourceNumber)
 
 void AppState::OnGameFolderUpdate()
 {
+	// The resource map opened a game, or closed it.
+	_runLogic.SetGameFolder(GetResourceMap().Helper().GameFolder);
+	AbortDebuggerThread();
 	if (_pApp)
 	{
 		CMainFrame *pMainWnd = static_cast<CMainFrame*>(_pApp->m_pMainWnd);
 		pMainWnd->RefreshExplorerTools();
 		_hProcessDebugged.Close();
 		_recentViews.clear();
+	}
+}
+
+void AppState::OnLastScriptDeleted(CResourceMap &resourceMap, const ResourceBlob &script)
+{
+	if (HasGui())
+	{
+		AskToRemoveScript(resourceMap, script);
+	}
+}
+
+void AppState::StartPostBuildThread()
+{
+	AbortPostBuildThread();
+	_postBuildThread = CreatePostBuildThread(GetResourceMap().Helper().GameFolder);
+}
+
+void AppState::AbortPostBuildThread()
+{
+	if (_postBuildThread)
+	{
+		_postBuildThread->Abort();
+		_postBuildThread.reset();
+	}
+}
+
+void AppState::StartDebuggerThread(int optionalResourceNumber)
+{
+	AbortDebuggerThread();
+	_debuggerThread = CreateDebuggerThread(GetResourceMap().Helper().GameFolder, optionalResourceNumber);
+}
+
+void AppState::AbortDebuggerThread()
+{
+	if (_debuggerThread)
+	{
+		_debuggerThread->Abort();
+		_debuggerThread.reset();
 	}
 }
 
@@ -827,9 +872,9 @@ HRESULT AppState::_SetGameStringProperty(PCTSTR pszProp, PCTSTR pszValue)
 HRESULT AppState::_GetGameIni(PTSTR pszValue, size_t cchValue)
 {
 	HRESULT hr = E_FAIL;
-	if (_resourceMap.IsGameLoaded())
+	if (_session.ResourceMap().IsGameLoaded())
 	{
-		hr = StringCchPrintf(pszValue, cchValue, TEXT("%s\\game.ini"), _resourceMap.GetGameFolder().c_str());
+		hr = StringCchPrintf(pszValue, cchValue, TEXT("%s\\game.ini"), _session.ResourceMap().GetGameFolder().c_str());
 	}
 	return hr;
 }
@@ -869,15 +914,28 @@ std::vector<int> &AppState::GetRecentViews() { return _recentViews; }
 
 void AppState::LogInfo(const TCHAR *pszFormat, ...)
 {
+	va_list argList;
+	va_start(argList, pszFormat);
+	CoreLogFormatV(LogLevel::Info, pszFormat, argList);
+	va_end(argList);
+}
+
+void AppState::Write(LogLevel level, const std::string &text)
+{
+	std::lock_guard<std::mutex> lock(_logFileMutex);
 	if (_logFile.m_hFile != INVALID_HANDLE_VALUE)
 	{
-		TCHAR szMessage[MAX_PATH];
-		va_list argList;
-		va_start(argList, pszFormat);
-		StringCchVPrintf(szMessage, ARRAYSIZE(szMessage), pszFormat, argList);
-		StringCchCat(szMessage, ARRAYSIZE(szMessage), TEXT("\n"));
-		_logFile.Write(szMessage, lstrlen(szMessage) * sizeof(TCHAR));
-		va_end(argList);
+		std::string line = (level == LogLevel::Info) ? text : (std::string(LogLevelName(level)) + ": " + text);
+		line += "\n";
+		try
+		{
+			_logFile.Write(line.c_str(), (UINT)line.size());
+		}
+		catch (CException *e)
+		{
+			// A lost log line is not worth a failure.
+			e->Delete();
+		}
 	}
 }
 
@@ -886,20 +944,34 @@ bool AppState::HasGui() const
 	return (_pApp != nullptr) && (_pApp->m_pMainWnd != nullptr);
 }
 
-int SafeMessageBox(const std::string &text, UINT type)
+// The GUI's warning of the pic checks (Pic.h): a dialog with a "do not show
+// again" box, which sets _fDontCheckPic.
+static void GuiPicCheckWarning(const std::string &text)
+{
+	if (appState != nullptr && appState->_fDontCheckPic)
+	{
+		return;
+	}
+	if (appState != nullptr && appState->HasGui())
+	{
+		CDontShowAgainDialog dialog(text.c_str(), appState->_fDontCheckPic);
+		dialog.DoModal();
+	}
+	else
+	{
+		CoreLog(LogLevel::Warning, text);
+	}
+}
+
+// The GUI's message box for engine code (CorePrompt.h). Shows nothing (0)
+// while there is no main window, so the text goes to the core log.
+static int GuiMessageBox(const std::string &text, unsigned int type)
 {
 	if (appState != nullptr && appState->HasGui())
 	{
 		return AfxMessageBox(text.c_str(), type);
 	}
-	// No GUI: log it instead of popping a modal dialog that would block a headless
-	// run (unit tests, batch) or appear as a stray window. Return the
-	// non-destructive default so a yes/no prompt does not "proceed" unattended.
-	if (appState != nullptr)
-	{
-		appState->LogInfo("%s", text.c_str());
-	}
-	return (type & MB_YESNO) ? IDNO : IDOK;
+	return 0;
 }
 
 // AppState message handlers

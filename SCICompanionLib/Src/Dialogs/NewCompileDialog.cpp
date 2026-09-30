@@ -16,14 +16,10 @@
 
 #include "stdafx.h"
 #include "AppState.h"
-#include "ScriptOM.h"
 #include "NewCompileDialog.h"
 #include "WindowsUtil.h"
-#include "ScriptDocument.h"
-#include <filesystem>
-#include <regex>
-
-using namespace std::filesystem;
+#include "DependencyTracker.h"
+#include "ClassBrowser.h"
 
 #define UWM_STARTCOMPILE (WM_APP + 0)
 
@@ -35,11 +31,9 @@ static char THIS_FILE[] = __FILE__;
 
 // CNewCompileDialog dialog
 
-CNewCompileDialog::CNewCompileDialog(const std::unordered_set<std::string> &scriptsToRecompile, CWnd* pParent /*=NULL*/)
-	: CExtResizableDialog(CNewCompileDialog::IDD, pParent), _headers(appState->GetResourceMap()), _scriptsToRecompile(scriptsToRecompile)
+CNewCompileDialog::CNewCompileDialog(CompileBatch &batch, CWnd* pParent /*=NULL*/)
+	: CExtResizableDialog(CNewCompileDialog::IDD, pParent), _batch(batch), _abort(false)
 {
-	_fResult = false;
-	_fAbort = false;
 	_fDone = false;
 }
 
@@ -47,28 +41,30 @@ CNewCompileDialog::~CNewCompileDialog()
 {
 }
 
-bool CNewCompileDialog::HasErrors()
+void CNewCompileDialog::OnScriptStart(size_t index, size_t count, const ScriptId &script)
 {
-	return _log.HasErrors();
+	_current = script;
+	m_wndProgress.SetPos((int)index);
+	// Update the edit control with the current scripts name.
+	m_wndDisplay.SetWindowText(script.GetTitle().c_str());
 }
 
+void CNewCompileDialog::OnScriptDone(const ScriptOutcome &outcome)
+{
+	if (outcome.status)
+	{
+		// The caller clears it in the dependency tracker only after a commit
+		// that wrote it.
+		_compiled.push_back(_current);
+	}
+	// The compile is done.  Post the results.
+	std::vector<CompileResult> results = outcome.diagnostics;
+	appState->OutputAddBatch(OutputPaneType::Compile, results);
+}
 
 LRESULT CNewCompileDialog::CompileAll(WPARAM wParam, LPARAM lParam)
 {
 	ShowWindow(SW_SHOW);
-
-	m_wndProgress.SetPos(_nScript);
-
-	int nSuccessfulResults = 0;
-
-	// Clear out the results from previous compiles.
-	_log.Clear();
-	int scriptsSize = static_cast<int>(_scripts.size());
-	ASSERT(_nScript < scriptsSize);
-
-	ScriptId &scriptId = _scripts[_nScript];
-	// Update the edit control with the current scripts name.
-	m_wndDisplay.SetWindowText(scriptId.GetTitle().c_str());
 
 	// Pump paint and input so the display and progress controls repaint and the
 	// Cancel button stays responsive, but dispatch only this dialog's own
@@ -82,33 +78,33 @@ LRESULT CNewCompileDialog::CompileAll(WPARAM wParam, LPARAM lParam)
 		_fDone = true;
 		return 0;
 	}
-	if (_fAbort)
+
+	// One script of the batch. False after the last script, or when Cancel
+	// set the abort flag.
+	bool more = false;
 	{
-		_fDone = true;
-		OnCancel();
+		// The class browser's background reload parses the same scripts and
+		// reads the game, so hold its lock for the compile.
+		ClassBrowserLock lock(appState->GetClassBrowser());
+		lock.Lock();
+		more = _batch.Step(_abort, *this);
+	}
+
+	if (more)
+	{
+		PostMessage(UWM_STARTCOMPILE, 0, 0); // Start another compile
 	}
 	else
 	{
-		// Do a compile
-		CompileResults results(_log);
-		NewCompileScript(results, _log, _tables, _headers, scriptId);
-
-		// The compile is done.  Post the results.
-		appState->OutputAddBatch(OutputPaneType::Compile, _log.Results());
-	}
-
-	if (!_fAbort)
-	{
-		_nScript++;
-		if (_nScript < (int)_scripts.size())
+		_fDone = true;
+		if (_abort)
 		{
-			PostMessage(UWM_STARTCOMPILE, 0, 0); // Start another compile
+			OnCancel();
 		}
 		else
 		{
 			// Change the text to close:
 			SetDlgItemText(IDCANCEL, "Close");
-			_fDone = true;
 			// Actually, just close ourselves
 			PostMessage(WM_CLOSE, 0, 0);
 		}
@@ -131,98 +127,18 @@ BOOL CNewCompileDialog::OnInitDialog()
 {
 	BOOL fRet = __super::OnInitDialog();
 	ShowSizeGrip(FALSE);
-	try
-	{
-		_tables.Load(appState->GetVersion()); // REVIEW: clean up
-
-		if (_scriptsToRecompile.empty())
-		{
-			// Everything
-			appState->GetResourceMap().GetAllScripts(_scripts);
-		}
-		else
-		{
-			// Filtered
-			std::vector<ScriptId> scriptsTemp;
-			appState->GetResourceMap().GetAllScripts(scriptsTemp);
-			std::copy_if(scriptsTemp.begin(), scriptsTemp.end(), std::back_inserter(_scripts),
-				[&](const ScriptId &scriptId)
-			{
-				return _scriptsToRecompile.find(scriptId.GetTitleLower()) != _scriptsToRecompile.end();
-			}
-			);
-		}
-
-		if (_scripts.empty())
-		{
-			if (IDYES == AfxMessageBox("Error finding scripts to compile.\nDo you want to try scanning the src folder for scripts?", MB_YESNO | MB_APPLMODAL | MB_ICONEXCLAMATION))
-			{
-				path enumPath = appState->GetResourceMap().Helper().GetSrcFolder();
-				std::vector<std::string> filenames;
-				auto matchRSTRegex = std::regex("(\\w+)\\.sc$");
-				for (auto it = directory_iterator(enumPath); it != directory_iterator(); ++it)
-				{
-					const auto &file = it->path();
-					std::smatch sm;
-					std::string temp = file.filename().string();
-					if (!is_directory(file) && std::regex_search(temp, sm, matchRSTRegex) && (sm.size() > 1))
-					{
-						_scripts.push_back(ScriptId(file.string()));
-					}
-				}
-				if (_scripts.empty())
-				{
-					AfxMessageBox("Could not find any .sc files.", MB_OK | MB_ICONERROR);
-				}
-			}
-		}
-
-		_nScript = 0;
-		if (!_scripts.empty())
-		{
-			// Set the range of the progress control.
-			m_wndProgress.SetRange32(0, (int)_scripts.size());
-			PostMessage(UWM_STARTCOMPILE, 0, 0);
-		}
-		else
-		{
-			_fDone = true;
-			// Actually, just close ourselves
-			PostMessage(WM_CLOSE, 0, 0);
-		}
-	}
-	catch (std::exception)
-	{
-		_fDone = true;
-		// Actually, just close ourselves
-		PostMessage(WM_CLOSE, 0, 0);
-	}
+	// Set the range of the progress control.
+	m_wndProgress.SetRange32(0, (int)_batch.Count());
+	PostMessage(UWM_STARTCOMPILE, 0, 0);
 	return fRet;
 }
-
-void CNewCompileDialog::OnDestroy()
-{
-	// Do some reporting.
-	std::stringstream str;
-	str << _nScript << " scripts compiled.";
-	_log.ReportResult(str.str());
-	appState->OutputAddBatch(OutputPaneType::Compile, _log.Results());
-
-	_log.CalculateErrors();
-
-	// Save any tables...
-	_tables.Save();
-
-	__super::OnDestroy();
-}
-
 
 void CNewCompileDialog::OnCancel()
 {
 	if (!_fDone)
 	{
 		// We're still doing stuff.  Signal ourself to close.
-		_fAbort = TRUE;
+		_abort = true;
 	}
 	else
 	{
@@ -232,7 +148,6 @@ void CNewCompileDialog::OnCancel()
 
 BEGIN_MESSAGE_MAP(CNewCompileDialog, CExtResizableDialog)
 	ON_MESSAGE(UWM_STARTCOMPILE, CompileAll)
-	ON_WM_DESTROY()
 END_MESSAGE_MAP()
 
 

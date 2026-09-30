@@ -30,7 +30,7 @@ int charToI(char ch)
 		return (int)(ch - '0');
 	}
 	// Assume it's hex if we got here
-	ASSERT((ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F'));
+	assert((ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F'));
 	if (ch >= 'a')
 	{
 		return (ch - 'a' + 10);

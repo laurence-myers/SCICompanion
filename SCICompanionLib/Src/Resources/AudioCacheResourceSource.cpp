@@ -14,6 +14,7 @@
 #include "stdafx.h"
 #include "AudioCacheResourceSource.h"
 #include "format.h"
+#include "CoreLog.h"
 #include "ResourceUtil.h"
 #include "Message.h"
 #include "ResourceEntity.h"
@@ -428,12 +429,17 @@ std::unique_ptr<ResourceEntity> AudioCacheResourceSource::_PrepareForAddOrRemove
 void AudioCacheResourceSource::RemoveEntry(const ResourceMapEntryAgnostic &mapEntry)
 {
 	std::vector<uint32_t> tuples = { mapEntry.Base36Number };
-	RemoveEntries(mapEntry.Number, tuples);
+	// DeleteResource shows the error.
+	sci::Status removed = RemoveEntries(mapEntry.Number, tuples);
+	if (!removed)
+	{
+		throw sci::DataError(removed.error());
+	}
 }
 
-void AudioCacheResourceSource::SaveOrRemoveNegatives(const std::vector<ResourceEntity*> negatives)
+sci::Status AudioCacheResourceSource::SaveOrRemoveNegatives(const std::vector<ResourceEntity*> negatives)
 {
-	try
+	return sci::Guard("saving the negatives of the audio", [&]() -> sci::Status
 	{
 		for (ResourceEntity *resource : negatives)
 		{
@@ -449,8 +455,8 @@ void AudioCacheResourceSource::SaveOrRemoveNegatives(const std::vector<ResourceE
 				deletefile(fullPath);
 			}
 		}
-	}
-	catch (...) {}
+		return sci::Ok();
+	});
 }
 
 void AudioCacheResourceSource::MaybeAddNegative(ResourceEntity &resource)
@@ -467,19 +473,23 @@ void AudioCacheResourceSource::MaybeAddNegative(ResourceEntity &resource)
 			resource.AddComponent(std::move(negative));
 		}
 	}
-	catch (...) {}
+	catch (...)
+	{
+		// The resource then has no negative: the read is best effort.
+		CoreLogCurrentException("reading the negative of an audio resource");
+	}
 }
 
-void AudioCacheResourceSource::RemoveEntries(int number, const std::vector<uint32_t> tuples)
+sci::Status AudioCacheResourceSource::RemoveEntries(int number, const std::vector<uint32_t> tuples)
 {
-	try
+	return sci::Guard("removing entries from the audio cache", [&]() -> sci::Status
 	{
 		std::unique_ptr<ResourceEntity> audioMap = _PrepareForAddOrRemove();
 		AudioMapComponent &audioMapComponent = audioMap->GetComponent<AudioMapComponent>();
 		bool audioMapModified = false;
 		for (uint32_t tuple : tuples)
 		{
-			// Find the matching entry and remove it 
+			// Find the matching entry and remove it
 			auto itFind = std::find_if(audioMapComponent.Entries.begin(), audioMapComponent.Entries.end(),
 				[number, tuple](const AudioMapEntry &amEntry) {  return amEntry.Number == number && GetMessageTuple(amEntry) == tuple; });
 			if (itFind != audioMapComponent.Entries.end())
@@ -487,8 +497,25 @@ void AudioCacheResourceSource::RemoveEntries(int number, const std::vector<uint3
 				audioMapComponent.Entries.erase(itFind);
 				audioMapModified = true;
 			}
+		}
 
-			// Now we need to delete any files associated with it.
+		// Save the modified audio map first: it goes through the resource map to the patch files source, under the
+		// audio cache folder. A map that cannot be saved leaves the files; a file that cannot be deleted after the
+		// save is a file that no map entry names.
+		if (audioMapModified)
+		{
+			// This is no longer up-to-date.
+			UpToDateResources upToDate(_cacheFolder);
+			upToDate.MarkDirty(audioMap->ResourceNumber);
+			upToDate.Save();
+
+			assert(IsFlagSet(audioMap->SourceFlags, ResourceSourceFlags::AudioMapCache));
+			SCI_TRY(_MapForWrite().WriteResource(*audioMap));
+		}
+
+		// Then the files of each entry.
+		for (uint32_t tuple : tuples)
+		{
 			std::string fullPath = _cacheSubFolderForEnum + "\\" + GetFileNameFor(ResourceType::Audio, number, tuple, _version);
 			deletefile(fullPath);
 			fullPath += ".wav";
@@ -496,64 +523,63 @@ void AudioCacheResourceSource::RemoveEntries(int number, const std::vector<uint3
 			fullPath = _cacheSubFolderForEnum + "\\" + GetFileNameFor(ResourceType::Sync, number, tuple, _version);
 			deletefile(fullPath);
 		}
+		return sci::Ok();
+	});
+}
 
-		// And finally, save the modified audiomap. We *should* just be able to go through the resource map again,
-		// and it should route it to the "patch files" resource source, under the audiocache folder.
-		if (audioMapModified)
-		{
-			assert(IsFlagSet(audioMap->SourceFlags, ResourceSourceFlags::AudioMapCache));
-			_resourceMap->AppendResource(*audioMap);
-
-			// This is no longer up-to-date.
-			UpToDateResources upToDate(_cacheFolder);
-			upToDate.MarkDirty(audioMap->ResourceNumber);
-			upToDate.Save();
-		}
-	}
-	catch (std::exception)
+CResourceMap &AudioCacheResourceSource::_MapForWrite() const
+{
+	if (!_resourceMap)
 	{
-		// REVIEW
+		throw sci::DataError("the audio cache source was made for a read, and a write needs the resource map", sci::ErrorCode::Internal);
 	}
+	return *_resourceMap;
 }
 
 AppendBehavior AudioCacheResourceSource::AppendResources(const std::vector<const ResourceBlob*> &blobs)
 {
-	try
+	// A failure throws to the caller: the resource map's exception boundary
+	// gives it back from WriteResource or the batch's Commit.
+	std::unique_ptr<ResourceEntity> audioMap = _PrepareForAddOrRemove();
+	AudioMapComponent &audioMapComponent = audioMap->GetComponent<AudioMapComponent>();
+
+	// If there is no matching entry, add one. We don't currently care about offsets and sync sizes,
+	// since those are only relevant when the resources exist in the official audio map.
+	for (const ResourceBlob *blobToBeSaved : blobs)
 	{
-		std::unique_ptr<ResourceEntity> audioMap = _PrepareForAddOrRemove();
-		AudioMapComponent &audioMapComponent = audioMap->GetComponent<AudioMapComponent>();
-
-		// If there is no matching entry, add one. We don't currently care about offsets and sync sizes,
-		// since those are only relevant when the resources exist in the official audio map.
-		for (const ResourceBlob *blobToBeSaved : blobs)
+		int number = blobToBeSaved->GetNumber();
+		uint32_t tuple = blobToBeSaved->GetBase36();
+		auto itFind = std::find_if(audioMapComponent.Entries.begin(), audioMapComponent.Entries.end(),
+			[number, tuple](const AudioMapEntry &amEntry) {  return amEntry.Number == number && GetMessageTuple(amEntry) == tuple; });
+		if (itFind == audioMapComponent.Entries.end())
 		{
-			int number = blobToBeSaved->GetNumber();
-			uint32_t tuple = blobToBeSaved->GetBase36();
-			auto itFind = std::find_if(audioMapComponent.Entries.begin(), audioMapComponent.Entries.end(),
-				[number, tuple](const AudioMapEntry &amEntry) {  return amEntry.Number == number && GetMessageTuple(amEntry) == tuple; });
-			if (itFind == audioMapComponent.Entries.end())
-			{
-				AudioMapEntry newEntry = {};
-				SetMessageTuple(newEntry, tuple);
-				newEntry.Number = number;
-				audioMapComponent.Entries.push_back(newEntry);
-			}
-
-			// Meanwhile, save this blob to files
-			SaveAudioBlobToFiles(*blobToBeSaved, _cacheSubFolderForEnum);
+			AudioMapEntry newEntry = {};
+			SetMessageTuple(newEntry, tuple);
+			newEntry.Number = number;
+			audioMapComponent.Entries.push_back(newEntry);
 		}
 
-		// And finally, serialize the audiomap and save it. We *should* just be able to go through the resource map again,
-		// and it should route it to the "patch files" resource source, under the audiocache folder.
-		assert(IsFlagSet(audioMap->SourceFlags, ResourceSourceFlags::AudioMapCache));
-		_resourceMap->AppendResource(*audioMap);
+		// Meanwhile, save this blob to files
+		SaveAudioBlobToFiles(*blobToBeSaved, _cacheSubFolderForEnum);
+	}
 
-		// This is no longer up-to-date.
+	// This is no longer up-to-date. Mark it before the map save: the audio
+	// files are already in the cache, so the next repackage must rebuild it
+	// also when the map save fails.
+	{
 		UpToDateResources upToDate(_cacheFolder);
 		upToDate.MarkDirty(audioMap->ResourceNumber);
 		upToDate.Save();
 	}
-	catch (std::exception) {}
+
+	// And finally, serialize the audiomap and save it. We *should* just be able to go through the resource map again,
+	// and it should route it to the "patch files" resource source, under the audiocache folder.
+	assert(IsFlagSet(audioMap->SourceFlags, ResourceSourceFlags::AudioMapCache));
+	sci::Status mapSaved = _MapForWrite().WriteResource(*audioMap);
+	if (!mapSaved)
+	{
+		throw sci::DataError(mapSaved.error());
+	}
 
 	return AppendBehavior::Replace;
 }
@@ -673,8 +699,27 @@ std::ostream *_ChooseBakOutputStream(SCIVersion version, const std::string &game
 	return toUse;
 }
 
+// Closes a new audio volume from _ChooseBakOutputStream and deletes it.
+static void _DiscardNewAudioVolume(std::ofstream &stream, const std::string &gameFolder, AudioVolumeName volumeName)
+{
+	if (stream.is_open())
+	{
+		stream.exceptions(std::ios_base::goodbit);
+		stream.close();
+		DeleteFileA(GetAudioVolumePath(gameFolder, true, volumeName).c_str());
+	}
+}
+
 void AudioCacheResourceSource::RebuildResources(bool force, ResourceSource &source, std::map<ResourceType, RebuildStats> &stats)
 {
+	if (_resourceMap && _resourceMap->IsDeferring())
+	{
+		// In an open batch, the audio maps would only be queued while the
+		// volumes are replaced at once, so the two could disagree.
+		ShowWriteError(sci::Fail(sci::ErrorCode::Internal, "The audio cannot be repackaged while resource writes are deferred"));
+		return;
+	}
+
 	UpToDateResources upToDate(_cacheFolder);
 
 	// 1) Find all the audio maps. We'll use the message resources to do this. This is so we don't include audio that no longer
@@ -759,14 +804,38 @@ void AudioCacheResourceSource::RebuildResources(bool force, ResourceSource &sour
 		}
 
 		// 5) If that's good, then save the audio maps *TO THE RESOURCE MAP*
+		bool mapsSaved = true;
 		{
-			DeferResourceAppend defer(*_resourceMap);
+			DeferResourceAppend defer(_MapForWrite());
 			for (auto &audioMap : audioMaps)
 			{
 				audioMap.second->SourceFlags = ResourceSourceFlags::ResourceMap;
-				_resourceMap->AppendResource(*audioMap.second);
+				if (!_MapForWrite().AppendResource(*audioMap.second))
+				{
+					// AppendResource showed why. Leaving the scope abandons
+					// the batch, so no map is saved.
+					mapsSaved = false;
+					break;
+				}
 			}
-			defer.Commit();
+			if (mapsSaved)
+			{
+				sci::Status committed = defer.Commit();
+				if (!committed)
+				{
+					ShowWriteError(committed);
+					mapsSaved = false;
+				}
+			}
+		}
+		if (!mapsSaved)
+		{
+			// The game's audio maps still point into the old audio volumes, so
+			// keep those and delete the new ones. The cache stays out of date,
+			// so the next repackage tries again.
+			_DiscardNewAudioVolume(audStream, _gameFolder, AudioVolumeName::Aud);
+			_DiscardNewAudioVolume(sfxStream, _gameFolder, AudioVolumeName::Sfx);
+			return;
 		}
 
 		// 6) And then if that's good, then replace the audio files.

@@ -47,9 +47,9 @@ private:
 	std::vector<std::string> &_allStrings;
 };
 
-void ExtractScriptStrings(CompileLog &log, ScriptId scriptId, std::vector<std::string> &allStrings)
+void ExtractScriptStrings(const SCIVersion &version, CompileLog &log, ScriptId scriptId, std::vector<std::string> &allStrings)
 {
-	std::unique_ptr<Script> script = SimpleCompile(log, scriptId);
+	std::unique_ptr<Script> script = SimpleCompile(version, log, scriptId);
 
 	// Now look for all strings.
 	ExtractStrings extractStrings(allStrings);

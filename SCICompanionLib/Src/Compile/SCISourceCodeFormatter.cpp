@@ -18,7 +18,6 @@
 #include "PMachine.h"
 #include "StringUtil.h"
 #include "CompiledScript.h"
-#include "AppState.h"
 #include "OperatorTables.h"
 #include <numeric>
 
@@ -178,6 +177,9 @@ using namespace std;
 // For now, however, we'll keep track of the places that need this by having this dummy function.
 // Actually, we can use it to convert paramTotal to argc.
 // Oh... in the SCI0 template game there is an object with a space in its name. Let's replace though with _
+// A # after the first character stays, as the parser takes it: KQ6 names
+// selector 879 "dungeon#", and "dungeon_" compiles to a new selector. A
+// name must not become a keyword that ends in #.
 std::string CleanTokenSCI(const std::string &src)
 {
 	if (src == "paramTotal")
@@ -196,17 +198,23 @@ std::string CleanTokenSCI(const std::string &src)
 		}
 	}
 
-	std::transform(src.begin(), src.end(), std::back_inserter(output), [](char ch)
+	for (size_t i = 0; i < src.size(); i++)
 	{
+		char ch = src[i];
 		// Replace unwanted chars with underscores.
-		if (!std::isalnum((unsigned char)ch) && (ch != '-') && (ch != '_'))
-		{
-			ch = '_';
-		}
-		return ch;
+		bool keep = std::isalnum((unsigned char)ch) || (ch == '-') || (ch == '_') || ((ch == '#') && (i > 0));
+		output.push_back(keep ? ch : '_');
 	}
-	);
 
+	static const char *const hashKeywords[] = { "class#", "file#", "script#", "super#", "text#" };
+	for (const char *keyword : hashKeywords)
+	{
+		if (output == keyword)
+		{
+			std::replace(output.begin(), output.end(), '#', '_');
+			break;
+		}
+	}
 	return output;
 }
 
@@ -423,11 +431,8 @@ class TransformDeterminePropSelectors : public IExploreNode
 public:
 	TransformDeterminePropSelectors(sci::Script &script, GlobalCompiledScriptLookups *lookups) : _lookups(lookups)
 	{
-		// We need to determine what is a property and what is a method
-		if (!_lookups && _lookupsOwned.Load(appState->GetResourceMap().Helper()))
-		{
-			_lookups = &_lookupsOwned;
-		}
+		// We need to determine what is a property and what is a method. With no
+		// lookups, we cannot.
 		if (_lookups)
 		{
 			for (auto &script : _lookups->GetGlobalClassTable().GetAllScripts())
@@ -469,7 +474,6 @@ private:
 	std::set<uint16_t> _propSelectors;
 	std::set<uint16_t> _methodSelectors;
 	GlobalCompiledScriptLookups *_lookups;
-	GlobalCompiledScriptLookups _lookupsOwned;
 };
 
 std::string _GetCommentText(const Comment &comment)
@@ -508,6 +512,13 @@ std::string _GetCommentText(const Comment &comment)
 		first = false;
 	}
 	return newComment;
+}
+
+void ConvertToSCISyntaxHelper(Script &script, const GameFolderHelper &helper)
+{
+	// The game's classes tell a property from a method.
+	GlobalCompiledScriptLookups lookups;
+	ConvertToSCISyntaxHelper(script, lookups.Load(helper) ? &lookups : nullptr);
 }
 
 void ConvertToSCISyntaxHelper(Script &script, GlobalCompiledScriptLookups *lookups)

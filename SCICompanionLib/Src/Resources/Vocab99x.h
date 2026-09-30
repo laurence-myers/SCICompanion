@@ -19,6 +19,7 @@
 class SpeciesIndex;
 class CompiledObject;
 class GameFolderHelper;
+class CResourceMap;
 
 //
 // This can represent any vocab resource with names
@@ -43,6 +44,12 @@ protected:
 
 std::unordered_set<std::string> GetDefaultSelectorNames(SCIVersion version);
 
+// The vocab resources of the class table (996), the selector names (997) and
+// the kernel names (999). NotFound when 996 or 997 is missing (999 is
+// optional); Format when one cannot be read. Each with the resource in the
+// location.
+sci::Status CheckVocabTables(const GameFolderHelper &helper);
+
 //
 // Selector names
 //
@@ -58,7 +65,11 @@ public:
 
 	bool Load(const GameFolderHelper &helpern);
 	uint16_t Add(const std::string &str);
-	void Save();
+	void Save(CResourceMap &resourceMap);
+	// True when Add added a name. The compile writes MakeResourceData() to
+	// its destination.
+	bool IsDirty() const { return _fDirty; }
+	std::vector<uint8_t> MakeResourceData() const;
 	bool IsDefaultSelector(uint16_t value);
 
 protected:
@@ -117,7 +128,7 @@ public:
 	bool GetSpeciesScriptNumber(uint16_t species, uint16_t &scriptNumber);
 
 private:
-	bool _Create(const SpeciesTable &speciesTable);
+	bool _Create(const SpeciesTable &speciesTable, const GameFolderHelper &helper);
 
 	std::unordered_map<std::string, uint16_t> _nameToSpecies;
 	std::unordered_map<uint16_t, uint16_t> _speciesToScriptNumber;
@@ -133,17 +144,25 @@ class SpeciesTable
 {
 public:
 	SpeciesTable() { _wNewSpeciesIndex = 0; _fDirty = false; }
-	bool Load(const GameFolderHelper &helper);
-	void Save();
+	// alignToCompiledScripts: order each script's species as its compiled
+	// classes. The alignment loads every script, so a caller that needs
+	// only the script of each species passes false.
+	bool Load(const GameFolderHelper &helper, bool alignToCompiledScripts = true);
+	void Save(CResourceMap &resourceMap);
+	// True when the table changed. The compile writes MakeResourceData() to
+	// its destination.
+	bool IsDirty() const { return _fDirty; }
+	std::vector<uint8_t> MakeResourceData() const;
 	bool GetSpeciesIndex(uint16_t wScript, uint16_t wClassIndexInScript, SpeciesIndex &wSpeciesIndex) const;
 	bool GetSpeciesLocation(SpeciesIndex wSpeciesIndex, uint16_t &wScript, uint16_t &wClassIndexInScript) const;
 	SpeciesIndex MaybeAddSpeciesIndex(uint16_t wScript, uint16_t wClassIndexInScript);
 	std::vector<std::string> GetNames() const;
 
-	void PurgeOldClasses(const GameFolderHelper &helper);
+	void PurgeOldClasses(CResourceMap &resourceMap);
 
 private:
 	bool _Create(sci::istream &byteStream);
+	void _AlignToCompiledScripts(const GameFolderHelper &helper);
 
 	typedef std::unordered_map<uint16_t, std::vector<uint16_t> > species_map;
 

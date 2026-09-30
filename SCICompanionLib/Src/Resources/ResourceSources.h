@@ -41,6 +41,19 @@ struct RebuildStats
 	size_t TotalSize;
 };
 
+// A header whose sizes are both 0: an empty resource (for example, a text with
+// no strings, saved to the package), or damage that zeroed the header.
+// ReadResourceHeader throws it with the header (a zeroed header whose type
+// byte has no mark of its format is damage at once). A package source keeps
+// it as an empty resource only when the header has the map entry's type and
+// number; otherwise the header is damaged.
+class EmptyResourceError : public sci::DataError
+{
+public:
+	explicit EmptyResourceError(const ResourceHeaderAgnostic &emptyHeader) : sci::DataError("the resource is empty"), header(emptyHeader) {}
+	ResourceHeaderAgnostic header;
+};
+
 typedef ResourceHeaderAgnostic(*ReadResourceHeaderFunc)(sci::istream &byteStream, SCIVersion version, ResourceSourceFlags sourceFlags, uint16_t packageHint);
 typedef void(*WriteResourceHeaderFunc)(sci::ostream &byteStream, const ResourceHeaderAgnostic &header);
 
@@ -53,12 +66,23 @@ ResourceHeaderAgnostic ReadResourceHeader(sci::istream &byteStream, SCIVersion v
 	{
 		// TODO: This is a failure, but corrupted data possibly... just continue and log it? Instead of ending
 		// Or make an empty resource.
-		throw std::exception("corrupted resource!");
+		throw sci::DataError("corrupted resource!");
 	}
 	ResourceHeaderAgnostic rhAgnostic = rh.ToAgnostic(version, sourceFlags, packageHint);
+	if ((rhAgnostic.cbCompressed == 0) && (rhAgnostic.cbDecompressed == 0))
+	{
+		// A zeroed SCI1 to SCI2 header reads as view 0 with sizes of 0. Its
+		// type byte has no 0x80 mark, so it is damage, not an empty resource.
+		// An SCI2.1 header has no mark.
+		if (!rh.HasTypeMark())
+		{
+			throw sci::DataError("corrupted resource!");
+		}
+		throw EmptyResourceError(rhAgnostic);
+	}
 	if ((rhAgnostic.cbCompressed == 0) || (rhAgnostic.cbDecompressed == 0))
 	{
-		throw std::exception("corrupted resource!");
+		throw sci::DataError("corrupted resource!");
 	}
 	return rhAgnostic;
 }
@@ -126,6 +150,10 @@ public:
 	// problem to the user instead of silently showing an empty game (#117).
 	// Sources with no such table (patch files, audio) return false.
 	virtual bool IsResourceMapCorrupt() { return false; }
+	// True when this source's SCI1+ lookup table ends after the end of the
+	// map (a truncated map). The GUI still shows the entries that the file
+	// has.
+	virtual bool IsResourceMapTruncated() { return false; }
 };
 
 typedef std::vector<std::unique_ptr<ResourceSource>> ResourceSourceArray;
@@ -177,34 +205,64 @@ struct FileDescriptorBase
 
 	void WriteAndReplaceMapAndVolumes(const sci::ostream &mapStream, const std::unordered_map<int, sci::ostream> &volumeWriteStreams) const
 	{
-		// TODO: Verify we can write to the orignal files. Or do we need to bother? We'll produce nice error messages anyway.
-		// The only time it might be necessary is for .scr and .hep files, since we need those to both succeed or both fail
-
+		// The .bak files that this write made and has not moved yet. A failure before the first volume moves
+		// removes them: the game did not change. After it, they stay and the error names them: a rebuild or a
+		// removal moves resources inside a volume, so the old map does not match a new volume.
+		std::vector<std::string> baks;
+		bool volumeMoved = false;
+		try
 		{
-			// Write the volumes to their bak files.
-			for (const auto &volumeStream : volumeWriteStreams)
 			{
-				ScopedFile holderPackage(_GetVolumeFilenameBak(volumeStream.first), GENERIC_WRITE, 0, CREATE_ALWAYS);
-				holderPackage.Write(volumeStream.second.GetInternalPointer(), volumeStream.second.GetDataSize());
+				// Write the volumes to their bak files.
+				for (const auto &volumeStream : volumeWriteStreams)
+				{
+					std::string bak = _GetVolumeFilenameBak(volumeStream.first);
+					ScopedFile holderPackage(bak, GENERIC_WRITE, 0, CREATE_ALWAYS);
+					baks.push_back(bak);
+					holderPackage.Write(volumeStream.second.GetInternalPointer(), volumeStream.second.GetDataSize());
+				}
+
+				// Now the map
+				std::string mapBak = _GetMapFilenameBak();
+				ScopedFile holderMap(mapBak, GENERIC_WRITE, 0, CREATE_ALWAYS);
+				baks.push_back(mapBak);
+				holderMap.Write(mapStream.GetInternalPointer(), mapStream.GetDataSize());
 			}
 
-			// Now the map
-			ScopedFile holderMap(_GetMapFilenameBak(), GENERIC_WRITE, 0, CREATE_ALWAYS);
-			holderMap.Write(mapStream.GetInternalPointer(), mapStream.GetDataSize());
-		}
+			// Move the volumes over. replacefile is one atomic operation, so there is
+			// no moment where a volume file is missing -- a failed move after a delete
+			// would have lost that file.
+			for (const auto &volumeStream : volumeWriteStreams)
+			{
+				std::string package_name = _GetVolumeFilename( volumeStream.first);
+				replacefile(_GetVolumeFilenameBak( volumeStream.first), package_name);
+				baks.erase(baks.begin());
+				volumeMoved = true;
+			}
 
-		// Move the volumes over. replacefile is one atomic operation, so there is
-		// no moment where a volume file is missing -- a failed move after a delete
-		// would have lost that file.
-		for (const auto &volumeStream : volumeWriteStreams)
+			// Replace the map last, so it only changes once every volume is in place.
+			std::string resmap_name = _GetMapFilename();
+			replacefile(_GetMapFilenameBak(), resmap_name);
+		}
+		catch (...)
 		{
-			std::string package_name = _GetVolumeFilename( volumeStream.first);
-			replacefile(_GetVolumeFilenameBak( volumeStream.first), package_name);
+			if (!volumeMoved)
+			{
+				for (const std::string &bak : baks)
+				{
+					DeleteFileA(bak.c_str());
+				}
+				throw;
+			}
+			sci::Error error = sci::ErrorFromCurrentException("");
+			std::string kept;
+			for (const std::string &bak : baks)
+			{
+				kept += (kept.empty() ? "" : ", ") + bak;
+			}
+			error.context.push_back("a volume was replaced, and the files that match it stay: " + kept + " (rename each one to its name without .bak)");
+			throw sci::DataError(error);
 		}
-
-		// Replace the map last, so it only changes once every volume is in place.
-		std::string resmap_name = _GetMapFilename();
-		replacefile(_GetMapFilenameBak(), resmap_name);
 	}
 };
 
@@ -246,6 +304,11 @@ public:
 		return _TNavigator::IsLookupTableCorrupt(GetMapStream());
 	}
 
+	bool IsResourceMapTruncated() override
+	{
+		return _TNavigator::IsMapShorterThanItsTable(GetMapStream());
+	}
+
 	sci::istream GetHeaderAndPositionedStream(const ResourceMapEntryAgnostic &mapEntry, ResourceHeaderAgnostic &headerEntry) override
 	{
 		sci::istream packageByteStream = _GetVolumeStream(mapEntry.PackageNumber);
@@ -253,12 +316,12 @@ public:
 		{
 			// TODO: This is a failure, but corrupted data possibly... just continue and log it? Instead of ending
 			// Or make an empty resource.
-			throw std::exception("corrupted resource!");
+			throw sci::DataError("corrupted resource!");
 		}
 
 		packageByteStream.seekg(mapEntry.Offset);
 
-		headerEntry = (*_headerReadWrite.reader)(packageByteStream, _version, this->SourceFlags, mapEntry.PackageNumber);
+		headerEntry = _ReadHeader(packageByteStream, mapEntry);
 
 		return packageByteStream;
 	}
@@ -269,11 +332,12 @@ public:
 		sci::istream packageByteStream = _GetVolumeStream(mapEntry.PackageNumber);
 		if (!packageByteStream.good())
 		{
-			throw std::exception("corrupted resource!");
+			throw sci::DataError("corrupted resource!");
 		}
 
 		packageByteStream.seekg(mapEntry.Offset);
-		ResourceHeaderAgnostic headerEntry = (*_headerReadWrite.reader)(packageByteStream, _version, this->SourceFlags, mapEntry.PackageNumber);
+		// An empty resource is its header only: the rebuild keeps it.
+		ResourceHeaderAgnostic headerEntry = _ReadHeader(packageByteStream, mapEntry);
 		uint32_t headerSize = packageByteStream.tellg() - mapEntry.Offset;
 		size = headerSize + headerEntry.cbCompressed;
 		packageByteStream.seekg(mapEntry.Offset);
@@ -539,6 +603,28 @@ protected:
 	}
 
 private:
+	// Reads the header at the stream's position. An empty resource with the
+	// map entry's type and number gives its header (sizes 0). An empty header
+	// with another type or number (a zeroed region) is damage, and throws as
+	// a header that is not in the volume does.
+	ResourceHeaderAgnostic _ReadHeader(sci::istream &packageByteStream, const ResourceMapEntryAgnostic &mapEntry)
+	{
+		try
+		{
+			return (*_headerReadWrite.reader)(packageByteStream, _version, this->SourceFlags, mapEntry.PackageNumber);
+		}
+		catch (const EmptyResourceError &empty)
+		{
+			// The header's number is signed; a number of 32768 or more must
+			// match too.
+			if ((empty.header.Type != mapEntry.Type) || ((uint16_t)empty.header.Number != mapEntry.Number))
+			{
+				throw sci::DataError("corrupted resource!");
+			}
+			return empty.header;
+		}
+	}
+
 	ResourceHeaderReadWrite _headerReadWrite;
 	SCIVersion _version;
 

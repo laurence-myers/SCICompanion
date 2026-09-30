@@ -18,7 +18,11 @@ enum class DecompilerResultType
 	Update, // A minor update
 	Important, // Important status
 	Warning,
-	Error
+	Error,
+	// A dump that a debug option asked for (the control-flow graphs, the
+	// instruction chunks). Not a warning: the command line prints it
+	// plainly.
+	Debug
 };
 
 class IDecompilerResults

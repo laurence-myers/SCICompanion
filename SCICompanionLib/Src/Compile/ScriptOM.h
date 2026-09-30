@@ -140,7 +140,6 @@ namespace sci
 	class Asm;
 	class AsmBlock;
 	class ExportEntry;
-	class WeakSyntaxNode;
 	class NaryOp;
 	class ClassDefDeclaration;
 	class SelectorDeclaration;
@@ -193,7 +192,6 @@ namespace sci
 		virtual void Visit(const Asm &asmSection) = 0;
 		virtual void Visit(const AsmBlock &asmBlock) = 0;
 		virtual void Visit(const ExportEntry &exportEntry) = 0;
-		virtual void Visit(const WeakSyntaxNode &weakNode) = 0;
 		virtual void Visit(const ClassDefDeclaration &classDef) = 0;
 		virtual void Visit(const SelectorDeclaration &selectorDef) = 0;
 		virtual void Visit(const GlobalDeclaration &globalDecl) = 0;
@@ -482,7 +480,7 @@ namespace sci
 	class TypedNode
 	{
 	public:
-		void SetDataType(const std::string &type) { ASSERT(_innerType.empty()); _innerType = type; }
+		void SetDataType(const std::string &type) { assert(_innerType.empty()); _innerType = type; }
 		const std::string &GetDataType() const { return _innerType; }
 	protected:
 		std::string _innerType;
@@ -601,13 +599,13 @@ namespace sci
 		Define(const std::string &label, uint16_t w) : _label(label), _flags(IntegerFlags::None), _wValue(w) {}
 		const std::string &GetLabel() const { return _label; }
 		const std::string &GetName() const { return _label; }
-		uint16_t GetValue() const { ASSERT(_strValue.empty()); return _wValue; }
+		uint16_t GetValue() const { assert(_strValue.empty()); return _wValue; }
 		bool Match(const std::string &label) { return label == _label; }
 
 		IntegerFlags GetFlags() const { return _flags; }
 		void SetLabel(const std::string &label) { _label = label; }
 		void SetValue(uint16_t w) { _wValue = w; }
-		void SetValue(int iNumber, IntegerFlags flags) { ASSERT(iNumber <= 0xFFFF); _wValue = static_cast<uint16_t>(iNumber); _flags = flags; }
+		void SetValue(int iNumber, IntegerFlags flags) { assert(iNumber <= 0xFFFF); _wValue = static_cast<uint16_t>(iNumber); _flags = flags; }
 		void SetValue(const std::string &value) { _strValue = value; };
 		
 
@@ -1201,6 +1199,11 @@ namespace sci
 		void SetScriptId(ScriptId scriptId) { _scriptId = scriptId; }
 		bool IsHeader() const { return _scriptId.IsHeader(); }
 
+		// The game's polygon folder, for (GetPoly "name"). The compile sets
+		// it; with none, the parser looks in "poly" next to the script's folder.
+		void SetPolyFolder(const std::string &polyFolder) { _polyFolder = polyFolder; }
+		const std::string &GetPolyFolder() const { return _polyFolder; }
+
 		void OutputSourceCode(SourceCodeWriter &out) const;
 
 		void Accept(ISyntaxNodeVisitor &visitor) const override;
@@ -1244,6 +1247,7 @@ namespace sci
 
 		// These are not serialized:
 		ScriptId _scriptId;
+		std::string _polyFolder;
 	};
 
 }; // namespace sci	

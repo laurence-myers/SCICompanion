@@ -58,8 +58,6 @@ const uint8_t  PIC_OPXSC1_SET_PRIORITY_BARS = 0x04;
 
 static const int NumPriorityBars = 14;
 
-typedef void (CALLBACK *PFNCLOSECOORDCALLBACK)(void *, CDC *, int, int, int, int);
-
 //
 // This class maintains the state of a picture, that PicCommands
 // might want to change (e.g. current color, priority, etc...)
@@ -513,7 +511,9 @@ CRect GetViewBoundsRect(int16_t xEgo, int16_t yEgo, const ResourceEntity *pvr, i
 bool CanBeHere(size16 displaySize, const uint8_t *pdataPriority, const CRect &rect, uint16_t wControlMask = 0x8000);
 void DrawPatternInRect(int cx, int cy, PicData *pData, int16_t x, int16_t y, EGACOLOR color, uint8_t bPriorityValue, uint8_t bControlValue, PicScreenFlags dwDrawEnable, const PenStyle *pPenStyle);
 
-bool CreatePatternBitmap(CBitmap &bitmapOut, uint8_t patternSize, uint8_t patternNR, bool rectangle, bool pattern);
+// The pen pattern as the bits of a 1 bpp bitmap (CreateBitmap) that is
+// sideLength pixels wide and high.
+std::vector<uint8_t> CreatePatternBits(uint8_t patternSize, uint8_t patternNR, bool rectangle, bool pattern, int &sideLength);
 
 int16_t ColorIndexToContinuousPriorityValue(uint8_t colorIndex);
 uint8_t PriorityValueToColorIndex(bool continuousPriority, int16_t priorityValue);

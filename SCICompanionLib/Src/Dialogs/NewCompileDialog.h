@@ -13,18 +13,28 @@
 ***************************************************************************/
 #pragma once
 
-#include "CompileContext.h"
+#include "CompileBatch.h"
+#include "CompileBatchGui.h"
+#include <atomic>
+#include <vector>
 
-// CCompileDialog dialog
+// The progress of a compile batch: one script for each UWM_STARTCOMPILE
+// message, so the window paints and Cancel works. The caller starts the
+// batch before the dialog and finishes it after the dialog.
 
-class CNewCompileDialog : public CExtResizableDialog
+class CNewCompileDialog : public CExtResizableDialog, public ICompileEvents
 {
 public:
-	CNewCompileDialog(const std::unordered_set<std::string> &scriptsToRecompile, CWnd* pParent = NULL);   // standard constructor
+	CNewCompileDialog(CompileBatch &batch, CWnd* pParent = NULL);   // standard constructor
 	virtual ~CNewCompileDialog();
-	bool HasErrors();
-	bool GetAborted() { return _fAbort; }
 	virtual void OnCancel();
+
+	// ICompileEvents
+	void OnScriptStart(size_t index, size_t count, const ScriptId &script) override;
+	void OnScriptDone(const ScriptOutcome &outcome) override;
+
+	// The scripts that compiled.
+	const std::vector<ScriptId> &CompiledScripts() const { return _compiled; }
 
 // Dialog Data
 	enum { IDD = IDD_COMPILEDIALOG };
@@ -33,21 +43,16 @@ protected:
 	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV support
 	LRESULT CompileAll(WPARAM wParam, LPARAM lParam);
 	virtual BOOL OnInitDialog();
-	virtual void OnDestroy();
 	DECLARE_MESSAGE_MAP()
 
 	CExtProgressWnd m_wndProgress;
 	CExtEdit m_wndDisplay;
-	bool _fResult;
-	bool _fAbort;
+	CompileBatch &_batch;
+	std::atomic<bool> _abort;
 	bool _fDone;
-	int _nScript;
-	std::vector<ScriptId> _scripts;
-	CompileTables _tables;
-	PrecompiledHeaders _headers;
-	CompileLog _log;
-
-	std::unordered_set<std::string> _scriptsToRecompile;
+	// The script that compiles now.
+	ScriptId _current;
+	std::vector<ScriptId> _compiled;
 
 	// Visuals
 	CExtButton m_wndCancel;

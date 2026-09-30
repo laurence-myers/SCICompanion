@@ -17,7 +17,6 @@
 #include "ScriptOMAll.h"
 #include "CompileContext.h"
 #include "ScriptMakerHelper.h"
-#include "AppState.h"
 
 using namespace std;
 using namespace sci;
@@ -223,7 +222,9 @@ PolygonComponent::PolygonComponent(const string &polyFolder, int picNumber) : _p
 	if (picNumber != -1)
 	{
 		CompileLog log;
-		unique_ptr<Script> script = SimpleCompile(log, ScriptId(GetPolyFilePath().c_str()));
+		// A polygon file has no conditional code, so it needs no defines.
+		ScriptId polyScriptId(GetPolyFilePath().c_str());
+		unique_ptr<Script> script = SimpleCompile(std::unordered_set<std::string>(), log, polyScriptId);
 		ExtractPolygonsFromHeader extractPolygons(*this);
 		script->Traverse(extractPolygons);
 	}

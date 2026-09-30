@@ -23,6 +23,7 @@
 #include "ResourceBlob.h"
 #include "View.h"
 #include "CodeInspector.h"
+#include "CoreLog.h"
 
 using namespace std;
 
@@ -901,7 +902,8 @@ void SniffSCIVersion(GameFolderHelper &helper)
 		}
 		catch (...)
 		{
-
+			// The audio map versions keep their defaults.
+			CoreLog(LogLevel::Info, sci::ErrorFromCurrentException("detecting the audio map format").ToString());
 		}
 	}
 
@@ -924,7 +926,8 @@ void SniffSCIVersion(GameFolderHelper &helper)
 		}
 		catch (...)
 		{
-
+			// The resolution keeps its default.
+			CoreLog(LogLevel::Info, sci::ErrorFromCurrentException("detecting the view resolution").ToString());
 		}
 	}
 

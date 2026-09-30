@@ -19,10 +19,8 @@
 #include "AudioCacheResourceSource.h"
 #include "PatchResourceSource.h"
 #include "ResourceMapOperations.h"
-#include "resource.h"
-#include "RemoveScriptDialog.h"
 #include "ResourceContainer.h"
-#include "AppState.h"
+#include "CorePrompt.h"
 
 template<typename _TFileDescriptor>
 std::unique_ptr<ResourceSource> _CreateResourceSource(const std::string &gameFolder, SCIVersion version, ResourceSourceFlags source)
@@ -57,7 +55,7 @@ std::unique_ptr<ResourceSource> _CreateResourceSource(const std::string &gameFol
 	return std::unique_ptr<ResourceSource>(nullptr);
 }
 
-std::unique_ptr<ResourceSource> CreateResourceSource(ResourceTypeFlags flagsHint, const GameFolderHelper &helper, ResourceSourceFlags source, ResourceSourceAccessFlags access, int mapContext)
+std::unique_ptr<ResourceSource> CreateResourceSource(ResourceTypeFlags flagsHint, const GameFolderHelper &helper, ResourceSourceFlags source, ResourceSourceAccessFlags access, int mapContext, CResourceMap *resourceMap)
 {
 	if (source == ResourceSourceFlags::ResourceMap)
 	{
@@ -81,8 +79,7 @@ std::unique_ptr<ResourceSource> CreateResourceSource(ResourceTypeFlags flagsHint
 	}
 	else if (source == ResourceSourceFlags::AudioCache)
 	{
-		// phil, passing null
-		return std::make_unique<AudioCacheResourceSource>(&appState->GetResourceMap(), helper, mapContext, access);
+		return std::make_unique<AudioCacheResourceSource>(resourceMap, helper, mapContext, access);
 	}
 	else if (source == ResourceSourceFlags::AudioMapCache)
 	{
@@ -114,7 +111,7 @@ void DeleteResource(CResourceMap &resourceMap, const ResourceBlob &data)
 	}
 
 	// This is the thing that changes based on version and messagemap or blah.
-	std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeToFlag(data.GetType()), resourceMap.Helper(), sourcFlags, ResourceSourceAccessFlags::ReadWrite);
+	std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeToFlag(data.GetType()), resourceMap.Helper(), sourcFlags, ResourceSourceAccessFlags::ReadWrite, -1, &resourceMap);
 	if (resourceSource)
 	{
 		ResourceMapEntryAgnostic mapEntry;
@@ -163,7 +160,10 @@ void DeleteResource(CResourceMap &resourceMap, const ResourceBlob &data)
 						}
 						if (volumeStream.getBytesRemaining() >= dataLength)
 						{
-							if (data1 && data2 && (0 == memcmp(data1, data2, header.cbCompressed)))
+							// An empty resource has no bytes to compare; its blob has no
+							// data. So it matches, and the delete does not fail with
+							// "Resource not found."
+							if ((dataLength == 0) || (data1 && data2 && (0 == memcmp(data1, data2, header.cbCompressed))))
 							{
 								// Finally yes, they are identical. We know which one to remove.
 								mapEntryToRemove = std::make_unique<ResourceMapEntryAgnostic>(mapEntry);
@@ -177,47 +177,18 @@ void DeleteResource(CResourceMap &resourceMap, const ResourceBlob &data)
 		// Do the actual remove
 		if (!mapEntryToRemove)
 		{
-			AfxMessageBox(TEXT("Resource not found."), MB_ERRORFLAGS);
+			SafeMessageBox("Resource not found.", MB_ERRORFLAGS);
 		}
 		else
 		{
 			resourceSource->RemoveEntry(*mapEntryToRemove);
 		}
 
-		if (mapEntryToRemove && isLastOne && (data.GetType() == ResourceType::Script))
+		if (mapEntryToRemove && isLastOne && (data.GetType() == ResourceType::Script) && resourceMap.GetAppServices())
 		{
-			// TODO: If this is the "last" of this resource, we have extra work to do.
-			CRemoveScriptDialog dialog(static_cast<WORD>(data.GetNumber()));
-			if (IDOK == dialog.DoModal())
-			{
-				// Remove it from the ini
-				std::string iniKey = default_reskey(data.GetNumber(), data.GetHeader().Base36Number);
-				std::string scriptTitle = helper.GetIniString("Script", iniKey);
-				ScriptId scriptId = resourceMap.Helper().GetScriptId(scriptTitle);
-				// First, remove from the [Script] section
-				WritePrivateProfileString("Script", iniKey.c_str(), nullptr, helper.GetGameIniFileName().c_str());
-				// Second, remove from the [Language] section
-				WritePrivateProfileString("Language", scriptTitle.c_str(), nullptr, helper.GetGameIniFileName().c_str());
-
-				if (dialog.AlsoDelete())
-				{
-					// Remove the heap too
-					std::unique_ptr<ResourceBlob> theHeapOne = resourceMap.MostRecentResource(ResourceType::Heap, data.GetNumber(), false);
-					if (theHeapOne)
-					{
-						DeleteResource(resourceMap, *theHeapOne);
-					}
-
-					if (!DeleteFile(scriptId.GetFullPath().c_str()))
-					{
-						char szMessage[MAX_PATH * 2];
-						char szReason[200];
-						FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, 0, (DWORD)GetLastError(), 0, szReason, ARRAYSIZE(szReason), nullptr);
-						StringCchPrintf(szMessage, ARRAYSIZE(szMessage), "Couldn't delete script file.\n%s", szReason);
-						AfxMessageBox(szMessage, MB_OK | MB_ICONEXCLAMATION | MB_APPLMODAL);
-					}
-				}
-			}
+			// The GUI asks whether to remove the script from game.ini, and its
+			// source file too.
+			resourceMap.GetAppServices()->OnLastScriptDeleted(resourceMap, data);
 		}
 	}
 }

@@ -14,7 +14,6 @@
 #include "stdafx.h"
 #include "Sync.h"
 #include "ResourceEntity.h"
-#include "AppState.h"
 #include "format.h"
 
 using namespace std;

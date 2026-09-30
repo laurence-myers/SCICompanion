@@ -14,7 +14,7 @@
 
 #include "stdafx.h"
 #include "Vocab000.h"
-#include "AppState.h"
+#include "CorePrompt.h"
 #include "ResourceEntity.h"
 
 using namespace std;
@@ -44,7 +44,7 @@ bool IsValidVocabString(PCTSTR pszWord, bool fShowUI)
 	{
 		TCHAR szBuffer[MAX_PATH];
 		StringCchPrintf(szBuffer, ARRAYSIZE(szBuffer), TEXT("Invalid word: %s.\nWords must contain only letters or numbers."), pszWord);
-		AfxMessageBox(szBuffer, MB_OK | MB_APPLMODAL | MB_ICONEXCLAMATION);
+		SafeMessageBox(szBuffer, MB_OK | MB_APPLMODAL | MB_ICONEXCLAMATION);
 	}
 
 	return fRet;
@@ -387,7 +387,7 @@ VocabChangeHint Vocab000::AddNewWord(PCTSTR pszWordIn, WordClass dwClass, bool f
 	if (hint == VocabChangeHint::None)
 	{
 		assert(szBuffer[0]);
-		AfxMessageBox(szBuffer, MB_OK | MB_APPLMODAL | MB_ICONEXCLAMATION);
+		SafeMessageBox(szBuffer, MB_OK | MB_APPLMODAL | MB_ICONEXCLAMATION);
 	}
 
 	return hint;
@@ -449,7 +449,7 @@ VocabChangeHint Vocab000::AddWordToGroup(PCTSTR pszWord, WordGroup group, bool f
 	{
 		TCHAR szBuffer[MAX_PATH];
 		StringCchPrintf(szBuffer, ARRAYSIZE(szBuffer), TEXT("Failed to add \"%s\": Word already exists!"), pszWord);
-		AfxMessageBox(szBuffer, MB_ERRORFLAGS);
+		SafeMessageBox(szBuffer, MB_ERRORFLAGS);
 	}
 	return hint;
 }

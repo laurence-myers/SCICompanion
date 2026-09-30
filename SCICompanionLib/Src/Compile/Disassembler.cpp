@@ -15,7 +15,7 @@
 #include "Disassembler.h"
 #include "DisassembleHelper.h"
 #include "scii.h"
-#include "AppState.h"
+#include "CoreLog.h"
 #include "OutputCodeHelper.h"
 #include "PMachine.h"
 #include "Vocab000.h"
@@ -402,7 +402,7 @@ void DisassembleCode(SCIVersion version, std::ostream &out, ICompiledScriptLooku
 	catch (...)
 	{
 		// In case we read more than there was.
-		appState->LogInfo("Error while disassembling script.");
+		CoreLog(LogLevel::Warning, "Error while disassembling script.");
 	}
 }
 

@@ -13,7 +13,6 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "ScriptOMAll.h"
-#include "AppState.h"
 #include "OutputCodeHelper.h"
 #include "SCISourceCodeFormatter.h"
 #include "StringUtil.h"
@@ -153,9 +152,4 @@ void MethodDefinition::OutputSourceCode(SourceCodeWriter &out) const
 void ClassProperty::OutputSourceCode(SourceCodeWriter &out) const
 {
 	OutputSourceCode_SCI(*this, out);
-}
-
-void SourceCodeFormatter::Visit(const sci::WeakSyntaxNode &weakNode)
-{
-	if (weakNode.WeakNode) { weakNode.WeakNode->Accept(*this); }
 }

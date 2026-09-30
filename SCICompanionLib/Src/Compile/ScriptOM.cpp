@@ -24,12 +24,6 @@
 using namespace sci;
 using namespace std;
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#undef THIS_FILE
-static char THIS_FILE[] = __FILE__;
-#endif
-
 std::string g_restLastParamSentinel = "REST_LAST_PARAM_SENTINEL";
 
 bool Script::IsExport(const std::string &name) const
@@ -232,7 +226,7 @@ std::string PropertyValueBase::ToString() const
 		StringCchCopy(szDesc, ARRAYSIZE(szDesc), TEXT("Undefined"));
 		break;
 	default:
-		ASSERT(false);
+		assert(false);
 		break;
 	}
 	return szDesc;
@@ -290,7 +284,7 @@ ConditionalExpression::ConditionalExpression(std::unique_ptr<SyntaxNode> stateme
 //
 void SendCall::TransferParamsFrom(SendCall *pSend)
 {
-	ASSERT(pSend->_params.size() == 1); // Used for coalescing of "unit" send calls... so should only be one param.
+	assert(pSend->_params.size() == 1); // Used for coalescing of "unit" send calls... so should only be one param.
 	AddSendParam(move(pSend->_params[0]));
 	pSend->_params.clear(); // Since we transfered....
 }
@@ -349,7 +343,7 @@ bool PropertyValueBase::operator!=(const PropertyValueBase& value)
 
 void PropertyValueBase::SetValue(int iValue, IntegerFlags flags)
 {
-	ASSERT(iValue <= 65536);
+	assert(iValue <= 65536);
 	_numberValue = static_cast<WORD>(iValue);
 	_type = sci::ValueType::Number;
 	_fHex = IsFlagSet(flags, IntegerFlags::Hex);
@@ -456,7 +450,7 @@ void FunctionSignature::AddParam(std::unique_ptr<FunctionParameter> pParam, bool
 	{
 		_iOptional = _params.size() - 1; // This is the beginning of optional parameters.
 	}
-	ASSERT(fOptional || (_iOptional == NoOptional));
+	assert(fOptional || (_iOptional == NoOptional));
 }
 
 
@@ -470,7 +464,7 @@ void FunctionBase::AddParam(const std::string &param)
 {
 	// This is for "backwards compatibility" with SCI syntax only...
 	// Most uses should go directly through FunctionSignature.
-	ASSERT(!_signatures.empty()); // Whomever calls AddParam had better add a signature.
+	assert(!_signatures.empty()); // Whomever calls AddParam had better add a signature.
 	_signatures[0]->AddParam(param);
 }
 void FunctionBase::AddVariable(unique_ptr<VariableDecl> pVar, PropertyValue value)
@@ -661,7 +655,6 @@ void IfStatement::Accept(ISyntaxNodeVisitor &visitor) const { visitor.Enter(*thi
 void Asm::Accept(ISyntaxNodeVisitor &visitor) const { visitor.Enter(*this); visitor.Visit(*this); visitor.Leave(*this); }
 void AsmBlock::Accept(ISyntaxNodeVisitor &visitor) const { visitor.Enter(*this); visitor.Visit(*this); visitor.Leave(*this); }
 void ExportEntry::Accept(ISyntaxNodeVisitor &visitor) const { visitor.Enter(*this); visitor.Visit(*this); visitor.Leave(*this); }
-void WeakSyntaxNode::Accept(ISyntaxNodeVisitor &visitor) const { visitor.Enter(*this); visitor.Visit(*this); visitor.Leave(*this); }
 void ClassDefDeclaration::Accept(ISyntaxNodeVisitor &visitor) const { visitor.Enter(*this); visitor.Visit(*this); visitor.Leave(*this); }
 void SelectorDeclaration::Accept(ISyntaxNodeVisitor &visitor) const { visitor.Enter(*this); visitor.Visit(*this); visitor.Leave(*this); }
 void GlobalDeclaration::Accept(ISyntaxNodeVisitor &visitor) const { visitor.Enter(*this); visitor.Visit(*this); visitor.Leave(*this); }

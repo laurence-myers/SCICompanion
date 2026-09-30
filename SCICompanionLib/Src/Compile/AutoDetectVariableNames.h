@@ -48,6 +48,9 @@ public:
 	// names what it can and applies the names to the script. Returns the globals
 	// this run named (standard name, new name), which it also wrote to mainSCO.
 	std::vector<std::pair<std::string, std::string>> Run();
+	// The globals that the last Run named (standard name, new name). After a
+	// Run that threw, the globals that it wrote to mainSCO before the throw.
+	std::vector<std::pair<std::string, std::string>> GlobalRenames() const;
 
 private:
 	sci::Script &_script;

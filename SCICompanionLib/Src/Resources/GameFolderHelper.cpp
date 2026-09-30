@@ -14,6 +14,7 @@
 #include "stdafx.h"
 #include "ResourceContainer.h" 
 #include "GameFolderHelper.h"
+#include "ScriptNameMap.h"
 #include "ResourceBlob.h"
 #include "ResourceMapOperations.h"
 #include "format.h"
@@ -21,8 +22,8 @@
 #include "AudioResourceSource.h"
 #include "AudioCacheResourceSource.h"
 #include "PatchResourceSource.h"
-#include "AppState.h"
 #include "SoundUtil.h"
+#include "Text.h"
 
 using namespace std;
 
@@ -58,10 +59,20 @@ std::string default_reskey(int iNumber, uint32_t base36Number)
 	}
 }
 
+std::string GameFolderHelper::GetScriptTitle(uint16_t wScript) const
+{
+	if (ScriptNames)
+	{
+		return ScriptNames->NameOf(wScript);
+	}
+	std::string key = default_reskey(wScript, NoBase36);
+	return GetIniString("Script", key, key.c_str());
+}
+
 std::string GameFolderHelper::GetScriptFileName(WORD wScript) const
 {
 	std::string filename;
-	std::string scriptTitle = GetIniString("Script", default_reskey(wScript, NoBase36), default_reskey(wScript, NoBase36).c_str());
+	std::string scriptTitle = GetScriptTitle(wScript);
 	if (!scriptTitle.empty())
 	{
 		filename = GetScriptFileName(scriptTitle);
@@ -101,6 +112,11 @@ std::string GameFolderHelper::GetScriptDebugFileName(uint16_t wScript) const
 	return fmt::format("{0}\\{1:03d}.scd", debugFolder, wScript);
 }
 
+std::string GameFolderHelper::GetScriptDebugFilePath(uint16_t wScript) const
+{
+	return fmt::format("{0}\\{1:03d}.scd", _GetSubfolder("debug"), wScript);
+}
+
 std::string GameFolderHelper::GetScriptSymbolFileName(uint16_t wScript) const
 {
 	std::string debugFolder = _GetSubfolder("debug");
@@ -111,7 +127,7 @@ std::string GameFolderHelper::GetScriptSymbolFileName(uint16_t wScript) const
 std::string GameFolderHelper::GetScriptObjectFileName(WORD wScript) const
 {
 	std::string filename;
-	std::string scriptTitle = GetIniString("Script", default_reskey(wScript, NoBase36), default_reskey(wScript, NoBase36).c_str());
+	std::string scriptTitle = GetScriptTitle(wScript);
 	if (!scriptTitle.empty())
 	{
 		filename = GetScriptObjectFileName(scriptTitle);
@@ -172,7 +188,7 @@ bool GameFolderHelper::GetIniBool(const std::string &sectionName, const std::str
 	return GetIniString(sectionName, keyName, value ? TrueValue.c_str() : FalseValue.c_str()) == TrueValue;
 }
 
-bool GameFolderHelper::DoesSectionExistWithEntries(const std::string &sectionName)
+bool GameFolderHelper::DoesSectionExistWithEntries(const std::string &sectionName) const
 {
 	char sz[200];
 	return (GetPrivateProfileSection(sectionName.c_str(), sz, (DWORD)ARRAYSIZE(sz), GetGameIniFileName().c_str()) > 0);
@@ -284,6 +300,7 @@ int GameFolderHelper::GetCodepage() const
 void GameFolderHelper::SetCodepage(int codepage) const
 {
 	SetIniString(GameSection, CodepageKey, codepage == 1252 ? CodePage1252 : CodePage437);
+	SetTextCodepage(codepage);
 }
 
 bool GameFolderHelper::GetGenerateDebugInfo() const
@@ -317,7 +334,12 @@ ResourceEnumFlags GameFolderHelper::GetDefaultEnumFlags() const
 
 ResourceSourceFlags GameFolderHelper::GetDefaultSaveSourceFlags() const
 {
-	ResourceSaveLocation saveLocation = GetResourceSaveLocation(ResourceSaveLocation::Default);
+	return GetSaveSourceFlags(ResourceSaveLocation::Default);
+}
+
+ResourceSourceFlags GameFolderHelper::GetSaveSourceFlags(ResourceSaveLocation location) const
+{
+	ResourceSaveLocation saveLocation = GetResourceSaveLocation(location);
 	return (saveLocation == ResourceSaveLocation::Patch) ? ResourceSourceFlags::PatchFile : ResourceSourceFlags::ResourceMap;
 }
 
@@ -358,7 +380,8 @@ std::unique_ptr<ResourceContainer> GameFolderHelper::Resources(ResourceTypeFlags
 			// Our audio cache files take precedence
 			if (IsFlagSet(types, ResourceTypeFlags::Audio))
 			{
-				mapAndVolumes->push_back(move(make_unique<AudioCacheResourceSource>(&appState->GetResourceMap(), *this, mapContext, ResourceSourceAccessFlags::Read)));
+				// A read source: it needs no resource map (the map is for writes).
+				mapAndVolumes->push_back(move(make_unique<AudioCacheResourceSource>(nullptr, *this, mapContext, ResourceSourceAccessFlags::Read)));
 			}
 
 			// Audiomaps can come from the cache files folder too... but we can re-use PatchFilesResourceSource for this

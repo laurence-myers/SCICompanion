@@ -153,7 +153,12 @@ void CSoundDoc::_OnImportWav()
 				ScopedFile scopedFile(filename, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
 				sci::streamOwner owner(scopedFile.hFile);
 				std::unique_ptr<AudioComponent> audioComponent = std::make_unique<AudioComponent>();
-				AudioComponentFromWaveFile(owner.getReader(), *audioComponent, nullptr, MaxSCI1SampleRate, true);
+				std::vector<CompileResult> conversionNotes;
+				AudioComponentFromWaveFile(owner.getReader(), *audioComponent, nullptr, MaxSCI1SampleRate, true, &conversionNotes);
+				if (!conversionNotes.empty())
+				{
+					appState->OutputResults(OutputPaneType::Compile, conversionNotes);
+				}
 				ApplyChanges<SoundComponent>(
 					[](SoundComponent &sound)
 				{

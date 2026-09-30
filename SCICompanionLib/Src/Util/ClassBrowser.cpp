@@ -1405,6 +1405,55 @@ const VariableDeclVector *SCIClassBrowser::_GetMainGlobals() const
 	return pArray;
 }
 
+// Try to figure out which script, if any, this identifier is exported from.
+// This is just used for error reporting.
+std::string SCIClassBrowser::ScriptThatExports(const std::string &identifier)
+{
+	ClassBrowserLock lock(*this);
+	lock.Lock();
+	std::string strRet;
+	const VariableDeclVector *globals = GetMainGlobals();
+	if (globals)
+	{
+		if (matches_name(globals->begin(), globals->end(), identifier))
+		{
+			strRet = "main";
+		}
+	}
+	if (strRet.empty())
+	{
+		const Script *pContainerScript = nullptr;
+		// Try exported procedures.
+		const RawProcedureVector &procs = GetPublicProcedures();
+		auto procIt = match_name(procs.begin(), procs.end(), identifier);
+		if (procIt != procs.end())
+		{
+			pContainerScript = (*procIt)->GetOwnerScript();
+		}
+		if (pContainerScript == nullptr)
+		{
+			// Try classes.
+			const RawClassVector &classes = GetAllClasses();
+			auto classIt = match_name(classes.begin(), classes.end(), identifier);
+			if (classIt != classes.end())
+			{
+				pContainerScript = (*classIt)->GetOwnerScript();
+			}
+		}
+		if (pContainerScript)
+		{
+			strRet = pContainerScript->GetName();
+			// Trim the ".sc" off.
+			auto it = strRet.find('.');
+			if (it != std::string::npos)
+			{
+				strRet.erase(it);
+			}
+		}
+	}
+	return strRet;
+}
+
 const VariableDeclVector *SCIClassBrowser::GetMainGlobals() const
 {
 	std::lock_guard<std::recursive_mutex> lock(_mutexClassBrowser);

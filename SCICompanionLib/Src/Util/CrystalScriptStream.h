@@ -13,8 +13,11 @@
 ***************************************************************************/
 #pragma once
 
-#include "CCrystalTextBuffer.h"
 #include "CompileInterfaces.h"
+#include "ScriptText.h"
+#include <functional>
+
+class CCrystalTextBuffer;
 
 class ISyntaxParserCallback
 {
@@ -26,16 +29,22 @@ public:
 class ReadOnlyTextBuffer
 {
 public:
+	// All of the text, with no editor buffer (the engine's form).
+	explicit ReadOnlyTextBuffer(const ScriptText &text);
+	// The editor's text (the GUI's form), all of it or up to a limit. In the
+	// GUI library (CrystalScriptStreamGui.cpp).
 	ReadOnlyTextBuffer(CCrystalTextBuffer *pBuffer);
 	ReadOnlyTextBuffer(CCrystalTextBuffer *pBuffer, CPoint limit, int extraSpace);
 
 	int GetLineCount() { return _lineCount; }
 	int GetLineLength(int nLine);
 	PCTSTR GetLineChars(int nLine);
-	CPoint GetLimit() { return _limit; }
+	TextPos GetLimit() { return _limit; }
 	void Extend(const std::string &extraChars);
 
 private:
+	void _Init(const std::function<int(int)> &lineLength, const std::function<PCTSTR(int)> &lineChars, TextPos limit, int extraSpace);
+
 	struct StartAndLength
 	{
 		int Start;
@@ -46,7 +55,7 @@ private:
 	std::unique_ptr<StartAndLength[]> _lineStartsAndLengths;
 	std::vector<char> _text;
 	int _extraSpace;
-	CPoint _limit;
+	TextPos _limit;
 };
 
 //
@@ -56,6 +65,8 @@ private:
 class CScriptStreamLimiter
 {
 public:
+	// All of the text, with no editor buffer (the engine's form).
+	explicit CScriptStreamLimiter(const ScriptText &text);
 	CScriptStreamLimiter(CCrystalTextBuffer *pBuffer);
 	CScriptStreamLimiter(CCrystalTextBuffer *pBuffer, CPoint ptLimit, int extraSpace);
 
@@ -63,7 +74,7 @@ public:
 
 	void Extend(const std::string &extraChars) { _pBuffer->Extend(extraChars); }
 
-	CPoint GetLimit()
+	TextPos GetLimit()
 	{
 		return _pBuffer->GetLimit();
 	}
@@ -92,7 +103,7 @@ public:
 		int iLength = 0;
 		if (nLine == _nLineLimit + 1)
 		{
-			ASSERT(FALSE);
+			assert(FALSE);
 		}
 		if (nLine == _nLineLimit)
 		{
