@@ -862,8 +862,12 @@ namespace UnitTests
                 {
                     args.push_back(dryRun);
                 }
+                // A report of another run: the run writes over it.
+                WriteFileText(report, std::string(cli::FunctionReportHeader) + "\n999\tx\ty\t0000\t1\tclassic\tasm\t\tgraph: old\n");
                 Expect(0, args);
-                std::vector<std::string> lines = Lines(ReadFileText(report));
+                std::string text = ReadFileText(report);
+                Assert::IsTrue(text.find("999\t") == std::string::npos, Wide(text).c_str());
+                std::vector<std::string> lines = Lines(text);
                 Assert::IsTrue(lines.size() > 2, Wide(ReadFileText(report)).c_str());
                 Assert::AreEqual(std::string(cli::FunctionReportHeader), lines[0]);
                 int lastOffset = -1;
