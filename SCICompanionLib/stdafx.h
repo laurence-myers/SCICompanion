@@ -130,3 +130,6 @@ struct delete_map_value
 #include "Stream.h"
 #include "StlUtil.h"
 #include "CObjectWrap.h"
+// Before any "#define new DEBUG_NEW": the MFC macro breaks the placement new
+// in tl::expected.
+#include "Result.h"

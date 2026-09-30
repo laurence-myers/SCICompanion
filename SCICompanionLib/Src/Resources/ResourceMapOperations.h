@@ -12,12 +12,14 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #pragma once
+#include "ResourceSources.h"
 
 class GameFolderHelper;
 class CResourceMap;
 class ResourceBlob;
 class ResourceSource;
-enum class ResourceSourceAccessFlags;
 enum class ResourceTypeFlags;
 void DeleteResource(CResourceMap &resourceMap, const ResourceBlob &data);
-std::unique_ptr<ResourceSource> CreateResourceSource(ResourceTypeFlags flagsHint, const GameFolderHelper &helper, ResourceSourceFlags source, ResourceSourceAccessFlags access = ResourceSourceAccessFlags::Read, int mapContext = -1);
+// resourceMap: the map that the audio cache source writes its audio maps
+// through (ResourceSourceFlags::AudioCache). The other sources do not use it.
+std::unique_ptr<ResourceSource> CreateResourceSource(ResourceTypeFlags flagsHint, const GameFolderHelper &helper, ResourceSourceFlags source, ResourceSourceAccessFlags access = ResourceSourceAccessFlags::Read, int mapContext = -1, CResourceMap *resourceMap = nullptr);

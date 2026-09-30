@@ -236,6 +236,8 @@ RGBQUAD _RGBQuadFromColorRef(COLORREF color);
 COLORREF _ColorRefFromRGBQuad(RGBQUAD color);
 RGBQUAD EgaColorToRGBQuad(EGACOLOR ega);
 extern const int VocabKernelNames;
+extern const int VocabClassTable;
+extern const int VocabSelectorNames;
 
 EGACOLOR g_egaColorChooserPalette[];
 
@@ -426,6 +428,9 @@ public:
 	
 	// Returns the complete path, for loading/saving, etc...
 	std::string GetFullPath() const;
+	// The complete path as it was given, not lower-cased: for a message
+	// that names the file (for example, the MSBuild diagnostics of scic).
+	std::string GetFullPathOrig() const;
 
 	// Set the path w/o changing the resource number.
 	void SetFullPath(const std::string &fullPath);
@@ -444,6 +449,7 @@ private:
 	void _Init(PCTSTR pszFullFileName, WORD wScriptNum = InvalidResourceNumber);
 
 	std::string _strFolder;
+	std::string _strFolderOrig;     // Not lower-cased
 	std::string _strFileName;
 	std::string _strFileNameOrig;   // Not lower-cased
 	WORD _wScriptNum;
@@ -512,8 +518,6 @@ extern CPrecisionTimer g_compileObjFileTimer;
 extern CPrecisionTimer g_compileAppendTimer;
 
 const std::string MakeFile(PCSTR pszContent, const std::string &filename);
-void ShowTextFile(PCSTR pszContent, const std::string &filename);
-void ShowFile(const std::string &actualPath);
 std::string MakeTextFile(PCSTR pszContent, const std::string &filename);
 std::string GetBinaryDataVisualization(const uint8_t *data, size_t length, int columns = 16);
 

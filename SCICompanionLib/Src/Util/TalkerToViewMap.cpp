@@ -13,9 +13,9 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "TalkerToViewMap.h"
-#include "AppState.h"
 #include "cpptoml.h"
 #include "format.h"
+#include "CoreLog.h"
 
 using namespace std;
 using namespace cpptoml;
@@ -78,7 +78,8 @@ TalkerToViewMap::TalkerToViewMap(const std::string &lipSyncFolder)
 	}
 	catch (...)
 	{
-
+		// The map keeps the entries that it read.
+		CoreLogCurrentException("reading " + _filename);
 	}
 }
 

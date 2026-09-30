@@ -18,6 +18,7 @@
 #include "DisassembleHelper.h"
 #include "DecompilerConfig.h"
 #include "Vocab99x.h"
+#include <set>
 using namespace sci;
 using namespace std;
 using namespace fmt;
@@ -113,24 +114,35 @@ public:
 
 		if (scriptSCO && (scriptSCO != _globalVarSCO))
 		{
-			auto &decompiledScriptVarIt = script.GetScriptVariables().begin();
-			// Use these as locals. The freshly decompiled script will still have things like local1 and local26.
-			// We assume that the number and order of variables in the SCO is the same as in the decompiled script.
-			int index = 0;
-			for (CSCOLocalVariable &localVar : scriptSCO->GetVariables())
+			// Use these as locals. The .sco has one entry for each local index
+			// (the other indices of an array have an empty name), and the freshly
+			// decompiled script has names such as local1 and local26. A name goes
+			// to the declaration that starts at its index. The decompiled script
+			// can declare arrays in another way than the source that made the
+			// .sco, so a name at an index where no declaration starts is not used.
+			// Nor is a name that a declaration has already, or that an earlier
+			// index took: a .sco can name two indices alike.
+			map<int, VariableDecl*> declarationAt;
+			set<string> usedNames;
+			int start = 0;
+			for (auto &varDecl : script.GetScriptVariables())
 			{
-				if (!localVar.GetName().empty()) // Empty ones are for padding arrays.
+				declarationAt[start] = varDecl.get();
+				usedNames.insert(varDecl->GetName());
+				start += varDecl->GetSize();
+			}
+			const vector<CSCOLocalVariable> &localVars = scriptSCO->GetVariables();
+			for (int index = 0; index < (int)localVars.size(); index++)
+			{
+				const string &scoName = localVars[index].GetName();
+				auto declaration = declarationAt.find(index);
+				if (!scoName.empty() && (declaration != declarationAt.end()))
 				{
-					if (decompiledScriptVarIt != script.GetScriptVariables().end())
+					string stdDecompiledName = declaration->second->GetName();
+					if ((scoName != stdDecompiledName) && usedNames.insert(scoName).second)
 					{
-						string stdDecompiledName = (*decompiledScriptVarIt)->GetName();
-						if (localVar.GetName() != stdDecompiledName)
-						{
-							// It must have been given a name, so use it.
-							SetRenamed(nullptr, stdDecompiledName, localVar.GetName(), false);
-						}
-						index += (*decompiledScriptVarIt)->GetSize();
-						++decompiledScriptVarIt;
+						// It must have been given a name, so use it.
+						SetRenamed(nullptr, stdDecompiledName, scoName, false);
 					}
 				}
 			}
@@ -440,8 +452,7 @@ public:
 	void Visit(const Asm &asmSection) override {}
 	void Visit(const AsmBlock &asmBlock) override {}
 	void Visit(const ExportEntry &exportEntry) override {}
-	void Visit(const WeakSyntaxNode &weakNode) override {}
-	void Visit(const NaryOp &weakNode) override {}
+	void Visit(const NaryOp &naryOp) override {}
 	void Visit(const ClassDefDeclaration &classDef) override {}
 	void Visit(const SelectorDeclaration &selectorDef) override {}
 	void Visit(const GlobalDeclaration &globalDecl) override {}
@@ -551,8 +562,7 @@ public:
 	void Visit(const Asm &asmSection) override {}
 	void Visit(const AsmBlock &asmBlock) override {}
 	void Visit(const ExportEntry &exportEntry) override {}
-	void Visit(const WeakSyntaxNode &weakNode) override {}
-	void Visit(const NaryOp &weakNode) override {}
+	void Visit(const NaryOp &naryOp) override {}
 	void Visit(const ClassDefDeclaration &classDef) override {}
 	void Visit(const SelectorDeclaration &selectorDef) override {}
 	void Visit(const GlobalDeclaration &globalDecl) override {}
@@ -777,6 +787,11 @@ vector<pair<string, string>> VariableNamer::Run()
 	} while (renameContext.IsDirty());
 
 	return renameContext.IsMainDirty();
+}
+
+vector<pair<string, string>> VariableNamer::GlobalRenames() const
+{
+	return _context->IsMainDirty();
 }
 
 void AutoDetectVariableNames(Script &script, const IDecompilerConfig *config, CSCOFile *mainSCO, CSCOFile *scriptSCO, vector<pair<string, string>> &mainDirtyRenames)

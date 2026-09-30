@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Solution-wide build targets. -->
+<Project>
+
+  <!--
+    The vcpkg targets install the packages of vcpkg.json and add their
+    include folder (see Directory.Build.props). Without vcpkg the build
+    stops here with an error, not later with a missing header. A tree whose
+    own Directory.Build.props has no vcpkg (an older commit in a worktree
+    inside this checkout takes this file) has no ScicVcpkgRoot, and no check.
+  -->
+  <Import Condition="'$(VcpkgPropsImported)' == 'true'"
+          Project="$(ScicVcpkgRoot)\scripts\buildsystems\msbuild\vcpkg.targets" />
+  <Target Name="ScicCheckVcpkg" BeforeTargets="PrepareForBuild"
+          Condition="'$(ScicVcpkgRoot)' != '' and !$(MSBuildProjectName.StartsWith('ProfUISLIB')) and '$(VcpkgPropsImported)' != 'true'">
+    <Error Text="vcpkg was not found at '$(ScicVcpkgRoot)'. Install the Visual Studio component 'vcpkg package manager', or set VCPKG_ROOT to a vcpkg folder." />
+  </Target>
+
+  <!--
+    A change of vcpkg.json rebuilds the projects: vcpkg keeps the file times
+    of a package that it builds, which can be older than the objects, so the
+    compare of file times does not see new headers. A hash of vcpkg.json goes
+    into the ProjectStateLine, and a changed ProjectStateLine makes
+    InitializeBuildStatus rebuild the project. The target sets it at each
+    build, not at the evaluation: a running Visual Studio keeps the
+    evaluation of a project until the solution reloads. The read tlog lets
+    the up-to-date check of Visual Studio see a change of vcpkg.json (vcpkg
+    writes one only for the project that installs).
+  -->
+  <Target Name="ScicVcpkgManifestState" BeforeTargets="InitializeBuildStatus"
+          Condition="'$(ScicVcpkgRoot)' != '' and '$(DesignTimeBuild)' != 'true' and Exists('$(MSBuildThisFileDirectory)vcpkg.json')">
+    <PropertyGroup>
+      <ScicVcpkgManifest>$(MSBuildThisFileDirectory)vcpkg.json</ScicVcpkgManifest>
+      <ProjectStateLine>VcpkgManifest=$([MSBuild]::StableStringHash($([System.IO.File]::ReadAllText('$(ScicVcpkgManifest)')))):$(ProjectStateLine)</ProjectStateLine>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(TLogLocation)ScicVcpkgManifest.read.1u.tlog"
+                      Lines="^$(ScicVcpkgManifest)"
+                      Encoding="Unicode"
+                      Overwrite="true" />
+  </Target>
+
+</Project>

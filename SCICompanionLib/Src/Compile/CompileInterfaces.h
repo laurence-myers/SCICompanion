@@ -36,6 +36,7 @@ enum ProcedureType
 	ProcedureUnknown,
 	ProcedureMain,	  // Something in the main script (wIndex)
 	ProcedureExternal,  // Something in another script  (wScript, wIndex)
+	ProcedureMissingScript,	// proc<N>_<M> in a game with no script N (wScript, wIndex)
 	ProcedureLocal,	 // Something in the current script (wIndex)
 	ProcedureKernel,	// A kernel function (wIndex)
 };
@@ -145,10 +146,26 @@ public:
 		_resourceType = ResourceType::None;
 	}
 
+	// An error or a warning at a 1-based line of the script, in the form of
+	// the compiler's (CompileContext::_ReportThing): "Warning: (file) message
+	// Line: N, col: C", with the message as the raw message.
+	static CompileResult AtLine(bool error, const ScriptId &script, int line, int column, const std::string &message)
+	{
+		CompileResult result(std::string(error ? "Error" : "Warning") + ": (" + script.GetFileNameOrig() + ") " + message + "  Line: " + std::to_string(line) +
+			", col: " + std::to_string(column), script, line, column, error ? CRT_Error : CRT_Warning);
+		result.SetRawMessage(message);
+		return result;
+	}
+
 	bool IsError() const { return (_type == CRT_Error); }
 	bool IsWarning() const { return (_type == CRT_Warning); }
 	ScriptId GetScript() const { return _script; }
 	const std::string &GetMessage() const { return _message; }
+	// The message with no "Error: (file) ... Line: N, col: M" around it, for
+	// the diagnostics of the command line. The message itself when nothing
+	// is around it.
+	const std::string &GetRawMessage() const { return _rawMessage.empty() ? _message : _rawMessage; }
+	void SetRawMessage(const std::string &rawMessage) { _rawMessage = rawMessage; }
 	int GetLineNumber() const { return _nLine; }
 	int GetColumn() const { return _nCol; }
 	BOOL CanGotoScript() const { return !_script.IsNone(); }
@@ -156,6 +173,7 @@ public:
 
 private:
 	std::string _message;
+	std::string _rawMessage;
 	ScriptId _script;
 	ResourceType _resourceType;
 	int _nLine;

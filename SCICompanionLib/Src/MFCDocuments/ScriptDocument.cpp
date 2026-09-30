@@ -46,31 +46,7 @@
 
 using namespace std;
 
-bool CompileLog::HasErrors()
-{
-	return _cErrors > 0;
-}
-
-void CompileLog::CalculateErrors()
-{
-	// Calculate errors;
-	_cErrors += (int)count_if(_compileResults.begin(), _compileResults.end(), mem_fun_ref(&CompileResult::IsError));
-	_cWarnings += (int)count_if(_compileResults.begin(), _compileResults.end(), mem_fun_ref(&CompileResult::IsWarning));
-}
-
-
-void CompileLog::SummarizeAndReportErrors()
-{
-	stringstream summaryMessage;
-	summaryMessage << _cErrors << " errors, " << _cWarnings << " warnings.";
-	ReportResult(CompileResult(summaryMessage.str()));
-
-	if (_cErrors && appState->_fPlayCompileErrorSound)
-	{
-		// Play a sound.
-		PlaySound((LPCSTR)SND_ALIAS_SYSTEMEXCLAMATION, NULL, SND_ALIAS_ID | SND_ASYNC);
-	}
-}
+// The CompileLog functions are in CompileScript.cpp.
 
 // CScriptDocument
 
@@ -120,6 +96,7 @@ void CScriptDocument::OnUpdateIsScript(CCmdUI *pCmdUI)
 }
 
 const char c_szLine[] = "--------------------------------------------------------";
+
 void CScriptDocument::OnCompile()
 {
 	if (_scriptId.IsHeader())
@@ -134,17 +111,53 @@ void CScriptDocument::OnCompile()
 			OnFileSave();
 		}
 
-		DeferResourceAppend defer(appState->GetResourceMap());
+		GameSession &session = appState->GetSession();
 		CompileLog log;
 		_ClearErrorCount();
-		CompileTables tables;
-		tables.Load(appState->GetVersion());
-		PrecompiledHeaders headers(appState->GetResourceMap());
-		CompileResults results(log);
-		bool fSuccess = NewCompileScript(results, log, tables, headers, _scriptId);
-		if (fSuccess)
+		// A batch of one script. It saves the tables when the script
+		// compiled, and writes the resources in one commit. It asks before a
+		// package save that a patch file would hide.
+		CompileOptions options;
+		options.askShadows = AskAboutShadowingPatches;
+		sci::Result<std::unique_ptr<CompileBatch>> batch = CompileBatch::Start(session, { _scriptId }, options);
+		CompileReport report;
+		if (batch)
 		{
-			tables.Save();
+			std::atomic<bool> abort(false);
+			ICompileEvents events;
+			{
+				// The class browser's background reload parses the same scripts and
+				// reads the game, so hold its lock for the compile.
+				ClassBrowserLock lock(appState->GetClassBrowser());
+				lock.Lock();
+				while ((*batch)->Step(abort, events))
+				{
+				}
+			}
+			report = (*batch)->Finish();
+		}
+		else
+		{
+			log.ReportResult(StartFailureLine(batch.error()));
+		}
+		bool fSuccess = !report.scripts.empty() && report.scripts[0].status.has_value();
+		// The user stopped it in the question: not an error.
+		bool stopped = batch ? (!report.commit && (report.commit.error().code == sci::ErrorCode::Cancelled)) :
+			(batch.error().code == sci::ErrorCode::Cancelled);
+		if (fSuccess && report.commit)
+		{
+			// The script is written: it is not out of date. Only a commit
+			// that succeeded clears it.
+			appState->GetDependencyTracker().ClearScript(_scriptId);
+		}
+		CompileStats stats;
+		if (!report.scripts.empty())
+		{
+			for (const CompileResult &result : report.scripts[0].diagnostics)
+			{
+				log.ReportResult(result);
+			}
+			stats = report.scripts[0].stats;
 		}
 
 		// put a timestamp in.
@@ -160,159 +173,35 @@ void CScriptDocument::OnCompile()
 
 		stringstream str;
 		str << "Compiling " << _scriptId.GetFileName();
-		str << (fSuccess ? " succeeded." : " failed.");
+		// A script that compiled, but whose write failed, did not succeed.
+		str << (stopped ? " was stopped." : (!fSuccess ? " failed." : (report.commit ? " succeeded." : " compiled, but was not written.")));
 		log.ReportResult(CompileResult(c_szLine));
 		log.ReportResult(CompileResult(str.str()));
 
-		string info = fmt::format(
-			"Object data: {0} bytes   Code: {1} bytes   Script vars: {2} bytes   Strings: {3} bytes	Saids: {4} bytes",
-			results.Stats.Objects,
-			results.Stats.Code,
-			results.Stats.Locals,
-			results.Stats.Strings,
-			results.Stats.Saids
-		);
-		log.ReportResult(CompileResult(info));
-
-		HRESULT hr = defer.Commit();
-		if (FAILED(hr))
+		if (fSuccess)
 		{
-			char sz[200];
-			StringCchPrintf(sz, ARRAYSIZE(sz), "There was a problem writing the compiled script: %x", hr);
-			log.ReportResult(CompileResult(sz));
-			// Without FORMAT_MESSAGE_IGNORE_INSERTS, FormatMessage reads the
-			// Arguments array for any %1/%2 insert in the system text; the old
-			// code passed a fake one-entry array, so such a message read bad
-			// data (#57). Use a separate buffer so the text above is kept.
-			char szSystem[200] = {};
-			if (FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, HRESULT_CODE(hr), 0, szSystem, ARRAYSIZE(szSystem), nullptr) == 0)
-			{
-				StringCchCopy(szSystem, ARRAYSIZE(szSystem), "(no system message)");
-			}
-			log.ReportResult(CompileResult(szSystem, CompileResult::CRT_Error));
-			log.CalculateErrors();
+			// No sizes when the script did not compile.
+			string info = fmt::format(
+				"Object data: {0} bytes   Code: {1} bytes   Script vars: {2} bytes   Strings: {3} bytes	Saids: {4} bytes",
+				stats.Objects,
+				stats.Code,
+				stats.Locals,
+				stats.Strings,
+				stats.Saids
+			);
+			log.ReportResult(CompileResult(info));
 		}
+
+		ReportCompileBatch(report, log, "There was a problem writing the compiled script: ");
+		// The counts of every error and warning above.
+		log.CalculateErrors();
 		_DoErrorSummary(log);
 
 		appState->OutputResults(OutputPaneType::Compile, log.Results());
 	}
 }
 
-std::unique_ptr<sci::Script> SimpleCompile(CompileLog &log, ScriptId &scriptId, bool addCommentsToOM)
-{
-	std::unique_ptr<sci::Script> script = make_unique<sci::Script>();
-	script->SetScriptId(scriptId);
-	// Make a new buffer.
-	CCrystalTextBuffer buffer;
-	if (buffer.LoadFromFile(scriptId.GetFullPath().c_str()))
-	{
-		CScriptStreamLimiter limiter(&buffer);
-		CCrystalScriptStream stream(&limiter);
-		if (SyntaxParser_Parse(*script, stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), &log, addCommentsToOM))
-		{
-
-		}
-	}
-	log.CalculateErrors();
-	buffer.FreeAll();
-	return script;
-}
-
-bool NewCompileScript(CompileResults &results, CompileLog &log, CompileTables &tables, PrecompiledHeaders &headers, ScriptId &script)
-{
-	bool fRet = false;
-	ClassBrowserLock lock(appState->GetClassBrowser());
-	lock.Lock();
-
-	g_compileIOTimer.Start();
-
-	// Make a new buffer.
-	CCrystalTextBuffer buffer;
-	if (buffer.LoadFromFile(script.GetFullPath().c_str()))
-	{
-		g_compileIOTimer.Stop();
-
-		CScriptStreamLimiter limiter(&buffer);
-		CCrystalScriptStream stream(&limiter);
-
-		std::unique_ptr<sci::Script> pScript = std::make_unique<sci::Script>(script);
-
-		if (SyntaxParser_Parse(*pScript, stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), &log))
-		{
-			if (script.GetResourceNumber() != pScript->GetScriptNumber())
-			{
-				log.ReportResult(
-					CompileResult(fmt::format("Script {0} ({1}) declared itself as resource {2}", script.GetResourceNumber(), script.GetTitle(), pScript->GetScriptNumber()),
-					CompileResult::CompileResultType::CRT_Warning));
-			}
-
-			// Compile and save script resource.
-			// Compile our own script!
-			if (GenerateScriptResource(appState->GetVersion(), *pScript, headers, tables, results, appState->GetResourceMap().Helper().GetGenerateDebugInfo()))
-			{
-				WORD wNum = results.GetScriptNumber();
-
-				// Save the text resource - but only if it's different than what's there (otherwise needless text resource turds pile up)
-				if (!results.GetTextComponent().Texts.empty())
-				{
-					ResourceEntity &textResource = results.GetTextResource();
-					// Mark it as being auto-generated by a script compile:
-					textResource.GetComponent<TextComponent>().AddString(AutoGenTextSentinel);
-
-					auto existingTextResource = appState->GetResourceMap().CreateResourceFromNumber(ResourceType::Text, textResource.ResourceNumber);
-					if (!existingTextResource || !existingTextResource->GetComponent<TextComponent>().AreTextsEqual(textResource.GetComponent<TextComponent>()))
-					{
-						appState->GetResourceMap().AppendResource(textResource, appState->GetVersion().DefaultVolumeFile, textResource.ResourceNumber, "");
-						log.ReportResult(
-							CompileResult(fmt::format("Text resource {1} changed. Added {0} entries.", results.GetTextComponent().Texts.size(), textResource.ResourceNumber),
-							CompileResult::CompileResultType::CRT_Message)
-							);
-					} // Else don't save.
-				}
-
-				// Update any tables that need to be modified (global class table, selector table)
-
-				// Save the script resource
-				std::vector<BYTE> &output = results.GetScriptResource();
-				const GameFolderHelper &helper = appState->GetResourceMap().Helper();
-				appState->GetResourceMap().AppendResource(ResourceBlob(helper, nullptr, ResourceType::Script, output, helper.Version.DefaultVolumeFile, wNum, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags()));
-
-				std::vector<BYTE> &outputHep = results.GetHeapResource();
-				if (!outputHep.empty())
-				{
-					appState->GetResourceMap().AppendResource(ResourceBlob(helper, nullptr, ResourceType::Heap, outputHep, helper.Version.DefaultVolumeFile, wNum, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags()));
-				}
-
-				appState->GetDependencyTracker().ClearScript(pScript->GetScriptId());
-
-				// Save the corresponding sco file.
-				g_compileIOTimer.Start();
-				g_compileObjFileTimer.Start();
-				CSCOFile &sco = results.GetSCO();
-				{
-					SaveSCOFile(helper, sco, script);
-				}
-				g_compileObjFileTimer.Stop();
-				g_compileDebugSymbolTimer.Start();
-				if (!results.GetDebugInfo().empty())
-				{
-					// Save debug information.
-					std::string scdFileName = helper.GetScriptDebugFileName(script.GetResourceNumber());
-					ofstream scdFile(scdFileName.c_str(), ios::out | ios::binary);
-					// REVIEW: yucky
-					scdFile.write((const char *)&results.GetDebugInfo()[0], (std::streamsize)results.GetDebugInfo().size());
-					scdFile.close();
-				}
-				g_compileDebugSymbolTimer.Stop();
-				g_compileIOTimer.Stop();
-				fRet = true;
-			}
-		}
-		log.CalculateErrors();
-		buffer.FreeAll();
-	}
-	return fRet;
-}
+// SimpleCompile and NewCompileScript are in Src\Compile\CompileScript.cpp.
 
 void DisassembleScript(WORD wScript)
 {
@@ -341,73 +230,7 @@ void CScriptDocument::OnDisassemble()
 	}
 }
 
-void DecompileScript(const GameFolderHelper &helper, WORD wScript, IDecompilerResults &results)
-{
-	CompiledScript compiledScript(0);
-	if (compiledScript.Load(helper, appState->GetVersion(), wScript))
-	{
-		unique_ptr<sci::Script> pScript = DecompileScript(nullptr, *appState->GetResourceMap().GetCompiledScriptLookups(), helper, wScript, compiledScript, results);
-		std::stringstream ss;
-		sci::SourceCodeWriter out(ss, pScript.get());
-		pScript->OutputSourceCode(out);
-		ShowTextFile(ss.str().c_str(), "script.scp.txt");
-	}
-}
-
-void FixDuplicateObjectNames(CompiledScript &compiledScript, const SelectorTable &selectorTable)
-{
-	// Occasionally a script will have objects with duplicate names. Rather than a bug, this indicates that there were two separate objects that had
-	// their name property explicitly provided. An example is _MapInSection.sc in QFG2.
-	// There are a few ways to address it, but we'll try the following here:
-	//  Check for any name dupes in the objects.
-	//  If so, change their name to some unique name
-	//  Then add a name property with a value pointing to the original string.
-	unordered_map<string, int> countOfNames;
-	unordered_map<string, char> suffixes;
-	for (const auto &object : compiledScript.GetObjects())
-	{
-		countOfNames[object->GetName()]++;
-		suffixes[object->GetName()] = 'a';
-	}
-
-	for (auto &object : compiledScript.GetObjects())
-	{
-		int count = countOfNames[object->GetName()];
-		if (count > 1)
-		{
-			// This is a multiple named one.
-			std::string newName = fmt::format("{0}_{1}", object->GetName(), suffixes[object->GetName()]++);
-			object->AdjustName(newName); // This will track the old name so we can explicitly list it
-		}
-	}
-}
-
-std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, const GameFolderHelper &helper, WORD wScript, CompiledScript &compiledScript, IDecompilerResults &results, bool debugControlFlow, bool debugInstConsumption, PCSTR pszDebugFilter, bool decompileAsm, bool substituteTextTuples)
-{
-	unique_ptr<sci::Script> pScript;
-	ObjectFileScriptLookups objectFileLookups(helper, scriptLookups.GetSelectorTable());
-	// Ok if pText fails (and is NULL)
-	unique_ptr<ResourceEntity> textResource = appState->GetResourceMap().CreateResourceFromNumber(ResourceType::Text, wScript);
-	TextComponent *pText = nullptr;
-	if (textResource)
-	{
-		pText = textResource->TryGetComponent<TextComponent>();
-	}
-
-	FixDuplicateObjectNames(compiledScript, config->GetSelectorTable());
-
-	DecompileLookups decompileLookups(config, helper, wScript, &scriptLookups, &objectFileLookups, &compiledScript, pText, &compiledScript, results);
-	decompileLookups.DebugControlFlow = debugControlFlow;
-	decompileLookups.DebugInstructionConsumption = debugInstConsumption;
-	decompileLookups.pszDebugFilter = pszDebugFilter;
-	decompileLookups.DecompileAsm = decompileAsm;
-	decompileLookups.SubstituteTextTuples = substituteTextTuples;
-	pScript.reset(Decompile(helper, compiledScript, decompileLookups, appState->GetResourceMap().GetVocab000()));
-
-	ConvertToSCISyntaxHelper(*pScript, &scriptLookups);
-
-	return pScript;
-}
+// DecompileScript and FixDuplicateObjectNames are in Src\Compile\DecompileScript.cpp.
 
 void CScriptDocument::OnViewObjectFile()
 {
@@ -459,16 +282,15 @@ void CScriptDocument::OnViewScriptResource()
 
 unique_ptr<sci::Script> _ParseScript(ScriptId id)
 {
-	CCrystalTextBuffer buffer;
-	if (buffer.LoadFromFile(id.GetFullPath().c_str()))
+	sci::Result<ScriptText> text = LoadScriptText(id.GetFullPath());
+	if (text)
 	{
-		CScriptStreamLimiter limiter(&buffer);
+		CScriptStreamLimiter limiter(*text);
 		CCrystalScriptStream stream(&limiter);
 
 		std::unique_ptr<sci::Script> pScript = std::make_unique<sci::Script>(id);
 		CompileLog log;
 		bool result = SyntaxParser_Parse(*pScript, stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), &log);
-		buffer.FreeAll();
 		if (result)
 		{
 			return pScript;
@@ -493,7 +315,7 @@ void CScriptDocument::OnViewSyntaxTree()
 	bool fCompile = SyntaxParser_Parse(script, stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), &log);;
 	if (fCompile)
 	{
-		ConvertToSCISyntaxHelper(script);
+		ConvertToSCISyntaxHelper(script, appState->GetResourceMap().Helper());
 
 		std::stringstream out;
 		sci::SourceCodeWriter theCode(out, &script);
@@ -548,9 +370,14 @@ void CScriptDocument::OnUpdateLineCount(CCmdUI *pCmdUI)
 	pCmdUI->SetText(fmt::format("{0} lines.", _buffer.GetLineCount()).c_str());
 }
 
-void CScriptDocument::_DoErrorSummary(ICompileLog &log)
+void CScriptDocument::_DoErrorSummary(CompileLog &log)
 {
 	log.SummarizeAndReportErrors();
+	if (log.HasErrors() && appState->_fPlayCompileErrorSound)
+	{
+		// Play a sound.
+		PlaySound((LPCSTR)SND_ALIAS_SYSTEMEXCLAMATION, NULL, SND_ALIAS_ID | SND_ASYNC);
+	}
 }
 
 void CScriptDocument::_ClearErrorCount()

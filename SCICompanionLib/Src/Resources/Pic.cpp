@@ -15,14 +15,14 @@
 #include "Pic.h"
 #include "PicCommands.h"
 #include "PicOperations.h"
-#include "PicDrawManager.h"
-#include "AppState.h"
 #include "ResourceEntity.h"
-#include "DontShowAgainDialog.h"
+#include "CoreLog.h"
+#include "CorePrompt.h"
+#include <atomic>
 #include "PaletteOperations.h"
 #include "View.h"
 #include "Polygon.h"
-#include "ImageUtil.h"
+#include "ImageData.h"
 #include "format.h"
 
 using namespace std;
@@ -932,7 +932,7 @@ void ReadPicCelFromVGA2(sci::istream &byteStream, Cel &cel, int16_t &priority, b
 		size_t dataSize = (size_t)celHeader.size.cx * (size_t)celHeader.size.cy;
 		if (dataSize > (size_t)16 * 1024 * 1024)
 		{
-			throw std::exception("Corrupt raster resource.");
+			throw sci::DataError("Corrupt raster resource.");
 		}
 		cel.Data.allocate(max(1, dataSize));
 		byteStream.read_data(&cel.Data[0], dataSize);
@@ -1130,12 +1130,34 @@ void PicWriteToVGA2(const ResourceEntity &resource, sci::ostream &byteStream, st
 	// Now just those pesky random mystery data.
 }
 
+namespace
+{
+	std::atomic<PicCheckWarningHandler> g_picCheckWarningHandler(nullptr);
+
+	void WarnAboutPic(const std::string &text)
+	{
+		PicCheckWarningHandler handler = g_picCheckWarningHandler.load();
+		if (handler != nullptr)
+		{
+			handler(text);
+		}
+		else
+		{
+			CoreLog(LogLevel::Warning, text);
+		}
+	}
+}
+
+PicCheckWarningHandler SetPicCheckWarningHandler(PicCheckWarningHandler handler)
+{
+	return g_picCheckWarningHandler.exchange(handler);
+}
+
 bool PicValidateEGA(const ResourceEntity &resource)
 {
 	const PicComponent &pic = resource.GetComponent<PicComponent>();
 
 	// Perform a little validation.
-	if (!appState->_fDontCheckPic)
 	{
 		DWORD fPalettePresent = 0;
 		for (size_t i = 0; i < pic.commands.size(); i++)
@@ -1148,10 +1170,7 @@ bool PicValidateEGA(const ResourceEntity &resource)
 		}
 		if (fPalettePresent != 0xf)
 		{
-			// Warn the user
-			CDontShowAgainDialog dialog(TEXT("This pic is missing a Set Palette command for one or more of the four palettes.\nThis may lead to unpredictable results when the game draws the pic."),
-				appState->_fDontCheckPic);
-			dialog.DoModal();
+			WarnAboutPic("This pic is missing a Set Palette command for one or more of the four palettes.\nThis may lead to unpredictable results when the game draws the pic.");
 		}
 	}
 	return true; // Always save anyway...
@@ -1178,7 +1197,6 @@ bool PicValidateVGA(const ResourceEntity &resource)
 
 
 	// Perform a little validation.
-	if (!appState->_fDontCheckPic)
 	{
 		bool found = false;
 		for (size_t i = 0; !found && (i < pic.commands.size()); i++)
@@ -1187,10 +1205,7 @@ bool PicValidateVGA(const ResourceEntity &resource)
 		}
 		if (!found)
 		{
-			// Warn the user
-			CDontShowAgainDialog dialog(TEXT("This pic is missing a Set Priority Bars command\nThis may lead to unpredictable results when the game draws the pic."),
-				appState->_fDontCheckPic);
-			dialog.DoModal();
+			WarnAboutPic("This pic is missing a Set Priority Bars command\nThis may lead to unpredictable results when the game draws the pic.");
 		}
 	}
 

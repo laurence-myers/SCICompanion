@@ -18,6 +18,48 @@ jobs:
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
 
+    # The build installs the packages of vcpkg.json with the runner's vcpkg
+    # (VCPKG_INSTALLATION_ROOT; see Directory.Build.props). vcpkg.json pins a
+    # registry baseline and package versions, so the vcpkg clone needs those
+    # commits: fetch them, with all the history when the clone is shallow.
+    - name: Fetch the vcpkg registry
+      shell: pwsh
+      run: |
+        # The vcpkg of the build: VCPKG_ROOT, else VCPKG_INSTALLATION_ROOT
+        # (Directory.Build.props).
+        $root = $env:VCPKG_ROOT
+        if (-not $root) { $root = $env:VCPKG_INSTALLATION_ROOT }
+        if (-not $root) { throw "Neither VCPKG_ROOT nor VCPKG_INSTALLATION_ROOT is set." }
+        if ((git -C $root rev-parse --is-shallow-repository) -eq 'true') {
+          git -C $root fetch --quiet --unshallow origin
+        } else {
+          git -C $root fetch --quiet origin
+        }
+        if ($LASTEXITCODE -ne 0) { throw "git fetch of the vcpkg registry failed ($LASTEXITCODE)." }
+
+    # vcpkg keeps its downloads (its tools and the sources) and the packages
+    # that it builds in these folders. The cache restores them, so a job
+    # downloads them only when vcpkg.json changes.
+    - name: Set the vcpkg cache folders
+      shell: pwsh
+      run: |
+        $downloads = Join-Path $env:RUNNER_TEMP 'vcpkg-downloads'
+        $archives = Join-Path $env:RUNNER_TEMP 'vcpkg-archives'
+        New-Item -ItemType Directory -Force $downloads, $archives | Out-Null
+        "VCPKG_DOWNLOADS=$downloads" >> $env:GITHUB_ENV
+        "VCPKG_DEFAULT_BINARY_CACHE=$archives" >> $env:GITHUB_ENV
+        "VCPKG_CACHE_IMAGE=$env:ImageVersion" >> $env:GITHUB_ENV
+
+    - name: Cache vcpkg
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.temp }}\vcpkg-downloads
+          ${{ runner.temp }}\vcpkg-archives
+        # The image version: a new image can have another compiler, so the
+        # packages need another build.
+        key: vcpkg-${{ runner.os }}-${{ env.VCPKG_CACHE_IMAGE }}-${{ hashFiles('vcpkg.json') }}
+
     # The image ships the v143 toolset (MSVC 14.44) and the Windows 11 SDK.
     # MFC is installed per toolset version, and the image only has MFC for
     # its latest toolset. Add MFC and ATL for 14.44. This is a small install.
@@ -49,6 +91,7 @@ jobs:
 
     # The toolset and SDK come from the project files.
     - name: Build
+      id: build
       run: |
         msbuild SCICompanion.sln /m /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }}
         mkdir artifacts
@@ -77,6 +120,65 @@ jobs:
       shell: pwsh
       timeout-minutes: 10
       run: .\UnitTests\RunTests.ps1 -Configuration ${{ matrix.configuration }} -Integration -BlameHang
+
+    # Smoke test of the command-line tool (docs/scic-cli/plan.md, section 10).
+    # Run the built scic.exe as a user does, on two copies of the SCI1.1
+    # template in the runner's temp folder: the template as it ships (its
+    # own sources compile first, as a dry run that writes nothing), and a
+    # game that SCI Companion never opened (no game.ini, no src\). Each
+    # command must exit with 0 and print no internal error, each summary
+    # must name every script that list found, and the second game must not
+    # get a game.ini. The step runs also when a test step failed, so that
+    # its result shows.
+    - name: Smoke test scic.exe
+      if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+      shell: pwsh
+      timeout-minutes: 5
+      run: |
+        $scic = (Resolve-Path "${{ matrix.configuration }}\scic.exe").Path
+        $template = "${{ matrix.configuration }}\TemplateGame\SCI1.1"
+        # Runs scic and prints its output. Fails on an exit code that is not
+        # 0, and on an internal error (a bug of scic) with any exit code.
+        # Returns the lines of stdout (Out) and of both streams (All).
+        function Invoke-Scic {
+          Write-Host "> scic $args"
+          # The stderr of scic is output here, not an error.
+          $ErrorActionPreference = 'Continue'
+          $output = @(& $scic @args 2>&1)
+          $code = $LASTEXITCODE
+          $all = @($output | ForEach-Object { "$_" })
+          $all | ForEach-Object { Write-Host $_ }
+          if ($code -ne 0) { throw "scic $($args -join ' ') exited with $code." }
+          if ($all | Where-Object { $_.EndsWith('[internal]') }) { throw "scic $($args -join ' ') printed an internal error." }
+          return [pscustomobject]@{ Out = @($output | Where-Object { $_ -is [string] }); All = $all }
+        }
+        # Fails unless a line starts with the text (for example a summary).
+        function Assert-Line($lines, [string]$start) {
+          if (-not ($lines | Where-Object { $_.StartsWith($start) })) { throw "No line starts with: $start" }
+        }
+        Invoke-Scic --version | Out-Null
+
+        $root = Join-Path $env:RUNNER_TEMP "scic-smoke"
+        New-Item -ItemType Directory -Force $root | Out-Null
+        $shipped = Join-Path $root "SCI1.1"
+        $neverOpened = Join-Path $root "SCI1.1-never-opened"
+        Copy-Item $template $shipped -Recurse
+        Copy-Item $template $neverOpened -Recurse
+        Remove-Item (Join-Path $neverOpened "game.ini")
+        Remove-Item (Join-Path $neverOpened "src") -Recurse
+        foreach ($game in @($shipped, $neverOpened)) {
+          # A row of the table (stdout) starts with the script number.
+          $count = @((Invoke-Scic script list $game).Out | Where-Object { $_ -match '^\s*\d+\s' }).Count
+          if ($count -lt 1) { throw "scic script list found no script in $game." }
+          if ($game -eq $shipped) {
+            # The sources as they ship, as a dry run: the game keeps its
+            # files for the decompile, which replaces the sources.
+            Assert-Line (Invoke-Scic --dry-run script compile $game --all).All "Compiled $count of $count scripts;"
+          }
+          Assert-Line (Invoke-Scic script decompile $game --all).All "Decompiled and wrote $count of $count scripts."
+          Assert-Line (Invoke-Scic script compile $game --all).All "Compiled and wrote $count of $count scripts"
+        }
+        if (Test-Path (Join-Path $neverOpened "game.ini")) { throw "scic created game.ini in a game that had none." }
 
     # Show a pass/fail table in the run summary, so a failure is visible without
     # downloading the .trx artifact. Runs even when a test step failed. (B8 of #76.)
@@ -122,6 +224,48 @@ jobs:
 
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
+
+    # The build installs the packages of vcpkg.json with the runner's vcpkg
+    # (VCPKG_INSTALLATION_ROOT; see Directory.Build.props). vcpkg.json pins a
+    # registry baseline and package versions, so the vcpkg clone needs those
+    # commits: fetch them, with all the history when the clone is shallow.
+    - name: Fetch the vcpkg registry
+      shell: pwsh
+      run: |
+        # The vcpkg of the build: VCPKG_ROOT, else VCPKG_INSTALLATION_ROOT
+        # (Directory.Build.props).
+        $root = $env:VCPKG_ROOT
+        if (-not $root) { $root = $env:VCPKG_INSTALLATION_ROOT }
+        if (-not $root) { throw "Neither VCPKG_ROOT nor VCPKG_INSTALLATION_ROOT is set." }
+        if ((git -C $root rev-parse --is-shallow-repository) -eq 'true') {
+          git -C $root fetch --quiet --unshallow origin
+        } else {
+          git -C $root fetch --quiet origin
+        }
+        if ($LASTEXITCODE -ne 0) { throw "git fetch of the vcpkg registry failed ($LASTEXITCODE)." }
+
+    # vcpkg keeps its downloads (its tools and the sources) and the packages
+    # that it builds in these folders. The cache restores them, so a job
+    # downloads them only when vcpkg.json changes.
+    - name: Set the vcpkg cache folders
+      shell: pwsh
+      run: |
+        $downloads = Join-Path $env:RUNNER_TEMP 'vcpkg-downloads'
+        $archives = Join-Path $env:RUNNER_TEMP 'vcpkg-archives'
+        New-Item -ItemType Directory -Force $downloads, $archives | Out-Null
+        "VCPKG_DOWNLOADS=$downloads" >> $env:GITHUB_ENV
+        "VCPKG_DEFAULT_BINARY_CACHE=$archives" >> $env:GITHUB_ENV
+        "VCPKG_CACHE_IMAGE=$env:ImageVersion" >> $env:GITHUB_ENV
+
+    - name: Cache vcpkg
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.temp }}\vcpkg-downloads
+          ${{ runner.temp }}\vcpkg-archives
+        # The image version: a new image can have another compiler, so the
+        # packages need another build.
+        key: vcpkg-${{ runner.os }}-${{ env.VCPKG_CACHE_IMAGE }}-${{ hashFiles('vcpkg.json') }}
 
     # Same MFC/ATL install as the build job (a separate job gets a clean runner).
     - name: Install MFC and ATL for the 14.44 toolset
@@ -247,8 +391,59 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    # Failure-handling rules (docs/scic-cli/plan.md, section 6.8): no new empty
+    # "catch (...)", no new "throw std::exception(...)", no new AfxMessageBox
+    # in the engine folders, and no new use of the GUI object appState in the
+    # engine folders (section 3.2). A hard gate; the older sites are in the
+    # allowlist.
+    - name: Check failure handling
+      shell: pwsh
+      run: .\UnitTests\Tools\CheckFailureHandling.ps1
+
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
+
+    # The build installs the packages of vcpkg.json with the runner's vcpkg
+    # (VCPKG_INSTALLATION_ROOT; see Directory.Build.props). vcpkg.json pins a
+    # registry baseline and package versions, so the vcpkg clone needs those
+    # commits: fetch them, with all the history when the clone is shallow.
+    - name: Fetch the vcpkg registry
+      shell: pwsh
+      run: |
+        # The vcpkg of the build: VCPKG_ROOT, else VCPKG_INSTALLATION_ROOT
+        # (Directory.Build.props).
+        $root = $env:VCPKG_ROOT
+        if (-not $root) { $root = $env:VCPKG_INSTALLATION_ROOT }
+        if (-not $root) { throw "Neither VCPKG_ROOT nor VCPKG_INSTALLATION_ROOT is set." }
+        if ((git -C $root rev-parse --is-shallow-repository) -eq 'true') {
+          git -C $root fetch --quiet --unshallow origin
+        } else {
+          git -C $root fetch --quiet origin
+        }
+        if ($LASTEXITCODE -ne 0) { throw "git fetch of the vcpkg registry failed ($LASTEXITCODE)." }
+
+    # vcpkg keeps its downloads (its tools and the sources) and the packages
+    # that it builds in these folders. The cache restores them, so a job
+    # downloads them only when vcpkg.json changes.
+    - name: Set the vcpkg cache folders
+      shell: pwsh
+      run: |
+        $downloads = Join-Path $env:RUNNER_TEMP 'vcpkg-downloads'
+        $archives = Join-Path $env:RUNNER_TEMP 'vcpkg-archives'
+        New-Item -ItemType Directory -Force $downloads, $archives | Out-Null
+        "VCPKG_DOWNLOADS=$downloads" >> $env:GITHUB_ENV
+        "VCPKG_DEFAULT_BINARY_CACHE=$archives" >> $env:GITHUB_ENV
+        "VCPKG_CACHE_IMAGE=$env:ImageVersion" >> $env:GITHUB_ENV
+
+    - name: Cache vcpkg
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.temp }}\vcpkg-downloads
+          ${{ runner.temp }}\vcpkg-archives
+        # The image version: a new image can have another compiler, so the
+        # packages need another build.
+        key: vcpkg-${{ runner.os }}-${{ env.VCPKG_CACHE_IMAGE }}-${{ hashFiles('vcpkg.json') }}
 
     - name: Install MFC and ATL for the 14.44 toolset
       shell: pwsh
@@ -269,14 +464,14 @@ jobs:
           -Path "$installPath\VC\Tools\MSVC\14.44.*\atlmfc\lib\x86\mfc140.lib"
         if (-not $mfc) { throw "MFC for the 14.44 toolset was not found after the install." }
 
-    # Build the first-party library with Code Analysis on. continue-on-error: the
+    # Build the first-party libraries with Code Analysis on. continue-on-error: the
     # analysis reports a backlog today, so it must not fail the build. A clean-up
     # pass and a promotion to a hard gate are follow-on work (#80).
     - name: Build with MSVC Code Analysis
       shell: pwsh
       continue-on-error: true
       run: |
-        msbuild SCICompanion.sln -m -t:SCICompanionLib -p:Configuration=Release -p:Platform=Win32 -p:RunCodeAnalysis=true -v:normal |
+        msbuild SCICompanion.sln -m "-t:SCICompanionCore;SCICompanionLib" -p:Configuration=Release -p:Platform=Win32 -p:RunCodeAnalysis=true -v:normal |
           Tee-Object -FilePath analyze.log
         $warns = @(Select-String -Path analyze.log -Pattern 'warning C(6|26|28)\d\d\d').Count
         Write-Host "MSVC Code Analysis warnings: $warns"

@@ -1,0 +1,332 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{3B1D5C2E-7A4F-4E8B-9C61-2F0D8E5A7B34}</ProjectGuid>
+    <RootNamespace>SCICompanionCore</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+    <UseOfMfc>false</UseOfMfc>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+    <UseOfMfc>false</UseOfMfc>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>stdafx.h</PrecompiledHeaderFile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_LIB;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <SDLCheck>true</SDLCheck>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)SCICompanionLib\Src\Core;$(SolutionDir)SCICompanionLib\Src\Util;$(SolutionDir)SCICompanionLib\Src\Resources;$(SolutionDir)SCICompanionLib\Src\Compile;$(SolutionDir)SCICompanionLib\Src\Cli;$(SolutionDir)SCICompanionLib\Src\CRC32;$(SolutionDir)SCICompanionLib\Src\CppFormat;$(SolutionDir)SCICompanionLib\Src\cpptoml;$(SolutionDir)SCICompanionLib\Src\r8brain;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>stdafx.h</PrecompiledHeaderFile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;_LIB;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <SDLCheck>true</SDLCheck>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)SCICompanionLib\Src\Core;$(SolutionDir)SCICompanionLib\Src\Util;$(SolutionDir)SCICompanionLib\Src\Resources;$(SolutionDir)SCICompanionLib\Src\Compile;$(SolutionDir)SCICompanionLib\Src\Cli;$(SolutionDir)SCICompanionLib\Src\CRC32;$(SolutionDir)SCICompanionLib\Src\CppFormat;$(SolutionDir)SCICompanionLib\Src\cpptoml;$(SolutionDir)SCICompanionLib\Src\r8brain;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="stdafx.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Cli\Cli.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Cli\CliCommands.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Cli\CliConsole.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Cli\CliHost.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Cli\CliVersion.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Cli\ExitCodes.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\AstRewrite.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\AutoCompleteSourceTypes.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\AutoDetectVariableNames.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\CodeInspector.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\CompileBatch.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\CompileCommon.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\CompileContext.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\CompiledScript.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\CompileInterfaces.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\CompileWrite.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ControlFlowGraph.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ControlFlowGraphViz.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ControlFlowNode.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileBatch.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerAstPasses.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerConfig.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerCore.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerFallback.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerNew.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerResults.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileRun.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileScript.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\DisassembleHelper.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\Disassembler.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\DocScript.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\NodeTypes.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\Operators.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\OperatorTables.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\OutputCodeHelper.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ParseAutoCompleteContext.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ParserActions.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ParserCommon.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ParserPrimitives.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\PMachine.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\scii.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\SCIProps.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\SCISourceCodeFormatter.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\SCISyntaxParser.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\SCO.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ScriptMakerHelper.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ScriptOM.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ScriptOMAll.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ScriptOMInterfaces.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ScriptOMSmall.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\SourceCodeFormatter.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\SummarizeScript.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\SyntaxContext.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\SyntaxParser.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\TarjanAlgorithm.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\Types.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ValidateSaid.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Core\ClassHints.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Core\CoreLog.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Core\CorePrompt.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Core\FileWrite.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Core\GameSession.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Core\Result.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\CppFormat\format.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\cpptoml\cpptoml.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\CRC32\crc.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\r8brain\CDSPBlockConvolver.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\r8brain\CDSPFIRFilter.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\r8brain\CDSPFracInterpolator.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\r8brain\CDSPProcessor.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\r8brain\CDSPRealFFT.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\r8brain\CDSPResampler.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\r8brain\CDSPSincFilterGen.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\r8brain\fft4g.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\r8brain\r8bbase.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\r8brain\r8bconf.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\Audio.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\AudioCacheResourceSource.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\AudioMap.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\AudioNegative.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\AudioResourceSource.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\Components.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\Cursor.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\DrawPixelCallback.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\Font.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\GameFolderHelper.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\Message.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\MessageHeaderFile.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\MessageSource.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\NounsAndCases.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\PaletteOperations.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\PatchResourceSource.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\Pic.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\PicCommands.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\PicCommandsCommon.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\PicOperations.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\Polygon.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\RasterOperations.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\ResourceBlob.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\ResourceContainer.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\ResourceEntity.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\ResourceMap.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\ResourceMapEvents.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\ResourceMapOperations.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\ResourceRecency.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\ResourceSourceFlags.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\ResourceSources.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\ResourceUtil.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\ScriptCatalog.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\ScriptNameMap.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\Sound.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\SoundOperations.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\Sync.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\Text.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\VersionDetectionHelper.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\View.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\Vocab000.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\Vocab99x.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\AudioProcessingSettings.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\Codec.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\CodecAlt.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\CodecDecompressor.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\CrystalScriptStream.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\DependencyTracker.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\ImageData.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\interfaces.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\MemoryDC.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\PerfTimer.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\sci.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\ScriptText.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\SortedVector.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\SoundUtil.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\StlUtil.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\Stream.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\StringUtil.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\TalkerToViewMap.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\Version.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="stdafx.cpp">
+      <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Cli\Cli.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Cli\CliConsole.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Cli\CliHost.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Cli\CliScriptCommands.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Cli\ExitCodes.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\AstRewrite.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\AutoDetectVariableNames.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\Compile.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\CompileBatch.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\CompileContext.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\CompiledScript.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\CompileScript.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\CompileWrite.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ControlFlowGraph.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ControlFlowGraphViz.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ControlFlowNode.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompileBatch.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompilerAstPasses.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompilerConfig.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompilerCore.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompilerFallback.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompilerNew.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompilerSpecialCases.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompileRun.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompileScript.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\DisassembleHelper.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\Disassembler.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\DocScript.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\Evaluate.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\GenerateScriptResource.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\OperatorTables.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\OutputCodeHelper.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\OutputScriptStrings.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ParseAutoCompleteContext.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ParserCommon.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\PMachine.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\scii.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\SCIKeywords.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\SCIProps.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\SCISourceCodeFormatter.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\SCISyntaxParser.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\SCO.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ScriptMakerHelper.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ScriptOM.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ScriptOMTraverse.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\SourceCodeFormatter.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\SummarizeScript.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\SyntaxContext.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\SyntaxParser.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\TarjanAlgorithm.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\Types.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ValidateSaid.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Core\CoreLog.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Core\CorePrompt.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Core\FileWrite.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Core\GameSession.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Core\Result.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\CppFormat\format.cc" />
+    <ClCompile Include="..\SCICompanionLib\Src\CRC32\crc.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\r8brain\r8bbase.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\Audio.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\AudioCacheResourceSource.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\AudioMap.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\AudioNegative.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\AudioResourceSource.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\Components.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\Cursor.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\Font.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\GameFolderHelper.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\Message.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\MessageHeaderFile.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\MessageSource.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\NounsAndCases.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\PaletteOperations.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\PatchResourceSource.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\Pic.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\PicColors.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\PicCommands.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\Polygon.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\RasterOperations.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\ResourceBlob.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\ResourceContainer.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\ResourceEntity.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\ResourceMap.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\ResourceMapOperations.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\ResourceRecency.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\ResourceSources.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\ResourceUtil.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\ScriptCatalog.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\ScriptNameMap.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\Sound.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\SoundOperations.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\Sync.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\Text.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\VersionDetectionHelper.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\View.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\Vocab000.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\Vocab99x.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\Codec.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\CodecAlt.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\CodecDCL.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\CodecDecompressor.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\CodecSTAC.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\CrystalScriptStream.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\DependencyTracker.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\ImageData.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\PerfTimer.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\ScriptText.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\SoundUtil.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\Stream.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\TalkerToViewMap.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\util.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\Version.cpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

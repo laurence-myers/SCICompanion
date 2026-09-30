@@ -1,6 +1,18 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <Filter Include="Header Files\Cli">
+      <UniqueIdentifier>{295dcbe1-2477-4bc9-bb65-7157deab8a80}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Cli">
+      <UniqueIdentifier>{873bf0a3-41af-4c4f-b077-8c92adc21897}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Core">
+      <UniqueIdentifier>{0f1c9fa6-6f99-4c28-9d4e-29b3fc9feda9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Core">
+      <UniqueIdentifier>{8fcbb9b3-7f63-496f-8ec1-b841d2c2b1a8}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Source Files">
       <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
       <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
@@ -117,17 +129,23 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="SCICompanionLib.cpp">
-      <Filter>Source Files</Filter>
+    <ClCompile Include="Src\Dialogs\ResourceMapGui.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Util\WindowsUtil.cpp">
+      <Filter>Source Files\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Util\CrystalScriptStreamGui.cpp">
+      <Filter>Source Files\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Util\MfcExceptionMapper.cpp">
+      <Filter>Source Files\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Dialogs\CompileBatchGui.cpp">
+      <Filter>Source Files\Dialogs</Filter>
     </ClCompile>
     <ClCompile Include="stdafx.cpp">
       <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\CppFormat\format.cc">
-      <Filter>Source Files\CppFormat</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\CRC32\crc.cpp">
-      <Filter>Source Files\CRC32</Filter>
     </ClCompile>
     <ClCompile Include="Src\Dialogs\AnimateDialog.cpp">
       <Filter>Source Files\Dialogs</Filter>
@@ -177,29 +195,8 @@
     <ClCompile Include="Src\Dialogs\ConvertFromToPaletteDialog.cpp">
       <Filter>Source Files\Dialogs</Filter>
     </ClCompile>
-    <ClCompile Include="Src\Resources\Audio.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\AudioCacheResourceSource.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\AudioMap.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
     <ClCompile Include="Src\Dialogs\AudioEditDialog.cpp">
       <Filter>Source Files\Dialogs</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\AudioNegative.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\AudioResourceSource.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\Components.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\Cursor.cpp">
-      <Filter>Source Files\Resources</Filter>
     </ClCompile>
     <ClCompile Include="Src\Util\AppState.cpp">
       <Filter>Source Files\Util</Filter>
@@ -225,28 +222,10 @@
     <ClCompile Include="Src\Util\CodeAutoComplete.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
-    <ClCompile Include="Src\Util\Codec.cpp">
-      <Filter>Source Files\Util</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Util\CodecAlt.cpp">
-      <Filter>Source Files\Util</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Util\CodecDCL.cpp">
-      <Filter>Source Files\Util</Filter>
-    </ClCompile>
     <ClCompile Include="Src\Util\CodecDCL-freesci.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
-    <ClCompile Include="Src\Util\CodecDecompressor.cpp">
-      <Filter>Source Files\Util</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Util\CodecSTAC.cpp">
-      <Filter>Source Files\Util</Filter>
-    </ClCompile>
     <ClCompile Include="Src\Util\ColorQuantization.cpp">
-      <Filter>Source Files\Util</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Util\CrystalScriptStream.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
     <ClCompile Include="Src\Util\CustomMessageBox.cpp">
@@ -255,74 +234,11 @@
     <ClCompile Include="Src\Util\DebuggerThread.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
-    <ClCompile Include="Src\Util\DependencyTracker.cpp">
-      <Filter>Source Files\Util</Filter>
-    </ClCompile>
     <ClCompile Include="Src\Util\DrawHelper.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
     <ClCompile Include="Src\Util\ExtractAll.cpp">
       <Filter>Source Files\Util</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\AutoDetectVariableNames.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\Compile.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\CompileContext.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\CompiledScript.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\ControlFlowGraph.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\ControlFlowGraphViz.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\ControlFlowNode.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\DecompilerConfig.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\AstRewrite.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\DecompilerAstPasses.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\DecompilerCore.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\DecompilerFallback.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\DecompilerNew.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\DecompilerSpecialCases.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\DecompileBatch.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\DecompileScript.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\DisassembleHelper.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\Disassembler.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\Evaluate.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\GenerateScriptResource.cpp">
-      <Filter>Source Files\Compile</Filter>
     </ClCompile>
     <ClCompile Include="Src\MFCFrames\CursorChildFrame.cpp">
       <Filter>Source Files\MFCFrames</Filter>
@@ -393,16 +309,10 @@
     <ClCompile Include="Src\FrameComponents\MessageEditPane.cpp">
       <Filter>Source Files\FrameComponents</Filter>
     </ClCompile>
-    <ClCompile Include="Src\FrameComponents\MessageHeaderFile.cpp">
-      <Filter>Source Files\FrameComponents</Filter>
-    </ClCompile>
     <ClCompile Include="Src\FrameComponents\MessageNounConditionPane.cpp">
       <Filter>Source Files\FrameComponents</Filter>
     </ClCompile>
     <ClCompile Include="Src\FrameComponents\MessageSidePane.cpp">
-      <Filter>Source Files\FrameComponents</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\FrameComponents\MessageSource.cpp">
       <Filter>Source Files\FrameComponents</Filter>
     </ClCompile>
     <ClCompile Include="Src\FrameComponents\NewOutputPane.cpp">
@@ -513,67 +423,13 @@
     <ClCompile Include="Src\Dialogs\PreferencesDialog.cpp">
       <Filter>Source Files\Dialogs</Filter>
     </ClCompile>
-    <ClCompile Include="Src\Resources\Font.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
     <ClCompile Include="Src\Resources\FontOperations.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\GameFolderHelper.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\Message.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\NounsAndCases.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\PaletteOperations.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\PatchResourceSource.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\Pic.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\PicCommands.cpp">
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
     <ClCompile Include="Src\Resources\PicDrawManager.cpp">
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
     <ClCompile Include="Src\Resources\PicOperations.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\Polygon.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\RasterOperations.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\ResourceBlob.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\ResourceContainer.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\ResourceEntity.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\ResourceMap.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\ResourceMapOperations.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\ResourceRecency.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\ResourceSources.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\ResourceUtil.cpp">
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
     <ClCompile Include="Src\MFCViews\FontPreviewView.cpp">
@@ -621,9 +477,6 @@
     <ClCompile Include="Src\Util\MidiPlayer.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
-    <ClCompile Include="Src\Util\PerfTimer.cpp">
-      <Filter>Source Files\Util</Filter>
-    </ClCompile>
     <ClCompile Include="Src\Util\PhonemeMap.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
@@ -635,27 +488,6 @@
     </ClCompile>
     <ClCompile Include="Src\Util\RunLogic.cpp">
       <Filter>Source Files\Util</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\OperatorTables.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\OutputCodeHelper.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\OutputScriptStrings.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\ParseAutoCompleteContext.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\ParserCommon.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\PMachine.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\scii.cpp">
-      <Filter>Source Files\Compile</Filter>
     </ClCompile>
     <ClCompile Include="Src\MFCFrames\MainFrm.cpp">
       <Filter>Source Files\MFCFrames</Filter>
@@ -750,9 +582,6 @@
     <ClCompile Include="Src\LipSync\sapi_util.cpp">
       <Filter>Source Files\LipSync</Filter>
     </ClCompile>
-    <ClCompile Include="Src\r8brain\r8bbase.cpp">
-      <Filter>Source Files\r8brain</Filter>
-    </ClCompile>
     <ClCompile Include="Src\MFCDocuments\PaletteDoc.cpp">
       <Filter>Source Files\MFCDocuments</Filter>
     </ClCompile>
@@ -804,58 +633,16 @@
     <ClCompile Include="Src\Dialogs\SCIPropertyCtrl.cpp">
       <Filter>Source Files\Dialogs</Filter>
     </ClCompile>
-    <ClCompile Include="Src\Dialogs\SCIProps.cpp">
-      <Filter>Source Files\Dialogs</Filter>
-    </ClCompile>
     <ClCompile Include="Src\Dialogs\ToolTipDialog.cpp">
       <Filter>Source Files\Dialogs</Filter>
     </ClCompile>
     <ClCompile Include="Src\Dialogs\VocabAutoCompleteDialog.cpp">
       <Filter>Source Files\Dialogs</Filter>
     </ClCompile>
-    <ClCompile Include="Src\Resources\Sound.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\SoundOperations.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\Sync.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\Text.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\VersionDetectionHelper.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\View.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\Vocab99x.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Resources\Vocab000.cpp">
-      <Filter>Source Files\Resources</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Util\SoundUtil.cpp">
-      <Filter>Source Files\Util</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Util\Stream.cpp">
-      <Filter>Source Files\Util</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Util\TalkerToViewMap.cpp">
-      <Filter>Source Files\Util</Filter>
-    </ClCompile>
     <ClCompile Include="Src\Util\Task.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
     <ClCompile Include="Src\Util\TokenDatabase.cpp">
-      <Filter>Source Files\Util</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Util\util.cpp">
-      <Filter>Source Files\Util</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Util\Version.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
     <ClCompile Include="Src\Util\VGADither.cpp">
@@ -864,55 +651,16 @@
     <ClCompile Include="Src\Util\WordEnumString.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
-    <ClCompile Include="Src\Compile\SCISourceCodeFormatter.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\SCISyntaxParser.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\SCO.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\ScriptMakerHelper.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\ScriptOM.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\ScriptOMTraverse.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\SourceCodeFormatter.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\SummarizeScript.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\SyntaxContext.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\SyntaxParser.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\TarjanAlgorithm.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\Types.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Compile\ValidateSaid.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="Src\Docs\DocScript.cpp">
-      <Filter>Source Files\Docs</Filter>
-    </ClCompile>
     <ClCompile Include="Src\Docs\OutputRST.cpp">
       <Filter>Source Files\Docs</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="SCICompanionLib.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="Src\Util\MfcExceptionMapper.h">
+      <Filter>Header Files\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Dialogs\CompileBatchGui.h">
+      <Filter>Header Files\Dialogs</Filter>
     </ClInclude>
     <ClInclude Include="stdafx.h">
       <Filter>Header Files</Filter>
@@ -922,21 +670,6 @@
     </ClInclude>
     <ClInclude Include="Resource.h">
       <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\Audio.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\AudioCacheResourceSource.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\AudioMap.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\AudioNegative.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\AudioResourceSource.h">
-      <Filter>Header Files\Resources</Filter>
     </ClInclude>
     <ClInclude Include="Src\Dialogs\AnimateDialog.h">
       <Filter>Header Files\Dialogs</Filter>
@@ -974,26 +707,8 @@
     <ClInclude Include="Src\Util\CodeAutoComplete.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
-    <ClInclude Include="Src\Util\Codec.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Util\CodecAlt.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Util\CodecDecompressor.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
     <ClInclude Include="Src\Util\ColorQuantization.h">
       <Filter>Header Files\Util</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\AutoCompleteSourceTypes.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\AutoDetectVariableNames.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\CodeInspector.h">
-      <Filter>Header Files\Compile</Filter>
     </ClInclude>
     <ClInclude Include="Src\CrystalEdit\CCrystalEditView.h">
       <Filter>Header Files\CrystalEdit</Filter>
@@ -1039,81 +754,6 @@
     </ClInclude>
     <ClInclude Include="Src\FrameComponents\ColoredToolTip.h">
       <Filter>Header Files\FrameComponents</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\r8brain\CDSPBlockConvolver.h">
-      <Filter>Header Files\r8brain</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\r8brain\CDSPFIRFilter.h">
-      <Filter>Header Files\r8brain</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\r8brain\CDSPFracInterpolator.h">
-      <Filter>Header Files\r8brain</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\r8brain\CDSPRealFFT.h">
-      <Filter>Header Files\r8brain</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\r8brain\CDSPProcessor.h">
-      <Filter>Header Files\r8brain</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\r8brain\CDSPResampler.h">
-      <Filter>Header Files\r8brain</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\r8brain\CDSPSincFilterGen.h">
-      <Filter>Header Files\r8brain</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\CompileCommon.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\CompileContext.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\CompiledScript.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\CompileInterfaces.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\ControlFlowGraph.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\ControlFlowGraphViz.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\ControlFlowNode.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\DecompilerConfig.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\AstRewrite.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\DecompilerAstPasses.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\DecompilerCore.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\DecompilerFallback.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\DecompilerNew.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\DecompilerResults.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\DecompileBatch.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\DecompileScript.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\DisassembleHelper.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\Disassembler.h">
-      <Filter>Header Files\Compile</Filter>
     </ClInclude>
     <ClInclude Include="Src\MFCFrames\CursorChildFrame.h">
       <Filter>Header Files\MFCFrames</Filter>
@@ -1202,22 +842,7 @@
     <ClInclude Include="Src\Dialogs\GradientDialog.h">
       <Filter>Header Files\Dialogs</Filter>
     </ClInclude>
-    <ClInclude Include="Src\Resources\Components.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\Cursor.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\Font.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
     <ClInclude Include="Src\Resources\FontOperations.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\GameFolderHelper.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\Message.h">
       <Filter>Header Files\Resources</Filter>
     </ClInclude>
     <ClInclude Include="Src\MFCViews\FakeEgo.h">
@@ -1229,9 +854,6 @@
     <ClInclude Include="Src\MFCViews\GameExplorerView.h">
       <Filter>Header Files\MFCViews</Filter>
     </ClInclude>
-    <ClInclude Include="Src\Util\CrystalScriptStream.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
     <ClInclude Include="Src\Util\CustomMessageBox.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
@@ -1239,9 +861,6 @@
       <Filter>Header Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="Src\Util\Delegates.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Util\DependencyTracker.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="Src\Util\DialogFactory.h">
@@ -1254,9 +873,6 @@
       <Filter>Header Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="Src\Util\ImageUtil.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Util\interfaces.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="Src\Util\LipSyncUtil.h">
@@ -1307,16 +923,10 @@
     <ClInclude Include="Src\FrameComponents\MessageEditPane.h">
       <Filter>Header Files\FrameComponents</Filter>
     </ClInclude>
-    <ClInclude Include="Src\FrameComponents\MessageHeaderFile.h">
-      <Filter>Header Files\FrameComponents</Filter>
-    </ClInclude>
     <ClInclude Include="Src\FrameComponents\MessageNounConditionPane.h">
       <Filter>Header Files\FrameComponents</Filter>
     </ClInclude>
     <ClInclude Include="Src\FrameComponents\MessageSidePane.h">
-      <Filter>Header Files\FrameComponents</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\FrameComponents\MessageSource.h">
       <Filter>Header Files\FrameComponents</Filter>
     </ClInclude>
     <ClInclude Include="Src\FrameComponents\NewOutputPane.h">
@@ -1324,18 +934,6 @@
     </ClInclude>
     <ClInclude Include="Src\FrameComponents\NoFlickerStatic.h">
       <Filter>Header Files\FrameComponents</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\CppFormat\format.h">
-      <Filter>Header Files\CppFormat</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\cpptoml\cpptoml.h">
-      <Filter>Header Files\cpptoml</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\CRC32\crc.h">
-      <Filter>Header Files\CRC32</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Docs\DocScript.h">
-      <Filter>Header Files\Docs</Filter>
     </ClInclude>
     <ClInclude Include="Src\GIFLIB\gif_hash.h">
       <Filter>Header Files\GIFLIB</Filter>
@@ -1345,9 +943,6 @@
     </ClInclude>
     <ClInclude Include="Src\GIFLIB\gif_lib_private.h">
       <Filter>Header Files\GIFLIB</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\r8brain\fft4g.h">
-      <Filter>Header Files\r8brain</Filter>
     </ClInclude>
     <ClInclude Include="Src\MFCDocuments\DocumentWithPaletteChoices.h">
       <Filter>Header Files\MFCDocuments</Filter>
@@ -1409,38 +1004,8 @@
     <ClInclude Include="Src\Dialogs\PreferencesDialog.h">
       <Filter>Header Files\Dialogs</Filter>
     </ClInclude>
-    <ClInclude Include="Src\Resources\NounsAndCases.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\PaletteOperations.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\PatchResourceSource.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\Pic.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\PicCommands.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\PicCommandsCommon.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
     <ClInclude Include="Src\Resources\PicDrawManager.h">
       <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\PicOperations.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\Polygon.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\r8brain\r8bbase.h">
-      <Filter>Header Files\r8brain</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\r8brain\r8bconf.h">
-      <Filter>Header Files\r8brain</Filter>
     </ClInclude>
     <ClInclude Include="Src\r8brain\r8butil.h">
       <Filter>Header Files\r8brain</Filter>
@@ -1456,36 +1021,6 @@
     </ClInclude>
     <ClInclude Include="Src\Dialogs\RemoveScriptDialog.h">
       <Filter>Header Files\Dialogs</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\RasterOperations.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\ResourceBlob.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\ResourceContainer.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\ResourceEntity.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\ResourceMap.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\ResourceMapEvents.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\ResourceRecency.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\ResourceSourceFlags.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\ResourceSources.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\ResourceUtil.h">
-      <Filter>Header Files\Resources</Filter>
     </ClInclude>
     <ClInclude Include="Src\MFCViews\MessageView.h">
       <Filter>Header Files\MFCViews</Filter>
@@ -1505,9 +1040,6 @@
     <ClInclude Include="Src\MFCViews\RoomExplorerView.h">
       <Filter>Header Files\MFCViews</Filter>
     </ClInclude>
-    <ClInclude Include="Src\Util\PerfTimer.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
     <ClInclude Include="Src\Util\PhonemeMap.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
@@ -1523,43 +1055,10 @@
     <ClInclude Include="Src\Util\RunLogic.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
-    <ClInclude Include="Src\Util\sci.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
     <ClInclude Include="Src\Util\sciwin.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
-    <ClInclude Include="Src\Compile\NodeTypes.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\Operators.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\OperatorTables.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\OutputCodeHelper.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
     <ClInclude Include="Src\Compile\OutputScriptStrings.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\ParseAutoCompleteContext.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\ParserActions.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\ParserCommon.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\PMachine.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\scii.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\SCISourceCodeFormatter.h">
       <Filter>Header Files\Compile</Filter>
     </ClInclude>
     <ClInclude Include="Src\MFCFrames\PaletteChildFrame.h">
@@ -1661,21 +1160,6 @@
     <ClInclude Include="Src\Dialogs\SCIPropertyInfo.h">
       <Filter>Header Files\Dialogs</Filter>
     </ClInclude>
-    <ClInclude Include="Src\Dialogs\SCIProps.h">
-      <Filter>Header Files\Dialogs</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\Sound.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\SoundOperations.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\Sync.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\Text.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
     <ClInclude Include="Src\MFCViews\ScriptView.h">
       <Filter>Header Files\MFCViews</Filter>
     </ClInclude>
@@ -1691,25 +1175,7 @@
     <ClInclude Include="Src\MFCViews\VocabView.h">
       <Filter>Header Files\MFCViews</Filter>
     </ClInclude>
-    <ClInclude Include="Src\Util\SortedVector.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Util\SoundUtil.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
     <ClInclude Include="Src\Util\TemplateMessageMap.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Util\StlUtil.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Util\StringUtil.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Util\Stream.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Util\TalkerToViewMap.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="Src\Util\Task.h">
@@ -1719,9 +1185,6 @@
       <Filter>Header Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="Src\Util\ToolTipResult.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Util\Version.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="Src\Util\VGADither.h">
@@ -1766,51 +1229,6 @@
     <ClInclude Include="Src\FrameComponents\ZoomCelStatic.h">
       <Filter>Header Files\FrameComponents</Filter>
     </ClInclude>
-    <ClInclude Include="Src\Compile\SCISyntaxParser.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\SCO.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\ScriptMakerHelper.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\ScriptOM.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\ScriptOMAll.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\ScriptOMInterfaces.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\ScriptOMSmall.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\ParserPrimitives.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\SummarizeScript.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\SyntaxContext.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\SyntaxParser.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\TarjanAlgorithm.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\Types.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Compile\ValidateSaid.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Util\AudioProcessingSettings.h">
-      <Filter>Header Files\Util</Filter>
-    </ClInclude>
     <ClInclude Include="Src\Util\ClassBrowserInfo.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>
@@ -1823,32 +1241,11 @@
     <ClInclude Include="Src\Docs\OutputRST.h">
       <Filter>Header Files\Docs</Filter>
     </ClInclude>
-    <ClInclude Include="Src\Compile\SourceCodeFormatter.h">
-      <Filter>Header Files\Compile</Filter>
-    </ClInclude>
     <ClInclude Include="Src\Dialogs\ToolTipDialog.h">
       <Filter>Header Files\Dialogs</Filter>
     </ClInclude>
     <ClInclude Include="Src\Dialogs\VocabAutoCompleteDialog.h">
       <Filter>Header Files\Dialogs</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\ResourceMapOperations.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\VersionDetectionHelper.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\Vocab000.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\View.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="Src\Resources\Vocab99x.h">
-      <Filter>Header Files\Resources</Filter>
-    </ClInclude>
-    <ClInclude Include="DrawPixelCallback.h">
-      <Filter>Header Files\Resources</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

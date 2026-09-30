@@ -109,16 +109,18 @@ size_t MessageSource::AddDefine(const std::string &newName, uint16_t newValue)
 	return _defines.size() - 1;
 }
 
-void MessageSource::Commit()
+sci::Status MessageSource::Commit()
 {
+	sci::Status status = sci::Ok();
 	if (_dirty)
 	{
 		if (_file)
 		{
-			_file->Commit();
+			status = _file->Commit();
 		}
 	}
 	_dirty = false;
+	return status;
 }
 
 std::unique_ptr<MessageHeaderFile> GetMessageFile(const std::string &messageFolder, int scriptNumber)

@@ -16,6 +16,10 @@
 #include "ScriptOM.h"
 #include "AstPassHelper.h"
 #include "Helper.h"
+#include "DecompileHelper.h"
+#include "AppState.h"
+#include "ResourceMap.h"
+#include "TestSupport.h"
 #include <string>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -105,6 +109,111 @@ namespace UnitTests
                 Assert::IsTrue(script == nullptr,
                     std::wstring(L"a high-bit byte at a token boundary must be a parse error, not accepted: ").append(text.begin(), text.end()).c_str());
             }
+        }
+    };
+
+    // A selector name can have a # after its first character: KQ6 names
+    // selector 879 "dungeon#". The parser keeps the # in the name, and so
+    // does the formatter: "dungeon_" would compile to a new selector.
+    TEST_CLASS(TestSelectorNameHash)
+    {
+        std::string _gameFolder;
+
+    public:
+        TEST_METHOD_INITIALIZE(Setup)
+        {
+            _gameFolder = SetUpGameSCI0();
+        }
+
+        TEST_METHOD_CLEANUP(CleanUp)
+        {
+            if (!_gameFolder.empty())
+            {
+                CleanUpGame(_gameFolder);
+                _gameFolder.clear();
+            }
+        }
+
+        TEST_METHOD(HashInSelectorName_ParsesAndIsWrittenBack)
+        {
+            std::string source =
+                "(script# 950)\n"
+                "(class HashTest of Obj\n"
+                "    (properties\n"
+                "        dungeon# 0\n"
+                "    )\n"
+                "    (method (look)\n"
+                "        (return (self dungeon#:))\n"
+                "    )\n"
+                ")\n";
+            std::string error;
+            std::unique_ptr<sci::Script> script = TryParseSierraScript(source, &error);
+            Assert::IsTrue(script != nullptr, Wide(error).c_str());
+            Assert::AreEqual(size_t(1), script->GetClasses().size());
+            const sci::ClassPropertyVector &properties = script->GetClasses()[0]->GetProperties();
+            Assert::AreEqual(size_t(1), properties.size());
+            Assert::AreEqual(std::string("dungeon#"), properties[0]->GetName(), L"the property name keeps its #");
+
+            std::string text = ScriptToText(*script);
+            std::wstring wideText = Wide(text);
+            Assert::IsTrue(text.find("dungeon# 0") != std::string::npos, wideText.c_str());
+            Assert::IsTrue(text.find("dungeon#:") != std::string::npos, wideText.c_str());
+            Assert::IsTrue(text.find("dungeon_") == std::string::npos, wideText.c_str());
+        }
+
+        // A method that reads, sets and increments its # property uses the
+        // name as a token, not as a selector. The formatter keeps the # there
+        // too: with "dungeon_", the decompiled KQ6 script 710 does not compile
+        // ("Undeclared identifier 'dungeon_'").
+        TEST_METHOD(HashPropertyInAMethod_DecompilesAndRecompiles)
+        {
+            std::string source =
+                "(script# 950)\n"
+                "(use obj)\n"
+                "(class HashTest of Obj\n"
+                "    (properties\n"
+                "        dungeon# 0\n"
+                "    )\n"
+                "    (method (look &tmp t)\n"
+                "        (= t dungeon#)\n"
+                "        (= dungeon# 5)\n"
+                "        (++ dungeon#)\n"
+                "        (return (+ t dungeon#))\n"
+                "    )\n"
+                ")\n";
+            std::string path = appState->GetResourceMap().Helper().GetScriptFileName("HashTest");
+            WriteFileText(path, source);
+            // Compile first: the text of the assert must not read error in
+            // the same call.
+            std::string error;
+            bool compiled = CompileFixture(950, "HashTest", &error);
+            Assert::IsTrue(compiled, Wide("the source did not compile: " + error).c_str());
+
+            DecompileOutput decompiled = DecompileToText(950);
+            std::wstring wideText = Wide(decompiled.text);
+            Assert::IsTrue(decompiled.text.find("dungeon_") == std::string::npos, wideText.c_str());
+            Assert::IsTrue(decompiled.text.find("dungeon#") != std::string::npos, wideText.c_str());
+
+            WriteFileText(path, decompiled.text);
+            error.clear();
+            compiled = CompileFixture(950, "HashTest", &error);
+            Assert::IsTrue(compiled, Wide("the decompiled text did not compile: " + error + "\n" + decompiled.text).c_str());
+        }
+
+        // A # cannot start a name: that is a selector literal (#look).
+        TEST_METHOD(HashFirst_IsASelectorLiteral)
+        {
+            std::string source =
+                "(script# 950)\n"
+                "(procedure (hashFirst &tmp t)\n"
+                "    (= t #look)\n"
+                "    (return t)\n"
+                ")\n";
+            std::string error;
+            std::unique_ptr<sci::Script> script = TryParseSierraScript(source, &error);
+            Assert::IsTrue(script != nullptr, Wide(error).c_str());
+            std::string text = ScriptToText(*script);
+            Assert::IsTrue(text.find("#look") != std::string::npos, Wide(text).c_str());
         }
     };
 }

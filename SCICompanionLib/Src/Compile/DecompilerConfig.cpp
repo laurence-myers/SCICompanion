@@ -15,6 +15,7 @@
 #include "cpptoml.h"
 #include "ScriptOMAll.h"
 #include "GameFolderHelper.h"
+#include "ResourceMap.h"
 #include "DecompilerCore.h"
 #include "DecompilerConfig.h"
 #include "Vocab99x.h"
@@ -33,21 +34,26 @@ class DummyLog : public ICompileLog
 	void ReportResult(const CompileResult &result) override {} 
 };
 
-unique_ptr<Script> GetDefinesScript(const GameFolderHelper &helper, const std::string &name)
+// The defines of a header of the include folder. A header that cannot be read
+// gives an empty script, and one that does not parse the defines before its
+// error; each gives a warning in warnings.
+unique_ptr<Script> GetDefinesScript(const GameFolderHelper &helper, const std::string &includeFolder, const std::string &name, std::vector<std::string> &warnings)
 {
 	DummyLog log;
-	ScriptId scriptId(helper.GetIncludeFolder() + "\\" + name);
+	ScriptId scriptId(includeFolder + "\\" + name);
 	unique_ptr<Script> script = make_unique<Script>(scriptId);
-	CCrystalTextBuffer buffer;
-	if (buffer.LoadFromFile(scriptId.GetFullPath().c_str()))
+	sci::Result<ScriptText> text = LoadScriptText(scriptId.GetFullPath());
+	if (!text)
 	{
-		CScriptStreamLimiter limiter(&buffer);
-		CCrystalScriptStream stream(&limiter);
-		if (!SyntaxParser_Parse(*script, stream, PreProcessorDefinesFromSCIVersion(helper.Version), &log))
-		{
-			assert(false);
-		}
-		buffer.FreeAll();
+		warnings.push_back(fmt::format("{0} could not be read, so the decompiled scripts have no names of its defines: {1}", scriptId.GetFullPath(), text.error().ToString()));
+		return script;
+	}
+	CScriptStreamLimiter limiter(*text);
+	CCrystalScriptStream stream(&limiter);
+	if (!SyntaxParser_Parse(*script, stream, PreProcessorDefinesFromSCIVersion(helper.Version), &log))
+	{
+		// The defines before the error stay.
+		warnings.push_back(fmt::format("{0} has syntax errors, so the decompiled scripts can lack names of its defines", scriptId.GetFullPath()));
 	}
 	return script;
 }
@@ -55,12 +61,11 @@ unique_ptr<Script> GetDefinesScript(const GameFolderHelper &helper, const std::s
 class DecompilerConfig : public IDecompilerConfig
 {
 public:
-	DecompilerConfig(const GameFolderHelper &helper, const SelectorTable &selectorTable) : _selectorTable(selectorTable)
+	DecompilerConfig(const GameFolderHelper &helper, const std::string &includeFolder, const std::string &decompilerIniPath, const SelectorTable &selectorTable) : _selectorTable(selectorTable)
 	{
-		unique_ptr<Script> definesScript = GetDefinesScript(helper, "sci.sh");
-		unique_ptr<Script> keysScript = GetDefinesScript(helper, "keys.sh");
+		unique_ptr<Script> definesScript = GetDefinesScript(helper, includeFolder, "sci.sh", headerWarnings);
+		unique_ptr<Script> keysScript = GetDefinesScript(helper, includeFolder, "keys.sh", headerWarnings);
 
-		string decompilerIniPath = helper.GetSrcFolder() + "\\Decompiler.ini";
 		try
 		{
 			_table = make_unique<table>(parse_file(decompilerIniPath));
@@ -382,7 +387,13 @@ private:
 	const SelectorTable &_selectorTable;
 };
 
-std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(const GameFolderHelper &helper, const SelectorTable &selectorTable)
+std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(const CResourceMap &resourceMap, const SelectorTable &selectorTable)
 {
-	return make_unique<DecompilerConfig>(helper, selectorTable);
+	return CreateDecompilerConfig(resourceMap, selectorTable, resourceMap.Helper().GetSrcFolder() + "\\Decompiler.ini");
+}
+
+std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(const CResourceMap &resourceMap, const SelectorTable &selectorTable, const std::string &decompilerIniPath)
+{
+	// The include folder follows the data folder of the resource map.
+	return make_unique<DecompilerConfig>(resourceMap.Helper(), resourceMap.GetIncludeFolder(), decompilerIniPath, selectorTable);
 }

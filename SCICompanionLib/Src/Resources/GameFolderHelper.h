@@ -24,6 +24,7 @@ enum class ResourceSourceFlags : int;
 
 class ResourceRecency;
 class ResourceBlob;
+class ScriptNameMap;
 
 extern const std::string GameSection;
 extern const std::string CodepageKey;
@@ -42,11 +43,18 @@ public:
 	GameFolderHelper(const GameFolderHelper &orig) = default;
 	GameFolderHelper &operator=(const GameFolderHelper &other) = default;
 
+	// The name of a script: from ScriptNames when it is set (the command
+	// line; docs/scic-cli/plan.md section 3.4), otherwise from game.ini
+	// [Script], or nNNN.
+	std::string GetScriptTitle(uint16_t wScript) const;
 	std::string GetScriptFileName(const std::string &name) const;
 	std::string GetScriptFileName(uint16_t wScript) const;
 	std::string GetScriptObjectFileName(const std::string &title) const;
 	std::string GetScriptObjectFileName(uint16_t wScript) const;
+	// Makes the debug folder, if it is not there.
 	std::string GetScriptDebugFileName(uint16_t wScript) const;
+	// The same path, and no folder is made.
+	std::string GetScriptDebugFilePath(uint16_t wScript) const;
 	std::string GetScriptSymbolFileName(uint16_t wScript) const;
 	std::string GameFolderHelper::GetSrcFolder(const std::string *prefix = nullptr) const;
 	std::string GameFolderHelper::GetMsgFolder(const std::string *prefix = nullptr) const;
@@ -57,7 +65,7 @@ public:
 	std::string GetGameIniFileName() const;
 	std::string GetIniString(const std::string &sectionName, const std::string &keyName, PCSTR pszDefault = "") const;
 	bool GetIniBool(const std::string &sectionName, const std::string &keyName, bool value = false) const;
-	bool DoesSectionExistWithEntries(const std::string &sectionName);
+	bool DoesSectionExistWithEntries(const std::string &sectionName) const;
 	static std::string GetIncludeFolder();
 	static std::string GetHelpFolder();
 	void SetIniString(const std::string &sectionName, const std::string &keyName, const std::string &value) const;
@@ -82,12 +90,18 @@ public:
 	void SetResourceSaveLocation(ResourceSaveLocation location) const;
 	ResourceEnumFlags GetDefaultEnumFlags() const;
 	ResourceSourceFlags GetDefaultSaveSourceFlags() const;
+	// PatchFile or ResourceMap for a save location; Default reads the game's
+	// setting.
+	ResourceSourceFlags GetSaveSourceFlags(ResourceSaveLocation location) const;
 
 	bool IsResourceCompatible(const ResourceBlob &resource) const;
 
 	// Members
 	SCIVersion Version;
 	std::string GameFolder;
+	// The script names of a GameSession. Null in the GUI. Set it before
+	// another thread uses the helper, and not while one does.
+	std::shared_ptr<const ScriptNameMap> ScriptNames;
 
 private:
 	std::string _GetSubfolder(const char *key, const std::string *prefix = nullptr) const;

@@ -13,6 +13,8 @@
 ***************************************************************************/
 #pragma once
 
+#include "ImageData.h"
+
 struct PaletteComponent;
 struct Cel;
 class ResourceBlob;
@@ -49,8 +51,6 @@ enum class DitherAlgorithm
 	OrderedBayer = 3,
 };
 
-RGBQUAD _ToSRGB(RGBQUAD color);
-RGBQUAD _ToLinear(RGBQUAD color);
 
 enum class BitmapConvertStatus : uint32_t
 {
@@ -62,10 +62,7 @@ DEFINE_ENUM_FLAGS(BitmapConvertStatus, uint32_t)
 CRect GetCelRect(const Cel &cel);
 bool Save8BitBmpGdiP(const char *filename, const Cel &cel, const PaletteComponent &palette, bool squishPalette = true);
 std::unique_ptr<Gdiplus::Bitmap> CelAndPaletteToBitmap(const Cel &cel, const PaletteComponent &palette, bool squishPalette);
-void FlipImageData(uint8_t *data, int cx, int cy, int stride);
 int SquishPalette(uint8_t *data, size_t dataSize, const PaletteComponent &palette, RGBQUAD *results);
-int CountActualUsedColors(const Cel &cel, bool *used);
-int CountActualUsedColors(const std::vector<const Cel*> &cels, bool *used);
 std::unique_ptr<PaletteComponent> GetPaletteFromImage(Gdiplus::Bitmap &bitmap, int *numberOfUsedEntriesOut = nullptr);
 bool GetCelsAndPaletteFromGIFFile(const char *filename, std::vector<Cel> &cels, std::vector<PaletteComponent> &palettes, PaletteComponent &globalPalette);
 void SaveCelsAndPaletteToGIFFile(const char *filename, const std::vector<Cel> &cels, int colorCount, const  RGBQUAD *colors, const uint8_t *paletteMapping, uint8_t transparentIndex, const GIFConfiguration &config);
@@ -82,4 +79,3 @@ HBITMAP Create32bbpBitmap(const uint8_t *pData, int cxStride, int cx, int cy, ui
 // Methods for encoding an SCI resource inside a windows .bmp file.
 bool EncodeResourceInBitmap(const ResourceBlob &blob, const BITMAPINFO &info, uint8_t *pBits);
 std::unique_ptr<ResourceBlob> Load8BitBmp(const GameFolderHelper &helper, SCIVersion version, const std::string &filename);
-RGBQUAD _CombineGamma(RGBQUAD color1, RGBQUAD color2);

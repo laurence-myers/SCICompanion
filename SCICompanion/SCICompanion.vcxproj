@@ -54,7 +54,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_WINDOWS;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(SolutionDir)SCICompanionLib\;$(SolutionDir)Prof-UIS.2.92\Include;$(SolutionDir)SCICompanionLib\Src\Util;$(SolutionDir)SCICompanionLib\Src\Resources;$(SolutionDir)SCICompanionLib\Src\MFCViews;$(SolutionDir)SCICompanionLib\Src\MFCFrames;$(SolutionDir)SCICompanionLib\Src\MFCDocuments;$(SolutionDir)SCICompanionLib\Src\FrameComponents;$(SolutionDir)SCICompanionLib\Src\Dialogs;$(SolutionDir)SCICompanionLib\Src\CrystalEdit;$(SolutionDir)SCICompanionLib\Src\CRC32;$(SolutionDir)SCICompanionLib\Src\CppFormat;$(SolutionDir)SCICompanionLib\Src\Compile;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)SCICompanionLib\;$(SolutionDir)Prof-UIS.2.92\Include;$(SolutionDir)SCICompanionLib\Src\Util;$(SolutionDir)SCICompanionLib\Src\Core;$(SolutionDir)SCICompanionLib\Src\Resources;$(SolutionDir)SCICompanionLib\Src\MFCViews;$(SolutionDir)SCICompanionLib\Src\MFCFrames;$(SolutionDir)SCICompanionLib\Src\MFCDocuments;$(SolutionDir)SCICompanionLib\Src\FrameComponents;$(SolutionDir)SCICompanionLib\Src\Dialogs;$(SolutionDir)SCICompanionLib\Src\CrystalEdit;$(SolutionDir)SCICompanionLib\Src\CRC32;$(SolutionDir)SCICompanionLib\Src\CppFormat;$(SolutionDir)SCICompanionLib\Src\Compile;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -101,6 +101,13 @@ robocopy "$(ProjectDir)Files\Plugins" "$(OutDir)Plugins" /MIR /NFL /NDL /NJH /NJ
 if %errorlevel% geq 8 exit /b 1
 robocopy "$(ProjectDir)Tools" "$(OutDir)Tools" /MIR /NFL /NDL /NJH /NJS /NP
 if %errorlevel% geq 8 exit /b 1
+rem The licences of the bundled third-party code go with the binaries. /XF
+rem names the paths of the copies below, so the mirror keeps them.
+robocopy "$(ProjectDir)Files\Licenses" "$(OutDir)Licenses" /MIR /XF "$(OutDir)Licenses\License.txt" "$(OutDir)Licenses\COPYING" "$(OutDir)Licenses\COPYING2" /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
+rem SCI Companion's own licence, which Licenses\README.txt names.
+robocopy "$(ProjectDir)Files" "$(OutDir)Licenses" License.txt COPYING COPYING2 /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
 exit /b 0</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -113,7 +120,7 @@ exit /b 0</Command>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;_WINDOWS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>$(SolutionDir)SCICompanionLib\;$(SolutionDir)Prof-UIS.2.92\Include;$(SolutionDir)SCICompanionLib\Src\Util;$(SolutionDir)SCICompanionLib\Src\Resources;$(SolutionDir)SCICompanionLib\Src\MFCViews;$(SolutionDir)SCICompanionLib\Src\MFCFrames;$(SolutionDir)SCICompanionLib\Src\MFCDocuments;$(SolutionDir)SCICompanionLib\Src\FrameComponents;$(SolutionDir)SCICompanionLib\Src\Dialogs;$(SolutionDir)SCICompanionLib\Src\CrystalEdit;$(SolutionDir)SCICompanionLib\Src\CRC32;$(SolutionDir)SCICompanionLib\Src\CppFormat;$(SolutionDir)SCICompanionLib\Src\Compile;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)SCICompanionLib\;$(SolutionDir)Prof-UIS.2.92\Include;$(SolutionDir)SCICompanionLib\Src\Util;$(SolutionDir)SCICompanionLib\Src\Core;$(SolutionDir)SCICompanionLib\Src\Resources;$(SolutionDir)SCICompanionLib\Src\MFCViews;$(SolutionDir)SCICompanionLib\Src\MFCFrames;$(SolutionDir)SCICompanionLib\Src\MFCDocuments;$(SolutionDir)SCICompanionLib\Src\FrameComponents;$(SolutionDir)SCICompanionLib\Src\Dialogs;$(SolutionDir)SCICompanionLib\Src\CrystalEdit;$(SolutionDir)SCICompanionLib\Src\CRC32;$(SolutionDir)SCICompanionLib\Src\CppFormat;$(SolutionDir)SCICompanionLib\Src\Compile;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -161,6 +168,13 @@ if %errorlevel% geq 8 exit /b 1
 robocopy "$(ProjectDir)Files\Plugins" "$(OutDir)Plugins" /MIR /NFL /NDL /NJH /NJS /NP
 if %errorlevel% geq 8 exit /b 1
 robocopy "$(ProjectDir)Tools" "$(OutDir)Tools" /MIR /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
+rem The licences of the bundled third-party code go with the binaries. /XF
+rem names the paths of the copies below, so the mirror keeps them.
+robocopy "$(ProjectDir)Files\Licenses" "$(OutDir)Licenses" /MIR /XF "$(OutDir)Licenses\License.txt" "$(OutDir)Licenses\COPYING" "$(OutDir)Licenses\COPYING2" /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 exit /b 1
+rem SCI Companion's own licence, which Licenses\README.txt names.
+robocopy "$(ProjectDir)Files" "$(OutDir)Licenses" License.txt COPYING COPYING2 /NFL /NDL /NJH /NJS /NP
 if %errorlevel% geq 8 exit /b 1
 exit /b 0</Command>
     </PostBuildEvent>
@@ -1224,6 +1238,9 @@ exit /b 0</Command>
   <ItemGroup>
     <ProjectReference Include="..\Prof-UIS.2.92\ProfUISLIB\ProfUISLIB_1000.vcxproj">
       <Project>{89cffc49-d858-481e-99c5-e312f7c1ea95}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\SCICompanionCore\SCICompanionCore.vcxproj">
+      <Project>{3b1d5c2e-7a4f-4e8b-9c61-2f0d8e5a7b34}</Project>
     </ProjectReference>
     <ProjectReference Include="..\SCICompanionLib\SCICompanionLib.vcxproj">
       <Project>{761de01c-57f6-45c5-aafc-ac48000c423f}</Project>

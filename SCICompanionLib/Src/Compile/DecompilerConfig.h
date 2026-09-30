@@ -13,7 +13,7 @@
 ***************************************************************************/
 #pragma once
 
-class GameFolderHelper;
+class CResourceMap;
 class SelectorTable;
 
 namespace cpptoml
@@ -41,7 +41,17 @@ public:
 	virtual ~IDecompilerConfig() {}
 
 	std::string error;
+	// A sci.sh or keys.sh that cannot be read or parsed: the decompiler then
+	// has none of its enum names.
+	std::vector<std::string> headerWarnings;
 };
 
-std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(const GameFolderHelper &helper, const SelectorTable &selectorTable);
+// Reads Decompiler.ini from the game's src folder, and sci.sh and keys.sh from
+// the include folder of the resource map (its data folder). A Decompiler.ini
+// that cannot be read or parsed is in the result's error; a sci.sh or keys.sh
+// that cannot be read or parsed is in headerWarnings.
+std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(const CResourceMap &resourceMap, const SelectorTable &selectorTable);
+// The same, with this Decompiler.ini (RunDecompile reads the one of the
+// data folder when the game has none in src).
+std::unique_ptr<IDecompilerConfig> CreateDecompilerConfig(const CResourceMap &resourceMap, const SelectorTable &selectorTable, const std::string &decompilerIniPath);
 

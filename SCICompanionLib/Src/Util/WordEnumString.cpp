@@ -140,7 +140,13 @@ HRESULT CWordEnumString::Clone(IEnumString **ppenum)
 
 HRESULT CWordEnumString::Init()
 {
-	_vocab = *appState->GetResourceMap().GetVocab000();
+	// A game with no vocabulary resource has no words to offer: its
+	// vocabulary is null.
+	const Vocab000 *vocab = appState->GetResourceMap().GetVocab000();
+	if (vocab)
+	{
+		_vocab = *vocab;
+	}
 	return S_OK;
 }
 

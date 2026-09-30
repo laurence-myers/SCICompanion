@@ -21,17 +21,12 @@
 #include "ResourceEntity.h"
 #include "PMachine.h"
 #include "ResourceBlob.h"
+#include "ResourceUtil.h"
 
 const uint16_t KQ5CD_BadExport = 0xfffe;
 
 using namespace std;
 using namespace sci;
-
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#undef THIS_FILE
-static char THIS_FILE[] = __FILE__;
-#endif
 
 // Turn on/off decompiler, which is a work in progress.
 #define DECOMPILE
@@ -66,6 +61,75 @@ bool CompiledScript::Load(const GameFolderHelper &helper, SCIVersion version, in
 	return false;
 }
 
+sci::Status CompiledScript::TryLoad(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber)
+{
+	std::unique_ptr<ResourceBlob> scriptBlob;
+	std::unique_ptr<ResourceBlob> heapBlob;
+	// The context does not name the resource: the location does.
+	sci::Status found = sci::Guard("the script could not be read", [&]() -> sci::Status
+	{
+		scriptBlob = helper.MostRecentResource(ResourceType::Script, iScriptNumber, ResourceEnumFlags::None);
+		if (!scriptBlob)
+		{
+			return sci::Fail(sci::ErrorCode::NotFound, "the script is missing");
+		}
+		if (version.SeparateHeapResources)
+		{
+			heapBlob = helper.MostRecentResource(ResourceType::Heap, iScriptNumber, ResourceEnumFlags::None);
+		}
+		return sci::Ok();
+	});
+	if (!found)
+	{
+		if (found.error().where.resource.empty())
+		{
+			found.error().where.resource = DescribeResource(ResourceType::Script, iScriptNumber);
+		}
+		return found;
+	}
+	return TryLoad(helper, version, iScriptNumber, *scriptBlob, heapBlob.get());
+}
+
+sci::Status CompiledScript::TryLoad(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber, const ResourceBlob &scriptBlob, const ResourceBlob *heapBlob)
+{
+	std::string resource = DescribeResource(ResourceType::Script, iScriptNumber);
+	// The context does not name the resource: the location does.
+	sci::Status loaded = sci::Guard("the script could not be read", [&]() -> sci::Status
+	{
+		_version = version;
+		_wScript = (uint16_t)iScriptNumber;
+		SCI_TRY(CheckResourceData(scriptBlob));
+		sci::istream scriptStream = scriptBlob.GetReadStream();
+		scriptStream.setThrowExceptions(true);
+		// A read past the end names the stream that it was in, also when the
+		// loader reads a copy of the stream.
+		scriptStream.setSourceName(resource);
+		std::unique_ptr<sci::istream> heapStream;
+		if (version.SeparateHeapResources)
+		{
+			if (!heapBlob)
+			{
+				sci::ErrorLocation where;
+				where.resource = DescribeResource(ResourceType::Heap, iScriptNumber);
+				return sci::Fail(sci::ErrorCode::NotFound, "the heap of the script is missing", where);
+			}
+			SCI_TRY(CheckResourceData(*heapBlob));
+			heapStream = std::make_unique<sci::istream>(heapBlob->GetReadStream());
+			heapStream->setThrowExceptions(true);
+			heapStream->setSourceName(DescribeResource(ResourceType::Heap, iScriptNumber));
+		}
+		if (!Load(helper, version, iScriptNumber, scriptStream, heapStream.get()))
+		{
+			return sci::Fail(sci::ErrorCode::Format, "the script data is not valid");
+		}
+		return sci::Ok();
+	});
+	if (!loaded && loaded.error().where.resource.empty())
+	{
+		loaded.error().where.resource = resource;
+	}
+	return loaded;
+}
 bool CompiledScript::IsExportAnObject(uint16_t wOffset) const
 {
 	return find(_exportedObjectInstances.begin(), _exportedObjectInstances.end(), wOffset) != _exportedObjectInstances.end();
@@ -697,7 +761,7 @@ bool CompiledScript::_LoadSCI0_SCI1(sci::istream &byteStream)
 			}
 			if (fRet)
 			{
-				ASSERT(wSectionSize > 0); // else we'll never get anywhere.
+				assert(wSectionSize > 0); // else we'll never get anywhere.
 				if (wSectionSize > 0)
 				{
 					byteStream.seekg(dwSavePos + wSectionSize);
@@ -851,8 +915,12 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 	// Get the name
 	if (wName != 0)
 	{
-		// Don't modify heapstream, it's right where we need it.
+		// Don't modify heapstream, it's right where we need it. The name read
+		// stays tolerant in throw mode (TryLoad): script 990 of the SCI1.1
+		// template has a name value outside its heap, and the object then gets
+		// a made-up name below.
 		sci::istream temp = heapStream;
+		temp.setThrowExceptions(false);
 		temp.seekg(wName);
 		temp >> _strName;
 	}
@@ -876,7 +944,7 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 	*pwOffset = static_cast<uint16_t>(stream.tellg());
 	_fInstance = !fClass;
 	uint16_t wMagic;
-	stream >> wMagic; //  ASSERT(wMagic == 0x1234);
+	stream >> wMagic; //  assert(wMagic == 0x1234);
 	if (wMagic != 0x1234)
 	{
 		return false; // We'll hit this when loading KQ4 for example, which uses a different format
@@ -968,7 +1036,7 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 		stream >> wZero;
 		if (stream.good())
 		{
-			ASSERT(wZero == 0); // There is supposed to be a zero here.
+			assert(wZero == 0); // There is supposed to be a zero here.
 			while (stream.good() && wNumFunctionSelectors)
 			{
 				uint16_t wPtr;
@@ -977,7 +1045,7 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 				{
 					// These are supposed to be offsets to within the script resource, so they
 					// had better be smaller!
-					ASSERT(stream.GetDataSize() > wPtr);
+					assert(stream.GetDataSize() > wPtr);
 					_functionOffsetsTO.push_back(wPtr + TEST_OFFSET);
 				}
 				wNumFunctionSelectors--;
@@ -1119,7 +1187,7 @@ bool CompiledScript::_ReadStrings(sci::istream &stream, uint16_t wDataSize)
 		stream >> str;
 		if (stream.good())
 		{
-			ASSERT(dwOffset <= 0xffff);
+			assert(dwOffset <= 0xffff);
 			_stringsOffset.push_back(static_cast<uint16_t>(dwOffset));
 			_strings.push_back(Dos2Win(str));
 		}
@@ -1255,7 +1323,7 @@ std::string CompiledObject::LookupPropertyName(ICompiledScriptLookups *pLookup, 
 		// We might be a "private" class.  So use our own list... (REVIEW: can't we always do this?)
 		propertySelectorList = _propertySelectors;
 	}
-	//ASSERT((wPropertyIndex %2) == 0);
+	//assert((wPropertyIndex %2) == 0);
 	// REVIEW: Leisure Suit Larry 3, room 22, hits this ASSERT. As does SQ5 script 201.
 	wPropertyIndex /= 2;
 	if (wPropertyIndex < propertySelectorList.size())
@@ -1403,6 +1471,36 @@ bool GlobalCompiledScriptLookups::Load(const GameFolderHelper &helper)
 	return selOk && kernelOk && classesOk;
 }
 
+sci::Status GlobalCompiledScriptLookups::TryLoad(const GameFolderHelper &helper)
+{
+	return sci::Guard("loading the class and selector tables", [&]() -> sci::Status
+	{
+		SCI_TRY(CheckVocabTables(helper));
+		// The steps of Load, one at a time, so that a failure names its table.
+		// Each load changes a table, so the selector categories are stale
+		// before the first one, also when a load fails.
+		_selectorCategoriesValid = false;
+		_propertySelectors.clear();
+		_methodSelectors.clear();
+		sci::ErrorLocation where;
+		if (!_selectors.Load(helper))
+		{
+			where.resource = DescribeResource(ResourceType::Vocab, 997);
+			return sci::Fail(sci::ErrorCode::Format, "the selector table is not valid", where);
+		}
+		if (!_kernels.Load(helper))
+		{
+			where.resource = DescribeResource(ResourceType::Vocab, 999);
+			return sci::Fail(sci::ErrorCode::Format, "the kernel table is not valid", where);
+		}
+		if (!_classes.Load(helper))
+		{
+			where.resource = DescribeResource(ResourceType::Vocab, 996);
+			return sci::Fail(sci::ErrorCode::Format, "the class table is not valid", where);
+		}
+		return sci::Ok();
+	});
+}
 void GlobalCompiledScriptLookups::_EnsureSelectorCategories()
 {
 	if (!_selectorCategoriesValid)
@@ -1506,7 +1604,7 @@ bool ObjectFileScriptLookups::_GetSCOFile(WORD wScript, CSCOFile &scoFile)
 	if (!fRet)
 	{
 		fRet = _LoadSCOFile(wScript);
-		ASSERT(!fRet || (_mapScriptToObject.find(wScript) != _mapScriptToObject.end()));
+		assert(!fRet || (_mapScriptToObject.find(wScript) != _mapScriptToObject.end()));
 	}
 	if (fRet)
 	{

@@ -20,13 +20,16 @@
 #include "ScriptOMAll.h"
 #include "CompileInterfaces.h"
 #include "CompileContext.h"
-#include "AppState.h"
+#include "GameSession.h"
+#include "ClassHints.h"
+#include "ResourceMap.h"
+#include "ResourceContainer.h"
+#include "ResourceUtil.h"
+#include "ScriptNameMap.h"
 #include "SyntaxParser.h"
-#include "ClassBrowser.h"
 #include <unordered_map>
 #include "Text.h"
 #include "ResourceEntity.h"
-#include "CCrystalTextBuffer.h"
 #include "CrystalScriptStream.h"
 #include "PMachine.h"
 #include "StringUtil.h"
@@ -79,21 +82,65 @@ bool IsSpecialSelector(const string &str, WORD &wOffset, SpeciesIndex &type)
 	return fRet;
 }
 
-bool CompileTables::Load(SCIVersion version)
+bool CompileTables::Load(CResourceMap &resourceMap)
 {
 	// REVIEW: this could be deleted while we're compiling.
-	_pVocab = appState->GetResourceMap().GetVocab000();
-	const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+	_pVocab = resourceMap.GetVocab000();
+	const GameFolderHelper &helper = resourceMap.Helper();
 	return _kernels.Load(helper) && _species.Load(helper) && _selectors.Load(helper);
 }
 
-void CompileTables::Save()
+sci::Status CompileTables::TryLoad(CResourceMap &resourceMap)
 {
-	_species.Save();
-	_selectors.Save();
+	return sci::Guard("loading the compile tables", [&]() -> sci::Status
+	{
+		const GameFolderHelper &helper = resourceMap.Helper();
+		SCI_TRY(CheckVocabTables(helper));
+		// The steps of Load, one at a time, so that a failure names its table.
+		// A missing vocab.000 is not an error here: GetVocab000 gives null,
+		// and only a Said string needs the vocabulary; its compile reports
+		// the missing resource.
+		_pVocab = resourceMap.GetVocab000();
+		sci::ErrorLocation where;
+		if (!_kernels.Load(helper))
+		{
+			where.resource = DescribeResource(ResourceType::Vocab, 999);
+			return sci::Fail(sci::ErrorCode::Format, "the kernel table is not valid", where);
+		}
+		if (!_species.Load(helper))
+		{
+			where.resource = DescribeResource(ResourceType::Vocab, 996);
+			return sci::Fail(sci::ErrorCode::Format, "the class table is not valid", where);
+		}
+		if (!_selectors.Load(helper))
+		{
+			where.resource = DescribeResource(ResourceType::Vocab, 997);
+			return sci::Fail(sci::ErrorCode::Format, "the selector table is not valid", where);
+		}
+		return sci::Ok();
+	});
+}
+sci::Status CompileTables::Save(CResourceMap &resourceMap, const CompileWriteOptions &options)
+{
+	sci::Status species = sci::Ok();
+	if (_species.IsDirty())
+	{
+		species = WriteCompiledResource(resourceMap, options, ResourceType::Vocab, VocabClassTable, _species.MakeResourceData());
+	}
+	sci::Status selectors = sci::Ok();
+	if (_selectors.IsDirty())
+	{
+		selectors = WriteCompiledResource(resourceMap, options, ResourceType::Vocab, VocabSelectorNames, _selectors.MakeResourceData());
+	}
+	return species ? selectors : species;
 }
 
-CompileResults::CompileResults(ICompileLog &log) : _log(log), _text(CreateDefaultTextResource(appState->GetVersion())) {}
+void CompileTables::Save(CResourceMap &resourceMap)
+{
+	ShowWriteError(Save(resourceMap, CompileWriteOptions()));
+}
+
+CompileResults::CompileResults(ICompileLog &log, const SCIVersion &version) : _log(log), _text(CreateDefaultTextResource(version)) {}
 
 TextComponent &CompileResults::GetTextComponent()
 {
@@ -104,11 +151,11 @@ TextComponent &CompileResults::GetTextComponent()
 void CompileContext::_LoadSCO(const std::string &name, bool fErrorIfNotFound)
 {
 	assert(!name.empty());
-	string scoFileName = appState->GetResourceMap().Helper().GetScriptObjectFileName(name);
+	string scoFileName = _resourceMap.Helper().GetScriptObjectFileName(name);
 	HANDLE hFile = CreateFile(scoFileName.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
 	if (hFile == INVALID_HANDLE_VALUE)
 	{
-		scoFileName = appState->GetResourceMap().Helper().GetScriptObjectFileName(name);
+		scoFileName = _resourceMap.Helper().GetScriptObjectFileName(name);
 		hFile = CreateFile(scoFileName.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
 	}
 	if (hFile != INVALID_HANDLE_VALUE)
@@ -127,8 +174,16 @@ void CompileContext::_LoadSCO(const std::string &name, bool fErrorIfNotFound)
 	}
 	else if (fErrorIfNotFound)
 	{
-		char szError[200];
-		FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, 0, GetLastError(), 0, szError, ARRAYSIZE(szError), nullptr);
+		DWORD lastError = GetLastError();
+		char szError[200] = {};
+		FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, 0, lastError, 0, szError, ARRAYSIZE(szError), nullptr);
+		// FormatMessage ends the text with a line break, which would put a
+		// blank line after the diagnostic.
+		size_t length = strlen(szError);
+		while ((length > 0) && ((szError[length - 1] == '\r') || (szError[length - 1] == '\n') || (szError[length - 1] == ' ')))
+		{
+			szError[--length] = 0;
+		}
 		ReportError(_pErrorScript, "Unable to open '%s': %s", scoFileName.c_str(), szError);
 	}
 }
@@ -157,14 +212,15 @@ void CompileContext::_LoadSCOIfNone(WORD wScript)
 
 const uint16_t TempTokenBase = 2345;
 
-CompileContext::CompileContext(SCIVersion version, Script &script, PrecompiledHeaders &headers, CompileTables &tables, ICompileLog &results, bool generateDebugInfo) :
-		_browser(appState->GetClassBrowser()),
-		_resourceMap(appState->GetResourceMap()),
+CompileContext::CompileContext(GameSession &session, Script &script, PrecompiledHeaders &headers, CompileTables &tables, ICompileLog &results, bool generateDebugInfo) :
+		_session(session),
+		_classHints(session.ClassHints()),
+		_resourceMap(session.ResourceMap()),
 		_results(results),
 		_tables(tables),
 		_headers(headers),
 		_script(script),
-		_version(version),
+		_version(session.Version()),
 		_code(_version),
 		_nextTempToken(TempTokenBase),
 		_autoTextNumber(InvalidResourceNumber),
@@ -181,15 +237,23 @@ CompileContext::CompileContext(SCIVersion version, Script &script, PrecompiledHe
 	// Load all the sco files for the "use" statements.
 	//
 	const vector<string> &uses = _script.GetUses();
+	const std::shared_ptr<const ScriptNameMap> &names = _resourceMap.Helper().ScriptNames;
 	for (const string &use : uses)
 	{
+		// The .sco of a name in a conflict can be the file of another script
+		// of the conflict.
+		uint16_t conflictNumber;
+		if (names && names->ConflictNumberOf(use, conflictNumber))
+		{
+			ReportWarning(_pErrorScript, "%s is in a name conflict (see scic script list), so the compile can read the .sco file of another script", use.c_str());
+		}
 		_LoadSCO(use, true);
 	}
 
 	// Get a map of script numbers to script names.  We use this when looking up a species index in the
 	// global class table, and then looking in the script for its name.  This is for type checking, and
 	// is only needed for the Cpp syntax.
-	appState->GetResourceMap().GetNumberToNameMap(_numberToNameMap);
+	_resourceMap.GetNumberToNameMap(_numberToNameMap);
 
 	// We'll always have an accumulator stack context at the top, so just add it now
 	PushOutputContext(OC_Accumulator);
@@ -610,6 +674,34 @@ const ClassDefinition *CompileContext::LookupClassDefinition(const std::string &
 
 const std::string UndeclaredKernelPrefix = "kernel_";
 const std::string NonExistantExportPrefix = "__proc";
+const std::string MissingScriptProcPrefix = "proc";
+
+// Reads a decimal number of 1 to 5 digits that fits in 16 bits, with no
+// leading zero: the decompiler writes none, so "proc0911_0" is a typo.
+static bool _ParseProcNumber(const std::string &text, uint16_t &value)
+{
+	if (text.empty() || (text.size() > 5) || ((text.size() > 1) && (text[0] == '0')) ||
+		!std::all_of(text.begin(), text.end(), [](char ch) { return (ch >= '0') && (ch <= '9'); }))
+	{
+		return false;
+	}
+	int number = std::stoi(text);
+	if (number > 0xffff)
+	{
+		return false;
+	}
+	value = (uint16_t)number;
+	return true;
+}
+
+// Reads "<N>_<M>", the end of the name of a call to export M of script N.
+static bool _ParseScriptAndExport(const std::string &text, uint16_t &script, uint16_t &exportIndex)
+{
+	size_t splitter = text.find('_');
+	return (splitter != std::string::npos) &&
+		_ParseProcNumber(text.substr(0, splitter), script) &&
+		_ParseProcNumber(text.substr(splitter + 1), exportIndex);
+}
 
 // Look up a string and map it to a procedure.  Return the script and index of the procedure, where appropraite
 // Script are looked up in this order:
@@ -617,6 +709,7 @@ const std::string NonExistantExportPrefix = "__proc";
 // ProcedureLocal:	  classOwner
 // ProcedureMain:	   wIndex
 // ProcedureExternal:   wScript, wIndex
+// ProcedureMissingScript: wScript, wIndex (proc<N>_<M>, and the game has no script N)
 //
 // pSignatures - optional: accepts the list of function signatures for this call.
 ProcedureType CompileContext::LookupProc(const string &str, WORD &wScript, WORD &wIndex, string &classOwner)
@@ -674,17 +767,25 @@ ProcedureType CompileContext::LookupProc(const string &str, WORD &wScript, WORD 
 		}
 		else if (startsWith(str, NonExistantExportPrefix))
 		{
-			// Important for the decompiler - calls to non-existant exports
-			std::string meat = str.substr(NonExistantExportPrefix.length());
-			size_t splitter = str.find_first_of('_');
-			if (splitter != std::string::npos)
+			// Important for the decompiler - calls to non-existant exports.
+			// The numbers follow the prefix. The prefix has '_' characters of
+			// its own, so the parse starts after it.
+			uint16_t scriptNumber, exportNumber;
+			if (_ParseScriptAndExport(str.substr(NonExistantExportPrefix.length()), scriptNumber, exportNumber))
 			{
-				int scriptNumber = StrToInt(meat.substr(0, splitter).c_str());
-				int exportNumber = StrToInt(meat.substr(splitter + 1).c_str());
-				type = ProcedureExternal;
-				wIndex = (uint16_t)exportNumber;
-				wScript = (uint16_t)scriptNumber;
+				// A callb to a missing export of main decompiles to __proc0_M;
+				// it compiles back to callb (calle 0 M is one byte longer, or
+				// two when the operands are words). An asm "calle __proc0_M, n"
+				// gives "Procedure type does not match call type."; the
+				// decompiler never writes it.
+				type = (scriptNumber == 0) ? ProcedureMain : ProcedureExternal;
+				wIndex = exportNumber;
+				wScript = scriptNumber;
 			}
+		}
+		else if (_LookupMissingScriptProc(str, wScript, wIndex))
+		{
+			type = ProcedureMissingScript;
 		}
 	}
 
@@ -696,6 +797,34 @@ ProcedureType CompileContext::LookupProc(const std::string &str)
 	WORD wScript, wIndex;
 	string classOwner;
 	return LookupProc(str, wScript, wIndex, classOwner);
+}
+bool CompileContext::_ScriptExists(uint16_t number)
+{
+	if (!_scriptNumbers)
+	{
+		// One pass over the resource map entries, patch files included. The
+		// resource data is not read.
+		_scriptNumbers = std::make_unique<std::set<uint16_t>>();
+		auto container = Helper().Resources(ResourceTypeFlags::Script, ResourceEnumFlags::None);
+		for (auto it = container->begin(); it != container->end(); ++it)
+		{
+			_scriptNumbers->insert((uint16_t)it.GetResourceNumber());
+		}
+	}
+	return _scriptNumbers->find(number) != _scriptNumbers->end();
+}
+bool CompileContext::_LookupMissingScriptProc(const std::string &name, WORD &wScript, WORD &wIndex)
+{
+	uint16_t script, exportIndex;
+	if (startsWith(name, MissingScriptProcPrefix) &&
+		_ParseScriptAndExport(name.substr(MissingScriptProcPrefix.length()), script, exportIndex) &&
+		!_ScriptExists(script))
+	{
+		wScript = script;
+		wIndex = exportIndex;
+		return true;
+	}
+	return false;
 }
 bool CompileContext::_GetSCOObject(SpeciesIndex wSpecies, CSCOObjectClass &scoObject)
 {
@@ -776,14 +905,22 @@ bool CompileContext::SupportTypeChecking()
 }
 bool CompileContext::LookupWord(const string &word, WORD &wWordGroup)
 {
+	// A game with no vocabulary resource has no words. PreScanSaid reports
+	// the missing resource once.
+	const Vocab000 *vocab = _tables.Vocab();
+	if (!vocab)
+	{
+		return false;
+	}
 	Vocab000::WordGroup group;
-	bool fRet = _tables.Vocab()->LookupWord(word, group);
+	bool fRet = vocab->LookupWord(word, group);
 	wWordGroup = (WORD)group;
 	return fRet;
 }
 bool CompileContext::LookupWordGroupClass(uint16_t group, WordClass *wordClass)
 {
-	return _tables.Vocab()->GetGroupClass(group, wordClass);
+	const Vocab000 *vocab = _tables.Vocab();
+	return vocab && vocab->GetGroupClass(group, wordClass);
 }
 sci::Script *CompileContext::SetErrorContext(sci::Script *pScript)
 {
@@ -793,6 +930,12 @@ sci::Script *CompileContext::SetErrorContext(sci::Script *pScript)
 }
 void CompileContext::ReportResult(const CompileResult &result)
 {
+	// An error that comes this way (an include that does not parse or load)
+	// fails the compile too, as an error of the script does.
+	if (result.IsError())
+	{
+		_fErrors = true;
+	}
 	_results.ReportResult(result);
 }
 void CompileContext::ReportWarning(const ISourceCodePosition *pPos, const char *pszFormat, ...)
@@ -824,9 +967,13 @@ void CompileContext::_ReportThing(bool fError, const ISourceCodePosition *pPos, 
 	char sz[300];
 	// Add one to line number, since they are reported from a 0-base (parser), but displayed from a 1-base (script editor)
 	int line = pPos->GetLineNumber() + 1;
-	ScriptId scriptIdThing(_pErrorScript->GetPath().c_str());
+	// The script's own id: GetPath() has the folder in lower case, and the
+	// command line prints the path.
+	ScriptId scriptIdThing = _pErrorScript->GetScriptId();
 	StringCchPrintf(sz, ARRAYSIZE(sz), "%s: (%s) %s  Line: %d, col: %d", fError ? "Error" : "Warning", scriptIdThing.GetFileNameOrig().c_str(), szMessage, line, pPos->GetColumnNumber());
-	_results.ReportResult(CompileResult(sz, scriptIdThing, line, pPos->GetColumnNumber(), fError ? CompileResult::CRT_Error : CompileResult::CRT_Warning));
+	CompileResult result(sz, scriptIdThing, line, pPos->GetColumnNumber(), fError ? CompileResult::CRT_Error : CompileResult::CRT_Warning);
+	result.SetRawMessage(szMessage);
+	_results.ReportResult(result);
 }
 bool CompileContext::HasErrors() { return _fErrors; }
 
@@ -841,50 +988,20 @@ void CompileContext::SetAutoText(uint16_t number)
 }
 
 // Try to figure out which script, if any, this identifier is exported from.
-// This is just used for error reporting.
+// This is just used for error reporting, and only when there are hints.
 string CompileContext::ScanForIdentifiersScriptName(const std::string &identifier)
 {
-	string strRet;
-	const VariableDeclVector *globals = _browser.GetMainGlobals();
-	if (globals)
-	{
-		if (matches_name(globals->begin(), globals->end(), identifier))
-		{
-			strRet = "main";
-		}
-	}
-	if (strRet.empty())
-	{
-		const Script *pContainerScript = nullptr;
-		// Try exported procedures.
-		const RawProcedureVector &procs = _browser.GetPublicProcedures();
-		auto procIt = match_name(procs.begin(), procs.end(), identifier);
-		if (procIt != procs.end())
-		{
-			pContainerScript = (*procIt)->GetOwnerScript();
-		}
-		if (pContainerScript == nullptr)
-		{
-			// Try classes.
-			const RawClassVector &classes = _browser.GetAllClasses();
-			auto classIt = match_name(classes.begin(), classes.end(), identifier);
-			if (classIt != classes.end())
-			{
-				pContainerScript = (*classIt)->GetOwnerScript();
-			}
-		}
-		if (pContainerScript)
-		{
-			strRet = pContainerScript->GetName();
-			// Trim the ".sc" off.
-			auto it = strRet.find('.');
-			if (it != string::npos)
-			{
-				strRet.erase(it);
-			}
-		}
-	}
-	return strRet;
+	return _classHints ? _classHints->ScriptThatExports(identifier) : string();
+}
+
+const GameFolderHelper &CompileContext::Helper() const
+{
+	return _resourceMap.Helper();
+}
+
+const SessionOptions &CompileContext::Options() const
+{
+	return _session.Options();
 }
 
 scicode &CompileContext::code() { return _code; }
@@ -987,8 +1104,26 @@ void CompileContext::FixupLocalCalls()
 }
 void CompileContext::PreScanSaid(const std::string &theSaid, const ISourceCodePosition *pPos)
 {
-	ParseSaidString(this, *this, theSaid, nullptr, pPos);
+	if (!ReportIfNoVocabulary(pPos, "a Said string"))
+	{
+		ParseSaidString(this, *this, theSaid, nullptr, pPos);
+	}
 	GetTempToken(ValueType::Said, theSaid);
+}
+bool CompileContext::ReportIfNoVocabulary(const ISourceCodePosition *pPos, const char *what)
+{
+	if (_tables.Vocab())
+	{
+		return false;
+	}
+	if (!_reportedNoVocabulary)
+	{
+		// One error that names the resource, not an error for each word.
+		_reportedNoVocabulary = true;
+		ReportError(pPos, "The game has no vocabulary resource (%s), so %s cannot be compiled.",
+			DescribeResource(ResourceType::Vocab, Helper().Version.MainVocabResource).c_str(), what);
+	}
+	return true;
 }
 void CompileContext::TrackCallOffsetInstruction(WORD wProcIndex)
 {
@@ -1135,6 +1270,19 @@ CSCOFile &CompileContext::GetScriptSCO()
 	assert(_wScriptNumber != InvalidResourceNumber);
 	return _scos[_wScriptNumber];
 }
+std::set<uint16_t> CompileContext::LoadedObjectFiles() const
+{
+	// An empty entry is a .sco that the compile looked for and did not find.
+	std::set<uint16_t> scripts;
+	for (const auto &sco : _scos)
+	{
+		if ((sco.first != _wScriptNumber) && !sco.second.IsEmpty())
+		{
+			scripts.insert(sco.first);
+		}
+	}
+	return scripts;
+}
 std::string CompileContext::LookupSelectorName(WORD wIndex) const
 {
 	return _tables.Selectors().Lookup(wIndex);
@@ -1182,6 +1330,9 @@ void PrecompiledHeaders::Update(CompileContext &context, Script &script)
 	headerScanList.insert(GetDefaultHeaders(script).begin(), GetDefaultHeaders(script).end());
 	headerScanList.insert(script.GetIncludes().begin(), script.GetIncludes().end());
 	set<string> nonHeadersEncountered;
+	// The includes that did not load or parse: each gives its error once,
+	// also when the loop below runs again for the includes of a header.
+	set<string> failedIncludes;
 	// Now also include any headers that *those* headers include.  To do so, we'll need to parse
 	// the header - ideally we can use the pre-parsed versions.
 	bool fDone = false;
@@ -1196,14 +1347,23 @@ void PrecompiledHeaders::Update(CompileContext &context, Script &script)
 			if (oldHeader == _allHeaders.end())
 			{
 				auto encounteredIt = nonHeadersEncountered.find(*curHeaderIt);
-				if (encounteredIt == nonHeadersEncountered.end())
+				auto failedBefore = _unparsedHeaders.find(*curHeaderIt);
+				if ((failedBefore != _unparsedHeaders.end()) && failedIncludes.insert(*curHeaderIt).second)
+				{
+					// Its errors are in the log of the first script that
+					// included it: one line here.
+					context.ReportResult(CompileResult(failedBefore->second, CompileResult::CRT_Error));
+				}
+				else if ((encounteredIt == nonHeadersEncountered.end()) && (failedIncludes.find(*curHeaderIt) == failedIncludes.end()))
 				{
 					// It's a header we have not yet encountered. Parse it.
-					ScriptId scriptId(_resourceMap.GetIncludePath(*curHeaderIt));
-					CCrystalTextBuffer buffer;
-					if (buffer.LoadFromFile(scriptId.GetFullPath().c_str()))
+					std::string includePath = _resourceMap.GetIncludePath(*curHeaderIt);
+					ScriptId scriptId(includePath);
+					// The path in its own case, for the text of a read error.
+					sci::Result<ScriptText> text = LoadScriptText(scriptId.GetFullPathOrig());
+					if (text)
 					{
-						CScriptStreamLimiter limiter(&buffer);
+						CScriptStreamLimiter limiter(*text);
 						CCrystalScriptStream stream(&limiter);
 						unique_ptr<Script> pNewHeader = std::make_unique<Script>(scriptId);
 						if (SyntaxParser_Parse(*pNewHeader, stream, PreProcessorDefinesFromSCIVersion(context.GetVersion()), &context))
@@ -1225,16 +1385,27 @@ void PrecompiledHeaders::Update(CompileContext &context, Script &script)
 						else
 						{
 							std::stringstream ss;
-							ss << "Parsing errors while loading " << scriptId.GetFullPath() << ".";
+							ss << "Parsing errors while loading " << scriptId.GetFullPathOrig() << ".";
 							context.ReportResult(CompileResult(ss.str(), CompileResult::CRT_Error));
+							failedIncludes.insert(*curHeaderIt);
+							_unparsedHeaders[*curHeaderIt] = "Parsing errors while loading " + scriptId.GetFullPathOrig() + " (listed for the first script that includes it).";
 						}
-						buffer.FreeAll();
 					}
 					else
 					{
 						std::stringstream ss;
-						ss << "Unable to load " << scriptId.GetFullPath() << ".";
+						// Name the include as the script wrote it: a file that was not
+						// found has no path.
+						if (includePath.empty())
+						{
+							ss << "The include file " << *curHeaderIt << " is not in the include folder or in src.";
+						}
+						else
+						{
+							ss << "Unable to load the include file " << *curHeaderIt << ": " << text.error().message;
+						}
 						context.ReportResult(CompileResult(ss.str(), CompileResult::CRT_Error));
+						failedIncludes.insert(*curHeaderIt);
 					}
 				}
 			}

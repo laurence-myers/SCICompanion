@@ -80,7 +80,7 @@ namespace UnitTests
                 Assert::IsTrue(mainSCO->GetVariables().size() > 5, L"Main should have more than 5 globals");
                 Assert::AreEqual(std::string("global3"), mainSCO->GetVariableName(3), L"slot 3 should be unnamed in the template");
                 mainSCO->GetVariables()[5].SetName("global5");
-                SaveSCOFile(helper, *mainSCO);
+                Assert::IsTrue(SaveSCOFile(helper, *mainSCO).has_value(), L"setup: could not write Main.sco");
             }
 
             AddFixtureScript("BatchGlobalsA");
@@ -118,11 +118,11 @@ namespace UnitTests
             Assert::IsTrue(lookups.Load(helper), L"lookups should load");
             uint16_t dummy;
             lookups.GetSelectorTable().ReverseLookup("", dummy);
-            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
 
             TestDecompilerResults results;
-            DecompileBatch batch(config.get(), lookups, helper, results);
-            batch.Run({ 950, 951 });
+            DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
+            Assert::IsTrue(batch.Run({ 950, 951 }).has_value());
 
             Assert::AreEqual(2, (int)batch.GetWrittenScripts().size(), L"both scripts should be written");
             Assert::AreEqual(0, results.fallbacks, L"the fixtures should not fall back");
@@ -179,20 +179,20 @@ namespace UnitTests
             Assert::IsTrue(lookups.Load(helper), L"lookups should load");
             uint16_t dummy;
             lookups.GetSelectorTable().ReverseLookup("", dummy);
-            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
 
             TestDecompilerResults results;
             {
-                DecompileBatch batch(config.get(), lookups, helper, results);
-                batch.Run({ 950, 951 });
+                DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
+                Assert::IsTrue(batch.Run({ 950, 951 }).has_value());
                 Assert::IsFalse(batch.GetGlobalRenames().empty(), L"the first run should name globals");
             }
             std::string firstA = ReadTextFile(helper.GetScriptFileName(950));
             std::string firstB = ReadTextFile(helper.GetScriptFileName(951));
 
             {
-                DecompileBatch batch(config.get(), lookups, helper, results);
-                batch.Run({ 950, 951 });
+                DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
+                Assert::IsTrue(batch.Run({ 950, 951 }).has_value());
                 Assert::IsTrue(batch.GetGlobalRenames().empty(), L"the second run should find every global already named");
             }
             Assert::AreEqual(firstA, ReadTextFile(helper.GetScriptFileName(950)), L"script 950 should decompile the same the second time");
@@ -241,7 +241,7 @@ namespace UnitTests
             Assert::IsTrue(lookups.Load(helper), L"lookups should load");
             uint16_t dummy;
             lookups.GetSelectorTable().ReverseLookup("", dummy);
-            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
 
             for (uint16_t number : { (uint16_t)951, (uint16_t)950 })
             {
@@ -275,7 +275,7 @@ namespace UnitTests
                     Assert::AreEqual(mainForFull->GetVariableName(i), mainForSkeleton.GetVariableName(i), L"Main.sco should end up the same either way");
                 }
                 // Script 950 can only name global3 once global5 has its name.
-                SaveSCOFile(helper, *mainForFull);
+                Assert::IsTrue(SaveSCOFile(helper, *mainForFull).has_value(), L"could not write Main.sco");
             }
         }
 
@@ -299,7 +299,7 @@ namespace UnitTests
             Assert::IsTrue(lookups.Load(helper), L"lookups should load");
             uint16_t dummy;
             lookups.GetSelectorTable().ReverseLookup("", dummy);
-            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(helper, lookups.GetSelectorTable());
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
 
             std::set<uint16_t> numbers;
             {
@@ -326,8 +326,8 @@ namespace UnitTests
 
             ULONGLONG start = GetTickCount64();
             {
-                DecompileBatch batch(config.get(), lookups, helper, results);
-                batch.Run(numbers);
+                DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
+                Assert::IsTrue(batch.Run(numbers).has_value());
                 results.lines.push_back(fmt::format("Wrote {0} of {1} scripts, {2} of them twice; {3} globals named", batch.GetWrittenScripts().size(), numbers.size(), batch.GetRewrittenScripts().size(), batch.GetGlobalRenames().size()));
             }
             results.lines.push_back(fmt::format("Elapsed: {0} s", (GetTickCount64() - start) / 1000));

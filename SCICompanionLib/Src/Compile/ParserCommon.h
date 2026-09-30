@@ -360,7 +360,7 @@ bool _ReadDelimitedString(_TContext *pContext, _It &stream, std::string &str)
 		}
 		else
 		{
-			ASSERT(ch == 0); // EOF
+			assert(ch == 0); // EOF
 			return false;
 		}
 	}

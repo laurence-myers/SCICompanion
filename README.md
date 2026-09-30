@@ -5,9 +5,13 @@ Official website:
 http://scicompanion.com
 
 General notes:
-The bulk of the code is in SCICompanionLib\Src
+The bulk of the code is in SCICompanionLib\Src. The engine (the compiler,
+the decompiler and the resource formats) builds into SCICompanionCore, a
+library with no MFC; the GUI builds into SCICompanionLib.
 
 SCICompanion is the .exe which is just a thin wrapper over SCICompanionLib
+and SCICompanionCore. scic.exe, the command-line tool, links only
+SCICompanionCore.
 
 ## Building
 
@@ -15,8 +19,11 @@ SCI Companion builds with **Visual Studio 2022** and the **v143** platform
 toolset. You need:
 
 * Visual Studio 2022 with the **Desktop development with C++** workload,
-* the **MFC** component (the app and library are MFC), and
-* the **Windows 10 SDK** (10.0.26100 or later).
+* the **MFC** component (the app and the GUI library are MFC),
+* the **Windows 10 SDK** (10.0.26100 or later), and
+* **vcpkg**: the vcpkg component of Visual Studio, or a vcpkg folder in the
+  `VCPKG_ROOT` environment variable. The first build downloads the
+  libraries of `vcpkg.json` (tl::expected and CLI11).
 
 Open `SCICompanion.sln` and build the **Release / Win32** configuration, or
 build from a command prompt:
@@ -26,7 +33,8 @@ MSBuild.exe SCICompanion.sln -m -p:Configuration=Release -p:Platform=Win32
 ```
 
 The unit tests live in the `UnitTests` project. Run them with
-`UnitTests\RunTests.ps1` after building.
+`UnitTests\RunTests.ps1` after building. The build also makes the
+command-line tool, `Release\scic.exe`; `scic help` shows its commands.
 
 ## Licence
 
@@ -40,6 +48,23 @@ for the third-party components it uses are under
 This release focuses on the compiler and decompiler, on stability, and on
 modernizing the build. Broad highlights since the previous release:
 
+* **A command-line tool, `scic.exe`.** It comes next to `SCICompanion.exe`,
+  and it works also on a game that SCI Companion never opened (with no
+  `game.ini`). `scic script list <game folder>` shows each script of a game:
+  its number, its name and where the name comes from, where the game keeps
+  it, and whether its source and `.sco` files exist. `scic script decompile`
+  decompiles scripts as the Decompile dialog does, or prints one script's
+  source (`--stdout`). `scic script sco` makes the `.sco` files from source
+  that another tool wrote. `scic script compile` compiles scripts as one
+  batch, into patch files (the default), the package or another folder,
+  and prints each error in the format that Visual Studio and VS Code can
+  open. `scic help` shows the commands, `--dry-run` writes nothing, and
+  the exit code tells a build script what happened. It refuses a game whose
+  `resource.map` is damaged or empty, and names the volume files when they
+  are missing. A compile of named scripts prints each error when its script
+  is done, and a decompile warning names its script. A console shows names
+  with their own characters. It has none of the GUI code in it: the engine
+  is now a library of its own, with no MFC.
 * **Eliminated most `asm` fallbacks in the decompiler.** When the decompiler
   could not reconstruct a function's control flow it used to give up and emit
   raw `asm` disassembly. It now rebuilds the control flow into real source, so
@@ -49,10 +74,16 @@ modernizing the build. Broad highlights since the previous release:
   and a `while` that is the first statement of a `repeat`.
 * **Fixed bytecode output.** The compiler produced wrong bytecode in some cases:
   a constant `(mod a b)` was folded as bitwise-and instead of modulo (so
-  `(mod 7 3)` gave 3, not 1), and large shift counts were mishandled. It now
-  also reports an error instead of silently emitting bad bytecode when it cannot
-  resolve a branch, corrects the SCI0 public-export order, and rejects assembly
-  opcodes that the target SCI interpreter cannot run.
+  `(mod 7 3)` gave 3, not 1), and large shift counts were mishandled. An `and`
+  or `or` used for its value now gives the operand that decides it, as Sierra's
+  compiler does, not 1 or 0, so a script that used that 1 gets a different
+  value. A call to `procN_M`, a procedure of a script N that is not in the
+  game (Sierra left some in King's Quest VI), compiles with a warning. The
+  decompiler writes such a call as `__procN_M`, which recompiles to the same
+  call with no warning. The compiler now also reports an
+  error instead of silently emitting bad bytecode when it cannot resolve a
+  branch, corrects the SCI0 public-export order, and rejects assembly opcodes
+  that the target SCI interpreter cannot run.
 * **Faster whole-game decompiles.** Naming the global variables used to mean
   decompiling every script again, several times over, until no more names
   changed. The decompiler now decompiles and writes each script once, keeps
@@ -65,16 +96,49 @@ modernizing the build. Broad highlights since the previous release:
 * **Improved decompilation output.** The reconstructed source is more idiomatic
   and follows the "golden" decompilations from
   [sluicebox's SCI tools](https://github.com/sluicebox/sci-tools) much more
-  closely (control-flow shapes, expressions and comparisons).
+  closely (control-flow shapes, expressions and comparisons). Names keep a
+  `#` as the game has it (for example `river#1`, before `river_1`). The
+  Decompile dialog names new scripts in script-number order, so the `_N`
+  suffix of a duplicate name is stable, and a name is always a valid file
+  name and `(use ...)` name.
+* **More accurate compile messages.** Every compile message gives the right
+  line (some parser messages were one line early), the error and warning
+  counts are exact, and a script file that cannot be read gives an error. A
+  compile that cannot start, or cannot save the class and selector tables,
+  says why in the compile output. An `else` clause that is not the last
+  clause of a `cond` is a warning: the compiler drops it and the clauses
+  before it. A header that does not parse gives its errors once for a
+  compile of many scripts, a game with no vocabulary gives one error for
+  its synonyms, and a line break of another style than the file's first one
+  is a warning (it does not end a line, as in the script editor).
 * **Fewer crashes on bad or corrupt data.** The decompiler, compiler and
   resource loaders are hardened against malformed, truncated or crafted game
-  files, so opening a damaged game no longer crashes the app.
+  files, so opening a damaged game no longer crashes the app. Damaged data is
+  now reported instead of hidden: the Decompile dialog shows why a decompile
+  stopped, a text resource that is cut off is marked as failed instead of
+  being shown in part, and a resource that is missing from its volume file,
+  or whose header is damaged, is marked "Corrupt" in the resource list. An
+  empty resource (for example, a text with no strings) is valid: "Rebuild
+  resources" keeps it, and a delete of it works.
 * **Fixed deadlocks and race conditions** in background work (compiling,
   decompiling, the class browser, resource rendering and MIDI playback).
 * **Fixed use-after-free bugs and memory leaks** across the editors and dialogs.
 * **Fixed other crash conditions** surfaced by static analysis and sanitizers.
 * **Safer saving.** Writing game resources is now atomic, so an interrupted or
-  failed save no longer corrupts or loses a resource or volume file.
+  failed save no longer corrupts or loses a resource or volume file. A failed
+  save now says what went wrong (for example, the size limit of the game's
+  format), and a group of patch files replaces none of them when one cannot be
+  written. A compile or decompile now also reports a failed write of its
+  `.sco`, `.scd` or `.sc` file, and a compile that cannot write its output
+  fails and writes nothing of that script, so the game never gets a
+  script without its class table. A compile whose write is refused puts
+  back the `.sco` and `.scd` files that it changed. A write of the package
+  that fails before it changes the game leaves no `.bak` file; one that
+  fails after it names the `.bak` files that put the game right. Before a compile writes into the game's package, it asks what to do
+  with patch files that would hide the new resources (the game reads a patch
+  file first), and it can move them aside to a `replaced-patches` folder.
+  When the Decompile dialog prepares the `src` folder, it copies the
+  decompiler files with no prompt and never overwrites a file of the game.
 * **Removed legacy SCI Studio script syntax.** Scripts now use SCI Companion's
   Sierra-style syntax only.
 * **Modern build tools.** The project now builds with the Visual Studio 2022

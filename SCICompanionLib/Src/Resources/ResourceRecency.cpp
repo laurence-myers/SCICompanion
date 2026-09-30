@@ -47,7 +47,7 @@ void ResourceRecency::AddResourceToRecency(const IResourceIdentifier *pData, BOO
 		// Assert that a resource of this id doesn't not already exist in here.
 		/*for (INT_PTR i = 0; i <= pidList->GetUpperBound(); i++)
 		{
-			ASSERT(pData->GetId() != pidList->GetAt(i));
+			assert(pData->GetId() != pidList->GetAt(i));
 		}*/
 #endif
 	}
@@ -132,7 +132,7 @@ bool ResourceRecency::WasResourceJustAdded(const ResourceBlob *pData)
 
 void ResourceRecency::ClearResourceType(int iType)
 {
-	ASSERT(iType < NumResourceTypes);
+	assert(iType < NumResourceTypes);
 
 	RecencyMap &map = _resourceRecency[iType];
 	// Before removing all, we must de-allocate each array we created.

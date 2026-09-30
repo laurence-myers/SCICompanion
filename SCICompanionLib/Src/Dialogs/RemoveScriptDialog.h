@@ -44,3 +44,9 @@ protected:
 
 	bool _fAlsoDelete;
 };
+
+class CResourceMap;
+class ResourceBlob;
+// Asks whether to remove the script from game.ini, and to delete its heap
+// and its source file too.
+void AskToRemoveScript(CResourceMap &resourceMap, const ResourceBlob &data);

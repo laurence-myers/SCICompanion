@@ -58,7 +58,6 @@ namespace sci
 		NodeTypeCast,
 		NodeTypeExport,
 		NodeTypeCond,
-		NodeTypeWeak,
 
 		NodeTypeClassDefDeclaration,
 		NodeTypeGlobal,

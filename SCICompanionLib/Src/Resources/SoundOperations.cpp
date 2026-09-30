@@ -14,6 +14,7 @@
 #include "stdafx.h"
 #include "SoundOperations.h"
 #include "format.h"
+#include "CorePrompt.h"
 
 std::string GetSoundLength(const SoundComponent &sound)
 {
@@ -108,17 +109,17 @@ SoundChangeHint InitializeFromMidi(SCIVersion version, std::vector<DeviceType> d
 					}
 					else
 					{
-						AfxMessageBox("Only type 0 and type 1 MIDI files are supported.", MB_ERRORFLAGS);
+						SafeMessageBox("Only type 0 and type 1 MIDI files are supported.", MB_ERRORFLAGS);
 					}
 				}
 				else
 				{
-					AfxMessageBox("Wrong chunk size", MB_ERRORFLAGS);
+					SafeMessageBox("Wrong chunk size", MB_ERRORFLAGS);
 				}
 			}
 			else
 			{
-				AfxMessageBox("Not a MIDI file", MB_ERRORFLAGS);
+				SafeMessageBox("Not a MIDI file", MB_ERRORFLAGS);
 			}
 		}
 		sound._fCanSetTempo = true;
@@ -126,7 +127,7 @@ SoundChangeHint InitializeFromMidi(SCIVersion version, std::vector<DeviceType> d
 	catch (std::ifstream::failure e)
 	{
 		std::string message = fmt::format("Error opening {0}: {1}", filename, e.what());
-		AfxMessageBox(message.c_str(), MB_ICONWARNING | MB_OK);
+		SafeMessageBox(message.c_str(), MB_ICONWARNING | MB_OK);
 	}
 
 	return SoundChangeHint::Changed;

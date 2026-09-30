@@ -87,7 +87,7 @@ public:
 		ResourceType GetResourceType();
 
 	private:
-		sci::istream _GetResourceHeaderAndPackage(ResourceHeaderAgnostic &rh) const;
+		sci::istream _GetResourceHeaderAndPackage(ResourceHeaderAgnostic &rh, bool *headerUnreadable = nullptr) const;
 		void _GetNextEntry();
 		reference _CreateHelper(bool delayDecompression) const;
 
@@ -330,6 +330,14 @@ public:
 	// can query this to surface a clear error.
 	bool IsLookupTableCorrupt(sci::istream &mapStream) { _InitLookupPointers(mapStream); return _corruptLookupTable; }
 
+	// True when the lookup table ends after the end of the map: the entries
+	// of the last types are not in the file (a truncated map).
+	bool IsMapShorterThanItsTable(sci::istream &mapStream)
+	{
+		_InitLookupPointers(mapStream);
+		return !_corruptLookupTable && (lookupPointers.back().wOffset > mapStream.GetDataSize());
+	}
+
 private:
 	void _InitLookupPointers(sci::istream &mapStream)
 	{
@@ -394,6 +402,7 @@ public:
 
 	// SCI0 has no lookup table, so it is never corrupt in the SCI1+ sense (#117).
 	bool IsLookupTableCorrupt(sci::istream &) { return false; }
+	bool IsMapShorterThanItsTable(sci::istream &) { return false; }
 
 	bool NavAndReadNextEntry(ResourceTypeFlags typeFlags, sci::istream &mapStream, IteratorState &state, ResourceMapEntryAgnostic &entryOut, std::vector<uint8_t> *optionalRawData = nullptr)
 	{

@@ -1,0 +1,31 @@
+#include <winres.h>
+#include "..\SCICompanionLib\Src\Cli\CliVersion.h"
+
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION SCIC_VERSION_MAJOR, SCIC_VERSION_MINOR, SCIC_VERSION_PATCH, 0
+ PRODUCTVERSION SCIC_VERSION_MAJOR, SCIC_VERSION_MINOR, SCIC_VERSION_PATCH, 0
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+ FILEFLAGS 0x0L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "SCI Companion command line"
+            VALUE "FileVersion", SCIC_VERSION_TEXT
+            VALUE "InternalName", "scic.exe"
+            VALUE "OriginalFilename", "scic.exe"
+            VALUE "ProductName", "SCI Companion 4"
+            VALUE "ProductVersion", SCIC_VERSION_TEXT
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

@@ -41,8 +41,8 @@ const MessageSource &NounsAndCasesComponent::GetCases() const
 }
 
 // REVIEW: Why does it pass a nmssage number?
-void NounsAndCasesComponent::Commit(int messageNumber)
+sci::Status NounsAndCasesComponent::Commit(int messageNumber)
 {
 	_messageNumber = messageNumber;
-	_headerFile.Commit(messageNumber);
+	return _headerFile.Commit(messageNumber);
 }

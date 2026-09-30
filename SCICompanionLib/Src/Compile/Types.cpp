@@ -12,7 +12,6 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
-#include "AppState.h"
 #include "Types.h"
 #include "ScriptOM.h"
 #include "ScriptOMAll.h"
@@ -85,8 +84,8 @@ bool IsOperatorAddSubtract(BinaryOperator op)
 bool DoesTypeMatch(CompileContext &context, SpeciesIndex destType, SpeciesIndex sourceType, const BinaryOperator *binOp, const sci::SyntaxNode *pStatement)
 {
 	// Guard against uninitialized memory
-	ASSERT(destType != 0xcccc);
-	ASSERT(sourceType != 0xcccc);
+	assert(destType != 0xcccc);
+	assert(sourceType != 0xcccc);
 
 	if (sourceType == destType)
 	{
@@ -207,7 +206,7 @@ void _EnsureTypeMaps()
 		g_builtInSpeciesMapR[DataTypeKNode] = TypeStringKNode;
 
 		// Populate the reverse map.
-		ASSERT(g_builtInSpeciesMap.empty());
+		assert(g_builtInSpeciesMap.empty());
 		for(BuiltInSpeciesMapR::value_type &typeToString : g_builtInSpeciesMapR)
 		{
 			g_builtInSpeciesMap[typeToString.second] = typeToString.first;

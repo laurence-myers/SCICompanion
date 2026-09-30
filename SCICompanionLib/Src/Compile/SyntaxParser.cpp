@@ -14,13 +14,17 @@
 #include "stdafx.h"
 #include "SyntaxParser.h"
 #include "SCISyntaxParser.h"
+#include <mutex>
 
 // Our parser global variable. There is only one script syntax now (Sierra).
 SCISyntaxParser g_sci;
 
 void InitializeSyntaxParsers()
 {
-	g_sci.Load();
+	// Each GameSession calls this. Load the grammars once, also if two
+	// threads make a session at the same time.
+	static std::once_flag loaded;
+	std::call_once(loaded, []() { g_sci.Load(); });
 }
 
 bool SyntaxParser_ParseAC(sci::Script &script, CCrystalScriptStream::const_iterator &streamIt, std::unordered_set<std::string> preProcessorDefines, SyntaxContext *pContext)

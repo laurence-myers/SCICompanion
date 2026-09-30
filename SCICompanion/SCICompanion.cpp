@@ -755,7 +755,7 @@ void SCICompanionApp::OnGameVersionDetection()
 
 void SCICompanionApp::OnGameProperties()
 {
-	CGamePropertiesDialog dialog(appState->GetResourceMap().GetRunLogic());
+	CGamePropertiesDialog dialog(appState->GetRunLogic());
 	dialog._strGameName = appState->GetGameName().c_str();
 	if (IDOK == dialog.DoModal())
 	{

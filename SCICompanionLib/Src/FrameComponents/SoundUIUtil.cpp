@@ -1,6 +1,11 @@
 #include "stdafx.h"
 #include "Sound.h"
 #include "SoundUIUtil.h"
+#include "SoundUtil.h"
+#include "Audio.h"
+#include "AppState.h"
+#include "ResourceEntity.h"
+#include "ResourceSourceFlags.h"
 
 struct DeviceAndName
 {
@@ -96,4 +101,25 @@ void SelectDeviceInComboHelper(SCIVersion version, CComboBox &combo, DeviceType 
 			return;
 		}
 	}
+}
+
+std::unique_ptr<ResourceEntity> WaveResourceFromFilename(const std::string &filename)
+{
+	std::unique_ptr<ResourceEntity> resource(CreateDefaultAudioResource(appState->GetVersion()));
+	ScopedFile scopedFile(filename, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
+	sci::streamOwner owner(scopedFile.hFile);
+	std::vector<CompileResult> conversionNotes;
+	AudioComponentFromWaveFile(owner.getReader(), resource->GetComponent<AudioComponent>(), nullptr, MaxSierraSampleRate, false, &conversionNotes);
+	if (!conversionNotes.empty())
+	{
+		appState->OutputResults(OutputPaneType::Compile, conversionNotes);
+	}
+	resource->SourceFlags = ResourceSourceFlags::AudioCache;
+	return resource;
+}
+
+void AddWaveFileToGame(const std::string &filename)
+{
+	std::unique_ptr<ResourceEntity> resource = WaveResourceFromFilename(filename);
+	appState->GetResourceMap().AppendResourceAskForNumber(*resource, _NameFromFilename(filename.c_str()));
 }

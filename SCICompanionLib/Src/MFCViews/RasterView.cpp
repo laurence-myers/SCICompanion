@@ -1961,7 +1961,9 @@ bool CRasterView::_EnsurePenBitmap()
 
 	if (!(HBITMAP)_penBitmap && GetDoc())
 	{
-		CreatePatternBitmap(_penBitmap, penStyle.bPatternSize, _bRandomNR, penStyle.fRectangle, penStyle.fPattern);
+		int sideLength = 0;
+		std::vector<uint8_t> bits = CreatePatternBits(penStyle.bPatternSize, _bRandomNR, penStyle.fRectangle, penStyle.fPattern, sideLength);
+		_penBitmap.CreateBitmap(sideLength, sideLength, 1, 1, bits.data());
 	}
 	return (HBITMAP)_penBitmap != nullptr;
 }

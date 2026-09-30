@@ -21,7 +21,7 @@ class NounsAndCasesComponent : public ResourceComponent
 {
 public:
 	NounsAndCasesComponent(const std::string &msgFolder, int messageNumber);
-	void Commit(int messageNumber);
+	sci::Status Commit(int messageNumber);
 
 	NounsAndCasesComponent *Clone() const override
 	{

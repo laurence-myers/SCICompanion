@@ -23,7 +23,11 @@
 #include "format.h"
 #include "DecompilerConfig.h"
 #include "Vocab000.h"
-#include "AppState.h"
+#include "ResourceMap.h"
+#include "ResourceEntity.h"
+#include "Text.h"
+#include "OutputCodeHelper.h"
+#include <unordered_map>
 
 using namespace sci;
 using namespace std;
@@ -201,7 +205,8 @@ void DetermineAndInsertUsings(const GameFolderHelper &helper, Script &script, De
 {
 	for (uint16_t usingScript : lookups.GetValidUsings())
 	{
-		script.AddUse(helper.FigureOutName(ResourceType::Script, usingScript, NoBase36));
+		// game.ini, or the session's script-name map.
+		script.AddUse(helper.GetScriptTitle(usingScript));
 	}
 }
 
@@ -360,24 +365,46 @@ void ResolvePublicProcedureCalls(DecompileLookups &lookups, const GameFolderHelp
 	unordered_map<int, unique_ptr<CSCOFile>> scoMap;
 	scoMap[script.GetScriptNumber()] = move(GetExistingSCOFromScriptNumber(helper, script.GetScriptNumber(), lookups.GetSelectorTable()));
 
-	// First let's resolve the exports
+	// First the exports. The decompile names each export from the lookups,
+	// which take a .sco only when it loads in full. A .sco that loads only in
+	// part leaves the generated names (procN_i); then an exported procedure
+	// with the generated name of its own slot gets the name of that slot in
+	// this .sco. The slot comes from the export table, not from the name: a
+	// name from a .sco can have the form of a generated name for another slot
+	// (the SCI0 template's Obj.sco names slot 1 "proc999_2"). So the
+	// procedure of each slot is found first, and the renames come after. The
+	// export entry gets the same name, so that the public block agrees with
+	// the procedure.
 	CSCOFile *thisSCO = scoMap.at(script.GetScriptNumber()).get();
 	if (thisSCO)
 	{
-		for (auto &proc : script.GetProceduresNC())
+		vector<pair<ProcedureDefinition *, string>> renames;
+		for (auto &exportEntry : script.GetExports())
 		{
-			uint16_t scriptNumber, index;
-			if (proc->IsPublic() && _IsUndeterminedPublicProc(compiledScript, proc->GetName(), scriptNumber, index))
+			string generatedName = _GetPublicProcedureName(script.GetScriptNumber(), (uint16_t)exportEntry->Slot);
+			if (exportEntry->Name != generatedName)
 			{
-				assert(scriptNumber == script.GetScriptNumber());
-				string newProcName = thisSCO->GetExportName(index);
-				// A stale .sco may not carry this export; keep the generated
-				// procN_i name rather than blanking it.
-				if (!newProcName.empty())
+				continue;
+			}
+			string newProcName = thisSCO->GetExportName((uint16_t)exportEntry->Slot);
+			// A stale .sco may not carry this export; keep the generated name
+			// rather than blanking it.
+			if (newProcName.empty())
+			{
+				continue;
+			}
+			for (auto &proc : script.GetProceduresNC())
+			{
+				if (proc->IsPublic() && (proc->GetName() == generatedName))
 				{
-					proc->SetName(newProcName);
+					renames.emplace_back(proc.get(), newProcName);
 				}
 			}
+			exportEntry->Name = newProcName;
+		}
+		for (const auto &rename : renames)
+		{
+			rename.first->SetName(rename.second);
 		}
 	}
 
@@ -593,15 +620,79 @@ Script *Decompile(const GameFolderHelper &helper, const CompiledScript &compiled
 		// Decompiling always generates an SCO. Any pertinent info from the old SCO should be transfered
 		// to the new one based extracting info from the script.
 		std::unique_ptr<CSCOFile> scoFile = SCOFromScriptAndCompiledScript(*pScript, compiledScript);
-		SaveSCOFile(helper, *scoFile);
+		sci::Status wroteObjectFile = SaveSCOFile(helper, *scoFile);
+		if (!wroteObjectFile)
+		{
+			lookups.DecompileResults().AddResult(DecompilerResultType::Error, wroteObjectFile.error().ToString());
+		}
 
 		// We may have added some global info to main's SCO. Save that now.
 		if (!mainDirtyRenames.empty())
 		{
 			lookups.DecompileResults().AddResult(DecompilerResultType::Important, "Updating global variables in script 0");
 			lookups.DecompileResults().SetGlobalVarsUpdated(mainDirtyRenames);
-			SaveSCOFile(helper, *mainSCO);
+			sci::Status wroteMain = SaveSCOFile(helper, *mainSCO);
+			if (!wroteMain)
+			{
+				lookups.DecompileResults().AddResult(DecompilerResultType::Error, wroteMain.error().ToString());
+			}
 		}
 	}
 	return pScript.release();
+}
+
+void FixDuplicateObjectNames(CompiledScript &compiledScript, const SelectorTable &selectorTable)
+{
+	// Occasionally a script will have objects with duplicate names. Rather than a bug, this indicates that there were two separate objects that had
+	// their name property explicitly provided. An example is _MapInSection.sc in QFG2.
+	// There are a few ways to address it, but we'll try the following here:
+	//  Check for any name dupes in the objects.
+	//  If so, change their name to some unique name
+	//  Then add a name property with a value pointing to the original string.
+	unordered_map<string, int> countOfNames;
+	unordered_map<string, char> suffixes;
+	for (const auto &object : compiledScript.GetObjects())
+	{
+		countOfNames[object->GetName()]++;
+		suffixes[object->GetName()] = 'a';
+	}
+
+	for (auto &object : compiledScript.GetObjects())
+	{
+		int count = countOfNames[object->GetName()];
+		if (count > 1)
+		{
+			// This is a multiple named one.
+			std::string newName = fmt::format("{0}_{1}", object->GetName(), suffixes[object->GetName()]++);
+			object->AdjustName(newName); // This will track the old name so we can explicitly list it
+		}
+	}
+}
+
+std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, uint16_t wScript, CompiledScript &compiledScript, IDecompilerResults &results, bool debugControlFlow, bool debugInstConsumption, PCSTR pszDebugFilter, bool decompileAsm, bool substituteTextTuples)
+{
+	const GameFolderHelper &helper = resourceMap.Helper();
+	unique_ptr<sci::Script> pScript;
+	ObjectFileScriptLookups objectFileLookups(helper, scriptLookups.GetSelectorTable());
+	// Ok if pText fails (and is NULL)
+	unique_ptr<ResourceEntity> textResource = resourceMap.CreateResourceFromNumber(ResourceType::Text, wScript);
+	TextComponent *pText = nullptr;
+	if (textResource)
+	{
+		pText = textResource->TryGetComponent<TextComponent>();
+	}
+
+	FixDuplicateObjectNames(compiledScript, config->GetSelectorTable());
+
+	DecompileLookups decompileLookups(config, helper, wScript, &scriptLookups, &objectFileLookups, &compiledScript, pText, &compiledScript, results);
+	decompileLookups.DebugControlFlow = debugControlFlow;
+	decompileLookups.DebugInstructionConsumption = debugInstConsumption;
+	decompileLookups.pszDebugFilter = pszDebugFilter;
+	decompileLookups.DecompileAsm = decompileAsm;
+	decompileLookups.SubstituteTextTuples = substituteTextTuples;
+	pScript.reset(Decompile(helper, compiledScript, decompileLookups, resourceMap.GetVocab000()));
+
+	ConvertToSCISyntaxHelper(*pScript, &scriptLookups);
+
+	return pScript;
 }

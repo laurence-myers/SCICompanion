@@ -18,7 +18,8 @@
 #include "format.h"
 #include "NounsAndCases.h"
 #include "ResourceSourceFlags.h"
-#include "AppState.h"
+#include "CorePrompt.h"
+#include "ResourceMap.h"
 
 using namespace std;
 
@@ -441,7 +442,7 @@ void MessageWriteNounsAndCases(const ResourceEntity &resource, int resourceNumbe
 	{
 		// Use the provided resource number instead of that in the ResourceEntity, since it may
 		// be -1
-		nounsAndCases->Commit(resourceNumber);
+		ShowWriteError(nounsAndCases->Commit(resourceNumber));
 	}
 }
 

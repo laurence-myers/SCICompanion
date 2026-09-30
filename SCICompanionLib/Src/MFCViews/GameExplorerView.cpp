@@ -695,7 +695,7 @@ void DropResourceFiles(CArray<CString, CString&> *pDropFiles)
 			}
 		}
 	}
-	defer.Commit();
+	ShowWriteError(defer.Commit());
 }
 
 //

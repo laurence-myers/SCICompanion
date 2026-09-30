@@ -1459,7 +1459,7 @@ WORD _GetImmediateFromCodeNode(ConsumptionNode &node, ConsumptionNode *pNodePrev
 				}
 
 				// REVIEW, hits too often..... ldi jmp ldi push
-				//ASSERT(node.GetChildCount());
+				//assert(node.GetChildCount());
 
 				//HACK: LSL3DEMO uses "ldi 57, push" to push an "init" selector, but this isn't properly decompiled
 				//unlike the "proper" method, "pushi 57". So IF the previous node was an LDI, return *its* first operand instead.
@@ -1738,7 +1738,7 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, Decompi
 					{
 						// The first one should just be the number of parameters.
 						WORD cParamsCheck = _GetImmediateFromCodeNode(*node.Child(i));
-						ASSERT((cParamsCheck + 1) == cParams);
+						assert((cParamsCheck + 1) == cParams);
 					}
 					else
 					{
@@ -2076,7 +2076,7 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, Decompi
 		case Opcode::DPTOS:   // Dec prop to stack
 		{
 			unique_ptr<PropertyValue> pValue = std::make_unique<PropertyValue>();
-			ASSERT(node.GetChildCount() == 0);
+			assert(node.GetChildCount() == 0);
 			WORD wPropertyIndex = node.GetCode()->get_first_operand();
 			pValue->SetValue(lookups.LookupPropertyName(wPropertyIndex), ValueType::Token);
 			bool fIncrement = (bOpcode == Opcode::IPTOA) || (bOpcode == Opcode::IPTOS);
@@ -2116,7 +2116,7 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, Decompi
 			{
 				// TODO: Walk backwards until we have an instruction that puts something on the stack.
 				// This may not work in all cases (if we pass a branch, etc...)
-				appState->LogInfo("WARNING: Possible incorrect logic.");
+				CoreLog(LogLevel::Warning, "Possible incorrect logic.");
 				// How do we handle this one?
 				// assert(false);
 			}*/
@@ -3698,7 +3698,7 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 		{
 			std::stringstream ss;
 			mainChunk->Print(ss, 0);
-			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, debugTrackName + " chunks (raw):\n" + ss.str());
+			lookups.DecompileResults().AddResult(DecompilerResultType::Debug, debugTrackName + " chunks (raw):\n" + ss.str());
 		}
 
 		_LookForRestsAndMaybeLiftOutAssignments(mainChunk.get(), mainChunk.get(), lookups);
@@ -3721,7 +3721,7 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 		{
 			std::stringstream ss;
 			mainChunk->Print(ss, 0);
-			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, debugTrackName + " chunks (final):\n" + ss.str());
+			lookups.DecompileResults().AddResult(DecompilerResultType::Debug, debugTrackName + " chunks (final):\n" + ss.str());
 		}
 
 		// Now fill it in
@@ -3737,7 +3737,7 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 		{
 			std::stringstream ss;
 			mainChunk->Print(ss, 0);
-			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, debugTrackName + " chunks (at failure):\n" + ss.str());
+			lookups.DecompileResults().AddResult(DecompilerResultType::Debug, debugTrackName + " chunks (at failure):\n" + ss.str());
 		}
 
 		string message;
@@ -3762,7 +3762,7 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 		{
 			std::stringstream ss;
 			mainChunk->Print(ss, 0);
-			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, debugTrackName + " chunks (at failure):\n" + ss.str());
+			lookups.DecompileResults().AddResult(DecompilerResultType::Debug, debugTrackName + " chunks (at failure):\n" + ss.str());
 		}
 		lookups.DecompileResults().AddResult(DecompilerResultType::Warning, fmt::format("{0}: {1}", messagePrefix, e.what()));
 		return false;

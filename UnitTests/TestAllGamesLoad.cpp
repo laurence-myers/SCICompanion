@@ -276,7 +276,7 @@ namespace UnitTests
             // Normally ResourceMap uses the module filename for this. But unit tests are run from another exe.
             std::string exeFolder = szPath;
             exeFolder += "\\";
-            appState->GetResourceMap().SetIncludeFolderForTest(exeFolder);
+            appState->GetResourceMap().SetDataFolder(exeFolder);
 
             ResourceTypeFlags flags = ResourceTypeFlags::AllCreatable;
             flags &= ~ResourceTypeFlags::Sound;     // Leave sounds out for now, we still don't load SCI10 sounds properly.

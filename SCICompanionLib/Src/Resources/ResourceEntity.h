@@ -13,6 +13,8 @@
 ***************************************************************************/
 #pragma once
 
+#include "Result.h"
+
 #include "Components.h"
 #include <memory>
 #include <typeinfo>
@@ -78,7 +80,7 @@ public:
 		{
 			return static_cast<_T&>(*(result->second));
 		}
-		throw std::exception("No component of this type exists");
+		throw sci::DataError("No component of this type exists", sci::ErrorCode::Internal);
 	}
 
 	template<typename _T>
@@ -90,7 +92,7 @@ public:
 		{
 			return static_cast<_T&>(*(result->second));
 		}
-		throw std::exception("No component of this type exists");
+		throw sci::DataError("No component of this type exists", sci::ErrorCode::Internal);
 	}
 
 	template<typename _T>

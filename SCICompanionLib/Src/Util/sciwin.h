@@ -14,6 +14,9 @@ GNU General Public License for more details.
 
 #pragma once
 
+// Opens the file in its program (WindowsUtil.cpp).
+void ShowTextFile(PCSTR pszContent, const std::string &filename);
+void ShowFile(const std::string &actualPath);
 
 class OpenClipboardGuard
 {

@@ -13,6 +13,7 @@
 ***************************************************************************/
 #pragma once
 
+#include "CoreLog.h"
 #include <atomic>
 #include <deque>
 
@@ -187,6 +188,7 @@ private:
 						// A task -- or handling its response -- must not take down the
 						// worker thread: an exception escaping here would propagate out
 						// of the thread function, an unconditional std::terminate.
+						CoreLogCurrentException("a background task");
 					}
 				}
 				// No re-lock needed: the lock is already released, and the next
@@ -311,6 +313,7 @@ public:
 				// guard in BackgroundScheduler). Match the previous std::async
 				// behavior: leave the response unset and post nothing, so the failure
 				// is not delivered rather than crashing the application. (#53)
+				CoreLogCurrentException("a background task");
 			}
 		});
 	}
