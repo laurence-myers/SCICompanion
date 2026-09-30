@@ -701,5 +701,72 @@ namespace UnitTests
 				"code 0007\n",
 				"successor", 0x0002);
 		}
+
+		// A test at the start of the function: the entry is checked too.
+		TEST_METHOD(Entry_ATestAtTheStart)
+		{
+			const char *code = R"(
+				bnt end
+				ldi 1
+				sat 0
+			end:
+				ret
+			)";
+			AssertVerifies(code,
+				"if 0000\n"
+				"  then\n"
+				"    code 0001-0002\n"
+				"code 0003\n");
+			AssertRejects(code,
+				"if 0000\n"
+				"  then\n"
+				"code 0001-0003\n",
+				"entry", 0x0000);
+		}
+
+		// A jmp over dead code does nothing: in a code region, control goes
+		// past the dead code after it, as in the bytecode.
+		TEST_METHOD(Shapes_NoOpJmpOverDeadCode)
+		{
+			AssertVerifies(R"(
+			top:
+				lap 1
+				bnt exit
+				+at 0
+				jmp exit
+				jmp top
+			exit:
+				ret
+			)",
+				"code 0000\n"
+				"if 0001\n"
+				"  then\n"
+				"    code 0002-0004\n"
+				"code 0005\n");
+		}
+
+		// Negative check: an if whose test is the inert bnt of an n-ary
+		// compare. The control flow is the same, but the compare is one value.
+		TEST_METHOD(Reject_InertBntAsATest)
+		{
+			AssertRejects(NarySierra,
+				"code 0000-0002\n"
+				"if 0003\n"
+				"  then\n"
+				"    code 0004-0006\n"
+				"    if 0007\n"
+				"      then\n"
+				"        code 0008\n"
+				"code 0009\n",
+				"opcode", 0x0003);
+		}
+
+		// Negative check: the head of a loop is not the target of its latch.
+		TEST_METHOD(Reject_WrongLoopHead)
+		{
+			std::string tree = LoopTree;
+			tree.replace(tree.find("loop 0000"), 9, "loop 0005");
+			AssertRejects(LoopSierra, tree, "loop-head", 0x000b);
+		}
 	};
 }

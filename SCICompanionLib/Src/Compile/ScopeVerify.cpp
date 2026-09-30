@@ -52,6 +52,7 @@ namespace scope
 		{
 			Inst,	// an instruction that is not a branch of the control flow
 			Inert,	// an inert bnt of an n-ary compare
+			Skip,	// a branch that does nothing: it goes past the dead code after it
 			Jmp,
 			Bt,
 			Bnt,
@@ -85,10 +86,17 @@ namespace scope
 				{
 					return Successor::Next(_model.Size());
 				}
-				int landing = _Resolve(position + 1, Arrival::Jump);
+				return From(position + 1);
+			}
+
+			// Where control goes from a position of the skeleton, with any
+			// value in the accumulator.
+			Successor From(int position) const
+			{
+				int landing = _Resolve(position, Arrival::Jump);
 				if (landing == AtTest)
 				{
-					return Successor::Test(_Resolve(position + 1, Arrival::True), _Resolve(position + 1, Arrival::False));
+					return Successor::Test(_Resolve(position, Arrival::True), _Resolve(position, Arrival::False));
 				}
 				return Successor::Next(landing);
 			}
@@ -126,6 +134,10 @@ namespace scope
 				if ((index < 0) || (index >= _model.Size()) || (_model.Op(index) != op))
 				{
 					_Fail("opcode", index, fmt::format("the {0} is no {1}", what, OpcodeToName(op, 0)));
+				}
+				if (_model.IsLive(index) && _model.IsInert(index))
+				{
+					_Fail("opcode", index, fmt::format("the {0} is an inert bnt of an n-ary compare", what));
 				}
 			}
 
@@ -169,11 +181,16 @@ namespace scope
 						{
 							_Fail("branch-in-code", i, "a branch of the control flow in a code region");
 						}
+						SkeletonKind kind = SkeletonKind::Inst;
 						if (_model.IsLive(i) && _model.IsNoOp(i))
 						{
-							continue;
+							kind = SkeletonKind::Skip;
 						}
-						_ops.push_back({ (_model.IsLive(i) && _model.IsInert(i)) ? SkeletonKind::Inert : SkeletonKind::Inst, i, NoIndex });
+						else if (_model.IsLive(i) && _model.IsInert(i))
+						{
+							kind = SkeletonKind::Inert;
+						}
+						_ops.push_back({ kind, i, NoIndex });
 					}
 					break;
 
@@ -242,6 +259,10 @@ namespace scope
 					{
 						_Fail("opcode", latch, "the latch of a loop is no branch");
 					}
+					if (_model.Target(latch) != region->head)
+					{
+						_Fail("loop-head", latch, "the latch does not go to the head of the loop");
+					}
 					Opcode op = _model.Op(latch);
 					_Branch((op == Opcode::JMP) ? SkeletonKind::Jmp : ((op == Opcode::BT) ? SkeletonKind::Bt : SkeletonKind::Bnt), latch, headLabel);
 					_loops.pop_back();
@@ -265,6 +286,10 @@ namespace scope
 					}
 					for (size_t k = 0; k < region->cases.size(); ++k)
 					{
+						if (!region->cases[k] || (region->cases[k]->kind != RegionKind::Case))
+						{
+							_Fail("layout", region->head, "a switch with an item that is no case");
+						}
 						const Region &item = *region->cases[k];
 						_Place(caseLabels[k]);
 						_Emit(item.value.get());
@@ -351,6 +376,14 @@ namespace scope
 						}
 						++position;
 						break;
+					case SkeletonKind::Skip:
+						// Like the bytecode: past each dead instruction after it.
+						++position;
+						while ((_ops[position].inst != NoIndex) && !_model.IsLive(_ops[position].inst))
+						{
+							++position;
+						}
+						break;
 					}
 				}
 				return NoIndex;
@@ -362,18 +395,27 @@ namespace scope
 			std::vector<LoopLabels> _loops;
 		};
 
+		Successor _BytecodeFrom(const CodeModel &model, int position);
+
 		// Where control goes after a live instruction that is not a branch,
 		// in the bytecode.
 		Successor _BytecodeSuccessor(const CodeModel &model, int i)
 		{
-			if (!model.FallsThrough(i) || (i + 1 >= model.Size()))
+			if (!model.FallsThrough(i))
 			{
 				return Successor::Next(model.Size());
 			}
-			int landing = model.Resolve(i + 1, Arrival::Jump);
+			return _BytecodeFrom(model, i + 1);
+		}
+
+		// Where control goes from an address of the bytecode, with any value
+		// in the accumulator.
+		Successor _BytecodeFrom(const CodeModel &model, int position)
+		{
+			int landing = model.Resolve(position, Arrival::Jump);
 			if ((landing >= 0) && (landing < model.Size()) && model.IsConditional(landing))
 			{
-				return Successor::Test(model.Resolve(i + 1, Arrival::True), model.Resolve(i + 1, Arrival::False));
+				return Successor::Test(model.Resolve(position, Arrival::True), model.Resolve(position, Arrival::False));
 			}
 			return Successor::Next(landing);
 		}
@@ -383,6 +425,10 @@ namespace scope
 			if (index == NoIndex)
 			{
 				return "circle";
+			}
+			if (index < 0)
+			{
+				return fmt::format("bad index {0}", index);
 			}
 			if (index >= model.Size())
 			{
@@ -420,6 +466,13 @@ namespace scope
 		Skeleton skeleton(model);
 		skeleton.Build(root);
 		const std::vector<SkeletonOp> &ops = skeleton.Ops();
+		Successor treeEntry = skeleton.From(0);
+		Successor bytecodeEntry = _BytecodeFrom(model, 0);
+		if (!(treeEntry == bytecodeEntry))
+		{
+			throw ScopeError("verify", "entry", (model.Size() > 0) ? model.Offset(0) : -1,
+				fmt::format("the tree starts with {0}, the bytecode {1}", _Text(model, treeEntry), _Text(model, bytecodeEntry)));
+		}
 		for (int position = 0; position < (int)ops.size(); ++position)
 		{
 			const SkeletonOp &op = ops[position];

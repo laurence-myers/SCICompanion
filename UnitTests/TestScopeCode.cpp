@@ -363,6 +363,34 @@ namespace UnitTests
 			Assert::IsFalse(model.IsBackBranch(a.At("repeatLatch") - 2), L"the bt to done goes forward");
 		}
 
+		// (while c A (if d (continue)) B (return)): the latch after the
+		// return is dead, and it is still the latch of the loop.
+		TEST_METHOD(Loops_ADeadLatchEndsTheLoop)
+		{
+			ScopeAsm a(R"(
+			head:
+				lap 1
+				bnt exit
+				+at 0
+				lap 2
+				bnt skip
+			continue:
+				jmp head
+			skip:
+				+at 1
+				ret
+			latch:
+				jmp head
+			exit:
+				ret
+			)");
+			CodeModel model(a.code);
+			Assert::IsFalse(model.IsLive(a.At("latch")));
+			Assert::AreEqual(a.At("latch"), model.Latch(a.At("head")));
+			Assert::AreEqual((size_t)2, model.BackBranches(a.At("head")).size());
+			Assert::AreEqual((size_t)1, model.LoopHeads().size());
+		}
+
 		// This repository's compiler: (if (or a b) X) gives a bt past the
 		// bnt of the if. The parser reads the bt as a bt to that bnt.
 		TEST_METHOD(Dialect_ABtPastABntGoesToTheBnt)

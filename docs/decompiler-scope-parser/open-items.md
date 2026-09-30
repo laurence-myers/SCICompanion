@@ -53,3 +53,19 @@ Open items only: gaps, unfixed findings, questions. The plan is in
   still the expected side. Delete `<cache>\snuffer\<md5>` to run it again.
   A Snuffer failure does not fail the gate: the rows of that game become
   ONLY-ACTUAL, which rule 6 does not rank.
+
+## Code model and verify
+
+- The dialect pass can move a `bnt` onto a `contif` of a `for` loop (a
+  `bt` to the step): `_IsLoopContinuation` knows only the head and the
+  instruction after the latch, not the step. Both targets are equal by
+  resolution, so only the presentation can change.
+- `HasDepthConflict` marks each instruction after a merge point again
+  when a smaller depth comes later, not only the merge point.
+- A dead back branch to a loop head counts as a latch. Junk code after
+  the end of a function that jumps back into a loop would make the loop
+  too long; the parse or the verify stage then fails (asm), it does not
+  give a wrong tree.
+- Verify builds the layout of a tree before it checks the indices of its
+  code regions: a malformed tree with a very large code range allocates
+  that much memory.

@@ -356,11 +356,21 @@ namespace scope
 		}
 	}
 
+	// A head is the target of a live back branch. The back branches of a
+	// head include a dead one: the latch of a loop whose body ends with a
+	// return is dead, and the loop still ends there.
 	void CodeModel::_FindLoops()
 	{
 		for (int i = 0; i < Size(); ++i)
 		{
 			if (IsBackBranch(i))
+			{
+				_backBranches[Target(i)];
+			}
+		}
+		for (int i = 0; i < Size(); ++i)
+		{
+			if (IsBranch(i) && (Target(i) <= i) && (_backBranches.find(Target(i)) != _backBranches.end()))
 			{
 				_backBranches[Target(i)].push_back(i);
 			}

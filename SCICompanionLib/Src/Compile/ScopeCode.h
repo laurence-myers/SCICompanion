@@ -128,8 +128,9 @@ namespace scope
 		// The heads of the loops (the targets of back branches), in address
 		// order.
 		const std::vector<int> &LoopHeads() const { return _loopHeads; }
-		// The back branches to a head, in address order. The last one is the
-		// latch of the loop of the head.
+		// The back branches to a head, in address order, dead ones too (the
+		// latch after a return at the end of the body is dead). The last one
+		// is the latch of the loop of the head.
 		const std::vector<int> &BackBranches(int head) const;
 		// The last back branch to the head; NoIndex when it is no head.
 		int Latch(int head) const;
