@@ -415,7 +415,9 @@ namespace scope
 		}
 		for (int b = head; b < after; ++b)
 		{
-			if (IsBranch(b) && (Target(b) == after))
+			// Equal by resolution: Sierra threads a break through a dead jmp
+			// after the latch (the end of a case) to where that jmp goes.
+			if (IsBranch(b) && SameTarget(Target(b), after, ArrivalOf(Op(b))))
 			{
 				return true;
 			}

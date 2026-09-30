@@ -331,21 +331,29 @@ namespace scope
 						return p + 1;
 					}
 				}
-				else if (op == Opcode::BT)
+				bool orJumpsOut = false;
+				if (op == Opcode::BT)
 				{
-					if ((target > p) && (target <= hi))
+					int orEnd = ((target > p) && (target <= hi)) ? target : (_model.SameTarget(target, hi, Arrival::True) ? hi : NoIndex);
+					if (orEnd != NoIndex)
 					{
-						sequence->items.push_back(_Or(p, target));
-						return target;
-					}
-					if (_model.SameTarget(target, hi, Arrival::True))
-					{
-						sequence->items.push_back(_Or(p, hi));
-						return hi;
+						std::unique_ptr<Region> region = _Or(p, orEnd);
+						if (region)
+						{
+							sequence->items.push_back(std::move(region));
+							return orEnd;
+						}
+						// No or: a breakif or contif when the target is a place
+						// of a loop.
+						orJumpsOut = true;
 					}
 				}
 				bool toExit = false;
 				int level = _LoopLevel(target, CodeModel::ArrivalOf(op), toExit);
+				if ((level == 0) && orJumpsOut)
+				{
+					_Fail("or-jumps-out", p);
+				}
 				if ((level == 0) && (op == Opcode::JMP) && _model.IsLive(p) && _model.SameTarget(target, hi, Arrival::Jump) && _IsDead(p + 1, hi))
 				{
 					// A jmp to the end of the sequence, and only dead code
@@ -488,8 +496,8 @@ namespace scope
 			}
 
 			// A bt to the end of the or: its second operand is [p + 1, end).
-			// An operand that ends with a break, continue or exit gives no
-			// value to the end of the or: it is no or.
+			// An operand with a way out (a break or continue of an outer loop,
+			// or an exit) is no value: null, it is no or.
 			std::unique_ptr<Region> _Or(int p, int end)
 			{
 				std::unique_ptr<Region> region = std::make_unique<Region>(RegionKind::Or);
@@ -497,7 +505,7 @@ namespace scope
 				region->body = _Sequence(p + 1, end, nullptr);
 				if (_JumpsOut(region->body.get(), 0))
 				{
-					_Fail("or-jumps-out", p);
+					return nullptr;
 				}
 				return region;
 			}

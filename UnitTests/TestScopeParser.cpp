@@ -1085,6 +1085,70 @@ namespace UnitTests
 				"code 0007\n");
 		}
 
+		// Police Quest 2, phoneNumber::changeState: a repeat in a case whose
+		// last statement is a break. The latch after it is dead, and the break
+		// is threaded through the dead jmp of the case to the toss: the latch
+		// still ends the loop.
+		TEST_METHOD(Loops_ADeadLatchWhoseExitIsThreaded)
+		{
+			AssertParses(R"(
+				lsp 1
+				dup
+				ldi 1
+				eq?
+				bnt done
+			head:
+				+at 0
+				lap 2
+				bnt head
+				jmp done
+				jmp head
+				jmp done
+			done:
+				toss
+				ret
+			)",
+				"switch 0000 toss 000b\n"
+				"  case bnt 0004 jmp 000a\n"
+				"    value\n"
+				"      code 0001-0003\n"
+				"    body\n"
+				"      loop 0005 latch 0009\n"
+				"        body\n"
+				"          code 0005-0006\n"
+				"          if 0007\n"
+				"            then\n"
+				"              break 1 0008\n"
+				"code 000c\n");
+		}
+
+		// Space Quest 3, proc984_0: (repeat X (contif a) (contif b) (break)).
+		// The rest of the body after each bt is no value (it breaks), so no
+		// or: each bt to the head is a contif.
+		TEST_METHOD(Loops_ContIfWhenTheOrJumpsOut)
+		{
+			AssertParses(R"(
+			head:
+				+at 0
+				lap 1
+				bt head
+				lap 2
+				bt head
+				jmp exit
+				jmp head
+			exit:
+				ret
+			)",
+				"loop 0000 latch 0006\n"
+				"  body\n"
+				"    code 0000-0001\n"
+				"    contif 1 0002\n"
+				"    code 0003\n"
+				"    contif 1 0004\n"
+				"    break 1 0005\n"
+				"code 0007\n");
+		}
+
 		// The switch fixtures.
 		TEST_METHOD(Fixtures_Switches)
 		{
