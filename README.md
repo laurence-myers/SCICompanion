@@ -103,7 +103,8 @@ modernizing the build. Broad highlights since the previous release:
   `#` as the game has it (for example `river#1`, before `river_1`). The
   Decompile dialog names new scripts in script-number order, so the `_N`
   suffix of a duplicate name is stable, and a name is always a valid file
-  name and `(use ...)` name.
+  name and `(use ...)` name. A variable named from an object is a valid
+  name too (`gGame_opt` from the object `game.opt`).
 * **More accurate compile messages.** Every compile message gives the right
   line (some parser messages were one line early), the error and warning
   counts are exact, and a script file that cannot be read gives an error. A

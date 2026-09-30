@@ -18,6 +18,7 @@
 #include "DisassembleHelper.h"
 #include "DecompilerConfig.h"
 #include "Vocab99x.h"
+#include "SCISourceCodeFormatter.h"
 #include <set>
 using namespace sci;
 using namespace std;
@@ -371,6 +372,10 @@ string ResolveSuggestion(const Suggestion &suggestion, const string &original, c
 
 	// We should always start vars with lower case
 	baseValue[0] = tolower((unsigned char)baseValue[0]);
+
+	// An object name can have characters that a token cannot have, for
+	// example the dot of "game.opt" in the Hoyle games.
+	baseValue = CleanTokenSCI(baseValue);
 
 	// We can't randomly have vars with '-' in them. So replace with '_'
 	for (size_t i = 0; i < baseValue.size(); i++)
