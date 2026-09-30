@@ -2436,8 +2436,10 @@ void _UnchainBtToBnt(code_pos start, code_pos end)
 
 // Sierra's compiler chains a bnt whose target is another bnt straight to the
 // final target. Inside an or operand that hides the operand's join. For each
-// forward bt that targets a forward bnt T, any bnt between them that targets
-// T's target is retargeted onto T (P; bt L; Q; bnt L; R; L: bnt X).
+// forward bt that targets a bnt T, any bnt between them that targets T's
+// target is retargeted onto T (P; bt L; Q; bnt X; R; L: bnt X). T's target
+// can be behind: the loop head, when the or is the test of an if that ends
+// a loop body.
 void _DeoptimizeBtChains(code_pos start, code_pos end)
 {
 	code_pos cur = start;
@@ -2447,7 +2449,7 @@ void _DeoptimizeBtChains(code_pos start, code_pos end)
 		if ((cur->get_opcode() == Opcode::BT) && cur->is_forward_branch())
 		{
 			code_pos tail = cur->get_branch_target();
-			if ((tail != end) && (tail->get_opcode() == Opcode::BNT) && tail->is_forward_branch())
+			if ((tail != end) && (tail->get_opcode() == Opcode::BNT))
 			{
 				code_pos tailTarget = tail->get_branch_target();
 				code_pos i = cur;

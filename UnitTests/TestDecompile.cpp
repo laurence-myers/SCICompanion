@@ -308,6 +308,15 @@ namespace UnitTests
             AssertDecompileMatchesExpected("F19_ValueIfInAnd", 943);
         }
 
+        // An or that is the test of an if at the end of a loop body, with an
+        // and as its last operand: the and's "bnt" goes past the if's "bnt"
+        // to the loop head. The structurer moves it back onto the if's "bnt".
+        TEST_METHOD(OrAndLoopHead)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F20_OrAndLoopHead", 944);
+        }
+
         // Return values take the golden shape: an if whose branches return is
         // not itself returned; a value-shaped if at the end of the function
         // is; a ++ before the final ret is not a return value.
