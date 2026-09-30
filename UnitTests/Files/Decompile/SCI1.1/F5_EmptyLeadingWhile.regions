@@ -1,0 +1,16 @@
+== f5EmptyLeadingWhile
+code 000a
+loop 000c latch 0010
+  body
+    code 000c
+    if 000e
+      then
+      else break 1
+loop 0012 latch 001d
+  body
+    code 0012
+    if 0014
+      then
+        code 0016-001b
+      else break 1
+code 001f

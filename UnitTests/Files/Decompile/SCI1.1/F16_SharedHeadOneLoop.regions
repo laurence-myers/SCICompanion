@@ -1,0 +1,13 @@
+== f16SharedHeadOneLoop
+code 000a
+loop 000c latch 0020
+  body
+    code 000c-0010
+    if 0011
+      then
+        code 0013
+      else 0015
+        code 0017-001b
+        breakif 1 001c
+        code 001e
+code 0022

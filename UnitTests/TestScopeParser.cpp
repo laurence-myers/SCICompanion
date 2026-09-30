@@ -217,8 +217,249 @@ namespace UnitTests
 				"no-scope-for-target", 0x0003);
 		}
 
-		// The fixtures of the families of this step: the region tree of each
-		// function after the verify stage.
+		// A while, with a break, a continue, and an if whose bnt Sierra's
+		// compiler threads to the head; and a while in a while. The jmp of the
+		// continue goes to the end of the body, so it is the else marker of
+		// its if: the rest of the body is the else-part (the tree of the
+		// verify tests, with the continue as a statement, has the same
+		// control flow).
+		TEST_METHOD(Loops_WhileBreakContinue)
+		{
+			const std::string tree =
+				"loop 0000 latch 000b\n"
+				"  body\n"
+				"    code 0000\n"
+				"    if 0001\n"
+				"      then\n"
+				"        code 0002\n"
+				"        if 0003\n"
+				"          then\n"
+				"            break 1 0004\n"
+				"        code 0005\n"
+				"        if 0006\n"
+				"          then\n"
+				"          else 0007\n"
+				"            code 0008\n"
+				"            if 0009\n"
+				"              then\n"
+				"                code 000a\n"
+				"      else break 1\n"
+				"code 000c\n";
+			AssertParses(shapes::LoopPlain, tree);
+			AssertParses(shapes::LoopSierra, tree);
+			AssertParses(shapes::NestedLoops, shapes::NestedLoopsTree);
+		}
+
+		// breakif: a bt to the exit. A bt to the head at the end of the body
+		// goes to the end of the sequence: an or over the rest of the body
+		// (the presentation can make it a contif).
+		TEST_METHOD(Loops_BreakIfAndContIf)
+		{
+			AssertParses(R"(
+			head:
+				lap 1
+				bt exit
+				lap 2
+				bt head
+				+at 0
+				jmp head
+			exit:
+				ret
+			)",
+				"loop 0000 latch 0005\n"
+				"  body\n"
+				"    code 0000\n"
+				"    breakif 1 0001\n"
+				"    code 0002\n"
+				"    or 0003\n"
+				"      code 0004\n"
+				"code 0006\n");
+			// A contif that is not at the end of the sequence.
+			AssertParses(R"(
+			head:
+				lap 1
+				bnt exit
+				lap 2
+				bnt skip
+				lap 3
+				bt head
+				+at 0
+			skip:
+				+at 1
+				jmp head
+			exit:
+				ret
+			)",
+				"loop 0000 latch 0008\n"
+				"  body\n"
+				"    code 0000\n"
+				"    if 0001\n"
+				"      then\n"
+				"        code 0002\n"
+				"        if 0003\n"
+				"          then\n"
+				"            code 0004\n"
+				"            contif 1 0005\n"
+				"            code 0006\n"
+				"        code 0007\n"
+				"      else break 1\n"
+				"code 0009\n");
+		}
+
+		// A while that is the first statement of a repeat (King's Quest V,
+		// setControls::doit). As one loop, the bt to the instruction after
+		// the jmp of the while has no place; the loop is split at that jmp.
+		TEST_METHOD(Loops_SharedHeadIsSplit)
+		{
+			AssertParses(R"(
+			head:
+				lst 0
+				ldi 10
+				lt?
+				bnt whileDone
+				lap 1
+				bt whileDone
+				+at 0
+				lat 1
+				bnt head
+				+at 1
+				jmp head
+			whileDone:
+				lst 1
+				ldi 5
+				gt?
+				bt done
+				+at 1
+				jmp head
+			done:
+				ret
+			)",
+				"loop 0000 latch 0010\n"
+				"  body\n"
+				"    loop 0000 latch 000a\n"
+				"      body\n"
+				"        code 0000-0002\n"
+				"        if 0003\n"
+				"          then\n"
+				"            code 0004\n"
+				"            breakif 1 0005\n"
+				"            code 0006-0007\n"
+				"            if 0008\n"
+				"              then\n"
+				"                code 0009\n"
+				"          else break 1\n"
+				"    code 000b-000d\n"
+				"    breakif 1 000e\n"
+				"    code 000f\n"
+				"code 0011\n");
+		}
+
+		// (while c A (if d (continue)) B (return)): the latch after the
+		// return is dead. The continue is the else marker of the if.
+		TEST_METHOD(Loops_DeadLatch)
+		{
+			AssertParses(R"(
+			head:
+				lap 1
+				bnt exit
+				+at 0
+				lap 2
+				bnt skip
+				jmp head
+			skip:
+				+at 1
+				ret
+				jmp head
+			exit:
+				ret
+			)",
+				"loop 0000 latch 0008\n"
+				"  body\n"
+				"    code 0000\n"
+				"    if 0001\n"
+				"      then\n"
+				"        code 0002-0003\n"
+				"        if 0004\n"
+				"          then\n"
+				"          else 0005\n"
+				"            code 0006-0007\n"
+				"      else break 1\n"
+				"code 0009\n");
+		}
+
+		// A for loop with a continue in an inner if: the jmp to the step has
+		// no place, so the loop is parsed again with the step as a scope.
+		TEST_METHOD(Loops_ForStepForAContinue)
+		{
+			AssertParses(R"(
+				ldi 0
+				sat 0
+			head:
+				lst 0
+				ldi 10
+				lt?
+				bnt exit
+				lap 1
+				bnt s1
+				lap 2
+				bnt s2
+				jmp step
+			s2:
+				+at 2
+			s1:
+				+at 1
+			step:
+				+at 0
+				jmp head
+			exit:
+				ret
+			)",
+				"code 0000-0001\n"
+				"loop 0002 latch 000e\n"
+				"  body\n"
+				"    code 0002-0004\n"
+				"    if 0005\n"
+				"      then\n"
+				"        code 0006\n"
+				"        if 0007\n"
+				"          then\n"
+				"            code 0008\n"
+				"            if 0009\n"
+				"              then\n"
+				"                continue 1 000a\n"
+				"            code 000b\n"
+				"        code 000c\n"
+				"      else break 1\n"
+				"  step\n"
+				"    code 000d\n"
+				"code 000f\n");
+		}
+
+		// The fixtures of the loop families.
+		TEST_METHOD(Fixtures_Loops)
+		{
+			_gameFolder = SetUpGameSCI11();
+			AssertRegionsMatchExpected("F1_LoopHeadContinue", 900);
+			AssertRegionsMatchExpected("F4_BreakElseEdge", 904);
+			AssertRegionsMatchExpected("F4_WhileAnd", 915);
+			AssertRegionsMatchExpected("F4_WhileOr", 916);
+			AssertRegionsMatchExpected("F5_EmptyLeadingWhile", 905);
+			AssertRegionsMatchExpected("F6_EmptyTrailingFor", 906);
+			AssertRegionsMatchExpected("F10_MidBodyContinue", 922);
+			AssertRegionsMatchExpected("F11_LatchTrampoline", 924);
+			AssertRegionsMatchExpected("F12_BreakJoin", 925);
+			AssertRegionsMatchExpected("F14_BreakPastLatch", 936);
+			AssertRegionsMatchExpected("F15_SharedLoopHead", 937);
+			AssertRegionsMatchExpected("F16_SharedHeadOneLoop", 938);
+			AssertRegionsMatchExpected("F19_ValueIfInAnd", 943);
+			AssertRegionsMatchExpected("F20_OrAndLoopHead", 944);
+			AssertRegionsMatchExpected("P2_CondInLoop", 926);
+			AssertRegionsMatchExpected("N1_ChainedCompare", 923);
+			AssertRegionsMatchExpected("P1_CompoundConditions", 917);
+		}
+
+		// The fixtures of the families of if, and, or: the region tree of
+		// each function after the verify stage.
 		TEST_METHOD(Fixtures_IfAndOr)
 		{
 			_gameFolder = SetUpGameSCI11();

@@ -1,0 +1,88 @@
+== f19ValueIfInAnd
+code 0012-0014
+if 0016 001d 0038 0042
+  term
+    code 0018-001c
+  term
+    code 001f-002c
+    if 002f
+      then
+        code 0031
+      else 0033
+        code 0035
+    code 0037
+  term
+    code 003a-0041
+  then
+    code 0044-0046
+  else 0048
+    code 004a-004c
+code 004e
+== f19ValueIfInOr
+code 004f-0051
+if 0053 0058 007f
+  term
+    code 0055-0057
+  term
+    code 005a-0067
+    if 0068
+      then
+        code 006a
+      else 006c
+        code 006e
+    code 0070
+    or 0071
+      code 0073-007e
+  then
+    code 0081-0083
+  else 0085
+    code 0087-0089
+code 008b
+== f19StoredValueIf
+code 008c-0092
+if 0093
+  then
+    code 0095
+  else 0097
+    code 0099
+code 009b-009f
+if 00a1
+  then
+    code 00a3-00aa
+  else 00ac
+    code 00ae
+code 00b0-00b9
+== f19StoredValueIfAnd
+code 00ba-00c0
+if 00c1
+  then
+    code 00c3
+  else 00c5
+    code 00c7
+code 00c9-00cd
+if 00cf 00d3
+  term
+    code 00d1
+  then
+    code 00d5-00dc
+  else 00de
+    code 00e0
+code 00e2-00eb
+== f19PushedValueIf
+code 00ec-00ee
+if 00f0 0104 0108
+  term
+    code 00f2
+    if 00f4
+      then
+        code 00f6
+      else 00f8
+        code 00fa
+    code 00fc-0103
+  term
+    code 0106
+  then
+    code 010a-010c
+  else 010e
+    code 0110-0112
+code 0114
