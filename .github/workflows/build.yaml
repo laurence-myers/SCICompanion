@@ -13,10 +13,10 @@ jobs:
         platform: [Win32]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v2
+      uses: microsoft/setup-msbuild@v3
 
     # The build installs the packages of vcpkg.json with the runner's vcpkg
     # (VCPKG_INSTALLATION_ROOT; see Directory.Build.props). vcpkg.json pins a
