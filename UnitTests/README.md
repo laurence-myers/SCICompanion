@@ -141,6 +141,7 @@ expected file is missing, the test writes the actual to
 | `F16_SharedHeadOneLoop` | 938 | (structurer) | a while first in a repeat that structures as one loop keeps that text (a cond); no second analysis |
 | `F17_ThreadedOrJoin` | 939 | (structurer) | fixed; an or that ends where the and around it ends has its `bt` sent past that join; the structurer moves it back; no round trip (SCI Companion's compiler emits another shape); King's Quest VI script 850, Space Quest III script 255 |
 | `F18_SwitchHeadContinue` | 942 | (structurer) | fixed; a loop whose body starts with a switch: a `jmp` to the head that only branches reach folds into the common latch; `SRDialog::doit` (script 990) of many SCI0 games |
+| `F19_ValueIfInAnd` | 943 | (structurer) | fixed; an if with an else, used as a value in a compare inside an and (or first in an or), is built before the and (or the or); the compare takes the push before the if; a join that stores the value still gets its if (or its and) first; King's Quest I SCI scripts 21 and 22, Conquests of Camelot script 107, King's Quest IV script 49, The Island of Dr. Brain script 350 |
 
 `TemplateGame_FallbackBaseline` guards against new fallbacks. The template game
 started with 7 known fallbacks. The Family 1 and Family 6 fixes each removed

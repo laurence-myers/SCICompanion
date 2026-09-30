@@ -297,6 +297,16 @@ namespace UnitTests
             AssertDecompileMatchesExpected("F18_SwitchHeadContinue", 942);
         }
 
+        // An if with an else, used as a value in a compare that is an operand
+        // of an and, or the first operand of an or: the if is built before
+        // the and or the or, and the compare takes the push before the if.
+        // When the join of the if stores the value, the if at the join is
+        // built first, as before.
+        TEST_METHOD(ValueIfInAnd)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F19_ValueIfInAnd", 943);
+        }
 
         // Return values take the golden shape: an if whose branches return is
         // not itself returned; a value-shaped if at the end of the function

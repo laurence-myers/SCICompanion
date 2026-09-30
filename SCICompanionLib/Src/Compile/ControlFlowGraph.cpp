@@ -1632,6 +1632,39 @@ static bool _IsPendingJoin(ControlFlowNode *node)
 	return false;
 }
 
+// The join of an if with an else, used as an operand, that has not been
+// built yet: a node that the then's "jmp" and the else's fall-through reach,
+// and whose first instruction takes the value of the if as an operand: a
+// binary operator, as in (!= x (if a 1 else 2)), or a push for a later one
+// or for a call. An and or an or that starts there loses the if from its
+// first operand, and so does an if whose "bt" is the first operand of an or.
+// A join that starts with a store is not one: the value if is a statement,
+// (= g (if a 1 else 2)), and the code after it tests the stored value.
+static bool _IsPendingValueIfJoin(ControlFlowNode *node)
+{
+	if ((node->Type != CFGNodeType::RawCode) || (node->Predecessors().size() < 2))
+	{
+		return false;
+	}
+	Opcode first = static_cast<RawCodeNode*>(node)->start->get_opcode();
+	bool takesOperand = ((first >= Opcode::ADD) && (first <= Opcode::OR)) ||
+		((first >= Opcode::EQ) && (first <= Opcode::ULE)) || (first == Opcode::PUSH);
+	if (!takesOperand)
+	{
+		return false;
+	}
+	uint16_t address = node->GetStartingAddress();
+	for (ControlFlowNode *pred : node->Predecessors())
+	{
+		if ((pred->Type == CFGNodeType::RawCode) && pred->endsWith(Opcode::JMP) &&
+			(pred->getLastInstruction().get_branch_target()->get_final_offset_dontcare() == address))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 // A node that is only a "bt" to target, and that is a pending join: the
 // end of an and (or of an or) whose last operand is an or. Sierra's compiler
 // sends the inner or's own "bt" past this node, straight to target: the
@@ -1848,7 +1881,7 @@ bool ControlFlowGraph::_TryAndMerge(ControlFlowNode *structure, ControlFlowNode 
 	{
 		return false;
 	}
-	if (_IsPendingJoin(first))
+	if (_IsPendingJoin(first) || _IsPendingValueIfJoin(first))
 	{
 		return false;
 	}
@@ -1897,7 +1930,7 @@ bool ControlFlowGraph::_TryAndMerge(ControlFlowNode *structure, ControlFlowNode 
 	{
 		return false;
 	}
-	if (_IsPendingJoin(last))
+	if (_IsPendingJoin(last) || _IsPendingValueIfJoin(last))
 	{
 		return false;
 	}
@@ -1953,7 +1986,7 @@ bool ControlFlowGraph::_TryOrCollapse(ControlFlowNode *structure, ControlFlowNod
 	{
 		return false;
 	}
-	if (_IsPendingJoin(first))
+	if (_IsPendingJoin(first) || _IsPendingValueIfJoin(first))
 	{
 		return false;
 	}
@@ -2032,7 +2065,7 @@ bool ControlFlowGraph::_TryOrCollapse(ControlFlowNode *structure, ControlFlowNod
 // if-else) whose follow is the post-dominator.
 bool ControlFlowGraph::_TryBuildIf(ControlFlowNode *structure, ControlFlowNode *head, const map<ControlFlowNode*, ControlFlowNode*> &ipdom)
 {
-	if (_IsPendingJoin(head))
+	if (_IsPendingJoin(head) || (head->endsWith(Opcode::BT) && _IsPendingValueIfJoin(head)))
 	{
 		return false;
 	}

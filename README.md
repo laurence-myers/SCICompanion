@@ -74,7 +74,7 @@ modernizing the build. Broad highlights since the previous release:
   a `while` that is the first statement of a `repeat`, and a loop whose body
   starts with a `switch`, as in the save dialog of many SCI0 games. So do more
   nested `and`/`or` expressions, for example the dialog code of many SCI0
-  games.
+  games, and an `and` with an `if` used as a value in one of its operands.
 * **Fixed bytecode output.** The compiler produced wrong bytecode in some cases:
   a constant `(mod a b)` was folded as bitwise-and instead of modulo (so
   `(mod 7 3)` gave 3, not 1), and large shift counts were mishandled. An `and`
