@@ -40,6 +40,9 @@
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliHost.cpp">
       <Filter>Source Files\Cli</Filter>
     </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Cli\CliDevCommands.cpp">
+      <Filter>Source Files\Cli</Filter>
+    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliScriptCommands.cpp">
       <Filter>Source Files\Cli</Filter>
     </ClCompile>
@@ -176,6 +179,9 @@
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Compile\SyntaxContext.cpp">
+      <Filter>Source Files\Compile</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\StructuralCompare.cpp">
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Compile\SyntaxParser.cpp">
@@ -537,6 +543,9 @@ $include
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Compile\SyntaxContext.h">
+      <Filter>Source Files\Compile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\StructuralCompare.h">
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Compile\SyntaxParser.h">

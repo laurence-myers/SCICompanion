@@ -39,12 +39,12 @@
     <ClInclude Include="AstPassHelper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="StructuralCompare.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="TestCliIntegration.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestStructuralCompare.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestCli.cpp">
@@ -228,9 +228,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="AstPassHelper.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="StructuralCompare.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestAstPasses.cpp">

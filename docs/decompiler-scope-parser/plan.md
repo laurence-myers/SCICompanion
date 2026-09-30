@@ -187,7 +187,7 @@ after. New files in `SCICompanionLib\Src\Compile\`, registered in
 | # | PR | Main changes | Exit |
 |---|---|---|---|
 | 1 | Engine switch and function report | `DecompileEngine { Classic, Scope, ScopeThenClassic }` on `DecompileOptions` (`DecompileBatch.h:20`) and `DecompileLookups`; `scic script decompile --engine classic\|scope\|auto`; `SCIC_DECOMPILE_ENGINE`; `IDecompilerResults::InformFunction` (at `DecompilerCore.cpp:1321`); `--function-report <tsv>`. No GUI change. | Classic output byte-identical; `TestCli` cases. |
-| 2 | Compare tool and corpus gate | Move `UnitTests\StructuralCompare.*` to `Src\Compile`; hidden `scic dev compare-structure` (SAME / NAMES / SHAPE / DIFF; with `--baseline`: FIXED / CHANGED / REGRESSED); `UnitTests\Tools\Corpus.Common.ps1` + `DecompileGate.ps1` (from `CliCorpusSweep.ps1`; cached Snuffer run); `UnitTests\Files\Corpus\gate-baseline.json` (counts only) | Baseline of the Classic engine recorded. |
+| 2 | Compare tool and corpus gate | Move `UnitTests\StructuralCompare.*` to `Src\Compile`; hidden `scic dev compare-structure` (SAME / NAMES / SHAPE / DIFF; with `--baseline`: FIXED / CHANGED / REGRESSED); `UnitTests\Tools\Corpus.Common.ps1` + `DecompileGate.ps1` (from `CliCorpusSweep.ps1`; cached Snuffer run); `UnitTests\Files\Corpus\gate-sample.json` (the scripts of the known failures and 5 random scripts of each game); `UnitTests\Files\Corpus\gate-baseline.json` (counts only) | Baseline of the Classic engine recorded on the sample. The full corpus (`-Full`) runs only at steps 8 and 13 (owner decision, 2026-09-30: a full run for each step is too slow; CI has no games). |
 
 ### Milestone 1: control flow, in shadow mode (output does not change)
 
@@ -269,5 +269,6 @@ $env:SCIC_DECOMPILE_ENGINE = 'scope'; .\UnitTests\RunTests.ps1 -All
 
 - Per step: the tests of the step table, with a negative check for each
   rule.
-- Steps 8, 11 and 12: the corpus gate, compared with `gate-baseline.json`.
+- Steps 8, 11 and 12: the corpus gate on the sample, compared with
+  `gate-baseline.json`. Steps 8 and 13 also run it with `-Full`.
 - The corpus folders are read-only: the scripts copy each game first.

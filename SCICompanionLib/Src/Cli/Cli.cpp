@@ -242,6 +242,20 @@ namespace cli
         compile->add_flag("--fail-fast", compileOptions.failFast, "Stop after the first script that fails.");
         compile->add_flag("--no-warn-unused", compileOptions.noWarnUnused, "No warning for an instance that is not used.");
 
+        // Tools for the development of the decompiler. The empty group hides
+        // them from the help of scic.
+        CompareStructureOptions compareOptions;
+        CLI::App *dev = app.add_subcommand("dev", "Tools for the development of scic.");
+        dev->group("");
+        dev->fallthrough();
+        dev->require_subcommand(0, 1);
+        CLI::App *compareStructure = dev->add_subcommand("compare-structure", "Compare the structure of each function of decompiled scripts with another decompile of the game.");
+        compareStructure->fallthrough();
+        compareStructure->add_option("expected-folder", compareOptions.expectedFolder, "The .sc files to compare with (for example the output of another decompiler).")->required();
+        compareStructure->add_option("actual-folder", compareOptions.actualFolder, "The .sc files of scic.")->required();
+        CLI::Option *baselineOption = compareStructure->add_option("--baseline", compareOptions.baselineFolder, "The .sc files of an earlier decompile: the table gets the change of each function.");
+        CLI::Option *compareOutOption = compareStructure->add_option("--out", compareOptions.outFile, "Write the table into this file (default: stdout).");
+
         CliOutput output(console, common);
         try
         {
@@ -358,7 +372,15 @@ namespace cli
                 }
                 return std::string();
             }
-            if (!script->parsed())
+            if ((baselineOption->count() > 0) && compareOptions.baselineFolder.empty())
+            {
+                return "--baseline needs a folder";
+            }
+            if ((compareOutOption->count() > 0) && compareOptions.outFile.empty())
+            {
+                return "--out needs a file";
+            }
+            if (!script->parsed() && !dev->parsed())
             {
                 helpAfterUsageError = HelpOf(&app, "scic");
                 return "give a command";
@@ -403,6 +425,25 @@ namespace cli
         {
             logged.Help(HelpOf(helpTopic, helpTopicName));
             return (int)ExitCode::Success;
+        }
+        if (dev->parsed())
+        {
+            // A dev command opens no game.
+            if (!compareStructure->parsed())
+            {
+                logged.Help(HelpOf(dev, "scic dev"));
+                return (int)ExitCode::Success;
+            }
+            sci::Result<ExitCode> compared = sci::Guard("comparing the structure", [&]() -> sci::Result<ExitCode>
+            {
+                return RunCompareStructure(compareOptions, logged);
+            });
+            if (!compared)
+            {
+                logged.Error(compared.error().ToString());
+                return (int)ExitCodeForStartError(compared.error());
+            }
+            return (int)*compared;
         }
         if (!list->parsed() && !decompile->parsed() && !sco->parsed() && !compile->parsed())
         {

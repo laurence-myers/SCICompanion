@@ -788,7 +788,7 @@ namespace UnitTests
                 return;
             }
             _gameFolder = SetUpGameSCI11();
-            StructuralCompareResult result = CompareStructural(expected, actual, out ? out : "");
+            StructuralCompareResult result = CompareStructural(expected, actual, out ? out : "", appState->GetVersion());
             std::string report = result.Report();
             Logger::WriteMessage(std::wstring(report.begin(), report.end()).c_str());
         }

@@ -13,16 +13,19 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "StructuralCompare.h"
-#include "AstPassHelper.h"
-#include "Helper.h"
 #include "ScriptOMAll.h"
 #include "AstRewrite.h"
 #include "DecompilerAstPasses.h"
 #include "Operators.h"
 #include "SCISourceCodeFormatter.h"
+#include "CompileContext.h"
+#include "CrystalScriptStream.h"
+#include "ScriptText.h"
+#include "SyntaxParser.h"
 #include "format.h"
 #include <filesystem>
 #include <fstream>
+#include <regex>
 #include <sstream>
 #include <map>
 #include <set>
@@ -351,19 +354,35 @@ namespace
         }
     };
 
-    void NormalizeFunction(FunctionBase &func)
+    // The printed function, without its header: the text after the signature
+    // list "(name params &tmp ...)" up to the closing paren of the function.
+    string FunctionBodyText(Script &script, FunctionBase &func, bool isMethod);
+
+    // The function after its passes: rawText before any pass, exactText
+    // after the shape passes, text after the names pass, and the skeleton.
+    // An asm body gets no pass.
+    void NormalizeInto(Script &script, FunctionBase &func, bool isMethod, StructuralFunction &f)
     {
+        f.rawText = FunctionBodyText(script, func, isMethod);
+        f.isAsm = (f.rawText.find(string("(") + AsmBlockMarker + ")") != string::npos);
+        if (f.isAsm)
+        {
+            f.exactText = f.rawText;
+            f.text = f.rawText;
+            return;
+        }
         ShapeNormalizer shape;
         vector<AstPass *> shapePasses = { &shape };
         RunPassesToFixpoint(func, shapePasses, 32, nullptr);
         AstPassOptions options;
         RunDecompilerAstPasses(func, options, nullptr);
+        f.exactText = FunctionBodyText(script, func, isMethod);
         NamesNormalizer names;
         RunPassOnce(func, names);
+        f.text = FunctionBodyText(script, func, isMethod);
+        f.skeleton = StructureSkeleton(f.text);
     }
 
-    // The printed function, without its header: the text after the signature
-    // list "(name params &tmp ...)" up to the closing paren of the function.
     string FunctionBodyText(Script &script, FunctionBase &func, bool isMethod)
     {
         stringstream ss;
@@ -430,7 +449,6 @@ vector<StructuralFunction> NormalizeScriptForCompare(Script &script, const set<s
         {
             continue;
         }
-        NormalizeFunction(*proc);
         StructuralFunction f;
         auto slot = exportSlots.find(name);
         size_t underscore = name.rfind('_');
@@ -453,7 +471,7 @@ vector<StructuralFunction> NormalizeScriptForCompare(Script &script, const set<s
             f.key = fmt::format("local#{0}", localIndex++);
         }
         f.display = proc->GetName();
-        f.text = FunctionBodyText(script, *proc, false);
+        NormalizeInto(script, *proc, false, f);
         functions.push_back(f);
     }
     int classIndex = 0;
@@ -461,11 +479,10 @@ vector<StructuralFunction> NormalizeScriptForCompare(Script &script, const set<s
     {
         for (auto &method : classDef->GetMethodsNC())
         {
-            NormalizeFunction(*method);
             StructuralFunction f;
             f.key = fmt::format("class#{0}::{1}", classIndex, method->GetName());
             f.display = classDef->GetName() + "::" + method->GetName();
-            f.text = FunctionBodyText(script, *method, true);
+            NormalizeInto(script, *method, true, f);
             functions.push_back(f);
         }
         classIndex++;
@@ -510,15 +527,15 @@ static vector<string> CompareFunctionLists(const vector<StructuralFunction> &exp
     return differences;
 }
 
-vector<string> CompareScriptTexts(const string &expectedText, const string &actualText, string *outDetail)
+vector<string> CompareScriptTexts(const string &expectedText, const string &actualText, SCIVersion version, string *outDetail)
 {
     string error;
-    unique_ptr<Script> expected = TryParseSierraScript(expectedText, &error);
+    unique_ptr<Script> expected = ParseScriptText(expectedText, version, &error);
     if (!expected)
     {
         return { "<unparsed> expected: " + error };
     }
-    unique_ptr<Script> actual = TryParseSierraScript(actualText, &error);
+    unique_ptr<Script> actual = ParseScriptText(actualText, version, &error);
     if (!actual)
     {
         return { "<unparsed> actual: " + error };
@@ -576,7 +593,7 @@ static string SafeFileName(const string &name)
     return safe;
 }
 
-StructuralCompareResult CompareStructural(const string &expectedDir, const string &actualDir, const string &outDir)
+StructuralCompareResult CompareStructural(const string &expectedDir, const string &actualDir, const string &outDir, SCIVersion version)
 {
     StructuralCompareResult result;
     map<string, string> expectedFiles;
@@ -634,13 +651,13 @@ StructuralCompareResult CompareStructural(const string &expectedDir, const strin
             result.unparsed.push_back(name + " (actual): cannot read the file");
             continue;
         }
-        unique_ptr<Script> expected = TryParseSierraScript(expectedText, &error);
+        unique_ptr<Script> expected = ParseScriptText(expectedText, version, &error);
         if (!expected)
         {
             result.unparsed.push_back(name + " (expected): " + error);
             continue;
         }
-        unique_ptr<Script> actual = TryParseSierraScript(actualText, &error);
+        unique_ptr<Script> actual = ParseScriptText(actualText, version, &error);
         if (!actual)
         {
             result.unparsed.push_back(name + " (actual): " + error);
@@ -694,6 +711,605 @@ StructuralCompareResult CompareStructural(const string &expectedDir, const strin
     {
         ofstream file(outDir + "\\_structural.txt", ios::binary);
         file << result.Report();
+    }
+    return result;
+}
+
+string NormalizeWhitespace(const string &text)
+{
+    string out;
+    out.reserve(text.size());
+    bool inSpace = false;
+    for (char c : text)
+    {
+        if (c == '\r')
+        {
+            continue;
+        }
+        if (c == ' ' || c == '\t' || c == '\n')
+        {
+            inSpace = true;
+            continue;
+        }
+        if (inSpace && !out.empty())
+        {
+            out.push_back(' ');
+        }
+        inSpace = false;
+        out.push_back(c);
+    }
+    return out;
+}
+
+unique_ptr<Script> ParseScriptText(const string &text, SCIVersion version, string *outError)
+{
+    // A game session loads the grammar; a compare can come with no session.
+    InitializeSyntaxParsers();
+    ScriptText lines = SplitScriptText(text);
+    CScriptStreamLimiter limiter(lines);
+    CCrystalScriptStream stream(&limiter);
+    unique_ptr<Script> script = make_unique<Script>();
+    CompileLog log;
+    if (!SyntaxParser_Parse(*script, stream, PreProcessorDefinesFromSCIVersion(version), &log))
+    {
+        if (outError)
+        {
+            string message = "Parse failed:";
+            for (const CompileResult &r : log.Results())
+            {
+                message += "\n  " + r.GetMessage();
+            }
+            *outError = message;
+        }
+        return nullptr;
+    }
+    return script;
+}
+
+const char *const AsmBlockMarker = "scicCompareAsmBlock";
+
+namespace
+{
+    // The index after the string that starts at start (at its opening
+    // character), or the end of the text.
+    size_t SkipString(const string &text, size_t start, char close)
+    {
+        for (size_t i = start + 1; i < text.size(); i++)
+        {
+            if ((close == '"') && (text[i] == '\\'))
+            {
+                i++;
+                continue;
+            }
+            if (text[i] == close)
+            {
+                return i + 1;
+            }
+        }
+        return text.size();
+    }
+
+    // The index after a string or a comment that starts at i, or i when none
+    // starts there.
+    size_t SkipStringOrComment(const string &text, size_t i)
+    {
+        switch (text[i])
+        {
+        case ';':
+        {
+            size_t end = text.find('\n', i);
+            return (end == string::npos) ? text.size() : end;
+        }
+        case '"':
+            return SkipString(text, i, '"');
+        case '\'':
+            return SkipString(text, i, '\'');
+        case '{':
+            return SkipString(text, i, '}');
+        default:
+            return i;
+        }
+    }
+
+    bool IsAsmBlockStart(const string &text, size_t i)
+    {
+        return (text[i] == '(') && (text.compare(i + 1, 3, "asm") == 0) &&
+            ((i + 4 >= text.size()) || isspace(static_cast<unsigned char>(text[i + 4])) || (text[i + 4] == ')'));
+    }
+}
+
+string ReplaceAsmBlocks(const string &text)
+{
+    string out;
+    out.reserve(text.size());
+    size_t i = 0;
+    while (i < text.size())
+    {
+        size_t skipped = SkipStringOrComment(text, i);
+        if (skipped != i)
+        {
+            out.append(text, i, skipped - i);
+            i = skipped;
+            continue;
+        }
+        if (IsAsmBlockStart(text, i))
+        {
+            int depth = 0;
+            size_t j = i;
+            while (j < text.size())
+            {
+                size_t after = SkipStringOrComment(text, j);
+                if (after != j)
+                {
+                    j = after;
+                    continue;
+                }
+                if (text[j] == '(')
+                {
+                    depth++;
+                }
+                else if ((text[j] == ')') && (--depth == 0))
+                {
+                    j++;
+                    break;
+                }
+                j++;
+            }
+            out += string("(") + AsmBlockMarker + ")";
+            i = j;
+            continue;
+        }
+        out.push_back(text[i]);
+        i++;
+    }
+    return out;
+}
+
+string StructureSkeleton(const string &normalizedText)
+{
+    static const set<string> keywords = { "if", "else", "cond", "while", "repeat", "do", "for", "switch", "switchto",
+        "break", "breakif", "continue", "contif", "return", "and", "or", "not" };
+    struct Open
+    {
+        bool emitted;
+        bool isSwitch;      // its paren children are cases
+        bool valueFirst;    // a switch: its first child is the value
+        int children;
+    };
+    vector<Open> stack;
+    string out;
+    const string &text = normalizedText;
+    size_t i = 0;
+    auto readWord = [&](size_t start) -> size_t
+    {
+        size_t end = start;
+        while ((end < text.size()) && !isspace(static_cast<unsigned char>(text[end])) && (text[end] != '(') && (text[end] != ')'))
+        {
+            end++;
+        }
+        return end;
+    };
+    auto emit = [&](const string &token)
+    {
+        if (!out.empty() && (token != ")"))
+        {
+            out.push_back(' ');
+        }
+        out += token;
+    };
+    while (i < text.size())
+    {
+        char c = text[i];
+        if (isspace(static_cast<unsigned char>(c)))
+        {
+            i++;
+            continue;
+        }
+        // The child count of the paren around this token.
+        bool isCase = false;
+        if (!stack.empty())
+        {
+            Open &parent = stack.back();
+            parent.children++;
+            isCase = parent.isSwitch && !(parent.valueFirst && (parent.children == 1));
+        }
+        if (c == '(')
+        {
+            size_t headStart = i + 1;
+            while ((headStart < text.size()) && isspace(static_cast<unsigned char>(text[headStart])))
+            {
+                headStart++;
+            }
+            size_t headEnd = readWord(headStart);
+            string head = text.substr(headStart, headEnd - headStart);
+            Open open = { false, false, false, 0 };
+            if (keywords.count(head))
+            {
+                emit("(" + head);
+                open.emitted = true;
+                open.isSwitch = (head == "switch") || (head == "switchto");
+                open.valueFirst = (head == "switch");
+                // The head is not a child.
+                i = headEnd;
+            }
+            else
+            {
+                if (isCase)
+                {
+                    emit("(case");
+                    open.emitted = true;
+                }
+                i++;
+            }
+            stack.push_back(open);
+            continue;
+        }
+        if (c == ')')
+        {
+            if (!stack.empty())
+            {
+                // The ")" ends its paren; it is not a child of it.
+                if (stack.back().emitted)
+                {
+                    emit(")");
+                }
+                stack.pop_back();
+            }
+            i++;
+            continue;
+        }
+        size_t end = readWord(i);
+        string word = text.substr(i, end - i);
+        if (word == "else")
+        {
+            emit("else");
+        }
+        i = end;
+    }
+    return out;
+}
+const char *StructureVerdictName(StructureVerdict verdict)
+{
+    switch (verdict)
+    {
+    case StructureVerdict::Same: return "SAME";
+    case StructureVerdict::Names: return "NAMES";
+    case StructureVerdict::Shape: return "SHAPE";
+    case StructureVerdict::Diff: return "DIFF";
+    case StructureVerdict::Asm: return "ASM";
+    case StructureVerdict::Source: return "SOURCE";
+    case StructureVerdict::BothAsm: return "BOTH-ASM";
+    case StructureVerdict::OnlyExpected: return "ONLY-EXPECTED";
+    default: return "ONLY-ACTUAL";
+    }
+}
+
+const char *StructureChangeName(StructureChange change)
+{
+    switch (change)
+    {
+    case StructureChange::Fixed: return "FIXED";
+    case StructureChange::Changed: return "CHANGED";
+    case StructureChange::Regressed: return "REGRESSED";
+    case StructureChange::Added: return "ADDED";
+    case StructureChange::Removed: return "REMOVED";
+    default: return "";
+    }
+}
+
+namespace
+{
+    typedef map<uint16_t, vector<StructuralFunction>> ScriptFunctions;
+
+    // Reads each .sc file of the folder into scripts, by the number of its
+    // (script# N) line. A script that cannot be read or parsed, or whose
+    // number two files have, goes into failed, with its error.
+    void ReadScriptFolder(const string &dir, const char *side, SCIVersion version, ScriptFunctions &scripts, set<uint16_t> &failed, vector<string> &errors)
+    {
+        error_code ec;
+        filesystem::directory_iterator entries(dir, ec);
+        if (ec)
+        {
+            errors.push_back(dir + " (" + side + "): " + ec.message());
+            return;
+        }
+        static const regex scriptNumber(R"(\(script#\s*(\d+)\s*\))");
+        map<uint16_t, string> fileOf;
+        for (const auto &entry : entries)
+        {
+            if (!entry.is_regular_file() || (_stricmp(entry.path().extension().string().c_str(), ".sc") != 0))
+            {
+                continue;
+            }
+            string name = entry.path().filename().string();
+            string text;
+            if (!ReadWholeFile(entry.path().string(), text))
+            {
+                errors.push_back(name + " (" + side + "): cannot read the file");
+                continue;
+            }
+            smatch match;
+            if (!regex_search(text, match, scriptNumber))
+            {
+                errors.push_back(name + " (" + side + "): no (script# N) line");
+                continue;
+            }
+            unsigned long number = stoul(match[1].str());
+            if (number > 0xffff)
+            {
+                errors.push_back(name + " (" + side + "): the script number is too big");
+                continue;
+            }
+            uint16_t script = static_cast<uint16_t>(number);
+            auto other = fileOf.find(script);
+            if (other != fileOf.end())
+            {
+                errors.push_back(fmt::format("{0} ({1}): script {2} is also in {3}", name, side, script, other->second));
+                failed.insert(script);
+                continue;
+            }
+            fileOf[script] = name;
+            string error;
+            unique_ptr<Script> parsed = ParseScriptText(ReplaceAsmBlocks(text), version, &error);
+            if (!parsed)
+            {
+                errors.push_back(name + " (" + side + "): " + error);
+                failed.insert(script);
+                continue;
+            }
+            set<string> unused = UnusedProcedureNames(text);
+            scripts[script] = NormalizeScriptForCompare(*parsed, &unused);
+        }
+    }
+
+    const StructuralFunction *FindFunction(const vector<StructuralFunction> *functions, const string &key)
+    {
+        if (functions)
+        {
+            for (const StructuralFunction &f : *functions)
+            {
+                if (f.key == key)
+                {
+                    return &f;
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    const vector<StructuralFunction> *FunctionsOf(const ScriptFunctions &scripts, uint16_t script)
+    {
+        auto it = scripts.find(script);
+        return (it == scripts.end()) ? nullptr : &it->second;
+    }
+
+    bool IsLocalProcedure(const StructuralFunction &f)
+    {
+        return f.key.compare(0, 6, "local#") == 0;
+    }
+
+    // How well two bodies pair: 3 for the same text, 2 for the same
+    // skeleton, else 1.
+    int PairScore(const StructuralFunction &a, const StructuralFunction &b)
+    {
+        if (a.isAsm || b.isAsm)
+        {
+            return (a.isAsm && b.isAsm && (a.rawText == b.rawText)) ? 3 : 1;
+        }
+        return (a.text == b.text) ? 3 : ((a.skeleton == b.skeleton) ? 2 : 1);
+    }
+
+    // The local procedures have no name that two tools share, so they pair
+    // in order. One tool can have a procedure more (dead code), so each
+    // local procedure of side gets the key of the expected one that it
+    // pairs with in the alignment that pairs the best bodies (PairScore);
+    // one with no pair gets a key that the expected side does not have.
+    void AlignLocalProcedures(const vector<StructuralFunction> &expected, vector<StructuralFunction> &side)
+    {
+        vector<size_t> e;
+        vector<size_t> a;
+        for (size_t i = 0; i < expected.size(); i++)
+        {
+            if (IsLocalProcedure(expected[i]))
+            {
+                e.push_back(i);
+            }
+        }
+        for (size_t j = 0; j < side.size(); j++)
+        {
+            if (IsLocalProcedure(side[j]))
+            {
+                a.push_back(j);
+            }
+        }
+        size_t n = e.size();
+        size_t m = a.size();
+        vector<vector<int>> best(n + 1, vector<int>(m + 1, 0));
+        for (size_t i = 1; i <= n; i++)
+        {
+            for (size_t j = 1; j <= m; j++)
+            {
+                best[i][j] = (std::max)({ best[i - 1][j], best[i][j - 1], best[i - 1][j - 1] + PairScore(expected[e[i - 1]], side[a[j - 1]]) });
+            }
+        }
+        vector<string> keys(m);
+        for (size_t j = 0; j < m; j++)
+        {
+            keys[j] = fmt::format("local#unpaired{0}", j);
+        }
+        size_t i = n;
+        size_t j = m;
+        while ((i > 0) && (j > 0))
+        {
+            if (best[i][j] == best[i - 1][j - 1] + PairScore(expected[e[i - 1]], side[a[j - 1]]))
+            {
+                keys[j - 1] = expected[e[i - 1]].key;
+                i--;
+                j--;
+            }
+            else if (best[i][j] == best[i - 1][j])
+            {
+                i--;
+            }
+            else
+            {
+                j--;
+            }
+        }
+        for (size_t k = 0; k < m; k++)
+        {
+            side[a[k]].key = keys[k];
+        }
+    }
+
+    // A baseline comes from the same tool as the actual side: its local
+    // procedures pair with those of the same name.
+    void MatchLocalProceduresByName(const vector<StructuralFunction> &actual, vector<StructuralFunction> &baseline)
+    {
+        for (StructuralFunction &f : baseline)
+        {
+            if (IsLocalProcedure(f))
+            {
+                string key = "local#baseline:" + f.display;
+                for (const StructuralFunction &other : actual)
+                {
+                    if (IsLocalProcedure(other) && (other.display == f.display))
+                    {
+                        key = other.key;
+                        break;
+                    }
+                }
+                f.key = key;
+            }
+        }
+    }
+
+    StructureVerdict VerdictOf(const StructuralFunction *expected, const StructuralFunction *actual)
+    {
+        if (!actual)
+        {
+            return StructureVerdict::OnlyExpected;
+        }
+        if (!expected)
+        {
+            return StructureVerdict::OnlyActual;
+        }
+        if (expected->isAsm || actual->isAsm)
+        {
+            return (expected->isAsm && actual->isAsm) ? StructureVerdict::BothAsm : (actual->isAsm ? StructureVerdict::Asm : StructureVerdict::Source);
+        }
+        if (expected->exactText == actual->exactText)
+        {
+            return StructureVerdict::Same;
+        }
+        if (expected->text == actual->text)
+        {
+            return StructureVerdict::Names;
+        }
+        return (expected->skeleton == actual->skeleton) ? StructureVerdict::Shape : StructureVerdict::Diff;
+    }
+
+    StructureChange ChangeOf(const StructuralFunction *baseline, const StructuralFunction *actual)
+    {
+        if (!baseline)
+        {
+            return actual ? StructureChange::Added : StructureChange::None;
+        }
+        if (!actual)
+        {
+            return StructureChange::Removed;
+        }
+        if (baseline->isAsm || actual->isAsm)
+        {
+            return (baseline->isAsm && actual->isAsm) ? StructureChange::None : (actual->isAsm ? StructureChange::Regressed : StructureChange::Fixed);
+        }
+        return (baseline->rawText == actual->rawText) ? StructureChange::None : StructureChange::Changed;
+    }
+}
+
+FolderCompareResult CompareScriptFolders(const string &expectedDir, const string &actualDir, const string &baselineDir, SCIVersion version)
+{
+    FolderCompareResult result;
+    ScriptFunctions expected;
+    ScriptFunctions actual;
+    ScriptFunctions baseline;
+    set<uint16_t> failed;
+    ReadScriptFolder(expectedDir, "expected", version, expected, failed, result.errors);
+    ReadScriptFolder(actualDir, "actual", version, actual, failed, result.errors);
+    bool hasBaseline = !baselineDir.empty();
+    if (hasBaseline)
+    {
+        ReadScriptFolder(baselineDir, "baseline", version, baseline, failed, result.errors);
+    }
+
+    // The local procedures pair after the order of their bodies (the
+    // actual side names them by offset; the baseline side as the actual).
+    for (auto &script : actual)
+    {
+        auto expectedScript = expected.find(script.first);
+        auto baselineScript = baseline.find(script.first);
+        if (expectedScript != expected.end())
+        {
+            AlignLocalProcedures(expectedScript->second, script.second);
+        }
+        if (baselineScript != baseline.end())
+        {
+            MatchLocalProceduresByName(script.second, baselineScript->second);
+        }
+    }
+
+    set<uint16_t> numbers;
+    for (const ScriptFunctions *side : { &expected, &actual })
+    {
+        for (const auto &script : *side)
+        {
+            numbers.insert(script.first);
+        }
+    }
+    for (uint16_t number : numbers)
+    {
+        if (failed.count(number))
+        {
+            continue;
+        }
+        const vector<StructuralFunction> *expectedFunctions = FunctionsOf(expected, number);
+        const vector<StructuralFunction> *actualFunctions = FunctionsOf(actual, number);
+        const vector<StructuralFunction> *baselineFunctions = FunctionsOf(baseline, number);
+        // The keys: those of the actual side, then those that only the
+        // expected side has. A key that a side has twice counts once.
+        vector<pair<string, string>> keys;
+        set<string> seen;
+        for (const vector<StructuralFunction> *side : { actualFunctions, expectedFunctions })
+        {
+            if (side)
+            {
+                for (const StructuralFunction &f : *side)
+                {
+                    if (seen.insert(f.key).second)
+                    {
+                        keys.emplace_back(f.key, f.display);
+                    }
+                }
+            }
+        }
+        for (const auto &key : keys)
+        {
+            const StructuralFunction *expectedFunction = FindFunction(expectedFunctions, key.first);
+            const StructuralFunction *actualFunction = FindFunction(actualFunctions, key.first);
+            FunctionCompareRow row;
+            row.script = number;
+            row.key = key.first;
+            row.display = key.second;
+            row.verdict = VerdictOf(expectedFunction, actualFunction);
+            if (hasBaseline)
+            {
+                const StructuralFunction *baselineFunction = FindFunction(baselineFunctions, key.first);
+                row.hasBaseline = true;
+                row.baselineVerdict = VerdictOf(expectedFunction, baselineFunction);
+                row.change = ChangeOf(baselineFunction, actualFunction);
+            }
+            result.rows.push_back(row);
+        }
     }
     return result;
 }

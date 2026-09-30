@@ -110,32 +110,6 @@ std::string ScriptToText(const sci::Script &script)
     return ss.str();
 }
 
-std::string NormalizeWhitespace(const std::string &text)
-{
-    std::string out;
-    out.reserve(text.size());
-    bool inSpace = false;
-    for (char c : text)
-    {
-        if (c == '\r')
-        {
-            continue;
-        }
-        if (c == ' ' || c == '\t' || c == '\n')
-        {
-            inSpace = true;
-            continue;
-        }
-        if (inSpace && !out.empty())
-        {
-            out.push_back(' ');
-        }
-        inSpace = false;
-        out.push_back(c);
-    }
-    return out;
-}
-
 std::string ApplyAllPasses(const std::string &body)
 {
     std::unique_ptr<sci::Script> script = ParseSierraScript(WrapProcedure(body));

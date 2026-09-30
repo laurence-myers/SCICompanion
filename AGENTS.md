@@ -99,6 +99,12 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
   --all` and `script compile --all` on copies of the SCI1.1 template.
   `UnitTests\Tools\CliCorpusSweep.ps1` runs the same commands on copies of
   a local game library (local use only). See `UnitTests\README.md`.
+- The decompiler corpus gate: `UnitTests\Tools\DecompileGate.ps1` (local use
+  only; the games are not in CI) decompiles a sample of each game of a
+  local library (or every script, with `-Full`), and compares it with
+  sluicebox's Snuffer output. Run the sample after a control-flow or value
+  change of the decompiler; the full run is for the decision points of
+  `docs\decompiler-scope-parser\plan.md` (steps 8 and 13).
 - Read pass/fail counts from `TestResults\UnitTests.trx` (or
   `IntegrationTests.trx`) — the `<Counters>` element under
   `TestRun/ResultSummary`. The full unit suite takes a few minutes.

@@ -898,6 +898,50 @@ namespace UnitTests
             Assert::IsTrue(readOnly.err.find("the function report") != std::string::npos, Wide(readOnly.err).c_str());
         }
 
+        // scic dev compare-structure: the decompile of a template script
+        // against itself in a file of another name (paired by number), and
+        // as the baseline. It opens no game, and the help
+        // does not show dev.
+        TEST_METHOD(Dev_CompareStructure)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            fs::path root = fs::path(_copyFolder) / "compare";
+            fs::create_directories(root / "expected");
+            std::string source = Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout" }).out;
+            WriteFileText((root / "expected" / "other.sc").string(), source);
+            fs::create_directories(root / "actual");
+            WriteFileText((root / "actual" / "Door.sc").string(), source);
+
+            std::string table = (root / "table.tsv").string();
+            cli::StringConsole compared = Expect(0, { "dev", "compare-structure", (root / "expected").string(), (root / "actual").string(),
+                "--baseline", (root / "actual").string(), "--out", table });
+            std::vector<std::string> lines = Lines(ReadFileText(table));
+            Assert::IsTrue(lines.size() > 2, Wide(ReadFileText(table)).c_str());
+            Assert::AreEqual(std::string(cli::CompareStructureHeader), lines[0]);
+            for (size_t i = 1; i < lines.size(); i++)
+            {
+                Assert::IsTrue(lines[i].rfind("974\t", 0) == 0, Wide(lines[i]).c_str());
+                // The baseline is the actual folder: no change.
+                Assert::IsTrue(lines[i].back() == '\t', Wide(lines[i]).c_str());
+            }
+            Assert::IsTrue(compared.err.find("Verdicts: ") != std::string::npos, Wide(compared.err).c_str());
+            Assert::IsTrue(compared.err.find("Changes from the baseline: none.") != std::string::npos, Wide(compared.err).c_str());
+
+            // To stdout; a file that does not parse is a warning and exit 6.
+            WriteFileText((root / "actual" / "broken.sc").string(), ";;; Sierra Script 1.0 - (do not remove this comment)\r\n(script# 975)\r\n(procedure (p)\r\n");
+            cli::StringConsole broken = Expect(6, { "dev", "compare-structure", (root / "expected").string(), (root / "actual").string() });
+            Assert::IsTrue(broken.out.rfind(cli::CompareStructureHeader, 0) == 0, Wide(broken.out).c_str());
+            Assert::IsTrue(broken.err.find("scic: warning: broken.sc (actual): ") != std::string::npos, Wide(broken.err).c_str());
+
+            Expect(3, { "dev", "compare-structure", (root / "none").string(), (root / "actual").string() });
+            Expect(2, { "dev", "compare-structure", (root / "expected").string(), (root / "actual").string(), "--baseline", "" });
+            Expect(2, { "dev", "compare-structure", (root / "expected").string() });
+            // RunCli itself: Run adds --data-dir, which help takes as a topic.
+            cli::StringConsole help;
+            Assert::AreEqual(0, cli::RunCli({ "help" }, help));
+            Assert::IsTrue(help.out.find("Tools for the development") == std::string::npos, Wide(help.out).c_str());
+        }
+
         // Plan section 4.6: script sco makes the .sco files of both templates
         // from their sources. The SCI1.1 template's Main and DebugHandler
         // get a warning in the MSBuild format: their compiled scripts export

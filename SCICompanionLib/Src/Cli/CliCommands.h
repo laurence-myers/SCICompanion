@@ -214,6 +214,29 @@ namespace cli
     // batch cannot start (the code of ExitCodeForStartError: 1, 2, 3, 7 or 8).
     sci::Result<ExitCode> RunScriptCompile(GameSession &session, const ScriptCompileOptions &options, const CommonOptions &common, CliOutput &output);
 
+    // scic dev compare-structure (hidden): the structure of the functions of
+    // a folder of decompiled scripts against another decompile.
+    struct CompareStructureOptions
+    {
+        std::string expectedFolder;
+        std::string actualFolder;
+        std::string baselineFolder;     // empty: no baseline
+        std::string outFile;            // empty: stdout
+    };
+
+    // The first line of the table of compare-structure.
+    extern const char *const CompareStructureHeader;
+
+    // Compares the .sc files of the actual folder with those of the expected
+    // folder (CompareScriptFolders), and with those of the baseline folder
+    // when it is given. Writes a table (tab-separated: script, key,
+    // function, verdict, baseline verdict, change; the last two are empty
+    // with no baseline) to the out file or stdout, then the count of each
+    // verdict and change to stderr. A file that cannot be read or parsed is
+    // a warning, and exit code 6. Fails when a folder does not exist
+    // (NotFound).
+    sci::Result<ExitCode> RunCompareStructure(const CompareStructureOptions &options, CliOutput &output);
+
     // The full path of a folder or a file, from GetFullPathName: a relative
     // path starts at the current folder, and the case of the path stays. A
     // separator at the end goes, except the one of a root (C:\, \\?\C:\). An

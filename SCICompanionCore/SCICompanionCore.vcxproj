@@ -125,6 +125,7 @@
     <ClInclude Include="..\SCICompanionLib\Src\Compile\SourceCodeFormatter.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\SummarizeScript.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\SyntaxContext.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\StructuralCompare.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\SyntaxParser.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\TarjanAlgorithm.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\Types.h" />
@@ -217,6 +218,7 @@
     <ClCompile Include="..\SCICompanionLib\Src\Cli\Cli.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliConsole.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliHost.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Cli\CliDevCommands.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliScriptCommands.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Cli\ExitCodes.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\AstRewrite.cpp" />
@@ -263,6 +265,7 @@
     <ClCompile Include="..\SCICompanionLib\Src\Compile\SourceCodeFormatter.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\SummarizeScript.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\SyntaxContext.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\StructuralCompare.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\SyntaxParser.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\TarjanAlgorithm.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\Types.cpp" />

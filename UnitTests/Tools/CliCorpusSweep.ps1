@@ -75,31 +75,7 @@ $ErrorActionPreference = "Stop"
 if (-not $Source) { throw "-Source is required." }
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
-# A file-system path as Windows sees it: a relative path starts at the
-# current PowerShell folder (Set-Location), not at the folder of the
-# process; a UNC path has no provider prefix; a drive root keeps its "\".
-# A device path (\\.\ or \\?\, with either slash, also after a provider
-# prefix) is refused: the text check of the folders cannot compare it with
-# the other forms.
-function Get-FullPath([string]$path, [string]$what) {
-    $devicePath = '^[\\/]{2}[.?][\\/]'
-    if ($path -match $devicePath) { throw "$what is a device path, which the script cannot use: $path" }
-    $provider = $null
-    $drive = $null
-    $full = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($path, [ref]$provider, [ref]$drive)
-    if ($provider.Name -ne "FileSystem") { throw "$what is not a file-system path: $path" }
-    if ($full -match $devicePath) { throw "$what is a device path, which the script cannot use: $path" }
-    $full = [IO.Path]::GetFullPath($full)
-    if ($full -match $devicePath) { throw "$what is a device path, which the script cannot use: $path" }
-    $trimmed = $full.TrimEnd('\')
-    if ($trimmed -match '^[A-Za-z]:$') { $trimmed += '\' }
-    return $trimmed
-}
-
-function Test-Inside([string]$path, [string]$folder) {
-    $prefix = if ($folder.EndsWith('\')) { $folder } else { $folder + '\' }
-    return ($path -eq $folder) -or $path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
-}
+. (Join-Path $PSScriptRoot 'Corpus.Common.ps1')
 
 if (-not $Scic) { $Scic = Join-Path $repoRoot "Release\scic.exe" }
 $Scic = Get-FullPath $Scic "-Scic"
@@ -121,19 +97,7 @@ foreach ($folder in $Source) {
 }
 
 # Find the games.
-$games = @()
-foreach ($root in $sources) {
-    $maps = Get-ChildItem -LiteralPath $root -Recurse -Depth $Depth -File -Filter "resource.map" -ErrorAction SilentlyContinue
-    foreach ($folder in @($maps | ForEach-Object { $_.Directory.FullName } | Sort-Object -Unique)) {
-        $name = $folder.Substring($root.Length).TrimStart('\')
-        if (-not $name) { $name = Split-Path -Leaf $root }
-        $included = @($Include | Where-Object { $name -like $_ }).Count -gt 0
-        $excluded = @($Exclude | Where-Object { $name -like $_ }).Count -gt 0
-        if ($included -and -not $excluded) {
-            $games += [pscustomobject]@{ Name = $name; Folder = $folder }
-        }
-    }
-}
+$games = @(Find-CorpusGames -Sources $sources -Depth $Depth -Include $Include -Exclude $Exclude)
 if ($games.Count -eq 0) { throw "No game (a folder with resource.map) matched under: $($sources -join ', ')" }
 
 # A new run folder, named by the time, the process id and a random part,
@@ -328,12 +292,7 @@ try {
         try {
             New-Item -ItemType Directory $copy | Out-Null
             $madeCopy = $true
-            foreach ($file in @(Get-ChildItem -LiteralPath $game.Folder -File)) {
-                $target = Join-Path $copy $file.Name
-                Copy-Item -LiteralPath $file.FullName -Destination $target
-                $copied = Get-Item -LiteralPath $target
-                $copied.Attributes = $copied.Attributes -band (-bnot [IO.FileAttributes]::ReadOnly)
-            }
+            Copy-GameFiles $game.Folder $copy
             $decompileFinished = $true
             foreach ($command in $commands) {
                 if (($command.Name -eq "compile") -and -not $decompileFinished) {

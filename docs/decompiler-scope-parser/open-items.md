@@ -24,3 +24,22 @@ Open items only: gaps, unfixed findings, questions. The plan is in
   place.
 - The help of `--dry-run` says "write nothing", but a dry run writes the
   function report.
+
+## Compare tool and corpus gate
+
+- 49 Snuffer files of the library do not parse with our parser (for
+  example `((ScriptID 310 4) heading:)`, a call as a send target in an
+  argument). The compare leaves those scripts out and gives a warning; a
+  function there has no verdict.
+- Methods pair by the index of their class (`class#N::method`): a class
+  that one side does not have shifts the keys of the classes after it.
+  Local procedures pair by an alignment; classes do not.
+- In the sample mode, compare-structure parses every Snuffer script of a
+  game, and the gate keeps only the rows of the sampled scripts. A filter
+  of the scripts in the command would make a run faster.
+- The three games that Snuffer cannot read (King's Quest IV 1988, Willy
+  Beamish, Space Quest 3 dev) give only ONLY-ACTUAL rows.
+- The ASM verdict count (296) is lower than the asm count of the
+  function reports (343): a function of a script that the compare leaves
+  out, or of a game with no Snuffer output, has no ASM verdict. Rule 2 of
+  the gate uses the function reports.

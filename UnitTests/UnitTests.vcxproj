@@ -104,12 +104,12 @@ exit /b 0</Command>
     <ClInclude Include="DecompileHelper.h" />
     <ClInclude Include="OracleHelper.h" />
     <ClInclude Include="AstPassHelper.h" />
-    <ClInclude Include="StructuralCompare.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="TestCliIntegration.cpp" />
+    <ClCompile Include="TestStructuralCompare.cpp" />
     <ClCompile Include="TestCli.cpp" />
     <ClCompile Include="TestDecompileRun.cpp" />
     <ClCompile Include="TestCompileBatch.cpp" />
@@ -147,7 +147,6 @@ exit /b 0</Command>
     <ClCompile Include="DecompileHelper.cpp" />
     <ClCompile Include="OracleHelper.cpp" />
     <ClCompile Include="AstPassHelper.cpp" />
-    <ClCompile Include="StructuralCompare.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>

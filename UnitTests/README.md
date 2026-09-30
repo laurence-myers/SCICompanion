@@ -238,8 +238,8 @@ structural compare matches files by name. `<out>\_warnings.txt` lists every
 fallback. The golden tree is sluicebox's output for QfG4; it differs in
 variable names and formatting.
 
-`DiagnosticDumps::Compare_Structural` (`UnitTests\StructuralCompare.cpp`) is
-the structural compare. It parses both sides with the real parser, normalizes
+`DiagnosticDumps::Compare_Structural` (`SCICompanionLib\Src\Compile\StructuralCompare.cpp`,
+in the engine library) is the structural compare. It parses both sides with the real parser, normalizes
 each function with AST passes (`cond` to nested ifs, `for` to `while` with the
 step at the end, unsigned compares to signed, then the decompiler's own passes
 so nested ifs, `op=` and loop shapes converge, then every value, variable,
@@ -249,6 +249,17 @@ and compares the printed bodies per function. It writes
 `<file>.<function>.diff.txt` per difference with both normalized texts. Two
 unit tests in `TestAstPasses` pin it: golden style and SCI Companion style of
 one function compare equal, and a real difference is reported by name.
+
+The same compare gives a verdict for each function in `scic dev compare-structure`
+(a hidden command, `CompareScriptFolders`): the files pair by their`
+`(script# N)` line, the local procedures pair in order (an alignment that
+allows a procedure that one side does not have), and an `(asm ...)` block is
+replaced by a marker before the parse. SAME: equal with the names; NAMES:
+equal with the names masked; SHAPE: the same control statements; DIFF: other
+control statements; ASM, SOURCE, BOTH-ASM when a side is asm; ONLY-EXPECTED
+and ONLY-ACTUAL. With `--baseline` (an earlier decompile), each function also
+gets FIXED, CHANGED, REGRESSED, ADDED or REMOVED. `TestStructuralCompare`, and
+`TestCli::Dev_CompareStructure` for the command, cover it.
 `Tools\CompareDecompile.ps1` is now the exact text compare only, for
 reviewing a snapshot change.
 
@@ -301,6 +312,21 @@ game data other than the template games.
   error, or a timeout. It also exits with 1 when it could not run a game
   (a `sweep` row, for example a copy that failed), or when a row could
   not go into the CSV (it then goes into `sweep-unwritten.csv`).
+- `Tools\DecompileGate.ps1` (local use) is the corpus gate of the decompiler
+  (`docs\decompiler-scope-parser\plan.md`, section 6). For each game (one
+  folder for each MD5 of `resource.map`) it decompiles the scripts of the
+  sample (`Files\Corpus\gate-sample.json`: the scripts with asm fallbacks in
+  a sweep, and 5 random scripts) or of the whole game (`-Full`), with an
+  engine (`-Engine`), and compares them with sluicebox's Snuffer output
+  (`scic dev compare-structure`). `-Record` writes the counts into
+  `Files\Corpus\gate-baseline.json`; `-Check` applies the rules of the gate.
+  The cache keeps a copy of each game and the Snuffer output. `Corpus.Common.ps1`
+  has the functions that it shares with `CliCorpusSweep.ps1`.
+
+  ```
+  .\UnitTests\Tools\DecompileGate.ps1 -Library 'F:\Games\Sierra', 'F:\games\gog' -Exclude '_vgm*' -Snuffer <Snuffer.exe> -Work I:\tmp\scic-gate
+  .\UnitTests\Tools\DecompileGate.ps1 ... -Engine scope -BaselineRun <run folder of classic> -Check
+  ```
 
 ## Other tests
 
