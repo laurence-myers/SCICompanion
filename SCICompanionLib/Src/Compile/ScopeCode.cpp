@@ -411,6 +411,53 @@ namespace scope
 				break;
 			}
 		}
+		_FindDeadSwitches();
+		std::sort(_tosses.begin(), _tosses.end());
+	}
+
+	// A toss is dead when each case returns. Its switch starts before the
+	// first branch to the toss (the dead jmp at the end of the first case
+	// body): at the nearest push that a dup at the next depth follows, when
+	// the stack stays above the depth of that push up to the branch.
+	void CodeModel::_FindDeadSwitches()
+	{
+		for (int toss = 0; toss < Size(); ++toss)
+		{
+			if (IsLive(toss) || (Op(toss) != Opcode::TOSS))
+			{
+				continue;
+			}
+			int first = NoIndex;
+			for (int b = 0; b < toss; ++b)
+			{
+				if (IsBranch(b) && (Target(b) == toss))
+				{
+					first = b;
+					break;
+				}
+			}
+			if (first == NoIndex)
+			{
+				continue;
+			}
+			int lowest = Size() + 1;
+			for (int k = first - 1; k >= 0; --k)
+			{
+				if (!IsLive(k))
+				{
+					continue;
+				}
+				int after = DepthAfter(k);
+				if ((Pushes(k) == 1) && (after == DepthBefore(k) + 1) && (k + 1 < Size()) && (Op(k + 1) == Opcode::DUP) &&
+					IsLive(k + 1) && (DepthBefore(k + 1) == after) && (lowest >= after))
+				{
+					_insts[toss].switchHead = k;
+					_tosses.push_back(toss);
+					break;
+				}
+				lowest = (std::min)(lowest, DepthBefore(k));
+			}
+		}
 	}
 
 	bool CodeModel::_IsLoopContinuation(int branch, int target) const
@@ -431,8 +478,9 @@ namespace scope
 	// optimiser: a bt or bnt to a branch of the same sense goes to the target
 	// of that branch. Then the "or" forms of this repository's compiler: a bt
 	// that goes just past a bnt goes to that bnt, and a bnt that goes just
-	// past a forward bt (not a break or continue) goes to that bt. Each is an
-	// equal target: the bnt lets a true value through, the bt a false one.
+	// past a forward bt goes to that bt (not a bt to a loop head or to the
+	// instruction after a latch). Each is an equal target: the bnt lets a
+	// true value through, the bt a false one.
 	void CodeModel::_ApplyDialect()
 	{
 		for (int b = 0; b < Size(); ++b)

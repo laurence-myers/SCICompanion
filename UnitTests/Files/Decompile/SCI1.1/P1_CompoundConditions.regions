@@ -43,11 +43,13 @@ if 004f
 loop 0055 latch 0061
   body
     code 0055
-    if 0057 005b
-      term
-        code 0059
+    if 0057
       then
-        code 005d-005f
+        code 0059
+        if 005b
+          then
+            code 005d-005f
+          else break 1
       else break 1
 loop 0063 latch 006f
   body

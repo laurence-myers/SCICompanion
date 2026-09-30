@@ -70,10 +70,11 @@ namespace scope
 					fmt::format("{0} to {1:04x}", OpcodeToName(_model.Op(branch), 0), _model.Offset(_model.Target(branch))), branch);
 			}
 
-			// A parse error at an instruction that is not a branch.
+			// A parse error in a switch. No change of the loops can help, so
+			// Parse does not try again.
 			[[noreturn]] void _FailAt(const char *id, int index) const
 			{
-				throw BranchError(id, _model.Offset(index), OpcodeToName(_model.Op(index), 0), index);
+				throw ScopeError("parse", id, _model.Offset(index), OpcodeToName(_model.Op(index), 0));
 			}
 
 			// The sequence [lo, hi): code regions, loops, and a region for
@@ -201,7 +202,9 @@ namespace scope
 						break;
 					}
 					int next = _model.Target(test);
-					if ((_model.Op(test) != Opcode::BNT) || !_model.IsFlowBranch(test) || (next <= test) || (next > toss))
+					// The bnt of an empty last case (this repository's
+					// compiler) goes to the toss just after it: it does nothing.
+					if ((_model.Op(test) != Opcode::BNT) || !_model.IsLive(test) || _model.IsInert(test) || (next <= test) || (next > toss))
 					{
 						_FailAt("case-test", test);
 					}
@@ -273,7 +276,12 @@ namespace scope
 						sequence->items.push_back(_IfToEnd(p, hi, hi, ElseKind::None, 0));
 						return hi;
 					}
-					if (thenOf && _model.SameTarget(target, thenOf->elseEntry, Arrival::False))
+					// Only for an if with an else-part: when the false value
+					// goes to a loop exit or continue point, Sierra's threading
+					// sends the bnts of statements there too, and the term
+					// would take in those statements. The loop rule below
+					// gives the same control flow as nested ifs.
+					if (thenOf && (thenOf->region->elseKind == ElseKind::Else) && _model.SameTarget(target, thenOf->elseEntry, Arrival::False))
 					{
 						thenOf->region->terms.push_back(std::move(sequence));
 						thenOf->region->tests.push_back(p);
@@ -366,9 +374,9 @@ namespace scope
 					sequence.items.push_back(std::move(region));
 					return target;
 				}
-				region->thenPart = _Sequence(p + 1, marker, &open);
 				region->elseKind = ElseKind::Else;
 				region->branch = marker;
+				region->thenPart = _Sequence(p + 1, marker, &open);
 				region->elsePart = _Sequence(target, elseEnd, nullptr);
 				sequence.items.push_back(std::move(region));
 				return elseEnd;

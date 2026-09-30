@@ -1,0 +1,16 @@
+== s5SwitchAllReturn
+switch 000a toss 0025
+  case bnt 0010 jmp 0015
+    value
+      code 000c-000f
+    body
+      code 0012-0014
+  case bnt 001b jmp 0020
+    value
+      code 0017-001a
+    body
+      code 001d-001f
+  case
+    body
+      code 0022-0024
+code 0026

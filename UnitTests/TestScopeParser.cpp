@@ -556,10 +556,159 @@ namespace UnitTests
 				"case-value", 0x0001);
 		}
 
+		// This repository's compiler: the bnt of an empty last case goes to
+		// the toss just after it (it does nothing). In a loop, the switch
+		// must stay one region.
+		TEST_METHOD(Switches_EmptyLastCaseWithANoOpBnt)
+		{
+			AssertParses(R"(
+			head:
+				lst 0
+				lap 1
+				lt?
+				bnt exit
+				lsp 1
+				dup
+				ldi 1
+				eq?
+				bnt case2
+				ldi 5
+				sat 0
+				jmp done
+			case2:
+				dup
+				ldi 2
+				eq?
+				bnt done
+			done:
+				toss
+				jmp head
+			exit:
+				ret
+			)",
+				"loop 0000 latch 0011\n"
+				"  body\n"
+				"    code 0000-0002\n"
+				"    if 0003\n"
+				"      then\n"
+				"        switch 0004 toss 0010\n"
+				"          case bnt 0008 jmp 000b\n"
+				"            value\n"
+				"              code 0005-0007\n"
+				"            body\n"
+				"              code 0009-000a\n"
+				"          case bnt 000f\n"
+				"            value\n"
+				"              code 000c-000e\n"
+				"            body\n"
+				"      else break 1\n"
+				"code 0012\n");
+		}
+
+		// Each case returns: the toss is dead, and the switch is still one
+		// region.
+		TEST_METHOD(Switches_EachCaseReturns)
+		{
+			AssertParses(R"(
+				lsp 1
+				dup
+				ldi 1
+				eq?
+				bnt case2
+				ldi 5
+				ret
+				jmp done
+			case2:
+				dup
+				ldi 2
+				eq?
+				bnt caseElse
+				ldi 7
+				ret
+				jmp done
+			caseElse:
+				ldi 6
+				ret
+			done:
+				toss
+				ret
+			)",
+				"switch 0000 toss 0011\n"
+				"  case bnt 0004 jmp 0007\n"
+				"    value\n"
+				"      code 0001-0003\n"
+				"    body\n"
+				"      code 0005-0006\n"
+				"  case bnt 000b jmp 000e\n"
+				"    value\n"
+				"      code 0008-000a\n"
+				"    body\n"
+				"      code 000c-000d\n"
+				"  case\n"
+				"    body\n"
+				"      code 000f-0010\n"
+				"code 0012\n");
+		}
+
+		// Sierra's (while c (if q (if b (bar) (if d X)) (break) else Z) Y):
+		// the bnts of the inner ifs are threaded to the loop exit. They are
+		// nested ifs with a break as the else, not and-terms: a term would
+		// take in the statement (bar).
+		TEST_METHOD(Loops_AThreadedBntToTheExitIsNoAndTerm)
+		{
+			AssertParses(R"(
+			head:
+				lap 1
+				bnt exit
+				lap 9
+				bnt else
+				lap 3
+				bnt exit
+				+at 4
+				lap 5
+				bnt exit
+				+at 6
+				jmp exit
+				jmp done
+			else:
+				+at 8
+			done:
+				+at 7
+				jmp head
+			exit:
+				ret
+			)",
+				"loop 0000 latch 000e\n"
+				"  body\n"
+				"    code 0000\n"
+				"    if 0001\n"
+				"      then\n"
+				"        code 0002\n"
+				"        if 0003\n"
+				"          then\n"
+				"            code 0004\n"
+				"            if 0005\n"
+				"              then\n"
+				"                code 0006-0007\n"
+				"                if 0008\n"
+				"                  then\n"
+				"                    code 0009\n"
+				"                    break 1 000a\n"
+				"                  else break 1\n"
+				"              else break 1\n"
+				"          else 000b\n"
+				"            code 000c\n"
+				"        code 000d\n"
+				"      else break 1\n"
+				"code 000f\n");
+		}
+
 		// The switch fixtures.
 		TEST_METHOD(Fixtures_Switches)
 		{
 			_gameFolder = SetUpGameSCI11();
+			AssertRegionsMatchExpected("S4_EmptyLastCaseInLoop", 948);
+			AssertRegionsMatchExpected("S5_SwitchAllReturn", 949);
 			AssertRegionsMatchExpected("F9_BreakInSwitchCase", 921);
 			AssertRegionsMatchExpected("F18_SwitchHeadContinue", 942);
 			AssertRegionsMatchExpected("S1_SwitchValue", 945);

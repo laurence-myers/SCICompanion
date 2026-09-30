@@ -69,3 +69,17 @@ Open items only: gaps, unfixed findings, questions. The plan is in
 - Verify builds the layout of a tree before it checks the indices of its
   code regions: a malformed tree with a very large code range allocates
   that much memory.
+
+## Parser
+
+- The dialect pass also moves a `bnt` onto a Sierra `breakif` whose
+  threaded target is past the loop exit (a `breakif` of an outer loop).
+  The tree is correct; only its shape changes (`if a {b}; breakif` in
+  place of `if a {breakif b}`).
+- A switch with only an else, whose else body starts with a `dup` at the
+  switch depth (Sierra's optimiser puts a `dup` in place of `pushi N` when
+  the switch value is the same constant N), is read as a case and fails
+  with `case-value` (asm).
+- An and-term is taken only for an `if` with an else-part. For a `while`
+  test (an else that is a loop exit) the terms are nested ifs, each with
+  a break as the else; the presentation must make them one `and`.

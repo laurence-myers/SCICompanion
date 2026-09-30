@@ -3,10 +3,12 @@ code 000a
 loop 000c latch 0018
   body
     code 000c
-    if 000e 0012
-      term
-        code 0010
+    if 000e
       then
-        code 0014-0016
+        code 0010
+        if 0012
+          then
+            code 0014-0016
+          else break 1
       else break 1
 code 001a

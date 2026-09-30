@@ -135,10 +135,12 @@ namespace scope
 		// The last back branch to the head; NoIndex when it is no head.
 		int Latch(int head) const;
 
-		// The switch of a live toss: the push of the value that the toss
-		// takes; NoIndex when there is none.
+		// The switch of a toss: the push of the value that the toss takes;
+		// NoIndex when there is none. A dead toss (each case returns) has the
+		// head of the switch whose cases jump to it.
 		int SwitchHead(int toss) const;
-		// The live tosses, in address order.
+		// The live tosses, and the dead tosses that have a head, in address
+		// order.
 		const std::vector<int> &Tosses() const { return _tosses; }
 
 		// A text dump, one line for each instruction: the address, the
@@ -169,6 +171,7 @@ namespace scope
 		void _FindNaryCompares();
 		void _FindLoops();
 		void _FindSwitches();
+		void _FindDeadSwitches();
 		void _ApplyDialect();
 		bool _IsLoopContinuation(int branch, int target) const;
 
