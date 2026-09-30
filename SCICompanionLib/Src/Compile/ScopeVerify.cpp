@@ -189,7 +189,12 @@ namespace scope
 							_Fail("branch-in-code", i, "a branch of the control flow in a code region");
 						}
 						SkeletonKind kind = SkeletonKind::Inst;
-						if (_model.IsLive(i) && _model.IsNoOp(i))
+						// A dead jmp over dead code only goes where the skip
+						// goes (a break can resolve through it: the exit of a
+						// loop that is a dead jmp to the code after the loop).
+						bool deadSkip = !_model.IsLive(i) && (_model.Op(i) == Opcode::JMP) && (_model.Target(i) > i) &&
+							(_model.Target(i) == _model.NextLive(i + 1));
+						if ((_model.IsLive(i) && _model.IsNoOp(i)) || deadSkip)
 						{
 							kind = SkeletonKind::Skip;
 						}

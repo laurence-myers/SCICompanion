@@ -15,7 +15,10 @@
 namespace scope
 {
 	// The region tree of the function. Throws a ScopeError (stage "parse")
-	// with the address of a branch that goes to no place of a scope.
+	// with the address of a branch that goes to no place of a scope. With a
+	// dead latch, it runs the verify stage on the tree of the live latches
+	// (see Parse in ScopeParser.cpp); the caller still verifies the tree
+	// that it returns.
 	std::unique_ptr<Region> Parse(const CodeModel &model);
 
 	// For a debug dump: the region tree of the instructions, after the

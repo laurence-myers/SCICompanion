@@ -1226,6 +1226,80 @@ namespace UnitTests
 				"code 0008\n");
 		}
 
+		// DSelector::retreat (most SCI0 and SCI1 games): after the latch, a
+		// dead jmp to the code after the loop and a dead jmp back to the head.
+		// The loop of the live latch parses; its exit is the dead jmp, and the
+		// break resolves through it to the code after the loop.
+		TEST_METHOD(Loops_TheExitIsADeadJmpOverDeadCode)
+		{
+			AssertParses(R"(
+				ldi 0
+				sat 0
+			head:
+				lap 1
+				bnt out
+				+at 0
+				jmp head
+				jmp out
+				jmp head
+			out:
+				lat 0
+				ret
+			)",
+				"code 0000-0001\n"
+				"loop 0002 latch 0005\n"
+				"  body\n"
+				"    code 0002\n"
+				"    if 0003\n"
+				"      then\n"
+				"        code 0004\n"
+				"      else break 1\n"
+				"code 0006-0009\n");
+		}
+
+		// EcoQuest 2, localproc_025e: (if a (while b (foo)) else (bar)). After
+		// the latch, a dead jmp to the end of the if, a dead jmp back to the
+		// head, and the dead jmp before the else. The loop exit is the first
+		// dead jmp: it is an exit of the then-part, so the break resolves
+		// through it to the end of the if.
+		TEST_METHOD(Loops_TheExitIsADeadJmpToTheEndOfTheIf)
+		{
+			AssertParses(R"(
+				lap 4
+				bnt else
+				ldi 1
+				sal 5
+			head:
+				lal 5
+				bnt end
+				+al 5
+				jmp head
+				jmp end
+				jmp head
+				jmp end
+			else:
+				ldi 2
+			end:
+				ret
+			)",
+				"code 0000\n"
+				"if 0001\n"
+				"  then\n"
+				"    code 0002-0003\n"
+				"    loop 0004 latch 0007\n"
+				"      body\n"
+				"        code 0004\n"
+				"        if 0005\n"
+				"          then\n"
+				"            code 0006\n"
+				"          else break 1\n"
+				"    exit 0008\n"
+				"    code 0009\n"
+				"  else 000a\n"
+				"    code 000b\n"
+				"code 000c\n");
+		}
+
 		// The switch fixtures.
 		TEST_METHOD(Fixtures_Switches)
 		{

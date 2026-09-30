@@ -356,10 +356,12 @@ namespace scope
 				{
 					_Fail("or-jumps-out", p);
 				}
-				if ((level == 0) && (op == Opcode::JMP) && _model.IsLive(p) && _model.SameTarget(target, hi, Arrival::Jump) && _IsDead(p + 1, hi))
+				if ((level == 0) && (op == Opcode::JMP) && _model.SameTarget(target, hi, Arrival::Jump) && _IsDead(p + 1, hi))
 				{
 					// A jmp to the end of the sequence, and only dead code
-					// after it (an else-part that no test reaches).
+					// after it (an else-part that no test reaches). A dead one
+					// too: a break can resolve through it (the exit of a loop
+					// that is a dead jmp to the end of the enclosing if).
 					std::unique_ptr<Region> region = std::make_unique<Region>(RegionKind::Exit);
 					region->branch = p;
 					sequence->items.push_back(std::move(region));
@@ -673,22 +675,21 @@ namespace scope
 	std::unique_ptr<Region> Parse(const CodeModel &model)
 	{
 		// A dead latch ends a loop only when the loops of the live latches do
-		// not parse: dead code after a loop that jumps back into it keeps the
-		// loop of the live latch.
+		// not give a tree that verifies: dead code after a loop that jumps
+		// back into it keeps the loop of the live latch.
 		LoopSet live = _InitialLoops(model, false);
 		LoopSet withDead = _InitialLoops(model, true);
 		if (live.latches != withDead.latches)
 		{
 			try
 			{
-				return _ParseWith(model, live);
+				std::unique_ptr<Region> root = _ParseWith(model, live);
+				Verify(model, *root);
+				return root;
 			}
-			catch (const ScopeError &e)
+			catch (const ScopeError &)
 			{
-				if (e.Stage() != "parse")
-				{
-					throw;
-				}
+				// The reading with the dead latches.
 			}
 		}
 		return _ParseWith(model, withDead);
