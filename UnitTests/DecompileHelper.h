@@ -90,8 +90,9 @@ int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
 // fallback, no asm, an exact match after whitespace normalization, and a stable
 // round trip. On mismatch it writes the actual text to TestResults so a diff is
 // easy. This tests fidelity, not just round-trip stability. Returns the first
-// decompile.
-DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, uint16_t scriptNumber);
+// decompile. With roundTrip false, it does not recompile the decompiled text:
+// for a fixture whose recompiled bytecode has another shape.
+DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, uint16_t scriptNumber, bool roundTrip = true);
 
 // Every selector number and name of the current game, one per line.
 std::string DumpSelectorTable();

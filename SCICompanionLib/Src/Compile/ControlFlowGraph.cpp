@@ -1626,6 +1626,25 @@ static bool _IsPendingJoin(ControlFlowNode *node)
 	return false;
 }
 
+// A node that is only a "bt" to target, and that is a pending join: the
+// end of an and (or of an or) whose last operand is an or. Sierra's compiler
+// sends the inner or's own "bt" past this node, straight to target: the
+// accumulator is true there, so this "bt" is taken too.
+static bool _IsPendingBtJoinTo(ControlFlowNode *node, ControlFlowNode *target)
+{
+	if ((node->Type != CFGNodeType::RawCode) || !node->endsWith(Opcode::BT))
+	{
+		return false;
+	}
+	RawCodeNode *raw = static_cast<RawCodeNode*>(node);
+	if (std::next(raw->start) != raw->end)
+	{
+		return false;
+	}
+	ControlFlowNode *thenNode, *elseNode;
+	return MaybeGetThenAndElseBranches(node, &thenNode, &elseNode) && (thenNode == target) && _IsPendingJoin(node);
+}
+
 // True if the chain of nodes is one expression: no value it makes is dropped.
 // A value is dropped when an instruction sets the accumulator while an
 // earlier value is still in it, unconsumed; that earlier value was a
@@ -1909,7 +1928,9 @@ bool ControlFlowGraph::_TryAndMerge(ControlFlowNode *structure, ControlFlowNode 
 
 // first: a bt whose target is its post-dominator (the join), with a one-way
 // chain from its fall-through to the join. That is an "or": first, then the
-// chain. The or is a one-way node whose value flows to the join.
+// chain. The or is a one-way node whose value flows to the join. When first
+// is a bt, the chain can also end at a pending "bt" to the join (see
+// _IsPendingBtJoinTo); that "bt" is then the or's join.
 bool ControlFlowGraph::_TryOrCollapse(ControlFlowNode *structure, ControlFlowNode *first, const map<ControlFlowNode*, ControlFlowNode*> &ipdom, const NodeSet *testChain)
 {
 	// first is a bt, or an and whose last term ended in a bt (the and is the
@@ -1940,6 +1961,10 @@ bool ControlFlowGraph::_TryOrCollapse(ControlFlowNode *structure, ControlFlowNod
 	ControlFlowNode *node = operandStart;
 	for (int guard = 0; (guard < 256) && (node != join); guard++)
 	{
+		if (isBt && !second.empty() && _IsPendingBtJoinTo(node, join))
+		{
+			break;
+		}
 		if ((node->Successors().size() != 1) || (node->Predecessors().size() != 1) || (node->Type == CFGNodeType::Exit))
 		{
 			return false;
@@ -1947,13 +1972,34 @@ bool ControlFlowGraph::_TryOrCollapse(ControlFlowNode *structure, ControlFlowNod
 		second.push_back(node);
 		node = *node->Successors().begin();
 	}
-	if ((node != join) || second.empty())
+	if (second.empty())
+	{
+		return false;
+	}
+	// The chain ends at a "bt" to the join, which the and around this or
+	// still needs: that "bt" is the or's real join (see _IsPendingBtJoinTo).
+	bool threadedJoin = (node != join);
+	if (threadedJoin && (!isBt || !_IsPendingBtJoinTo(node, join) || (node->GetStartingAddress() <= first->GetStartingAddress())))
 	{
 		return false;
 	}
 	if (testChain && (_IsTestNode(first, *testChain) != _IsTestNode(second.back(), *testChain)))
 	{
 		return false;
+	}
+	if (testChain && threadedJoin && (_IsTestNode(first, *testChain) != _IsTestNode(node, *testChain)))
+	{
+		return false;
+	}
+	if (threadedJoin)
+	{
+		// Send first's "bt" to that join. The accumulator is true there, so
+		// the code does the same.
+		code_pos branch = static_cast<RawCodeNode*>(first)->end;
+		--branch;
+		branch->set_branch_target(static_cast<RawCodeNode*>(node)->start, true);
+		join->ErasePredecessor(first);
+		node->InsertPredecessor(first);
 	}
 
 	vector<ControlFlowNode*> firstChain = _ChainFrom(_TestChainHead(first), first);
