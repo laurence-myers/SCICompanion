@@ -781,6 +781,7 @@ unique_ptr<Script> ParseScriptText(const string &text, SCIVersion version, strin
 }
 
 const char *const AsmBlockMarker = "scicCompareAsmBlock";
+const char *const BlockMarker = "scicCompareBlock";
 
 namespace
 {
@@ -992,6 +993,34 @@ string UnwrapGroupedExpressions(const string &text)
             }
             i++;
         }
+    }
+    // A group of two or more groups is a statement list as a value: a call
+    // of BlockMarker, so that it parses. The marks go in from the end, so
+    // the positions before them stay valid.
+    vector<size_t> blocks;
+    size_t i = 0;
+    while (i < out.size())
+    {
+        size_t skipped = SkipStringOrComment(out, i);
+        if (skipped != i)
+        {
+            i = skipped;
+            continue;
+        }
+        if ((out[i] == '(') && !keep.count(i))
+        {
+            vector<size_t> items = GroupItems(out, i);
+            bool allGroups = (items.size() >= 2) && std::all_of(items.begin(), items.end(), [&](size_t item) { return out[item] == '('; });
+            if (allGroups)
+            {
+                blocks.push_back(i);
+            }
+        }
+        i++;
+    }
+    for (auto it = blocks.rbegin(); it != blocks.rend(); ++it)
+    {
+        out.insert(*it + 1, string(BlockMarker) + " ");
     }
     return out;
 }

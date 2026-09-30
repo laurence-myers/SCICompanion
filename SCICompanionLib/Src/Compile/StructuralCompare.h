@@ -91,9 +91,15 @@ std::string ReplaceAsmBlocks(const std::string &text);
 // lines and columns). Snuffer writes such groups; the parser of this
 // repository does not take them. Strings, {} strings and ; comments are
 // skipped, and so are the groups that are syntax, not one expression: the
-// init and the step of a for, and the clauses of a cond or a switch. The
+// init and the step of a for, and the clauses of a cond or a switch. Last,
+// a group of two or more groups (Snuffer's statement list as a value, for
+// example "(or a ((= b 1) (c)))") becomes a call of BlockMarker. The
 // compare uses this text only for a script that does not parse as it is.
 std::string UnwrapGroupedExpressions(const std::string &text);
+
+// The name of the procedure that UnwrapGroupedExpressions calls for a
+// statement list as a value.
+extern const char *const BlockMarker;
 
 // The control statements of a normalized body, with their nesting: each
 // if, while, repeat, switch (and each case in it), break, continue,

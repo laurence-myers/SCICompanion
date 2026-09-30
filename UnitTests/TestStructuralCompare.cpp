@@ -259,6 +259,11 @@ namespace UnitTests
             // is one expression.
             Assert::AreEqual(std::string("(for ((= i 0)) (< i 9) ((++ i)) (= a  (b new:) ))"),
                 UnwrapGroupedExpressions("(for ((= i 0)) (< i 9) ((++ i)) (= a ((b new:))))"));
+            // A statement list as a value becomes a call of the block marker;
+            // a cond clause and the init of a for stay.
+            Assert::AreEqual("(or a (" + std::string(BlockMarker) + " (= b 1) (c)))", UnwrapGroupedExpressions("(or a ((= b 1) (c)))"));
+            Assert::AreEqual(std::string("(cond ((a) (b)))"), UnwrapGroupedExpressions("(cond ((a) (b)))"));
+            Assert::AreEqual(std::string("(for ((= i 0) (= j 0)) (< i 9) ((++ i)) (b))"), UnwrapGroupedExpressions("(for ((= i 0) (= j 0)) (< i 9) ((++ i)) (b))"));
         }
 
         // A class that the two texts name differently pairs by its methods,
@@ -287,12 +292,18 @@ namespace UnitTests
         {
             CompareFolders folders;
             folders.Write("expected", "a.sc", MakeScript(14, { { "p", 0 } }, Procedure("p", "(= a ((b new:))) (for ((= a 0)) (< a 10) ((++ a)) (= b a))")));
+            folders.Write("expected", "b.sc", MakeScript(15, { { "q", 0 } }, Procedure("q", "(or a ((= b 1) (c)))")));
+            folders.Write("actual", "b.sc", MakeScript(15, { { "q", 0 } }, Procedure("q", "(if (not a) (= b 1) (c))")));
             folders.Write("actual", "a.sc", MakeScript(14, { { "p", 0 } }, Procedure("p", "(= a (b new:)) (for ((= a 0)) (< a 10) ((++ a)) (= b a))")));
             FolderCompareResult result = CompareScriptFolders(folders.Folder("expected"), folders.Folder("actual"), "", sciVersion1_1);
             std::string text = RowsText(result);
             Assert::IsTrue(result.errors.empty(), Wide(text).c_str());
             std::map<std::string, FunctionCompareRow> rows = RowsOf(result);
             Assert::AreEqual(std::string("SAME"), std::string(StructureVerdictName(rows["14:p"].verdict)), Wide(text).c_str());
+            // A statement list as a value parses, so the function has a
+            // verdict (another shape than the if of the actual side).
+            Assert::IsTrue(rows.count("15:q") > 0, Wide(text).c_str());
+            Assert::AreNotEqual(std::string("UNPARSED"), std::string(StructureVerdictName(rows["15:q"].verdict)), Wide(text).c_str());
         }
 
         // Methods pair by the name of their class: a class that the actual
