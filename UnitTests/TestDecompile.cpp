@@ -288,6 +288,16 @@ namespace UnitTests
             AssertDecompileMatchesExpected("F17_ThreadedOrJoin", 939, false);
         }
 
+        // A loop whose body starts with a switch: a "jmp" to the loop head
+        // that only branches reach folds into the common latch, as it does
+        // when the head is plain code.
+        TEST_METHOD(SwitchHeadContinue)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F18_SwitchHeadContinue", 942);
+        }
+
+
         // Return values take the golden shape: an if whose branches return is
         // not itself returned; a value-shaped if at the end of the function
         // is; a ++ before the final ret is not a return value.

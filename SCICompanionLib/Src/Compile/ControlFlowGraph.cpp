@@ -1273,7 +1273,13 @@ void ControlFlowGraph::_MergeLatchTrampolines()
 			continue;
 		}
 		ControlFlowNode *latch = loop->MaybeGet(SemId::Latch);
+		// A loop body that starts with a switch has the switch as its head;
+		// the loop's first instruction is at the start of the switch's head.
 		ControlFlowNode *head = (*loop)[SemId::Head];
+		if (head->Type == CFGNodeType::Switch)
+		{
+			head = (*head)[SemId::Head];
+		}
 		if (!latch || (latch->Type != CFGNodeType::CommonLatch) || (head->Type != CFGNodeType::RawCode))
 		{
 			continue;
