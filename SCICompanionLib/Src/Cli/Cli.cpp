@@ -8,7 +8,6 @@
 #include "GameSession.h"
 #include "CoreLog.h"
 #include "DecompileEngine.h"
-#include "FileWrite.h"
 #include "format.h"
 #include <cstdlib>
 #include <filesystem>
@@ -460,21 +459,35 @@ namespace cli
         // headers then have absolute paths.
         std::string dataFolder = AbsolutePath(DataFolderOf(common));
         std::error_code ec;
+        // A run that cannot start leaves a function report with no functions,
+        // not the report of an older run.
+        bool functionReport = decompile->parsed() && !decompileOptions.functionReport.empty();
+        auto writeEmptyReport = [&]()
+        {
+            if (functionReport)
+            {
+                sci::Status written = WriteEmptyFunctionReport(decompileOptions.functionReport);
+                if (!written)
+                {
+                    logged.Error("the function report: " + written.error().ToString());
+                }
+            }
+        };
         if (dataFolder.empty() || !fs::exists(fs::path(dataFolder) / "include" / "sci.sh", ec))
         {
             logged.Error(fmt::format("the data folder \"{0}\" has no include\\sci.sh. Give the folder that holds include\\ and Decompiler\\ with --data-dir, or set SCIC_DATA_DIR.", dataFolder));
+            writeEmptyReport();
             return (int)ExitCode::CannotStart;
         }
         logged.Detail("The data folder: " + dataFolder);
-        if (decompile->parsed() && !decompileOptions.functionReport.empty())
+        if (functionReport)
         {
-            // A function report with no functions, before the game opens: a
-            // report that cannot be written stops the command now, and a run
-            // that cannot start or selects no script leaves no old report.
-            sci::Status written = WriteTextToFile(decompileOptions.functionReport, std::string(FunctionReportHeader) + "\n");
-            if (!written)
+            // A report that cannot be written stops the command before the
+            // decompile.
+            sci::Status writable = CheckFunctionReportFile(decompileOptions.functionReport);
+            if (!writable)
             {
-                logged.Error("the function report: " + written.error().ToString());
+                logged.Error("the function report: " + writable.error().ToString());
                 return (int)ExitCode::WriteFailed;
             }
         }
@@ -494,6 +507,7 @@ namespace cli
             // Plan section 8: 3, but 2 for a usage error (for example an
             // empty game folder).
             logged.Error("cannot open the game: " + opened.error().ToString());
+            writeEmptyReport();
             return (int)ExitCodeForStartError(opened.error());
         }
 

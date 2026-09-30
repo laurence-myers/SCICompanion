@@ -492,6 +492,16 @@ namespace cli
         if (numbers.empty())
         {
             output.Message("No script to decompile.");
+            if (!options.functionReport.empty())
+            {
+                // No old report stays.
+                sci::Status written = WriteEmptyFunctionReport(options.functionReport);
+                if (!written)
+                {
+                    output.Error("the function report: " + written.error().ToString());
+                    return ExitCode::WriteFailed;
+                }
+            }
             return ExitCode::Success;
         }
 
@@ -558,6 +568,31 @@ namespace cli
     }
 
     const char *const FunctionReportHeader = "script\tclass\tfunction\toffset\tbytes\tengine\toutput\tscope\tclassic";
+
+    sci::Status CheckFunctionReportFile(const std::string &path)
+    {
+        std::error_code ec;
+        std::filesystem::path file(path);
+        std::filesystem::path folder = file.parent_path();
+        if (!folder.empty() && !std::filesystem::is_directory(folder, ec))
+        {
+            return sci::Fail(sci::ErrorCode::Io, "the folder of " + path + " does not exist");
+        }
+        if (std::filesystem::exists(file, ec))
+        {
+            std::ofstream stream(path, std::ios::binary | std::ios::app);
+            if (!stream)
+            {
+                return sci::Fail(sci::ErrorCode::Io, "cannot write " + path);
+            }
+        }
+        return sci::Ok();
+    }
+
+    sci::Status WriteEmptyFunctionReport(const std::string &path)
+    {
+        return WriteTextToFile(path, std::string(FunctionReportHeader) + "\n");
+    }
 
     bool MayOverwriteFunctionReport(const std::string &path)
     {

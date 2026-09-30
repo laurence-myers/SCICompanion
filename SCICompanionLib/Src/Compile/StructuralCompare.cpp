@@ -532,6 +532,11 @@ static vector<string> CompareFunctionLists(const vector<StructuralFunction> &exp
     return differences;
 }
 
+namespace
+{
+    void PairUnnamedClasses(const vector<StructuralFunction> &expected, vector<StructuralFunction> &side);
+}
+
 vector<string> CompareScriptTexts(const string &expectedText, const string &actualText, SCIVersion version, string *outDetail)
 {
     string error;
@@ -546,7 +551,10 @@ vector<string> CompareScriptTexts(const string &expectedText, const string &actu
         return { "<unparsed> actual: " + error };
     }
     set<string> unused = UnusedProcedureNames(expectedText);
-    return CompareFunctionLists(NormalizeScriptForCompare(*expected, &unused), NormalizeScriptForCompare(*actual), outDetail);
+    vector<StructuralFunction> expectedFunctions = NormalizeScriptForCompare(*expected, &unused);
+    vector<StructuralFunction> actualFunctions = NormalizeScriptForCompare(*actual);
+    PairUnnamedClasses(expectedFunctions, actualFunctions);
+    return CompareFunctionLists(expectedFunctions, actualFunctions, outDetail);
 }
 
 string StructuralCompareResult::Report() const
@@ -671,6 +679,7 @@ StructuralCompareResult CompareStructural(const string &expectedDir, const strin
         set<string> unused = UnusedProcedureNames(expectedText);
         vector<StructuralFunction> expectedFunctions = NormalizeScriptForCompare(*expected, &unused);
         vector<StructuralFunction> actualFunctions = NormalizeScriptForCompare(*actual);
+        PairUnnamedClasses(expectedFunctions, actualFunctions);
         result.functionsCompared += static_cast<int>(expectedFunctions.size());
         map<string, const StructuralFunction *> actualByKey;
         for (const StructuralFunction &f : actualFunctions)
@@ -855,10 +864,105 @@ namespace
     }
 }
 
+namespace
+{
+    // The start of each item of the group that opens at open: a group, a
+    // string, or a token.
+    vector<size_t> GroupItems(const string &text, size_t open)
+    {
+        vector<size_t> items;
+        size_t j = open + 1;
+        while (j < text.size())
+        {
+            size_t after = SkipStringOrComment(text, j);
+            if ((after != j) && (text[j] == ';'))
+            {
+                j = after;
+                continue;
+            }
+            char c = text[j];
+            if (isspace(static_cast<unsigned char>(c)))
+            {
+                j++;
+                continue;
+            }
+            if ((c == ')') || (c == ']'))
+            {
+                break;
+            }
+            items.push_back(j);
+            if (after != j)
+            {
+                j = after;
+            }
+            else if ((c == '(') || (c == '['))
+            {
+                j = GroupEnd(text, j);
+                if (j == string::npos)
+                {
+                    break;
+                }
+            }
+            else
+            {
+                while ((j < text.size()) && !isspace(static_cast<unsigned char>(text[j])) && (strchr("()[]", text[j]) == nullptr))
+                {
+                    j++;
+                }
+            }
+        }
+        return items;
+    }
+
+    // The groups that are not one expression in parentheses: the init and
+    // the step of a for, and the clauses of a cond or a switch.
+    set<size_t> SyntaxGroups(const string &text)
+    {
+        set<size_t> groups;
+        size_t i = 0;
+        while (i < text.size())
+        {
+            size_t skipped = SkipStringOrComment(text, i);
+            if (skipped != i)
+            {
+                i = skipped;
+                continue;
+            }
+            if (text[i] == '(')
+            {
+                vector<size_t> items = GroupItems(text, i);
+                if (!items.empty())
+                {
+                    size_t first = items[0];
+                    size_t length = 0;
+                    while ((first + length < text.size()) && (isalnum(static_cast<unsigned char>(text[first + length])) || (text[first + length] == '_')))
+                    {
+                        length++;
+                    }
+                    string keyword = text.substr(first, length);
+                    for (size_t k = 1; k < items.size(); k++)
+                    {
+                        bool forPart = (keyword == "for") && ((k == 1) || (k == 3));
+                        bool clause = (keyword == "cond") || (keyword == "switch") || (keyword == "switchto");
+                        if (forPart || clause)
+                        {
+                            groups.insert(items[k]);
+                        }
+                    }
+                }
+            }
+            i++;
+        }
+        return groups;
+    }
+}
+
 string UnwrapGroupedExpressions(const string &text)
 {
     const char *const space = " \t\r\n";
     string out = text;
+    // The spaces keep the positions, so these stay valid.
+    set<size_t> keep = SyntaxGroups(text);
     for (bool changed = true; changed; )
     {
         changed = false;
@@ -871,7 +975,7 @@ string UnwrapGroupedExpressions(const string &text)
                 i = skipped;
                 continue;
             }
-            if (out[i] == '(')
+            if ((out[i] == '(') && !keep.count(i))
             {
                 size_t inner = out.find_first_not_of(space, i + 1);
                 if ((inner != string::npos) && ((out[inner] == '(') || (out[inner] == '[')))
@@ -1136,9 +1240,10 @@ namespace
             unique_ptr<Script> parsed = ParseScriptText(asmReplaced, version, &error);
             if (!parsed)
             {
-                // Snuffer's grouped expressions; the error of the text as it
-                // is stays when this does not parse either.
-                parsed = ParseScriptText(UnwrapGroupedExpressions(asmReplaced), version, nullptr);
+                // Snuffer's grouped expressions. When this does not parse
+                // either, its error is the one to report: it is an error of
+                // another construct.
+                parsed = ParseScriptText(UnwrapGroupedExpressions(asmReplaced), version, &error);
             }
             if (!parsed)
             {

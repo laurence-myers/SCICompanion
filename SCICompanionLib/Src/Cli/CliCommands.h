@@ -156,6 +156,13 @@ namespace cli
     // FunctionReportHeader).
     bool MayOverwriteFunctionReport(const std::string &path);
 
+    // The function report can be written: its folder exists, and the file,
+    // when it exists, opens for writing. The file does not change.
+    sci::Status CheckFunctionReportFile(const std::string &path);
+
+    // Writes a function report with no functions (its first line only).
+    sci::Status WriteEmptyFunctionReport(const std::string &path);
+
     // Decompiles the scripts (RunDecompile) and prints the report: the
     // messages of the decompiler as they come, then the summary. --stdout
     // prints the source and writes nothing; --dry-run writes nothing and

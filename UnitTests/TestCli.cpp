@@ -899,9 +899,9 @@ namespace UnitTests
         }
 
         // Two export slots of one procedure are two functions with one offset:
-        // two lines. The report gets its first line before the game opens: a
-        // folder that does not exist stops the command before the decompile,
-        // and a game that does not open leaves a report with no functions, not
+        // two lines. Before the game opens, a report folder that does not
+        // exist stops the command; a usage error leaves the report as it is;
+        // a game that does not open leaves a report with no functions, not
         // the old report.
         TEST_METHOD(Decompile_FunctionReport_TwoSlotsAndEarlyWrite)
         {
@@ -920,6 +920,11 @@ namespace UnitTests
             cli::StringConsole missing = Expect(9, { "script", "decompile", _copyFolder, "950", "--stdout", "--function-report", noFolder });
             Assert::IsTrue(missing.err.find("the function report") != std::string::npos, Wide(missing.err).c_str());
             Assert::IsTrue(missing.out.empty(), L"no decompile");
+
+            // A usage error leaves the file as it is.
+            std::string before = ReadFileText(report);
+            Expect(2, { "script", "decompile", _copyFolder, "0", "950", "--stdout", "--function-report", report });
+            Assert::AreEqual(before, ReadFileText(report), L"a usage error keeps the report");
 
             std::string noGame = (fs::path(_copyFolder) / "nogame").string();
             Expect(3, { "script", "decompile", noGame, "950", "--stdout", "--function-report", report });

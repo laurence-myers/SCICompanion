@@ -90,8 +90,9 @@ std::string ReplaceAsmBlocks(const std::string &text);
 // " (= a b) " and "(([p i]) foo:)" gives "( [p i]  foo:)" (spaces keep the
 // lines and columns). Snuffer writes such groups; the parser of this
 // repository does not take them. Strings, {} strings and ; comments are
-// skipped. A cond clause with no body is such a group too, so the compare
-// uses this text only for a script that does not parse as it is.
+// skipped, and so are the groups that are syntax, not one expression: the
+// init and the step of a for, and the clauses of a cond or a switch. The
+// compare uses this text only for a script that does not parse as it is.
 std::string UnwrapGroupedExpressions(const std::string &text);
 
 // The control statements of a normalized body, with their nesting: each

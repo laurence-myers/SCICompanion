@@ -14,8 +14,9 @@
       3. compares the two with scic dev compare-structure (in the sample
          mode, only the scripts of the sample), and with the scic output of
          an earlier run when -BaselineRun is given. A game with no Snuffer
-         output (Snuffer cannot read it, or its run failed) is not
-         compared: it has no rows, and the summary names it.
+         output (Snuffer cannot read it, or its run failed), or with an
+         error before the compare, is not compared: it has no rows, and the
+         summary names it with the reason.
     The corpus folders stay read-only: scic runs on the copy, and Snuffer
     reads the game folder (a copy when it must leave out a volume file).
 
@@ -219,7 +220,7 @@ $gameWork = {
     param($game, $scripts, $settings)
     $ErrorActionPreference = "Stop"
     . (Join-Path $settings.Tools 'Corpus.Common.ps1')
-    $result = [ordered]@{ name = $game.Name; md5 = $game.Md5; exit = ""; bug = $false; snuffer = ""; error = ""; compared = $true }
+    $result = [ordered]@{ name = $game.Name; md5 = $game.Md5; exit = ""; bug = $false; snuffer = ""; error = ""; compared = $false }
     try {
         $gameRun = Join-Path $settings.Run "games\$($game.Md5)"
         New-Item -ItemType Directory $gameRun -Force | Out-Null
@@ -302,9 +303,9 @@ $gameWork = {
         if (-not ($result.snuffer -like "ok*") -or -not (Test-Path -LiteralPath $expected)) {
             # No Snuffer output (Snuffer cannot read the game, or it failed):
             # the game is not compared, and it has no rows.
-            $result.compared = $false
         }
         else {
+            $result.compared = $true
             $compare = @("dev", "compare-structure", $expected, (Join-Path $gameRun "src"), "--out", (Join-Path $gameRun "compare.tsv"))
             if ($scripts -notcontains "--all") { $compare += @("--scripts", ($scripts -join ",")) }
             if ($settings.BaselineRun) {
@@ -341,7 +342,7 @@ foreach ($job in $jobs) {
     $output = $job.Shell.EndInvoke($job.Handle)
     $job.Shell.Dispose()
     $fact = $output | Select-Object -Last 1
-    if (-not $fact) { $fact = [pscustomobject]@{ name = $job.Game.Name; md5 = $job.Game.Md5; exit = ""; bug = $false; snuffer = ""; error = "no result" } }
+    if (-not $fact) { $fact = [pscustomobject]@{ name = $job.Game.Name; md5 = $job.Game.Md5; exit = ""; bug = $false; snuffer = ""; error = "no result"; compared = $false } }
     $facts += $fact
     $done++
     Write-Host ("[{0}/{1}] {2}: decompile {3}{4}; snuffer {5}{6}" -f $done, $jobs.Count, $fact.name, $fact.exit, $(if ($fact.bug) { " (BUG)" } else { "" }), $fact.snuffer, $(if ($fact.error) { "; error: $($fact.error)" } else { "" }))
@@ -444,8 +445,9 @@ foreach ($name in @("ok", "graph", "consumption")) {
     if ($shadow[$name].functions) { Write-Host ("Scope accepts {0} of {1} functions that classic gives as {2}" -f $shadow[$name].scopeOk, $shadow[$name].functions, $name) }
 }
 foreach ($name in $totals.scopeFailures.Keys) { Write-Host ("  {0}: {1}" -f $name, $totals.scopeFailures[$name]) }
-$notCompared = @($gameCounts | Where-Object { -not $_.compared } | ForEach-Object { $_.name })
-if ($notCompared.Count -gt 0) { Write-Host ("Not compared (no Snuffer output): " + ($notCompared -join "; ")) }
+# A game with no compare: no Snuffer output, or an error before the compare.
+$notCompared = @($facts | Where-Object { -not $_.compared } | Sort-Object name | ForEach-Object { if ($_.error) { "$($_.name) (error: $($_.error))" } else { "$($_.name) (Snuffer: $($_.snuffer))" } })
+if ($notCompared.Count -gt 0) { Write-Host ("Not compared: " + ($notCompared -join "; ")) }
 Write-Utf8 (Join-Path $run "scope.tsv") (($scopeRows -join "`r`n") + "`r`n")
 Write-Host "Run folder: $run"
 

@@ -250,10 +250,35 @@ namespace UnitTests
             Assert::AreEqual(std::string(" (= fp (Foo new:)) "), UnwrapGroupedExpressions("((= fp (Foo new:)))"));
             Assert::AreEqual(std::string("( [p i]  isKindOf: C)"), UnwrapGroupedExpressions("(([p i]) isKindOf: C)"));
             Assert::AreEqual(std::string("(= g  (ScriptID 204) )"), UnwrapGroupedExpressions("(= g ((ScriptID 204)))"));
-            for (const char *same : { "((ScriptID 1 2) x:)", "(foo (a))", "{((a))} ; ((b))\n", "\"((c))\"" })
+            for (const char *same : { "((ScriptID 1 2) x:)", "(foo (a))", "{((a))} ; ((b))\n", "\"((c))\"",
+                "(cond ((b doit:)) (else (= a 1)))", "(switch a ((b)) (else 2))" })
             {
                 Assert::AreEqual(std::string(same), UnwrapGroupedExpressions(same));
             }
+            // The init and the step of a for are syntax; a group in its body
+            // is one expression.
+            Assert::AreEqual(std::string("(for ((= i 0)) (< i 9) ((++ i)) (= a  (b new:) ))"),
+                UnwrapGroupedExpressions("(for ((= i 0)) (< i 9) ((++ i)) (= a ((b new:))))"));
+        }
+
+        // A class that the two texts name differently pairs by its methods,
+        // also in the compare of two texts.
+        TEST_METHOD(CompareScriptTexts_ClassesWithOtherNamesPair)
+        {
+            auto instance = [](const std::string &name)
+            {
+                return "(instance " + name + " of Obj\r\n\t(method (doit)\r\n\t\t(while a (-- a))\r\n\t)\r\n)\r\n";
+            };
+            std::string expected = MakeScript(16, { { "p", 0 } }, Procedure("p", "(= a 1)") + instance("One"));
+            std::string actual = MakeScript(16, { { "p", 0 } }, Procedure("p", "(= a 1)") + instance("obj_1"));
+            std::string detail;
+            std::vector<std::string> differences = CompareScriptTexts(expected, actual, sciVersion1_1, &detail);
+            std::string text;
+            for (const std::string &d : differences)
+            {
+                text += d + "\n";
+            }
+            Assert::IsTrue(differences.empty(), Wide(text).c_str());
         }
 
         // A Snuffer script with grouped expressions parses (with no error),
@@ -261,8 +286,8 @@ namespace UnitTests
         TEST_METHOD(CompareScriptFolders_SnufferGroupsParse)
         {
             CompareFolders folders;
-            folders.Write("expected", "a.sc", MakeScript(14, { { "p", 0 } }, Procedure("p", "(= a ((b new:)))")));
-            folders.Write("actual", "a.sc", MakeScript(14, { { "p", 0 } }, Procedure("p", "(= a (b new:))")));
+            folders.Write("expected", "a.sc", MakeScript(14, { { "p", 0 } }, Procedure("p", "(= a ((b new:))) (for ((= a 0)) (< a 10) ((++ a)) (= b a))")));
+            folders.Write("actual", "a.sc", MakeScript(14, { { "p", 0 } }, Procedure("p", "(= a (b new:)) (for ((= a 0)) (< a 10) ((++ a)) (= b a))")));
             FolderCompareResult result = CompareScriptFolders(folders.Folder("expected"), folders.Folder("actual"), "", sciVersion1_1);
             std::string text = RowsText(result);
             Assert::IsTrue(result.errors.empty(), Wide(text).c_str());
