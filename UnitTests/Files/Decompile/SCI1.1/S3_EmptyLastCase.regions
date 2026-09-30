@@ -1,0 +1,13 @@
+== s3EmptyLastCase
+code 000a
+switch 000c toss 001e
+  case bnt 0012 jmp 0018
+    value
+      code 000e-0011
+    body
+      code 0014-0016
+  case
+    value
+      code 001a-001d
+    body
+code 001f

@@ -1,0 +1,37 @@
+== f18SwitchHeadContinue
+code 000a
+loop 000c latch 0052
+  body
+    switch 000c toss 001a
+      case bnt 0012 jmp 0016
+        value
+          code 000e-0011
+        body
+          code 0014
+      case
+        body
+          code 0018
+    code 001b-0021
+    if 0022
+      then
+        code 0024
+        if 0026
+          then
+            code 0028-002a
+      else 002c
+        code 002e-0032
+        if 0033 003a
+          term
+            code 0035-0039
+          then
+            code 003c
+            if 003e
+              then
+                code 0040-0042
+                break 1 0044
+          else 0046
+            code 0048
+            if 004a
+              then
+                code 004c-0050
+code 0054-0056

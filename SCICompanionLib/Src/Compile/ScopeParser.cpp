@@ -70,6 +70,12 @@ namespace scope
 					fmt::format("{0} to {1:04x}", OpcodeToName(_model.Op(branch), 0), _model.Offset(_model.Target(branch))), branch);
 			}
 
+			// A parse error at an instruction that is not a branch.
+			[[noreturn]] void _FailAt(const char *id, int index) const
+			{
+				throw BranchError(id, _model.Offset(index), OpcodeToName(_model.Op(index), 0), index);
+			}
+
 			// The sequence [lo, hi): code regions, loops, and a region for
 			// each branch of the control flow.
 			std::unique_ptr<Region> _Sequence(int lo, int hi, OpenIf *thenOf)
@@ -93,6 +99,14 @@ namespace scope
 						flush(i);
 						sequence->items.push_back(_Loop(i, latch));
 						i = latch + 1;
+						continue;
+					}
+					int toss = _SwitchAt(i, hi);
+					if (toss != NoIndex)
+					{
+						flush(i);
+						sequence->items.push_back(_Switch(i, toss));
+						i = toss + 1;
 						continue;
 					}
 					// A dead jmp to a loop exit or continue point (after a
@@ -121,6 +135,89 @@ namespace scope
 				}
 				flush(hi);
 				return sequence;
+			}
+
+			// The toss of the switch whose head is i, when the switch ends
+			// inside the sequence; NoIndex when there is none.
+			int _SwitchAt(int i, int hi) const
+			{
+				if (!_model.IsLive(i))
+				{
+					return NoIndex;
+				}
+				for (int toss : _model.Tosses())
+				{
+					if ((_model.SwitchHead(toss) == i) && (toss < hi))
+					{
+						return toss;
+					}
+				}
+				return NoIndex;
+			}
+
+			// A switch (plan section 3.2). A case starts at a dup at the depth
+			// of the switch value; its value is [dup, eq?]; its bnt goes to the
+			// next case, or to the toss; its body ends at the jmp to the toss
+			// just before the next case. The last case can have no bnt and no
+			// body. A case with no dup is the else case: the rest of the
+			// switch.
+			std::unique_ptr<Region> _Switch(int head, int toss)
+			{
+				std::unique_ptr<Region> region = std::make_unique<Region>(RegionKind::Switch);
+				region->head = head;
+				region->toss = toss;
+				int depth = _model.DepthAfter(head);
+				int entry = head + 1;
+				while (entry < toss)
+				{
+					std::unique_ptr<Region> item = std::make_unique<Region>(RegionKind::Case);
+					if ((_model.Op(entry) != Opcode::DUP) || !_model.IsLive(entry) || (_model.DepthBefore(entry) != depth))
+					{
+						item->body = _Sequence(entry, toss, nullptr);
+						region->cases.push_back(std::move(item));
+						break;
+					}
+					// The eq? that takes the dup: the first instruction that
+					// brings the stack back to the depth of the switch.
+					int compare = NoIndex;
+					for (int j = entry + 1; j < toss; ++j)
+					{
+						if (_model.IsLive(j) && (_model.DepthAfter(j) <= depth))
+						{
+							compare = j;
+							break;
+						}
+					}
+					if ((compare == NoIndex) || (_model.Op(compare) != Opcode::EQ) || (_model.DepthAfter(compare) != depth))
+					{
+						_FailAt("case-value", entry);
+					}
+					item->value = _Sequence(entry, compare + 1, nullptr);
+					int test = compare + 1;
+					if (test == toss)
+					{
+						item->body = MakeSequence();
+						region->cases.push_back(std::move(item));
+						break;
+					}
+					int next = _model.Target(test);
+					if ((_model.Op(test) != Opcode::BNT) || !_model.IsFlowBranch(test) || (next <= test) || (next > toss))
+					{
+						_FailAt("case-test", test);
+					}
+					item->branch = test;
+					int bodyEnd = next;
+					int jump = next - 1;
+					if ((jump > test) && (_model.Op(jump) == Opcode::JMP) && _model.SameTarget(_model.Target(jump), toss, Arrival::Jump))
+					{
+						item->caseJmp = jump;
+						bodyEnd = jump;
+					}
+					item->body = _Sequence(test + 1, bodyEnd, nullptr);
+					region->cases.push_back(std::move(item));
+					entry = next;
+				}
+				return region;
 			}
 
 			// The latch of the outermost loop at the head i that ends inside

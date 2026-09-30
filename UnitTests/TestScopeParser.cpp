@@ -435,6 +435,152 @@ namespace UnitTests
 				"code 000f\n");
 		}
 
+		// (switch x (1 A) (2 B) (else C)).
+		TEST_METHOD(Switches_CasesAndElse)
+		{
+			AssertParses(shapes::Switch, shapes::SwitchTree);
+		}
+
+		// A switch in a loop: the jmp at the end of the case goes to the
+		// toss (here it does nothing), and a case breaks out of the loop
+		// with the switch value on the stack.
+		TEST_METHOD(Switches_InALoop)
+		{
+			AssertParses(shapes::SwitchInLoop,
+				"loop 0000 latch 000a\n"
+				"  body\n"
+				"    code 0000\n"
+				"    if 0001\n"
+				"      then\n"
+				"        switch 0002 toss 0009\n"
+				"          case bnt 0006 jmp 0008\n"
+				"            value\n"
+				"              code 0003-0005\n"
+				"            body\n"
+				"              code 0007\n"
+				"      else break 1\n"
+				"code 000b\n");
+			AssertParses(R"(
+			head:
+				lap 1
+				bnt exit
+				lsp 2
+				dup
+				ldi 1
+				eq?
+				bnt case2
+				jmp exit
+				jmp done
+			case2:
+				dup
+				ldi 2
+				eq?
+				bnt done
+				+at 0
+			done:
+				toss
+				jmp head
+			exit:
+				ret
+			)",
+				"loop 0000 latch 000f\n"
+				"  body\n"
+				"    code 0000\n"
+				"    if 0001\n"
+				"      then\n"
+				"        switch 0002 toss 000e\n"
+				"          case bnt 0006 jmp 0008\n"
+				"            value\n"
+				"              code 0003-0005\n"
+				"            body\n"
+				"              break 1 0007\n"
+				"          case bnt 000c\n"
+				"            value\n"
+				"              code 0009-000b\n"
+				"            body\n"
+				"              code 000d\n"
+				"      else break 1\n"
+				"code 0010\n");
+		}
+
+		// A switch in the body of a case.
+		TEST_METHOD(Switches_Nested)
+		{
+			AssertParses(R"(
+				lsp 1
+				dup
+				ldi 1
+				eq?
+				bnt done
+				lsp 2
+				dup
+				ldi 3
+				eq?
+				bnt innerDone
+				ldi 7
+			innerDone:
+				toss
+			done:
+				toss
+				ret
+			)",
+				"switch 0000 toss 000c\n"
+				"  case bnt 0004\n"
+				"    value\n"
+				"      code 0001-0003\n"
+				"    body\n"
+				"      switch 0005 toss 000b\n"
+				"        case bnt 0009\n"
+				"          value\n"
+				"            code 0006-0008\n"
+				"          body\n"
+				"            code 000a\n"
+				"code 000d\n");
+		}
+
+		// Negative check of the case rule: a dup at the switch depth whose
+		// eq? is another compare is no case value.
+		TEST_METHOD(Switches_ACaseWithNoEqFails)
+		{
+			AssertParseFails(R"(
+				lsp 1
+				dup
+				ldi 1
+				lt?
+				bnt done
+				ldi 7
+			done:
+				toss
+				ret
+			)",
+				"case-value", 0x0001);
+		}
+
+		// The switch fixtures.
+		TEST_METHOD(Fixtures_Switches)
+		{
+			_gameFolder = SetUpGameSCI11();
+			AssertRegionsMatchExpected("F9_BreakInSwitchCase", 921);
+			AssertRegionsMatchExpected("F18_SwitchHeadContinue", 942);
+			AssertRegionsMatchExpected("S1_SwitchValue", 945);
+			AssertRegionsMatchExpected("S2_CaseValueBranch", 946);
+			AssertRegionsMatchExpected("S3_EmptyLastCase", 947);
+		}
+
+		// The other decompiler fixtures.
+		TEST_METHOD(Fixtures_Others)
+		{
+			_gameFolder = SetUpGameSCI11();
+			AssertRegionsMatchExpected("A1_ReusedAcc", 928);
+			AssertRegionsMatchExpected("A2_ReusedSelector", 930);
+			AssertRegionsMatchExpected("R1_ReturnShapes", 927);
+			AssertRegionsMatchExpected("F7_UnknownClass", 907);
+			AssertRegionsMatchExpected("F8_AssignBeforeCondInRet", 918);
+			AssertRegionsMatchExpected("F8_DeadValueStatement", 919);
+			AssertRegionsMatchExpected("C2_IndexedMathAssign", 920);
+			AssertRegionsMatchExpected("C3_SierraIndexedMathAssign", 932);
+		}
+
 		// The fixtures of the loop families.
 		TEST_METHOD(Fixtures_Loops)
 		{
