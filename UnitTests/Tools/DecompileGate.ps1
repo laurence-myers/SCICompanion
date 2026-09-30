@@ -11,8 +11,11 @@
          is -Engine, else SCIC_DECOMPILE_ENGINE, else classic;
       2. decompiles the whole game with sluicebox's Snuffer, once: the
          output stays in the cache;
-      3. compares the two with scic dev compare-structure, and with the
-         scic output of an earlier run when -BaselineRun is given.
+      3. compares the two with scic dev compare-structure (in the sample
+         mode, only the scripts of the sample), and with the scic output of
+         an earlier run when -BaselineRun is given. A game with no Snuffer
+         output (Snuffer cannot read it, or its run failed) is not
+         compared: it has no rows, and the summary names it.
     The corpus folders stay read-only: scic runs on the copy, and Snuffer
     reads the game folder (a copy when it must leave out a volume file).
 
@@ -33,9 +36,18 @@
     result (ok, graph, consumption) they accept, and counts each scope
     failure id.
 
+    Two counts of asm: the "asm" total counts the functions of the function
+    reports whose output is asm; the verdict ASM counts only the functions
+    that the compare pairs (a function of a script that Snuffer or the
+    compare leaves out has none), so it can be lower. Rule 2 uses the
+    function reports.
+
     The cache (-Cache) keeps a copy of the files of each game (games\<md5>,
     about 4 GB for the whole library) and the Snuffer output
-    (snuffer\<md5>\src, and status.txt). Delete it to start again.
+    (snuffer\<md5>\src, and status.txt, which starts with "ok" or
+    "failed"). Snuffer runs once for each game; -RetrySnuffer runs it again
+    for a game whose last run failed or timed out. Delete the cache to start
+    again.
 
     -Record writes the counts of the run into gate-baseline.json (-Baseline;
     counts only, no text of a game). A run of some games (-Include) replaces
@@ -92,7 +104,8 @@ param(
     [switch]$MakeSample,
     [string]$Failures = "",
     [int]$PerGame = 5,
-    [int]$Seed = 20260930
+    [int]$Seed = 20260930,
+    [switch]$RetrySnuffer
 )
 
 $ErrorActionPreference = "Stop"
@@ -206,7 +219,7 @@ $gameWork = {
     param($game, $scripts, $settings)
     $ErrorActionPreference = "Stop"
     . (Join-Path $settings.Tools 'Corpus.Common.ps1')
-    $result = [ordered]@{ name = $game.Name; md5 = $game.Md5; exit = ""; bug = $false; snuffer = ""; error = "" }
+    $result = [ordered]@{ name = $game.Name; md5 = $game.Md5; exit = ""; bug = $false; snuffer = ""; error = ""; compared = $true }
     try {
         $gameRun = Join-Path $settings.Run "games\$($game.Md5)"
         New-Item -ItemType Directory $gameRun -Force | Out-Null
@@ -244,6 +257,10 @@ $gameWork = {
         # without that file.
         $snufferRoot = Join-Path $settings.Cache "snuffer\$($game.Md5)"
         $status = Join-Path $snufferRoot "status.txt"
+        if ($settings.RetrySnuffer -and $settings.Snuffer -and (Test-Path -LiteralPath $status) -and ((Get-Content -LiteralPath $status -TotalCount 1) -notlike "ok*")) {
+            # -RetrySnuffer: a run that failed or timed out runs again.
+            [IO.File]::Delete($status)
+        }
         if (-not (Test-Path -LiteralPath $status) -and $settings.Snuffer) {
             if (Test-Path -LiteralPath $snufferRoot) { [IO.Directory]::Delete($snufferRoot, $true) }
             New-Item -ItemType Directory $snufferRoot -Force | Out-Null
@@ -282,19 +299,21 @@ $gameWork = {
         }
         $result.snuffer = if (Test-Path -LiteralPath $status) { (Get-Content -LiteralPath $status -TotalCount 1) } else { "not run" }
         $expected = Join-Path $snufferRoot "src"
-        if (-not (Test-Path -LiteralPath $expected)) {
-            # No Snuffer output: every function is ONLY-ACTUAL.
-            $expected = Join-Path $gameRun "no-snuffer"
-            New-Item -ItemType Directory $expected -Force | Out-Null
+        if (-not ($result.snuffer -like "ok*") -or -not (Test-Path -LiteralPath $expected)) {
+            # No Snuffer output (Snuffer cannot read the game, or it failed):
+            # the game is not compared, and it has no rows.
+            $result.compared = $false
         }
-
-        $compare = @("dev", "compare-structure", $expected, (Join-Path $gameRun "src"), "--out", (Join-Path $gameRun "compare.tsv"))
-        if ($settings.BaselineRun) {
-            $baselineSrc = Join-Path $settings.BaselineRun "games\$($game.Md5)\src"
-            if (Test-Path -LiteralPath $baselineSrc) { $compare += @("--baseline", $baselineSrc) }
+        else {
+            $compare = @("dev", "compare-structure", $expected, (Join-Path $gameRun "src"), "--out", (Join-Path $gameRun "compare.tsv"))
+            if ($scripts -notcontains "--all") { $compare += @("--scripts", ($scripts -join ",")) }
+            if ($settings.BaselineRun) {
+                $baselineSrc = Join-Path $settings.BaselineRun "games\$($game.Md5)\src"
+                if (Test-Path -LiteralPath $baselineSrc) { $compare += @("--baseline", $baselineSrc) }
+            }
+            $compareExit = Invoke-Logged $settings.Scic $compare (Join-Path $gameRun "compare.out.txt") (Join-Path $gameRun "compare.err.txt") $settings.Timeout
+            if (@("0", "6") -notcontains $compareExit) { $result.error = "compare-structure: exit $compareExit" }
         }
-        $compareExit = Invoke-Logged $settings.Scic $compare (Join-Path $gameRun "compare.out.txt") (Join-Path $gameRun "compare.err.txt") $settings.Timeout
-        if (@("0", "6") -notcontains $compareExit) { $result.error = "compare-structure: exit $compareExit" }
     }
     catch {
         $result.error = "$_"
@@ -303,7 +322,7 @@ $gameWork = {
 }
 
 $settings = @{
-    Tools = $PSScriptRoot; Run = $run; Cache = $cacheFull; Scic = $Scic; DataDir = (Split-Path -Parent $Scic); Engine = $engineName
+    Tools = $PSScriptRoot; Run = $run; Cache = $cacheFull; Scic = $Scic; DataDir = (Split-Path -Parent $Scic); Engine = $engineName; RetrySnuffer = [bool]$RetrySnuffer
     Snuffer = $(if ($Snuffer) { Get-FullPath $Snuffer "-Snuffer" } else { "" }); BaselineRun = $(if ($BaselineRun) { Get-FullPath $BaselineRun "-BaselineRun" } else { "" })
     Timeout = $TimeoutSeconds
 }
@@ -383,7 +402,7 @@ foreach ($fact in ($facts | Sort-Object name)) {
     $compareErrors = @(Get-Content -LiteralPath (Join-Path $gameRun "compare.err.txt") -ErrorAction SilentlyContinue | Where-Object { $_ -match "^scic: warning: .* \((actual|baseline)\): " })
     foreach ($line in $compareErrors) { $ruleFailures.Add("rule 3: $($fact.name): $($line.Substring(15))") }
     $gameCounts += [ordered]@{
-        name = $fact.name; md5 = $fact.md5; exit = $fact.exit; snuffer = $fact.snuffer
+        name = $fact.name; md5 = $fact.md5; exit = $fact.exit; snuffer = $fact.snuffer; compared = $fact.compared
         functions = $functions.Count
         scripts = $decompiled.Count
         asm = @($functions | Where-Object output -eq "asm").Count
@@ -425,6 +444,8 @@ foreach ($name in @("ok", "graph", "consumption")) {
     if ($shadow[$name].functions) { Write-Host ("Scope accepts {0} of {1} functions that classic gives as {2}" -f $shadow[$name].scopeOk, $shadow[$name].functions, $name) }
 }
 foreach ($name in $totals.scopeFailures.Keys) { Write-Host ("  {0}: {1}" -f $name, $totals.scopeFailures[$name]) }
+$notCompared = @($gameCounts | Where-Object { -not $_.compared } | ForEach-Object { $_.name })
+if ($notCompared.Count -gt 0) { Write-Host ("Not compared (no Snuffer output): " + ($notCompared -join "; ")) }
 Write-Utf8 (Join-Path $run "scope.tsv") (($scopeRows -join "`r`n") + "`r`n")
 Write-Host "Run folder: $run"
 

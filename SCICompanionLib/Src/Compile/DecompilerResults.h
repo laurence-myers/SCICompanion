@@ -41,8 +41,9 @@ struct DecompiledFunction
 	int byteCount = 0;			// 0 when the end of its code is not known
 	DecompileEngine engine = DecompileEngine::Classic;	// the engine that was asked for
 	// The output of the function: "classic" or "scope" (the engine whose
-	// source it has), "asm" (the disassembly), or "corrupt" (the end of its
-	// code is not known).
+	// source it has), "asm" (the disassembly), "corrupt" (the end of its
+	// code is not known), or "error" (its decompile threw, so the script
+	// failed).
 	std::string output;
 	// The result of each engine: empty when it did not run, "ok", or why it
 	// failed. Scope: "[scope:<stage>:<id>]"; with the classic engine, the
@@ -56,6 +57,9 @@ struct DecompiledFunction
 	// parser after the verify stage (scope::Dump), or the error of the stage
 	// that failed. Empty otherwise.
 	std::string scopeTree;
+	// The order of the function in the decompile of its script, from 0. Two
+	// export slots of one procedure are two functions with one offset.
+	int index = 0;
 };
 
 class IDecompilerResults

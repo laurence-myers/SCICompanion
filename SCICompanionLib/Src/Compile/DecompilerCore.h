@@ -182,6 +182,8 @@ public:
 	// Empty: DefaultDecompileEngine, for each function.
 	std::optional<DecompileEngine> Engine;
 	PCSTR pszDebugFilter = nullptr;
+	// The count of the functions that DecompileRaw began in this script.
+	int FunctionCount = 0;
 
 	const SelectorTable& GetSelectorTable() const;
 

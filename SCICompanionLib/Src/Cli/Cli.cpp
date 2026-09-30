@@ -8,6 +8,7 @@
 #include "GameSession.h"
 #include "CoreLog.h"
 #include "DecompileEngine.h"
+#include "FileWrite.h"
 #include "format.h"
 #include <cstdlib>
 #include <filesystem>
@@ -177,7 +178,7 @@ namespace cli
         app.add_flag("-v,--verbose", common.verbose, "Show more detail.");
         CLI::Option *logOption = app.add_option("--log", common.logFile, "Also write all messages to a file: a new file, an empty file, or a log of scic.");
         CLI::Option *dataFolderOption = app.add_option("--data-dir", common.dataFolder, "The folder that holds include\\ and Decompiler\\. Default: SCIC_DATA_DIR, or the folder of scic.exe.");
-        app.add_flag("--dry-run", common.dryRun, "Do the work in memory, and write nothing.");
+        app.add_flag("--dry-run", common.dryRun, "Do the work in memory, and write nothing into the game (--log and --function-report are still written).");
         app.add_flag("--version", version, "Show the version.");
 
         CLI::App *help = app.add_subcommand("help", "Show the help of a group or of a command: scic help script list.");
@@ -216,7 +217,7 @@ namespace cli
         decompile->add_option("--engine", decompileOptions.engine, "classic: the control-flow graph; scope: the scope parser; auto: scope, then classic for a function that scope cannot do. Default: SCIC_DECOMPILE_ENGINE, else classic.")
             ->check(CLI::IsMember({ "classic", "scope", "auto" }));
         CLI::Option *functionReportOption = decompile->add_option("--function-report", decompileOptions.functionReport,
-            "Also write a line for each function into this file (tab-separated): its script, class, name, offset and bytes, the engine, the output (classic, scope, asm or corrupt), and the result of each engine.");
+            "Also write a line for each function into this file (tab-separated): its script, class, name, offset and bytes, the engine, the output (classic, scope, asm, corrupt or error), and the result of each engine.");
 
         CLI::App *sco = script->add_subcommand("sco", "Make src\\<name>.sco from src\\<name>.sc and the compiled script, for source from another tool.");
         sco->fallthrough();
@@ -255,6 +256,8 @@ namespace cli
         compareStructure->add_option("actual-folder", compareOptions.actualFolder, "The .sc files of scic.")->required();
         CLI::Option *baselineOption = compareStructure->add_option("--baseline", compareOptions.baselineFolder, "The .sc files of an earlier decompile: the table gets the change of each function.");
         CLI::Option *compareOutOption = compareStructure->add_option("--out", compareOptions.outFile, "Write the table into this file (default: stdout).");
+        compareStructure->add_option("--scripts", compareOptions.scripts, "Compare only these scripts (numbers, separated by commas).")
+            ->delimiter(',')->check(CLI::Range(0, 65535));
 
         CliOutput output(console, common);
         try
@@ -463,6 +466,18 @@ namespace cli
             return (int)ExitCode::CannotStart;
         }
         logged.Detail("The data folder: " + dataFolder);
+        if (decompile->parsed() && !decompileOptions.functionReport.empty())
+        {
+            // A function report with no functions, before the game opens: a
+            // report that cannot be written stops the command now, and a run
+            // that cannot start or selects no script leaves no old report.
+            sci::Status written = WriteTextToFile(decompileOptions.functionReport, std::string(FunctionReportHeader) + "\n");
+            if (!written)
+            {
+                logged.Error("the function report: " + written.error().ToString());
+                return (int)ExitCode::WriteFailed;
+            }
+        }
         ConsoleLogSink sink(logged);
         ScopedCoreLogSink scopedSink(sink);
         SessionOptions sessionOptions;

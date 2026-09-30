@@ -429,6 +429,8 @@ set<string> UnusedProcedureNames(const string &text)
     return names;
 }
 
+const char *const ClassKeyPrefix = "class:";
+
 vector<StructuralFunction> NormalizeScriptForCompare(Script &script, const set<string> *skipProcedures)
 {
     vector<StructuralFunction> functions;
@@ -474,18 +476,21 @@ vector<StructuralFunction> NormalizeScriptForCompare(Script &script, const set<s
         NormalizeInto(script, *proc, false, f);
         functions.push_back(f);
     }
-    int classIndex = 0;
+    // A method pairs by the name of its class (and the count of the classes
+    // of that name before it); CompareScriptFolders pairs the classes that
+    // one side names differently by their order.
+    map<string, int> classNames;
     for (auto &classDef : script.GetClassesNC())
     {
+        int occurrence = classNames[classDef->GetName()]++;
         for (auto &method : classDef->GetMethodsNC())
         {
             StructuralFunction f;
-            f.key = fmt::format("class#{0}::{1}", classIndex, method->GetName());
+            f.key = fmt::format("{0}{1}#{2}::{3}", ClassKeyPrefix, classDef->GetName(), occurrence, method->GetName());
             f.display = classDef->GetName() + "::" + method->GetName();
             NormalizeInto(script, *method, true, f);
             functions.push_back(f);
         }
-        classIndex++;
     }
     return functions;
 }
@@ -819,6 +824,74 @@ namespace
     }
 }
 
+namespace
+{
+    // The index after the close of the balanced group that starts at i (a
+    // '(' or a '['); npos when it has none.
+    size_t GroupEnd(const string &text, size_t i)
+    {
+        int depth = 0;
+        size_t j = i;
+        while (j < text.size())
+        {
+            size_t after = SkipStringOrComment(text, j);
+            if (after != j)
+            {
+                j = after;
+                continue;
+            }
+            char c = text[j];
+            if ((c == '(') || (c == '['))
+            {
+                depth++;
+            }
+            else if (((c == ')') || (c == ']')) && (--depth == 0))
+            {
+                return j + 1;
+            }
+            j++;
+        }
+        return string::npos;
+    }
+}
+
+string UnwrapGroupedExpressions(const string &text)
+{
+    const char *const space = " \t\r\n";
+    string out = text;
+    for (bool changed = true; changed; )
+    {
+        changed = false;
+        size_t i = 0;
+        while (i < out.size())
+        {
+            size_t skipped = SkipStringOrComment(out, i);
+            if (skipped != i)
+            {
+                i = skipped;
+                continue;
+            }
+            if (out[i] == '(')
+            {
+                size_t inner = out.find_first_not_of(space, i + 1);
+                if ((inner != string::npos) && ((out[inner] == '(') || (out[inner] == '[')))
+                {
+                    size_t innerEnd = GroupEnd(out, inner);
+                    size_t close = (innerEnd != string::npos) ? out.find_first_not_of(space, innerEnd) : string::npos;
+                    if ((close != string::npos) && (out[close] == ')'))
+                    {
+                        out[i] = ' ';
+                        out[close] = ' ';
+                        changed = true;
+                    }
+                }
+            }
+            i++;
+        }
+    }
+    return out;
+}
+
 string ReplaceAsmBlocks(const string &text)
 {
     string out;
@@ -1007,7 +1080,7 @@ namespace
     // Reads each .sc file of the folder into scripts, by the number of its
     // (script# N) line. A script that cannot be read or parsed, or whose
     // number two files have, goes into failed, with its error.
-    void ReadScriptFolder(const string &dir, const char *side, SCIVersion version, ScriptFunctions &scripts, set<uint16_t> &failed, vector<string> &errors)
+    void ReadScriptFolder(const string &dir, const char *side, SCIVersion version, ScriptFunctions &scripts, set<uint16_t> &failed, vector<string> &errors, const set<uint16_t> *onlyScripts)
     {
         error_code ec;
         filesystem::directory_iterator entries(dir, ec);
@@ -1045,6 +1118,10 @@ namespace
                 continue;
             }
             uint16_t script = static_cast<uint16_t>(number);
+            if (onlyScripts && !onlyScripts->count(script))
+            {
+                continue;
+            }
             auto other = fileOf.find(script);
             if (other != fileOf.end())
             {
@@ -1055,7 +1132,14 @@ namespace
             }
             fileOf[script] = name;
             string error;
-            unique_ptr<Script> parsed = ParseScriptText(ReplaceAsmBlocks(text), version, &error);
+            string asmReplaced = ReplaceAsmBlocks(text);
+            unique_ptr<Script> parsed = ParseScriptText(asmReplaced, version, &error);
+            if (!parsed)
+            {
+                // Snuffer's grouped expressions; the error of the text as it
+                // is stays when this does not parse either.
+                parsed = ParseScriptText(UnwrapGroupedExpressions(asmReplaced), version, nullptr);
+            }
             if (!parsed)
             {
                 errors.push_back(name + " (" + side + "): " + error);
@@ -1102,6 +1186,116 @@ namespace
             return (a.isAsm && b.isAsm && (a.rawText == b.rawText)) ? 3 : 1;
         }
         return (a.text == b.text) ? 3 : ((a.skeleton == b.skeleton) ? 2 : 1);
+    }
+
+    // The class of a method key ("class:Name#0"), or empty for a key of a
+    // procedure.
+    string ClassOfKey(const string &key)
+    {
+        if (key.compare(0, strlen(ClassKeyPrefix), ClassKeyPrefix) != 0)
+        {
+            return string();
+        }
+        size_t colons = key.find("::");
+        return (colons == string::npos) ? key : key.substr(0, colons);
+    }
+
+    // The classes that one side names and the other does not pair in their
+    // order: the methods of side get the class of the expected one.
+    void PairUnnamedClasses(const vector<StructuralFunction> &expected, vector<StructuralFunction> &side)
+    {
+        auto classesOf = [](const vector<StructuralFunction> &functions)
+        {
+            vector<string> classes;
+            for (const StructuralFunction &f : functions)
+            {
+                string c = ClassOfKey(f.key);
+                if (!c.empty() && (std::find(classes.begin(), classes.end(), c) == classes.end()))
+                {
+                    classes.push_back(c);
+                }
+            }
+            return classes;
+        };
+        vector<string> expectedClasses = classesOf(expected);
+        vector<string> sideClasses = classesOf(side);
+        vector<string> expectedOnly;
+        vector<string> sideOnly;
+        for (const string &c : expectedClasses)
+        {
+            if (std::find(sideClasses.begin(), sideClasses.end(), c) == sideClasses.end())
+            {
+                expectedOnly.push_back(c);
+            }
+        }
+        for (const string &c : sideClasses)
+        {
+            if (std::find(expectedClasses.begin(), expectedClasses.end(), c) == expectedClasses.end())
+            {
+                sideOnly.push_back(c);
+            }
+        }
+        // How well two classes pair: the PairScore of their methods of the
+        // same name; 0 when they have no method name in common.
+        auto score = [&](const string &e, const string &s)
+        {
+            int total = 0;
+            for (const StructuralFunction &fe : expected)
+            {
+                if (ClassOfKey(fe.key) != e)
+                {
+                    continue;
+                }
+                for (const StructuralFunction &fs : side)
+                {
+                    if ((ClassOfKey(fs.key) == s) && (fs.key.substr(s.size()) == fe.key.substr(e.size())))
+                    {
+                        total += PairScore(fe, fs);
+                    }
+                }
+            }
+            return total;
+        };
+        // The alignment in order that pairs the best classes.
+        size_t n = expectedOnly.size();
+        size_t m = sideOnly.size();
+        vector<vector<int>> best(n + 1, vector<int>(m + 1, 0));
+        for (size_t i = 1; i <= n; i++)
+        {
+            for (size_t j = 1; j <= m; j++)
+            {
+                best[i][j] = (std::max)({ best[i - 1][j], best[i][j - 1], best[i - 1][j - 1] + score(expectedOnly[i - 1], sideOnly[j - 1]) });
+            }
+        }
+        map<string, string> renamed;
+        size_t i = n;
+        size_t j = m;
+        while ((i > 0) && (j > 0))
+        {
+            int pair = score(expectedOnly[i - 1], sideOnly[j - 1]);
+            if ((pair > 0) && (best[i][j] == best[i - 1][j - 1] + pair))
+            {
+                renamed[sideOnly[j - 1]] = expectedOnly[i - 1];
+                i--;
+                j--;
+            }
+            else if (best[i][j] == best[i - 1][j])
+            {
+                i--;
+            }
+            else
+            {
+                j--;
+            }
+        }
+        for (StructuralFunction &f : side)
+        {
+            auto found = renamed.find(ClassOfKey(f.key));
+            if (found != renamed.end())
+            {
+                f.key = found->second + f.key.substr(found->first.size());
+            }
+        }
     }
 
     // The local procedures have no name that two tools share, so they pair
@@ -1232,7 +1426,7 @@ namespace
     }
 }
 
-FolderCompareResult CompareScriptFolders(const string &expectedDir, const string &actualDir, const string &baselineDir, SCIVersion version)
+FolderCompareResult CompareScriptFolders(const string &expectedDir, const string &actualDir, const string &baselineDir, SCIVersion version, const set<uint16_t> *onlyScripts)
 {
     FolderCompareResult result;
     ScriptFunctions expected;
@@ -1241,12 +1435,12 @@ FolderCompareResult CompareScriptFolders(const string &expectedDir, const string
     set<uint16_t> expectedFailed;
     set<uint16_t> actualFailed;
     set<uint16_t> baselineFailed;
-    ReadScriptFolder(expectedDir, "expected", version, expected, expectedFailed, result.errors);
-    ReadScriptFolder(actualDir, "actual", version, actual, actualFailed, result.errors);
+    ReadScriptFolder(expectedDir, "expected", version, expected, expectedFailed, result.errors, onlyScripts);
+    ReadScriptFolder(actualDir, "actual", version, actual, actualFailed, result.errors, onlyScripts);
     bool hasBaseline = !baselineDir.empty();
     if (hasBaseline)
     {
-        ReadScriptFolder(baselineDir, "baseline", version, baseline, baselineFailed, result.errors);
+        ReadScriptFolder(baselineDir, "baseline", version, baseline, baselineFailed, result.errors, onlyScripts);
     }
     // The functions of a script that failed are not known.
     for (auto side : { make_pair(&expected, &expectedFailed), make_pair(&actual, &actualFailed), make_pair(&baseline, &baselineFailed) })
@@ -1266,10 +1460,12 @@ FolderCompareResult CompareScriptFolders(const string &expectedDir, const string
         if (expectedScript != expected.end())
         {
             AlignLocalProcedures(expectedScript->second, script.second);
+            PairUnnamedClasses(expectedScript->second, script.second);
         }
         if (baselineScript != baseline.end())
         {
             MatchLocalProceduresByName(script.second, baselineScript->second);
+            PairUnnamedClasses(script.second, baselineScript->second);
         }
     }
 

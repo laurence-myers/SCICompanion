@@ -259,7 +259,9 @@ namespace
 {
 	// Passes the results through, except that in quiet mode it drops the
 	// progress lines and function statistics: the second decompile of a script
-	// would otherwise report every function twice. Errors always go through.
+	// would otherwise report every function twice. Errors always go through,
+	// and so does the line of each function: a report keeps the line of the
+	// last decompile of the function.
 	class PassThroughResults : public IDecompilerResults
 	{
 	public:
@@ -281,10 +283,7 @@ namespace
 		}
 		void InformFunction(const DecompiledFunction &function) override
 		{
-			if (!_quiet)
-			{
-				_inner.InformFunction(function);
-			}
+			_inner.InformFunction(function);
 		}
 		void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override
 		{

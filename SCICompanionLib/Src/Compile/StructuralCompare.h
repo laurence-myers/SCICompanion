@@ -76,10 +76,23 @@ std::unique_ptr<sci::Script> ParseScriptText(const std::string &text, SCIVersion
 // block.
 extern const char *const AsmBlockMarker;
 
+// The start of the key of a method: "class:<class name>#<count of the
+// classes of that name before it>::<method>".
+extern const char *const ClassKeyPrefix;
+
 // The text with each (asm ...) block replaced by a call of AsmBlockMarker,
 // so that a function that a tool left as asm parses, and its body is known
 // to be asm. Strings, {} strings and ; comments are skipped.
 std::string ReplaceAsmBlocks(const std::string &text);
+
+// The text with the parentheses of each group that holds only one
+// parenthesized or indexed expression removed: "((= a b))" gives
+// " (= a b) " and "(([p i]) foo:)" gives "( [p i]  foo:)" (spaces keep the
+// lines and columns). Snuffer writes such groups; the parser of this
+// repository does not take them. Strings, {} strings and ; comments are
+// skipped. A cond clause with no body is such a group too, so the compare
+// uses this text only for a script that does not parse as it is.
+std::string UnwrapGroupedExpressions(const std::string &text);
 
 // The control statements of a normalized body, with their nesting: each
 // if, while, repeat, switch (and each case in it), break, continue,
@@ -169,5 +182,7 @@ struct FolderCompareResult
 // files are paired by the number of their (script# N) line, not by name. A
 // script that only one side has gives OnlyExpected or OnlyActual rows. The
 // rows are the functions of the three sides: a function that only the
-// baseline has is Neither, and Removed.
-FolderCompareResult CompareScriptFolders(const std::string &expectedDir, const std::string &actualDir, const std::string &baselineDir, SCIVersion version);
+// baseline has is Neither, and Removed. With onlyScripts, the other
+// scripts are not read.
+FolderCompareResult CompareScriptFolders(const std::string &expectedDir, const std::string &actualDir, const std::string &baselineDir, SCIVersion version,
+    const std::set<uint16_t> *onlyScripts = nullptr);

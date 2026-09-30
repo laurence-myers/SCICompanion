@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <atomic>
 #include <filesystem>
+#include <tuple>
 #include <fstream>
 #include <map>
 #include <regex>
@@ -174,6 +175,10 @@ namespace cli
 
     namespace
     {
+        // The lines of the function report, by script, offset, and order in
+        // the decompile of the script.
+        using FunctionLines = std::map<std::tuple<uint16_t, uint16_t, int>, DecompiledFunction>;
+
         // "110 (rm110)".
         std::string ScriptText(uint16_t number, const std::string &name)
         {
@@ -301,15 +306,17 @@ namespace cli
             void InformStats(bool functionSuccessful, int byteCount) override {}
             void InformFunction(const DecompiledFunction &function) override
             {
-                // A later decompile of the script replaces the line.
-                _functions[std::make_pair(function.script, function.offset)] = function;
+                // A later decompile of the script replaces the line. Two
+                // export slots of one procedure are two functions with one
+                // offset: two lines.
+                _functions[std::make_tuple(function.script, function.offset, function.index)] = function;
             }
             void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override {}
 
             // The errors that the decompiler reported.
             size_t Errors() const { return _errors.load(); }
             // The functions, by script and offset.
-            const std::map<std::pair<uint16_t, uint16_t>, DecompiledFunction> &Functions() const { return _functions; }
+            const FunctionLines &Functions() const { return _functions; }
 
         private:
             // The start of a message, and the item of the crash line ("":
@@ -328,7 +335,7 @@ namespace cli
 
             CliOutput &_output;
             std::atomic<size_t> _errors{ 0 };
-            std::map<std::pair<uint16_t, uint16_t>, DecompiledFunction> _functions;
+            FunctionLines _functions;
         };
 
         // A field of the function report: a tab or a line break becomes a
@@ -339,7 +346,7 @@ namespace cli
             return text;
         }
 
-        std::string FunctionReportText(const std::map<std::pair<uint16_t, uint16_t>, DecompiledFunction> &functions)
+        std::string FunctionReportText(const FunctionLines &functions)
         {
             std::string text = std::string(FunctionReportHeader) + "\n";
             for (const auto &entry : functions)
@@ -512,7 +519,21 @@ namespace cli
         run.dryRun = common.dryRun && !options.toStdout;
         CliDecompileResults results(output);
         CliDecompileOutput sources(output);
-        SCI_TRY_ASSIGN(DecompileReport report, RunDecompile(session, numbers, run, results, options.toStdout ? &sources : nullptr));
+        sci::Result<DecompileReport> ran = RunDecompile(session, numbers, run, results, options.toStdout ? &sources : nullptr);
+        if (!ran)
+        {
+            // The lines of the functions that the run decompiled.
+            if (!options.functionReport.empty())
+            {
+                sci::Status written = WriteTextToFile(options.functionReport, FunctionReportText(results.Functions()));
+                if (!written)
+                {
+                    output.Error("the function report: " + written.error().ToString());
+                }
+            }
+            return tl::unexpected<sci::Error>(ran.error());
+        }
+        DecompileReport report = std::move(*ran);
         SetCurrentItem("printing the report");
         PrintDecompileReport(report, session.Helper(), run.dryRun, options.toStdout, options.updateStale, output);
         ExitCode code = ExitCodeForReport(report, results.Errors());

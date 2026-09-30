@@ -898,6 +898,36 @@ namespace UnitTests
             Assert::IsTrue(readOnly.err.find("the function report") != std::string::npos, Wide(readOnly.err).c_str());
         }
 
+        // Two export slots of one procedure are two functions with one offset:
+        // two lines. The report gets its first line before the game opens: a
+        // folder that does not exist stops the command before the decompile,
+        // and a game that does not open leaves a report with no functions, not
+        // the old report.
+        TEST_METHOD(Decompile_FunctionReport_TwoSlotsAndEarlyWrite)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            WriteFileText((fs::path(_copyFolder) / "src" / "TwoSlots.sc").string(),
+                "(script# 950)\r\n(public\r\n\ttwoSlots 0\r\n\ttwoSlots 1\r\n)\r\n\r\n(procedure (twoSlots)\r\n\t(return 1)\r\n)\r\n");
+            Expect(0, { "script", "compile", _copyFolder, "950" });
+            std::string report = (fs::path(_copyFolder) / "functions.tsv").string();
+            Expect(0, { "script", "decompile", _copyFolder, "950", "--stdout", "--function-report", report });
+            std::vector<std::string> lines = Lines(ReadFileText(report));
+            Assert::AreEqual((size_t)3, lines.size(), Wide(ReadFileText(report)).c_str());
+            Assert::IsTrue(lines[1].rfind("950\t\ttwoSlots\t", 0) == 0, Wide(lines[1]).c_str());
+            Assert::IsTrue(lines[2].rfind("950\t\ttwoSlots\t", 0) == 0, Wide(lines[2]).c_str());
+
+            std::string noFolder = (fs::path(_copyFolder) / "none" / "functions.tsv").string();
+            cli::StringConsole missing = Expect(9, { "script", "decompile", _copyFolder, "950", "--stdout", "--function-report", noFolder });
+            Assert::IsTrue(missing.err.find("the function report") != std::string::npos, Wide(missing.err).c_str());
+            Assert::IsTrue(missing.out.empty(), L"no decompile");
+
+            std::string noGame = (fs::path(_copyFolder) / "nogame").string();
+            Expect(3, { "script", "decompile", noGame, "950", "--stdout", "--function-report", report });
+            std::vector<std::string> empty = Lines(ReadFileText(report));
+            Assert::AreEqual((size_t)1, empty.size(), L"a report with no functions");
+            Assert::AreEqual(std::string(cli::FunctionReportHeader), empty[0]);
+        }
+
         // scic dev compare-structure: the decompile of a template script
         // against itself in a file of another name (paired by number), and
         // as the baseline. It opens no game, and the help
@@ -921,8 +951,36 @@ namespace UnitTests
             for (size_t i = 1; i < lines.size(); i++)
             {
                 Assert::IsTrue(lines[i].rfind("974\t", 0) == 0, Wide(lines[i]).c_str());
+                // The same text on both sides: SAME, and as the baseline.
+                Assert::IsTrue(lines[i].find("\tSAME\tSAME\t") != std::string::npos, Wide(lines[i]).c_str());
                 // The baseline is the actual folder: no change.
                 Assert::IsTrue(lines[i].back() == '\t', Wide(lines[i]).c_str());
+            }
+
+            // Another text of the actual side: the functions that changed are
+            // not SAME, and the change from the baseline is known.
+            fs::create_directories(root / "changed");
+            std::string changed = source;
+            size_t method = changed.find("(method (");
+            size_t bodyStart = (method != std::string::npos) ? changed.find('\n', method) : std::string::npos;
+            Assert::IsTrue(bodyStart != std::string::npos, Wide("setup: a method to change\n" + changed).c_str());
+            changed.insert(bodyStart + 1, "\t\t(if global1 (= global1 7))\r\n");
+            WriteFileText((root / "changed" / "Door.sc").string(), changed);
+            std::string changedTable = Expect(0, { "dev", "compare-structure", (root / "expected").string(), (root / "changed").string(),
+                "--baseline", (root / "actual").string() }).out;
+            Assert::IsTrue(changedTable.find("\tDIFF\tSAME\tCHANGED") != std::string::npos, Wide(changedTable).c_str());
+
+            // --scripts: only these scripts; another number gives no row.
+            std::vector<std::string> only = Lines(Expect(0, { "dev", "compare-structure", (root / "expected").string(), (root / "actual").string(), "--scripts", "974,1" }).out);
+            Assert::AreEqual(lines.size(), only.size());
+            std::vector<std::string> none = Lines(Expect(0, { "dev", "compare-structure", (root / "expected").string(), (root / "actual").string(), "--scripts", "1" }).out);
+            Assert::AreEqual((size_t)1, none.size(), L"the header only");
+
+            // It opens no game and reads no data folder.
+            {
+                ScopedEnvironmentVariable noData("SCIC_DATA_DIR", (root / "no-data").string().c_str());
+                cli::StringConsole noGame;
+                Assert::AreEqual(0, cli::RunCli({ "dev", "compare-structure", (root / "expected").string(), (root / "actual").string() }, noGame), Wide(noGame.err).c_str());
             }
             Assert::IsTrue(compared.err.find("Verdicts: ") != std::string::npos, Wide(compared.err).c_str());
             Assert::IsTrue(compared.err.find("Changes from the baseline: none.") != std::string::npos, Wide(compared.err).c_str());
@@ -934,6 +992,7 @@ namespace UnitTests
             Assert::IsTrue(broken.err.find("scic: warning: broken.sc (actual): ") != std::string::npos, Wide(broken.err).c_str());
 
             Expect(3, { "dev", "compare-structure", (root / "none").string(), (root / "actual").string() });
+            Expect(3, { "dev", "compare-structure", "", (root / "actual").string() });
             Expect(2, { "dev", "compare-structure", (root / "expected").string(), (root / "actual").string(), "--baseline", "" });
             Expect(2, { "dev", "compare-structure", (root / "expected").string() });
             // RunCli itself: Run adds --data-dir, which help takes as a topic.

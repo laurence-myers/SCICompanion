@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <map>
+#include <set>
 
 namespace cli
 {
@@ -47,14 +48,19 @@ namespace cli
         std::error_code ec;
         for (const std::string *folder : { &options.expectedFolder, &options.actualFolder, &options.baselineFolder })
         {
-            if (!folder->empty() && !std::filesystem::is_directory(*folder, ec))
+            // An empty baseline is no baseline; an empty expected or actual
+            // folder is a folder that does not exist.
+            bool optional = (folder == &options.baselineFolder);
+            if ((!folder->empty() || !optional) && !std::filesystem::is_directory(*folder, ec))
             {
-                return sci::Fail(sci::ErrorCode::NotFound, "no such folder: " + *folder);
+                return sci::Fail(sci::ErrorCode::NotFound, "no such folder: \"" + *folder + "\"");
             }
         }
         SetCurrentItem("comparing the scripts");
+        std::set<uint16_t> onlyScripts(options.scripts.begin(), options.scripts.end());
         // The version gives only the defines SCI_0 or SCI_1_1, which decompiled text does not use.
-        FolderCompareResult result = CompareScriptFolders(options.expectedFolder, options.actualFolder, options.baselineFolder, sciVersion1_1);
+        FolderCompareResult result = CompareScriptFolders(options.expectedFolder, options.actualFolder, options.baselineFolder, sciVersion1_1,
+            onlyScripts.empty() ? nullptr : &onlyScripts);
 
         std::string table = std::string(CompareStructureHeader) + "\n";
         std::vector<std::string> verdicts;

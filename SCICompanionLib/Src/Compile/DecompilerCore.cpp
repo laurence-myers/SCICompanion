@@ -1257,18 +1257,11 @@ namespace
 	}
 }
 
-// pEnd can be the end of script data. I have added autodetection support.
-void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset)
+// The decompile of one function; the caller sends its report line.
+static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset, DecompiledFunction &report)
 {
 	bool allowContinues = true;
-	DecompileEngine engine = lookups.Engine ? *lookups.Engine : DefaultDecompileEngine();
-
-	DecompiledFunction report;
-	report.script = lookups.GetScriptNumber();
-	report.className = func.GetOwnerClass() ? func.GetOwnerClass()->GetName() : "";
-	report.name = func.GetName();
-	report.offset = wBaseOffset;
-	report.engine = engine;
+	DecompileEngine engine = report.engine;
 
 	lookups.EndowWithFunction(&func);
 
@@ -1449,7 +1442,6 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 			report.output = "corrupt";
 		}
 		report.byteCount = discoveredEnd ? (int)(discoveredEnd - pBegin) : 0;
-		lookups.DecompileResults().InformFunction(report);
 	}
 
 	if (!lookups.DecompileResults().IsAborted())
@@ -1485,6 +1477,37 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 		lookups.EndowWithFunction(nullptr);
 
 		func.PruneExtraneousReturn();
+	}
+}
+
+// pEnd can be the end of script data. I have added autodetection support.
+void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset)
+{
+	DecompiledFunction report;
+	report.script = lookups.GetScriptNumber();
+	report.className = func.GetOwnerClass() ? func.GetOwnerClass()->GetName() : "";
+	report.name = func.GetName();
+	report.offset = wBaseOffset;
+	report.index = lookups.FunctionCount++;
+	report.engine = lookups.Engine ? *lookups.Engine : DefaultDecompileEngine();
+	try
+	{
+		_DecompileRawBody(func, lookups, pBegin, pEstimatedMaxEnd, pScriptResourceEnd, wBaseOffset, report);
+	}
+	catch (...)
+	{
+		// The script fails; the report still has a line for the function.
+		if (!lookups.DecompileResults().IsAborted())
+		{
+			report.output = "error";
+			lookups.DecompileResults().InformFunction(report);
+		}
+		throw;
+	}
+	// The line comes after the AST passes and the naming of the function.
+	if (!lookups.DecompileResults().IsAborted())
+	{
+		lookups.DecompileResults().InformFunction(report);
 	}
 }
 

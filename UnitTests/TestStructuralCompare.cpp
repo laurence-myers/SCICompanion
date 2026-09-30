@@ -241,5 +241,56 @@ namespace UnitTests
             Assert::AreEqual(std::string("NAMES"), std::string(StructureVerdictName(rows["13:p"].verdict)), Wide(text).c_str());
             Assert::AreEqual(std::string("UNPARSED"), std::string(StructureVerdictName(rows["13:p"].baselineVerdict)), Wide(text).c_str());
             Assert::AreEqual(std::string(), std::string(StructureChangeName(rows["13:p"].change)), Wide(text).c_str());
-        }    };
+        }
+
+        // Snuffer's groups of one expression lose their parentheses; a send
+        // to a call, a call with an argument, a string and a comment stay.
+        TEST_METHOD(UnwrapGroupedExpressions_OneExpressionInAGroup)
+        {
+            Assert::AreEqual(std::string(" (= fp (Foo new:)) "), UnwrapGroupedExpressions("((= fp (Foo new:)))"));
+            Assert::AreEqual(std::string("( [p i]  isKindOf: C)"), UnwrapGroupedExpressions("(([p i]) isKindOf: C)"));
+            Assert::AreEqual(std::string("(= g  (ScriptID 204) )"), UnwrapGroupedExpressions("(= g ((ScriptID 204)))"));
+            for (const char *same : { "((ScriptID 1 2) x:)", "(foo (a))", "{((a))} ; ((b))\n", "\"((c))\"" })
+            {
+                Assert::AreEqual(std::string(same), UnwrapGroupedExpressions(same));
+            }
+        }
+
+        // A Snuffer script with grouped expressions parses (with no error),
+        // so its functions get a verdict.
+        TEST_METHOD(CompareScriptFolders_SnufferGroupsParse)
+        {
+            CompareFolders folders;
+            folders.Write("expected", "a.sc", MakeScript(14, { { "p", 0 } }, Procedure("p", "(= a ((b new:)))")));
+            folders.Write("actual", "a.sc", MakeScript(14, { { "p", 0 } }, Procedure("p", "(= a (b new:))")));
+            FolderCompareResult result = CompareScriptFolders(folders.Folder("expected"), folders.Folder("actual"), "", sciVersion1_1);
+            std::string text = RowsText(result);
+            Assert::IsTrue(result.errors.empty(), Wide(text).c_str());
+            std::map<std::string, FunctionCompareRow> rows = RowsOf(result);
+            Assert::AreEqual(std::string("SAME"), std::string(StructureVerdictName(rows["14:p"].verdict)), Wide(text).c_str());
+        }
+
+        // Methods pair by the name of their class: a class that the actual
+        // side does not have shifts nothing. Classes that the two sides name
+        // differently pair in their order.
+        TEST_METHOD(CompareScriptFolders_MethodsPairByClassName)
+        {
+            auto instance = [](const std::string &name, const std::string &body)
+            {
+                return "(instance " + name + " of Obj\r\n\t(method (doit)\r\n\t\t" + body + "\r\n\t)\r\n)\r\n";
+            };
+            CompareFolders folders;
+            folders.Write("expected", "a.sc", MakeScript(15, { { "p", 0 } }, Procedure("p", "(= a 1)") +
+                instance("One", "(= a 1)") + instance("Two", "(= a 2)") + instance("Three", "(if a (= b 3))") + instance("Named", "(while a (-- a))")));
+            folders.Write("actual", "a.sc", MakeScript(15, { { "p", 0 } }, Procedure("p", "(= a 1)") +
+                instance("One", "(= a 1)") + instance("Three", "(if a (= b 3))") + instance("obj_4", "(while a (-- a))")));
+            FolderCompareResult result = CompareScriptFolders(folders.Folder("expected"), folders.Folder("actual"), "", sciVersion1_1);
+            std::string text = RowsText(result);
+            Assert::IsTrue(result.errors.empty(), Wide(text).c_str());
+            std::map<std::string, FunctionCompareRow> rows = RowsOf(result);
+            Assert::AreEqual(std::string("SAME"), std::string(StructureVerdictName(rows["15:Three::doit"].verdict)), Wide(text).c_str());
+            Assert::AreEqual(std::string("ONLY-EXPECTED"), std::string(StructureVerdictName(rows["15:Two::doit"].verdict)), Wide(text).c_str());
+            Assert::AreEqual(std::string("SAME"), std::string(StructureVerdictName(rows["15:obj_4::doit"].verdict)), Wide(text).c_str());
+        }
+    };
 }

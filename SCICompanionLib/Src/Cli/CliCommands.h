@@ -222,6 +222,7 @@ namespace cli
         std::string actualFolder;
         std::string baselineFolder;     // empty: no baseline
         std::string outFile;            // empty: stdout
+        std::vector<int> scripts;       // empty: every script
     };
 
     // The first line of the table of compare-structure.
