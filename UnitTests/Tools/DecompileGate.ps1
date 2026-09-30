@@ -25,8 +25,13 @@
     The run folder (<Work>\<time>-<process id>) gets, for each game,
     games\<md5>\: src\ (the .sc files of scic), functions.tsv (the function
     report), compare.tsv (the table of compare-structure), and the logs; and
-    gate.json (the counts of each game and the totals) and rows.tsv (every
-    row of the compare, with its game).
+    gate.json (the counts of each game and the totals), rows.tsv (every
+    row of the compare, with its game) and scope.tsv (each function that the
+    scope engine does not accept, with its result in the classic engine).
+    With the classic engine, the control-flow stages of the scope engine
+    run in shadow mode; the run tells how many functions of each classic
+    result (ok, graph, consumption) they accept, and counts each scope
+    failure id.
 
     The cache (-Cache) keeps a copy of the files of each game (games\<md5>,
     about 4 GB for the whole library) and the Snuffer output
@@ -337,6 +342,11 @@ if ($Allowlist) {
     }
 }
 $gameCounts = @()
+$shadow = [ordered]@{}
+foreach ($name in @("ok", "graph", "consumption")) { $shadow[$name] = [ordered]@{ functions = 0; scopeOk = 0 } }
+$scopeFailures = @{}
+$scopeRows = New-Object System.Collections.Generic.List[string]
+$scopeRows.Add("game`tmd5`tscript`tclass`tfunction`toffset`tscope`tclassic")
 $allRows = New-Object System.Collections.Generic.List[string]
 $allRows.Add("game`tmd5`tscript`tkey`tfunction`tverdict`tbaseline`tchange")
 $ruleFailures = New-Object System.Collections.Generic.List[string]
@@ -381,11 +391,25 @@ foreach ($fact in ($facts | Sort-Object name)) {
         scopeOk = @($functions | Where-Object scope -eq "ok").Count
         verdicts = $verdicts; changes = $changes
     }
+    foreach ($f in $functions) {
+        $kind = if ($f.classic -eq "ok") { "ok" } elseif ($f.classic -like "graph*") { "graph" } elseif ($f.classic -like "consumption*") { "consumption" } else { "" }
+        if ($kind -and $f.scope) {
+            $shadow[$kind].functions++
+            if ($f.scope -eq "ok") { $shadow[$kind].scopeOk++ }
+        }
+        if ($f.scope -and ($f.scope -ne "ok")) {
+            $scopeFailures[$f.scope] = 1 + $(if ($scopeFailures.ContainsKey($f.scope)) { $scopeFailures[$f.scope] } else { 0 })
+            $scopeRows.Add("$($fact.name)`t$($fact.md5)`t$($f.script)`t$($f.class)`t$($f.function)`t$($f.offset)`t$($f.scope)`t$($f.classic)")
+        }
+    }
 }
 $totals = [ordered]@{ games = $gameCounts.Count }
 foreach ($name in @("functions", "scripts", "asm", "corrupt", "scopeOk")) { $totals[$name] = ($gameCounts | ForEach-Object { $_[$name] } | Measure-Object -Sum).Sum }
 $totals.verdicts = [ordered]@{}
 foreach ($name in $verdictNames) { $totals.verdicts[$name] = ($gameCounts | ForEach-Object { $_.verdicts[$name] } | Measure-Object -Sum).Sum }
+$totals.shadow = $shadow
+$totals.scopeFailures = [ordered]@{}
+foreach ($entry in ($scopeFailures.GetEnumerator() | Sort-Object -Property @{ Expression = "Value"; Descending = $true }, Name)) { $totals.scopeFailures[$entry.Name] = $entry.Value }
 $totals.changes = [ordered]@{}
 foreach ($name in $changeNames) { $totals.changes[$name] = ($gameCounts | ForEach-Object { $_.changes[$name] } | Measure-Object -Sum).Sum }
 $mode = if ($Full) { "full" } else { "sample" }
@@ -397,6 +421,11 @@ Write-Host ""
 Write-Host ("Functions: {0}; asm: {1}; corrupt: {2}; scope ok: {3}" -f $totals.functions, $totals.asm, $totals.corrupt, $totals.scopeOk)
 Write-Host ("Verdicts: " + (($verdictNames | ForEach-Object { "$_ $($totals.verdicts[$_])" }) -join ", "))
 if ($BaselineRun) { Write-Host ("Changes: " + (($changeNames | ForEach-Object { "$_ $($totals.changes[$_])" }) -join ", ")) }
+foreach ($name in @("ok", "graph", "consumption")) {
+    if ($shadow[$name].functions) { Write-Host ("Scope accepts {0} of {1} functions that classic gives as {2}" -f $shadow[$name].scopeOk, $shadow[$name].functions, $name) }
+}
+foreach ($name in $totals.scopeFailures.Keys) { Write-Host ("  {0}: {1}" -f $name, $totals.scopeFailures[$name]) }
+Write-Utf8 (Join-Path $run "scope.tsv") (($scopeRows -join "`r`n") + "`r`n")
 Write-Host "Run folder: $run"
 
 if ($Record) {

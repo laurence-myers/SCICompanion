@@ -703,6 +703,238 @@ namespace UnitTests
 				"code 000f\n");
 		}
 
+		// (if a (for ((= t 1)) (<= t 4) ...) ...) as an and-term (Hoyle
+		// Classic Card Games, b1::doit): the exit of the loop is a dead bnt,
+		// and the test of the loop is threaded past it. The dead bnt is a
+		// test with its place, so the break resolves through it.
+		TEST_METHOD(DeadCode_ABntAtTheExitOfALoop)
+		{
+			AssertParses(R"(
+				lap 1
+				bnt end
+				ldi 1
+				sat 1
+			head:
+				lst 1
+				ldi 4
+				le?
+				bnt end
+				+at 1
+				jmp head
+				bnt end
+				lat 1
+			end:
+				sat 0
+				ret
+			)",
+				"code 0000\n"
+				"if 0001\n"
+				"  then\n"
+				"    code 0002-0003\n"
+				"    loop 0004 latch 0009\n"
+				"      body\n"
+				"        code 0004-0006\n"
+				"        if 0007\n"
+				"          then\n"
+				"            code 0008\n"
+				"          else break 1\n"
+				"    if 000a\n"
+				"      then\n"
+				"        code 000b\n"
+				"code 000c-000d\n");
+		}
+
+		// Police Quest 1 VGA, disguise::doVerb: the bnt of an if goes to its
+		// own fall-through, so the else-part is dead, and the jmp at the end of
+		// the then-part goes to the toss. It is an exit of the case body.
+		TEST_METHOD(DeadCode_AJmpToTheEndBeforeDeadCode)
+		{
+			AssertParses(R"(
+				lsp 1
+				dup
+				ldi 4
+				eq?
+				bnt case2
+				lsg 211
+				ldi 91
+				eq?
+				bnt next
+			next:
+				+ag 5
+				jmp done
+				+ag 6
+				jmp done
+			case2:
+				dup
+				ldi 1
+				eq?
+				bnt done
+				+ag 7
+			done:
+				toss
+				ret
+			)",
+				"switch 0000 toss 0012\n"
+				"  case bnt 0004 jmp 000c\n"
+				"    value\n"
+				"      code 0001-0003\n"
+				"    body\n"
+				"      code 0005-0009\n"
+				"      exit 000a\n"
+				"      code 000b\n"
+				"  case bnt 0010\n"
+				"    value\n"
+				"      code 000d-000f\n"
+				"    body\n"
+				"      code 0011\n"
+				"code 0013\n");
+		}
+
+		// Hoyle Official Book of Games 3, BGPlayer::numberOfRolls: in a for
+		// loop, (if a (if b (++ t1) (continue)) (if c (continue))) (++ t2).
+		// The continue at the end of the then-part looks like an else marker;
+		// the reading with an else fails, and the reading with no else
+		// parses. An and-term that holds a continue is no value.
+		TEST_METHOD(If_AContinueBeforeTheStatementsAfterTheIf)
+		{
+			AssertParses(R"(
+				ldi 0
+				sat 0
+			head:
+				+at 0
+				push
+				ldi 6
+				le?
+				bnt exit
+				lap 1
+				bnt after
+				lap 2
+				bnt skip
+				+at 1
+				jmp step
+			skip:
+				lap 3
+				bnt after
+				jmp step
+			after:
+				+at 2
+			step:
+				ldi 1
+				jmp head
+			exit:
+				ret
+			)",
+				"code 0000-0001\n"
+				"loop 0002 latch 0012\n"
+				"  body\n"
+				"    code 0002-0005\n"
+				"    if 0006\n"
+				"      then\n"
+				"        code 0007\n"
+				"        if 0008\n"
+				"          then\n"
+				"            code 0009\n"
+				"            if 000a\n"
+				"              then\n"
+				"                code 000b\n"
+				"                continue 1 000c\n"
+				"            code 000d\n"
+				"            if 000e\n"
+				"              then\n"
+				"                continue 1 000f\n"
+				"        code 0010\n"
+				"      else break 1\n"
+				"  step\n"
+				"    code 0011\n"
+				"code 0013\n");
+		}
+
+		// The Island of Dr. Brain, weightsPuzzle::buyClue: in a for loop,
+		// (cond ((< a 0) (= t 0)) (b (continue))) (++ t3). Both readings of
+		// the first if fail before the step is known; the error of the reading
+		// with an else (the continue) gives the step, not the error of the jmp
+		// of the else as a statement.
+		TEST_METHOD(If_TheErrorOfTheElseReadingGivesTheStep)
+		{
+			AssertParses(R"(
+				ldi 0
+				sat 0
+			head:
+				lst 0
+				ldi 3
+				lt?
+				bnt exit
+				lap 1
+				bnt case2
+				ldi 0
+				sat 9
+				jmp after
+			case2:
+				lap 2
+				bnt after
+				jmp step
+			after:
+				+at 3
+			step:
+				+at 0
+				jmp head
+			exit:
+				ret
+			)",
+				"code 0000-0001\n"
+				"loop 0002 latch 0010\n"
+				"  body\n"
+				"    code 0002-0004\n"
+				"    if 0005\n"
+				"      then\n"
+				"        code 0006\n"
+				"        if 0007\n"
+				"          then\n"
+				"            code 0008-0009\n"
+				"          else 000a\n"
+				"            code 000b\n"
+				"            if 000c\n"
+				"              then\n"
+				"                continue 1 000d\n"
+				"        code 000e\n"
+				"      else break 1\n"
+				"  step\n"
+				"    code 000f\n"
+				"code 0011\n");
+		}
+
+		// The shared-then shape in a loop: a bnt with no place gives no step
+		// of a for loop (a continue is a jmp, a contif a bt), so the parse
+		// stops at that bnt.
+		TEST_METHOD(Loops_ABntGivesNoStep)
+		{
+			AssertParseFails(R"(
+				ldi 0
+				sat 0
+			head:
+				lst 0
+				ldi 3
+				lt?
+				bnt exit
+				lat 1
+				bnt isTrue
+				lat 2
+				bnt isFalse
+			isTrue:
+				ldi 1
+				jmp store
+			isFalse:
+				ldi 0
+			store:
+				sat 4
+				+at 0
+				jmp head
+			exit:
+				ret
+			)",
+				"no-scope-for-target", 0x0009);
+		}
+
 		// The switch fixtures.
 		TEST_METHOD(Fixtures_Switches)
 		{

@@ -88,6 +88,7 @@ namespace scope
 			case RegionKind::Continue:
 			case RegionKind::BreakIf:
 			case RegionKind::ContIf:
+			case RegionKind::Exit:
 				out.push_back(region->branch);
 				break;
 			}
@@ -209,6 +210,9 @@ namespace scope
 					break;
 				case RegionKind::ContIf:
 					Line(indent, fmt::format("contif {0} {1}", region.level, Address(region.branch)));
+					break;
+				case RegionKind::Exit:
+					Line(indent, "exit " + Address(region.branch));
 					break;
 				}
 			}

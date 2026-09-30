@@ -434,9 +434,11 @@ namespace UnitTests
             Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");
         }
 
-        // The engine of SCIC_DECOMPILE_ENGINE. The scope engine has no stages
-        // yet: with auto, the classic engine gives each function, and the
-        // text is the text of classic; with scope, each function is asm.
+        // The engine of SCIC_DECOMPILE_ENGINE. The scope engine has no value
+        // stage yet: with auto, the classic engine gives each function, and
+        // the text is the text of classic; with scope, each function is asm.
+        // With classic, the control-flow stages of the scope engine run in
+        // shadow mode: the scope column has their result.
         TEST_METHOD(Engine_TheVariableChoosesTheEngine)
         {
             _gameFolder = SetUpGameSCI11();
@@ -456,7 +458,7 @@ namespace UnitTests
                 Assert::IsTrue(function.engine == DecompileEngine::Classic, Wide(function.name).c_str());
                 Assert::AreEqual(std::string("classic"), function.output, Wide(function.name).c_str());
                 Assert::AreEqual(std::string("ok"), function.classic, Wide(function.name).c_str());
-                Assert::AreEqual(std::string(), function.scope, Wide(function.name).c_str());
+                Assert::AreEqual(std::string("ok"), function.scope, Wide(function.name).c_str());
             }
 
             DecompileOutput automatic;
@@ -470,7 +472,7 @@ namespace UnitTests
             {
                 Assert::IsTrue(function.engine == DecompileEngine::ScopeThenClassic, Wide(function.name).c_str());
                 Assert::AreEqual(std::string("classic"), function.output, Wide(function.name).c_str());
-                Assert::AreEqual(std::string("[scope:parse:not-implemented]"), function.scope, Wide(function.name).c_str());
+                Assert::AreEqual(std::string("[scope:values:not-implemented]"), function.scope, Wide(function.name).c_str());
             }
             Assert::IsTrue(automatic.warnings.empty(), L"with auto, a scope failure is no warning");
 
@@ -486,7 +488,7 @@ namespace UnitTests
                 Assert::AreEqual(std::string("asm"), function.output, Wide(function.name).c_str());
                 Assert::AreEqual(std::string(), function.classic, Wide(function.name).c_str());
             }
-            Assert::IsTrue(scope.HasWarningContaining("[scope:parse:not-implemented]"), L"with scope, a failure is a warning");
+            Assert::IsTrue(scope.HasWarningContaining("[scope:values:not-implemented]"), L"with scope, a failure is a warning");
         }
 
         // An unknown engine in SCIC_DECOMPILE_ENGINE stops the decompile: a
@@ -512,7 +514,7 @@ namespace UnitTests
 
         // The function report of a function that the classic engine cannot
         // structure: the output is asm, and the classic column has the stage
-        // and the message.
+        // and the message. The scope parser in shadow mode refuses it too.
         TEST_METHOD(FunctionReport_AClassicFailure_HasTheStageAndTheMessage)
         {
             _gameFolder = SetUpGameSCI11();
@@ -528,7 +530,7 @@ namespace UnitTests
             Assert::AreEqual(std::string("asm"), function.output);
             Assert::IsTrue(function.byteCount > 0, L"the bytes of the function");
             Assert::IsTrue(function.classic.rfind("graph: Unstructured branches", 0) == 0, Wide(function.classic).c_str());
-            Assert::AreEqual(std::string(), function.scope);
+            Assert::AreEqual(std::string("[scope:parse:no-scope-for-target]"), function.scope);
         }
 
         // Family 4: a "bnt" to the loop exit inside the body. Fixed: it becomes

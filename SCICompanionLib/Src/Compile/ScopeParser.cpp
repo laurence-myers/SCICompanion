@@ -110,17 +110,30 @@ namespace scope
 						i = toss + 1;
 						continue;
 					}
-					// A dead jmp to a loop exit or continue point (after a
-					// return, or at the exit of an inner loop) is a break or
-					// continue: a branch can resolve through it.
-					bool toExit = false;
-					int level = (!_model.IsLive(i) && (_model.Op(i) == Opcode::JMP)) ? _LoopLevel(_model.Target(i), Arrival::Jump, toExit) : 0;
-					if (level != 0)
+					// A dead branch (after a return, or at the exit of a loop
+					// whose exit is threaded past it) is a branch when it has a
+					// place: another branch can resolve through it. Else it is
+					// dead code.
+					if (!_model.IsLive(i) && _model.IsBranch(i))
 					{
+						int savedStart = codeStart;
 						flush(i);
-						sequence->items.push_back(_LoopJump(i, level, toExit));
-						++i;
-						continue;
+						try
+						{
+							i = _Branch(i, hi, sequence, thenOf);
+							continue;
+						}
+						catch (const BranchError &)
+						{
+							// It has no place: it stays in the code region.
+							if (savedStart != NoIndex)
+							{
+								sequence->items.pop_back();
+							}
+							codeStart = (savedStart != NoIndex) ? savedStart : i;
+							++i;
+							continue;
+						}
 					}
 					if (!_model.IsFlowBranch(i))
 					{
@@ -249,13 +262,20 @@ namespace scope
 				region->branch = latch;
 				auto step = _loopSet.steps.find(latch);
 				int stepStart = (step != _loopSet.steps.end()) ? step->second : NoIndex;
+				// The loop is open while its body is read; an error that the
+				// if of an enclosing scope catches must not leave it open.
+				struct LoopScope
+				{
+					std::vector<OpenLoop> &loops;
+					~LoopScope() { loops.pop_back(); }
+				};
 				_loops.push_back({ latch + 1, (stepStart != NoIndex) ? stepStart : head });
+				LoopScope scope = { _loops };
 				region->body = _Sequence(head, (stepStart != NoIndex) ? stepStart : latch, nullptr);
 				if (stepStart != NoIndex)
 				{
 					region->step = _Sequence(stepStart, latch, nullptr);
 				}
-				_loops.pop_back();
 				return region;
 			}
 
@@ -281,7 +301,9 @@ namespace scope
 					// sends the bnts of statements there too, and the term
 					// would take in those statements. The loop rule below
 					// gives the same control flow as nested ifs.
-					if (thenOf && (thenOf->region->elseKind == ElseKind::Else) && _model.SameTarget(target, thenOf->elseEntry, Arrival::False))
+					// A term is a value: it has no way out.
+					if (thenOf && (thenOf->region->elseKind == ElseKind::Else) && _model.SameTarget(target, thenOf->elseEntry, Arrival::False) &&
+						!_JumpsOut(sequence.get(), 0))
 					{
 						thenOf->region->terms.push_back(std::move(sequence));
 						thenOf->region->tests.push_back(p);
@@ -304,6 +326,15 @@ namespace scope
 				}
 				bool toExit = false;
 				int level = _LoopLevel(target, CodeModel::ArrivalOf(op), toExit);
+				if ((level == 0) && (op == Opcode::JMP) && _model.IsLive(p) && _model.SameTarget(target, hi, Arrival::Jump) && _IsDead(p + 1, hi))
+				{
+					// A jmp to the end of the sequence, and only dead code
+					// after it (an else-part that no test reaches).
+					std::unique_ptr<Region> region = std::make_unique<Region>(RegionKind::Exit);
+					region->branch = p;
+					sequence->items.push_back(std::move(region));
+					return p + 1;
+				}
 				if (level == 0)
 				{
 					_Fail("no-scope-for-target", p);
@@ -346,14 +377,25 @@ namespace scope
 				return region;
 			}
 
+			// No instruction of [lo, hi) is live.
+			bool _IsDead(int lo, int hi) const
+			{
+				return _model.NextLive(lo) >= hi;
+			}
+
 			// A bnt to X inside (p, hi]: an if. A jmp J at X - 1 is the else
 			// marker when it does something, it is not the latch of a loop,
-			// and J is inside (X, hi] or is the end of the sequence.
+			// and J is inside (X, hi] or is the end of the sequence. Such a jmp
+			// can also be the last statement of the then-part (a continue to
+			// the step of a for loop, before the statements after the if):
+			// when the reading with an else fails, the reading with no else is
+			// tried.
 			int _If(int p, int target, int hi, Region &sequence)
 			{
-				std::unique_ptr<Region> region = std::make_unique<Region>(RegionKind::If);
-				region->tests.push_back(p);
-				OpenIf open = { region.get(), target };
+				if (++_work > MaxWork)
+				{
+					throw ScopeError("parse", "too-complex", _model.Offset(p), "too many readings of the ifs");
+				}
 				int marker = target - 1;
 				int elseEnd = NoIndex;
 				if ((marker > p) && (_model.Op(marker) == Opcode::JMP) && !(_model.IsLive(marker) && _model.IsNoOp(marker)) && !_loopSet.IsLatch(marker))
@@ -368,18 +410,47 @@ namespace scope
 						elseEnd = hi;
 					}
 				}
-				if (elseEnd == NoIndex)
+				std::unique_ptr<BranchError> elseError;
+				if (elseEnd != NoIndex)
+				{
+					try
+					{
+						std::unique_ptr<Region> region = std::make_unique<Region>(RegionKind::If);
+						region->tests.push_back(p);
+						region->elseKind = ElseKind::Else;
+						region->branch = marker;
+						OpenIf open = { region.get(), target };
+						region->thenPart = _Sequence(p + 1, marker, &open);
+						region->elsePart = _Sequence(target, elseEnd, nullptr);
+						sequence.items.push_back(std::move(region));
+						return elseEnd;
+					}
+					catch (const BranchError &e)
+					{
+						// Try the reading with no else.
+						elseError = std::make_unique<BranchError>(e);
+					}
+				}
+				std::unique_ptr<Region> region = std::make_unique<Region>(RegionKind::If);
+				region->tests.push_back(p);
+				OpenIf open = { region.get(), target };
+				try
 				{
 					region->thenPart = _Sequence(p + 1, target, &open);
-					sequence.items.push_back(std::move(region));
-					return target;
 				}
-				region->elseKind = ElseKind::Else;
-				region->branch = marker;
-				region->thenPart = _Sequence(p + 1, marker, &open);
-				region->elsePart = _Sequence(target, elseEnd, nullptr);
+				catch (const BranchError &e)
+				{
+					// When the jmp of the else fails as a statement, the error
+					// of the reading with an else tells more (the retry of
+					// Parse reads it).
+					if (elseError && (e.branch == marker))
+					{
+						throw *elseError;
+					}
+					throw;
+				}
 				sequence.items.push_back(std::move(region));
-				return elseEnd;
+				return target;
 			}
 
 			// A bnt whose false value goes to elseEntry (the end of the
@@ -397,17 +468,68 @@ namespace scope
 			}
 
 			// A bt to the end of the or: its second operand is [p + 1, end).
+			// An operand that ends with a break, continue or exit gives no
+			// value to the end of the or: it is no or.
 			std::unique_ptr<Region> _Or(int p, int end)
 			{
 				std::unique_ptr<Region> region = std::make_unique<Region>(RegionKind::Or);
 				region->branch = p;
 				region->body = _Sequence(p + 1, end, nullptr);
+				if (_JumpsOut(region->body.get(), 0))
+				{
+					_Fail("or-jumps-out", p);
+				}
 				return region;
 			}
+
+			// The region has a way out to a place of an enclosing scope other
+			// than its end: a break or continue of a loop outside it, or an
+			// exit. An and-term and the second operand of an or are values,
+			// which have none. depth is the count of the loops of the region
+			// around the node.
+			bool _JumpsOut(const Region *region, int depth) const
+			{
+				if (!region)
+				{
+					return false;
+				}
+				switch (region->kind)
+				{
+				case RegionKind::Sequence:
+					return std::any_of(region->items.begin(), region->items.end(), [&](const std::unique_ptr<Region> &item) { return _JumpsOut(item.get(), depth); });
+				case RegionKind::Code:
+					// A return can be inside a value (a for loop as an operand).
+					return false;
+				case RegionKind::If:
+					return (((region->elseKind == ElseKind::Break) || (region->elseKind == ElseKind::Continue)) && (region->level > depth)) ||
+						std::any_of(region->terms.begin(), region->terms.end(), [&](const std::unique_ptr<Region> &term) { return _JumpsOut(term.get(), depth); }) ||
+						_JumpsOut(region->thenPart.get(), depth) || _JumpsOut(region->elsePart.get(), depth);
+				case RegionKind::Or:
+					return _JumpsOut(region->body.get(), depth);
+				case RegionKind::Loop:
+					return _JumpsOut(region->body.get(), depth + 1) || _JumpsOut(region->step.get(), depth + 1);
+				case RegionKind::Switch:
+					return std::any_of(region->cases.begin(), region->cases.end(), [&](const std::unique_ptr<Region> &item) { return _JumpsOut(item.get(), depth); });
+				case RegionKind::Case:
+					return _JumpsOut(region->value.get(), depth) || _JumpsOut(region->body.get(), depth);
+				case RegionKind::Break:
+				case RegionKind::Continue:
+				case RegionKind::BreakIf:
+				case RegionKind::ContIf:
+					return region->level > depth;
+				case RegionKind::Exit:
+					return true;
+				}
+				return false;
+			}
+
+			// The limit of the readings of the ifs in one parse.
+			static const int MaxWork = 100000;
 
 			const CodeModel &_model;
 			const LoopSet &_loopSet;
 			std::vector<OpenLoop> _loops;
+			int _work = 0;
 		};
 
 		LoopSet _InitialLoops(const CodeModel &model)
@@ -423,9 +545,10 @@ namespace scope
 		// After a parse error at a branch, a change of the loops that can
 		// give a parse (plan section 3.2): split a loop at a back jmp J when
 		// the branch goes to the instruction after J (a while that is the
-		// first statement of a repeat); else a forward branch inside a loop
-		// goes to the step of a for loop. False when neither applies.
-		bool _Retry(const CodeModel &model, LoopSet &loops, int branch)
+		// first statement of a repeat); else a forward jmp or bt inside a
+		// loop goes to the step of a for loop (a continue is a jmp, a contif
+		// a bt). Returns a text for the change; empty when neither applies.
+		std::string _Retry(const CodeModel &model, LoopSet &loops, int branch)
 		{
 			int target = model.Target(branch);
 			for (auto &head : loops.latches)
@@ -441,9 +564,13 @@ namespace scope
 					{
 						latches.push_back(back);
 						std::sort(latches.begin(), latches.end(), std::greater<int>());
-						return true;
+						return fmt::format("split the loop at {0:04x}", model.Offset(back));
 					}
 				}
+			}
+			if (model.Op(branch) == Opcode::BNT)
+			{
+				return std::string();
 			}
 			// The innermost loop that has the branch and the target.
 			int bestHead = NoIndex;
@@ -463,15 +590,16 @@ namespace scope
 			if ((bestLatch != NoIndex) && (loops.steps.find(bestLatch) == loops.steps.end()))
 			{
 				loops.steps[bestLatch] = target;
-				return true;
+				return fmt::format("step {0:04x} for the loop at {1:04x}", model.Offset(target), model.Offset(bestHead));
 			}
-			return false;
+			return std::string();
 		}
 	}
 
 	std::unique_ptr<Region> Parse(const CodeModel &model)
 	{
 		LoopSet loops = _InitialLoops(model);
+		std::string tried;
 		for (;;)
 		{
 			try
@@ -481,10 +609,12 @@ namespace scope
 			}
 			catch (const BranchError &e)
 			{
-				if (!_Retry(model, loops, e.branch))
+				std::string change = _Retry(model, loops, e.branch);
+				if (change.empty())
 				{
-					throw ScopeError(e.Stage(), e.Id(), e.Offset(), e.Detail());
+					throw ScopeError(e.Stage(), e.Id(), e.Offset(), tried.empty() ? e.Detail() : (e.Detail() + " (after: " + tried + ")"));
 				}
+				tried += (tried.empty() ? "" : "; ") + fmt::format("{0:04x} {1}", e.Offset(), change);
 			}
 		}
 	}
@@ -504,6 +634,19 @@ namespace scope
 		{
 			std::string text = fmt::format("{0} at {1:04x}: {2}\n", e.what(), e.Offset(), e.Detail());
 			return text + tree;
+		}
+	}
+
+	std::string CodeForDump(const std::list<scii> &code)
+	{
+		try
+		{
+			CodeModel model(code);
+			return model.Dump();
+		}
+		catch (const ScopeError &e)
+		{
+			return fmt::format("{0} at {1:04x}: {2}\n", e.what(), e.Offset(), e.Detail());
 		}
 	}
 }

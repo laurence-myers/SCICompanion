@@ -164,11 +164,18 @@ namespace scope
 				switch (region->kind)
 				{
 				case RegionKind::Sequence:
+				{
+					// The end of the sequence, for an exit in it.
+					int endLabel = _NewLabel();
+					_sequenceEnds.push_back(endLabel);
 					for (const auto &item : region->items)
 					{
 						_Emit(item.get());
 					}
+					_sequenceEnds.pop_back();
+					_Place(endLabel);
 					break;
+				}
 
 				case RegionKind::Code:
 					for (int i = region->first; i <= region->last; ++i)
@@ -333,6 +340,15 @@ namespace scope
 					_Expect(region->branch, Opcode::BT, "contif");
 					_Branch(SkeletonKind::Bt, region->branch, _Loop(region->level, region->branch).cont);
 					break;
+
+				case RegionKind::Exit:
+					_Expect(region->branch, Opcode::JMP, "exit");
+					if (_sequenceEnds.empty())
+					{
+						_Fail("layout", region->branch, "an exit out of a sequence");
+					}
+					_Branch(SkeletonKind::Jmp, region->branch, _sequenceEnds.back());
+					break;
 				}
 			}
 
@@ -393,6 +409,7 @@ namespace scope
 			std::vector<SkeletonOp> _ops;
 			std::vector<int> _labels;
 			std::vector<LoopLabels> _loops;
+			std::vector<int> _sequenceEnds;
 		};
 
 		Successor _BytecodeFrom(const CodeModel &model, int position);

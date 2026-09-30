@@ -274,6 +274,12 @@ namespace
 				}
 				return region;
 			}
+			if (kind == "exit")
+			{
+				region = std::make_unique<Region>(RegionKind::Exit);
+				region->branch = Number(w[1]);
+				return region;
+			}
 			RegionKind jumpKind;
 			if (kind == "break")
 			{

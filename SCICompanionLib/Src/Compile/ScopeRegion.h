@@ -25,6 +25,7 @@ namespace scope
 		Continue,	// a jmp to the continue point of a loop
 		BreakIf,	// a bt to the exit of a loop
 		ContIf,		// a bt to the continue point of a loop
+		Exit,		// a jmp to the end of its sequence; the rest of the sequence is dead
 	};
 
 	// Where the tests of an if go for a false value.
@@ -59,7 +60,7 @@ namespace scope
 		ElseKind elseKind = ElseKind::None;
 		std::unique_ptr<Region> elsePart;
 
-		// Or, BreakIf, ContIf: the bt. Break, Continue: the jmp. If: the jmp
+		// Or, BreakIf, ContIf: the bt. Break, Continue, Exit: the jmp. If: the jmp
 		// before the else-part. Loop: the latch (the last back branch).
 		// Case: the bnt of the test, or NoIndex.
 		int branch = NoIndex;

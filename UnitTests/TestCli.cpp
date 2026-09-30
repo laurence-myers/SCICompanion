@@ -796,8 +796,8 @@ namespace UnitTests
         }
 
         // --engine, else SCIC_DECOMPILE_ENGINE, else classic. The scope
-        // engine has no stages yet: auto gives the source of classic, and
-        // scope gives asm with a warning for each function.
+        // engine has no value stage yet: auto gives the source of classic,
+        // and scope gives asm with a warning for each function.
         TEST_METHOD(Decompile_Engine_TheOptionThenTheVariable)
         {
             CopyTemplate("\\TemplateGame\\SCI0");
@@ -813,7 +813,7 @@ namespace UnitTests
                 bool warned = false;
                 for (const std::string &line : Lines(scope.err))
                 {
-                    warned = warned || ((line.rfind("scic: warning: ", 0) == 0) && (line.find("[scope:parse:not-implemented]") != std::string::npos));
+                    warned = warned || ((line.rfind("scic: warning: ", 0) == 0) && (line.find("[scope:") != std::string::npos));
                 }
                 Assert::IsTrue(warned, Wide(scope.err).c_str());
             }
@@ -888,7 +888,7 @@ namespace UnitTests
                     Assert::IsTrue(std::stoi(fields[4]) > 0, Wide(lines[i]).c_str());
                     Assert::AreEqual(std::string("auto"), fields[5], Wide(lines[i]).c_str());
                     Assert::AreEqual(std::string("classic"), fields[6], Wide(lines[i]).c_str());
-                    Assert::AreEqual(std::string("[scope:parse:not-implemented]"), fields[7], Wide(lines[i]).c_str());
+                    Assert::IsTrue(fields[7].rfind("[scope:", 0) == 0, Wide(lines[i]).c_str());
                     Assert::AreEqual(std::string("ok"), fields[8], Wide(lines[i]).c_str());
                 }
             }

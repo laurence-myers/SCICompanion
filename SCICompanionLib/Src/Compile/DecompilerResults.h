@@ -45,8 +45,11 @@ struct DecompiledFunction
 	// code is not known).
 	std::string output;
 	// The result of each engine: empty when it did not run, "ok", or why it
-	// failed. Scope: "[scope:<stage>:<id>]". Classic: the stage ("graph" or
-	// "consumption"), ": ", and the message of the failure.
+	// failed. Scope: "[scope:<stage>:<id>]"; with the classic engine, the
+	// control-flow stages of the scope engine run in shadow mode, and "ok"
+	// means that the parser and the verify stage accept the function.
+	// Classic: the stage ("graph" or "consumption"), ": ", and the message
+	// of the failure.
 	std::string scope;
 	std::string classic;
 	// With the debug dumps of the control flow: the region tree of the scope

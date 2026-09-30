@@ -19,6 +19,7 @@
 #include "DisassembleHelper.h"
 #include "ControlFlowGraph.h"
 #include "ScopeParser.h"
+#include "ScopeVerify.h"
 #include "DecompilerNew.h"
 #include "DecompilerAstPasses.h"
 #include "DecompilerFallback.h"
@@ -1220,10 +1221,32 @@ namespace
 		std::vector<std::pair<DecompilerResultType, std::string>> _held;
 	};
 
-	// The scope engine. It has no stages yet, so each function fails.
-	sci::Status _DecompileWithScope(FunctionBase &, DecompileLookups &, const std::list<scii> &)
+	// The control-flow stages of the scope engine: the code model, the
+	// parser and the verify stage. An error has the message of the stage
+	// that failed, "[scope:<stage>:<id>]"; an exception that is not a
+	// ScopeError gives "[scope:internal] <text>".
+	sci::Status _ScopeControlFlow(const std::list<scii> &code)
 	{
-		return sci::Fail(sci::ErrorCode::Unsupported, "[scope:parse:not-implemented]");
+		sci::Status status = sci::Guard("scope", [&]() -> sci::Status
+		{
+			scope::CodeModel model(code);
+			std::unique_ptr<scope::Region> root = scope::Parse(model);
+			scope::Verify(model, *root);
+			return sci::Ok();
+		});
+		if (!status && (status.error().code != sci::ErrorCode::Unsupported))
+		{
+			return sci::Fail(sci::ErrorCode::Internal, "[scope:internal] " + status.error().message);
+		}
+		return status;
+	}
+
+	// The scope engine. It has no value stage yet, so a function whose
+	// control flow parses and verifies fails there.
+	sci::Status _DecompileWithScope(FunctionBase &, DecompileLookups &, const std::list<scii> &code)
+	{
+		SCI_TRY(_ScopeControlFlow(code));
+		return sci::Fail(sci::ErrorCode::Unsupported, "[scope:values:not-implemented]");
 	}
 
 	// A stage and its message, for the report: "graph: <message>", or the
@@ -1281,6 +1304,12 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 		if (lookups.DebugControlFlow)
 		{
 			report.scopeTree = scope::ParseForDump(originalCode);
+			string trackingName = GetMethodTrackingName(func.GetOwnerClass(), func, true);
+			if (!lookups.pszDebugFilter || PathMatchSpec(trackingName.c_str(), lookups.pszDebugFilter))
+			{
+				lookups.DecompileResults().AddResult(DecompilerResultType::Debug,
+					fmt::format("Scope: {0}\n{1}Code:\n{2}", trackingName, report.scopeTree, scope::CodeForDump(originalCode)));
+			}
 		}
 		_RemoveDeadBranches(code);
 		_DetermineIfFunctionReturnsValue(code, lookups);
@@ -1314,6 +1343,13 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 				lookups.DecompileResults().AddResult((engine == DecompileEngine::Scope) ? DecompilerResultType::Warning : DecompilerResultType::Update,
 					fmt::format("{0} {1}::{2}: {3}", func.GetOwnerScript()->GetName(), className, func.GetName(), report.scope));
 			}
+		}
+		else if (!lookups.DecompileAsm)
+		{
+			// Shadow mode: the control-flow stages of the scope engine run
+			// for the report only; the classic engine gives the output.
+			sci::Status shadow = _ScopeControlFlow(originalCode);
+			report.scope = shadow ? std::string("ok") : shadow.error().message;
 		}
 
 		if (!lookups.DecompileAsm && !success && (engine != DecompileEngine::Scope))

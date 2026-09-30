@@ -22,4 +22,8 @@ namespace scope
 	// verify stage, as a text; or the message, the address and the detail
 	// of the error of the stage that failed.
 	std::string ParseForDump(const std::list<scii> &code);
+
+	// For a debug dump: the code model of the instructions (CodeModel::Dump),
+	// or the error of the code model.
+	std::string CodeForDump(const std::list<scii> &code);
 }
