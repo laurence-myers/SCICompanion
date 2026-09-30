@@ -40,6 +40,7 @@ namespace scope
 				}
 				entry.target = found->second;
 				entry.parseTarget = found->second;
+				entry.threadedTarget = found->second;
 			}
 			Consumption consumption = _GetInstructionConsumption(const_cast<scii &>(*entry.inst), nullptr);
 			entry.pops = consumption.cStackConsume;
@@ -47,10 +48,10 @@ namespace scope
 		}
 
 		_FindLiveCode();
+		_FindLoops();
 		_FindNoOps();
 		_FindDepths();
 		_FindNaryCompares();
-		_FindLoops();
 		_FindSwitches();
 		_ApplyDialect();
 	}
@@ -236,7 +237,13 @@ namespace scope
 	{
 		for (int i = 0; i < Size(); ++i)
 		{
-			if (IsLive(i) && IsBranch(i) && (Target(i) > i) && (Target(i) == NextLive(i + 1)))
+			// A jmp over a dead latch leaves the loop: it is a branch.
+			bool overLatch = false;
+			for (int k = i + 1; (k < Target(i)) && !overLatch; ++k)
+			{
+				overLatch = IsBranch(k) && (Target(k) <= k) && (Latch(Target(k)) == k);
+			}
+			if (IsLive(i) && IsBranch(i) && (Target(i) > i) && (Target(i) == NextLive(i + 1)) && !overLatch)
 			{
 				_insts[i].noOp = true;
 			}
@@ -273,14 +280,10 @@ namespace scope
 					entry.depthBefore = after;
 					work.push_back(next);
 				}
-				else if (after != entry.depthBefore)
+				else if (after < entry.depthBefore)
 				{
-					entry.depthConflict = true;
-					if (after < entry.depthBefore)
-					{
-						entry.depthBefore = after;
-						work.push_back(next);
-					}
+					entry.depthBefore = after;
+					work.push_back(next);
 				}
 			};
 			if (IsBranch(i))
@@ -291,6 +294,24 @@ namespace scope
 			{
 				visit(i + 1);
 			}
+		}
+		// A conflict: two paths into the instruction give two depths.
+		for (int i = 0; i < Size(); ++i)
+		{
+			if (!IsLive(i))
+			{
+				continue;
+			}
+			std::vector<int> depths;
+			if ((i > 0) && IsLive(i - 1) && FallsThrough(i - 1))
+			{
+				depths.push_back(DepthAfter(i - 1));
+			}
+			for (int source : Sources(i))
+			{
+				depths.push_back(DepthAfter(source));
+			}
+			_insts[i].depthConflict = std::any_of(depths.begin(), depths.end(), [&](int depth) { return depth != depths.front(); });
 		}
 	}
 
@@ -370,7 +391,8 @@ namespace scope
 		}
 		for (int i = 0; i < Size(); ++i)
 		{
-			if (IsBranch(i) && (Target(i) <= i) && (_backBranches.find(Target(i)) != _backBranches.end()))
+			if (IsBranch(i) && (Target(i) <= i) && (_backBranches.find(Target(i)) != _backBranches.end()) &&
+				(IsLive(i) || _IsLoopEnd(Target(i), i + 1)))
 			{
 				_backBranches[Target(i)].push_back(i);
 			}
@@ -379,6 +401,26 @@ namespace scope
 		{
 			_loopHeads.push_back(loop.first);
 		}
+	}
+
+	// The place after a dead latch is where the loop of the head ends: the
+	// end of the function (a loop that only returns), or the target of a
+	// branch inside the loop (its exit). Dead code elsewhere that jumps back
+	// into a loop is no latch.
+	bool CodeModel::_IsLoopEnd(int head, int after) const
+	{
+		if (after >= Size())
+		{
+			return true;
+		}
+		for (int b = head; b < after; ++b)
+		{
+			if (IsBranch(b) && (Target(b) == after))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	// Each toss ends one switch. Its head is the push of the value that it
@@ -460,27 +502,14 @@ namespace scope
 		}
 	}
 
-	bool CodeModel::_IsLoopContinuation(int branch, int target) const
-	{
-		for (const auto &loop : _backBranches)
-		{
-			int head = loop.first;
-			int latch = loop.second.back();
-			if ((head <= branch) && (branch <= latch) && ((target == head) || (target == latch + 1)))
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-
 	// The dialects (plan section 3.2). First the threading of Sierra's
 	// optimiser: a bt or bnt to a branch of the same sense goes to the target
 	// of that branch. Then the "or" forms of this repository's compiler: a bt
 	// that goes just past a bnt goes to that bnt, and a bnt that goes just
-	// past a forward bt goes to that bt (not a bt to a loop head or to the
-	// instruction after a latch). Each is an equal target: the bnt lets a
-	// true value through, the bt a false one.
+	// past a forward bt goes to that bt. Each is an equal target: the bnt
+	// lets a true value through, the bt a false one. The parser keeps the
+	// threaded target of a bnt when the bt is a breakif or contif (it knows
+	// the loops).
 	void CodeModel::_ApplyDialect()
 	{
 		for (int b = 0; b < Size(); ++b)
@@ -495,6 +524,7 @@ namespace scope
 				target = Target(target);
 			}
 			_insts[b].parseTarget = target;
+			_insts[b].threadedTarget = target;
 		}
 		for (int b = 0; b < Size(); ++b)
 		{
@@ -504,15 +534,16 @@ namespace scope
 			}
 			int target = ParseTarget(b);
 			int before = target - 1;
-			if ((target <= b) || (before <= b) || !IsFlowBranch(before) || (Target(before) <= before))
+			if ((target <= b) || (before <= b) || !IsFlowBranch(before))
 			{
 				continue;
 			}
 			if ((Op(b) == Opcode::BT) && (Op(before) == Opcode::BNT))
 			{
+				// The bnt can go back: the test of the if continues a loop.
 				_insts[b].parseTarget = before;
 			}
-			else if ((Op(b) == Opcode::BNT) && (Op(before) == Opcode::BT) && !_IsLoopContinuation(before, Target(before)))
+			else if ((Op(b) == Opcode::BNT) && (Op(before) == Opcode::BT) && (Target(before) > before))
 			{
 				_insts[b].parseTarget = before;
 			}

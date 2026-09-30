@@ -383,5 +383,12 @@ namespace UnitTests
 			tree.replace(tree.find("loop 0000"), 9, "loop 0005");
 			AssertRejects(LoopSierra, tree, "loop-head", 0x000b);
 		}
+
+		// Negative check: a code region far out of the function is rejected
+		// before the layout of the tree is built.
+		TEST_METHOD(Reject_ACodeRangeOutOfTheFunction)
+		{
+			AssertRejects(DeadCode, "code 0000-7ffffff0\n", "layout", 0x0000);
+		}
 	};
 }

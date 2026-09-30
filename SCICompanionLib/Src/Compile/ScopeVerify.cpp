@@ -414,6 +414,41 @@ namespace scope
 
 		Successor _BytecodeFrom(const CodeModel &model, int position);
 
+		// Each code region has instructions of the function, first..last,
+		// before the layout of the tree is built.
+		void _CheckCodeRanges(const CodeModel &model, const Region *region)
+		{
+			if (!region)
+			{
+				return;
+			}
+			if (region->kind == RegionKind::Code)
+			{
+				if ((region->first < 0) || (region->last < region->first) || (region->last >= model.Size()))
+				{
+					int index = ((region->first >= 0) && (region->first < model.Size())) ? region->first : NoIndex;
+					throw ScopeError("verify", "layout", (index != NoIndex) ? model.Offset(index) : -1,
+						fmt::format("a code region with the instructions {0}..{1}", region->first, region->last));
+				}
+				return;
+			}
+			auto each = [&](const std::vector<std::unique_ptr<Region>> &list)
+			{
+				for (const auto &item : list)
+				{
+					_CheckCodeRanges(model, item.get());
+				}
+			};
+			each(region->items);
+			each(region->terms);
+			each(region->cases);
+			_CheckCodeRanges(model, region->thenPart.get());
+			_CheckCodeRanges(model, region->elsePart.get());
+			_CheckCodeRanges(model, region->body.get());
+			_CheckCodeRanges(model, region->step.get());
+			_CheckCodeRanges(model, region->value.get());
+		}
+
 		// Where control goes after a live instruction that is not a branch,
 		// in the bytecode.
 		Successor _BytecodeSuccessor(const CodeModel &model, int i)
@@ -466,6 +501,7 @@ namespace scope
 
 	void Verify(const CodeModel &model, const Region &root)
 	{
+		_CheckCodeRanges(model, &root);
 		std::vector<int> layout = Layout(root);
 		for (size_t k = 0; k < (std::max)(layout.size(), (size_t)model.Size()); ++k)
 		{

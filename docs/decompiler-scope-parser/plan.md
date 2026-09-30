@@ -206,7 +206,7 @@ after. New files in `SCICompanionLib\Src\Compile\`, registered in
 |---|---|---|---|
 | 9 | Value stage: code, facts, `if`/`and`/`or` | `ScopeValues.h/.cpp` part 1 (about 600 lines); `OutputNewStructure` overload that takes the region tree; the four invariants; `ChunkType::Break`/`Continue` level | New fixtures from real functions (accumulator reuse across `bnt`, first case reuse, value `if` as an argument); loopless fixtures pass for both engines (`FIXTURE_TEST` macro, `TestDecompile` + `TestDecompileScope`). |
 | 10 | Value stage: loops, switches, n-ary | part 2 (about 400 lines): switch head and case values, `dup`, `pprev`, `&rest`, loop tests, a region as a value | All fixtures pass with `scope`; `TemplateGame_FallbackBaseline` = 0 and `_Recompiles` with `scope`. |
-| 11 | Presentation and corpus fixes | Forms (`and`, `while`/`do`/`for`, `breakif`/`contif`, else marker, statement list as an operand); missing AST passes if the compare shows a need; batches by compare verdict | Per function: not worse against Snuffer than Classic. Template snapshot differences reviewed. |
+| 11 | Presentation and corpus fixes | Forms (`and`, also from nested `if`s whose `else` is one `break` or `continue`, as the parser gives a `while` test; `while`/`do`/`for`; `breakif`/`contif`, also from an `or` over the rest of a loop body; else marker; statement list as an operand; the dead code after an `exit`); missing AST passes if the compare shows a need; batches by compare verdict | Per function: not worse against Snuffer than Classic. Template snapshot differences reviewed. |
 
 ### Milestone 3: switch
 

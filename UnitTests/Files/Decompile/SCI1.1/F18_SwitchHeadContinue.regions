@@ -33,5 +33,6 @@ loop 000c latch 0052
             code 0048
             if 004a
               then
-                code 004c-0050
+                code 004c-004e
+                break 1 0050
 code 0054-0056

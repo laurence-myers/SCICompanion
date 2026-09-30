@@ -546,6 +546,13 @@ namespace UnitTests
 				lsp 1
 				dup
 				ldi 1
+				eq?
+				bnt case2
+				ldi 5
+				jmp done
+			case2:
+				dup
+				ldi 2
 				lt?
 				bnt done
 				ldi 7
@@ -553,7 +560,119 @@ namespace UnitTests
 				toss
 				ret
 			)",
-				"case-value", 0x0001);
+				"case-value", 0x0007);
+		}
+
+		// A switch with only an else, whose body starts with a dup (Sierra's
+		// optimiser: a dup in place of "pushi 1" when the switch value is 1).
+		TEST_METHOD(Switches_OnlyAnElseThatStartsWithADup)
+		{
+			AssertParses(R"(
+				push1
+				dup
+				pushi 3
+				callk 5 2
+				toss
+				ret
+			)",
+				"switch 0000 toss 0004\n"
+				"  case\n"
+				"    body\n"
+				"      code 0001-0003\n"
+				"code 0005\n");
+		}
+
+		// This repository's compiler, (while c (if a (breakif b)) X): the
+		// dialect pass moves the bnt onto the bt before its target, but that
+		// bt is a breakif, so the parser keeps the target of the bnt.
+		TEST_METHOD(Dialect_ABntPastABreakIfKeepsItsTarget)
+		{
+			AssertParses(R"(
+			head:
+				lap 1
+				bnt exit
+				lap 2
+				bnt skip
+				lap 3
+				bt exit
+			skip:
+				+at 0
+				jmp head
+			exit:
+				ret
+			)",
+				"loop 0000 latch 0007\n"
+				"  body\n"
+				"    code 0000\n"
+				"    if 0001\n"
+				"      then\n"
+				"        code 0002\n"
+				"        if 0003\n"
+				"          then\n"
+				"            code 0004\n"
+				"            breakif 1 0005\n"
+				"        code 0006\n"
+				"      else break 1\n"
+				"code 0008\n");
+		}
+
+		// A contif to the step of a for loop, just before the target of a
+		// bnt: the bnt keeps its target once the step is known (a continue in
+		// a nested if gives the step).
+		TEST_METHOD(Dialect_ABntPastAContIfToTheStepKeepsItsTarget)
+		{
+			AssertParses(R"(
+				ldi 0
+				sat 0
+			head:
+				lst 0
+				ldi 9
+				lt?
+				bnt exit
+				lap 4
+				bnt s0
+				lap 5
+				bnt s1
+				jmp step
+			s1:
+				+at 2
+			s0:
+				lap 1
+				bnt skip
+				lap 2
+				bt step
+			skip:
+				+at 3
+			step:
+				+at 0
+				jmp head
+			exit:
+				ret
+			)",
+				"code 0000-0001\n"
+				"loop 0002 latch 0012\n"
+				"  body\n"
+				"    code 0002-0004\n"
+				"    if 0005\n"
+				"      then\n"
+				"        code 0006\n"
+				"        if 0007\n"
+				"          then\n"
+				"            code 0008\n"
+				"            if 0009\n"
+				"              then\n"
+				"                continue 1 000a\n"
+				"            code 000b\n"
+				"        code 000c\n"
+				"        if 000d\n"
+				"          then\n"
+				"            code 000e\n"
+				"            contif 1 000f\n"
+				"        code 0010\n"
+				"      else break 1\n"
+				"  step\n"
+				"    code 0011\n"
+				"code 0013\n");
 		}
 
 		// This repository's compiler: the bnt of an empty last case goes to
@@ -933,6 +1052,37 @@ namespace UnitTests
 				ret
 			)",
 				"no-scope-for-target", 0x0009);
+		}
+
+		// King's Quest IV dev, Gauge::doit: (repeat (if (or a b) X (break)))
+		// in the "or" form of this repository's compiler. The bt goes past a
+		// bnt that goes back to the head, and the break jumps over the dead
+		// latch: it leaves the loop, so it is no jmp that does nothing.
+		TEST_METHOD(Loops_ABreakOverTheDeadLatch)
+		{
+			AssertParses(R"(
+			head:
+				lap 1
+				bt yes
+				lap 2
+				bnt head
+			yes:
+				+at 0
+				jmp exit
+				jmp head
+			exit:
+				ret
+			)",
+				"loop 0000 latch 0006\n"
+				"  body\n"
+				"    code 0000\n"
+				"    or 0001\n"
+				"      code 0002\n"
+				"    if 0003\n"
+				"      then\n"
+				"        code 0004\n"
+				"        break 1 0005\n"
+				"code 0007\n");
 		}
 
 		// The switch fixtures.

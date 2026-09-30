@@ -302,11 +302,15 @@ namespace UnitTests
 				bt exit
 				jmp head
 			exit:
+				ldi 5
+			last:
 				ret
 			)");
 			CodeModel model(a.code);
 			Assert::AreEqual(0, model.DepthBefore(a.At("exit")));
 			Assert::IsTrue(model.HasDepthConflict(a.At("exit")));
+			// Only the merge point has two paths.
+			Assert::IsFalse(model.HasDepthConflict(a.At("last")));
 		}
 
 		// A toss with nothing on the stack.
@@ -440,10 +444,11 @@ namespace UnitTests
 			Assert::AreEqual(a.At("ifBnt"), model.ParseTarget(a.At("orBt")));
 		}
 
-		// Negative check of the dialect rule: a bt before the target that is
-		// a breakif (a bt to the exit of the loop) is no or, so the bnt keeps
-		// its target.
-		TEST_METHOD(Dialect_ABntPastABreakIfKeepsItsTarget)
+		// The dialect pass moves a bnt onto any forward bt just before its
+		// target, and keeps the threaded target: the parser, which knows the
+		// loops, takes the threaded target back when the bt is a breakif
+		// (TestScopeParser::Dialect_ABntPastABreakIfKeepsItsTarget).
+		TEST_METHOD(Dialect_ABntPastABreakIfHasBothTargets)
 		{
 			ScopeAsm a(R"(
 			head:
@@ -461,7 +466,31 @@ namespace UnitTests
 				ret
 			)");
 			CodeModel model(a.code);
-			Assert::AreEqual(a.At("skip"), model.ParseTarget(a.At("ifBnt")));
+			Assert::AreEqual(a.At("skip") - 1, model.ParseTarget(a.At("ifBnt")));
+			Assert::AreEqual(a.At("skip"), model.ThreadedTarget(a.At("ifBnt")));
+		}
+
+		// Dead code that jumps back into a loop, and that is not where the
+		// loop ends (no branch of the loop goes after it), is no latch.
+		TEST_METHOD(Loops_ADeadBackBranchElsewhereIsNoLatch)
+		{
+			ScopeAsm a(R"(
+			head:
+				lap 1
+				bnt exit
+				+at 0
+			latch:
+				jmp head
+			exit:
+				ret
+				ldi 1
+				jmp head
+				ldi 2
+				ret
+			)");
+			CodeModel model(a.code);
+			Assert::AreEqual(a.At("latch"), model.Latch(a.At("head")));
+			Assert::AreEqual((size_t)1, model.BackBranches(a.At("head")).size());
 		}
 
 		// A branch to an instruction that is not in the function stops the

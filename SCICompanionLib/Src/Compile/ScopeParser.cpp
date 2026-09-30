@@ -204,6 +204,15 @@ namespace scope
 					}
 					if ((compare == NoIndex) || (_model.Op(compare) != Opcode::EQ) || (_model.DepthAfter(compare) != depth))
 					{
+						if (entry == head + 1)
+						{
+							// A switch with only an else: Sierra's optimiser
+							// puts a dup in place of a push of the switch value
+							// (the same constant) at the start of its body.
+							item->body = _Sequence(entry, toss, nullptr);
+							region->cases.push_back(std::move(item));
+							break;
+						}
 						_FailAt("case-value", entry);
 					}
 					item->value = _Sequence(entry, compare + 1, nullptr);
@@ -285,6 +294,17 @@ namespace scope
 			{
 				Opcode op = _model.Op(p);
 				int target = _model.ParseTarget(p);
+				if ((op == Opcode::BNT) && (target != _model.ThreadedTarget(p)) && (_model.Op(target) == Opcode::BT))
+				{
+					// The "or" form of this repository's compiler moved the bnt
+					// onto the bt just before its target. When that bt is a
+					// breakif or contif, it is no or: the bnt keeps its target.
+					bool toExit = false;
+					if (_LoopLevel(_model.Target(target), Arrival::True, toExit) != 0)
+					{
+						target = _model.ThreadedTarget(p);
+					}
+				}
 				if (op == Opcode::BNT)
 				{
 					if ((target > p) && (target <= hi))

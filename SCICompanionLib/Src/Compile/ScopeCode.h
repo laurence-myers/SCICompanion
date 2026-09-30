@@ -80,6 +80,9 @@ namespace scope
 		// The target that the parser uses: the target, or an equal target
 		// that the dialect pass chose (plan section 3.2).
 		int ParseTarget(int i) const { return _insts[i].parseTarget; }
+		// The target after the threading of the dialect pass only (the
+		// target before an "or" form moved it).
+		int ThreadedTarget(int i) const { return _insts[i].threadedTarget; }
 		// The live branches that go to the instruction, in address order.
 		const std::vector<int> &Sources(int i) const { return _insts[i].sources; }
 		// A live branch goes to the instruction.
@@ -90,7 +93,8 @@ namespace scope
 		// The first live instruction at or after i; Size() when there is none.
 		int NextLive(int i) const;
 		// A live branch that does nothing: a jmp over dead code only (or
-		// over nothing), or a bt or bnt whose target is its fall-through.
+		// over nothing, and not over the dead latch of a loop, which the jmp
+		// leaves), or a bt or bnt whose target is its fall-through.
 		bool IsNoOp(int i) const { return _insts[i].noOp; }
 		// A bnt inside an n-ary compare ("cmp; bnt O; pprev"): part of the
 		// value of the compare, not a branch of the control flow.
@@ -154,6 +158,7 @@ namespace scope
 			Opcode op;
 			int target = NoIndex;
 			int parseTarget = NoIndex;
+			int threadedTarget = NoIndex;
 			std::vector<int> sources;
 			bool live = false;
 			bool noOp = false;
@@ -172,8 +177,8 @@ namespace scope
 		void _FindLoops();
 		void _FindSwitches();
 		void _FindDeadSwitches();
+		bool _IsLoopEnd(int head, int after) const;
 		void _ApplyDialect();
-		bool _IsLoopContinuation(int branch, int target) const;
 
 		std::vector<Inst> _insts;
 		std::vector<int> _loopHeads;
