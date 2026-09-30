@@ -62,7 +62,9 @@ modernizing the build. Broad highlights since the previous release:
   the exit code tells a build script what happened. It refuses a game whose
   `resource.map` is damaged or empty, and names the volume files when they
   are missing. A compile of named scripts prints each error when its script
-  is done, and a decompile warning names its script. A console shows names
+  is done, and a decompile warning names its script. `--function-report`
+  writes a line for each decompiled function: whether it became source or
+  `asm`, and why the decompiler could not do it. A console shows names
   with their own characters. It has none of the GUI code in it: the engine
   is now a library of its own, with no MFC.
 * **Eliminated most `asm` fallbacks in the decompiler.** When the decompiler

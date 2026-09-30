@@ -24,6 +24,8 @@ struct DecompileOutput
     std::string text;
     std::vector<std::string> warnings;
     int fallbacks = 0;
+    // The function report, in the order of the functions.
+    std::vector<DecompiledFunction> functions;
 
     bool HasWarningContaining(const std::string &needle) const;
     bool ContainsAsm() const;
@@ -36,10 +38,12 @@ public:
     void AddResult(DecompilerResultType type, const std::string &message) override;
     bool IsAborted() override { return false; }
     void InformStats(bool functionSuccessful, int byteCount) override;
+    void InformFunction(const DecompiledFunction &function) override { functions.push_back(function); }
     void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &) override {}
 
     std::vector<std::string> warnings;
     int fallbacks = 0;
+    std::vector<DecompiledFunction> functions;
 };
 
 // Copies a fixture "<name>.sc" from TestFiles\Decompile\SCI1.1 into the game

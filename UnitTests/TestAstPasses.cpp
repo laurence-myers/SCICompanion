@@ -85,6 +85,7 @@ namespace UnitTests
         void AddResult(DecompilerResultType, const std::string &message) override { messages.push_back(message); }
         bool IsAborted() override { return false; }
         void InformStats(bool, int) override {}
+        void InformFunction(const DecompiledFunction &) override {}
         void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &) override {}
         std::vector<std::string> messages;
     };

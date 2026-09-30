@@ -97,6 +97,7 @@
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerFallback.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerNew.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerResults.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileEngine.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileRun.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileScript.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DisassembleHelper.h" />
@@ -236,6 +237,7 @@
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompilerFallback.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompilerNew.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompilerSpecialCases.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompileEngine.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompileRun.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompileScript.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DisassembleHelper.cpp" />

@@ -1,9 +1,11 @@
 #pragma once
 
 #include "Result.h"
+#include "DecompileEngine.h"
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -24,6 +26,8 @@ struct DecompileOptions
 	std::string DebugFunctionMatch;
 	bool DecompileAsm = false;
 	bool SubstituteTextTuples = false;
+	// Empty: DefaultDecompileEngine.
+	std::optional<DecompileEngine> Engine;
 };
 
 // Instead of the files: the source of each script (the command line's

@@ -17,7 +17,9 @@
 #include "scii.h"
 #include "ScriptOM.h"
 #include <cstdint>
+#include <optional>
 #include "CompileCommon.h"
+#include "DecompileEngine.h"
 
 // fwd decl
 namespace sci
@@ -177,6 +179,8 @@ public:
 	bool DebugInstructionConsumption;
 	bool DecompileAsm = false;
 	bool SubstituteTextTuples = false;
+	// Empty: DefaultDecompileEngine, for each function.
+	std::optional<DecompileEngine> Engine;
 	PCSTR pszDebugFilter = nullptr;
 
 	const SelectorTable& GetSelectorTable() const;

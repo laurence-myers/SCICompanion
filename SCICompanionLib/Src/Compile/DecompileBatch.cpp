@@ -279,6 +279,13 @@ namespace
 				_inner.InformStats(functionSuccessful, byteCount);
 			}
 		}
+		void InformFunction(const DecompiledFunction &function) override
+		{
+			if (!_quiet)
+			{
+				_inner.InformFunction(function);
+			}
+		}
 		void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override
 		{
 			_inner.SetGlobalVarsUpdated(renames);
@@ -308,6 +315,7 @@ namespace
 		}
 		bool IsAborted() override { return _inner.IsAborted(); }
 		void InformStats(bool functionSuccessful, int byteCount) override { _inner.InformStats(functionSuccessful, byteCount); }
+		void InformFunction(const DecompiledFunction &function) override { _inner.InformFunction(function); }
 		void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override { _inner.SetGlobalVarsUpdated(renames); }
 	private:
 		IDecompilerResults &_inner;
@@ -500,6 +508,7 @@ private:
 		state.lookups->pszDebugFilter = _options.DebugFunctionMatch.c_str();
 		state.lookups->DecompileAsm = _options.DecompileAsm;
 		state.lookups->SubstituteTextTuples = _options.SubstituteTextTuples;
+		state.lookups->Engine = _options.Engine;
 
 		state.script = DecompileToAst(_helper, state.compiledScript, *state.lookups, _resourceMap.GetVocab000());
 	}

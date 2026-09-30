@@ -3673,7 +3673,7 @@ void _RestructureCaseHeaders(ConsumptionNode *chunk, DecompileLookups &lookups)
 	}
 }
 
-bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &func, MainNode &main, DecompileLookups &lookups)
+bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &func, MainNode &main, DecompileLookups &lookups, std::string *failure)
 {
 	CodeChunkEnumContext context(lookups);
 	unique_ptr<ConsumptionNode> mainChunk = make_unique<ConsumptionNode>();
@@ -3747,13 +3747,17 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 		string message;
 		if (e.node->_hasPos)
 		{
-			message = fmt::format("{0}: {1}: {2} at {3:04x}", messagePrefix, e.message, (int)e.node->GetCode()->get_opcode(), e.node->GetCode()->get_final_offset_dontcare());
+			message = fmt::format("{0}: {1} at {2:04x}", e.message, (int)e.node->GetCode()->get_opcode(), e.node->GetCode()->get_final_offset_dontcare());
 		}
 		else
 		{
-			message = fmt::format("{0}: {1}: {2}", messagePrefix, e.message, (int)e.node->GetType());
+			message = fmt::format("{0}: {1}", e.message, (int)e.node->GetType());
 		}
-		lookups.DecompileResults().AddResult(DecompilerResultType::Warning, message);
+		lookups.DecompileResults().AddResult(DecompilerResultType::Warning, messagePrefix + ": " + message);
+		if (failure)
+		{
+			*failure = message;
+		}
 		return false;
 	}
 	catch (ControlFlowException &e)
@@ -3769,6 +3773,10 @@ bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &fun
 			lookups.DecompileResults().AddResult(DecompilerResultType::Debug, debugTrackName + " chunks (at failure):\n" + ss.str());
 		}
 		lookups.DecompileResults().AddResult(DecompilerResultType::Warning, fmt::format("{0}: {1}", messagePrefix, e.what()));
+		if (failure)
+		{
+			*failure = e.what();
+		}
 		return false;
 	}
 	return true;

@@ -51,6 +51,10 @@ namespace
             }
             _inner.InformStats(functionSuccessful, byteCount);
         }
+        void InformFunction(const DecompiledFunction &function) override
+        {
+            _inner.InformFunction(function);
+        }
         void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override
         {
             _inner.SetGlobalVarsUpdated(renames);

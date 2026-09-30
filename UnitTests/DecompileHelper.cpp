@@ -238,6 +238,7 @@ DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks, bool de
     out.text = ss.str();
     out.warnings = results.warnings;
     out.fallbacks = results.fallbacks;
+    out.functions = results.functions;
     return out;
 }
 

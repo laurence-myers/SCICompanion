@@ -16,6 +16,7 @@
 #include <fstream>
 #include "Helper.h"
 #include "DecompileHelper.h"
+#include "TestSupport.h"
 #include "StructuralCompare.h"
 #include "AppState.h"
 #include "ResourceMap.h"
@@ -431,6 +432,103 @@ namespace UnitTests
             Assert::IsTrue(out.HasWarningContaining("Unstructured branches"),
                 L"expected the structurer to refuse the shape");
             Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");
+        }
+
+        // The engine of SCIC_DECOMPILE_ENGINE. The scope engine has no stages
+        // yet: with auto, the classic engine gives each function, and the
+        // text is the text of classic; with scope, each function is asm.
+        TEST_METHOD(Engine_TheVariableChoosesTheEngine)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AddFixtureScript("F3_AndOr");
+            std::string error;
+            Assert::IsTrue(CompileFixture(912, "F3_AndOr", &error), Wide(error).c_str());
+
+            DecompileOutput classic;
+            {
+                ScopedEnvironmentVariable engine("SCIC_DECOMPILE_ENGINE", "classic");
+                classic = DecompileToText(912);
+            }
+            Assert::IsFalse(classic.ContainsAsm(), Wide(classic.text).c_str());
+            Assert::IsFalse(classic.functions.empty(), L"a report of each function");
+            for (const DecompiledFunction &function : classic.functions)
+            {
+                Assert::IsTrue(function.engine == DecompileEngine::Classic, Wide(function.name).c_str());
+                Assert::AreEqual(std::string("classic"), function.output, Wide(function.name).c_str());
+                Assert::AreEqual(std::string("ok"), function.classic, Wide(function.name).c_str());
+                Assert::AreEqual(std::string(), function.scope, Wide(function.name).c_str());
+            }
+
+            DecompileOutput automatic;
+            {
+                ScopedEnvironmentVariable engine("SCIC_DECOMPILE_ENGINE", "auto");
+                automatic = DecompileToText(912);
+            }
+            Assert::AreEqual(classic.text, automatic.text, L"auto gives the text of classic");
+            Assert::AreEqual(classic.functions.size(), automatic.functions.size());
+            for (const DecompiledFunction &function : automatic.functions)
+            {
+                Assert::IsTrue(function.engine == DecompileEngine::ScopeThenClassic, Wide(function.name).c_str());
+                Assert::AreEqual(std::string("classic"), function.output, Wide(function.name).c_str());
+                Assert::AreEqual(std::string("[scope:parse:not-implemented]"), function.scope, Wide(function.name).c_str());
+            }
+            Assert::IsTrue(automatic.warnings.empty(), L"with auto, a scope failure is no warning");
+
+            DecompileOutput scope;
+            {
+                ScopedEnvironmentVariable engine("SCIC_DECOMPILE_ENGINE", "scope");
+                scope = DecompileToText(912);
+            }
+            Assert::IsTrue(scope.ContainsAsm(), Wide(scope.text).c_str());
+            Assert::AreEqual((int)classic.functions.size(), scope.fallbacks);
+            for (const DecompiledFunction &function : scope.functions)
+            {
+                Assert::AreEqual(std::string("asm"), function.output, Wide(function.name).c_str());
+                Assert::AreEqual(std::string(), function.classic, Wide(function.name).c_str());
+            }
+            Assert::IsTrue(scope.HasWarningContaining("[scope:parse:not-implemented]"), L"with scope, a failure is a warning");
+        }
+
+        // An unknown engine in SCIC_DECOMPILE_ENGINE stops the decompile: a
+        // wrong name must not give the classic engine silently.
+        TEST_METHOD(Engine_AnUnknownVariableValueThrows)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AddFixtureScript("F3_AndOr");
+            std::string error;
+            Assert::IsTrue(CompileFixture(912, "F3_AndOr", &error), Wide(error).c_str());
+            ScopedEnvironmentVariable engine("SCIC_DECOMPILE_ENGINE", "scoop");
+            bool thrown = false;
+            try
+            {
+                DecompileToText(912);
+            }
+            catch (const sci::DataError &e)
+            {
+                thrown = (e.code() == sci::ErrorCode::Usage) && (std::string(e.what()).find("scoop") != std::string::npos);
+            }
+            Assert::IsTrue(thrown, L"a usage error that names the value");
+        }
+
+        // The function report of a function that the classic engine cannot
+        // structure: the output is asm, and the classic column has the stage
+        // and the message.
+        TEST_METHOD(FunctionReport_AClassicFailure_HasTheStageAndTheMessage)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AddFixtureScript("X_SharedThenBranch");
+            std::string error;
+            Assert::IsTrue(CompileFixture(903, "X_SharedThenBranch", &error), Wide(error).c_str());
+            ScopedEnvironmentVariable engine("SCIC_DECOMPILE_ENGINE", nullptr);
+            DecompileOutput out = DecompileToText(903);
+            Assert::AreEqual((size_t)1, out.functions.size());
+            const DecompiledFunction &function = out.functions[0];
+            Assert::AreEqual((uint16_t)903, function.script);
+            Assert::AreEqual(std::string(), function.className);
+            Assert::AreEqual(std::string("asm"), function.output);
+            Assert::IsTrue(function.byteCount > 0, L"the bytes of the function");
+            Assert::IsTrue(function.classic.rfind("graph: Unstructured branches", 0) == 0, Wide(function.classic).c_str());
+            Assert::AreEqual(std::string(), function.scope);
         }
 
         // Family 4: a "bnt" to the loop exit inside the body. Fixed: it becomes

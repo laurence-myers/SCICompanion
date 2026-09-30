@@ -142,7 +142,19 @@ namespace cli
         bool debugControlFlow = false;
         bool debugInstructions = false;
         std::string debugFilter;
+        // classic, scope or auto; empty: SCIC_DECOMPILE_ENGINE, else classic.
+        std::string engine;
+        // The file of the function report; empty: no report.
+        std::string functionReport;
     };
+
+    // The first line of a function report: the names of its columns.
+    extern const char *const FunctionReportHeader;
+
+    // True when --function-report may write over the file: there is no such
+    // file, the file is empty, or it is a function report (its first line is
+    // FunctionReportHeader).
+    bool MayOverwriteFunctionReport(const std::string &path);
 
     // Decompiles the scripts (RunDecompile) and prints the report: the
     // messages of the decompiler as they come, then the summary. --stdout
@@ -150,7 +162,11 @@ namespace cli
     // lists the files that a run would write, with the stale scripts
     // (DecompileRunOptions::dryRun). The exit code of the report (plan
     // section 8); an error of the decompiler in a script that it wrote
-    // (a function whose code it cannot find) is 6. Fails when the run
+    // (a function whose code it cannot find) is 6. With --function-report,
+    // the report goes to its file at the end, also after Ctrl+C or a
+    // dry run: a line for each function that the run decompiled (the last
+    // decompile of a script counts), in the order of the scripts and of
+    // the offsets; a report that cannot be written is 9. Fails when the run
     // cannot start: a bad selector, or --stdout with more than one script
     // (Usage).
     sci::Result<ExitCode> RunScriptDecompile(GameSession &session, const ScriptDecompileOptions &options, const CommonOptions &common, CliOutput &output);

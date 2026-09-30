@@ -13,7 +13,9 @@
 ***************************************************************************/
 #pragma once
 
-bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &func, MainNode &main, DecompileLookups &lookups);
+// On a failure, failure (when it is not null) gets the message of the
+// warning without messagePrefix.
+bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &func, MainNode &main, DecompileLookups &lookups, std::string *failure = nullptr);
 
 // Returns the node's single predecessor, or null if it has none. The main-chunk
 // output walk requires at most one predecessor; this throws ControlFlowException

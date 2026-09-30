@@ -1182,9 +1182,28 @@ namespace
 		{
 			_inner.InformStats(functionSuccessful, byteCount);
 		}
+		void InformFunction(const DecompiledFunction &function) override
+		{
+			_inner.InformFunction(function);
+		}
 		void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override
 		{
 			_inner.SetGlobalVarsUpdated(renames);
+		}
+		// The last held warning, without prefix and the ": " after it;
+		// empty when there is none.
+		std::string LastWarning(const std::string &prefix) const
+		{
+			for (auto it = _held.rbegin(); it != _held.rend(); ++it)
+			{
+				if (it->first == DecompilerResultType::Warning)
+				{
+					const std::string &message = it->second;
+					std::string start = prefix + ": ";
+					return (message.rfind(start, 0) == 0) ? message.substr(start.size()) : message;
+				}
+			}
+			return std::string();
 		}
 		// Passes the held messages on, in order.
 		void Release()
@@ -1199,12 +1218,33 @@ namespace
 		IDecompilerResults &_inner;
 		std::vector<std::pair<DecompilerResultType, std::string>> _held;
 	};
+
+	// The scope engine. It has no stages yet, so each function fails.
+	sci::Status _DecompileWithScope(FunctionBase &, DecompileLookups &, const std::list<scii> &)
+	{
+		return sci::Fail(sci::ErrorCode::Unsupported, "[scope:parse:not-implemented]");
+	}
+
+	// A stage and its message, for the report: "graph: <message>", or the
+	// stage alone when there is no message.
+	std::string _StageFailure(const char *stage, const std::string &message)
+	{
+		return message.empty() ? std::string(stage) : (std::string(stage) + ": " + message);
+	}
 }
 
 // pEnd can be the end of script data. I have added autodetection support.
 void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset)
 {
 	bool allowContinues = true;
+	DecompileEngine engine = lookups.Engine ? *lookups.Engine : DefaultDecompileEngine();
+
+	DecompiledFunction report;
+	report.script = lookups.GetScriptNumber();
+	report.className = func.GetOwnerClass() ? func.GetOwnerClass()->GetName() : "";
+	report.name = func.GetName();
+	report.offset = wBaseOffset;
+	report.engine = engine;
 
 	lookups.EndowWithFunction(&func);
 
@@ -1247,9 +1287,32 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 
 		_TrackExternalScriptUsage(code, lookups);
 
-		if (!lookups.DecompileAsm)
+		string className = func.GetOwnerClass() ? func.GetOwnerClass()->GetName() : "";
+		if (!lookups.DecompileAsm && (engine != DecompileEngine::Classic))
 		{
-			string className = func.GetOwnerClass() ? func.GetOwnerClass()->GetName() : "";
+			// The scope engine reads the instructions as they were decoded:
+			// it does its own dead-branch analysis.
+			sci::Status scoped = _DecompileWithScope(func, lookups, originalCode);
+			if (scoped)
+			{
+				success = true;
+				report.scope = "ok";
+				report.output = "scope";
+			}
+			else
+			{
+				report.scope = scoped.error().message;
+				func.GetStatements().clear();
+				lookups.ResetOnFailure();
+				// With auto, the classic engine takes the function: a
+				// progress line only.
+				lookups.DecompileResults().AddResult((engine == DecompileEngine::Scope) ? DecompilerResultType::Warning : DecompilerResultType::Update,
+					fmt::format("{0} {1}::{2}: {3}", func.GetOwnerScript()->GetName(), className, func.GetName(), report.scope));
+			}
+		}
+
+		if (!lookups.DecompileAsm && !success && (engine != DecompileEngine::Scope))
+		{
 			string messageDescription = fmt::format("{0} {1}::{2}: Analyzing control flow", func.GetOwnerScript()->GetName(), className, func.GetName());
 			lookups.DecompileResults().AddResult(DecompilerResultType::Update, messageDescription);
 
@@ -1288,7 +1351,12 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 				nestedResults.Release();
 				throw;
 			}
-			(cfg->NestsLoopsWithOneHead() ? nestedResults : results).Release();
+			HeldDecompilerResults &usedResults = cfg->NestsLoopsWithOneHead() ? nestedResults : results;
+			if (!success)
+			{
+				report.classic = _StageFailure("graph", usedResults.LastWarning(messageDescription));
+			}
+			usedResults.Release();
 
 			if (success && !lookups.DecompileResults().IsAborted())
 			{
@@ -1296,7 +1364,17 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 				MainNode *mainNode = cfg->GetMain();
 				lookups.DecompileResults().AddResult(DecompilerResultType::Update, fmt::format("{0} {1}::{2}: Generating code", func.GetOwnerScript()->GetName(), className, func.GetName()));
 				messageDescription = fmt::format("{0} {1}::{2}: Instruction consumption", func.GetOwnerScript()->GetName(), className, func.GetName());
-				success = OutputNewStructure(messageDescription, func, *mainNode, lookups);
+				std::string failure;
+				success = OutputNewStructure(messageDescription, func, *mainNode, lookups, &failure);
+				if (success)
+				{
+					report.classic = "ok";
+					report.output = "classic";
+				}
+				else
+				{
+					report.classic = _StageFailure("consumption", failure);
+				}
 			}
 		}
 	}
@@ -1315,12 +1393,22 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 
 		lookups.DecompileResults().AddResult(DecompilerResultType::Important, fmt::format("Falling back to disassembly for {0}", func.GetName()));
 		DisassembleFallback(func, originalCode.begin(), originalCode.end(), lookups);
+		report.output = "asm";
 	}
 
 	// Give some statistics.
 	if (discoveredEnd)
 	{
 		lookups.DecompileResults().InformStats(success, discoveredEnd - pBegin);
+	}
+	if (!lookups.DecompileResults().IsAborted())
+	{
+		if (!discoveredEnd)
+		{
+			report.output = "corrupt";
+		}
+		report.byteCount = discoveredEnd ? (int)(discoveredEnd - pBegin) : 0;
+		lookups.DecompileResults().InformFunction(report);
 	}
 
 	if (!lookups.DecompileResults().IsAborted())

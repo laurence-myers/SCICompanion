@@ -795,6 +795,105 @@ namespace UnitTests
             Assert::IsTrue(console.err.find("Decompiled and wrote 1 of 2 scripts.") != std::string::npos, Wide(console.err).c_str());
         }
 
+        // --engine, else SCIC_DECOMPILE_ENGINE, else classic. The scope
+        // engine has no stages yet: auto gives the source of classic, and
+        // scope gives asm with a warning for each function.
+        TEST_METHOD(Decompile_Engine_TheOptionThenTheVariable)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            std::string classic;
+            {
+                ScopedEnvironmentVariable variable("SCIC_DECOMPILE_ENGINE", nullptr);
+                classic = Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout" }).out;
+                Assert::IsTrue((classic.find("(script# 974)") != std::string::npos) && (classic.find("(asm") == std::string::npos), Wide(classic).c_str());
+                Assert::AreEqual(classic, Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout", "--engine", "classic" }).out, L"--engine classic");
+                Assert::AreEqual(classic, Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout", "--engine", "auto" }).out, L"--engine auto");
+                cli::StringConsole scope = Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout", "--engine", "scope" });
+                Assert::IsTrue(scope.out.find("(asm") != std::string::npos, Wide(scope.out).c_str());
+                bool warned = false;
+                for (const std::string &line : Lines(scope.err))
+                {
+                    warned = warned || ((line.rfind("scic: warning: ", 0) == 0) && (line.find("[scope:parse:not-implemented]") != std::string::npos));
+                }
+                Assert::IsTrue(warned, Wide(scope.err).c_str());
+            }
+            {
+                ScopedEnvironmentVariable variable("SCIC_DECOMPILE_ENGINE", "scope");
+                std::string fromVariable = Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout" }).out;
+                Assert::IsTrue(fromVariable.find("(asm") != std::string::npos, L"the variable gives the engine");
+                Assert::AreEqual(classic, Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout", "--engine", "classic" }).out, L"--engine before the variable");
+            }
+        }
+
+        // An unknown engine, an empty report file, and a report file that is
+        // not a function report are usage errors. The variable is not
+        // checked when --engine gives the engine.
+        TEST_METHOD(Decompile_Engine_UsageErrors)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            ScopedEnvironmentVariable cleared("SCIC_DECOMPILE_ENGINE", nullptr);
+            Expect(2, { "script", "decompile", _copyFolder, "974", "--stdout", "--engine", "scoop" });
+            cli::StringConsole empty = Expect(2, { "script", "decompile", _copyFolder, "974", "--stdout", "--function-report", "" });
+            Assert::IsTrue(empty.err.find("--function-report needs a file") != std::string::npos, Wide(empty.err).c_str());
+            std::string map = (fs::path(_copyFolder) / "resource.map").string();
+            auto before = ReadFileBytes(map);
+            cli::StringConsole notAReport = Expect(2, { "script", "decompile", _copyFolder, "974", "--stdout", "--function-report", map });
+            Assert::IsTrue(notAReport.err.find("which is not a function report") != std::string::npos, Wide(notAReport.err).c_str());
+            Assert::IsTrue(before == ReadFileBytes(map), L"resource.map does not change");
+
+            ScopedEnvironmentVariable variable("SCIC_DECOMPILE_ENGINE", "scoop");
+            cli::StringConsole bad = Expect(2, { "script", "decompile", _copyFolder, "974", "--stdout" });
+            Assert::IsTrue(bad.err.find("SCIC_DECOMPILE_ENGINE is \"scoop\"") != std::string::npos, Wide(bad.err).c_str());
+            Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout", "--engine", "classic" });
+        }
+
+        // --function-report: the header, then a line of 9 fields for each
+        // function, in the order of the offsets. A dry run writes it too, a
+        // second run writes over it, and a report that cannot be written is
+        // exit code 9.
+        TEST_METHOD(Decompile_FunctionReport)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            std::string report = (fs::path(_copyFolder) / "functions.tsv").string();
+            for (const char *dryRun : { "", "--dry-run" })
+            {
+                std::vector<std::string> args = { "script", "decompile", _copyFolder, "974", "--engine", "auto", "--function-report", report };
+                if (*dryRun)
+                {
+                    args.push_back(dryRun);
+                }
+                Expect(0, args);
+                std::vector<std::string> lines = Lines(ReadFileText(report));
+                Assert::IsTrue(lines.size() > 2, Wide(ReadFileText(report)).c_str());
+                Assert::AreEqual(std::string(cli::FunctionReportHeader), lines[0]);
+                int lastOffset = -1;
+                for (size_t i = 1; i < lines.size(); i++)
+                {
+                    std::vector<std::string> fields;
+                    std::istringstream stream(lines[i]);
+                    std::string field;
+                    while (std::getline(stream, field, '\t'))
+                    {
+                        fields.push_back(field);
+                    }
+                    Assert::AreEqual((size_t)9, fields.size(), Wide(lines[i]).c_str());
+                    Assert::AreEqual(std::string("974"), fields[0], Wide(lines[i]).c_str());
+                    int offset = std::stoi(fields[3], nullptr, 16);
+                    Assert::IsTrue(offset > lastOffset, L"in the order of the offsets");
+                    lastOffset = offset;
+                    Assert::IsTrue(std::stoi(fields[4]) > 0, Wide(lines[i]).c_str());
+                    Assert::AreEqual(std::string("auto"), fields[5], Wide(lines[i]).c_str());
+                    Assert::AreEqual(std::string("classic"), fields[6], Wide(lines[i]).c_str());
+                    Assert::AreEqual(std::string("[scope:parse:not-implemented]"), fields[7], Wide(lines[i]).c_str());
+                    Assert::AreEqual(std::string("ok"), fields[8], Wide(lines[i]).c_str());
+                }
+            }
+
+            MakeReadOnly(report);
+            cli::StringConsole readOnly = Expect(9, { "script", "decompile", _copyFolder, "974", "--stdout", "--function-report", report });
+            Assert::IsTrue(readOnly.err.find("the function report") != std::string::npos, Wide(readOnly.err).c_str());
+        }
+
         // Plan section 4.6: script sco makes the .sco files of both templates
         // from their sources. The SCI1.1 template's Main and DebugHandler
         // get a warning in the MSBuild format: their compiled scripts export
