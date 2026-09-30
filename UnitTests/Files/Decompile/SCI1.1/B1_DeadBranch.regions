@@ -1,0 +1,11 @@
+== b1DeadBranch
+code 000a-0010
+if 0011 0018 001a
+  term
+    code 0013-0017
+  term
+  then
+    code 001c-001e
+  else 0020
+    code 0022-0024
+code 0026

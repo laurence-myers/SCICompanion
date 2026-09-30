@@ -1,0 +1,36 @@
+== f13ValueIfArgument
+code 000e-0019
+if 001a
+  then
+    code 001c
+  else 001e
+    code 0020
+code 0022-0029
+== f13TwoValueIfArguments
+code 002a-0034
+if 0035
+  then
+    code 0037-003b
+  else 003c
+    code 003e
+code 0040-0045
+if 0046
+  then
+    code 0048
+  else 004a
+    code 004c
+code 004e-0055
+== f13DroppedLoadArgument
+code 0056-0067
+if 0068
+  then
+    code 006a-006e
+  else 006f
+    code 0071
+code 0073-0078
+if 0079
+  then
+    code 007b
+  else 007d
+    code 007f
+code 0081-0088

@@ -33,6 +33,9 @@
     <ClInclude Include="DecompileHelper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ScopeShapes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="ScopeAsm.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -48,6 +51,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestStructuralCompare.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestScopeParser.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestScopeVerify.cpp">

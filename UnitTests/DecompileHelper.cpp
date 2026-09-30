@@ -626,6 +626,32 @@ int RecompileAllDecompiledScripts(std::vector<std::string> *outFailed, int *outP
     return processed;
 }
 
+void AssertRegionsMatchExpected(const std::string &fixtureName, uint16_t scriptNumber)
+{
+    AddFixtureScript(fixtureName);
+    std::string error;
+    Assert::IsTrue(CompileFixture(scriptNumber, fixtureName, &error), ToWString("compile failed: " + fixtureName + ": " + error).c_str());
+    DecompileOutput out = DecompileToText(scriptNumber, false, true);
+    std::string actual;
+    for (const DecompiledFunction &function : out.functions)
+    {
+        actual += "== " + (function.className.empty() ? function.name : (function.className + "::" + function.name)) + "\n";
+        actual += function.scopeTree;
+    }
+
+    std::string expectedPath = GetTestFileDirectory("Decompile\\SCI1.1") + "\\" + fixtureName + ".regions";
+    std::string expected;
+    bool haveExpected = ReadTextFile(expectedPath, expected);
+    if (!haveExpected || (Normalize(expected) != Normalize(actual)))
+    {
+        std::string outDir = GetTestModuleDirectory() + "\\SnapshotActuals\\Regions";
+        MakeDirs(outDir);
+        WriteTextFile(outDir + "\\" + fixtureName + ".regions", actual);
+    }
+    Assert::IsTrue(haveExpected, ToWString(fixtureName + ": no expected file " + expectedPath + "\n" + actual).c_str());
+    Assert::AreEqual(Normalize(expected), Normalize(actual), ToWString(fixtureName + ": the region trees differ").c_str());
+}
+
 std::string DumpSelectorTable()
 {
     GlobalCompiledScriptLookups lookups;

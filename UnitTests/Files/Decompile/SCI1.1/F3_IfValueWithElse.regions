@@ -1,0 +1,8 @@
+== f3IfValueWithElse
+code 000a-000c
+if 000e
+  then
+    code 0010
+  else 0012
+    code 0014
+code 0016-0018

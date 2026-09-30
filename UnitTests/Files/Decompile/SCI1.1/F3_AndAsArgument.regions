@@ -1,0 +1,6 @@
+== f3AndAsArgument
+code 000a-000e
+if 0010
+  then
+    code 0012
+code 0014-001a

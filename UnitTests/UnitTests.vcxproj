@@ -102,6 +102,7 @@ exit /b 0</Command>
     <ClInclude Include="TestSupport.h" />
     <ClInclude Include="IntegrationHarness.h" />
     <ClInclude Include="DecompileHelper.h" />
+    <ClInclude Include="ScopeShapes.h" />
     <ClInclude Include="ScopeAsm.h" />
     <ClInclude Include="OracleHelper.h" />
     <ClInclude Include="AstPassHelper.h" />
@@ -111,6 +112,7 @@ exit /b 0</Command>
   <ItemGroup>
     <ClCompile Include="TestCliIntegration.cpp" />
     <ClCompile Include="TestStructuralCompare.cpp" />
+    <ClCompile Include="TestScopeParser.cpp" />
     <ClCompile Include="TestScopeVerify.cpp" />
     <ClCompile Include="TestScopeCode.cpp" />
     <ClCompile Include="ScopeAsm.cpp" />

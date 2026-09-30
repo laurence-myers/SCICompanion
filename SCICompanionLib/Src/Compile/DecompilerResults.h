@@ -49,6 +49,10 @@ struct DecompiledFunction
 	// "consumption"), ": ", and the message of the failure.
 	std::string scope;
 	std::string classic;
+	// With the debug dumps of the control flow: the region tree of the scope
+	// parser after the verify stage (scope::Dump), or the error of the stage
+	// that failed. Empty otherwise.
+	std::string scopeTree;
 };
 
 class IDecompilerResults

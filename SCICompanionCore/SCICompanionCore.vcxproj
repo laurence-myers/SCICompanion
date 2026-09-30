@@ -126,6 +126,7 @@
     <ClInclude Include="..\SCICompanionLib\Src\Compile\SummarizeScript.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\SyntaxContext.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\StructuralCompare.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ScopeParser.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\ScopeVerify.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\ScopeRegion.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\ScopeCode.h" />
@@ -269,6 +270,7 @@
     <ClCompile Include="..\SCICompanionLib\Src\Compile\SummarizeScript.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\SyntaxContext.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\StructuralCompare.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeParser.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeVerify.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeRegion.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeCode.cpp" />

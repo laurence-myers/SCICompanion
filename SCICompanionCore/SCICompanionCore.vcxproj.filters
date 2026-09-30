@@ -184,6 +184,9 @@
     <ClCompile Include="..\SCICompanionLib\Src\Compile\StructuralCompare.cpp">
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeParser.cpp">
+      <Filter>Source Files\Compile</Filter>
+    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeVerify.cpp">
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
@@ -555,6 +558,9 @@ $include
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Compile\StructuralCompare.h">
+      <Filter>Source Files\Compile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ScopeParser.h">
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Compile\ScopeVerify.h">

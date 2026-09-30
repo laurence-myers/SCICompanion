@@ -1,0 +1,11 @@
+== f3AndOr
+code 000a-000c
+if 000e
+  then
+    code 0010
+    or 0012
+      code 0014
+    if 0016
+      then
+        code 0018-001a
+code 001c

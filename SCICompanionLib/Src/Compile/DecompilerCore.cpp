@@ -18,6 +18,7 @@
 #include "scii.h"
 #include "DisassembleHelper.h"
 #include "ControlFlowGraph.h"
+#include "ScopeParser.h"
 #include "DecompilerNew.h"
 #include "DecompilerAstPasses.h"
 #include "DecompilerFallback.h"
@@ -1277,6 +1278,10 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 		// dereferences them (CalcBranchLabels and DisassembleFallback). Repoint
 		// the copy's branch targets into itself so it is self-contained. See #62.
 		RepointBranchTargetsIntoCopy(code, originalCode);
+		if (lookups.DebugControlFlow)
+		{
+			report.scopeTree = scope::ParseForDump(originalCode);
+		}
 		_RemoveDeadBranches(code);
 		_DetermineIfFunctionReturnsValue(code, lookups);
 

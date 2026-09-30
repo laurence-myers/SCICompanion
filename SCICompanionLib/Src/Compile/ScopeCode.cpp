@@ -427,7 +427,9 @@ namespace scope
 		return false;
 	}
 
-	// The "or" forms of this repository's compiler (plan section 3.2): a bt
+	// The dialects (plan section 3.2). First the threading of Sierra's
+	// optimiser: a bt or bnt to a branch of the same sense goes to the target
+	// of that branch. Then the "or" forms of this repository's compiler: a bt
 	// that goes just past a bnt goes to that bnt, and a bnt that goes just
 	// past a forward bt (not a break or continue) goes to that bt. Each is an
 	// equal target: the bnt lets a true value through, the bt a false one.
@@ -440,6 +442,19 @@ namespace scope
 				continue;
 			}
 			int target = Target(b);
+			for (int steps = 0; (steps < Size()) && (target != b) && IsFlowBranch(target) && (Op(target) == Op(b)); ++steps)
+			{
+				target = Target(target);
+			}
+			_insts[b].parseTarget = target;
+		}
+		for (int b = 0; b < Size(); ++b)
+		{
+			if (!IsConditional(b) || !IsFlowBranch(b))
+			{
+				continue;
+			}
+			int target = ParseTarget(b);
 			int before = target - 1;
 			if ((target <= b) || (before <= b) || !IsFlowBranch(before) || (Target(before) <= before))
 			{

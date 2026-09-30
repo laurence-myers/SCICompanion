@@ -98,6 +98,14 @@ int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
 // for a fixture whose recompiled bytecode has another shape.
 DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, uint16_t scriptNumber, bool roundTrip = true);
 
+// Compiles a fixture, decompiles it with the debug dumps of the control
+// flow, and compares the region trees of the scope parser with the expected
+// file "<name>.regions" in TestFiles\Decompile\SCI1.1: for each function, a
+// line "== <class>::<name>" (or "== <name>"), then its tree or the error of
+// the scope stage that failed. On a mismatch it writes the actual text to
+// SnapshotActuals\Regions next to the test module.
+void AssertRegionsMatchExpected(const std::string &fixtureName, uint16_t scriptNumber);
+
 // Every selector number and name of the current game, one per line.
 std::string DumpSelectorTable();
 
