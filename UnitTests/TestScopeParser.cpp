@@ -1149,6 +1149,83 @@ namespace UnitTests
 				"code 0007\n");
 		}
 
+		// This repository's compiler, (while x (if (or (and a b) c) (break))
+		// (foo)): the bt of the or goes past the bnt of the if (an "or" form),
+		// and the then-part is a break. The bt is the bt of an or, not a
+		// breakif, so the bnt of the and keeps the bt as its target.
+		TEST_METHOD(Dialect_AnOrWhoseThenPartBreaksKeepsItsForm)
+		{
+			AssertParses(R"(
+			head:
+				lap 0
+				bnt exit
+				lap 1
+				bnt c
+				lap 2
+				bt then
+			c:
+				lap 3
+				bnt endif
+			then:
+				jmp exit
+			endif:
+				+at 0
+				jmp head
+			exit:
+				ret
+			)",
+				"loop 0000 latch 000a\n"
+				"  body\n"
+				"    code 0000\n"
+				"    if 0001\n"
+				"      then\n"
+				"        code 0002\n"
+				"        if 0003\n"
+				"          then\n"
+				"            code 0004\n"
+				"        or 0005\n"
+				"          code 0006\n"
+				"        if 0007\n"
+				"          then\n"
+				"            break 1 0008\n"
+				"        code 0009\n"
+				"      else break 1\n"
+				"code 000b\n");
+		}
+
+		// A dead jmp back to the head after the loop, where a branch of the
+		// loop goes: the loop of the live latch parses, so the dead jmp is
+		// no latch (the while keeps its form).
+		TEST_METHOD(Loops_ADeadJmpAfterTheLoopIsNoLatch)
+		{
+			AssertParses(R"(
+			head:
+				lap 1
+				bnt exit
+				+at 0
+				jmp head
+			exit:
+				lap 2
+				bnt out
+				ret
+				jmp head
+			out:
+				ret
+			)",
+				"loop 0000 latch 0003\n"
+				"  body\n"
+				"    code 0000\n"
+				"    if 0001\n"
+				"      then\n"
+				"        code 0002\n"
+				"      else break 1\n"
+				"code 0004\n"
+				"if 0005\n"
+				"  then\n"
+				"    code 0006-0007\n"
+				"code 0008\n");
+		}
+
 		// The switch fixtures.
 		TEST_METHOD(Fixtures_Switches)
 		{

@@ -313,6 +313,22 @@ namespace UnitTests
 			Assert::IsFalse(model.HasDepthConflict(a.At("last")));
 		}
 
+		// The entry of the function is a path too: a loop head at the start
+		// that a back branch reaches with another depth has a conflict.
+		TEST_METHOD(Depths_TheEntryIsAPath)
+		{
+			ScopeAsm a(R"(
+			head:
+				lap 1
+				push
+				lap 2
+				bnt head
+				ret
+			)");
+			CodeModel model(a.code);
+			Assert::IsTrue(model.HasDepthConflict(a.At("head")));
+		}
+
 		// A toss with nothing on the stack.
 		TEST_METHOD(Depths_AnUnderflowIsRecorded)
 		{

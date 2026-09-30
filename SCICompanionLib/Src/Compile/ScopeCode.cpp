@@ -303,6 +303,11 @@ namespace scope
 				continue;
 			}
 			std::vector<int> depths;
+			if (i == 0)
+			{
+				// The entry of the function.
+				depths.push_back(0);
+			}
 			if ((i > 0) && IsLive(i - 1) && FallsThrough(i - 1))
 			{
 				depths.push_back(DepthAfter(i - 1));

@@ -299,8 +299,10 @@ namespace scope
 					// The "or" form of this repository's compiler moved the bnt
 					// onto the bt just before its target. When that bt is a
 					// breakif or contif, it is no or: the bnt keeps its target.
+					// A bt that the other "or" form moved (a bt past a bnt) is
+					// the bt of an or, also when its then-part breaks.
 					bool toExit = false;
-					if (_LoopLevel(_model.Target(target), Arrival::True, toExit) != 0)
+					if ((_model.ParseTarget(target) == _model.ThreadedTarget(target)) && (_LoopLevel(_model.Target(target), Arrival::True, toExit) != 0))
 					{
 						target = _model.ThreadedTarget(p);
 					}
@@ -560,14 +562,58 @@ namespace scope
 			int _work = 0;
 		};
 
-		LoopSet _InitialLoops(const CodeModel &model)
+		// The loops of the heads: each ends at its latch, which can be dead;
+		// with no dead latches, at its last live back branch when that is a
+		// jmp (the latch of a template; a bt or bnt back is a threaded test).
+		LoopSet _InitialLoops(const CodeModel &model, bool withDead)
 		{
 			LoopSet loops;
 			for (int head : model.LoopHeads())
 			{
-				loops.latches[head].push_back(model.Latch(head));
+				int latch = model.Latch(head);
+				if (!withDead)
+				{
+					int lastLive = NoIndex;
+					for (int back : model.BackBranches(head))
+					{
+						if (model.IsLive(back))
+						{
+							lastLive = back;
+						}
+					}
+					if ((lastLive != NoIndex) && (model.Op(lastLive) == Opcode::JMP))
+					{
+						latch = lastLive;
+					}
+				}
+				loops.latches[head].push_back(latch);
 			}
 			return loops;
+		}
+
+		std::string _Retry(const CodeModel &model, LoopSet &loops, int branch);
+
+		// A parse with these loops first, and the changes of _Retry after it.
+		std::unique_ptr<Region> _ParseWith(const CodeModel &model, LoopSet loops)
+		{
+			std::string tried;
+			for (;;)
+			{
+				try
+				{
+					Parser parser(model, loops);
+					return parser.Run();
+				}
+				catch (const BranchError &e)
+				{
+					std::string change = _Retry(model, loops, e.branch);
+					if (change.empty())
+					{
+						throw ScopeError(e.Stage(), e.Id(), e.Offset(), tried.empty() ? e.Detail() : (e.Detail() + " (after: " + tried + ")"));
+					}
+					tried += (tried.empty() ? "" : "; ") + fmt::format("{0:04x} {1}", e.Offset(), change);
+				}
+			}
 		}
 
 		// After a parse error at a branch, a change of the loops that can
@@ -626,25 +672,26 @@ namespace scope
 
 	std::unique_ptr<Region> Parse(const CodeModel &model)
 	{
-		LoopSet loops = _InitialLoops(model);
-		std::string tried;
-		for (;;)
+		// A dead latch ends a loop only when the loops of the live latches do
+		// not parse: dead code after a loop that jumps back into it keeps the
+		// loop of the live latch.
+		LoopSet live = _InitialLoops(model, false);
+		LoopSet withDead = _InitialLoops(model, true);
+		if (live.latches != withDead.latches)
 		{
 			try
 			{
-				Parser parser(model, loops);
-				return parser.Run();
+				return _ParseWith(model, live);
 			}
-			catch (const BranchError &e)
+			catch (const ScopeError &e)
 			{
-				std::string change = _Retry(model, loops, e.branch);
-				if (change.empty())
+				if (e.Stage() != "parse")
 				{
-					throw ScopeError(e.Stage(), e.Id(), e.Offset(), tried.empty() ? e.Detail() : (e.Detail() + " (after: " + tried + ")"));
+					throw;
 				}
-				tried += (tried.empty() ? "" : "; ") + fmt::format("{0:04x} {1}", e.Offset(), change);
 			}
 		}
+		return _ParseWith(model, withDead);
 	}
 
 	std::string ParseForDump(const std::list<scii> &code)
