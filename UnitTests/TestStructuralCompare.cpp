@@ -100,6 +100,8 @@ namespace UnitTests
             std::string marker = std::string("(") + AsmBlockMarker + ")";
             Assert::AreEqual("(procedure (p) " + marker + ")", ReplaceAsmBlocks("(procedure (p) (asm\n lofsa {a ) b}\n ; c )\n lofsa \"x(\\\"y\"\n ret\n))"));
             Assert::AreEqual(std::string("(asmFoo 1) \"(asm )\" ; (asm\n"), ReplaceAsmBlocks("(asmFoo 1) \"(asm )\" ; (asm\n"));
+            // A backslash escapes the close of a {} string and of a said string.
+            Assert::AreEqual("(p " + marker + " (q))", ReplaceAsmBlocks("(p (asm lofsa {x \\} ) y} said 'a\\')' ret) (q))"));
         }
 
         // The skeleton keeps the control statements and their nesting: the
@@ -155,7 +157,9 @@ namespace UnitTests
             folders.Write("actual", "Five.sc", actualScript("(= b 2)", "(while a (= b 1))", AsmBody));
             // The baseline: pNames had another text, pDiff was asm, pAsm was
             // source.
-            folders.Write("baseline", "Five.sc", actualScript("(= b 3)", AsmBody, "(if a (= b 1))"));
+            folders.Write("baseline", "Five.sc", actualScript("(= b 3)", AsmBody, "(if a (= b 1))") + Procedure("pGone", "(= a 3)"));
+            // A script that only the baseline has.
+            folders.Write("baseline", "rm010.sc", MakeScript(10, { { "pOld", 0 } }, Procedure("pOld", "(= a 1)")));
             // A script that only the actual side has.
             folders.Write("actual", "rm006.sc", MakeScript(6, { { "pNew", 0 } }, Procedure("pNew", "(= a 1)")));
 
@@ -177,7 +181,9 @@ namespace UnitTests
                 Expect{ "5:localproc_0100", StructureVerdict::Same, StructureChange::None },
                 Expect{ "5:localproc_0200", StructureVerdict::Same, StructureChange::None },
                 Expect{ "5:localproc_1", StructureVerdict::OnlyExpected, StructureChange::None },
-                Expect{ "6:pNew", StructureVerdict::OnlyActual, StructureChange::Added } })
+                Expect{ "6:pNew", StructureVerdict::OnlyActual, StructureChange::Added },
+                Expect{ "5:pGone", StructureVerdict::Neither, StructureChange::Removed },
+                Expect{ "10:pOld", StructureVerdict::Neither, StructureChange::Removed } })
             {
                 auto row = rows.find(expect.function);
                 Assert::IsTrue(row != rows.end(), Wide(std::string(expect.function) + " is missing\n" + text).c_str());
@@ -185,7 +191,8 @@ namespace UnitTests
                 Assert::AreEqual(std::string(StructureChangeName(expect.change)), std::string(StructureChangeName(row->second.change)), Wide(std::string(expect.function) + "\n" + text).c_str());
             }
             Assert::AreEqual(std::string("ASM"), std::string(StructureVerdictName(rows["5:pDiff"].baselineVerdict)), L"the baseline verdict: baseline asm, expected source");
-            Assert::AreEqual((size_t)13, result.rows.size(), Wide(text).c_str());
+            Assert::AreEqual(std::string("NEITHER"), std::string(StructureVerdictName(rows["6:pNew"].baselineVerdict)), L"the baseline verdict: no expected and no baseline function");
+            Assert::AreEqual((size_t)15, result.rows.size(), Wide(text).c_str());
         }
 
         // A file that does not parse, and a script number that two files of
@@ -208,5 +215,31 @@ namespace UnitTests
             Assert::AreEqual((uint16_t)9, result.rows[0].script, Wide(text).c_str());
             Assert::IsFalse(result.rows[0].hasBaseline, Wide(text).c_str());
         }
-    };
+
+        // A script of the expected side that does not parse: its functions
+        // get UNPARSED, and the change from the baseline is still there. A
+        // baseline script that does not parse gives UNPARSED as the baseline
+        // verdict and no change.
+        TEST_METHOD(CompareScriptFolders_AnUnparsedSideKeepsTheOtherCompares)
+        {
+            CompareFolders folders;
+            std::string broken = ";;; Sierra Script 1.0 - (do not remove this comment)\r\n(script# 12)\r\n(procedure (p)\r\n\t(= a\r\n";
+            folders.Write("expected", "a.sc", broken);
+            folders.Write("actual", "a.sc", MakeScript(12, { { "p", 0 } }, Procedure("p", "(= a 1)")));
+            folders.Write("baseline", "a.sc", MakeScript(12, { { "p", 0 } }, Procedure("p", AsmBody)));
+            folders.Write("expected", "b.sc", MakeScript(13, { { "p", 0 } }, Procedure("p", "(= a 1)")));
+            folders.Write("actual", "b.sc", MakeScript(13, { { "p", 0 } }, Procedure("p", "(= a 2)")));
+            folders.Write("baseline", "b.sc", std::string(broken).replace(broken.find("12"), 2, "13"));
+            FolderCompareResult result = CompareScriptFolders(folders.Folder("expected"), folders.Folder("actual"), folders.Folder("baseline"), sciVersion1_1);
+            std::string text = RowsText(result);
+            Assert::AreEqual((size_t)2, result.errors.size(), Wide(text).c_str());
+            std::map<std::string, FunctionCompareRow> rows = RowsOf(result);
+            Assert::AreEqual((size_t)2, rows.size(), Wide(text).c_str());
+            Assert::AreEqual(std::string("UNPARSED"), std::string(StructureVerdictName(rows["12:p"].verdict)), Wide(text).c_str());
+            Assert::AreEqual(std::string("UNPARSED"), std::string(StructureVerdictName(rows["12:p"].baselineVerdict)), Wide(text).c_str());
+            Assert::AreEqual(std::string("FIXED"), std::string(StructureChangeName(rows["12:p"].change)), Wide(text).c_str());
+            Assert::AreEqual(std::string("NAMES"), std::string(StructureVerdictName(rows["13:p"].verdict)), Wide(text).c_str());
+            Assert::AreEqual(std::string("UNPARSED"), std::string(StructureVerdictName(rows["13:p"].baselineVerdict)), Wide(text).c_str());
+            Assert::AreEqual(std::string(), std::string(StructureChangeName(rows["13:p"].change)), Wide(text).c_str());
+        }    };
 }

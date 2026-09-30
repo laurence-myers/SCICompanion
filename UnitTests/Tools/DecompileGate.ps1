@@ -7,7 +7,8 @@
     the script:
       1. decompiles the scripts of the sample (default) or every script
          (-Full) with scic, on a copy of the game: scic script decompile
-         --engine <Engine> --game-ini none --function-report;
+         --engine <engine> --game-ini none --function-report. The engine
+         is -Engine, else SCIC_DECOMPILE_ENGINE, else classic;
       2. decompiles the whole game with sluicebox's Snuffer, once: the
          output stays in the cache;
       3. compares the two with scic dev compare-structure, and with the
@@ -32,14 +33,21 @@
     (snuffer\<md5>\src, and status.txt). Delete it to start again.
 
     -Record writes the counts of the run into gate-baseline.json (-Baseline;
-    counts only, no text of a game). -Check compares the run with it, as
-    section 6 of the plan says, and exits with 1 when a rule fails:
+    counts only, no text of a game). A run of some games (-Include) replaces
+    the entries of those games and keeps the others. -Check compares the
+    run with it, as section 6 of the plan says, and exits with 1 when a rule
+    fails (a rule that the options do not allow is "not checked"):
       1. no function that was source and is now asm (REGRESSED; needs
          -BaselineRun);
       2. no game with more asm functions (with -RequireFewer: also fewer
          in total);
       3. no crash, internal error, timeout or exit code that scic does not
-         give;
+         give; no exit code other than 0 and 6 for a game that had 0 or 6 in
+         the baseline (a game that scic cannot open, as in the baseline,
+         passes); no source of scic that does not parse; no game with fewer
+         functions or scripts in its function report than in the baseline,
+         and no game of the baseline (that -Include and -Exclude choose)
+         that the run does not have;
       5. (with -Allowlist) each function that is source on both sides is
          SAME or NAMES against Snuffer, or its game, script and function
          are in the allowlist (tab-separated: md5, script, function,
@@ -61,8 +69,8 @@ param(
     [string[]]$Exclude = @(),
     [int]$Depth = 5,
     [string]$Snuffer = "",
-    [ValidateSet("classic", "scope", "auto")]
-    [string]$Engine = "classic",
+    [ValidateSet("", "classic", "scope", "auto")]
+    [string]$Engine = "",
     [switch]$Full,
     [string]$Sample = "",
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "scic-gate"),
@@ -86,6 +94,8 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot 'Corpus.Common.ps1')
 if (-not $Library) { throw "-Library is required." }
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+# The engine, as scic chooses it when no --engine is given.
+$engineName = if ($Engine) { $Engine } elseif ($env:SCIC_DECOMPILE_ENGINE) { $env:SCIC_DECOMPILE_ENGINE } else { "classic" }
 if (-not $Sample) { $Sample = Join-Path $repoRoot "UnitTests\Files\Corpus\gate-sample.json" }
 if (-not $Baseline) { $Baseline = Join-Path $repoRoot "UnitTests\Files\Corpus\gate-baseline.json" }
 if (-not $Scic) { $Scic = Join-Path $repoRoot "Release\scic.exe" }
@@ -183,7 +193,7 @@ $stamp = "{0}-{1}" -f (Get-Date -Format "yyyyMMdd-HHmmss"), $PID
 $run = Join-Path $workFull $stamp
 New-Item -ItemType Directory (Join-Path $run "games") -Force | Out-Null
 New-Item -ItemType Directory (Join-Path $cacheFull "games"), (Join-Path $cacheFull "snuffer") -Force | Out-Null
-Write-Host "scic: $Scic ($Engine, $(if ($Full) { 'every script' } else { 'the sample' }))"
+Write-Host "scic: $Scic ($engineName, $(if ($Full) { 'every script' } else { 'the sample' }))"
 Write-Host "Games: $($games.Count). Run folder: $run. Cache: $cacheFull"
 
 # One game: the work of a runspace. Returns the facts of the game.
@@ -213,7 +223,10 @@ $gameWork = {
         $log = @(Get-Content -LiteralPath (Join-Path $gameRun "decompile.err.txt"))
         $crashed = @($log | Where-Object { $_ -match '^scic: crash\b' }).Count -gt 0
         $internal = @($log | Where-Object { $_ -match '\[internal\]$' }).Count -gt 0
-        # The exit codes of scic for a result (plan section 8); 1 is an internal error.
+            # A bug: a code that scic does not give for a result (plan section
+        # 8; 1 is an internal error). Codes other than 0 (every script
+        # written) and 6 (a script failed) give no result: -Check compares
+        # them with the baseline.
         $result.bug = ($result.exit -eq "timeout") -or $crashed -or $internal -or (@("0", "2", "3", "5", "6", "7", "8", "9") -notcontains $result.exit)
         New-Item -ItemType Directory (Join-Path $gameRun "src") -Force | Out-Null
         if (Test-Path -LiteralPath $src) {
@@ -285,7 +298,7 @@ $gameWork = {
 }
 
 $settings = @{
-    Tools = $PSScriptRoot; Run = $run; Cache = $cacheFull; Scic = $Scic; DataDir = (Split-Path -Parent $Scic); Engine = $Engine
+    Tools = $PSScriptRoot; Run = $run; Cache = $cacheFull; Scic = $Scic; DataDir = (Split-Path -Parent $Scic); Engine = $engineName
     Snuffer = $(if ($Snuffer) { Get-FullPath $Snuffer "-Snuffer" } else { "" }); BaselineRun = $(if ($BaselineRun) { Get-FullPath $BaselineRun "-BaselineRun" } else { "" })
     Timeout = $TimeoutSeconds
 }
@@ -312,14 +325,15 @@ foreach ($job in $jobs) {
 $pool.Close()
 
 # The counts of each game, from its function report and its compare table.
-$verdictNames = @("SAME", "NAMES", "SHAPE", "DIFF", "ASM", "SOURCE", "BOTH-ASM", "ONLY-EXPECTED", "ONLY-ACTUAL")
+$verdictNames = @("SAME", "NAMES", "SHAPE", "DIFF", "ASM", "SOURCE", "BOTH-ASM", "ONLY-EXPECTED", "ONLY-ACTUAL", "NEITHER", "UNPARSED")
 $changeNames = @("FIXED", "CHANGED", "REGRESSED", "ADDED", "REMOVED")
 $rank = @{ "SAME" = 0; "NAMES" = 1; "SHAPE" = 2; "DIFF" = 3; "ASM" = 4 }
 $allowed = @{}
 if ($Allowlist) {
     foreach ($line in @(Get-Content -LiteralPath $Allowlist | Where-Object { $_ -and -not $_.StartsWith("#") })) {
         $fields = $line -split "`t"
-        if ($fields.Count -ge 3) { $allowed["$($fields[0])`t$($fields[1])`t$($fields[2])"] = $true }
+        if (($fields.Count -lt 4) -or -not $fields[3]) { throw "An allowlist line needs md5, script, function and category (tab-separated): $line" }
+        $allowed["$($fields[0])`t$($fields[1])`t$($fields[2])"] = $true
     }
 }
 $gameCounts = @()
@@ -355,9 +369,13 @@ foreach ($fact in ($facts | Sort-Object name)) {
         }
     }
     if ($fact.bug -or $fact.error) { $ruleFailures.Add("rule 3: $($fact.name): decompile exit $($fact.exit)$(if ($fact.error) { ", $($fact.error)" })") }
+    # A source of scic that does not parse is a defect of scic.
+    $compareErrors = @(Get-Content -LiteralPath (Join-Path $gameRun "compare.err.txt") -ErrorAction SilentlyContinue | Where-Object { $_ -match "^scic: warning: .* \((actual|baseline)\): " })
+    foreach ($line in $compareErrors) { $ruleFailures.Add("rule 3: $($fact.name): $($line.Substring(15))") }
     $gameCounts += [ordered]@{
         name = $fact.name; md5 = $fact.md5; exit = $fact.exit; snuffer = $fact.snuffer
         functions = $functions.Count
+        scripts = $decompiled.Count
         asm = @($functions | Where-Object output -eq "asm").Count
         corrupt = @($functions | Where-Object output -eq "corrupt").Count
         scopeOk = @($functions | Where-Object scope -eq "ok").Count
@@ -365,13 +383,13 @@ foreach ($fact in ($facts | Sort-Object name)) {
     }
 }
 $totals = [ordered]@{ games = $gameCounts.Count }
-foreach ($name in @("functions", "asm", "corrupt", "scopeOk")) { $totals[$name] = ($gameCounts | ForEach-Object { $_[$name] } | Measure-Object -Sum).Sum }
+foreach ($name in @("functions", "scripts", "asm", "corrupt", "scopeOk")) { $totals[$name] = ($gameCounts | ForEach-Object { $_[$name] } | Measure-Object -Sum).Sum }
 $totals.verdicts = [ordered]@{}
 foreach ($name in $verdictNames) { $totals.verdicts[$name] = ($gameCounts | ForEach-Object { $_.verdicts[$name] } | Measure-Object -Sum).Sum }
 $totals.changes = [ordered]@{}
 foreach ($name in $changeNames) { $totals.changes[$name] = ($gameCounts | ForEach-Object { $_.changes[$name] } | Measure-Object -Sum).Sum }
 $mode = if ($Full) { "full" } else { "sample" }
-$gate = [ordered]@{ engine = $Engine; mode = $mode; date = (Get-Date -Format "yyyy-MM-dd"); totals = $totals; games = $gameCounts }
+$gate = [ordered]@{ engine = $engineName; mode = $mode; date = (Get-Date -Format "yyyy-MM-dd"); totals = $totals; games = $gameCounts }
 Write-Utf8 (Join-Path $run "gate.json") (($gate | ConvertTo-Json -Depth 6) + "`r`n")
 Write-Utf8 (Join-Path $run "rows.tsv") (($allRows -join "`r`n") + "`r`n")
 
@@ -383,8 +401,26 @@ Write-Host "Run folder: $run"
 
 if ($Record) {
     # Counts only: no text of a game.
-    $recorded = [ordered]@{ engine = $Engine; mode = $mode; date = $gate.date; totals = $totals; games = @($gameCounts | ForEach-Object {
-        [ordered]@{ name = $_.name; md5 = $_.md5; functions = $_.functions; asm = $_.asm; corrupt = $_.corrupt; verdicts = $_.verdicts } }) }
+    $entries = @($gameCounts | ForEach-Object {
+        [ordered]@{ name = $_.name; md5 = $_.md5; exit = $_.exit; functions = $_.functions; scripts = $_.scripts; asm = $_.asm; corrupt = $_.corrupt; verdicts = $_.verdicts } })
+    $partial = (@($Include | Where-Object { $_ -ne "*" }).Count -gt 0)
+    if ($partial -and (Test-Path -LiteralPath $Baseline)) {
+        # A run of some games: the other games keep their entries.
+        $old = Get-Content -LiteralPath $Baseline -Raw | ConvertFrom-Json
+        if (($old.mode -ne $mode) -or ($old.engine -ne $engineName)) { throw "-Record of some games (-Include) needs a baseline of the same mode and engine: $($old.mode), $($old.engine)." }
+        $runMd5 = @($entries | ForEach-Object { $_.md5 })
+        foreach ($game in @($old.games | Where-Object { $runMd5 -notcontains $_.md5 })) {
+            $verdictsOf = [ordered]@{}
+            foreach ($name in $verdictNames) { $verdictsOf[$name] = [int]$game.verdicts.$name }
+            $entries += [ordered]@{ name = $game.name; md5 = $game.md5; exit = $game.exit; functions = [int]$game.functions; scripts = [int]$game.scripts; asm = [int]$game.asm; corrupt = [int]$game.corrupt; verdicts = $verdictsOf }
+        }
+        $entries = @($entries | Sort-Object { $_.name })
+    }
+    $recordedTotals = [ordered]@{ games = $entries.Count }
+    foreach ($name in @("functions", "scripts", "asm", "corrupt")) { $recordedTotals[$name] = ($entries | ForEach-Object { $_[$name] } | Measure-Object -Sum).Sum }
+    $recordedTotals.verdicts = [ordered]@{}
+    foreach ($name in $verdictNames) { $recordedTotals.verdicts[$name] = ($entries | ForEach-Object { $_.verdicts[$name] } | Measure-Object -Sum).Sum }
+    $recorded = [ordered]@{ engine = $engineName; mode = $mode; date = $gate.date; totals = $recordedTotals; games = $entries }
     New-Item -ItemType Directory (Split-Path -Parent $Baseline) -Force | Out-Null
     Write-Utf8 $Baseline (($recorded | ConvertTo-Json -Depth 6) + "`r`n")
     Write-Host "Recorded $Baseline."
@@ -394,15 +430,30 @@ if ($Check) {
     if (-not (Test-Path -LiteralPath $Baseline)) { throw "No baseline to check against: $Baseline" }
     $base = Get-Content -LiteralPath $Baseline -Raw | ConvertFrom-Json
     if ($base.mode -ne $mode) { throw "The baseline is of the $($base.mode) mode, and this run of the $mode mode." }
+    Write-Host "Baseline: the $($base.engine) engine ($($base.date)); this run: the $engineName engine."
     foreach ($game in $gameCounts) {
         $before = $base.games | Where-Object md5 -eq $game.md5 | Select-Object -First 1
-        if ($before -and ($game.asm -gt $before.asm)) { $ruleFailures.Add("rule 2: $($game.name) has $($game.asm) asm functions (baseline $($before.asm))") }
+        $result = @("0", "6") -contains $game.exit
+        if (-not $result -and (-not $before -or (@("0", "6") -contains "$($before.exit)"))) {
+            $ruleFailures.Add("rule 3: $($game.name): decompile exit $($game.exit), no result$(if ($before) { " (baseline $($before.exit))" })")
+        }
+        if (-not $before) { continue }
+        if ($game.asm -gt $before.asm) { $ruleFailures.Add("rule 2: $($game.name) has $($game.asm) asm functions (baseline $($before.asm))") }
+        if ($game.functions -lt $before.functions) { $ruleFailures.Add("rule 3: $($game.name) has $($game.functions) functions in its report (baseline $($before.functions))") }
+        if ($before.scripts -and ($game.scripts -lt $before.scripts)) { $ruleFailures.Add("rule 3: $($game.name) has $($game.scripts) scripts in its report (baseline $($before.scripts))") }
+    }
+    $runMd5 = @($gameCounts | ForEach-Object { $_.md5 })
+    foreach ($game in @($base.games | Where-Object { $runMd5 -notcontains $_.md5 })) {
+        $included = @($Include | Where-Object { $game.name -like $_ }).Count -gt 0
+        $excluded = @($Exclude | Where-Object { $game.name -like $_ }).Count -gt 0
+        if ($included -and -not $excluded) { $ruleFailures.Add("rule 3: $($game.name) is in the baseline and not in this run") }
     }
     # The total of the baseline over the games of this run (-Include can choose some).
-    $runMd5 = @($gameCounts | ForEach-Object { $_.md5 })
     $baseAsm = (@($base.games | Where-Object { $runMd5 -contains $_.md5 }) | Measure-Object -Property asm -Sum).Sum
     if ($RequireFewer -and ($totals.asm -ge $baseAsm)) { $ruleFailures.Add("rule 2: $($totals.asm) asm functions in total (baseline $baseAsm); the gate needs fewer") }
-    if (-not $BaselineRun) { Write-Host "Rules 1 and 6 need -BaselineRun: not checked." }
+    if (-not $RequireFewer) { Write-Host "Rule 2, fewer asm functions in total: not checked (give -RequireFewer)." }
+    if (-not $BaselineRun) { Write-Host "Rules 1 and 6: not checked (give -BaselineRun)." }
+    if (-not $Allowlist) { Write-Host "Rule 5: not checked (give -Allowlist)." }
     if ($ruleFailures.Count -gt 0) {
         Write-Host ""
         Write-Host "The gate fails:"

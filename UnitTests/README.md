@@ -251,13 +251,14 @@ unit tests in `TestAstPasses` pin it: golden style and SCI Companion style of
 one function compare equal, and a real difference is reported by name.
 
 The same compare gives a verdict for each function in `scic dev compare-structure`
-(a hidden command, `CompareScriptFolders`): the files pair by their`
+(a hidden command, `CompareScriptFolders`): the files pair by their
 `(script# N)` line, the local procedures pair in order (an alignment that
 allows a procedure that one side does not have), and an `(asm ...)` block is
 replaced by a marker before the parse. SAME: equal with the names; NAMES:
 equal with the names masked; SHAPE: the same control statements; DIFF: other
-control statements; ASM, SOURCE, BOTH-ASM when a side is asm; ONLY-EXPECTED
-and ONLY-ACTUAL. With `--baseline` (an earlier decompile), each function also
+control statements; ASM, SOURCE, BOTH-ASM when a side is asm; ONLY-EXPECTED,
+ONLY-ACTUAL and NEITHER (only the baseline has the function); UNPARSED (the
+expected script does not parse). With `--baseline` (an earlier decompile), each function also
 gets FIXED, CHANGED, REGRESSED, ADDED or REMOVED. `TestStructuralCompare`, and
 `TestCli::Dev_CompareStructure` for the command, cover it.
 `Tools\CompareDecompile.ps1` is now the exact text compare only, for

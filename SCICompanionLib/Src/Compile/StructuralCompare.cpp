@@ -771,12 +771,13 @@ const char *const AsmBlockMarker = "scicCompareAsmBlock";
 namespace
 {
     // The index after the string that starts at start (at its opening
-    // character), or the end of the text.
+    // character), or the end of the text. A backslash escapes the next
+    // character in each kind of string ("x\"y", {x\}y}, 'x\'y').
     size_t SkipString(const string &text, size_t start, char close)
     {
         for (size_t i = start + 1; i < text.size(); i++)
         {
-            if ((close == '"') && (text[i] == '\\'))
+            if (text[i] == '\\')
             {
                 i++;
                 continue;
@@ -980,7 +981,9 @@ const char *StructureVerdictName(StructureVerdict verdict)
     case StructureVerdict::Source: return "SOURCE";
     case StructureVerdict::BothAsm: return "BOTH-ASM";
     case StructureVerdict::OnlyExpected: return "ONLY-EXPECTED";
-    default: return "ONLY-ACTUAL";
+    case StructureVerdict::OnlyActual: return "ONLY-ACTUAL";
+    case StructureVerdict::Neither: return "NEITHER";
+    default: return "UNPARSED";
     }
 }
 
@@ -1017,7 +1020,8 @@ namespace
         map<uint16_t, string> fileOf;
         for (const auto &entry : entries)
         {
-            if (!entry.is_regular_file() || (_stricmp(entry.path().extension().string().c_str(), ".sc") != 0))
+            error_code fileError;
+            if (!entry.is_regular_file(fileError) || (_stricmp(entry.path().extension().string().c_str(), ".sc") != 0))
             {
                 continue;
             }
@@ -1034,7 +1038,7 @@ namespace
                 errors.push_back(name + " (" + side + "): no (script# N) line");
                 continue;
             }
-            unsigned long number = stoul(match[1].str());
+            unsigned long number = (match[1].length() <= 5) ? stoul(match[1].str()) : 0x10000;
             if (number > 0xffff)
             {
                 errors.push_back(name + " (" + side + "): the script number is too big");
@@ -1046,6 +1050,7 @@ namespace
             {
                 errors.push_back(fmt::format("{0} ({1}): script {2} is also in {3}", name, side, script, other->second));
                 failed.insert(script);
+                scripts.erase(script);
                 continue;
             }
             fileOf[script] = name;
@@ -1188,7 +1193,7 @@ namespace
     {
         if (!actual)
         {
-            return StructureVerdict::OnlyExpected;
+            return expected ? StructureVerdict::OnlyExpected : StructureVerdict::Neither;
         }
         if (!expected)
         {
@@ -1233,13 +1238,23 @@ FolderCompareResult CompareScriptFolders(const string &expectedDir, const string
     ScriptFunctions expected;
     ScriptFunctions actual;
     ScriptFunctions baseline;
-    set<uint16_t> failed;
-    ReadScriptFolder(expectedDir, "expected", version, expected, failed, result.errors);
-    ReadScriptFolder(actualDir, "actual", version, actual, failed, result.errors);
+    set<uint16_t> expectedFailed;
+    set<uint16_t> actualFailed;
+    set<uint16_t> baselineFailed;
+    ReadScriptFolder(expectedDir, "expected", version, expected, expectedFailed, result.errors);
+    ReadScriptFolder(actualDir, "actual", version, actual, actualFailed, result.errors);
     bool hasBaseline = !baselineDir.empty();
     if (hasBaseline)
     {
-        ReadScriptFolder(baselineDir, "baseline", version, baseline, failed, result.errors);
+        ReadScriptFolder(baselineDir, "baseline", version, baseline, baselineFailed, result.errors);
+    }
+    // The functions of a script that failed are not known.
+    for (auto side : { make_pair(&expected, &expectedFailed), make_pair(&actual, &actualFailed), make_pair(&baseline, &baselineFailed) })
+    {
+        for (uint16_t number : *side.second)
+        {
+            side.first->erase(number);
+        }
     }
 
     // The local procedures pair after the order of their bodies (the
@@ -1259,27 +1274,35 @@ FolderCompareResult CompareScriptFolders(const string &expectedDir, const string
     }
 
     set<uint16_t> numbers;
-    for (const ScriptFunctions *side : { &expected, &actual })
+    for (const ScriptFunctions *side : { &expected, &actual, &baseline })
     {
         for (const auto &script : *side)
         {
             numbers.insert(script.first);
         }
     }
+    for (const set<uint16_t> *side : { &expectedFailed, &baselineFailed })
+    {
+        numbers.insert(side->begin(), side->end());
+    }
     for (uint16_t number : numbers)
     {
-        if (failed.count(number))
+        // A script of scic that does not parse has no rows (it is an error).
+        if (actualFailed.count(number))
         {
             continue;
         }
+        bool expectedUnparsed = (expectedFailed.count(number) != 0);
+        bool baselineUnparsed = (baselineFailed.count(number) != 0);
         const vector<StructuralFunction> *expectedFunctions = FunctionsOf(expected, number);
         const vector<StructuralFunction> *actualFunctions = FunctionsOf(actual, number);
         const vector<StructuralFunction> *baselineFunctions = FunctionsOf(baseline, number);
         // The keys: those of the actual side, then those that only the
-        // expected side has. A key that a side has twice counts once.
+        // expected side has, then those that only the baseline has. A key
+        // that a side has twice counts once.
         vector<pair<string, string>> keys;
         set<string> seen;
-        for (const vector<StructuralFunction> *side : { actualFunctions, expectedFunctions })
+        for (const vector<StructuralFunction> *side : { actualFunctions, expectedFunctions, baselineFunctions })
         {
             if (side)
             {
@@ -1300,13 +1323,21 @@ FolderCompareResult CompareScriptFolders(const string &expectedDir, const string
             row.script = number;
             row.key = key.first;
             row.display = key.second;
-            row.verdict = VerdictOf(expectedFunction, actualFunction);
+            row.verdict = expectedUnparsed ? StructureVerdict::Unparsed : VerdictOf(expectedFunction, actualFunction);
             if (hasBaseline)
             {
                 const StructuralFunction *baselineFunction = FindFunction(baselineFunctions, key.first);
                 row.hasBaseline = true;
-                row.baselineVerdict = VerdictOf(expectedFunction, baselineFunction);
-                row.change = ChangeOf(baselineFunction, actualFunction);
+                if (baselineUnparsed)
+                {
+                    row.baselineVerdict = StructureVerdict::Unparsed;
+                    row.change = StructureChange::None;
+                }
+                else
+                {
+                    row.baselineVerdict = expectedUnparsed ? StructureVerdict::Unparsed : VerdictOf(expectedFunction, baselineFunction);
+                    row.change = ChangeOf(baselineFunction, actualFunction);
+                }
             }
             result.rows.push_back(row);
         }

@@ -118,9 +118,12 @@ enum class StructureVerdict
     BothAsm,
     OnlyExpected,   // the actual side has no such function (or script)
     OnlyActual,     // the expected side has no such function (or script)
+    Neither,        // neither side has the function (only the baseline has it)
+    Unparsed,       // the script of the expected side does not parse: no verdict
 };
 
-// SAME, NAMES, SHAPE, DIFF, ASM, SOURCE, BOTH-ASM, ONLY-EXPECTED, ONLY-ACTUAL.
+// SAME, NAMES, SHAPE, DIFF, ASM, SOURCE, BOTH-ASM, ONLY-EXPECTED, ONLY-ACTUAL,
+// NEITHER, UNPARSED.
 const char *StructureVerdictName(StructureVerdict verdict);
 
 // How the actual side of a function changed from the baseline side (an
@@ -155,12 +158,16 @@ struct FolderCompareResult
     std::vector<FunctionCompareRow> rows;   // by script number, then as the functions come
     // A file that could not be read or parsed, or a script number that two
     // files of a folder have: "<file> (expected|actual|baseline): <error>".
-    // The functions of such a script are not in rows.
+    // Such a script of the actual side has no rows; of the expected side,
+    // its rows have the verdict Unparsed; of the baseline side, the
+    // baseline verdict Unparsed and no change.
     std::vector<std::string> errors;
 };
 
 // Compares the .sc files of the actual folder with those of the expected
 // folder, and with those of the baseline folder when it is not empty. The
 // files are paired by the number of their (script# N) line, not by name. A
-// script that only one side has gives OnlyExpected or OnlyActual rows.
+// script that only one side has gives OnlyExpected or OnlyActual rows. The
+// rows are the functions of the three sides: a function that only the
+// baseline has is Neither, and Removed.
 FolderCompareResult CompareScriptFolders(const std::string &expectedDir, const std::string &actualDir, const std::string &baselineDir, SCIVersion version);

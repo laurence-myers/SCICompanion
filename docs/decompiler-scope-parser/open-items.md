@@ -43,3 +43,13 @@ Open items only: gaps, unfixed findings, questions. The plan is in
   function reports (343): a function of a script that the compare leaves
   out, or of a game with no Snuffer output, has no ASM verdict. Rule 2 of
   the gate uses the function reports.
+- `scic dev compare-structure "" <folder>` treats the empty folder as a
+  folder with no scripts (exit 6 with a warning), not as NotFound (3).
+- `TestCli::Dev_CompareStructure` checks the table's form, not a verdict
+  or a change value (TestStructuralCompare does), and not that no game
+  opens.
+- A Snuffer run that times out or fails writes its state into
+  `status.txt` and is never run again; a partial `src` of a failed run is
+  still the expected side. Delete `<cache>\snuffer\<md5>` to run it again.
+  A Snuffer failure does not fail the gate: the rows of that game become
+  ONLY-ACTUAL, which rule 6 does not rank.
