@@ -1224,7 +1224,8 @@ namespace
 	// Stages of the scope engine. An error has the message of the stage that
 	// failed, "[scope:<stage>:<id>]"; an exception that is not a ScopeError
 	// gives "[scope:internal] <text>". where (when it is not null) gets the
-	// place and the detail of a ScopeError, " at <offset>: <detail>".
+	// place and the detail of a ScopeError, " at <offset>: <detail>" (with
+	// no place: ": <detail>").
 	sci::Status _ScopeStages(const std::function<void()> &stages, std::string *where = nullptr)
 	{
 		sci::Status status = sci::Guard("scope", [&]() -> sci::Status
@@ -1237,7 +1238,7 @@ namespace
 			{
 				if (where)
 				{
-					*where = fmt::format(" at {0:04x}: {1}", e.Offset(), e.Detail());
+					*where = (e.Offset() >= 0) ? fmt::format(" at {0:04x}: {1}", e.Offset(), e.Detail()) : (": " + e.Detail());
 				}
 				throw;
 			}

@@ -349,6 +349,22 @@ namespace UnitTests
 			)", "acc-no-fact", 3);
 		}
 
+		// An indexed store to the stack can change any variable of its kind
+		// (temp[5 + temp0] is temp0 when temp0 is -5): it ends the fact of a
+		// variable of that kind.
+		TEST_METHOD(Values_AnIndexedStackStoreEndsTheFact)
+		{
+			AssertValuesFail(R"(
+				lat 0
+				pushi 3
+				ssti 5
+				push1
+				push
+				callk 5 2
+				ret
+			)", "acc-no-fact", 4);
+		}
+
 		// A store to another variable keeps the fact.
 		TEST_METHOD(Values_AStackStoreToAnotherVariableKeepsTheFact)
 		{
@@ -386,7 +402,7 @@ namespace UnitTests
 				lal 1
 				add
 				ret
-			)", "statement-in-expression", -1);
+			)", "statement-in-expression", 2);
 		}
 
 		// A sequence does not take a value that was pushed before it.

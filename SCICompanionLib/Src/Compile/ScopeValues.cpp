@@ -38,13 +38,14 @@ namespace scope
 		};
 
 		// A statement list: a node whose children are the statements of a
-		// sequence, with the stack depth after each one. A sequence does not
-		// take values that were pushed before it (its floor).
+		// sequence, with the stack depth after each one and the instruction
+		// of each one. A sequence does not take values that were pushed
+		// before it (its floor).
 		struct List
 		{
 			ConsumptionNode *node;
 			int floor;
-			std::vector<int> depths;
+			std::vector<std::pair<int, int>> items;
 		};
 
 		bool _IsVariableOp(Opcode op)
@@ -149,7 +150,7 @@ namespace scope
 				List list = { body.get(), 0, {} };
 				_list = &list;
 				_Region(root);
-				_EndList(list, NoIndex);
+				_EndList(list, _model.Size() - 1);
 				_CheckTree(*body);
 				return body;
 			}
@@ -210,11 +211,12 @@ namespace scope
 				}
 			}
 
-			void _Append(std::unique_ptr<ConsumptionNode> node, bool pending)
+			// A statement at the end of the list; index is its instruction.
+			void _Append(std::unique_ptr<ConsumptionNode> node, bool pending, int index)
 			{
 				ConsumptionNode *raw = node.get();
 				_list->node->AppendChild(std::move(node));
-				_list->depths.push_back(_Depth());
+				_list->items.push_back({ _Depth(), index });
 				if (pending)
 				{
 					_pending = raw;
@@ -225,7 +227,8 @@ namespace scope
 			// The node that gives the accumulator now, when the reader can
 			// take it: it is the last statement of the current list, and no
 			// value was pushed after it (the operand of an instruction comes
-			// after its stack operands).
+			// after its stack operands). The copy of a dup counts as a push:
+			// in the source, its value comes after the node.
 			bool _AccIsAvailable() const
 			{
 				if (!_pending || (_list->node->GetChildCount() == 0) || (_list->node->Child((int)_list->node->GetChildCount() - 1) != _pending))
@@ -239,7 +242,7 @@ namespace scope
 			{
 				size_t last = _list->node->GetChildCount() - 1;
 				std::unique_ptr<ConsumptionNode> node = _list->node->StealChild(last);
-				_list->depths.pop_back();
+				_list->items.pop_back();
 				_pending = nullptr;
 				return node;
 			}
@@ -355,9 +358,10 @@ namespace scope
 				case RegionKind::Loop:
 					_Fail("not-implemented", _FirstOf(region), "loop");
 				case RegionKind::Switch:
+				case RegionKind::Case:
 					_Fail("not-implemented", _FirstOf(region), "switch");
 				default:
-					_Fail("not-implemented", _FirstOf(region), "break or continue");
+					_Fail("not-implemented", _FirstOf(region), "break, continue, breakif or contif");
 				}
 			}
 
@@ -425,9 +429,9 @@ namespace scope
 					{
 						node->AppendChild(_CopyOfAcc(i));
 					}
-					// A return of a value that another reader took returns
-					// what the accumulator holds: a bare return. A copy would
-					// run the value a second time.
+					// A ret with no node of its own: the source can be (return)
+					// or a return of the value that the accumulator holds, which
+					// compile to the same code. It is a bare return.
 				}
 				_UpdateFacts(i);
 				if (consumption.cStackGenerate)
@@ -436,7 +440,7 @@ namespace scope
 				}
 				else
 				{
-					_Append(std::move(node), consumption.cAccGenerate != 0);
+					_Append(std::move(node), consumption.cAccGenerate != 0, i);
 				}
 			}
 
@@ -546,11 +550,11 @@ namespace scope
 				{
 					_Fail("stack-unbalanced", endIndex, fmt::format("depth {0}, expected {1}", _Depth(), list.floor));
 				}
-				for (int depth : list.depths)
+				for (const auto &item : list.items)
 				{
-					if (depth != list.floor)
+					if (item.first != list.floor)
 					{
-						_Fail("statement-in-expression", endIndex, fmt::format("depth {0}, expected {1}", depth, list.floor));
+						_Fail("statement-in-expression", item.second, fmt::format("depth {0}, expected {1}", item.first, list.floor));
 					}
 				}
 			}
@@ -646,7 +650,7 @@ namespace scope
 				// The join is a label. The value of the if is the accumulator
 				// at its end.
 				_ResetFacts();
-				_Append(std::move(ifNode), true);
+				_Append(std::move(ifNode), true, region.tests.front());
 			}
 
 			// A test that no path reaches has no value.
@@ -665,7 +669,7 @@ namespace scope
 				_Structural(region.branch);
 				std::unique_ptr<ConsumptionNode> second = _OperandValue(region.body.get(), region.branch, "or-statement");
 				_ResetFacts();
-				_Append(_Logical(ChunkType::Or, std::move(first), std::move(second)), true);
+				_Append(_Logical(ChunkType::Or, std::move(first), std::move(second)), true, region.branch);
 			}
 
 			// The invariants of the tree: each instruction is in the tree one

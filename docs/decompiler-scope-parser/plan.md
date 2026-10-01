@@ -76,7 +76,7 @@ uses `resJ`.
 
 | Pass | Rule |
 |---|---|
-| Live code | Reachability from the entry. A `jmp` that skips only dead code (or nothing) does nothing. A conditional branch whose target equals its fall-through does nothing. A `bt` or `bnt` right after one of the same kind to the same place (only `jmp`s that do nothing between them), which no other branch reaches, does nothing: the optimiser deleted the load of a repeated value (`(and a b b)`). Dead straight-line code stays as statements; a dead `jmp` is a layout hint only. |
+| Live code | Reachability from the entry. A `jmp` that skips only dead code (or nothing) does nothing. A conditional branch whose target equals its fall-through does nothing. A `bt` or `bnt` right after one of the same kind to the same place (only `jmp`s that do nothing between them), which no other branch reaches (nor those `jmp`s), does nothing: the optimiser deleted the load of a repeated value (`(and a b b)`). Dead straight-line code stays as statements; a dead `jmp` is a layout hint only. |
 | N-ary compare | `cmp; bnt O; pprev` is one value when `resF(O)` equals `resF` of the chain end. The `bnt` is marked inert in a side table. |
 | Loops | A branch to an address at or before it is a back branch. The loop of head S is [S, last back branch to S]. One loop per head. When the parse fails on a jump to the instruction after an earlier back `jmp` J, the loop is split at J and parsed again. |
 | Switches | A stack-depth profile in address order. Each `toss` ends one switch; its head is the push of the tossed slot. A case starts at each `dup` at the switch depth; its value is [dup+1, `eq?`) and is parsed as a sequence; its body ends at the trailing `jmp` to the `toss`. |

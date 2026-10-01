@@ -107,6 +107,58 @@ namespace UnitTests
 			Assert::IsTrue(model.IsNoOp(a.At("second")), L"a second bnt");
 			Assert::IsTrue(model.IsNoOp(a.At("secondBt")), L"a second bt");
 			Assert::IsTrue(model.IsNoOp(a.At("afterJmp")), L"after a jmp that does nothing");
+
+			// A branch to the jmp between them: control gets there with
+			// another value.
+			ScopeAsm toJmp(R"(
+				lal 2
+				bnt between
+				lal 0
+				bnt end
+			between:
+				jmp test
+			test:
+				bnt end
+				ldi 7
+				sal 1
+			end:
+				ret
+			)");
+			CodeModel toJmpModel(toJmp.code);
+			Assert::IsFalse(toJmpModel.IsNoOp(toJmp.At("test")), L"a branch goes to the jmp before it");
+
+			// The first test does nothing: the second one is the test.
+			ScopeAsm firstNoOp(R"(
+				lal 0
+				bnt between
+			between:
+				jmp test
+			test:
+				bnt end
+				ldi 7
+				sal 1
+			end:
+				ret
+			)");
+			CodeModel firstNoOpModel(firstNoOp.code);
+			Assert::IsTrue(firstNoOpModel.IsNoOp(1), L"a bnt to its fall-through");
+			Assert::IsFalse(firstNoOpModel.IsNoOp(firstNoOp.At("test")), L"the test after a bnt that does nothing");
+
+			// Three tests of one value: the second and the third do nothing.
+			ScopeAsm three(R"(
+				lal 0
+				bnt end
+				bnt end
+				bnt end
+				ldi 7
+				sal 1
+			end:
+				ret
+			)");
+			CodeModel threeModel(three.code);
+			Assert::IsFalse(threeModel.IsNoOp(1));
+			Assert::IsTrue(threeModel.IsNoOp(2));
+			Assert::IsTrue(threeModel.IsNoOp(3));
 			Assert::IsFalse(model.IsNoOp(a.At("label")), L"a jmp goes to it");
 			Assert::IsFalse(model.IsNoOp(a.At("otherKind")), L"after a bt");
 		}
