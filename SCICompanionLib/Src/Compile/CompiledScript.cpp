@@ -1519,7 +1519,7 @@ bool GlobalCompiledScriptLookups::Load(const GameFolderHelper &helper)
 {
 	bool selOk = _selectors.Load(helper);
 	bool kernelOk = _kernels.Load(helper);
-	bool classesOk = _classes.Load(helper);
+	bool classesOk = _classes.Load(helper, &_selectors);
 	// The class table changed, so the selector categories are stale.
 	_selectorCategoriesValid = false;
 	_propertySelectors.clear();
@@ -1549,7 +1549,7 @@ sci::Status GlobalCompiledScriptLookups::TryLoad(const GameFolderHelper &helper)
 			where.resource = DescribeResource(ResourceType::Vocab, 999);
 			return sci::Fail(sci::ErrorCode::Format, "the kernel table is not valid", where);
 		}
-		if (!_classes.Load(helper))
+		if (!_classes.Load(helper, &_selectors))
 		{
 			where.resource = DescribeResource(ResourceType::Vocab, 996);
 			return sci::Fail(sci::ErrorCode::Format, "the class table is not valid", where);

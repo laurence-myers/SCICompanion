@@ -728,6 +728,29 @@ void FixDuplicateObjectNames(CompiledScript &compiledScript, GlobalCompiledScrip
 	// their name property explicitly provided. An example is _MapInSection.sc in QFG2.
 	// Such objects get a unique name (name_a, name_b, ...), and the text keeps the original
 	// string as an explicit name property (CompiledObject::GetOriginalName).
+	// A class of the class table takes the name that the table gives it (two classes of
+	// the table can have one name: GlobalClassTable gives each one its own), and keeps
+	// it: the text of other scripts refers to the class by that name. Of two classes with
+	// one species (King's Quest V script 764 has two SaveIcon classes), the first is the
+	// class of the table.
+	GlobalClassTable &classTable = lookups.GetGlobalClassTable();
+	unordered_set<const CompiledObject*> tableClasses;
+	unordered_set<uint16_t> tableSpecies;
+	for (auto &object : compiledScript.GetObjects())
+	{
+		uint16_t scriptNumber;
+		if (!object->IsInstance() && classTable.GetSpeciesScriptNumber(object->GetSpecies(), scriptNumber) &&
+			(scriptNumber == compiledScript.GetScriptNumber()) && tableSpecies.insert(object->GetSpecies()).second)
+		{
+			tableClasses.insert(object.get());
+			std::string tableName = classTable.Lookup(object->GetSpecies());
+			if (!tableName.empty() && (tableName != object->GetName()))
+			{
+				object->AdjustName(tableName);
+			}
+		}
+	}
+
 	unordered_map<string, int> countOfNames;
 	unordered_map<string, char> suffixes;
 	for (const auto &object : compiledScript.GetObjects())
@@ -762,13 +785,17 @@ void FixDuplicateObjectNames(CompiledScript &compiledScript, GlobalCompiledScrip
 		// An instance with the name of a keyword of the syntax does not compile (Pepper
 		// script 350 and KQ7 have an instance named string).
 		bool keyword = object->IsInstance() && IsSCIKeyword(name);
-		if ((countOfNames[name] > 1) || shadowed || keyword)
+		// An instance with the name of a class of the table: the text would mean the class
+		// (Pepper script 110 has an Actor named twisty, the name of the game class).
+		uint16_t species;
+		bool className = object->IsInstance() && !object->IsPublic && classTable.LookupSpeciesCompiledName(name, species);
+		if ((tableClasses.count(object.get()) == 0) && ((countOfNames[name] > 1) || shadowed || keyword || className))
 		{
 			std::string newName;
 			do
 			{
 				newName = fmt::format("{0}_{1}", name, suffixes[name]++);
-			} while (countOfNames.count(newName) || propertyNames.count(newName));
+			} while (countOfNames.count(newName) || propertyNames.count(newName) || classTable.LookupSpeciesCompiledName(newName, species));
 			object->AdjustName(newName);
 		}
 	}

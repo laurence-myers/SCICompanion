@@ -116,7 +116,9 @@ class SpeciesTable;
 class GlobalClassTable : public ILookupNames
 {
 public:
-	bool Load(const GameFolderHelper &helper);
+	// selectors: a class that gets another name (two classes with one name) does not
+	// get the name of a selector.
+	bool Load(const GameFolderHelper &helper, const SelectorTable *selectors = nullptr);
 	const std::vector<uint16_t> &GetScriptNums() { return _scriptNums; } // REVIEW: remove this
 
 	bool LookupSpeciesCompiledName(const std::string &className, uint16_t &species);
@@ -132,6 +134,7 @@ public:
 
 private:
 	bool _Create(const SpeciesTable &speciesTable, const GameFolderHelper &helper);
+	void _GiveUniqueNames(const SelectorTable *selectors);
 
 	std::unordered_map<std::string, uint16_t> _nameToSpecies;
 	std::unordered_map<uint16_t, uint16_t> _speciesToScriptNumber;

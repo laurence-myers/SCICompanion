@@ -958,7 +958,7 @@ bool KernelTable::Load(const GameFolderHelper &helper)
 	return fRet;
 }
 
-bool GlobalClassTable::Load(const GameFolderHelper &helper)
+bool GlobalClassTable::Load(const GameFolderHelper &helper, const SelectorTable *selectors)
 {
 	SpeciesTable speciesTable;
 	// _Create needs only the script of each species, not its place in the
@@ -968,6 +968,7 @@ bool GlobalClassTable::Load(const GameFolderHelper &helper)
 	if (fRet)
 	{
 		fRet = _Create(speciesTable, helper);
+		_GiveUniqueNames(selectors);
 	}
 	if (!fRet)
 	{
@@ -1033,9 +1034,12 @@ bool GlobalClassTable::_Create(const SpeciesTable &speciesTable, const GameFolde
 						if (speciesTable.GetSpeciesLocation(species, statedScript, scriptPos) &&
 							(statedScript == scriptNumber))
 						{
-							_nameToSpecies[compiledObject->GetName()] = species;
-							_speciesToScriptNumber[species] = scriptNumber;
-							_speciesToCompiledObjectWeak[species] = compiledObject.get(); // Owned by _scripts
+							// Of two classes with one species, the first is the class of the species.
+							if (_speciesToCompiledObjectWeak.count(species) == 0)
+							{
+								_speciesToScriptNumber[species] = scriptNumber;
+								_speciesToCompiledObjectWeak[species] = compiledObject.get(); // Owned by _scripts
+							}
 						}
 						else
 						{
@@ -1049,6 +1053,47 @@ bool GlobalClassTable::_Create(const SpeciesTable &speciesTable, const GameFolde
 		}
 	}
 	return true; // We're done when we run out of stuff to read... it's not failure.
+}
+
+void GlobalClassTable::_GiveUniqueNames(const SelectorTable *selectors)
+{
+	// Two classes of the table can have one name (Hoyle 1 has a Deck class in scripts 1
+	// and 5). The text refers to a
+	// class by its name, so each class after the first (in species order) gets another
+	// name (name_a, name_b, ..., not the name of a selector); its name property keeps
+	// the original string.
+	std::vector<uint16_t> speciesList;
+	std::unordered_set<std::string> names;
+	for (const auto &speciesAndObject : _speciesToCompiledObjectWeak)
+	{
+		speciesList.push_back(speciesAndObject.first);
+		names.insert(speciesAndObject.second->GetName());
+	}
+	std::sort(speciesList.begin(), speciesList.end());
+	std::unordered_set<std::string> used;
+	for (uint16_t species : speciesList)
+	{
+		CompiledObject *object = _speciesToCompiledObjectWeak[species];
+		std::string name = object->GetName();
+		if (used.count(name) > 0)
+		{
+			char suffix = 'a';
+			std::string newName;
+			do
+			{
+				newName = fmt::format("{0}_{1}", name, suffix++);
+			} while ((names.count(newName) > 0) || (selectors && selectors->IsSelectorName(newName)));
+			names.insert(newName);
+			object->AdjustName(newName);
+			name = newName;
+		}
+		used.insert(name);
+	}
+	_nameToSpecies.clear();
+	for (uint16_t species : speciesList)
+	{
+		_nameToSpecies[_speciesToCompiledObjectWeak[species]->GetName()] = species;
+	}
 }
 
 bool GlobalClassTable::LookupSpeciesCompiledName(const std::string &className, uint16_t &species)

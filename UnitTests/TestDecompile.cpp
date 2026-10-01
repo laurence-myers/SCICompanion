@@ -465,6 +465,60 @@ namespace UnitTests
         // An instance with the name of a property, and a &rest before the last
         // argument.
         FIXTURE_TEST(ObjectNamedLikeAProperty, "O1_ObjectNamedLikeAProperty", 968)
+        // Classes of the class table with one name, and an instance named like a class.
+        FIXTURE_TEST(ClassNames, "O2_ClassNames", 973)
+
+        // Of two classes with one species (King's Quest V script 764 has two
+        // SaveIcon classes), the first is the class of the class table and
+        // keeps its name; the second gets another name, so the text has no two
+        // classes with one name.
+        TEST_METHOD(ClassNames_TwoClassesWithOneSpecies)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AddFixtureScript("O2_ClassNames");
+            std::string error;
+            Assert::IsTrue(CompileFixture(973, "O2_ClassNames", &error), Wide(error).c_str());
+            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            CompiledScript compiled(973);
+            Assert::IsTrue(compiled.Load(helper, helper.Version, 973), L"setup: the script loads");
+            std::vector<uint8_t> script = compiled.GetRawBytes();
+            std::unique_ptr<ResourceBlob> heapBlob = helper.MostRecentResource(ResourceType::Heap, 973, ResourceEnumFlags::None);
+            Assert::IsNotNull(heapBlob.get(), L"setup: the heap");
+            sci::istream heapRead = heapBlob->GetReadStream();
+            std::vector<uint8_t> heap(heapRead.GetDataSize());
+            heapRead.read_data(heap.data(), (uint32_t)heap.size());
+            // The species of the second class (-script-, after the magic word and
+            // four words) becomes that of the first.
+            std::vector<uint16_t> classPositions;
+            for (const auto &object : compiled.GetObjects())
+            {
+                if (!object->IsInstance())
+                {
+                    classPositions.push_back(object->GetPosInResource());
+                }
+            }
+            Assert::AreEqual((size_t)2, classPositions.size(), L"setup: two classes");
+            heap[classPositions[1] + 10] = heap[classPositions[0] + 10];
+            heap[classPositions[1] + 11] = heap[classPositions[0] + 11];
+
+            GlobalCompiledScriptLookups lookups;
+            lookups.Load(helper);
+            CompiledScript patched(973);
+            sci::istream scriptStream(script.data(), (uint32_t)script.size());
+            sci::istream heapStream(heap.data(), (uint32_t)heap.size());
+            Assert::IsTrue(patched.Load(helper, helper.Version, 973, scriptStream, &heapStream), L"the patched script loads");
+            Assert::AreEqual(patched.GetObjects()[0]->GetSpecies(), patched.GetObjects()[1]->GetSpecies(), L"setup: one species");
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
+            TestDecompilerResults results;
+            std::unique_ptr<sci::Script> decompiled = DecompileScript(config.get(), lookups, appState->GetResourceMap(), 973, patched, results);
+            std::stringstream text;
+            sci::SourceCodeWriter writer(text, decompiled.get());
+            decompiled->OutputSourceCode(writer);
+            std::string source = text.str();
+            size_t first = source.find("(class o2Same of");
+            Assert::IsTrue(first != std::string::npos, Wide(source).c_str());
+            Assert::IsTrue(source.find("(class o2Same of", first + 1) == std::string::npos, Wide(source).c_str());
+        }
         FIXTURE_TEST(RestBeforeTheLastArgument, "R2_RestBeforeTheLastArgument", 969)
         // Sends that the compiler warns about.
         FIXTURE_TEST(CompilerWarnings, "C5_CompilerWarnings", 970)

@@ -26,8 +26,6 @@ Open items only: gaps, unfixed findings, questions. The plan is in
   - 64: instances of a class whose script is not in the game (Slater and
     Charlie 947, the dialog editor): the text has no superclass for them,
     so their `super` does not compile.
-  - 10: two classes of the class table with one name (King's Quest V 764,
-    `SaveIcon`).
   - 38: other single causes: a global past the globals of `Main`, a
     property name that is no selector (`curPosnX`), corrupt code that reads
     as variables such as `global33792`.
@@ -45,9 +43,6 @@ distinct defects. Survey by cause:
   QfG2) is a class of `Event` with the properties of `Script`. EcoQuest 2
   959 `QSnd` and 960 `TimedCue`, The Colonel's Bequest dev 414
   `ToastClass`.
-- **An instance with the name of a class** (2 rows): Pepper 110 has an
-  `Actor` named `twisty`, the name of the game class; the text means the
-  class.
 - **A local procedure that only dead code calls** (3 rows): QfG3 460
   `localproc_1f5b`, Mixed-Up Fairy Tales 927 `localproc_0492`. The
   decompiler finds it as the target of a call in dead code after the end
