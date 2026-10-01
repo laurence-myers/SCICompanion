@@ -12,9 +12,6 @@ Open items only: gaps, unfixed findings, questions. The plan is in
   - an object with the name of a property: `(= controls controls)` in
     `Rm::init` of many SCI0 games stores the property, not the object
     `controls`; also `message` in Longbow `ok::select` (20);
-  - a class name that two species have: KQ5 (species 29 and 88, 26 and
-    27, 25 and 26), GK1 and PQ1 VGA: the text sends to the other class
-    (58);
   - a property at another index in a decompiled class: LSL1 VGA
     `GameControls::show` reads `okButton` (property 42) as property 44
     (1);
@@ -33,11 +30,6 @@ The full gate run (`-Full -Meaning`, 93 games) gives 1506 DIFF rows (1402
 of scope functions). Many games have two or three copies, so there are
 fewer distinct defects. Survey by cause:
 
-- **The compile gives other species** (1074 rows, 1010 in KQ5). The
-  compile takes the species of a class from the class table (vocab 996)
-  by script and position, and fails when a game has one species in two
-  scripts (KQ5: `Rev` in scripts 992 and 978). Also ECO1, PQ1, SQ4,
-  Freddy, LSL1 and LSL3.
 - **A class with no `of`** (104 rows): `Class_943_3` (Castle of Dr.
   Brain), `Class_86_0`, `Class_47_1`. Each property of the recompile is
   at index + 2; the original has no `name` slot (not checked in the

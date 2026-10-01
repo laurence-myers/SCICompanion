@@ -1224,6 +1224,9 @@ WORD CompileContext::EnsureSpeciesTableEntry(WORD wIndexInScript)
 {
 	// This won't work unless we have a valid script number
 	assert(_wScriptNumber != InvalidResourceNumber);
+	// The classes keep the species of the classes at their places in the
+	// compiled script.
+	_tables.Species().AlignScript(Helper(), _wScriptNumber);
 	return _tables.Species().MaybeAddSpeciesIndex(_wScriptNumber, wIndexInScript);
 }
 void CompileContext::LoadIncludes()
