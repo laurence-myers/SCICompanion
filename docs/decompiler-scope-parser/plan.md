@@ -172,6 +172,52 @@ consumer, the placeholders and the passes `_ResolveNeededAcc`,
 `_ResolveDUPs`, `_ResolvePPrevs`, `_FixupSwitches`,
 `_RestructureCaseHeaders`, `_LiftOutFromConditions`, `_RemoveTOSS`.
 
+### 3.6 Meaning check (step 12)
+
+The verify stage checks the region tree, not the text. The presentation
+forms and the AST passes come after it, and three defects of milestone 2
+gave text with another meaning (a dead `break` as a statement, dead code
+after an exit as statements, `(break 2)` printed as `(break)`). They were
+found only by reading the diffs against Snuffer. The bytecode oracle of
+the tests (`TestBytecodeOracle`) checks idempotence: a stable text with
+another meaning passes it.
+
+The meaning check compares a function of the original bytecode with the
+same function of the bytecode that the compiler makes from the decompiled
+text. The bytes differ (dialect, idioms, layout), so the check compares
+an effect graph of each:
+
+- **Effects:** a symbolic walk of the instructions, as in the value stage,
+  makes an expression tree for each value. A node of the graph is an
+  effect: a call (`call*`, `send`, `self`, `super`) with its target and
+  arguments, a store or an increment of a variable or a property (with its
+  index and value), a `ret` with its value (when the function returns a
+  value), and a test (a conditional branch on its value). The value of a
+  call is a reference to its node.
+- **Normal forms:** `jmp` chains and threading resolve away; `bt x` is
+  `bnt (not x)`; a deleted load, a `push` of the accumulator, `pushi`,
+  `dup` and `pprev` give the same expressions as the plain loads; a
+  `switch` gives compares of the switch value; `toss`, `link` and line
+  numbers are no effects. Variables compare by kind and index, properties
+  and selectors by number, objects by name, strings by text.
+- **Compare:** a bisimulation of the two graphs from the entry: matched
+  nodes are the same kind of effect with equal expressions, and their
+  successors match for each outcome of a test.
+- **Report:** SAME, DIFF (with the first place that differs), or
+  UNCOMPARED with a reason (the function is `asm`, the recompile failed, a
+  form the check does not read). DIFF of a function that the scope
+  engine gives is a defect.
+
+Where it runs:
+
+- Unit tests: each fixture of `TestDecompileScope` also compares the
+  meaning of the decompiled and recompiled function with the compiled
+  fixture. CI has no games, so this is the check that CI runs.
+- Corpus: a hidden `scic dev compare-meaning <original> <recompiled>`
+  command, and `DecompileGate.ps1 -Meaning`, which decompiles each game
+  copy with the scope engine, recompiles it (`scic script compile --all`)
+  and compares each function. Gate rule 7 (section 6).
+
 ## 4. Evidence
 
 Hand simulation on real functions that fail today (bytecode from
@@ -229,7 +275,7 @@ after. New files in `SCICompanionLib\Src\Compile\`, registered in
 
 | # | PR | Main changes | Exit |
 |---|---|---|---|
-| 12 | Gate fixes | Defects that the corpus gate shows | Gate rule passes (section 6). |
+| 12 | Meaning check and gate fixes | The meaning check (section 3.6): the effect graph, the compare, the fixture assertion in `TestDecompileScope`, `scic dev compare-meaning`, `DecompileGate.ps1 -Meaning`; then the defects that the gate and the meaning check show | Negative checks: the three defects of milestone 2 (a dead `break` as a statement, dead code after an exit, `(break 2)` printed as `(break)`), put back one at a time, each give DIFF in a fixture and on the corpus. Gate rules 1-7 pass on the sample (section 6). |
 | 13 | Default = `scope` | New snapshot baseline after review; README "What's new" | `RunTests.ps1 -All` passes. |
 | 14 | Remove the old stages | Delete `ControlFlowGraph.*`, `ControlFlowNode.*`, `TarjanAlgorithm.*`, `ControlFlowGraphViz.*` (about 4,500 lines); in `DecompilerNew.cpp` the backward walk and its passes (about 2,200 lines); in `DecompilerCore.cpp` `_RemoveDeadBranches`, `_ObtainInstructionSequence`, the shared-head retry | Build clean; `CheckFailureHandling.ps1 -Update`. |
 
@@ -252,6 +298,9 @@ From `DecompileGate.ps1 -Check`:
    entry with a category (allowlist outside the repo).
 6. A function whose text changes from Classic: the verify and invariant
    checks pass, and its verdict against Snuffer is not worse.
+7. (with `-Meaning`) No function that the scope engine gives as source
+   has DIFF in the meaning check (section 3.6); each UNCOMPARED has a
+   reason.
 
 **Owner decision (2026-10-01) on rule 6:** two kinds of change are not
 worse: names that change because a function that was `asm` is now source
@@ -267,6 +316,10 @@ has `(if c X (continue)) Y` (the bytecode is the same).
   shows each text change.
 - The text of functions that decompile today can change (86 template
   snapshots, the QfG4 compare). Gate rule 6 controls this.
+- The meaning check is new code: a fault in it can give SAME for a wrong
+  text. Its negative checks (the three known defects put back) show that
+  it finds what the Snuffer diffs found; its own normal forms have unit
+  tests on asm pairs that mean the same and that do not.
 - Forms that the bytecode cannot tell apart (`(repeat (while …))` or
   `if`/`continue`; `breakif` or `(if c (break))` in fan code) follow the
   Snuffer compare.
@@ -287,11 +340,12 @@ MSBuild.exe SCICompanion.sln -m -p:Configuration=Release -p:Platform=Win32 -p:Vc
 .\UnitTests\RunTests.ps1
 $env:SCIC_DECOMPILE_ENGINE = 'scope'; .\UnitTests\RunTests.ps1 -All
 .\UnitTests\Tools\DecompileGate.ps1 -Library F:\Games\Sierra,F:\games\gog -Exclude '_vgm*' -Snuffer E:\Code\Cs\sci-tools\Snuffer\bin\Release\net10.0\Snuffer.exe -Work I:\tmp\scic-gate -Engine classic
-.\UnitTests\Tools\DecompileGate.ps1 -Library F:\Games\Sierra,F:\games\gog -Exclude '_vgm*' -Snuffer E:\Code\Cs\sci-tools\Snuffer\bin\Release\net10.0\Snuffer.exe -Work I:\tmp\scic-gate -Engine scope -BaselineRun <run folder of the classic run> -Allowlist <allowlist> -RequireFewer -Check
+.\UnitTests\Tools\DecompileGate.ps1 -Library F:\Games\Sierra,F:\games\gog -Exclude '_vgm*' -Snuffer E:\Code\Cs\sci-tools\Snuffer\bin\Release\net10.0\Snuffer.exe -Work I:\tmp\scic-gate -Engine scope -BaselineRun <run folder of the classic run> -Allowlist <allowlist> -RequireFewer -Meaning -Check
 ```
 
 - Per step: the tests of the step table, with a negative check for each
   rule.
 - Steps 8, 11 and 12: the corpus gate on the sample, compared with
-  `gate-baseline.json`. Steps 8 and 13 also run it with `-Full`.
+  `gate-baseline.json`. Steps 8 and 13 also run it with `-Full`. From
+  step 12, the gate runs with `-Meaning` too.
 - The corpus folders are read-only: the scripts copy each game first.
