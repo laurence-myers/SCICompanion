@@ -336,16 +336,17 @@ WORD _GetImmediateFromCodeNode(ConsumptionNode &node, ConsumptionNode *pNodePrev
 				// Sierra's optimizer turns "pushi n" into "push" when the
 				// accumulator already holds n (a selector pushed right after
 				// a stray "ldi n", as at the start of a switch case). The push's
-				// child is then the value it pushes: a clone of that ldi.
+				// child is then the value it pushes: a clone of that ldi. A
+				// child that is not a number (a variable that holds a
+				// selector) gives no immediate.
 				if (node.GetChildCount() == 1)
 				{
 					bool childFound = false;
 					WORD childValue = _GetImmediateFromCodeNode(*node.Child(0), nullptr, false, &childFound);
-					if (childFound)
-					{
-						w = childValue;
-						break;
-					}
+					found = childFound;
+					w = childFound ? childValue : 0;
+					assert(!assertIfNone || found);
+					break;
 				}
 
 				// Otherwise the optimizer knew the accumulator held n: walk back

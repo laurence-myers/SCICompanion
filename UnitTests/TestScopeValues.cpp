@@ -784,6 +784,104 @@ namespace UnitTests
 			)", "acc-no-fact", 5);
 		}
 
+		// The push of the argument count of a call takes a store of the
+		// number that the accumulator holds (SQ1 VGA script 34,
+		// egoDropOratPart::changeState). The store is a statement before
+		// the call; the slot and the argument are copies of the number.
+		TEST_METHOD(Values_StoreInTheArgumentCountOfACall)
+		{
+			AssertValues(R"(
+				ldi 3
+				aTop 32
+				push
+				push
+				push1
+				pushi 61
+				callb 1 6
+				ret
+			)", "aTop(ldi) callb(push(ldi*) push(ldi*) push1 pushi) ret");
+			// A store to a variable.
+			AssertValues(R"(
+				ldi 2
+				sat 0
+				push
+				push
+				push1
+				callk 60 4
+				ret
+			)", "sat(ldi) callk(push(ldi*) push(sat*) push1) ret");
+		}
+
+		// The push of a selector of a send takes a store of the selector
+		// number (KQ6 floppy script 370, AzurePrint::init).
+		TEST_METHOD(Values_StoreInTheSelectorOfASend)
+		{
+			AssertValues(R"(
+				ldi 110
+				aTop 32
+				push
+				push0
+				super 166 4
+				ret
+			)", "aTop(ldi) super(push(ldi*) push0) ret");
+			// The argument count of the second message.
+			AssertValues(R"(
+				pushi 110
+				push0
+				pushi 111
+				ldi 1
+				aTop 32
+				push
+				push2
+				selfID
+				send 10
+				ret
+			)", "aTop(ldi) send(pushi push0 pushi push(ldi*) push2 selfID) ret");
+			// A selector that a variable holds, from a call (Hoyle Classic
+			// script 700, BridgeHand::bid): the push reads the variable back.
+			AssertValues(R"(
+				pushi 111
+				push0
+				lag 1
+				send 4
+				sat 6
+				push
+				push0
+				lat 5
+				send 4
+				ret
+			)", "sat(send(pushi push0 lag)) send(push(sat*) push0 lat) ret");
+		}
+
+		// Another effect in the slot of a call: a call result as the
+		// argument count.
+		TEST_METHOD(Values_AnEffectInTheArgumentCountOfACall)
+		{
+			AssertValuesFail(R"(
+				push0
+				callk 60 0
+				push
+				callb 1 0
+				ret
+			)", "slot-effect", 3);
+			// A store in a slot after an argument with an effect: in the
+			// text, the store would come before the call of the argument.
+			AssertValuesFail(R"(
+				pushi 110
+				push1
+				push0
+				callk 60 0
+				push
+				pushi 111
+				ldi 0
+				aTop 32
+				push
+				selfID
+				send 10
+				ret
+			)", "slot-effect", 10);
+		}
+
 		TEST_METHOD(Values_ADeadBreak)
 		{
 			AssertValues(R"(

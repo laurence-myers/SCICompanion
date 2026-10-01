@@ -41,13 +41,6 @@ The full gate run (`-Full -Meaning`, 93 games) gives 1506 DIFF rows (1402
 of scope functions). Many games have two or three copies, so there are
 fewer distinct defects. Survey by cause:
 
-- **Text with the wrong meaning: a lost store** (9 rows). The value stage
-  leaves out a store whose value later pushes reuse as the argument count
-  or an argument. Example: SQ1 VGA 34 `egoDropOratPart::changeState`
-  (`ldi 3; aTop cycles; push; push; ...; callb`) gives `(proc0_1 3 1 61)`
-  with no `(= cycles 3)`. Also ICEMAN 339 `battleShip1::changeState`,
-  Hoyle Classic 17 `Character::init`, KQ6 floppy 370 `AzurePrint::init`
-  and `AerielPrint::init`, and SQ5 243 and 245.
 - **The compile gives other species** (1074 rows, 1010 in KQ5). The
   compile takes the species of a class from the class table (vocab 996)
   by script and position, and fails when a game has one species in two
@@ -74,8 +67,7 @@ fewer distinct defects. Survey by cause:
   Dr. Brain 995); a test of a joined `or` or of the accumulator with no
   reload (21 rows, QfG3 23 `Teller::respond`, KQ4 49); `calle` against
   `call export` (8 rows, ICEMAN 3, Pepper 120, QfG1 15).
-- **Not explained** (2 rows): Hoyle Classic 17 `Character::startText`,
-  Island of Dr. Brain 268 `anElement::select`.
+- **Not explained** (1 row): Island of Dr. Brain 268 `anElement::select`.
 
 ## Refusals
 

@@ -622,15 +622,16 @@ namespace scope
 				{
 					node->AppendChild(std::move(operand));
 				}
+				std::unique_ptr<ConsumptionNode> accOperand;
 				if (consumption.cAccConsume)
 				{
 					if (accAvailable)
 					{
-						node->AppendChild(_TakePending());
+						accOperand = _TakePending();
 					}
 					else if (op != Opcode::RET)
 					{
-						node->AppendChild(_CopyOfAcc(i));
+						accOperand = _CopyOfAcc(i);
 					}
 					else if (_accDiffers)
 					{
@@ -641,6 +642,14 @@ namespace scope
 					// or a return of the value that the accumulator holds, which
 					// compile to the same code. It is a bare return.
 				}
+				if (_IsCallOp(op))
+				{
+					_HoistSlotStores(i, *node);
+				}
+				if (accOperand)
+				{
+					node->AppendChild(std::move(accOperand));
+				}
 				_UpdateFacts(i);
 				if (consumption.cStackGenerate)
 				{
@@ -649,6 +658,190 @@ namespace scope
 				else
 				{
 					_Append(std::move(node), consumption.cAccGenerate != 0, i);
+				}
+			}
+
+			// The node changes a variable or a property, or calls (not a copy,
+			// which reads the value back).
+			static bool _HasEffect(ConsumptionNode &node)
+			{
+				if (node._hasPos && !node._copy && (node.GetType() != ChunkType::ShortCircuitInstruction))
+				{
+					Opcode op = node.GetCode()->get_opcode();
+					bool variableChange = _IsVariableOp(op) && (_IsVOStoreOperation(op) || _IsVOIncremented(op) || _IsVODecremented(op));
+					bool propertyChange = (op == Opcode::ATOP) || (op == Opcode::STOP) || (op == Opcode::IPTOA) || (op == Opcode::DPTOA) ||
+						(op == Opcode::IPTOS) || (op == Opcode::DPTOS);
+					if (variableChange || propertyChange || _IsCallOp(op))
+					{
+						return true;
+					}
+				}
+				for (size_t k = 0; k < node.GetChildCount(); ++k)
+				{
+					if (_HasEffect(*node.Child((int)k)))
+					{
+						return true;
+					}
+				}
+				return false;
+			}
+
+			// A store of a value that can be read a second time, to a property
+			// or to a variable that is not indexed.
+			static bool _IsPlainStore(ConsumptionNode &node)
+			{
+				if (!node._hasPos || node._copy || (node.GetType() == ChunkType::ShortCircuitInstruction) || (node.GetChildCount() != 1) ||
+					!_IsPureValue(*node.Child(0)))
+				{
+					return false;
+				}
+				Opcode op = node.GetCode()->get_opcode();
+				return (op == Opcode::ATOP) || (_IsVariableOp(op) && _IsVOStoreOperation(op) && !_IsVOIndexed(op));
+			}
+
+			// A store of a value to a variable that is not indexed.
+			static bool _IsVariableStore(ConsumptionNode &node)
+			{
+				if (!node._hasPos || node._copy || (node.GetType() == ChunkType::ShortCircuitInstruction) || (node.GetChildCount() != 1))
+				{
+					return false;
+				}
+				Opcode op = node.GetCode()->get_opcode();
+				return _IsVariableOp(op) && _IsVOStoreOperation(op) && !_IsVOIndexed(op);
+			}
+
+			// The number that a slot pushes: pushi n, push0, push1, push2, or a
+			// push of ldi n or of a plain store of ldi n.
+			static bool _SlotNumber(ConsumptionNode &slot, int &number)
+			{
+				if (!slot._hasPos)
+				{
+					return false;
+				}
+				ConsumptionNode *node = &slot;
+				Opcode op = node->GetCode()->get_opcode();
+				if ((op == Opcode::PUSH) && (node->GetChildCount() == 1))
+				{
+					node = node->Child(0);
+					if (_IsPlainStore(*node))
+					{
+						node = node->Child(0);
+					}
+					if (!node->_hasPos || (node->GetCode()->get_opcode() != Opcode::LDI))
+					{
+						return false;
+					}
+					op = Opcode::LDI;
+				}
+				switch (op)
+				{
+				case Opcode::LDI:
+				case Opcode::PUSHI:
+					number = node->GetCode()->get_first_operand();
+					return true;
+				case Opcode::PUSH0:
+					number = 0;
+					return true;
+				case Opcode::PUSH1:
+					number = 1;
+					return true;
+				case Opcode::PUSH2:
+					number = 2;
+					return true;
+				default:
+					return false;
+				}
+			}
+
+			// The argument count of a call, and the selector and the argument
+			// count of each message of a send, are not in the text. The
+			// optimiser turns a push of a number that the accumulator holds
+			// into "push", so the push of such a slot can take a store whose
+			// value is that number (SQ1 VGA script 34: "ldi 3; aTop cycles;
+			// push; push; push1; pushi 61; callb"; KQ6 script 370: "ldi 110;
+			// aTop y; push; push0; super"). The store is a statement before the
+			// call, and the push takes a copy of the value. A selector can
+			// also be the value of a variable that the store sets (Hoyle
+			// Classic script 700, BridgeHand::bid: "sat temp6; push; push0;
+			// lat temp5; send"): the push reads the variable back. The
+			// operands before the slot must have no effect: in the text, the
+			// store comes before them. Another effect in a slot is a failure.
+			void _HoistSlotStores(int reader, ConsumptionNode &call)
+			{
+				Opcode op = _model.Op(reader);
+				std::vector<ConsumptionNode *> slots;
+				size_t count = call.GetChildCount();
+				if ((op == Opcode::SEND) || (op == Opcode::SELF) || (op == Opcode::SUPER))
+				{
+					// Each message: the selector, the argument count, the
+					// arguments, and maybe a &rest.
+					size_t k = 0;
+					while (k < count)
+					{
+						ConsumptionNode *selector = call.Child((int)k);
+						if (selector->_hasPos && (selector->GetCode()->get_opcode() == Opcode::REST))
+						{
+							++k;
+							continue;
+						}
+						if (k + 1 >= count)
+						{
+							break;
+						}
+						ConsumptionNode *argc = call.Child((int)k + 1);
+						slots.push_back(selector);
+						slots.push_back(argc);
+						int number = 0;
+						if (!_SlotNumber(*argc, number))
+						{
+							break;
+						}
+						k += 2 + number;
+					}
+				}
+				else if (count > 0)
+				{
+					slots.push_back(call.Child(0));
+				}
+				for (ConsumptionNode *slot : slots)
+				{
+					if (!slot->_hasPos || (slot->GetCode()->get_opcode() != Opcode::PUSH) || (slot->GetChildCount() != 1))
+					{
+						continue;
+					}
+					ConsumptionNode *value = slot->Child(0);
+					bool plain = _IsPlainStore(*value);
+					if (plain || _IsVariableStore(*value))
+					{
+						for (size_t k = 0; call.Child((int)k) != slot; ++k)
+						{
+							if (_HasEffect(*call.Child((int)k)))
+							{
+								_Fail("slot-effect", reader, "an effect before a store in a slot");
+							}
+						}
+						std::unique_ptr<ConsumptionNode> store = slot->StealChild(0);
+						store->_hoisted = true;
+						if (plain)
+						{
+							slot->AppendChild(_DeepCopy(*store->Child(0)));
+						}
+						else
+						{
+							// The value is read back from the variable.
+							std::unique_ptr<ConsumptionNode> copy = std::make_unique<ConsumptionNode>();
+							copy->SetType(ChunkType::ShortCircuitInstruction);
+							copy->SetPos(store->GetCode());
+							copy->_copy = true;
+							slot->AppendChild(std::move(copy));
+						}
+						int index = _indexOf.at(&*store->GetCode());
+						_Append(std::move(store), false, index);
+					}
+					else if (_HasEffect(*value))
+					{
+						_Fail("slot-effect", reader);
+					}
 				}
 			}
 
@@ -1255,7 +1448,7 @@ namespace scope
 				for (size_t c = 0; c < node.GetChildCount(); ++c)
 				{
 					std::pair<int, int> child = _CheckOrder(*node.Child((int)c), indexOf, inTree);
-					if (child.first == -1)
+					if ((child.first == -1) || node.Child((int)c)->_hoisted)
 					{
 						continue;
 					}

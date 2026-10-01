@@ -439,6 +439,8 @@ namespace UnitTests
         FIXTURE_TEST(ReuseAcrossBranch, "V1_ReuseAcrossBranch", 953)
         // The operands of a mul that the optimiser swapped.
         FIXTURE_TEST(SwappedOperands, "V2_SwappedOperands", 965)
+        // A store that the push of an argument count or a selector takes.
+        FIXTURE_TEST(StoreInSlot, "V3_StoreInSlot", 966)
 
         // Switches: a switch as a value, a case value with a branch, an
         // empty last case (also in a loop), and cases that all return.
