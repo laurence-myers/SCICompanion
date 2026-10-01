@@ -80,16 +80,19 @@
       5. (with -Allowlist) each function that is source on both sides is
          SAME or NAMES against Snuffer, or its game, script and function
          are in the allowlist (tab-separated: md5, script, function,
-         category);
+         category). The category chooses the rules of an entry: one that
+         starts with "meaning:" is for rule 7, one that starts with
+         "rule 6:" for rules 5 and 6, another for rule 5;
       6. (needs -BaselineRun) a function whose text changed has a verdict
          against Snuffer that is not worse than before (SAME < NAMES <
          SHAPE < DIFF < ASM), or its game, script and function are in the
          allowlist (a kind of change that the owner accepted);
       7. (needs -Meaning) no function that the scope engine gives as source
-         has DIFF in the meaning check, unless its game, script and function
-         are in the allowlist; each UNCOMPARED has a reason. A game whose
-         meaning check failed fails the rule (a game that scic does not
-         decompile has no check: rule 3).
+         has DIFF in the meaning check, and the text adds no function,
+         unless its game, script and function are in the allowlist; each
+         UNCOMPARED has a reason. A game whose meaning check failed (also a
+         script that compare-meaning could not read) fails the rule; a game
+         that scic cannot open (decompile exit 2 or 3) has no check.
     Rule 4 (the unit tests with SCIC_DECOMPILE_ENGINE) is not here.
 
     Usage:
@@ -360,7 +363,8 @@ $gameWork = {
                 $check = @("dev", "compare-meaning", $copy, $bin, "--out", (Join-Path $gameRun "meaning.tsv"), "--data-dir", $settings.DataDir)
                 if ($scripts -notcontains "--all") { $check += @("--scripts", ($scripts -join ",")) }
                 $code = Invoke-Logged $settings.Scic $check (Join-Path $meaningRun "compare.out.txt") (Join-Path $meaningRun "compare.err.txt") $settings.Timeout
-                if (@("0", "6") -notcontains $code) { throw "compare-meaning: exit $code" }
+                if ($code -eq "6") { throw "compare-meaning: a script could not be read (exit 6)" }
+                if ($code -ne "0") { throw "compare-meaning: exit $code" }
                 $result.meaning = "ok"
             }
             catch {
@@ -415,7 +419,9 @@ if ($Allowlist) {
     foreach ($line in @(Get-Content -LiteralPath $Allowlist | Where-Object { $_ -and -not $_.StartsWith("#") })) {
         $fields = $line -split "`t"
         if (($fields.Count -lt 4) -or -not $fields[3]) { throw "An allowlist line needs md5, script, function and category (tab-separated): $line" }
-        $allowed["$($fields[0])`t$($fields[1])`t$($fields[2])"] = $true
+        # The category chooses the rule: "meaning:" (rule 7), "rule 6:" (rules 5 and 6), another (rule 5).
+        $rule = if ($fields[3].StartsWith("meaning:")) { "7" } elseif ($fields[3].StartsWith("rule 6:")) { "6" } else { "5" }
+        $allowed["$rule`t$($fields[0])`t$($fields[1])`t$($fields[2])"] = $true
     }
 }
 $gameCounts = @()
@@ -457,10 +463,11 @@ foreach ($fact in ($facts | Sort-Object name)) {
         $allRows.Add("$($fact.name)`t$($fact.md5)`t$($row.script)`t$($row.key)`t$($row.function)`t$($row.verdict)`t$($row.baseline)`t$($row.change)")
         if ($row.change -eq "REGRESSED") { $ruleFailures.Add("rule 1: $($fact.name) script $($row.script) $($row.function) was source and is now asm") }
         if (($row.change -eq "CHANGED") -and $rank.ContainsKey($row.verdict) -and $rank.ContainsKey($row.baseline) -and ($rank[$row.verdict] -gt $rank[$row.baseline]) -and
-            -not $allowed.ContainsKey("$($fact.md5)`t$($row.script)`t$($row.function)")) {
+            -not $allowed.ContainsKey("6`t$($fact.md5)`t$($row.script)`t$($row.function)")) {
             $ruleFailures.Add("rule 6: $($fact.name) script $($row.script) $($row.function) changed from $($row.baseline) to $($row.verdict)")
         }
-        if ($Allowlist -and (@("SHAPE", "DIFF") -contains $row.verdict) -and -not $allowed.ContainsKey("$($fact.md5)`t$($row.script)`t$($row.function)")) {
+        if ($Allowlist -and (@("SHAPE", "DIFF") -contains $row.verdict) -and -not $allowed.ContainsKey("5`t$($fact.md5)`t$($row.script)`t$($row.function)") -and
+            -not $allowed.ContainsKey("6`t$($fact.md5)`t$($row.script)`t$($row.function)")) {
             $ruleFailures.Add("rule 5: $($fact.name) script $($row.script) $($row.function) is $($row.verdict) and not in the allowlist")
         }
     }
@@ -474,14 +481,19 @@ foreach ($fact in ($facts | Sort-Object name)) {
             foreach ($f in @(Get-Content -LiteralPath $meaningReport | ConvertFrom-Csv -Delimiter "`t")) { $outputOf["$($f.script)`t$($f.offset)"] = $f.output }
         }
         $meaningTable = Join-Path $gameRun "meaning.tsv"
-        if (($fact.meaning -ne "ok") -and ($fact.meaning -notlike "skipped*")) { $ruleFailures.Add("rule 7: $($fact.name): the meaning check did not run: $($fact.meaning)") }
+        # A game that scic cannot open (exit 2 or 3) has no check; another exit
+        # with no result fails the rule.
+        $noGame = ($fact.meaning -like "skipped*") -and (@("2", "3") -contains $fact.exit)
+        if (($fact.meaning -ne "ok") -and -not $noGame) { $ruleFailures.Add("rule 7: $($fact.name): the meaning check did not run: $($fact.meaning)") }
         elseif (Test-Path -LiteralPath $meaningTable) {
             foreach ($row in @(Get-Content -LiteralPath $meaningTable | ConvertFrom-Csv -Delimiter "`t")) {
                 $output = $outputOf["$($row.script)`t$($row.offset)"]
                 $group = if (@("scope", "classic") -contains $output) { $output } else { "other" }
                 if ($meaningTotals[$group].Contains($row.verdict)) { $meaningTotals[$group][$row.verdict]++ }
                 $meaningRows.Add("$($fact.name)`t$($fact.md5)`t$($row.script)`t$($row.key)`t$($row.function)`t$($row.offset)`t$output`t$($row.verdict)`t$($row.detail)")
-                if (($row.verdict -eq "DIFF") -and ($output -eq "scope") -and -not $allowed.ContainsKey("$($fact.md5)`t$($row.script)`t$($row.function)")) {
+                # A function that the text adds has no output: it is a DIFF of the text.
+                if (($row.verdict -eq "DIFF") -and (($output -eq "scope") -or ($row.detail -eq "no-original-function")) -and
+                    -not $allowed.ContainsKey("7`t$($fact.md5)`t$($row.script)`t$($row.function)")) {
                     $ruleFailures.Add("rule 7: $($fact.name) script $($row.script) $($row.function) does not mean the same: $($row.detail)")
                 }
                 if (($row.verdict -eq "UNCOMPARED") -and -not $row.detail) {

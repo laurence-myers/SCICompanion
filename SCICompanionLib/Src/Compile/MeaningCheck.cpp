@@ -59,6 +59,14 @@ namespace meaning
 			char varKind = 0;
 			uint16_t varIndex = 0;
 			bool indexed = false;
+			// A value that an effect made: a call result, or the value of a
+			// variable before a store or a call. tagPair is the pair of the
+			// effects, tagAge the occurrences of the pair since then (a value
+			// of an earlier turn of a loop is another value); tagBase is the
+			// head with no tag. -1: no tag.
+			int tagPair = -1;
+			int tagAge = 0;
+			std::string tagBase;
 			std::string head;
 			std::vector<ExprPtr> args;
 			std::string text;
@@ -275,6 +283,60 @@ namespace meaning
 			return expr;
 		}
 
+		// A value that the effects of the pair made (Expr::tagPair), with the
+		// operands args.
+		ExprPtr Tagged(const std::string &base, int pair, int age = 0, std::vector<ExprPtr> args = {})
+		{
+			std::string head = fmt::format("{0}{1}", base, pair);
+			if (age > 0)
+			{
+				head += fmt::format("^{0}", age);
+			}
+			std::shared_ptr<Expr> expr = _New(head, std::move(args));
+			expr->tagPair = pair;
+			expr->tagAge = age;
+			expr->tagBase = base;
+			return expr;
+		}
+
+		// The values of the pair that a state keeps when the pair occurs
+		// again: each is one turn older.
+		const int MaxTagAge = 2;
+		ExprPtr Age(const ExprPtr &expr, int pair)
+		{
+			if (!expr)
+			{
+				return expr;
+			}
+			std::vector<ExprPtr> args;
+			bool argsChanged = false;
+			for (const ExprPtr &arg : expr->args)
+			{
+				args.push_back(Age(arg, pair));
+				argsChanged = argsChanged || (args.back() != arg);
+			}
+			if (expr->tagPair == pair)
+			{
+				if (expr->tagAge >= MaxTagAge)
+				{
+					throw Unreadable{ "value-of-an-old-turn" };
+				}
+				return Tagged(expr->tagBase, pair, expr->tagAge + 1, std::move(args));
+			}
+			if (!argsChanged)
+			{
+				return expr;
+			}
+			std::shared_ptr<Expr> copy = _New(expr->head, std::move(args));
+			copy->varKind = expr->varKind;
+			copy->varIndex = expr->varIndex;
+			copy->indexed = expr->indexed;
+			copy->tagPair = expr->tagPair;
+			copy->tagAge = expr->tagAge;
+			copy->tagBase = expr->tagBase;
+			return copy;
+		}
+
 		// The variables that a store or a call can change.
 		using VarPredicate = std::function<bool(char kind, uint16_t index, bool indexed)>;
 
@@ -295,7 +357,7 @@ namespace meaning
 			}
 			if (expr->varKind && changed(expr->varKind, expr->varIndex, expr->indexed))
 			{
-				return Make(fmt::format("{0}@{1}", expr->head, pair), std::move(args));
+				return Tagged(expr->head + "@", pair, 0, std::move(args));
 			}
 			if (!argsChanged)
 			{
@@ -305,6 +367,9 @@ namespace meaning
 			copy->varKind = expr->varKind;
 			copy->varIndex = expr->varIndex;
 			copy->indexed = expr->indexed;
+			copy->tagPair = expr->tagPair;
+			copy->tagAge = expr->tagAge;
+			copy->tagBase = expr->tagBase;
 			return copy;
 		}
 
@@ -352,11 +417,31 @@ namespace meaning
 				return key;
 			}
 
+			// Each value of the pair is one turn older (meaning::Age).
+			void Age(int pair)
+			{
+				acc = meaning::Age(acc, pair);
+				prev = meaning::Age(prev, pair);
+				rest = meaning::Age(rest, pair);
+				for (ExprPtr &value : stack)
+				{
+					value = meaning::Age(value, pair);
+				}
+				for (auto &binding : bindings)
+				{
+					binding.second.value = meaning::Age(binding.second.value, pair);
+				}
+			}
+
 			void Freeze(const VarPredicate &changed, int pair)
 			{
 				acc = meaning::Freeze(acc, changed, pair);
 				prev = meaning::Freeze(prev, changed, pair);
-				rest = meaning::Freeze(rest, changed, pair);
+				// The extra arguments of a rest are the parameters when it ran.
+				if (rest && (rest->tagPair < 0) && changed('p', 0, true))
+				{
+					rest = Tagged(rest->head + "@", pair);
+				}
 				for (ExprPtr &value : stack)
 				{
 					value = meaning::Freeze(value, changed, pair);
@@ -514,6 +599,7 @@ namespace meaning
 			State Apply(const State &before, const Effect &effect, int pair) const
 			{
 				State state = before;
+				state.Age(pair);
 				const Instruction &inst = _function.code[state.pc];
 				if (effect.kind == EffectKind::Call)
 				{
@@ -522,8 +608,13 @@ namespace meaning
 					state.stack.resize(state.stack.size() - words);
 					state.rest = nullptr;
 					state.Freeze(_CallChanges(), pair);
-					state.acc = Make(fmt::format("#{0}", pair));
+					state.acc = Tagged("#", pair);
 					state.accTruth = 0;
+					// The compares of the called code set the previous value.
+					if (state.prev)
+					{
+						state.prev = Tagged("prev#", pair);
+					}
 				}
 				else
 				{
@@ -1124,8 +1215,16 @@ namespace meaning
 					reads = _returnsValue;
 					return;
 				case Opcode::SEND:
+					// A send with no message (_IsEmptySend) leaves the
+					// accumulator.
 					reads = true;
-					writes = true;
+					writes = (inst.operands[0] != 0);
+					return;
+				case Opcode::SELF:
+					writes = (inst.operands[0] != 0);
+					return;
+				case Opcode::SUPER:
+					writes = (inst.operands[1] != 0);
 					return;
 				case Opcode::LEA:
 					reads = ((inst.operands[0] >> 1) & LEA_ACC_AS_INDEX_MOD) != 0;
@@ -1138,8 +1237,6 @@ namespace meaning
 				case Opcode::PTOA:
 				case Opcode::IPTOA:
 				case Opcode::DPTOA:
-				case Opcode::SELF:
-				case Opcode::SUPER:
 				case Opcode::CALL:
 				case Opcode::CALLK:
 				case Opcode::CALLB:
@@ -1251,25 +1348,28 @@ namespace meaning
 		};
 		std::vector<std::pair<State, State>> work;
 		const char *side = "original";
-		try
+		// The first form that the check does not read, on a path that then
+		// stops. The other paths go on: a DIFF on one of them is a DIFF.
+		std::string unreadable;
+		work.emplace_back(walkerA.Start(), walkerB.Start());
+		int count = 0;
+		while (!work.empty())
 		{
-			work.emplace_back(walkerA.Start(), walkerB.Start());
-			int count = 0;
-			while (!work.empty())
+			std::pair<State, State> item = std::move(work.back());
+			work.pop_back();
+			if (!seen.insert(hash(walkerA.KeyOf(item.first) + "#" + walkerB.KeyOf(item.second))).second)
 			{
-				std::pair<State, State> item = std::move(work.back());
-				work.pop_back();
-				if (!seen.insert(hash(walkerA.KeyOf(item.first) + "#" + walkerB.KeyOf(item.second))).second)
-				{
-					continue;
-				}
-				if (++count > MaxEffectPairs)
-				{
-					outcome.detail = "too-many-paths";
-					return outcome;
-				}
-				State &a = item.first;
-				State &b = item.second;
+				continue;
+			}
+			if (++count > MaxEffectPairs)
+			{
+				outcome.detail = "too-many-paths";
+				return outcome;
+			}
+			State &a = item.first;
+			State &b = item.second;
+			try
+			{
 				side = "original";
 				Effect effectA = walkerA.RunToEffect(a);
 				side = "recompiled";
@@ -1303,14 +1403,16 @@ namespace meaning
 					break;
 				}
 			}
+			catch (const Unreadable &e)
+			{
+				if (unreadable.empty())
+				{
+					unreadable = std::string(side) + ": " + e.reason;
+				}
+			}
 		}
-		catch (const Unreadable &e)
-		{
-			outcome.verdict = Verdict::Uncompared;
-			outcome.detail = std::string(side) + ": " + e.reason;
-			return outcome;
-		}
-		outcome.verdict = Verdict::Same;
+		outcome.verdict = unreadable.empty() ? Verdict::Same : Verdict::Uncompared;
+		outcome.detail = unreadable;
 		return outcome;
 	}
 
@@ -1391,9 +1493,11 @@ namespace meaning
 		{
 			byKey[function.key] = &function;
 		}
+		std::set<std::string> originalKeys;
 		std::vector<FunctionOutcome> outcomes;
 		for (const Function &function : original)
 		{
+			originalKeys.insert(function.key);
 			FunctionOutcome row;
 			row.key = function.key;
 			row.display = function.display;
@@ -1401,6 +1505,8 @@ namespace meaning
 			auto partner = byKey.find(function.key);
 			if (partner == byKey.end())
 			{
+				// The text lost the function (or gave it to another object).
+				row.outcome.verdict = Verdict::Diff;
 				row.outcome.detail = "no-recompiled-function";
 			}
 			else
@@ -1408,6 +1514,21 @@ namespace meaning
 				row.outcome = Compare(function, *partner->second);
 			}
 			outcomes.push_back(row);
+		}
+		for (const Function &function : recompiled)
+		{
+			if (originalKeys.count(function.key) == 0)
+			{
+				// A function that the text adds (a method overrides one of a
+				// class).
+				FunctionOutcome row;
+				row.key = function.key;
+				row.display = function.display;
+				row.offset = function.offset;
+				row.outcome.verdict = Verdict::Diff;
+				row.outcome.detail = "no-original-function";
+				outcomes.push_back(row);
+			}
 		}
 		return outcomes;
 	}

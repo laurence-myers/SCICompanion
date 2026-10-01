@@ -194,10 +194,23 @@ namespace cli
                     separateHeap ? &heapData : nullptr);
                 if (!recompiled)
                 {
+                    // Each function is UNCOMPARED, and the warning makes the
+                    // exit code 6.
                     errors.push_back(fmt::format("script {0}: the recompiled script: {1}", number, recompiled.error().ToString()));
-                    continue;
+                    for (const meaning::Function &function : *original)
+                    {
+                        meaning::FunctionOutcome row;
+                        row.key = function.key;
+                        row.display = function.display;
+                        row.offset = function.offset;
+                        row.outcome.detail = "recompiled-unreadable";
+                        rows.push_back(row);
+                    }
                 }
-                rows = meaning::CompareFunctions(*original, *recompiled);
+                else
+                {
+                    rows = meaning::CompareFunctions(*original, *recompiled);
+                }
             }
             for (const meaning::FunctionOutcome &row : rows)
             {

@@ -267,8 +267,10 @@ namespace cli
     // functions UNCOMPARED, "not-recompiled". Writes a table (tab-separated:
     // script, key, function, offset, verdict, detail) to the out file or
     // stdout, then the count of each verdict to stderr. A script that cannot
-    // be read is a warning, and exit code 6. Fails when the game does not
-    // open, or the recompiled folder does not exist (NotFound).
+    // be read is a warning, and exit code 6; a recompiled script that cannot
+    // be read also gives each of its functions UNCOMPARED,
+    // "recompiled-unreadable". Fails when the game does not open, or the
+    // recompiled folder does not exist (NotFound).
     sci::Result<ExitCode> RunCompareMeaning(const CompareMeaningOptions &options, const std::string &dataFolder, CliOutput &output);
 
     // The full path of a folder or a file, from GetFullPathName: a relative

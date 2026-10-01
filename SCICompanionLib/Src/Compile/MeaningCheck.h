@@ -92,7 +92,9 @@ namespace meaning
 		const std::function<std::string(uint16_t)> &addressText, const std::function<std::string(uint16_t)> &procedureKey);
 
 	// The effects of the two functions match. The returns of the recompiled
-	// function read the accumulator when the original's do.
+	// function read the accumulator when the original's do. A path with a
+	// form that the check does not read stops there: the verdict is DIFF
+	// when another path differs, else UNCOMPARED.
 	Outcome Compare(const Function &original, const Function &recompiled);
 
 	// The outcome of one function of a script.
@@ -106,7 +108,9 @@ namespace meaning
 	};
 
 	// The functions of two scripts, paired by key, in the order of the
-	// original. A function with no partner is UNCOMPARED.
+	// original, then the recompiled functions that the original has not. A
+	// function with no partner is DIFF ("no-recompiled-function" or
+	// "no-original-function").
 	std::vector<FunctionOutcome> CompareFunctions(const std::vector<Function> &original, const std::vector<Function> &recompiled);
 
 	// The functions of a compiled script (ReadScriptFunctions), for the check.

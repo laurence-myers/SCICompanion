@@ -498,10 +498,98 @@ namespace UnitTests
 			meaning::Function a = Fn("push0\ncallk 1 0\nret");
 			meaning::Function b = a;
 			b.key = "g";
-			std::vector<meaning::FunctionOutcome> rows = meaning::CompareFunctions({ a, b }, { a });
-			Assert::AreEqual((size_t)2, rows.size());
+			meaning::Function c = a;
+			c.key = "h";
+			std::vector<meaning::FunctionOutcome> rows = meaning::CompareFunctions({ a, b }, { a, c });
+			Assert::AreEqual((size_t)3, rows.size());
 			AssertVerdict(meaning::Verdict::Same, rows[0].outcome);
-			AssertVerdict(meaning::Verdict::Uncompared, rows[1].outcome);
+			// The text lost a function, and added one.
+			AssertVerdict(meaning::Verdict::Diff, rows[1].outcome);
+			Assert::AreEqual(std::string("no-recompiled-function"), rows[1].outcome.detail);
+			AssertVerdict(meaning::Verdict::Diff, rows[2].outcome);
+			Assert::AreEqual(std::string("h"), rows[2].key);
+			Assert::AreEqual(std::string("no-original-function"), rows[2].outcome.detail);
+		}
+
+		// A value of an earlier turn of a loop is another value than the same
+		// value of this turn: the original keeps the first value of g1, the
+		// recompiled function the value of the last turn.
+		TEST_METHOD(Meaning_AValueOfAnEarlierTurnIsAnotherValue)
+		{
+			meaning::Outcome outcome = Check(R"(
+				lsg 1
+			top:
+				lag 1
+				bnt exit
+				+ag 1
+				jmp top
+			exit:
+				ssg 2
+				ret
+			)", R"(
+				lsg 1
+			top:
+				lag 1
+				bnt exit
+				toss
+				lsg 1
+				+ag 1
+				jmp top
+			exit:
+				ssg 2
+				ret
+			)");
+			AssertVerdict(meaning::Verdict::Diff, outcome);
+		}
+
+		// A self send with no message leaves the accumulator: a value made
+		// before it is read after it.
+		TEST_METHOD(Meaning_AnEmptySelfLeavesTheAccumulator)
+		{
+			AssertVerdict(meaning::Verdict::Diff, Check(R"(
+				lal 0
+				bnt other
+				ldi 1
+				jmp join
+			other:
+				ldi 2
+			join:
+				pushi 7
+				ssg 5
+				self 0
+				push
+				callk 1 0
+				ret
+			)", R"(
+				ldi 1
+				pushi 7
+				ssg 5
+				self 0
+				push
+				callk 1 0
+				ret
+			)"));
+		}
+
+		// The extra arguments of a rest are the parameters when the rest
+		// runs, not when the call runs.
+		TEST_METHOD(Meaning_ARestTakesTheParametersWhenItRuns)
+		{
+			AssertVerdict(meaning::Verdict::Diff, Check(R"(
+				push1
+				&rest 1
+				ldi 5
+				sap 1
+				callk 1 0
+				ret
+			)", R"(
+				push1
+				ldi 5
+				sap 1
+				&rest 1
+				callk 1 0
+				ret
+			)"));
 		}
 	};
 }

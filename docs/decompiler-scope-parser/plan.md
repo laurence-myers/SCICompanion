@@ -223,7 +223,8 @@ an effect graph of each:
   (`not-recompiled`), the version is SCI2 or later (the compiler makes
   SCI0 to SCI1.1), the code runs past the end of the function (its end
   was found wrong), or a form the check does not read (a stack underflow,
-  a `send` frame, too many paths, a very large value). The gate joins
+  a `send` frame, too many paths, a very large value, a value of an older
+  turn of a loop). A function that the text loses or adds is DIFF. The gate joins
   the rows with the function report: DIFF of a function that the scope
   engine gives is a defect, or a defect of the names or of the compiler
   that the open items list.
