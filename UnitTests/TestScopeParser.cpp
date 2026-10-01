@@ -119,9 +119,10 @@ namespace UnitTests
 				"code 0005\n");
 		}
 
-		// (if (and a b b) X else Y) as Sierra's compiler emits a nested and:
-		// the third test repeats the second. Each is one more and-term.
-		TEST_METHOD(If_AndTermsWithAnEmptyTerm)
+		// (if (and a b b) X else Y): Sierra's optimiser deletes the load of
+		// the third term, so its bnt repeats the second. The repeated bnt does
+		// nothing: it is code in the then-part.
+		TEST_METHOD(If_ARepeatedTestIsNoTerm)
 		{
 			AssertParses(R"(
 				lap 1
@@ -137,12 +138,11 @@ namespace UnitTests
 				ret
 			)",
 				"code 0000\n"
-				"if 0001 0003 0004\n"
+				"if 0001 0003\n"
 				"  term\n"
 				"    code 0002\n"
-				"  term\n"
 				"  then\n"
-				"    code 0005\n"
+				"    code 0004-0005\n"
 				"  else 0006\n"
 				"    code 0007\n"
 				"code 0008\n");

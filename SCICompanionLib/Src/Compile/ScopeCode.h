@@ -94,7 +94,10 @@ namespace scope
 		int NextLive(int i) const;
 		// A live branch that does nothing: a jmp over dead code only (or
 		// over nothing, and not over the dead latch of a loop, which the jmp
-		// leaves), or a bt or bnt whose target is its fall-through.
+		// leaves), a bt or bnt whose target is its fall-through, or a bt or
+		// bnt right after a bt or bnt of the same kind to the same place
+		// (only jmps that do nothing between them) that no other branch goes
+		// to.
 		bool IsNoOp(int i) const { return _insts[i].noOp; }
 		// A bnt inside an n-ary compare ("cmp; bnt O; pprev"): part of the
 		// value of the compare, not a branch of the control flow.

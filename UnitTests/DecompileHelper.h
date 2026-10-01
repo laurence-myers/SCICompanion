@@ -95,7 +95,9 @@ int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
 // round trip. On mismatch it writes the actual text to TestResults so a diff is
 // easy. This tests fidelity, not just round-trip stability. Returns the first
 // decompile. With roundTrip false, it does not recompile the decompiled text:
-// for a fixture whose recompiled bytecode has another shape.
+// for a fixture whose recompiled bytecode has another shape. With the scope
+// engine (SCIC_DECOMPILE_ENGINE), the expected file is
+// "<name>.scope.expected.sc" when the fixture has one.
 DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, uint16_t scriptNumber, bool roundTrip = true);
 
 // Compiles a fixture, decompiles it with the debug dumps of the control

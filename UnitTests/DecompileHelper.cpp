@@ -499,7 +499,14 @@ DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, u
     Assert::IsFalse(first.ContainsAsm(),
         ToWString(fixtureName + ": expected no asm").c_str());
 
+    // A fixture whose text with the scope engine is another (better) text
+    // has a second expected file.
     std::string expectedPath = GetTestFileDirectory("Decompile\\SCI1.1") + "\\" + fixtureName + ".expected.sc";
+    std::string scopePath = GetTestFileDirectory("Decompile\\SCI1.1") + "\\" + fixtureName + ".scope.expected.sc";
+    if ((DefaultDecompileEngine() != DecompileEngine::Classic) && (GetFileAttributesA(scopePath.c_str()) != INVALID_FILE_ATTRIBUTES))
+    {
+        expectedPath = scopePath;
+    }
     std::string expected;
     if (!ReadTextFile(expectedPath, expected))
     {

@@ -52,6 +52,16 @@ namespace UnitTests
         Logger::WriteMessage(std::wstring(msg.begin(), msg.end()).c_str());
     }
 
+// A test of a fixture whose decompiled text equals its expected file. The
+// fixture tests of TestDecompile use the default engine; those of
+// TestDecompileScope use the scope engine.
+#define FIXTURE_TEST(name, fixture, number) \
+        TEST_METHOD(name) \
+        { \
+            _gameFolder = SetUpGameSCI11(); \
+            AssertDecompileMatchesExpected(fixture, number); \
+        }
+
     TEST_CLASS(TestDecompile)
     {
     public:
@@ -138,29 +148,17 @@ namespace UnitTests
                 L"the undetermined public proc name must survive a stale .sco, not be blanked");
         }
 
-        TEST_METHOD(Compiler_ValueAndOr)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("C1_ValueAndOr", 908);
-        }
+        FIXTURE_TEST(Compiler_ValueAndOr, "C1_ValueAndOr", 908)
 
         // Sierra's own sequence for an indexed compound assignment loads to
         // the accumulator and pushes ("lati; push"), where SCI Companion
         // emits "lsti". The decompiler folds both.
-        TEST_METHOD(SierraIndexedMathAssign)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("C3_SierraIndexedMathAssign", 932);
-        }
+        FIXTURE_TEST(SierraIndexedMathAssign, "C3_SierraIndexedMathAssign", 932)
 
         // Compiler: a compound assignment to an indexed variable with a simple
         // indexer compiles to Sierra's sequence, so the text round-trips. Used
         // as a value, it gives the new value.
-        TEST_METHOD(Compiler_IndexedMathAssign)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("C2_IndexedMathAssign", 920);
-        }
+        FIXTURE_TEST(Compiler_IndexedMathAssign, "C2_IndexedMathAssign", 920)
 
         // Compiler: a classdef that names the species of a real class does
         // not turn the selector check off for that class.
@@ -200,61 +198,33 @@ namespace UnitTests
         // A break out of a loop from inside a switch case. The structurer
         // gathers the case body that jumps to the loop exit into the case and
         // resolves it as a break.
-        TEST_METHOD(BreakInSwitchCase)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F9_BreakInSwitchCase", 921);
-        }
+        FIXTURE_TEST(BreakInSwitchCase, "F9_BreakInSwitchCase", 921)
 
         // A mid-body continue creates a second back edge and a common latch.
         // The structurer resolves the mid-body jump to the head as a continue.
-        TEST_METHOD(MidBodyContinue)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F10_MidBodyContinue", 922);
-        }
+        FIXTURE_TEST(MidBodyContinue, "F10_MidBodyContinue", 922)
 
         // A chained comparison compiled with a pprev folds back into one n-ary
         // comparison; a comparison with no shared operand stays an and.
-        TEST_METHOD(ChainedComparison)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("N1_ChainedCompare", 923);
-        }
+        FIXTURE_TEST(ChainedComparison, "N1_ChainedCompare", 923)
 
         // Sierra's own shape for a chained comparison, a variable last.
-        TEST_METHOD(SierraChainedComparison)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("N2_SierraChainedCompare", 933);
-        }
+        FIXTURE_TEST(SierraChainedComparison, "N2_SierraChainedCompare", 933)
 
         // A bare "jmp head" shared by several branches inside a loop body folds
         // into the common latch, so the ifs that end there structure.
-        TEST_METHOD(LatchTrampoline)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F11_LatchTrampoline", 924);
-        }
+        FIXTURE_TEST(LatchTrampoline, "F11_LatchTrampoline", 924)
 
         // A break at the end of an if's else, followed by a statement that
         // another branch also reaches: the break edge moves to the if's follow,
         // so the if does not gather the shared statement.
-        TEST_METHOD(BreakJoin)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F12_BreakJoin", 925);
-        }
+        FIXTURE_TEST(BreakJoin, "F12_BreakJoin", 925)
 
         // A repeat whose break jumps past the latch, to the loop's follow node,
         // with a second repeat (which holds a while) between the latch and the
         // follow node. The first repeat holds the other two loops, so they are
         // built first, as any nested loop is.
-        TEST_METHOD(BreakPastLatch)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F14_BreakPastLatch", 936);
-        }
+        FIXTURE_TEST(BreakPastLatch, "F14_BreakPastLatch", 936)
 
         // A while that is the first statement of a repeat: the two loops
         // share their head. With a breakif in the while they do not structure
@@ -272,11 +242,7 @@ namespace UnitTests
         // A while that is the first statement of a repeat, with no break in
         // the while: as one loop it structures, so its text (a cond in the
         // repeat) stays, and no second analysis runs.
-        TEST_METHOD(SharedLoopHead_OneLoopStructures)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F16_SharedHeadOneLoop", 938);
-        }
+        FIXTURE_TEST(SharedLoopHead_OneLoopStructures, "F16_SharedHeadOneLoop", 938)
 
         // An or that ends where the and around it ends: Sierra's compiler
         // sends the or's "bt" past that join, to the outer or's end. The
@@ -292,82 +258,46 @@ namespace UnitTests
         // A loop whose body starts with a switch: a "jmp" to the loop head
         // that only branches reach folds into the common latch, as it does
         // when the head is plain code.
-        TEST_METHOD(SwitchHeadContinue)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F18_SwitchHeadContinue", 942);
-        }
+        FIXTURE_TEST(SwitchHeadContinue, "F18_SwitchHeadContinue", 942)
 
         // An if with an else, used as a value in a compare that is an operand
         // of an and, or the first operand of an or: the if is built before
         // the and or the or, and the compare takes the push before the if.
         // When the join of the if stores the value, the if at the join is
         // built first, as before.
-        TEST_METHOD(ValueIfInAnd)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F19_ValueIfInAnd", 943);
-        }
+        FIXTURE_TEST(ValueIfInAnd, "F19_ValueIfInAnd", 943)
 
         // An or that is the test of an if at the end of a loop body, with an
         // and as its last operand: the and's "bnt" goes past the if's "bnt"
         // to the loop head. The structurer moves it back onto the if's "bnt".
-        TEST_METHOD(OrAndLoopHead)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F20_OrAndLoopHead", 944);
-        }
+        FIXTURE_TEST(OrAndLoopHead, "F20_OrAndLoopHead", 944)
 
         // Return values take the golden shape: an if whose branches return is
         // not itself returned; a value-shaped if at the end of the function
         // is; a ++ before the final ret is not a return value.
-        TEST_METHOD(ReturnShapes)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("R1_ReturnShapes", 927);
-        }
+        FIXTURE_TEST(ReturnShapes, "R1_ReturnShapes", 927)
 
         // Sierra reuses the accumulator: a store, then the pushes of a send
         // whose target or pushed argument is that variable, with no load. The
         // store is a statement of its own; the send reads the variable.
-        TEST_METHOD(ReusedAccumulator)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("A1_ReusedAcc", 928);
-        }
+        FIXTURE_TEST(ReusedAccumulator, "A1_ReusedAcc", 928)
 
         // A selector pushed as "push" after an ldi of its number (the
         // optimizer's reuse), and a literal argument repeated with dup.
-        TEST_METHOD(ReusedSelector)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("A2_ReusedSelector", 930);
-        }
+        FIXTURE_TEST(ReusedSelector, "A2_ReusedSelector", 930)
 
         // A send whose last argument is a value if, with earlier pushes before
         // the if: the pushes belong to the send across the join.
-        TEST_METHOD(ValueIfArgument)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F13_ValueIfArgument", 931);
-        }
+        FIXTURE_TEST(ValueIfArgument, "F13_ValueIfArgument", 931)
 
         // A bnt right after a bnt to the same target is dead (the accumulator
         // is unchanged). It is deleted before control-flow analysis, so the
         // compare before it is not cloned into a second operand.
-        TEST_METHOD(DeadBranch)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("B1_DeadBranch", 929);
-        }
+        FIXTURE_TEST(DeadBranch, "B1_DeadBranch", 929)
 
         // Plain SCI Companion source: nested conds in a loop body. The text is
         // its own oracle, so the compiler's jump dialect round-trips stably.
-        TEST_METHOD(Plain_CondInLoop)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("P2_CondInLoop", 926);
-        }
+        FIXTURE_TEST(Plain_CondInLoop, "P2_CondInLoop", 926)
 
         // Family 1: a conditional branch to the loop head. Fixed: the common
         // latch resolves to the loop head, so the if reconstructs.
@@ -389,36 +319,12 @@ namespace UnitTests
         // post-dominators, the chunk stage treats an if as a value, and the
         // IfThenToAnd pass gives the and/or text. Each fixture is pinned to
         // its Sierra-shaped expected text.
-        TEST_METHOD(Family3_ValueIfReturn)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F3_ValueIfReturn", 909);
-        }
-        TEST_METHOD(Family3_OrThreeTerms)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F3_OrThreeTerms", 910);
-        }
-        TEST_METHOD(Family3_OrAndOr)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F3_OrAndOr", 911);
-        }
-        TEST_METHOD(Family3_AndOr)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F3_AndOr", 912);
-        }
-        TEST_METHOD(Family3_IfValueWithElse)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F3_IfValueWithElse", 913);
-        }
-        TEST_METHOD(Family3_AndAsArgument)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F3_AndAsArgument", 914);
-        }
+        FIXTURE_TEST(Family3_ValueIfReturn, "F3_ValueIfReturn", 909)
+        FIXTURE_TEST(Family3_OrThreeTerms, "F3_OrThreeTerms", 910)
+        FIXTURE_TEST(Family3_OrAndOr, "F3_OrAndOr", 911)
+        FIXTURE_TEST(Family3_AndOr, "F3_AndOr", 912)
+        FIXTURE_TEST(Family3_IfValueWithElse, "F3_IfValueWithElse", 913)
+        FIXTURE_TEST(Family3_AndAsArgument, "F3_AndAsArgument", 914)
 
         // A shared-then shape ((or (not X) Y) with a synthesized not) is not
         // a Sierra compiler output. The structurer must refuse it, not merge
@@ -434,11 +340,11 @@ namespace UnitTests
             Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");
         }
 
-        // The engine of SCIC_DECOMPILE_ENGINE. The scope engine has no value
-        // stage yet: with auto, the classic engine gives each function, and
-        // the text is the text of classic; with scope, each function is asm.
-        // With classic, the control-flow stages of the scope engine run in
-        // shadow mode: the scope column has their result.
+        // The engine of SCIC_DECOMPILE_ENGINE, on a script that both engines
+        // decompile to the same text. With classic, the control-flow stages
+        // of the scope engine run in shadow mode: the scope column has their
+        // result. With auto and with scope, the scope engine gives each
+        // function.
         TEST_METHOD(Engine_TheVariableChoosesTheEngine)
         {
             _gameFolder = SetUpGameSCI11();
@@ -466,11 +372,49 @@ namespace UnitTests
                 ScopedEnvironmentVariable engine("SCIC_DECOMPILE_ENGINE", "auto");
                 automatic = DecompileToText(912);
             }
-            Assert::AreEqual(classic.text, automatic.text, L"auto gives the text of classic");
+            Assert::AreEqual(classic.text, automatic.text, L"auto gives the same text");
             Assert::AreEqual(classic.functions.size(), automatic.functions.size());
             for (const DecompiledFunction &function : automatic.functions)
             {
                 Assert::IsTrue(function.engine == DecompileEngine::ScopeThenClassic, Wide(function.name).c_str());
+                Assert::AreEqual(std::string("scope"), function.output, Wide(function.name).c_str());
+                Assert::AreEqual(std::string("ok"), function.scope, Wide(function.name).c_str());
+                Assert::AreEqual(std::string(), function.classic, Wide(function.name).c_str());
+            }
+
+            DecompileOutput scope;
+            {
+                ScopedEnvironmentVariable engine("SCIC_DECOMPILE_ENGINE", "scope");
+                scope = DecompileToText(912);
+            }
+            Assert::AreEqual(classic.text, scope.text, L"scope gives the same text");
+            for (const DecompiledFunction &function : scope.functions)
+            {
+                Assert::IsTrue(function.engine == DecompileEngine::Scope, Wide(function.name).c_str());
+                Assert::AreEqual(std::string("scope"), function.output, Wide(function.name).c_str());
+            }
+        }
+
+        // A function that the scope engine cannot decompile (a loop, which
+        // the value stage does not read yet): with auto, the classic engine
+        // gives it, and the failure is no warning; with scope, it is asm and
+        // a warning.
+        TEST_METHOD(Engine_AutoGivesClassicWhenScopeFails)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AddFixtureScript("P2_CondInLoop");
+            std::string error;
+            Assert::IsTrue(CompileFixture(926, "P2_CondInLoop", &error), Wide(error).c_str());
+
+            DecompileOutput automatic;
+            {
+                ScopedEnvironmentVariable engine("SCIC_DECOMPILE_ENGINE", "auto");
+                automatic = DecompileToText(926);
+            }
+            Assert::IsFalse(automatic.ContainsAsm(), Wide(automatic.text).c_str());
+            Assert::IsFalse(automatic.functions.empty(), L"a report of each function");
+            for (const DecompiledFunction &function : automatic.functions)
+            {
                 Assert::AreEqual(std::string("classic"), function.output, Wide(function.name).c_str());
                 Assert::AreEqual(std::string("[scope:values:not-implemented]"), function.scope, Wide(function.name).c_str());
             }
@@ -479,10 +423,9 @@ namespace UnitTests
             DecompileOutput scope;
             {
                 ScopedEnvironmentVariable engine("SCIC_DECOMPILE_ENGINE", "scope");
-                scope = DecompileToText(912);
+                scope = DecompileToText(926);
             }
             Assert::IsTrue(scope.ContainsAsm(), Wide(scope.text).c_str());
-            Assert::AreEqual((int)classic.functions.size(), scope.fallbacks);
             for (const DecompiledFunction &function : scope.functions)
             {
                 Assert::AreEqual(std::string("asm"), function.output, Wide(function.name).c_str());
@@ -536,45 +479,21 @@ namespace UnitTests
         // Family 4: a "bnt" to the loop exit inside the body. Fixed: it becomes
         // an if with a synthesized else-break, and the loop cleanup passes
         // fold the breaks back into the idiomatic shape.
-        TEST_METHOD(Family4_BreakElseEdge)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F4_BreakElseEdge", 904);
-        }
-        TEST_METHOD(Family4_WhileAnd)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F4_WhileAnd", 915);
-        }
-        TEST_METHOD(Family4_WhileOr)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F4_WhileOr", 916);
-        }
+        FIXTURE_TEST(Family4_BreakElseEdge, "F4_BreakElseEdge", 904)
+        FIXTURE_TEST(Family4_WhileAnd, "F4_WhileAnd", 915)
+        FIXTURE_TEST(Family4_WhileOr, "F4_WhileOr", 916)
 
         // Compound conditions compiled by SCI Companion's own compiler (its
         // "bt" targets the then block). The decompiled text must equal the
         // source, which covers the unchain fixup end to end.
-        TEST_METHOD(Plain_CompoundConditions)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("P1_CompoundConditions", 917);
-        }
+        FIXTURE_TEST(Plain_CompoundConditions, "P1_CompoundConditions", 917)
 
         // Family 8: a statement shares the block with the test of an if that
         // a "ret" consumes as a value. Fixed: the lift pass climbs out of the
         // first operand of an instruction, so the statement moves before the
         // return.
-        TEST_METHOD(Family8_AssignBeforeCondInRet)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F8_AssignBeforeCondInRet", 918);
-        }
-        TEST_METHOD(Family8_DeadValueStatement)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F8_DeadValueStatement", 919);
-        }
+        FIXTURE_TEST(Family8_AssignBeforeCondInRet, "F8_AssignBeforeCondInRet", 918)
+        FIXTURE_TEST(Family8_DeadValueStatement, "F8_DeadValueStatement", 919)
 
         // Family 5: an empty leading while swallows the next loop. Fixed: child
         // collection is bounded to the loop's address range.
@@ -609,11 +528,7 @@ namespace UnitTests
         // Family 7: a class opcode names a species whose defining script is
         // not in the game. The decompiler synthesizes Unknown_Class_<species>
         // and emits a classdef, so it decompiles and round-trips with no asm.
-        TEST_METHOD(Family7_UnknownClass)
-        {
-            _gameFolder = SetUpGameSCI11();
-            AssertDecompileMatchesExpected("F7_UnknownClass", 907);
-        }
+        FIXTURE_TEST(Family7_UnknownClass, "F7_UnknownClass", 907)
 
         // Regression guard: total assembly fallbacks across the template game
         // must not grow, and no new script may fall back. Lower BASELINE and
@@ -698,6 +613,61 @@ namespace UnitTests
 
     private:
         std::string _gameFolder;
+    };
+
+    // The fixtures with no loop, no switch and no n-ary compare, with the
+    // scope engine: the text equals the expected file of the fixture.
+    TEST_CLASS(TestDecompileScope)
+    {
+    public:
+        TEST_METHOD_INITIALIZE(Setup)
+        {
+            Assert::IsNull(appState, L"appState leaked from a prior test");
+            _engine = std::make_unique<ScopedEnvironmentVariable>("SCIC_DECOMPILE_ENGINE", "scope");
+        }
+
+        TEST_METHOD_CLEANUP(CleanUp)
+        {
+            if (!_gameFolder.empty())
+            {
+                CleanUpGame(_gameFolder);
+                _gameFolder.clear();
+            }
+            _engine.reset();
+        }
+
+        FIXTURE_TEST(Compiler_ValueAndOr, "C1_ValueAndOr", 908)
+        FIXTURE_TEST(Compiler_IndexedMathAssign, "C2_IndexedMathAssign", 920)
+        FIXTURE_TEST(SierraIndexedMathAssign, "C3_SierraIndexedMathAssign", 932)
+        FIXTURE_TEST(ReusedAccumulator, "A1_ReusedAcc", 928)
+        FIXTURE_TEST(ReusedSelector, "A2_ReusedSelector", 930)
+        FIXTURE_TEST(DeadBranch, "B1_DeadBranch", 929)
+        FIXTURE_TEST(ValueIfArgument, "F13_ValueIfArgument", 931)
+        FIXTURE_TEST(ValueIfInAnd, "F19_ValueIfInAnd", 943)
+        FIXTURE_TEST(ReturnShapes, "R1_ReturnShapes", 927)
+        FIXTURE_TEST(Family3_ValueIfReturn, "F3_ValueIfReturn", 909)
+        FIXTURE_TEST(Family3_OrThreeTerms, "F3_OrThreeTerms", 910)
+        FIXTURE_TEST(Family3_OrAndOr, "F3_OrAndOr", 911)
+        FIXTURE_TEST(Family3_AndOr, "F3_AndOr", 912)
+        FIXTURE_TEST(Family3_IfValueWithElse, "F3_IfValueWithElse", 913)
+        FIXTURE_TEST(Family3_AndAsArgument, "F3_AndAsArgument", 914)
+        FIXTURE_TEST(Family7_UnknownClass, "F7_UnknownClass", 907)
+        FIXTURE_TEST(Family8_AssignBeforeCondInRet, "F8_AssignBeforeCondInRet", 918)
+        FIXTURE_TEST(Family8_DeadValueStatement, "F8_DeadValueStatement", 919)
+        // Values that the optimiser reuses across a branch.
+        FIXTURE_TEST(ReuseAcrossBranch, "V1_ReuseAcrossBranch", 953)
+
+        // No round trip: the compiler of this repository gives the or
+        // another shape.
+        TEST_METHOD(ThreadedOrJoin)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("F17_ThreadedOrJoin", 939, false);
+        }
+
+    private:
+        std::string _gameFolder;
+        std::unique_ptr<ScopedEnvironmentVariable> _engine;
     };
 
     // Not in the default run. Decompiles named template scripts with the

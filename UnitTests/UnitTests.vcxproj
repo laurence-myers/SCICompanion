@@ -115,6 +115,7 @@ exit /b 0</Command>
     <ClCompile Include="TestScopeParser.cpp" />
     <ClCompile Include="TestScopeVerify.cpp" />
     <ClCompile Include="TestScopeCode.cpp" />
+    <ClCompile Include="TestScopeValues.cpp" />
     <ClCompile Include="ScopeAsm.cpp" />
     <ClCompile Include="TestCli.cpp" />
     <ClCompile Include="TestDecompileRun.cpp" />

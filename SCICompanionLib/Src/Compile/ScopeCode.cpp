@@ -247,6 +247,26 @@ namespace scope
 			{
 				_insts[i].noOp = true;
 			}
+			// A bt or bnt right after a bt or bnt of the same kind to the same
+			// place (with only branches that do nothing between them), which
+			// no other branch goes to: control gets to it only on the
+			// fall-through of the first one, with a value that does not
+			// branch. (Sierra's optimiser deletes a load of the value that the
+			// accumulator has: (and a b b) gives "bnt; bnt".)
+			if (IsLive(i) && IsConditional(i))
+			{
+				int previous = i - 1;
+				while ((previous >= 0) && IsLive(previous) && IsNoOp(previous) && (Op(previous) == Opcode::JMP))
+				{
+					--previous;
+				}
+				bool onlyFallThrough = std::all_of(Sources(i).begin(), Sources(i).end(), [&](int source) { return (source > previous) && (source < i); });
+				if ((previous >= 0) && IsLive(previous) && (Op(previous) == Op(i)) && onlyFallThrough &&
+					SameTarget(Target(i), Target(previous), ArrivalOf(Op(i))))
+				{
+					_insts[i].noOp = true;
+				}
+			}
 		}
 	}
 

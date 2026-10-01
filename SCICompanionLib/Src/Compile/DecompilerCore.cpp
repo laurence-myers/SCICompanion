@@ -1221,17 +1221,26 @@ namespace
 		std::vector<std::pair<DecompilerResultType, std::string>> _held;
 	};
 
-	// The control-flow stages of the scope engine: the code model, the
-	// parser and the verify stage. An error has the message of the stage
-	// that failed, "[scope:<stage>:<id>]"; an exception that is not a
-	// ScopeError gives "[scope:internal] <text>".
-	sci::Status _ScopeControlFlow(const std::list<scii> &code)
+	// Stages of the scope engine. An error has the message of the stage that
+	// failed, "[scope:<stage>:<id>]"; an exception that is not a ScopeError
+	// gives "[scope:internal] <text>". where (when it is not null) gets the
+	// place and the detail of a ScopeError, " at <offset>: <detail>".
+	sci::Status _ScopeStages(const std::function<void()> &stages, std::string *where = nullptr)
 	{
 		sci::Status status = sci::Guard("scope", [&]() -> sci::Status
 		{
-			scope::CodeModel model(code);
-			std::unique_ptr<scope::Region> root = scope::Parse(model);
-			scope::Verify(model, *root);
+			try
+			{
+				stages();
+			}
+			catch (const scope::ScopeError &e)
+			{
+				if (where)
+				{
+					*where = fmt::format(" at {0:04x}: {1}", e.Offset(), e.Detail());
+				}
+				throw;
+			}
 			return sci::Ok();
 		});
 		if (!status && (status.error().code != sci::ErrorCode::Unsupported))
@@ -1241,12 +1250,28 @@ namespace
 		return status;
 	}
 
-	// The scope engine. It has no value stage yet, so a function whose
-	// control flow parses and verifies fails there.
-	sci::Status _DecompileWithScope(FunctionBase &, DecompileLookups &, const std::list<scii> &code)
+	sci::Status _ScopeControlFlow(const std::list<scii> &code)
 	{
-		SCI_TRY(_ScopeControlFlow(code));
-		return sci::Fail(sci::ErrorCode::Unsupported, "[scope:values:not-implemented]");
+		return _ScopeStages([&]()
+		{
+			scope::CodeModel model(code);
+			std::unique_ptr<scope::Region> root = scope::Parse(model);
+			scope::Verify(model, *root);
+		});
+	}
+
+	// The scope engine: the control-flow stages, then the value stage, which
+	// gives the statements of the function. code is the list of the
+	// instructions as they were decoded.
+	sci::Status _DecompileWithScope(FunctionBase &func, DecompileLookups &lookups, std::list<scii> &code, std::string *where)
+	{
+		return _ScopeStages([&]()
+		{
+			scope::CodeModel model(code);
+			std::unique_ptr<scope::Region> root = scope::Parse(model);
+			scope::Verify(model, *root);
+			OutputNewStructure(func, model, *root, code, lookups);
+		}, where);
 	}
 
 	// A stage and its message, for the report: "graph: <message>", or the
@@ -1319,7 +1344,8 @@ static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, con
 		{
 			// The scope engine reads the instructions as they were decoded:
 			// it does its own dead-branch analysis.
-			sci::Status scoped = _DecompileWithScope(func, lookups, originalCode);
+			std::string where;
+			sci::Status scoped = _DecompileWithScope(func, lookups, originalCode, &where);
 			if (scoped)
 			{
 				success = true;
@@ -1334,7 +1360,7 @@ static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, con
 				// With auto, the classic engine takes the function: a
 				// progress line only.
 				lookups.DecompileResults().AddResult((engine == DecompileEngine::Scope) ? DecompilerResultType::Warning : DecompilerResultType::Update,
-					fmt::format("{0} {1}::{2}: {3}", func.GetOwnerScript()->GetName(), className, func.GetName(), report.scope));
+					fmt::format("{0} {1}::{2}: {3}{4}", func.GetOwnerScript()->GetName(), className, func.GetName(), report.scope, where));
 			}
 		}
 		else if (!lookups.DecompileAsm)

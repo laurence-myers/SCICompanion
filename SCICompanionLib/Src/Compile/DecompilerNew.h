@@ -17,6 +17,18 @@
 // warning without messagePrefix.
 bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &func, MainNode &main, DecompileLookups &lookups, std::string *failure = nullptr);
 
+namespace scope
+{
+	class CodeModel;
+	struct Region;
+}
+
+// The scope engine: the forward value stage makes the chunk tree of the
+// region tree, and the chunk tree gives the statements of func. code is the
+// list that the model was made from. Throws a scope::ScopeError when a stage
+// fails.
+void OutputNewStructure(sci::FunctionBase &func, const scope::CodeModel &model, const scope::Region &root, std::list<scii> &code, DecompileLookups &lookups);
+
 // Returns the node's single predecessor, or null if it has none. The main-chunk
 // output walk requires at most one predecessor; this throws ControlFlowException
 // if the node has more (a block reached by two one-way jmps), so the caller falls

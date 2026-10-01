@@ -15,6 +15,8 @@
 #include "ControlFlowNode.h"
 #include "DecompilerCore.h"
 #include "DecompilerNew.h"
+#include "ConsumptionNode.h"
+#include "ScopeValues.h"
 #include "ScriptOMAll.h"
 #include "GameFolderHelper.h"
 #include "format.h"
@@ -37,42 +39,6 @@ std::string _indent2(int iIndent)
 	return theFill;
 }
 
-
-enum class ChunkType
-{
-	None,
-	If,
-	Then,
-	Else,
-	Condition,
-	Do,
-	While,
-	LoopBody,
-	And,
-	Or,
-	First,
-	Second,
-	Invert,
-	Switch,
-	Case,
-	DefaultCase,
-	CaseCondition,
-	CaseBody,
-	SwitchValue,
-	Break,
-	Continue,
-	NeedsAccumulator,
-	NeedsAccumulatorSpecial,
-	FailedToGetAccumulator,
-	FailedToGetStack,
-	NeedsStack,
-	ZeroNode,
-	TrueNode,
-	ShortCircuitInstruction,
-	FunctionBody,
-	CaseDeleted,
-	Nary,
-};
 
 // For debugging purposes
 const char *chunkTypeNames[] =
@@ -109,177 +75,6 @@ const char *chunkTypeNames[] =
 	"FunctionBody",
 	"CaseDeleted",
 	"Nary",
-};
-
-struct ConsumptionNode;
-Consumption _GetInstructionConsumption(ConsumptionNode &node, DecompileLookups &lookups);
-
-struct ConsumptionNode
-{
-	ConsumptionNode() : _hasPos(false), _chunkType(ChunkType::None), _parentWeak(nullptr) {}
-
-	bool _hasPos;
-	code_pos pos;
-	ChunkType _chunkType;
-	ConsumptionNode *_parentWeak;
-
-	unique_ptr<ConsumptionNode> Clone()
-	{
-		unique_ptr<ConsumptionNode> clone = make_unique<ConsumptionNode>();
-		clone->_hasPos = _hasPos;
-		clone->pos = pos;
-		clone->_chunkType = _chunkType;
-		for (auto &child : children)
-		{
-			clone->children.push_back(move(child->Clone()));
-			assert(clone->children.back()->_parentWeak == nullptr);
-			clone->children.back()->_parentWeak = clone.get();
-		}
-		assert(_parentWeak); // Don't want to be cloning top-levl eguy
-		return clone;
-	}
-
-	code_pos GetCode() const
-	{
-		assert(_hasPos);
-		return pos;
-	}
-	ChunkType GetType() const
-	{
-		return _chunkType;
-	}
-
-	int GetMyIndex() const
-	{
-		return _parentWeak->GetIndexOf(this);
-	}
-
-	int GetIndexOf(const ConsumptionNode *child) const
-	{
-		for (size_t i = 0; i < children.size(); i++)
-		{
-			if (children[i].get() == child)
-			{
-				return (int)i;
-			}
-		}
-		assert(false && "Corrupt hierarchy");
-		return 0;
-	}
-
-	ConsumptionNode *GetChild(ChunkType type) const
-	{
-		for (auto &child : children)
-		{
-			if (child->GetType() == type)
-			{
-				return child.get();
-			}
-		}
-		return nullptr;
-	}
-
-	void SetPos(code_pos pos) { this->pos = pos; _hasPos = true; }
-	void SetType(ChunkType type) { this->_chunkType = type; _hasPos = false; }
-	void SetTypeDontClearPos(ChunkType type) { this->_chunkType = type; }
-
-	ConsumptionNode *PrependChild()
-	{
-		std::unique_ptr<ConsumptionNode> newNode = make_unique<ConsumptionNode>();
-		ConsumptionNode *returnValue = newNode.get();
-		PrependChild(move(newNode));
-		return returnValue;
-	}
-	void PrependChild(std::unique_ptr<ConsumptionNode> chunk)
-	{
-		chunk->_parentWeak = this;
-		children.insert(children.begin(), move(chunk));
-	}
-	void AppendChild(std::unique_ptr<ConsumptionNode> chunk)
-	{
-		chunk->_parentWeak = this;
-		children.push_back(move(chunk));
-	}
-
-	void Print(std::ostream &os, int iIndent) const
-	{
-		os << hex;
-		os << _indent2(iIndent);
-		if (_hasPos)
-		{
-			os << OpcodeToName(pos->get_opcode(), pos->get_first_operand()) << " " << pos->get_first_operand() << "  [" << setw(4) << setfill('0') << pos->get_final_offset_dontcare() << "]";
-		}
-		else
-		{
-			os << "[" << chunkTypeNames[(int)_chunkType] << "]";
-		}
-		os << "\n";
-
-		for (auto &child : children)
-		{
-			child->Print(os, iIndent + 2);
-		}
-	}
-
-	const std::vector<std::unique_ptr<ConsumptionNode>> &Children() { return children; }
-
-	std::unique_ptr<ConsumptionNode> ReplaceChild(size_t index, unique_ptr<ConsumptionNode> replacement)
-	{
-		std::unique_ptr<ConsumptionNode> returnValue = move(children[index]);
-		children[index] = move(replacement);
-		children[index]->_parentWeak = this;
-		returnValue->_parentWeak = nullptr;
-		return returnValue;
-	}
-
-	void InsertChild(size_t index, unique_ptr<ConsumptionNode> replacement)
-	{
-		children.insert(children.begin() + index, move(replacement));
-		children[index]->_parentWeak = this;
-	}
-
-	// If lookups is provided, then we will replace stolen nodes with NeedsStack, if necessary.
-	// This is a recent change, so I've scoped it only to where I encountered this bug (switch statements, SQ4, script 376)
-	std::unique_ptr<ConsumptionNode> StealChild(size_t index, DecompileLookups *lookups = nullptr)
-	{
-		std::unique_ptr<ConsumptionNode> stolen = move(children[index]);
-		children.erase(children.begin() + index);
-		stolen->_parentWeak = nullptr;
-
-		// What if we needed this?
-		bool replace = false;
-		if (lookups)
-		{
-			if (_GetInstructionConsumption(*stolen, *lookups).cStackGenerate)
-			{
-				if (_GetInstructionConsumption(*this, *lookups).cStackConsume)
-				{
-					// We just lost a stack that we were relying on, so we'll need a replacement.
-					// We'll insert it at the beginning. So like, stuff "shifts down".
-					ConsumptionNode *replacementChild = PrependChild();
-					replacementChild->SetType(ChunkType::NeedsStack);
-				}
-			}
-		}
-
-		return stolen;
-	}
-	size_t GetChildCount() { return children.size(); }
-	ConsumptionNode *Child(int i) { return children[i].get(); }
-
-private:
-	// Children might be stored backward for now, we'll see
-	std::vector<std::unique_ptr<ConsumptionNode>> children;
-};
-
-class ConsumptionNodeException : public std::exception
-{
-public:
-	ConsumptionNodeException(const ConsumptionNode *node, const std::string &message) : message(message), node(node) {}
-	const char *what() const noexcept override { return message.c_str(); }
-
-	const ConsumptionNode *node;
-	std::string message;
 };
 
 struct ContextFrame
@@ -3670,6 +3465,32 @@ void _RestructureCaseHeaders(ConsumptionNode *chunk, DecompileLookups &lookups)
 	for (auto &child : chunk->Children())
 	{
 		_RestructureCaseHeaders(child.get(), lookups);
+	}
+}
+
+void OutputNewStructure(sci::FunctionBase &func, const scope::CodeModel &model, const scope::Region &root, std::list<scii> &code, DecompileLookups &lookups)
+{
+	unique_ptr<ConsumptionNode> mainChunk = scope::BuildValues(model, root, code, lookups.FunctionDecompileHints.ReturnsValue);
+
+	string debugTrackName = GetMethodTrackingName(func.GetOwnerClass(), func, true);
+	if (lookups.DebugInstructionConsumption && (!lookups.pszDebugFilter || PathMatchSpec(debugTrackName.c_str(), lookups.pszDebugFilter)))
+	{
+		std::stringstream ss;
+		mainChunk->Print(ss, 0);
+		lookups.DecompileResults().AddResult(DecompilerResultType::Debug, debugTrackName + " chunks (scope):\n" + ss.str());
+	}
+
+	try
+	{
+		for (auto &child : mainChunk->Children())
+		{
+			_ApplySyntaxNodeToCodeNode(*child, func, lookups);
+		}
+	}
+	catch (ConsumptionNodeException &e)
+	{
+		int offset = e.node->_hasPos ? e.node->GetCode()->get_final_offset_dontcare() : -1;
+		throw scope::ScopeError("values", "syntax", offset, e.message);
 	}
 }
 

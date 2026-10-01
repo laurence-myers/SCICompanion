@@ -76,7 +76,7 @@ uses `resJ`.
 
 | Pass | Rule |
 |---|---|
-| Live code | Reachability from the entry. A `jmp` that skips only dead code (or nothing) does nothing. A conditional branch whose target equals its fall-through does nothing. Dead straight-line code stays as statements; a dead `jmp` is a layout hint only. |
+| Live code | Reachability from the entry. A `jmp` that skips only dead code (or nothing) does nothing. A conditional branch whose target equals its fall-through does nothing. A `bt` or `bnt` right after one of the same kind to the same place (only `jmp`s that do nothing between them), which no other branch reaches, does nothing: the optimiser deleted the load of a repeated value (`(and a b b)`). Dead straight-line code stays as statements; a dead `jmp` is a layout hint only. |
 | N-ary compare | `cmp; bnt O; pprev` is one value when `resF(O)` equals `resF` of the chain end. The `bnt` is marked inert in a side table. |
 | Loops | A branch to an address at or before it is a back branch. The loop of head S is [S, last back branch to S]. One loop per head. When the parse fails on a jump to the instruction after an earlier back `jmp` J, the loop is split at J and parsed again. |
 | Switches | A stack-depth profile in address order. Each `toss` ends one switch; its head is the push of the tossed slot. A case starts at each `dup` at the switch depth; its value is [dup+1, `eq?`) and is parsed as a sequence; its body ends at the trailing `jmp` to the `toss`. |
@@ -132,15 +132,21 @@ accumulator and a statement list. It builds the same `ConsumptionNode` /
   plain variable sets the fact). When a consumer needs the accumulator and
   its node is used already, or was made before one of the consumer's own
   stack operands, the operand is a copy made from the fact. With no fact:
-  `asm` with a stable id. There is no search.
+  `asm` with a stable id. There is no search. Where the optimiser believes
+  more than the machine (a store or an increment to the stack leaves the
+  accumulator alone), the facts follow the machine; a store to a property
+  keeps the fact, as in the optimiser.
 - **Region:** `if`, `and`, `or`, `switch` and loop regions are evaluated
   with the stack carried through. The value of a region is the
   accumulator at its end. The then-part starts with the facts of the
   branch; the code after a join starts with no facts.
 - **Switch:** the head is the stack top. `dup` at the switch depth gives a
   marker; `eq?` takes the marker and the accumulator as the case value.
-  Other `dup`: a copy of the stack top. `pprev`: the accumulator operand
+  Other `dup`: a copy of the stack top (also a value pushed before the
+  sequence: the `dup` does not take it). `pprev`: the accumulator operand
   of the previous compare (n-ary).
+- **Dead code:** a structure that no path reaches is dead code: its tests
+  have no value, and its branches give no node.
 - **Presentation** (`and` or nested `if`, `while` or `repeat`, shortest
   then-part, `contif`): decided here, from facts that the evaluator has
   (a sequence is one value; a test is the first thing in a loop).

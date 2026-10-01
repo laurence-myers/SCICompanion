@@ -69,6 +69,48 @@ namespace UnitTests
 			Assert::IsFalse(model.SameTarget(a.At("one"), a.At("two"), Arrival::Jump));
 		}
 
+		// A bnt (or a bt) right after a bnt (or a bt) to the same place does
+		// nothing: control gets to it with a value that does not branch. Also
+		// with a jmp that does nothing between them. Not when another branch
+		// goes to it, and not after a branch of the other kind.
+		TEST_METHOD(LiveCode_ASecondTestOfTheSameValueIsANoOp)
+		{
+			ScopeAsm a(R"(
+				lap 1
+				bnt else
+			second:
+				bnt else
+				lap 2
+				bt end
+			secondBt:
+				bt end
+				lap 3
+				bnt else
+			label:
+				bnt else
+				lap 4
+				bt else
+			otherKind:
+				bnt else
+				lap 5
+				bnt else
+				jmp afterJmp
+			afterJmp:
+				bnt else
+				jmp label
+			else:
+				ldi 2
+			end:
+				ret
+			)");
+			CodeModel model(a.code);
+			Assert::IsTrue(model.IsNoOp(a.At("second")), L"a second bnt");
+			Assert::IsTrue(model.IsNoOp(a.At("secondBt")), L"a second bt");
+			Assert::IsTrue(model.IsNoOp(a.At("afterJmp")), L"after a jmp that does nothing");
+			Assert::IsFalse(model.IsNoOp(a.At("label")), L"a jmp goes to it");
+			Assert::IsFalse(model.IsNoOp(a.At("otherKind")), L"after a bt");
+		}
+
 		// Code after a ret that no branch goes to is dead. A jmp over nothing
 		// or over dead code does nothing, and so does a bnt to its
 		// fall-through. A dead branch gives no label.

@@ -135,6 +135,23 @@ namespace UnitTests
             return lines;
         }
 
+        // The fields of a line of a report, an empty last field too.
+        static std::vector<std::string> TabFields(const std::string &line)
+        {
+            std::vector<std::string> fields;
+            size_t start = 0;
+            for (;;)
+            {
+                size_t tab = line.find('\t', start);
+                fields.push_back(line.substr(start, (tab == std::string::npos) ? std::string::npos : tab - start));
+                if (tab == std::string::npos)
+                {
+                    return fields;
+                }
+                start = tab + 1;
+            }
+        }
+
         // The names of the files in src with this extension.
         static std::set<std::string> FilesOf(const std::string &game, const char *extension)
         {
@@ -795,33 +812,45 @@ namespace UnitTests
             Assert::IsTrue(console.err.find("Decompiled and wrote 1 of 2 scripts.") != std::string::npos, Wide(console.err).c_str());
         }
 
-        // --engine, else SCIC_DECOMPILE_ENGINE, else classic. The scope
-        // engine has no value stage yet: auto gives the source of classic,
-        // and scope gives asm with a warning for each function.
+        // --engine, else SCIC_DECOMPILE_ENGINE, else classic: the engine
+        // column of the function report. Each engine gives the same text for
+        // this script.
         TEST_METHOD(Decompile_Engine_TheOptionThenTheVariable)
         {
             CopyTemplate("\\TemplateGame\\SCI0");
+            std::string report = (fs::path(_copyFolder) / "functions.tsv").string();
+            // The text, and the engine of the first function of the report.
+            auto decompile = [&](std::vector<std::string> options, std::string &engine)
+            {
+                std::vector<std::string> args = { "script", "decompile", _copyFolder, "974", "--stdout", "--function-report", report };
+                args.insert(args.end(), options.begin(), options.end());
+                std::string text = Expect(0, args).out;
+                std::vector<std::string> lines = Lines(ReadFileText(report));
+                Assert::IsTrue(lines.size() > 1, Wide(ReadFileText(report)).c_str());
+                std::vector<std::string> fields = TabFields(lines[1]);
+                Assert::IsTrue(fields.size() > 5, Wide(lines[1]).c_str());
+                engine = fields[5];
+                return text;
+            };
+            std::string engine;
             std::string classic;
             {
                 ScopedEnvironmentVariable variable("SCIC_DECOMPILE_ENGINE", nullptr);
-                classic = Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout" }).out;
+                classic = decompile({}, engine);
                 Assert::IsTrue((classic.find("(script# 974)") != std::string::npos) && (classic.find("(asm") == std::string::npos), Wide(classic).c_str());
-                Assert::AreEqual(classic, Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout", "--engine", "classic" }).out, L"--engine classic");
-                Assert::AreEqual(classic, Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout", "--engine", "auto" }).out, L"--engine auto");
-                cli::StringConsole scope = Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout", "--engine", "scope" });
-                Assert::IsTrue(scope.out.find("(asm") != std::string::npos, Wide(scope.out).c_str());
-                bool warned = false;
-                for (const std::string &line : Lines(scope.err))
+                Assert::AreEqual(std::string("classic"), engine, L"no option, no variable");
+                for (const char *name : { "classic", "auto", "scope" })
                 {
-                    warned = warned || ((line.rfind("scic: warning: ", 0) == 0) && (line.find("[scope:") != std::string::npos));
+                    Assert::AreEqual(classic, decompile({ "--engine", name }, engine), Wide(name).c_str());
+                    Assert::AreEqual(std::string(name), engine, Wide(name).c_str());
                 }
-                Assert::IsTrue(warned, Wide(scope.err).c_str());
             }
             {
                 ScopedEnvironmentVariable variable("SCIC_DECOMPILE_ENGINE", "scope");
-                std::string fromVariable = Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout" }).out;
-                Assert::IsTrue(fromVariable.find("(asm") != std::string::npos, L"the variable gives the engine");
-                Assert::AreEqual(classic, Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout", "--engine", "classic" }).out, L"--engine before the variable");
+                decompile({}, engine);
+                Assert::AreEqual(std::string("scope"), engine, L"the variable gives the engine");
+                decompile({ "--engine", "classic" }, engine);
+                Assert::AreEqual(std::string("classic"), engine, L"--engine before the variable");
             }
         }
 
@@ -873,13 +902,7 @@ namespace UnitTests
                 int lastOffset = -1;
                 for (size_t i = 1; i < lines.size(); i++)
                 {
-                    std::vector<std::string> fields;
-                    std::istringstream stream(lines[i]);
-                    std::string field;
-                    while (std::getline(stream, field, '\t'))
-                    {
-                        fields.push_back(field);
-                    }
+                    std::vector<std::string> fields = TabFields(lines[i]);
                     Assert::AreEqual((size_t)9, fields.size(), Wide(lines[i]).c_str());
                     Assert::AreEqual(std::string("974"), fields[0], Wide(lines[i]).c_str());
                     int offset = std::stoi(fields[3], nullptr, 16);
@@ -887,9 +910,19 @@ namespace UnitTests
                     lastOffset = offset;
                     Assert::IsTrue(std::stoi(fields[4]) > 0, Wide(lines[i]).c_str());
                     Assert::AreEqual(std::string("auto"), fields[5], Wide(lines[i]).c_str());
-                    Assert::AreEqual(std::string("classic"), fields[6], Wide(lines[i]).c_str());
-                    Assert::IsTrue(fields[7].rfind("[scope:", 0) == 0, Wide(lines[i]).c_str());
-                    Assert::AreEqual(std::string("ok"), fields[8], Wide(lines[i]).c_str());
+                    // With auto, the scope engine gives the function, or the
+                    // classic engine when the scope engine fails.
+                    if (fields[6] == "scope")
+                    {
+                        Assert::AreEqual(std::string("ok"), fields[7], Wide(lines[i]).c_str());
+                        Assert::AreEqual(std::string(), fields[8], Wide(lines[i]).c_str());
+                    }
+                    else
+                    {
+                        Assert::AreEqual(std::string("classic"), fields[6], Wide(lines[i]).c_str());
+                        Assert::IsTrue(fields[7].rfind("[scope:", 0) == 0, Wide(lines[i]).c_str());
+                        Assert::AreEqual(std::string("ok"), fields[8], Wide(lines[i]).c_str());
+                    }
                 }
             }
 

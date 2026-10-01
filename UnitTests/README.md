@@ -98,6 +98,10 @@ text (after whitespace normalization) by `AssertDecompileMatchesExpected`. The
 expected text is the Sierra shape, not whatever the tool emitted. When an
 expected file is missing, the test writes the actual to
 `Release\SnapshotActuals\Expected` so it can be reviewed and committed.
+`TestDecompileScope` runs the fixtures with no loop and no switch with the
+scope engine. A fixture whose scope text is closer to Sierra's source has a
+second file, `<name>.scope.expected.sc`, which the test reads with the scope
+engine.
 
 | Fixture | Script | Family | Status |
 |---|---|---|---|

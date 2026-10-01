@@ -62,6 +62,9 @@
     <ClCompile Include="TestScopeCode.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestScopeValues.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="ScopeAsm.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
