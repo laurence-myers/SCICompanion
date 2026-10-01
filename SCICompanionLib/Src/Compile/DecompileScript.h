@@ -79,6 +79,9 @@ struct FunctionCode
 	uint16_t offset = 0;
 	// The decode found whole instructions.
 	bool read = false;
+	// A procedure whose address is not code of the script (past its end, or
+	// a known bad export).
+	bool badAddress = false;
 	// The instructions (ReadFunctionCode), and the guess that a ret reads
 	// the accumulator.
 	std::list<scii> code;

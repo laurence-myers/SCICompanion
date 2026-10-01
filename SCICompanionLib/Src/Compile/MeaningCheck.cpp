@@ -14,6 +14,9 @@
 #include <unordered_map>
 #include <unordered_set>
 
+// The value of an operation on two numbers (Evaluate.cpp).
+bool EvalBinaryOp(Opcode opcode, uint16_t aUnsigned, uint16_t bUnsigned, uint16_t &result);
+
 namespace meaning
 {
 	const char *VerdictName(Verdict verdict)
@@ -152,23 +155,18 @@ namespace meaning
 			{
 				return false;
 			}
-			if (op == "sub")
+			// The other operations of two numbers, as the PMachine does them
+			// (the compiler folds them the same way).
+			static const Opcode BinaryOps[] = { Opcode::SUB, Opcode::DIV, Opcode::MOD, Opcode::SHR, Opcode::SHL, Opcode::EQ, Opcode::NE, Opcode::GT,
+				Opcode::GE, Opcode::LT, Opcode::LE, Opcode::UGT, Opcode::UGE, Opcode::ULT, Opcode::ULE };
+			for (Opcode binary : BinaryOps)
 			{
-				result = (uint16_t)(values[0] - values[1]);
+				if (op == OpcodeToName(binary, 0))
+				{
+					return EvalBinaryOp(binary, values[0], values[1], result);
+				}
 			}
-			else if ((op == "shl") && (values[1] < 16))
-			{
-				result = (uint16_t)(values[0] << values[1]);
-			}
-			else if ((op == "eq?") || (op == "ne?"))
-			{
-				result = ((values[0] == values[1]) == (op == "eq?")) ? 1 : 0;
-			}
-			else
-			{
-				return false;
-			}
-			return true;
+			return false;
 		}
 
 		// The number that does not change the value of an associative
@@ -582,6 +580,16 @@ namespace meaning
 							int truth = (onTrue.accTruth == onFalse.accTruth) ? onTrue.accTruth : 0;
 							onTrue.accTruth = truth;
 							onFalse.accTruth = truth;
+							// The truths that the test gave the variables.
+							for (auto &binding : onTrue.bindings)
+							{
+								auto other = onFalse.bindings.find(binding.first);
+								if ((other != onFalse.bindings.end()) && (other->second.truth != binding.second.truth))
+								{
+									binding.second.truth = 0;
+									other->second.truth = 0;
+								}
+							}
 							if ((nextTrue.text == nextFalse.text) && (KeyOf(onTrue) == KeyOf(onFalse)))
 							{
 								state = onTrue;
@@ -629,6 +637,20 @@ namespace meaning
 			{
 				State state = before;
 				state.accTruth = _AccTruth(state.acc, effect.test, truth);
+				// A variable whose value is the tested value has its truth: a
+				// load of it again (the compiler does not reuse the value) is
+				// no test.
+				for (auto &binding : state.bindings)
+				{
+					if (binding.second.value->text == effect.test->text)
+					{
+						binding.second.truth = truth ? 1 : -1;
+					}
+				}
+				if (effect.test->varKind && !effect.test->indexed && (effect.test->tagPair < 0) && (state.bindings.count(effect.test->text) == 0))
+				{
+					state.bindings[effect.test->text] = Binding{ effect.test, truth ? 1 : -1 };
+				}
 				_ArriveAt(state, truth ? effect.onTrue : effect.onFalse);
 				return state;
 			}
@@ -768,8 +790,10 @@ namespace meaning
 					target = fmt::format("callb {0}", inst.operands[0]);
 					break;
 				default:
+					// calle: a calle of the script's own export is a call of
+					// the procedure (Instruction::text).
 					words = inst.operands[2] / 2 + 1;
-					target = fmt::format("calle {0} {1}", inst.operands[0], inst.operands[1]);
+					target = inst.text.empty() ? fmt::format("calle {0} {1}", inst.operands[0], inst.operands[1]) : ("call " + inst.text);
 					break;
 				}
 				if ((int)state.stack.size() < words)
@@ -939,8 +963,9 @@ namespace meaning
 				case Opcode::BNT:
 				{
 					uint16_t value;
-					if ((state.accTruth != 0) || IsConst(state.acc, value))
+					if ((state.accTruth != 0) || IsConst(state.acc, value) || (inst.target == state.pc + 1))
 					{
+						// A known outcome, or a branch to the next instruction.
 						return false;
 					}
 					// The test of a not is the test of its operand with the
@@ -1417,7 +1442,8 @@ namespace meaning
 	}
 
 	Function MakeFunction(const std::string &key, const std::string &display, std::list<scii> &code, bool returnsValue, const SCIVersion &version,
-		const std::function<std::string(uint16_t)> &addressText, const std::function<std::string(uint16_t)> &procedureKey)
+		const std::function<std::string(uint16_t)> &addressText, const std::function<std::string(uint16_t)> &procedureKey,
+		const std::function<std::string(uint16_t, uint16_t)> &calleKey)
 	{
 		Function function;
 		function.key = key;
@@ -1466,6 +1492,10 @@ namespace meaning
 			{
 				out.text = procedureKey((uint16_t)(inst.get_final_postop_offset() + inst.get_first_operand()));
 			}
+			else if ((op == Opcode::CALLE) && calleKey)
+			{
+				out.text = calleKey(out.operands[0], out.operands[1]);
+			}
 			function.code.push_back(out);
 		}
 		try
@@ -1486,8 +1516,155 @@ namespace meaning
 		return function;
 	}
 
-	std::vector<FunctionOutcome> CompareFunctions(const std::vector<Function> &original, const std::vector<Function> &recompiled)
+	namespace
 	{
+		const char LocalPrefix[] = "local ";
+
+		bool _IsLocalKey(const std::string &key)
+		{
+			return key.compare(0, sizeof(LocalPrefix) - 1, LocalPrefix) == 0;
+		}
+
+		// The function with the targets of its calls of local procedures
+		// hidden.
+		Function _WithoutLocalTargets(const Function &function)
+		{
+			Function copy = function;
+			for (Instruction &inst : copy.code)
+			{
+				if (((inst.op == Opcode::CALL) || (inst.op == Opcode::CALLE)) && _IsLocalKey(inst.text))
+				{
+					inst.text = "local ?";
+				}
+			}
+			return copy;
+		}
+
+		// The recompiled functions, with the keys of the original local
+		// procedures. The text can have its local procedures in another
+		// order than the original (the decompiler prints a procedure that
+		// reads properties inside its class), and the keys "local <n>"
+		// count them in address order. Each original local procedure pairs
+		// with a recompiled one that means the same when the targets of the
+		// calls of local procedures are hidden: the one at its own place
+		// first, else the first other one. A procedure with no such partner
+		// keeps its key.
+		std::vector<Function> _PairLocalProcedures(const std::vector<Function> &original, const std::vector<Function> &recompiled)
+		{
+			std::vector<const Function *> originalLocals;
+			std::vector<size_t> recompiledLocals;
+			for (const Function &function : original)
+			{
+				if (_IsLocalKey(function.key))
+				{
+					originalLocals.push_back(&function);
+				}
+			}
+			for (size_t i = 0; i < recompiled.size(); i++)
+			{
+				if (_IsLocalKey(recompiled[i].key))
+				{
+					recompiledLocals.push_back(i);
+				}
+			}
+			std::vector<Function> result = recompiled;
+			if (originalLocals.empty() || recompiledLocals.empty())
+			{
+				return result;
+			}
+			std::vector<Function> hiddenRecompiled;
+			for (size_t index : recompiledLocals)
+			{
+				hiddenRecompiled.push_back(_WithoutLocalTargets(recompiled[index]));
+			}
+			std::vector<bool> taken(recompiledLocals.size(), false);
+			std::vector<bool> paired(originalLocals.size(), false);
+			std::map<std::string, std::string> newKeys;
+			for (size_t o = 0; o < originalLocals.size(); o++)
+			{
+				if (!originalLocals[o]->unreadable.empty())
+				{
+					continue;
+				}
+				Function hidden = _WithoutLocalTargets(*originalLocals[o]);
+				auto same = [&](size_t r)
+				{
+					return !taken[r] && (Compare(hidden, hiddenRecompiled[r]).verdict == Verdict::Same);
+				};
+				size_t partner = recompiledLocals.size();
+				if ((o < recompiledLocals.size()) && same(o))
+				{
+					partner = o;
+				}
+				else
+				{
+					for (size_t r = 0; r < recompiledLocals.size(); r++)
+					{
+						if (same(r))
+						{
+							partner = r;
+							break;
+						}
+					}
+				}
+				if (partner < recompiledLocals.size())
+				{
+					taken[partner] = true;
+					paired[o] = true;
+					newKeys[recompiled[recompiledLocals[partner]].key] = originalLocals[o]->key;
+				}
+			}
+			// The procedures with no such partner pair in their order (the
+			// compare then shows where they differ); a recompiled procedure
+			// that is left gets a key that no original procedure has.
+			size_t next = 0;
+			for (size_t r = 0; r < recompiledLocals.size(); r++)
+			{
+				if (taken[r])
+				{
+					continue;
+				}
+				while ((next < originalLocals.size()) && paired[next])
+				{
+					next++;
+				}
+				const std::string &key = recompiled[recompiledLocals[r]].key;
+				if (next < originalLocals.size())
+				{
+					paired[next] = true;
+					newKeys[key] = originalLocals[next]->key;
+				}
+				else
+				{
+					newKeys[key] = key + " (recompiled)";
+				}
+			}
+			for (Function &function : result)
+			{
+				auto renamed = newKeys.find(function.key);
+				if (renamed != newKeys.end())
+				{
+					function.key = renamed->second;
+				}
+				for (Instruction &inst : function.code)
+				{
+					if ((inst.op == Opcode::CALL) || (inst.op == Opcode::CALLE))
+					{
+						auto target = newKeys.find(inst.text);
+						if (target != newKeys.end())
+						{
+							inst.text = target->second;
+						}
+					}
+				}
+			}
+			return result;
+		}
+	}
+
+	std::vector<FunctionOutcome> CompareFunctions(const std::vector<Function> &original, const std::vector<Function> &recompiledAsRead)
+	{
+		std::vector<Function> recompiled = _PairLocalProcedures(original, recompiledAsRead);
 		std::map<std::string, const Function *> byKey;
 		for (const Function &function : recompiled)
 		{
@@ -1503,7 +1680,13 @@ namespace meaning
 			row.display = function.display;
 			row.offset = function.offset;
 			auto partner = byKey.find(function.key);
-			if (partner == byKey.end())
+			if (function.badExport)
+			{
+				// No code: the text has an empty procedure for the export.
+				row.outcome.verdict = Verdict::Uncompared;
+				row.outcome.detail = "bad-export";
+			}
+			else if (partner == byKey.end())
 			{
 				// The text lost the function (or gave it to another object).
 				row.outcome.verdict = Verdict::Diff;
@@ -1536,29 +1719,40 @@ namespace meaning
 	std::vector<Function> ReadFunctions(const CompiledScript &script, DecompileLookups &lookups, const Vocab000 *pWords)
 	{
 		std::vector<FunctionCode> codes = ReadScriptFunctions(script, lookups, pWords);
-		// The key of each procedure, by its address.
+		// The key of the procedure at each address (for a call): exports
+		// that share an address have the key of the lowest export.
 		std::map<uint16_t, std::string> procedureKeys;
 		std::map<uint16_t, std::string> procedureNames;
 		int locals = 0;
 		for (const FunctionCode &code : codes)
 		{
-			if (!code.method)
+			if (!code.method && (code.exportIndex >= 0))
 			{
-				if (code.exportIndex >= 0)
+				auto known = procedureKeys.find(code.offset);
+				if (known == procedureKeys.end())
 				{
 					procedureKeys[code.offset] = fmt::format("export {0}", code.exportIndex);
+					procedureNames[code.offset] = fmt::format("proc{0}_{1}", script.GetScriptNumber(), code.exportIndex);
 				}
-				else
-				{
-					procedureKeys[code.offset] = fmt::format("local {0}", locals++);
-				}
-				procedureNames[code.offset] = (code.exportIndex >= 0) ? fmt::format("proc{0}_{1}", script.GetScriptNumber(), code.exportIndex) : fmt::format("localproc_{0:04x}", code.offset);
+			}
+		}
+		for (const FunctionCode &code : codes)
+		{
+			if (!code.method && (code.exportIndex < 0) && (procedureKeys.count(code.offset) == 0))
+			{
+				procedureKeys[code.offset] = fmt::format("local {0}", locals++);
+				procedureNames[code.offset] = fmt::format("localproc_{0:04x}", code.offset);
 			}
 		}
 		auto procedureKey = [&](uint16_t address) -> std::string
 		{
 			auto it = procedureKeys.find(address);
 			return (it != procedureKeys.end()) ? it->second : fmt::format("code {0:04x}", address);
+		};
+		std::vector<uint16_t> exports = script.GetExports();
+		auto calleKey = [&](uint16_t scriptNumber, uint16_t exportIndex) -> std::string
+		{
+			return ((scriptNumber == script.GetScriptNumber()) && (exportIndex < exports.size())) ? procedureKey(exports[exportIndex]) : std::string();
 		};
 		auto addressText = [&](uint16_t address) -> std::string
 		{
@@ -1593,6 +1787,13 @@ namespace meaning
 				display = code.objectName + "::" + lookups.LookupSelectorName(code.selector);
 				key = display;
 			}
+			else if (code.exportIndex >= 0)
+			{
+				// Each export by its own index (exports can share an
+				// address).
+				key = fmt::format("export {0}", code.exportIndex);
+				display = fmt::format("proc{0}_{1}", script.GetScriptNumber(), code.exportIndex);
+			}
 			else
 			{
 				key = procedureKeys[code.offset];
@@ -1603,8 +1804,9 @@ namespace meaning
 			{
 				key += fmt::format(" #{0}", keyCounts[key]);
 			}
-			Function function = MakeFunction(key, display, code.code, code.returnsValue, lookups.GetVersion(), addressText, procedureKey);
+			Function function = MakeFunction(key, display, code.code, code.returnsValue, lookups.GetVersion(), addressText, procedureKey, calleKey);
 			function.offset = code.offset;
+			function.badExport = (code.exportIndex >= 0) && code.badAddress;
 			function.localsAreGlobals = (script.GetScriptNumber() == 0);
 			if (!code.read)
 			{

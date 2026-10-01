@@ -775,6 +775,7 @@ std::vector<FunctionCode> ReadScriptFunctions(const CompiledScript &compiledScri
 		CodeSection section;
 		// As DecompileFunction: a procedure at a bad address has no code.
 		bool validProcedure = (function.offset < bytes.size()) && (function.offset != BogusSQ5Export);
+		function.badAddress = !function.method && !validProcedure;
 		if ((start != codePointersTO.end()) && (function.method || validProcedure) &&
 			FindStartEndCode(start, codePointersTO, compiledScript._codeSections, section))
 		{

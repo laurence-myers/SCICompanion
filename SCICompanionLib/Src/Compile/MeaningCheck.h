@@ -34,8 +34,8 @@ namespace meaning
 		// The index of the target of a branch; -1 for another instruction.
 		int target = -1;
 		// lofsa, lofss: the thing at the address ("object Name", "string
-		// text", "said text"; empty when there is none). call: the key of the
-		// procedure.
+		// text", "said text"; empty when there is none). call, and a calle of
+		// the script's own export: the key of the procedure.
 		std::string text;
 	};
 
@@ -63,6 +63,9 @@ namespace meaning
 		std::vector<int> depth;
 		// Not empty: the check cannot read the function, and why.
 		std::string unreadable;
+		// An export whose address is not in the script (no code): the text
+		// cannot give it, so the check does not compare it.
+		bool badExport = false;
 	};
 
 	enum class Verdict
@@ -87,9 +90,12 @@ namespace meaning
 	// point into code; the placeholder Opcode::INDETERMINATE is left out).
 	// addressText gives the thing at the address of a lofsa or lofss (empty
 	// when there is none); procedureKey gives the key of the procedure at the
-	// address of a call.
+	// address of a call. calleKey (when it is given) gives the key of the
+	// procedure of a calle of the script and export (a calle of the script's
+	// own export is a call of it); empty for another script.
 	Function MakeFunction(const std::string &key, const std::string &display, std::list<scii> &code, bool returnsValue, const SCIVersion &version,
-		const std::function<std::string(uint16_t)> &addressText, const std::function<std::string(uint16_t)> &procedureKey);
+		const std::function<std::string(uint16_t)> &addressText, const std::function<std::string(uint16_t)> &procedureKey,
+		const std::function<std::string(uint16_t, uint16_t)> &calleKey = nullptr);
 
 	// The effects of the two functions match. The returns of the recompiled
 	// function read the accumulator when the original's do. A path with a
@@ -110,7 +116,9 @@ namespace meaning
 	// The functions of two scripts, paired by key, in the order of the
 	// original, then the recompiled functions that the original has not. A
 	// function with no partner is DIFF ("no-recompiled-function" or
-	// "no-original-function").
+	// "no-original-function"). The local procedures pair by meaning (the
+	// text can have them in another order), and an export whose address is
+	// not in the original script is UNCOMPARED ("bad-export").
 	std::vector<FunctionOutcome> CompareFunctions(const std::vector<Function> &original, const std::vector<Function> &recompiled);
 
 	// The functions of a compiled script (ReadScriptFunctions), for the check.

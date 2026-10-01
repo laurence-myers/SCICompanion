@@ -54,19 +54,15 @@ fewer distinct defects. Survey by cause:
   Mixed-Up Fairy Tales 995, IconBar and `Inv`.
 - **An object with the name of a property** (67 rows; see "Names that
   compile to another value").
-- **The compile leaves out an uncalled local procedure** (22 rows): QfG3
-  460 `localproc_1f5b`, Mixed-Up Fairy Tales 927 `localproc_0492`; each
-  later `local N` moves.
+- **A local procedure that only dead code calls** (2 rows): QfG3 460
+  `localproc_1f5b`, Mixed-Up Fairy Tales 927 `localproc_0492`. The
+  decompiler finds it as the target of a call in dead code after the end
+  of another function, and leaves that code out. The recompiled procedure
+  has no caller, so the check does not find it (`no-recompiled-function`).
 - **Selectors with no name** (22 rows): QfG2 dev 909, `sel_713` and
   others get new numbers in the compile.
 - **Two kernel functions with one name** (6 rows): ECO1 540 `Dummy` (81
   and 38).
-- **False DIFFs of the meaning check:** exports that share an address or
-  point past the end (96 rows, ICEMAN 0); local procedures in another
-  order in the text (40 rows: the check keys `local N` by order, Castle of
-  Dr. Brain 995); a test of a joined `or` or of the accumulator with no
-  reload (21 rows, QfG3 23 `Teller::respond`, KQ4 49); `calle` against
-  `call export` (8 rows, ICEMAN 3, Pepper 120, QfG1 15).
 - **Not explained** (1 row): Island of Dr. Brain 268 `anElement::select`.
 
 ## Refusals

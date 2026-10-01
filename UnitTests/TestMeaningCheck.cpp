@@ -591,5 +591,163 @@ namespace UnitTests
 				ret
 			)"));
 		}
+
+		// A calle of the script's own export is a call of the procedure
+		// (ICEMAN script 3, Man::handleEvent: the compiler gives a call).
+		TEST_METHOD(Meaning_ACalleOfTheOwnExportIsACall)
+		{
+			auto make = [](const std::string &code)
+			{
+				ScopeAsm a(code);
+				return meaning::MakeFunction("f", "f", a.code, false, sciVersion1_1,
+					[](uint16_t address) { return fmt::format("object o{0}", address); },
+					[](uint16_t) { return std::string("export 8"); },
+					[](uint16_t script, uint16_t exportIndex) { return (script == 3) ? fmt::format("export {0}", exportIndex) : std::string(); });
+			};
+			meaning::Function call = make("push0\ncall 0 0\nret");
+			AssertVerdict(meaning::Verdict::Same, meaning::Compare(make("push0\ncalle 3 8 0\nret"), call));
+			// A calle of another script's export.
+			AssertVerdict(meaning::Verdict::Diff, meaning::Compare(make("push0\ncalle 4 8 0\nret"), call));
+		}
+
+		// A test of a value that a test before it on the path read is no
+		// test, also when the code loads the variable again (QfG3 script
+		// 23, Teller::respond: the compiler does not reuse the value).
+		TEST_METHOD(Meaning_AReloadAfterATestIsNoTest)
+		{
+			AssertVerdict(meaning::Verdict::Same, Check(R"(
+				lal 0
+				bnt end
+				bnt end
+				push0
+				callk 1 0
+			end:
+				ret
+			)", R"(
+				lal 0
+				bnt end
+				lal 0
+				bnt end
+				push0
+				callk 1 0
+			end:
+				ret
+			)"));
+			// A call between the tests can change the variable.
+			AssertVerdict(meaning::Verdict::Diff, Check(R"(
+				lal 0
+				bnt end
+				push0
+				callk 2 0
+				push0
+				callk 1 0
+			end:
+				ret
+			)", R"(
+				lal 0
+				bnt end
+				push0
+				callk 2 0
+				lal 0
+				bnt end
+				push0
+				callk 1 0
+			end:
+				ret
+			)"));
+		}
+
+		// A compare of two numbers folds, as the compiler folds it (Hoyle
+		// Official Book of Games 1 script 14: "pushi 533; ldi 8; gt?; bnt").
+		TEST_METHOD(Meaning_ACompareOfNumbersFolds)
+		{
+			const char *recompiledCall = "push0\ncallk 1 0\nret";
+			AssertVerdict(meaning::Verdict::Same, Check("pushi 533\nldi 8\ngt?\nbnt end\npush0\ncallk 1 0\nend:\nret", recompiledCall));
+			// Signed: -1 is not more than 1; unsigned: 65535 is.
+			AssertVerdict(meaning::Verdict::Same, Check("pushi 65535\nldi 1\ngt?\nbnt end\npush0\ncallk 1 0\nend:\nret", "ret"));
+			AssertVerdict(meaning::Verdict::Diff, Check("pushi 65535\nldi 1\nugt?\nbnt end\npush0\ncallk 1 0\nend:\nret", "ret"));
+		}
+
+		// A branch to the next instruction is no test (KQ5 script 766,
+		// Cursor::init has nine of them in a row).
+		TEST_METHOD(Meaning_ABranchToTheNextInstructionIsNoTest)
+		{
+			AssertVerdict(meaning::Verdict::Same, Check(R"(
+				lap 1
+				bnt a
+			a:
+				lap 2
+				bnt b
+			b:
+				lap 3
+				bt c
+			c:
+				lap 4
+				bnt d
+			d:
+				push0
+				callk 1 0
+				ret
+			)", "push0\ncallk 1 0\nret"));
+		}
+
+		// Each export by its index; an export whose address is not in the
+		// original script is UNCOMPARED (ICEMAN script 0: exports 6 to 29
+		// point past the end; the text gives empty procedures).
+		TEST_METHOD(Meaning_ABadExportIsUncompared)
+		{
+			meaning::Function stub = Fn("ret");
+			meaning::Function bad6;
+			bad6.key = "export 6";
+			bad6.badExport = true;
+			bad6.unreadable = "code-bounds";
+			meaning::Function bad7 = bad6;
+			bad7.key = "export 7";
+			meaning::Function stub6 = stub;
+			stub6.key = "export 6";
+			meaning::Function stub7 = stub;
+			stub7.key = "export 7";
+			std::vector<meaning::FunctionOutcome> rows = meaning::CompareFunctions({ bad6, bad7 }, { stub6, stub7 });
+			Assert::AreEqual((size_t)2, rows.size());
+			for (const auto &row : rows)
+			{
+				AssertVerdict(meaning::Verdict::Uncompared, row.outcome);
+				Assert::AreEqual(std::string("bad-export"), row.outcome.detail);
+			}
+		}
+
+		// The local procedures pair by meaning: the text can have them in
+		// another order (Castle of Dr. Brain script 995: the decompiler
+		// prints a procedure that reads properties inside its class).
+		TEST_METHOD(Meaning_LocalProceduresPairByMeaning)
+		{
+			auto local = [](const std::string &key, const std::string &code)
+			{
+				meaning::Function function = Fn(code);
+				function.key = key;
+				return function;
+			};
+			// f calls B.
+			auto caller = [](const std::string &target)
+			{
+				meaning::Function function = Fn("push0\ncall 0 0\nret");
+				function.key = "f";
+				function.code[1].text = target;
+				return function;
+			};
+			meaning::Function a0 = local("local 0", "push0\ncallk 1 0\nret");
+			meaning::Function b1 = local("local 1", "push0\ncallk 2 0\nret");
+			meaning::Function b0 = local("local 0", "push0\ncallk 2 0\nret");
+			meaning::Function a1 = local("local 1", "push0\ncallk 1 0\nret");
+			std::vector<meaning::FunctionOutcome> rows = meaning::CompareFunctions({ a0, b1, caller("local 1") }, { b0, a1, caller("local 0") });
+			Assert::AreEqual((size_t)3, rows.size());
+			for (const auto &row : rows)
+			{
+				AssertVerdict(meaning::Verdict::Same, row.outcome);
+			}
+			// The caller calls the other procedure.
+			rows = meaning::CompareFunctions({ a0, b1, caller("local 1") }, { b0, a1, caller("local 1") });
+			AssertVerdict(meaning::Verdict::Diff, rows[2].outcome);
+		}
 	};
 }
