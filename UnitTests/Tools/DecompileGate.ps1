@@ -8,7 +8,7 @@
       1. decompiles the scripts of the sample (default) or every script
          (-Full) with scic, on a copy of the game: scic script decompile
          --engine <engine> --game-ini none --function-report. The engine
-         is -Engine, else SCIC_DECOMPILE_ENGINE, else classic;
+         is -Engine, else SCIC_DECOMPILE_ENGINE, else scope;
       2. decompiles the whole game with sluicebox's Snuffer, once: the
          output stays in the cache;
       3. compares the two with scic dev compare-structure (in the sample
@@ -136,7 +136,7 @@ $ErrorActionPreference = "Stop"
 if (-not $Library) { throw "-Library is required." }
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 # The engine, as scic chooses it when no --engine is given.
-$engineName = if ($Engine) { $Engine } elseif ($env:SCIC_DECOMPILE_ENGINE) { $env:SCIC_DECOMPILE_ENGINE } else { "classic" }
+$engineName = if ($Engine) { $Engine } elseif ($env:SCIC_DECOMPILE_ENGINE) { $env:SCIC_DECOMPILE_ENGINE } else { "scope" }
 if (-not $Sample) { $Sample = Join-Path $repoRoot "UnitTests\Files\Corpus\gate-sample.json" }
 if (-not $Baseline) { $Baseline = Join-Path $repoRoot "UnitTests\Files\Corpus\gate-baseline.json" }
 if (-not $Scic) { $Scic = Join-Path $repoRoot "Release\scic.exe" }

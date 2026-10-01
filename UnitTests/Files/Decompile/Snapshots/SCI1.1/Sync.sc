@@ -64,9 +64,7 @@
 			(repeat
 				(= gTheSyncSyncTime_2 (gTheSync syncTime?))
 				(gTheSync syncCheck:)
-				(if (== gTheSyncSyncTime_2 (gTheSync syncTime?))
-					(break)
-				)
+				(breakif (== gTheSyncSyncTime_2 (gTheSync syncTime?)))
 			)
 			(if
 				(and

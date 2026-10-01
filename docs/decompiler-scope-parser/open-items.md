@@ -38,13 +38,8 @@ Open items only: gaps, unfixed findings, questions. The plan is in
   that gets two values). The meaning check gives them UNCOMPARED
   (`not-recompiled`).
 
-## For step 13
+## For step 14
 
-- One function that the classic engine decompiles and the scope engine
-  refuses: ICEMAN (1989) 100 `introScript::changeState` (issue #235: the
-  decode replaces a corrupt branch with `ldi 47789`). With `scope` as the
-  default it is asm: rule 1 counts it as REGRESSED. The owner accepts it
-  (2026-10-01); step 13 records the decision in plan section 6.
 - The other refusals of the gate sample with the `scope` engine (16
   functions; the classic engine gives no source for them either):
   `acc-no-fact` (ICEMAN 385 `localproc_02bc` in three copies, Hoyle

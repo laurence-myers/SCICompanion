@@ -8,6 +8,5 @@
 
 (procedure (DebugRoomInit param1)
 	(switch param1
-		(else )
 	)
 )

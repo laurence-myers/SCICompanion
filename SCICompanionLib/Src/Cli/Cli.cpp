@@ -213,7 +213,7 @@ namespace cli
         decompile->add_flag("--debug-control-flow", decompileOptions.debugControlFlow, "Show the control flow (decompiler debug output).");
         decompile->add_flag("--debug-instructions", decompileOptions.debugInstructions, "Show the use of the instructions (decompiler debug output).");
         decompile->add_option("--debug-filter", decompileOptions.debugFilter, "The debug output only for this function.");
-        decompile->add_option("--engine", decompileOptions.engine, "classic: the control-flow graph; scope: the scope parser; auto: scope, then classic for a function that scope cannot do. Default: SCIC_DECOMPILE_ENGINE, else classic.")
+        decompile->add_option("--engine", decompileOptions.engine, "classic: the control-flow graph; scope: the scope parser; auto: scope, then classic for a function that scope cannot do. Default: SCIC_DECOMPILE_ENGINE, else scope.")
             ->check(CLI::IsMember({ "classic", "scope", "auto" }));
         CLI::Option *functionReportOption = decompile->add_option("--function-report", decompileOptions.functionReport,
             "Also write a line for each function into this file (tab-separated): its script, class, name, offset and bytes, the engine, the output (classic, scope, asm, corrupt, error or stale), and the result of each engine.");

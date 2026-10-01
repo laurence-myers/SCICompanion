@@ -552,7 +552,7 @@ namespace UnitTests
             AddFixtureScript("X_SharedThenBranch");
             std::string error;
             Assert::IsTrue(CompileFixture(903, "X_SharedThenBranch", &error), Wide(error).c_str());
-            ScopedEnvironmentVariable engine("SCIC_DECOMPILE_ENGINE", nullptr);
+            ScopedEnvironmentVariable engine("SCIC_DECOMPILE_ENGINE", "classic");
             DecompileOutput out = DecompileToText(903);
             Assert::AreEqual((size_t)1, out.functions.size());
             const DecompiledFunction &function = out.functions[0];

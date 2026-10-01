@@ -720,7 +720,7 @@
 			(if
 			(not (and curMenu (curMenu handleEvent: newEvent)))
 				(GlobalToLocal newEvent)
-				(if (self handleEvent: newEvent) (break))
+				(breakif (self handleEvent: newEvent))
 			)
 			(newEvent dispose:)
 		)

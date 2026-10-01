@@ -136,13 +136,13 @@
 						((< (param1 y?) (+ nsTop 10))
 							(repeat
 								(self retreat: 1)
-								(breakif(not (MouseStillDown)))
+								(breakif (not (MouseStillDown)))
 							)
 						)
 						((> (param1 y?) (- nsBottom 10))
 							(repeat
 								(self advance: 1)
-								(breakif(not (MouseStillDown)))
+								(breakif (not (MouseStillDown)))
 							)
 						)
 						(else

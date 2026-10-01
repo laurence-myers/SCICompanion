@@ -52,7 +52,7 @@ std::string DecompileEngineVariableValue()
 DecompileEngine DefaultDecompileEngine()
 {
 	std::string value = DecompileEngineVariableValue();
-	DecompileEngine engine = DecompileEngine::Classic;
+	DecompileEngine engine = DecompileEngine::Scope;
 	if (!value.empty() && !ParseDecompileEngine(value, engine))
 	{
 		throw sci::DataError(fmt::format("{0} is \"{1}\"; give classic, scope or auto", DecompileEngineVariable, value), sci::ErrorCode::Usage);

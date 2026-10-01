@@ -812,7 +812,7 @@ namespace UnitTests
             Assert::IsTrue(console.err.find("Decompiled and wrote 1 of 2 scripts.") != std::string::npos, Wide(console.err).c_str());
         }
 
-        // --engine, else SCIC_DECOMPILE_ENGINE, else classic: the engine
+        // --engine, else SCIC_DECOMPILE_ENGINE, else scope: the engine
         // column of the function report. Each engine gives the same text for
         // this script.
         TEST_METHOD(Decompile_Engine_TheOptionThenTheVariable)
@@ -838,7 +838,7 @@ namespace UnitTests
                 ScopedEnvironmentVariable variable("SCIC_DECOMPILE_ENGINE", nullptr);
                 classic = decompile({}, engine);
                 Assert::IsTrue((classic.find("(script# 974)") != std::string::npos) && (classic.find("(asm") == std::string::npos), Wide(classic).c_str());
-                Assert::AreEqual(std::string("classic"), engine, L"no option, no variable");
+                Assert::AreEqual(std::string("scope"), engine, L"no option, no variable");
                 for (const char *name : { "classic", "auto", "scope" })
                 {
                     Assert::AreEqual(classic, decompile({ "--engine", name }, engine), Wide(name).c_str());

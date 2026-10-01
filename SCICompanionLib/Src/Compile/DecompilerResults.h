@@ -39,7 +39,7 @@ struct DecompiledFunction
 	std::string name;
 	uint16_t offset = 0;		// the offset of its code in the script
 	int byteCount = 0;			// 0 when the end of its code is not known
-	DecompileEngine engine = DecompileEngine::Classic;	// the engine that was asked for
+	DecompileEngine engine = DecompileEngine::Scope;	// the engine that was asked for
 	// The output of the function: "classic" or "scope" (the engine whose
 	// source it has), "asm" (the disassembly), "corrupt" (the end of its
 	// code is not known), "error" (its decompile threw, so the script

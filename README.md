@@ -67,6 +67,14 @@ modernizing the build. Broad highlights since the previous release:
   `asm`, and why the decompiler could not do it. A console shows names
   with their own characters. It has none of the GUI code in it: the engine
   is now a library of its own, with no MFC.
+* **A new decompiler engine.** The decompiler now reads the control flow of
+  each function in the order that the compiler wrote it (a scope parser), and
+  follows the values forwards through it, instead of matching shapes in a
+  graph. On a sample of 92 game copies, 17 functions fall back to `asm`
+  (343 with the old engine). Its tests compile the decompiled text again
+  and check that each function does the same as the original bytecode (the
+  same calls, stores and tests, with the same values). `scic script
+  decompile --engine classic` still gives the old engine.
 * **Eliminated most `asm` fallbacks in the decompiler.** When the decompiler
   could not reconstruct a function's control flow it used to give up and emit
   raw `asm` disassembly. It now rebuilds the control flow into real source, so

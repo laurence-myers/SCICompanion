@@ -102,7 +102,7 @@
 					(= temp1 temp0)
 				)
 				(param1 dispose:)
-				(breakif(not (MouseStillDown)))
+				(breakif (not (MouseStillDown)))
 			)
 			(if temp0 (HiliteControl self))
 			(return temp0)
@@ -320,7 +320,7 @@
 				(= dialogFirst (self next: dialogFirst))
 				(if (not dialogFirst) (= dialogFirst (self first:)))
 				(= theItem (NodeValue dialogFirst))
-				(if (& (theItem state?) $0001) (break))
+				(breakif (& (theItem state?) $0001))
 			)
 			(theItem select: 1)
 			(gGame
@@ -344,7 +344,7 @@
 				(= dialogLast (self prev: dialogLast))
 				(if (not dialogLast) (= dialogLast (self last:)))
 				(= theItem (NodeValue dialogLast))
-				(if (& (theItem state?) $0001) (break))
+				(breakif (& (theItem state?) $0001))
 			)
 			(theItem select: 1)
 			(gGame

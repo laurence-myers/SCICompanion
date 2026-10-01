@@ -409,7 +409,7 @@
 							(break)
 						)
 					)
-					(if (not (StrCmp @temp552 {; CASES})) (break))
+					(breakif (not (StrCmp @temp552 {; CASES})))
 				)
 				(shmFile close:)
 			)

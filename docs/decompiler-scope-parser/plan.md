@@ -329,6 +329,13 @@ worse: names that change because a function that was `asm` is now source
 (the name guess reads its assignments), and `(if c X else Y)` where Snuffer
 has `(if c X (continue)) Y` (the bytecode is the same).
 
+**Owner decision (2026-10-01) on rule 1:** ICEMAN (1989) script 100
+`introScript::changeState` is accepted as `asm` with the scope engine:
+its bytecode has a corrupt branch (issue #235; the decode replaces it with
+`ldi 47789`), and the classic text of it was not right either. The gate
+allowlist cannot excuse rule 1, so the gate of step 13 reports this one
+failure.
+
 ## 7. Risks
 
 - The parser rules came from hand simulation. Step 8 measures them on the

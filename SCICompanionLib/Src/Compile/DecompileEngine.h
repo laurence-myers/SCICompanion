@@ -24,6 +24,6 @@ extern const char *const DecompileEngineVariable;
 std::string DecompileEngineVariableValue();
 
 // The engine when no option gives it: the engine of SCIC_DECOMPILE_ENGINE,
-// else Classic. Throws a sci::DataError (Usage) when the variable has an
-// unknown value, so that a wrong name does not silently give Classic.
+// else Scope. Throws a sci::DataError (Usage) when the variable has an
+// unknown value, so that a wrong name does not silently give Scope.
 DecompileEngine DefaultDecompileEngine();
