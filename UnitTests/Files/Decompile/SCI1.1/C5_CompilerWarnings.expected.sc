@@ -11,10 +11,14 @@
 	((ScriptID param1) init: &rest)
 )
 
+(instance c5Target of Script
+	(properties)
+)
+
 (instance c5Script of Script
 	(properties)
 	
 	(method (doit)
-		(self state: 1 2)
+		(c5Target state: 1 2)
 	)
 )

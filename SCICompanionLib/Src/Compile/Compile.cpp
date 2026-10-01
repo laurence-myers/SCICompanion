@@ -1492,10 +1492,11 @@ CodeResult SendCall::OutputByteCode(CompileContext &context) const
 				if (param->ContainsRest())
 				{
 					// If the target made a proc or send call, the &rest affects the target's code (which
-					// is executed after the params are pushed to the stack): the call of the target gets
-					// the extra parameters. Sierra's compiler makes this code too (PQ2 Main:
-					// ((ScriptID param1) notify: &rest)), so it is a warning: the code is the same.
-					context.ReportWarning(param.get(), "&rest in the parameters of a send whose target contains nested procedure calls or sends: the call of the target gets the extra parameters. Assign the result of the procedure call or send to a temporary variable to avoid this.");
+					// is executed after the params are pushed to the stack): the call of the target takes
+					// the &rest parameters, and reads the wrong parameters. Sierra's compiler makes this
+					// code too (PQ2 Main: ((ScriptID param1) notify: &rest)), so it is a warning: the code
+					// is the same.
+					context.ReportWarning(param.get(), "&rest in the parameters of a send whose target contains nested procedure calls or sends: the call of the target takes the &rest parameters, and reads the wrong parameters. Assign the result of the procedure call or send to a temporary variable to avoid this.");
 					break;
 				}
 			}
@@ -1662,9 +1663,8 @@ CodeResult SendParam::OutputByteCode(CompileContext &context) const
 				if (parameterTypes.size() > 1)
 				{
 					string selName = GetSelectorName();
-					// Sierra's compiler gives such sends too (Longbow: a talker's loop: with five values;
-					// a property of the class that the compiler knows can be a method of the object). The
-					// send has each value: a warning.
+					// Sierra's compiler gives such sends too (Longbow: a talker's loop: with five
+					// values). The send has each value: a warning.
 					context.ReportWarning(this, "%s is a property. Only one parameter is used when it is set.", selName.c_str());
 				}
 				if (parameterTypes.empty())

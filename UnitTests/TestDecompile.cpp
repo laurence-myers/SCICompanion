@@ -391,6 +391,25 @@ namespace UnitTests
             Assert::AreEqual(std::string("[scope:parse:no-scope-for-target]"), function.scope);
         }
 
+        // Code that the text cannot have (a super in a procedure, a property
+        // past the end of the object): each function falls back to asm, which
+        // compiles to the same code.
+        TEST_METHOD(Unstructured_NoTextForTheCode)
+        {
+            _gameFolder = SetUpGameSCI11();
+            DecompileOutput out = DecompileAndRoundTrip("X3_NoTextForTheCode", 971);
+            LogWarnings("X3", out);
+            Assert::AreEqual(2, out.fallbacks, L"expected two fallbacks");
+            Assert::IsTrue(out.HasWarningContaining("A super in a procedure."));
+            Assert::IsTrue(out.HasWarningContaining("A property with no name."));
+            Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");
+            for (const DecompiledFunction &function : out.functions)
+            {
+                Assert::AreEqual(std::string("asm"), function.output);
+                Assert::AreEqual(std::string("[scope:values:syntax]"), function.scope);
+            }
+        }
+
         // Family 4: a "bnt" to the loop exit inside the body.
         FIXTURE_TEST(Family4_BreakElseEdge, "F4_BreakElseEdge", 904)
         FIXTURE_TEST(Family4_WhileAnd, "F4_WhileAnd", 915)

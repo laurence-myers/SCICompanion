@@ -25,6 +25,10 @@
 	)
 )
 
+(instance c5Target of Script
+	(properties)
+)
+
 (instance c5Script of Script
 	(properties)
 
@@ -34,7 +38,8 @@
 			push2
 			pushi 1
 			pushi 2
-			self 8
+			lofsa c5Target
+			send 8
 			ret
 		)
 	)

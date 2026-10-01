@@ -562,12 +562,13 @@ std::string _GetPossiblyMissingPublicProcedureName(DecompileLookups &lookups, ui
 }
 
 // The name of a property of the object of the code. A property past the end of the object (Act::canBeHere
-// of LSL3 and others reads one), or a property read in a procedure of no class, has no name: the text
-// cannot have it, and the function falls back to asm (which gives the number).
+// of LSL3 and others reads one) has no name: the text cannot have it, and the function falls back to asm
+// (which gives the number). A property read in a procedure of no class keeps its placeholder name (SCI2
+// games, which the compiler does not make, have many: the text is for reading).
 std::string _PropertyName(DecompileLookups &lookups, ConsumptionNode &node, WORD wPropertyIndex)
 {
-	std::string name;
-	if (!lookups.LookupPropertyName(wPropertyIndex, name) || IsPlaceholderPropertyName(name))
+	std::string name = lookups.LookupPropertyName(wPropertyIndex);
+	if (name == UnknownPropertyName)
 	{
 		throw ConsumptionNodeException(&node, "A property with no name.");
 	}
@@ -705,8 +706,8 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, Decompi
 			}
 			else if (bOpcode == Opcode::SUPER)
 			{
-				// Actually you can send to any super class... the first operand says which. Does anyone use this?
-				// Let's assert that they don't
+				// The first operand names the class; the text's super is the superclass of the
+				// class of the method.
 				const sci::ClassDefinition *classDefinition = lookups.GetClassContext();
 				if (!classDefinition)
 				{
@@ -714,14 +715,10 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, Decompi
 					// 10, JustifyText): the text cannot have it. The function falls back to asm.
 					throw ConsumptionNodeException(&node, "A super in a procedure.");
 				}
-				if (classDefinition)
-				{
-					uint16_t species = inst.get_first_operand();
-					std::string superClassContext = classDefinition->GetSuperClass();
-					std::string superClassStated = lookups.LookupClassName(species);
-					assert(superClassContext == superClassStated);
-				} // If we're in a proc without ownership, we can't assert anything. TODO insert comment warning about this.
-				
+				uint16_t species = inst.get_first_operand();
+				std::string superClassContext = classDefinition->GetSuperClass();
+				std::string superClassStated = lookups.LookupClassName(species);
+				assert(superClassContext == superClassStated);
 				sendCall->SetName("super");
 			}
 			Consumption cons = _GetInstructionConsumption(inst, &lookups);
