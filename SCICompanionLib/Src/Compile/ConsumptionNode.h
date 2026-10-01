@@ -46,6 +46,8 @@ enum class ChunkType
 	FunctionBody,
 	CaseDeleted,
 	Nary,
+	For,		// Condition, LoopBody, Step
+	Step,		// the statements of the step of a for loop
 };
 
 // The names of the chunk types, for the debug dumps.
@@ -67,6 +69,8 @@ struct ConsumptionNode
 	// A copy of a value that the code has in another place (the scope
 	// engine reads a value again that the optimiser did not load again).
 	bool _copy = false;
+	// Break, Continue: the loop, 1 for the innermost one.
+	int _level = 1;
 
 	std::unique_ptr<ConsumptionNode> Clone()
 	{
@@ -75,6 +79,7 @@ struct ConsumptionNode
 		clone->pos = pos;
 		clone->_chunkType = _chunkType;
 		clone->_copy = _copy;
+		clone->_level = _level;
 		for (auto &child : children)
 		{
 			clone->children.push_back(std::move(child->Clone()));

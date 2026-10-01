@@ -29,6 +29,10 @@ namespace UnitTests
 		std::string Chunk(ConsumptionNode &node)
 		{
 			std::string text = node._hasPos ? OpcodeToName(node.GetCode()->get_opcode(), 0) : chunkTypeNames[(int)node.GetType()];
+			if (((node.GetType() == ChunkType::Break) || (node.GetType() == ChunkType::Continue)) && (node._level != 1))
+			{
+				text += std::to_string(node._level);
+			}
 			if (node._copy)
 			{
 				text += "*";
@@ -253,10 +257,19 @@ namespace UnitTests
 			)", "callk(push1 push(If(Condition(lal) Then(ldi) Else(ldi)))) ret");
 		}
 
-		// Dead code has no fact: the accumulator of the code before a ret
-		// does not go into it.
-		TEST_METHOD(Values_DeadCodeHasNoFact)
+		// Dead code after a jmp gives no statement: as text, it would run.
+		// The live code after it starts at a label (the jmp goes there): no
+		// fact. Dead code right after a ret stays as statements (with no
+		// fact): no text gets to it either.
+		TEST_METHOD(Values_DeadCodeGivesNoStatement)
 		{
+			AssertValues(R"(
+				ldi 5
+				ret
+				ldi 9
+				sal 1
+				ret
+			)", "ldi ret sal(ldi) ret");
 			AssertValuesFail(R"(
 				ldi 5
 				ret
@@ -265,10 +278,21 @@ namespace UnitTests
 				callk 5 2
 				ret
 			)", "acc-no-fact", 3);
+			AssertValuesFail(R"(
+				ldi 5
+				jmp next
+				ldi 9
+			next:
+				push1
+				push
+				callk 5 2
+				ret
+			)", "acc-no-fact", 4);
 		}
 
 		// A structure that no path reaches is dead code: its test has no
-		// value, and its branches give no node.
+		// value, and it gives no statement (the ret that only it reaches is
+		// dead too).
 		TEST_METHOD(Values_ADeadIfIsDeadCode)
 		{
 			AssertValues(R"(
@@ -279,7 +303,7 @@ namespace UnitTests
 				jmp end
 			end:
 				ret
-			)", "lal ret ldi ret");
+			)", "lal ret");
 		}
 
 		// The facts of Sierra's optimiser: a store to a property keeps the
@@ -555,6 +579,254 @@ namespace UnitTests
 				ldi 1
 				ret
 			)", "If(Condition(lal) Then(ret)) ret(ldi)", true);
+		}
+
+		// A loop whose body is one if whose else is the break of the loop
+		// is a while; its test is the test of the if.
+		TEST_METHOD(Values_AWhileLoop)
+		{
+			AssertValues(R"(
+			head:
+				lal 0
+				bnt exit
+				ldi 1
+				sal 1
+				jmp head
+			exit:
+				ret
+			)", "While(Condition(lal) LoopBody(sal(ldi))) ret");
+		}
+
+		// A bt to the exit of the outer loop is a breakif of level 2.
+		TEST_METHOD(Values_ABreakOfTheOuterLoop)
+		{
+			AssertValues(R"(
+			outer:
+				lal 0
+				bnt done
+			inner:
+				lal 1
+				bnt innerExit
+				lal 2
+				bt done
+				ldi 1
+				sal 3
+				jmp inner
+			innerExit:
+				jmp outer
+			done:
+				ret
+			)", "While(Condition(lal) LoopBody(While(Condition(lal) LoopBody(If(Condition(lal) Then(Break2)) sal(ldi))))) ret");
+		}
+
+		// A dead break right after a jmp that does nothing is no statement
+		// (QfG1 TalkObj::messages: the else-break of a cond, after the bnt
+		// went straight to the exit). (F14_BreakPastLatch has a dead break
+		// after a loop: the place of the inner break, which leaves the outer
+		// loop.)
+		TEST_METHOD(Values_ADeadBreak)
+		{
+			AssertValues(R"(
+			head:
+				lal 0
+				bnt exit
+				lal 1
+				bnt exit
+				ldi 1
+				sal 1
+				jmp join
+				jmp exit
+			join:
+				ldi 2
+				sal 2
+				jmp head
+			exit:
+				ret
+			)", "While(Condition(lal) LoopBody(If(Condition(lal) Then(sal(ldi) sal(ldi)) Else(Break)))) ret");
+		}
+
+		// Statements before the test: a repeat, with the if in it.
+		TEST_METHOD(Values_ARepeatLoop)
+		{
+			AssertValues(R"(
+			head:
+				ldi 1
+				sal 1
+				lal 0
+				bnt exit
+				jmp head
+			exit:
+				ret
+			)", "While(Condition(TrueNode) LoopBody(sal(ldi) If(Condition(lal) Then Else(Break)))) ret");
+		}
+
+		// A bt latch is a do loop; a bnt latch a do loop of the inverted test.
+		TEST_METHOD(Values_ADoLoop)
+		{
+			AssertValues(R"(
+			head:
+				ldi 1
+				sal 1
+				lal 0
+				bt head
+				ret
+			)", "Do(LoopBody(sal(ldi)) Condition(lal)) ret");
+			AssertValues(R"(
+			head:
+				ldi 1
+				sal 1
+				lal 0
+				bnt head
+				ret
+			)", "Do(LoopBody(sal(ldi)) Condition(Invert(lal))) ret");
+		}
+
+		// A continue to the step of a for loop. The step starts at a label:
+		// no fact.
+		TEST_METHOD(Values_AForLoop)
+		{
+			AssertValues(R"(
+			head:
+				lst 0
+				ldi 5
+				lt?
+				bnt exit
+				lal 0
+				bnt skip
+				lal 1
+				bnt skipInner
+				jmp step
+			skipInner:
+				ldi 3
+				sal 3
+			skip:
+				ldi 1
+				sal 1
+			step:
+				+at 0
+				jmp head
+			exit:
+				ret
+			)", "For(Condition(lt?(lst ldi)) LoopBody(If(Condition(lal) Then(If(Condition(lal) Then(Continue)) sal(ldi))) sal(ldi)) Step(+at)) ret");
+			// A for loop with no test, whose body ends with code.
+			AssertValuesFail(R"(
+			head:
+				lal 0
+				bnt skip
+				lal 1
+				bnt skipInner
+				jmp step
+			skipInner:
+				ldi 3
+				sal 3
+			skip:
+				ldi 1
+				sal 1
+			step:
+				push1
+				push
+				callk 5 2
+				jmp head
+			)", "acc-no-fact", 10);		}
+
+		// The head of a loop is a label: no fact.
+		TEST_METHOD(Values_TheHeadOfALoopHasNoFact)
+		{
+			AssertValuesFail(R"(
+				lal 0
+			head:
+				push1
+				push
+				callk 5 2
+				jmp head
+			)", "acc-no-fact", 2);
+		}
+
+		// The first case keeps the facts of the head of the switch; each
+		// other case starts at a label.
+		TEST_METHOD(Values_TheFirstCaseHasTheFactsOfTheHead)
+		{
+			AssertValues(R"(
+				ldi 5
+				push
+				dup
+				eq?
+				bnt done
+				ldi 1
+				sal 1
+			done:
+				toss
+				ret
+			)", "Switch(SwitchValue(push(ldi)) Case(CaseCondition(ldi*) CaseBody(sal(ldi)))) ret");
+			AssertValuesFail(R"(
+				ldi 5
+				push
+				dup
+				ldi 4
+				eq?
+				bnt second
+				ldi 1
+				sal 1
+				jmp done
+			second:
+				dup
+				eq?
+				bnt done
+				ldi 2
+				sal 1
+			done:
+				toss
+				ret
+			)", "acc-no-fact", 10);
+		}
+
+		// A dup of the value of a switch in the body of a switch with only
+		// an else: a copy of the value.
+		TEST_METHOD(Values_ADupOfTheSwitchValue)
+		{
+			AssertValues(R"(
+				lsl 0
+				dup
+				push1
+				lal 1
+				send 4
+				toss
+				ret
+			)", "Switch(SwitchValue(lsl) Case(CaseBody(send(lsl* push1 lal)))) ret");
+		}
+
+		// Sierra's (< a b c d): one n-ary compare. Another operator after the
+		// pprev has no text.
+		TEST_METHOD(Values_AnNaryCompare)
+		{
+			AssertValues(R"(
+				lsl 0
+				lal 1
+				lt?
+				bnt end
+				pprev
+				lal 2
+				lt?
+				bnt end
+				pprev
+				lal 3
+				lt?
+			end:
+				sal 4
+				ret
+			)", "sal(Nary(lt?(lsl lal lal lal))) ret");
+			AssertValuesFail(R"(
+				lsl 0
+				lal 1
+				lt?
+				bnt end
+				pprev
+				lal 2
+				le?
+			end:
+				sal 4
+				ret
+			)", "nary-mixed", 6);
 		}
 	};
 }

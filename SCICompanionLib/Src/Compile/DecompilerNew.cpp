@@ -75,6 +75,8 @@ const char *chunkTypeNames[] =
 	"FunctionBody",
 	"CaseDeleted",
 	"Nary",
+	"For",
+	"Step",
 };
 
 struct ContextFrame
@@ -984,12 +986,28 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode2(ConsumptionNode &node, Decomp
 	{
 		case ChunkType::Break:
 		{
-			return unique_ptr<SyntaxNode>(new BreakStatement());
+			unique_ptr<BreakStatement> breakStatement = make_unique<BreakStatement>();
+			breakStatement->Levels = (uint16_t)node._level;
+			return unique_ptr<SyntaxNode>(move(breakStatement));
 		}
 
 		case ChunkType::Continue:
 		{
-			return unique_ptr<SyntaxNode>(new ContinueStatement());
+			unique_ptr<ContinueStatement> continueStatement = make_unique<ContinueStatement>();
+			continueStatement->Levels = (uint16_t)node._level;
+			return unique_ptr<SyntaxNode>(move(continueStatement));
+		}
+
+		case ChunkType::For:
+		{
+			unique_ptr<ForLoop> forLoop = make_unique<ForLoop>();
+			forLoop->SetCodeBlock(make_unique<CodeBlock>());
+			_ApplySyntaxNodeToCodeNodeConditionNode(*node.GetChild(ChunkType::Condition), *forLoop, lookups);
+			_ApplyChildren(*node.GetChild(ChunkType::LoopBody), *forLoop, lookups);
+			unique_ptr<CodeBlock> step = make_unique<CodeBlock>();
+			_ApplyChildren(*node.GetChild(ChunkType::Step), *step, lookups);
+			forLoop->SetLooper(move(step));
+			return unique_ptr<SyntaxNode>(move(forLoop));
 		}
 
 		case ChunkType::If:

@@ -76,7 +76,7 @@ uses `resJ`.
 
 | Pass | Rule |
 |---|---|
-| Live code | Reachability from the entry. A `jmp` that skips only dead code (or nothing) does nothing. A conditional branch whose target equals its fall-through does nothing. A `bt` or `bnt` right after one of the same kind to the same place (only `jmp`s that do nothing between them), which no other branch reaches (nor those `jmp`s), does nothing: the optimiser deleted the load of a repeated value (`(and a b b)`). Dead straight-line code stays as statements; a dead `jmp` is a layout hint only. |
+| Live code | Reachability from the entry. A `jmp` that skips only dead code (or nothing) does nothing. A conditional branch whose target equals its fall-through does nothing. A `bt` or `bnt` right after one of the same kind to the same place (only `jmp`s that do nothing between them), which no other branch reaches (nor those `jmp`s), does nothing: the optimiser deleted the load of a repeated value (`(and a b b)`). Dead straight-line code right after a `ret` stays as statements; other dead code gives no statement (as text it would run; verify makes sure that no path of the tree gets to it); a dead `jmp` is a layout hint only, but a dead `break` keeps its place when a branch resolves through it. |
 | N-ary compare | `cmp; bnt O; pprev` is one value when `resF(O)` equals `resF` of the chain end. The `bnt` is marked inert in a side table. |
 | Loops | A branch to an address at or before it is a back branch. The loop of head S is [S, last back branch to S]. One loop per head. When the parse fails on a jump to the instruction after an earlier back `jmp` J, the loop is split at J and parsed again. |
 | Switches | A stack-depth profile in address order. Each `toss` ends one switch; its head is the push of the tossed slot. A case starts at each `dup` at the switch depth; its value is [dup+1, `eq?`) and is parsed as a sequence; its body ends at the trailing `jmp` to the `toss`. |
@@ -145,8 +145,10 @@ accumulator and a statement list. It builds the same `ConsumptionNode` /
   Other `dup`: a copy of the stack top (also a value pushed before the
   sequence: the `dup` does not take it). `pprev`: the accumulator operand
   of the previous compare (n-ary).
-- **Dead code:** a structure that no path reaches is dead code: its tests
-  have no value, and its branches give no node.
+- **Dead code:** dead code right after a `ret` stays as statements, with no
+  fact; other dead code gives no statement; a structure that no path
+  reaches is dead code. A dead `break` or `continue` is a statement, except
+  right after a `jmp` that does nothing (the skip goes past it).
 - **Presentation** (`and` or nested `if`, `while` or `repeat`, shortest
   then-part, `contif`): decided here, from facts that the evaluator has
   (a sequence is one value; a test is the first thing in a loop).

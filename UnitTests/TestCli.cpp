@@ -1399,7 +1399,7 @@ namespace UnitTests
             CopyTemplate("\\TemplateGame\\SCI0");
             for (bool quiet : { false, true })
             {
-                std::vector<std::string> args = { "script", "decompile", _copyFolder, "974", "--stdout", "--debug-control-flow" };
+                std::vector<std::string> args = { "script", "decompile", _copyFolder, "974", "--stdout", "--debug-control-flow", "--engine", "classic" };
                 if (quiet)
                 {
                     args.push_back("-q");

@@ -327,16 +327,17 @@ namespace UnitTests
         FIXTURE_TEST(Family3_AndAsArgument, "F3_AndAsArgument", 914)
 
         // A shared-then shape ((or (not X) Y) with a synthesized not) is not
-        // a Sierra compiler output. The structurer must refuse it, not merge
-        // it as an and with the wrong value. The asm fallback round-trips.
+        // a Sierra compiler output. The structurer (or, with the scope
+        // engine, the scope parser) must refuse it, not merge it as an and
+        // with the wrong value. The asm fallback round-trips.
         TEST_METHOD(Unstructured_SharedThenBranch)
         {
             _gameFolder = SetUpGameSCI11();
             DecompileOutput out = DecompileAndRoundTrip("X_SharedThenBranch", 903);
             LogWarnings("X", out);
             Assert::IsTrue(out.fallbacks >= 1, L"expected a clean fallback");
-            Assert::IsTrue(out.HasWarningContaining("Unstructured branches"),
-                L"expected the structurer to refuse the shape");
+            Assert::IsTrue(out.HasWarningContaining("Unstructured branches") || out.HasWarningContaining("[scope:parse:no-scope-for-target]"),
+                L"expected the structurer (classic) or the scope parser to refuse the shape");
             Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");
         }
 
@@ -395,43 +396,37 @@ namespace UnitTests
             }
         }
 
-        // A function that the scope engine cannot decompile (a loop, which
-        // the value stage does not read yet): with auto, the classic engine
-        // gives it, and the failure is no warning; with scope, it is asm and
-        // a warning.
-        TEST_METHOD(Engine_AutoGivesClassicWhenScopeFails)
+        // A function that the scope engine cannot decompile: with auto, the
+        // classic engine runs too (here it fails as well), and the scope
+        // failure is no warning; with scope, the classic engine does not run,
+        // and the scope failure is a warning.
+        TEST_METHOD(Engine_AutoRunsClassicWhenScopeFails)
         {
             _gameFolder = SetUpGameSCI11();
-            AddFixtureScript("P2_CondInLoop");
+            AddFixtureScript("X_SharedThenBranch");
             std::string error;
-            Assert::IsTrue(CompileFixture(926, "P2_CondInLoop", &error), Wide(error).c_str());
+            Assert::IsTrue(CompileFixture(903, "X_SharedThenBranch", &error), Wide(error).c_str());
 
             DecompileOutput automatic;
             {
                 ScopedEnvironmentVariable engine("SCIC_DECOMPILE_ENGINE", "auto");
-                automatic = DecompileToText(926);
+                automatic = DecompileToText(903);
             }
-            Assert::IsFalse(automatic.ContainsAsm(), Wide(automatic.text).c_str());
-            Assert::IsFalse(automatic.functions.empty(), L"a report of each function");
-            for (const DecompiledFunction &function : automatic.functions)
-            {
-                Assert::AreEqual(std::string("classic"), function.output, Wide(function.name).c_str());
-                Assert::AreEqual(std::string("[scope:values:not-implemented]"), function.scope, Wide(function.name).c_str());
-            }
-            Assert::IsTrue(automatic.warnings.empty(), L"with auto, a scope failure is no warning");
+            Assert::AreEqual((size_t)1, automatic.functions.size());
+            Assert::AreEqual(std::string("asm"), automatic.functions[0].output);
+            Assert::AreEqual(std::string("[scope:parse:no-scope-for-target]"), automatic.functions[0].scope);
+            Assert::IsTrue(automatic.functions[0].classic.rfind("graph: ", 0) == 0, Wide(automatic.functions[0].classic).c_str());
+            Assert::IsFalse(automatic.HasWarningContaining("[scope:"), L"with auto, a scope failure is no warning");
 
             DecompileOutput scope;
             {
                 ScopedEnvironmentVariable engine("SCIC_DECOMPILE_ENGINE", "scope");
-                scope = DecompileToText(926);
+                scope = DecompileToText(903);
             }
-            Assert::IsTrue(scope.ContainsAsm(), Wide(scope.text).c_str());
-            for (const DecompiledFunction &function : scope.functions)
-            {
-                Assert::AreEqual(std::string("asm"), function.output, Wide(function.name).c_str());
-                Assert::AreEqual(std::string(), function.classic, Wide(function.name).c_str());
-            }
-            Assert::IsTrue(scope.HasWarningContaining("[scope:values:not-implemented]"), L"with scope, a failure is a warning");
+            Assert::AreEqual((size_t)1, scope.functions.size());
+            Assert::AreEqual(std::string("asm"), scope.functions[0].output);
+            Assert::AreEqual(std::string(), scope.functions[0].classic);
+            Assert::IsTrue(scope.HasWarningContaining("[scope:parse:no-scope-for-target]"), L"with scope, a failure is a warning");
         }
 
         // An unknown engine in SCIC_DECOMPILE_ENGINE stops the decompile: a
@@ -615,8 +610,8 @@ namespace UnitTests
         std::string _gameFolder;
     };
 
-    // The fixtures with no loop, no switch and no n-ary compare, with the
-    // scope engine: the text equals the expected file of the fixture.
+    // The fixtures with the scope engine: the text equals the expected file
+    // of the fixture (its .scope.expected.sc when it has one).
     TEST_CLASS(TestDecompileScope)
     {
     public:
@@ -656,7 +651,43 @@ namespace UnitTests
         FIXTURE_TEST(Family8_DeadValueStatement, "F8_DeadValueStatement", 919)
         // Values that the optimiser reuses across a branch.
         FIXTURE_TEST(ReuseAcrossBranch, "V1_ReuseAcrossBranch", 953)
+        FIXTURE_TEST(ChainedComparison, "N1_ChainedCompare", 923)
+        FIXTURE_TEST(SierraChainedComparison, "N2_SierraChainedCompare", 933)
+        FIXTURE_TEST(Family4_BreakElseEdge, "F4_BreakElseEdge", 904)
+        FIXTURE_TEST(Family4_WhileAnd, "F4_WhileAnd", 915)
+        FIXTURE_TEST(Family4_WhileOr, "F4_WhileOr", 916)
+        FIXTURE_TEST(Plain_CompoundConditions, "P1_CompoundConditions", 917)
+        FIXTURE_TEST(BreakInSwitchCase, "F9_BreakInSwitchCase", 921)
+        FIXTURE_TEST(MidBodyContinue, "F10_MidBodyContinue", 922)
+        FIXTURE_TEST(LatchTrampoline, "F11_LatchTrampoline", 924)
+        FIXTURE_TEST(BreakJoin, "F12_BreakJoin", 925)
+        FIXTURE_TEST(BreakPastLatch, "F14_BreakPastLatch", 936)
+        FIXTURE_TEST(SharedLoopHead, "F15_SharedLoopHead", 937)
+        FIXTURE_TEST(SharedLoopHead_OneLoopStructures, "F16_SharedHeadOneLoop", 938)
+        FIXTURE_TEST(SwitchHeadContinue, "F18_SwitchHeadContinue", 942)
+        FIXTURE_TEST(OrAndLoopHead, "F20_OrAndLoopHead", 944)
+        FIXTURE_TEST(Plain_CondInLoop, "P2_CondInLoop", 926)
+        // Switches: a switch as a value, a case value with a branch, an
+        // empty last case (also in a loop), and cases that all return.
+        FIXTURE_TEST(SwitchValue, "S1_SwitchValue", 945)
+        FIXTURE_TEST(CaseValueBranch, "S2_CaseValueBranch", 946)
+        FIXTURE_TEST(EmptyLastCase, "S3_EmptyLastCase", 947)
+        FIXTURE_TEST(EmptyLastCaseInLoop, "S4_EmptyLastCaseInLoop", 948)
+        FIXTURE_TEST(SwitchAllReturn, "S5_SwitchAllReturn", 949)
 
+        // The fixtures with no expected file: each round-trips with no asm.
+        TEST_METHOD(RoundTrips)
+        {
+            for (const auto &fixture : { std::make_pair("F1_LoopHeadContinue", 900), std::make_pair("F5_EmptyLeadingWhile", 905), std::make_pair("F6_EmptyTrailingFor", 906) })
+            {
+                _gameFolder = SetUpGameSCI11();
+                DecompileOutput out = DecompileAndRoundTrip(fixture.first, (uint16_t)fixture.second);
+                Assert::AreEqual(0, out.fallbacks, Wide(fixture.first).c_str());
+                Assert::IsFalse(out.ContainsAsm(), Wide(fixture.first).c_str());
+                CleanUpGame(_gameFolder);
+                _gameFolder.clear();
+            }
+        }
         // No round trip: the compiler of this repository gives the or
         // another shape.
         TEST_METHOD(ThreadedOrJoin)

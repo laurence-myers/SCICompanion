@@ -27,14 +27,22 @@ namespace scope
 			int source = NoIndex;
 		};
 
-		// A value on the symbolic stack. A &rest is an entry too: it is an
-		// argument of the call that takes the values below it, and does not
-		// count in the depth.
+		enum class EntryKind
+		{
+			Value,			// a node
+			Rest,			// a &rest: an argument of the call that takes the values below it; not in the depth
+			SwitchValue,	// the value of a switch, which the switch node has (ref)
+			CaseDup,		// the dup at the start of the value of a case: the left operand of its eq?
+			Prev,			// a pprev: the operands of the compare before it (ref), for an n-ary compare
+		};
+
+		// An entry of the symbolic stack.
 		struct StackEntry
 		{
 			std::unique_ptr<ConsumptionNode> node;
 			int time;
-			bool rest;
+			EntryKind kind;
+			ConsumptionNode *ref;
 		};
 
 		// A statement list: a node whose children are the statements of a
@@ -141,6 +149,10 @@ namespace scope
 				{
 					throw ScopeError("values", "code-mismatch", -1);
 				}
+				for (int i = 0; i < model.Size(); ++i)
+				{
+					_indexOf[&*_pos[i]] = i;
+				}
 			}
 
 			std::unique_ptr<ConsumptionNode> Run(const Region &root)
@@ -172,7 +184,7 @@ namespace scope
 				int depth = 0;
 				for (const StackEntry &entry : _stack)
 				{
-					depth += entry.rest ? 0 : 1;
+					depth += (entry.kind == EntryKind::Rest) ? 0 : 1;
 				}
 				return depth;
 			}
@@ -293,13 +305,23 @@ namespace scope
 						_Fail("stack-underflow", reader);
 					}
 					StackEntry &top = _stack.back();
-					if (top.rest && !call)
+					switch (top.kind)
 					{
-						_Fail("rest-outside-call", reader);
-					}
-					if (!top.rest)
-					{
+					case EntryKind::Rest:
+						if (!call)
+						{
+							_Fail("rest-outside-call", reader);
+						}
+						break;
+					case EntryKind::Value:
 						--count;
+						break;
+					case EntryKind::SwitchValue:
+						_Fail("switch-value-taken", reader);
+					case EntryKind::CaseDup:
+						_Fail("case-dup-taken", reader);
+					case EntryKind::Prev:
+						_Fail("pprev-outside-compare", reader);
 					}
 					operands.push_back(std::move(top.node));
 					_stack.pop_back();
@@ -308,14 +330,59 @@ namespace scope
 				return operands;
 			}
 
-			void _Push(std::unique_ptr<ConsumptionNode> node, bool rest = false)
+			void _Push(std::unique_ptr<ConsumptionNode> node, EntryKind kind = EntryKind::Value, ConsumptionNode *ref = nullptr)
 			{
-				_stack.push_back({ std::move(node), ++_time, rest });
+				_stack.push_back({ std::move(node), ++_time, kind, ref });
+			}
+
+			// The last statement of the current list, out of the list.
+			std::unique_ptr<ConsumptionNode> _StealLast()
+			{
+				std::unique_ptr<ConsumptionNode> node = _list->node->StealChild(_list->node->GetChildCount() - 1);
+				_list->items.pop_back();
+				if (node.get() == _pending)
+				{
+					_pending = nullptr;
+				}
+				return node;
+			}
+
+			// A node that was made for the instruction, and that the tree has
+			// not: the instruction is a part of the structure.
+			void _Unmade(int i)
+			{
+				_made[i]--;
+				_structural[i]++;
 			}
 
 			void _Region(const Region &region)
 			{
-				if ((region.kind != RegionKind::Sequence) && (region.kind != RegionKind::Code))
+				// A structure has labels: the code after a jmp that does
+				// nothing goes on there.
+				bool afterSkip = _afterSkip;
+				if (region.kind != RegionKind::Code)
+				{
+					_afterSkip = false;
+					_afterReturn = false;
+				}
+				_RegionBody(region, afterSkip);
+				if (region.kind != RegionKind::Code)
+				{
+					_afterSkip = false;
+					_afterReturn = false;
+				}
+			}
+
+			void _RegionBody(const Region &region, bool afterSkip)
+			{
+				// A break, a continue and an exit keep their place when they are
+				// dead: another branch can resolve through it (an inner break
+				// that goes to a dead jmp after its loop leaves the outer loop
+				// too). Right after a jmp that does nothing, a dead break or
+				// continue is no statement: no path gets to it.
+				bool hasTest = (region.kind != RegionKind::Sequence) && (region.kind != RegionKind::Code) && (region.kind != RegionKind::Break) &&
+					(region.kind != RegionKind::Continue) && (region.kind != RegionKind::Exit);
+				if (hasTest)
 				{
 					std::vector<int> layout = Layout(region);
 					if (!layout.empty() && std::none_of(layout.begin(), layout.end(), [&](int i) { return _model.IsLive(i); }))
@@ -356,31 +423,108 @@ namespace scope
 					_ResetFacts();
 					break;
 				case RegionKind::Loop:
-					_Fail("not-implemented", _FirstOf(region), "loop");
+					_Loop(region);
+					break;
 				case RegionKind::Switch:
+					_Switch(region);
+					break;
 				case RegionKind::Case:
-					_Fail("not-implemented", _FirstOf(region), "switch");
-				default:
-					_Fail("not-implemented", _FirstOf(region), "break, continue, breakif or contif");
+					_Fail("case-outside-switch", _FirstOf(region));
+				case RegionKind::Break:
+				case RegionKind::Continue:
+					// The rest of the sequence is dead.
+					_Structural(region.branch);
+					if (_model.IsLive(region.branch) || !afterSkip)
+					{
+						_Append(_LoopJump(region.kind == RegionKind::Break, region.level), false, region.branch);
+					}
+					_ResetFacts();
+					break;
+				case RegionKind::BreakIf:
+				case RegionKind::ContIf:
+					_LoopJumpIf(region);
+					break;
 				}
+			}
+
+			// A break or a continue of the loop at the level.
+			std::unique_ptr<ConsumptionNode> _LoopJump(bool isBreak, int level)
+			{
+				std::unique_ptr<ConsumptionNode> node = std::make_unique<ConsumptionNode>();
+				node->SetType(isBreak ? ChunkType::Break : ChunkType::Continue);
+				node->_level = level;
+				return node;
+			}
+
+			// A node of the type with one child.
+			std::unique_ptr<ConsumptionNode> _Wrap(ChunkType type, std::unique_ptr<ConsumptionNode> child)
+			{
+				std::unique_ptr<ConsumptionNode> node = std::make_unique<ConsumptionNode>();
+				node->SetType(type);
+				if (child)
+				{
+					node->AppendChild(std::move(child));
+				}
+				return node;
+			}
+
+			// A breakif or a contif: an if whose then-part is the break or the
+			// continue. The fall-through keeps the facts.
+			void _LoopJumpIf(const Region &region)
+			{
+				_DeadTest(region.branch);
+				std::unique_ptr<ConsumptionNode> ifNode = std::make_unique<ConsumptionNode>();
+				ifNode->SetType(ChunkType::If);
+				ifNode->AppendChild(_Wrap(ChunkType::Condition, _TakeAcc(region.branch)));
+				ifNode->AppendChild(_Wrap(ChunkType::Then, _LoopJump(region.kind == RegionKind::BreakIf, region.level)));
+				_Structural(region.branch);
+				_Append(std::move(ifNode), false, region.branch);
 			}
 
 			void _Instruction(int i)
 			{
-				if (!_model.IsLive(i) && ((i == 0) || _model.IsLive(i - 1)))
+				if (!_model.IsLive(i))
 				{
-					// The start of dead code: no path gives the accumulator a
-					// value.
-					_ResetFacts();
+					// The live code after dead code starts at a label: no fact.
+					// Dead code right after a ret stays as statements (no text
+					// gets to it either); other dead code gives no statement:
+					// no path of the tree gets to it (verify), and as text it
+					// would run.
+					if ((i == 0) || _model.IsLive(i - 1))
+					{
+						_ResetFacts();
+					}
+					if (!_afterReturn || _model.IsBranch(i))
+					{
+						_Structural(i);
+						return;
+					}
+				}
+				else
+				{
+					_afterReturn = (_model.Op(i) == Opcode::RET);
 				}
 				Opcode op = _model.Op(i);
+				// A jmp that does nothing goes past the dead code after it: a
+				// dead break or continue there is no statement (as in the
+				// verify stage).
+				if (_model.IsLive(i))
+				{
+					_afterSkip = (op == Opcode::JMP) && _model.IsNoOp(i);
+				}
 				if (_model.IsBranch(i))
 				{
-					// A dead branch, a branch that does nothing, or the inert
-					// bnt of an n-ary compare: no node.
+					// A branch that does nothing, or the inert bnt of an n-ary
+					// compare: no node.
 					if (_model.IsInert(i))
 					{
-						_Fail("not-implemented", i, "n-ary compare");
+						// The compare before it stays a statement until the
+						// compare after the pprev takes it.
+						if (!_AccIsAvailable() || !_IsCompareNode(*_pending))
+						{
+							_Fail("nary-no-compare", i);
+						}
+						_naryCompare = _pending;
 					}
 					_Structural(i);
 					return;
@@ -396,14 +540,33 @@ namespace scope
 					_Dup(i);
 					return;
 				case Opcode::PPREV:
-					_Fail("not-implemented", i, "pprev");
+					// The accumulator operand of the compare before the inert
+					// bnt: the compare after it takes the operands of both.
+					if (!_naryCompare)
+					{
+						_Fail("pprev-no-compare", i);
+					}
+					_Structural(i);
+					_Push(nullptr, EntryKind::Prev, _naryCompare);
+					_naryCompare = nullptr;
+					return;
 				case Opcode::TOSS:
 					_Fail("toss-outside-switch", i);
 				case Opcode::REST:
-					_Push(_Node(i), true);
+					_Push(_Node(i), EntryKind::Rest);
 					return;
 				default:
 					break;
+				}
+				if (CodeModel::IsCompare(op) && !_stack.empty() && (_stack.back().kind == EntryKind::Prev))
+				{
+					_NaryCompare(i);
+					return;
+				}
+				if ((op == Opcode::EQ) && !_stack.empty() && (_stack.back().kind == EntryKind::CaseDup))
+				{
+					_CaseCompare(i);
+					return;
 				}
 
 				Consumption consumption = _GetInstructionConsumption(*_pos[i], nullptr);
@@ -450,13 +613,255 @@ namespace scope
 			// pushed before the sequence.
 			void _Dup(int i)
 			{
-				if (_stack.empty() || _stack.back().rest || !_IsPureValue(*_stack.back().node))
+				if (!_stack.empty() && (_stack.back().kind == EntryKind::SwitchValue))
+				{
+					_Structural(i);
+					if (_expectCaseDup)
+					{
+						// The start of the value of a case.
+						_expectCaseDup = false;
+						_Push(nullptr, EntryKind::CaseDup);
+						return;
+					}
+					// A push of the value of the switch.
+					if (!_IsPureValue(*_stack.back().ref))
+					{
+						_Fail("dup-no-value", i);
+					}
+					_Push(_DeepCopy(*_stack.back().ref));
+					return;
+				}
+				if (_stack.empty() || (_stack.back().kind != EntryKind::Value) || !_IsPureValue(*_stack.back().node))
 				{
 					_Fail("dup-no-value", i);
 				}
 				std::unique_ptr<ConsumptionNode> copy = _DeepCopy(*_stack.back().node);
 				_Structural(i);
 				_Push(std::move(copy));
+			}
+
+			// A compare instruction, or an n-ary compare.
+			static bool _IsCompareNode(ConsumptionNode &node)
+			{
+				return (node.GetType() == ChunkType::Nary) || (node._hasPos && !node._copy && CodeModel::IsCompare(node.GetCode()->get_opcode()));
+			}
+
+			// The compare after a pprev: with the compare before the inert bnt,
+			// one n-ary compare, as Sierra compiles (< a b c). It takes the
+			// operands of the compare before it, and the accumulator.
+			void _NaryCompare(int i)
+			{
+				Opcode op = _model.Op(i);
+				bool accAvailable = _AccIsAvailable();
+				if (_Depth() <= _list->floor)
+				{
+					_Fail("stack-underflow", i);
+				}
+				ConsumptionNode *before = _stack.back().ref;
+				_stack.pop_back();
+				std::unique_ptr<ConsumptionNode> last = accAvailable ? _TakePending() : _CopyOfAcc(i);
+				if ((_list->node->GetChildCount() == 0) || (_list->node->Child((int)_list->node->GetChildCount() - 1) != before))
+				{
+					_Fail("nary-order", i);
+				}
+				std::unique_ptr<ConsumptionNode> beforeNode = _StealLast();
+				ConsumptionNode *compare = (beforeNode->GetType() == ChunkType::Nary) ? beforeNode->Child(0) : beforeNode.get();
+				if (compare->GetCode()->get_opcode() != op)
+				{
+					_Fail("nary-mixed", i);
+				}
+				_Unmade(_indexOf.at(&*compare->GetCode()));
+				std::unique_ptr<ConsumptionNode> node = _Node(i);
+				while (compare->GetChildCount() > 0)
+				{
+					node->AppendChild(compare->StealChild(0));
+				}
+				node->AppendChild(std::move(last));
+				_UpdateFacts(i);
+				_Append(_Wrap(ChunkType::Nary, std::move(node)), true, i);
+			}
+
+			// The eq? of the value of a case: the dup of the value of the
+			// switch, and the case value in the accumulator.
+			void _CaseCompare(int i)
+			{
+				bool accAvailable = _AccIsAvailable();
+				if (_Depth() <= _list->floor)
+				{
+					_Fail("stack-underflow", i);
+				}
+				_stack.pop_back();
+				_caseValue = accAvailable ? _TakePending() : _CopyOfAcc(i);
+				_Structural(i);
+				_UpdateFacts(i);
+			}
+
+			// A switch: the head pushes the value of the switch, which the
+			// switch node has; the stack keeps its place until the toss. The
+			// first case keeps the facts of the head; each other case starts
+			// at a label, and so does the toss. The value of the switch is the
+			// accumulator at its end.
+			void _Switch(const Region &region)
+			{
+				std::unique_ptr<ConsumptionNode> switchNode = std::make_unique<ConsumptionNode>();
+				switchNode->SetType(ChunkType::Switch);
+				_Instruction(region.head);
+				if (_stack.empty() || (_stack.back().kind != EntryKind::Value))
+				{
+					_Fail("switch-head", region.head);
+				}
+				StackEntry &top = _stack.back();
+				switchNode->AppendChild(_Wrap(ChunkType::SwitchValue, std::move(top.node)));
+				top.kind = EntryKind::SwitchValue;
+				top.ref = switchNode->Child(0)->Child(0);
+				bool first = true;
+				for (const auto &item : region.cases)
+				{
+					if (!first)
+					{
+						_ResetFacts();
+					}
+					first = false;
+					std::unique_ptr<ConsumptionNode> caseNode = std::make_unique<ConsumptionNode>();
+					caseNode->SetType(ChunkType::Case);
+					if (item->value)
+					{
+						caseNode->AppendChild(_Wrap(ChunkType::CaseCondition, _CaseValue(*item)));
+					}
+					_Structural(item->branch);
+					std::unique_ptr<ConsumptionNode> body = std::make_unique<ConsumptionNode>();
+					body->SetType(ChunkType::CaseBody);
+					ConsumptionNode *bodyRaw = body.get();
+					caseNode->AppendChild(std::move(body));
+					_SequenceInto(item->body.get(), bodyRaw, (item->caseJmp != NoIndex) ? item->caseJmp : region.toss);
+					_Structural(item->caseJmp);
+					switchNode->AppendChild(std::move(caseNode));
+				}
+				_ResetFacts();
+				if (_stack.empty() || (_stack.back().kind != EntryKind::SwitchValue))
+				{
+					_Fail("stack-unbalanced", region.toss, "the toss takes no switch value");
+				}
+				_stack.pop_back();
+				_Structural(region.toss);
+				_Append(std::move(switchNode), true, region.head);
+			}
+
+			// The value of a case: [dup, eq?], with the case value in the
+			// accumulator at the eq?. It has no statement.
+			std::unique_ptr<ConsumptionNode> _CaseValue(const Region &item)
+			{
+				ConsumptionNode holder;
+				holder.SetType(ChunkType::None);
+				List list = { &holder, _Depth(), {} };
+				List *outer = _list;
+				_list = &list;
+				_pending = nullptr;
+				_expectCaseDup = true;
+				_caseValue.reset();
+				_Region(*item.value);
+				int at = _FirstOf(*item.value);
+				if (_expectCaseDup || !_caseValue)
+				{
+					_Fail("case-value", at);
+				}
+				if (holder.GetChildCount() != 0)
+				{
+					_Fail("case-value-statement", at, "statements in the value of a case");
+				}
+				_EndList(list, at);
+				_list = outer;
+				_pending = nullptr;
+				return std::move(_caseValue);
+			}
+
+			// A loop. The head, the continue point and the exit are labels. A
+			// bt or bnt latch reads the accumulator at the end of the body.
+			void _Loop(const Region &region)
+			{
+				int latch = region.branch;
+				Opcode latchOp = _model.Op(latch);
+				bool conditional = _model.IsLive(latch) && (latchOp != Opcode::JMP);
+				if (conditional && region.step)
+				{
+					_Fail("for-conditional-latch", latch);
+				}
+				_ResetFacts();
+				std::unique_ptr<ConsumptionNode> body = std::make_unique<ConsumptionNode>();
+				body->SetType(ChunkType::LoopBody);
+				std::unique_ptr<ConsumptionNode> latchValue;
+				_SequenceInto(region.body.get(), body.get(), latch, conditional ? &latchValue : nullptr);
+				std::unique_ptr<ConsumptionNode> step;
+				if (region.step)
+				{
+					_ResetFacts();
+					step = std::make_unique<ConsumptionNode>();
+					step->SetType(ChunkType::Step);
+					_SequenceInto(region.step.get(), step.get(), latch);
+				}
+				_Structural(latch);
+				_ResetFacts();
+
+				std::unique_ptr<ConsumptionNode> loop = std::make_unique<ConsumptionNode>();
+				std::unique_ptr<ConsumptionNode> test;
+				if (conditional)
+				{
+					// A do loop: it goes on while the latch branches.
+					loop->SetType(ChunkType::Do);
+					test = (latchOp == Opcode::BT) ? std::move(latchValue) : _Wrap(ChunkType::Invert, std::move(latchValue));
+				}
+				else
+				{
+					loop->SetType(region.step ? ChunkType::For : ChunkType::While);
+					test = _TakeLoopTest(*body);
+					if (!test)
+					{
+						test = _Wrap(ChunkType::TrueNode, nullptr);
+					}
+				}
+				// The children in address order: the test of a do loop is at
+				// its end.
+				if (conditional)
+				{
+					loop->AppendChild(std::move(body));
+					loop->AppendChild(_Wrap(ChunkType::Condition, std::move(test)));
+				}
+				else
+				{
+					loop->AppendChild(_Wrap(ChunkType::Condition, std::move(test)));
+					loop->AppendChild(std::move(body));
+				}
+				if (step)
+				{
+					loop->AppendChild(std::move(step));
+				}
+				_Append(std::move(loop), false, region.head);
+			}
+
+			// The test of a while: a body that is one if whose else is the
+			// break of the loop (the test is the first thing in the loop).
+			// The body becomes the then-part of the if. Null when the body is
+			// not such an if.
+			std::unique_ptr<ConsumptionNode> _TakeLoopTest(ConsumptionNode &body)
+			{
+				if ((body.GetChildCount() != 1) || (body.Child(0)->GetType() != ChunkType::If))
+				{
+					return nullptr;
+				}
+				ConsumptionNode *ifNode = body.Child(0);
+				ConsumptionNode *elseNode = ifNode->GetChild(ChunkType::Else);
+				if (!elseNode || (elseNode->GetChildCount() != 1) || (elseNode->Child(0)->GetType() != ChunkType::Break) || (elseNode->Child(0)->_level != 1))
+				{
+					return nullptr;
+				}
+				std::unique_ptr<ConsumptionNode> ifOwned = body.StealChild(0);
+				std::unique_ptr<ConsumptionNode> test = ifOwned->GetChild(ChunkType::Condition)->StealChild(0);
+				ConsumptionNode *thenNode = ifOwned->GetChild(ChunkType::Then);
+				while (thenNode->GetChildCount() > 0)
+				{
+					body.AppendChild(thenNode->StealChild(0));
+				}
+				return test;
 			}
 
 			// The facts after the instruction (sc, OPTIMIZE.CPP). Where the
@@ -527,8 +932,9 @@ namespace scope
 			}
 
 			// A sequence in a new list whose node is container; the facts
-			// go on.
-			void _SequenceInto(const Region *sequence, ConsumptionNode *container, int endIndex)
+			// go on. With value, the instruction at endIndex reads the
+			// accumulator at the end of the sequence (the latch of a loop).
+			void _SequenceInto(const Region *sequence, ConsumptionNode *container, int endIndex, std::unique_ptr<ConsumptionNode> *value = nullptr)
 			{
 				List list = { container, _Depth(), {} };
 				List *outer = _list;
@@ -537,6 +943,10 @@ namespace scope
 				if (sequence)
 				{
 					_Region(*sequence);
+				}
+				if (value)
+				{
+					*value = _TakeAcc(endIndex);
 				}
 				_EndList(list, endIndex);
 				_list = outer;
@@ -600,10 +1010,6 @@ namespace scope
 
 			void _If(const Region &region)
 			{
-				if ((region.elseKind == ElseKind::Break) || (region.elseKind == ElseKind::Continue))
-				{
-					_Fail("not-implemented", region.tests.front(), "if with a loop else");
-				}
 				std::unique_ptr<ConsumptionNode> ifNode = std::make_unique<ConsumptionNode>();
 				ifNode->SetType(ChunkType::If);
 				_DeadTest(region.tests.front());
@@ -646,6 +1052,15 @@ namespace scope
 					ifNode->AppendChild(std::move(elseNode));
 					_SequenceInto(region.elsePart.get(), elseRaw, region.branch);
 				}
+				else if ((region.elseKind == ElseKind::Break) || (region.elseKind == ElseKind::Continue))
+				{
+					// The then-part is the rest of the sequence; a false test
+					// leaves the loop or goes to its continue point.
+					ifNode->AppendChild(_Wrap(ChunkType::Else, _LoopJump(region.elseKind == ElseKind::Break, region.level)));
+					_ResetFacts();
+					_Append(std::move(ifNode), false, region.tests.front());
+					return;
+				}
 
 				// The join is a label. The value of the if is the accumulator
 				// at its end.
@@ -678,12 +1093,7 @@ namespace scope
 			void _CheckTree(ConsumptionNode &root)
 			{
 				std::vector<int> inTree(_model.Size(), 0);
-				std::map<const scii *, int> indexOf;
-				for (int i = 0; i < _model.Size(); ++i)
-				{
-					indexOf[&*_pos[i]] = i;
-				}
-				_CheckOrder(root, indexOf, inTree);
+				_CheckOrder(root, _indexOf, inTree);
 				for (int i = 0; i < _model.Size(); ++i)
 				{
 					if ((inTree[i] + _structural[i] != 1) || (inTree[i] != _made[i]))
@@ -743,6 +1153,18 @@ namespace scope
 			int _pendingTime = 0;
 			Fact _acc;
 			int _time = 0;
+			// The index of each instruction.
+			std::map<const scii *, int> _indexOf;
+			// The compare before an inert bnt, until the pprev after it.
+			ConsumptionNode *_naryCompare = nullptr;
+			// The next dup of the value of a switch starts the value of a case.
+			bool _expectCaseDup = false;
+			// The case value that the eq? of a case took.
+			std::unique_ptr<ConsumptionNode> _caseValue;
+			// The last live instruction is a jmp that does nothing.
+			bool _afterSkip = false;
+			// The last live instruction is a ret (in the same sequence).
+			bool _afterReturn = false;
 		};
 	}
 

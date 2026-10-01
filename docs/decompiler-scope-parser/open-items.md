@@ -18,6 +18,22 @@ Open items only: gaps, unfixed findings, questions. The plan is in
   715 and 718: the classic engine takes minutes for one function (also
   before this plan). The scope engine decompiles the scripts at once.
 
+## For step 11 (corpus gate sample with -Engine auto)
+
+- Forms that are worse against Snuffer than classic, with the same
+  meaning: `cond` arms where Snuffer has `if`s with `(continue)` (PQ2
+  `phoneNumber::changeState`), `(if c (break) else …)` chains where Snuffer
+  has `breakif`s (KQ5 `invW::doit`), `else` in place of `(continue)` (Longbow
+  `series::changeState`). The template snapshots change the same way
+  (`breakif`, `(if c else (break))`, `cond` arms).
+- Names: when a function that was asm becomes source, the name guess
+  (the assignments of the text) finds new names for locals and globals, so
+  other functions of the game go from SAME to NAMES against Snuffer (16
+  functions, Longbow scripts 200 and 330).
+- Refusals other than the function-bounds ones: `or-statement` (12, a
+  statement list as an operand), `toss-outside-switch` (2), `case-test`
+  (4), `term-statement` (1).
+
 ## Gaps
 
 - The value stage refuses an empty and-term (`empty-term`: a `bnt` right
