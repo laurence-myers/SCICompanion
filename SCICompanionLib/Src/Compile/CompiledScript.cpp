@@ -1554,19 +1554,32 @@ const std::unordered_set<uint16_t> &GlobalCompiledScriptLookups::GetMethodSelect
 std::string GlobalCompiledScriptLookups::LookupSelectorName(uint16_t wIndex)
 {
 	std::string str = _selectors.Lookup(wIndex);
-	if (str.empty())
+	// It is legit (e.g. script 99 in SQ3) for there to be selectors that don't have a name
+	// in the official selector list. "private" selectors for "private" classes. Such a
+	// selector is sel_<number>, which the compiler reads back as the number. So is a selector
+	// whose name the compiler gives another selector (a later one with the same name), and a
+	// selector with the name of a keyword of the syntax, which the text would give another
+	// name (the SCI1.1 template has cond, 509, which the text would write as case, 732).
+	uint16_t back;
+	bool keyword = (str == "cond") || (str == "continue") || (str == "repeat");
+	if (str.empty() || keyword || !_selectors.ReverseLookup(str, back) || (back != wIndex))
 	{
-		// It is legit (e.g. script 99 in SQ3) for there to be selectors that don't have a name
-		// in the official selector list. "private" selectors for "private" classes.
-		std::stringstream ss;
-		ss << "selector" << wIndex;
-		str = ss.str();
+		str = fmt::format("sel_{0}", wIndex);
 	}
 	return str;
 }
 std::string GlobalCompiledScriptLookups::LookupKernelName(uint16_t wIndex)
 {
-	return _kernels.Lookup(wIndex);
+	// A kernel whose name the compiler gives another kernel (EcoQuest 1 names
+	// 38 and 81 Dummy) is kernel_<number>, which the compiler reads back as
+	// the number.
+	std::string name = _kernels.Lookup(wIndex);
+	uint16_t back;
+	if (!_kernels.ReverseLookup(name, back) || (back != wIndex))
+	{
+		name = fmt::format("kernel_{0}", wIndex);
+	}
+	return name;
 }
 std::string GlobalCompiledScriptLookups::LookupClassName(uint16_t wIndex)
 {

@@ -247,7 +247,7 @@ namespace UnitTests
             {
                 CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
                 Assert::IsTrue(compiled.Load(helper, helper.Version, number), L"the fixture should load");
-                FixDuplicateObjectNames(compiled, config->GetSelectorTable());
+                FixDuplicateObjectNames(compiled, lookups);
                 ObjectFileScriptLookups objectFileLookups(helper, lookups.GetSelectorTable());
                 TestDecompilerResults results;
                 DecompileLookups decompileLookups(config.get(), helper, number, &lookups, &objectFileLookups, &compiled, nullptr, &compiled, results);

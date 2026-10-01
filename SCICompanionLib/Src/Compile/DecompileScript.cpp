@@ -55,6 +55,17 @@ void DecompileObject(const CompiledObject &object,
 	pClass->SetName(object.GetName());
 	pClass->SetSuperClass(lookups.LookupClassName(object.GetSuperClass()));
 	pClass->SetPublic(object.IsPublic);
+	if (!object.GetOriginalName().empty())
+	{
+		// The object has another name in the text (FixDuplicateObjectNames): its name
+		// property keeps the original string.
+		unique_ptr<ClassProperty> nameProperty = make_unique<ClassProperty>();
+		nameProperty->SetName("name");
+		PropertyValue nameValue;
+		nameValue.SetValue(object.GetOriginalName(), ValueType::String);
+		nameProperty->SetValue(nameValue);
+		pClass->AddProperty(move(nameProperty));
+	}
 	vector<uint16_t> propertySelectorList;
 	vector<CompiledVarValue> speciesPropertyValueList;
 	bool fSuccess = lookups.LookupSpeciesPropertyListAndValues(object.GetSpecies(), propertySelectorList, speciesPropertyValueList);
@@ -702,14 +713,12 @@ Script *Decompile(const GameFolderHelper &helper, const CompiledScript &compiled
 	return pScript.release();
 }
 
-void FixDuplicateObjectNames(CompiledScript &compiledScript, const SelectorTable &selectorTable)
+void FixDuplicateObjectNames(CompiledScript &compiledScript, GlobalCompiledScriptLookups &lookups)
 {
 	// Occasionally a script will have objects with duplicate names. Rather than a bug, this indicates that there were two separate objects that had
 	// their name property explicitly provided. An example is _MapInSection.sc in QFG2.
-	// There are a few ways to address it, but we'll try the following here:
-	//  Check for any name dupes in the objects.
-	//  If so, change their name to some unique name
-	//  Then add a name property with a value pointing to the original string.
+	// Such objects get a unique name (name_a, name_b, ...), and the text keeps the original
+	// string as an explicit name property (CompiledObject::GetOriginalName).
 	unordered_map<string, int> countOfNames;
 	unordered_map<string, char> suffixes;
 	for (const auto &object : compiledScript.GetObjects())
@@ -718,14 +727,35 @@ void FixDuplicateObjectNames(CompiledScript &compiledScript, const SelectorTable
 		suffixes[object->GetName()] = 'a';
 	}
 
+	// The names of the properties of the objects of the script (their species). In a
+	// method, the compiler reads such a name as the property: an instance with that
+	// name (Rm::init of many SCI0 games: (= controls controls)) gets another name too.
+	// A public instance keeps its name: other scripts refer to it by its name.
+	unordered_set<string> propertyNames;
+	for (const auto &object : compiledScript.GetObjects())
+	{
+		vector<uint16_t> properties;
+		if (lookups.LookupSpeciesPropertyList(object->GetSpecies(), properties))
+		{
+			for (uint16_t selector : properties)
+			{
+				propertyNames.insert(lookups.LookupSelectorName(selector));
+			}
+		}
+	}
+
 	for (auto &object : compiledScript.GetObjects())
 	{
-		int count = countOfNames[object->GetName()];
-		if (count > 1)
+		const std::string name = object->GetName();
+		bool shadowed = object->IsInstance() && !object->IsPublic && (propertyNames.count(name) > 0);
+		if ((countOfNames[name] > 1) || shadowed)
 		{
-			// This is a multiple named one.
-			std::string newName = fmt::format("{0}_{1}", object->GetName(), suffixes[object->GetName()]++);
-			object->AdjustName(newName); // This will track the old name so we can explicitly list it
+			std::string newName;
+			do
+			{
+				newName = fmt::format("{0}_{1}", name, suffixes[name]++);
+			} while (countOfNames.count(newName) || propertyNames.count(newName));
+			object->AdjustName(newName);
 		}
 	}
 }
@@ -743,7 +773,7 @@ std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, Gl
 		pText = textResource->TryGetComponent<TextComponent>();
 	}
 
-	FixDuplicateObjectNames(compiledScript, config->GetSelectorTable());
+	FixDuplicateObjectNames(compiledScript, scriptLookups);
 
 	DecompileLookups decompileLookups(config, helper, wScript, &scriptLookups, &objectFileLookups, &compiledScript, pText, &compiledScript, results);
 	decompileLookups.DebugControlFlow = debugControlFlow;

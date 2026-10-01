@@ -443,6 +443,10 @@ namespace UnitTests
         FIXTURE_TEST(StoreInSlot, "V3_StoreInSlot", 966)
         // A loop whose value is the test of an if.
         FIXTURE_TEST(LoopValue, "V4_LoopValue", 967)
+        // An instance with the name of a property, and a &rest before the last
+        // argument.
+        FIXTURE_TEST(ObjectNamedLikeAProperty, "O1_ObjectNamedLikeAProperty", 968)
+        FIXTURE_TEST(RestBeforeTheLastArgument, "R2_RestBeforeTheLastArgument", 969)
 
         // Switches: a switch as a value, a case value with a branch, an
         // empty last case (also in a loop), and cases that all return.

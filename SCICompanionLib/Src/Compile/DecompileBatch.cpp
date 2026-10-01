@@ -499,7 +499,7 @@ private:
 		state.textResource = _resourceMap.CreateResourceFromNumber(ResourceType::Text, _number);
 		TextComponent *pText = state.textResource ? state.textResource->TryGetComponent<TextComponent>() : nullptr;
 
-		FixDuplicateObjectNames(state.compiledScript, _config->GetSelectorTable());
+		FixDuplicateObjectNames(state.compiledScript, _scriptLookups);
 
 		state.lookups = make_unique<DecompileLookups>(_config, _helper, _number, &_scriptLookups, &state.objectFileLookups, &state.compiledScript, pText, &state.compiledScript, results);
 		state.lookups->DebugControlFlow = _options.DebugControlFlow;

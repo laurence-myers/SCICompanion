@@ -1960,7 +1960,7 @@ namespace meaning
 	{
 		std::vector<Function> _ReadLoaded(CompiledScript &compiled, const GameFolderHelper &helper, GlobalCompiledScriptLookups &lookups, const Vocab000 *pWords, uint16_t scriptNumber)
 		{
-			FixDuplicateObjectNames(compiled, lookups.GetSelectorTable());
+			FixDuplicateObjectNames(compiled, lookups);
 			QuietResults results;
 			ObjectFileScriptLookups objectFileLookups(helper, lookups.GetSelectorTable());
 			DecompileLookups decompileLookups(nullptr, helper, scriptNumber, &lookups, &objectFileLookups, &compiled, nullptr, &compiled, results);

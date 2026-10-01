@@ -325,6 +325,7 @@ public:
 			{
 				_functionSig = (static_cast<FunctionBase*>(&node))->GetSignaturesNC()[0].get();
 				_rests.clear();
+				_restsNotLast.clear();
 				_explicitVarUsage.clear();
 			}
 			else
@@ -333,7 +334,10 @@ public:
 				if (!_functionSig->GetParams().empty())
 				{
 					string lastParamName = _functionSig->GetParams().back()->GetName();
-					if (_explicitVarUsage.find(lastParamName) == _explicitVarUsage.end())
+					// A &rest with no name before another argument would take that
+					// argument as its name: such a &rest keeps the parameter.
+					bool restNotLast = std::any_of(_rests.begin(), _rests.end(), [&](RestStatement *rest) { return rest && (rest->GetName() == lastParamName) && _restsNotLast.count(rest); });
+					if ((_explicitVarUsage.find(lastParamName) == _explicitVarUsage.end()) && !restNotLast)
 					{
 						// Last parameter is never used, other than possibly in rests. Remove it:
 						_functionSig->GetParams().pop_back();
@@ -356,6 +360,20 @@ public:
 		{
 			if (state == ExploreNodeState::Pre)
 			{
+				// The rests that another argument follows.
+				StatementsNode *arguments = (node.GetNodeType() == NodeType::NodeTypeSendParam) ? static_cast<StatementsNode*>(static_cast<SendParam*>(&node)) :
+					((node.GetNodeType() == NodeType::NodeTypeProcedureCall) ? static_cast<StatementsNode*>(static_cast<ProcedureCall*>(&node)) : nullptr);
+				if (arguments)
+				{
+					const SyntaxNodeVector &statements = arguments->GetStatements();
+					for (size_t k = 0; k + 1 < statements.size(); ++k)
+					{
+						if (statements[k]->GetNodeType() == NodeType::NodeTypeRest)
+						{
+							_restsNotLast.insert(static_cast<RestStatement*>(statements[k].get()));
+						}
+					}
+				}
 				switch (node.GetNodeType())
 				{
 					// Keep track of all rests.
@@ -404,6 +422,8 @@ public:
 private:
 	FunctionSignature *_functionSig;
 	vector<RestStatement*> _rests;
+	// The rests that another argument of their call or message follows.
+	std::unordered_set<RestStatement*> _restsNotLast;
 	std::set<string> _explicitVarUsage;
 };
 

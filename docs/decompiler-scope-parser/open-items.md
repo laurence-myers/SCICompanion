@@ -5,19 +5,12 @@ Open items only: gaps, unfixed findings, questions. The plan is in
 
 ## Outside the plan
 
-- **Names that compile to another value.** The meaning check finds text
-  whose names the compiler resolves to another value (the names come from
-  the lookups, not from the control flow). 79 functions of the
-  gate sample (the gate allowlist has them):
-  - an object with the name of a property: `(= controls controls)` in
-    `Rm::init` of many SCI0 games stores the property, not the object
-    `controls`; also `message` in Longbow `ok::select` (20);
-  - a property at another index in a decompiled class: LSL1 VGA
-    `GameControls::show` reads `okButton` (property 42) as property 44
-    (1);
-  - two selectors with one name: the SCI1.1 template sends selector 509
-    (`case`), and its recompile sends 732 (`Conversation::add`,
-    `DialogEditor::exit`).
+- **A public instance with the name of a property.** The decompiler gives
+  an instance that is not public, and that has the name of a property of
+  an object of its script, another name (with its name string as an
+  explicit `name` property). A public instance keeps its name, because
+  other scripts refer to it by its name: in a method of an object with
+  that property, the text then means the property.
 - **Decompiled text that does not compile.** 1418 functions of the gate
   sample are in scripts whose decompiled text has compile errors (for
   example `&rest` in a send whose target has a nested send, or a property
@@ -35,19 +28,13 @@ fewer distinct defects. Survey by cause:
   at index + 2; the original has no `name` slot (not checked in the
   bytes).
 - **Another property layout of a superclass** (35 rows): LSL1 and
-  Mixed-Up Fairy Tales 995, IconBar and `Inv`.
-- **An object with the name of a property** (67 rows; see "Names that
-  compile to another value").
+  Mixed-Up Fairy Tales 995, IconBar and `Inv`; LSL1 VGA
+  `GameControls::show` reads `okButton` (property 42) as property 44.
 - **A local procedure that only dead code calls** (2 rows): QfG3 460
   `localproc_1f5b`, Mixed-Up Fairy Tales 927 `localproc_0492`. The
   decompiler finds it as the target of a call in dead code after the end
   of another function, and leaves that code out. The recompiled procedure
   has no caller, so the check does not find it (`no-recompiled-function`).
-- **Selectors with no name** (22 rows): QfG2 dev 909, `sel_713` and
-  others get new numbers in the compile.
-- **Two kernel functions with one name** (6 rows): ECO1 540 `Dummy` (81
-  and 38).
-- **Not explained** (1 row): Island of Dr. Brain 268 `anElement::select`.
 
 ## Refusals
 

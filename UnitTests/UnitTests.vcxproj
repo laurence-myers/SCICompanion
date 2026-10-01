@@ -125,6 +125,7 @@ exit /b 0</Command>
     <ClCompile Include="TestScriptCatalog.cpp" />
     <ClCompile Include="TestScriptNames.cpp" />
     <ClCompile Include="TestSpeciesTable.cpp" />
+    <ClCompile Include="TestVocabNames.cpp" />
     <ClCompile Include="TestEngineErrors.cpp" />
     <ClCompile Include="TestScriptText.cpp" />
     <ClCompile Include="TestGameSession.cpp" />

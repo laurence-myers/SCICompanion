@@ -753,6 +753,16 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, Decompi
 						}
 					}
 
+					// A &rest before the last argument of a message (Island of Dr. Brain
+					// script 268, anElement::select: "pushi 1; &rest 1; lst temp0"): an
+					// argument at its place (the compiler gives the &rest in place).
+					if (!fLookingForSelector && sendParam && cParamsLeft && node.Child(i)->_hasPos &&
+						(node.Child(i)->GetCode()->get_opcode() == Opcode::REST))
+					{
+						_MaybeConsumeRestInstruction(sendParam.get(), (int)i, node, lookups);
+						++i;
+						continue;
+					}
 					if (cStackPushesLeft)
 					{
 						Consumption consAcc = _GetInstructionConsumption(*node.Child(i), lookups);

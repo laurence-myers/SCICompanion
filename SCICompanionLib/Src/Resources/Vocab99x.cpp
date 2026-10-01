@@ -679,10 +679,37 @@ std::string SelectorTable::_GetMissingName(uint16_t wName) const
 	return fmt::format("sel_{0}", wName);
 }
 
+// A name that the decompiler gives a number with no name of its own:
+// <prefix><number> (sel_713, kernel_81).
+static bool _ParseNumberedName(const std::string &name, const char *prefix, uint16_t &number)
+{
+	size_t length = strlen(prefix);
+	if ((name.size() <= length) || (name.size() > length + 5) || (name.compare(0, length, prefix) != 0))
+	{
+		return false;
+	}
+	uint32_t value = 0;
+	for (size_t i = length; i < name.size(); i++)
+	{
+		if (!isdigit((unsigned char)name[i]))
+		{
+			return false;
+		}
+		value = value * 10 + (name[i] - '0');
+	}
+	if (value > 0xffff)
+	{
+		return false;
+	}
+	number = (uint16_t)value;
+	return true;
+}
+
 bool SelectorTable::IsSelectorName(const std::string &name) const
 {
 	assert(!_nameToValueCache.empty());
-	return (_nameToValueCache.find(name) != _nameToValueCache.end());
+	uint16_t number;
+	return (_nameToValueCache.find(name) != _nameToValueCache.end()) || _ParseNumberedName(name, "sel_", number);
 }
 
 bool SelectorTable::ReverseLookup(std::string name, uint16_t &wIndex) const
@@ -693,7 +720,9 @@ bool SelectorTable::ReverseLookup(std::string name, uint16_t &wIndex) const
 		wIndex = it->second;
 		return true;
 	}
-	return false;
+	// sel_<number>: the name that the decompiler gives a selector with no
+	// name, or a later selector with the name of another one.
+	return _ParseNumberedName(name, "sel_", wIndex);
 }
 
 bool SelectorTable::Load(const GameFolderHelper &helper)
@@ -1503,6 +1532,12 @@ bool KernelTable::ReverseLookup(std::string name, uint16_t &wIndex) const
 	{
 		wIndex = wMissingKernel;
 		result = true;
+	}
+	// kernel_<number>: the name that the decompiler gives a kernel past the
+	// names, or a later kernel with the name of another one.
+	if (!result)
+	{
+		result = _ParseNumberedName(name, "kernel_", wIndex);
 	}
 	return result;
 }
