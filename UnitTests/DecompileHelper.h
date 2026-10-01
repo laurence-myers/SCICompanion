@@ -72,8 +72,7 @@ bool DecompileTemplateScriptByTitle(const std::string &title, DecompileOutput &o
 std::vector<meaning::Function> ReadMeaningFunctions(uint16_t scriptNumber);
 
 // Asserts that each function of the compiled script means what the function
-// of the original means (meaning::CompareFunctions gives SAME). Nothing with
-// the classic engine.
+// of the original means (meaning::CompareFunctions gives SAME).
 void AssertMeaningKept(const std::string &fixtureName, const std::vector<meaning::Function> &original, uint16_t scriptNumber);
 
 // Compiles the fixture, decompiles it, recompiles the decompiled text, and
@@ -106,9 +105,7 @@ int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
 // easy. This tests fidelity, not just round-trip stability. Returns the first
 // decompile. With roundTrip false, it recompiles the decompiled text for the
 // meaning check only: for a fixture whose recompiled bytecode has another
-// shape. With the scope
-// engine (SCIC_DECOMPILE_ENGINE), the expected file is
-// "<name>.scope.expected.sc" when the fixture has one.
+// shape.
 DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, uint16_t scriptNumber, bool roundTrip = true);
 
 // Compiles a fixture, decompiles it with the debug dumps of the control

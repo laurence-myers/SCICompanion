@@ -7,7 +7,6 @@
 #include "ExitCodes.h"
 #include "GameSession.h"
 #include "CoreLog.h"
-#include "DecompileEngine.h"
 #include "format.h"
 #include <cstdlib>
 #include <filesystem>
@@ -213,10 +212,8 @@ namespace cli
         decompile->add_flag("--debug-control-flow", decompileOptions.debugControlFlow, "Show the control flow (decompiler debug output).");
         decompile->add_flag("--debug-instructions", decompileOptions.debugInstructions, "Show the use of the instructions (decompiler debug output).");
         decompile->add_option("--debug-filter", decompileOptions.debugFilter, "The debug output only for this function.");
-        decompile->add_option("--engine", decompileOptions.engine, "classic: the control-flow graph; scope: the scope parser; auto: scope, then classic for a function that scope cannot do. Default: SCIC_DECOMPILE_ENGINE, else scope.")
-            ->check(CLI::IsMember({ "classic", "scope", "auto" }));
         CLI::Option *functionReportOption = decompile->add_option("--function-report", decompileOptions.functionReport,
-            "Also write a line for each function into this file (tab-separated): its script, class, name, offset and bytes, the engine, the output (classic, scope, asm, corrupt, error or stale), and the result of each engine.");
+            "Also write a line for each function into this file (tab-separated): its script, class, name, offset and bytes, the output (scope, asm, corrupt, error or stale), and the result of the scope engine (ok, or why it failed).");
 
         CLI::App *sco = script->add_subcommand("sco", "Make src\\<name>.sco from src\\<name>.sc and the compiled script, for source from another tool.");
         sco->fallthrough();
@@ -345,16 +342,7 @@ namespace cli
             {
                 return "--function-report would overwrite " + decompileOptions.functionReport + ", which is not a function report; give a new file, an empty file, or a function report";
             }
-            if (decompile->parsed() && decompileOptions.engine.empty())
-            {
-                // An unknown engine in the variable would stop each script.
-                std::string value = DecompileEngineVariableValue();
-                DecompileEngine engine;
-                if (!value.empty() && !ParseDecompileEngine(value, engine))
-                {
-                    return fmt::format("{0} is \"{1}\"; give classic, scope or auto, or give --engine", DecompileEngineVariable, value);
-                }
-            }
+
             if (version)
             {
                 return std::string();

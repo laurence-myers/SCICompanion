@@ -16,9 +16,8 @@
 ;   6 (temp1 perform: 6)   a reused number stays a statement; the argument is a copy
 ; After "aTop x", Sierra's optimiser still knows the accumulator as param1
 ; (a store to a property does not change what it knows), so the push in
-; place of a load is a push of param1: "pTos x" stays a load. The classic
-; engine gives (temp1 perform: x), the same value; the scope engine gives
-; param1 (A1_ReusedAcc.scope.expected.sc).
+; place of a load is a push of param1: "pTos x" stays a load. The decompiler
+; gives the parameter: (temp1 perform: theX).
 (class A1Reuse of Code
 	(properties
 		x 0

@@ -12,7 +12,6 @@
 #include "ResourceUtil.h"
 #include "DecompileRun.h"
 #include "DecompilerResults.h"
-#include "DecompileEngine.h"
 #include "FileWrite.h"
 #include "format.h"
 #include <algorithm>
@@ -352,8 +351,8 @@ namespace cli
             for (const auto &entry : functions)
             {
                 const DecompiledFunction &function = entry.second;
-                text += fmt::format("{0}\t{1}\t{2}\t{3:04x}\t{4}\t{5}\t{6}\t{7}\t{8}\n", function.script, ReportField(function.className), ReportField(function.name),
-                    function.offset, function.byteCount, DecompileEngineName(function.engine), function.output, ReportField(function.scope), ReportField(function.classic));
+                text += fmt::format("{0}\t{1}\t{2}\t{3:04x}\t{4}\t{5}\t{6}\n", function.script, ReportField(function.className), ReportField(function.name),
+                    function.offset, function.byteCount, function.output, ReportField(function.scope));
             }
             return text;
         }
@@ -511,15 +510,7 @@ namespace cli
         run.engine.DebugControlFlow = options.debugControlFlow;
         run.engine.DebugInstructionConsumption = options.debugInstructions;
         run.engine.DebugFunctionMatch = options.debugFilter;
-        if (!options.engine.empty())
-        {
-            DecompileEngine engine;
-            if (!ParseDecompileEngine(options.engine, engine))
-            {
-                return sci::Fail(sci::ErrorCode::Usage, fmt::format("--engine is \"{0}\"; give classic, scope or auto", options.engine));
-            }
-            run.engine.Engine = engine;
-        }
+
         run.names = options.resetNames ? NameAssignment::All : NameAssignment::Missing;
         run.gameIni = GameIniNamesOf(options.gameIni);
         run.updateStale = options.updateStale;
@@ -567,7 +558,7 @@ namespace cli
         return code;
     }
 
-    const char *const FunctionReportHeader = "script\tclass\tfunction\toffset\tbytes\tengine\toutput\tscope\tclassic";
+    const char *const FunctionReportHeader = "script\tclass\tfunction\toffset\tbytes\toutput\tscope";
 
     sci::Status CheckFunctionReportFile(const std::string &path)
     {

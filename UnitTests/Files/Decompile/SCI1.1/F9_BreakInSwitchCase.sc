@@ -3,8 +3,8 @@
 (include sci.sh)
 
 ; A break out of a loop from inside a switch case. Sierra's compiler emits
-; the break as a jump past the toss to the loop exit, which the structurer
-; must gather into the case and resolve as a break.
+; the break as a jump past the toss to the loop exit, which the decompiler
+; must give as a break in the case.
 (public
 	f9BreakInSwitchCase 0
 )

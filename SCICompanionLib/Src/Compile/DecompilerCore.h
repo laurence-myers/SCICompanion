@@ -19,7 +19,6 @@
 #include <cstdint>
 #include <optional>
 #include "CompileCommon.h"
-#include "DecompileEngine.h"
 
 // fwd decl
 namespace sci
@@ -73,8 +72,6 @@ enum class VarScope : std::uint8_t
 	Temp = 0x02,
 	Param = 0x03
 };
-
-class CodeNode;
 
 struct FunctionDecompileHints
 {
@@ -163,7 +160,6 @@ public:
 	const sci::ClassDefinition *DecompileLookups::GetClassContext() const;
 
 	bool PreferLValue;
-	std::vector<std::unique_ptr<CodeNode>>::iterator BreakExit;
 
 	bool IsPropertySelectorOnly(uint16_t selector) const;
 
@@ -179,8 +175,6 @@ public:
 	bool DebugInstructionConsumption;
 	bool DecompileAsm = false;
 	bool SubstituteTextTuples = false;
-	// Empty: DefaultDecompileEngine, for each function.
-	std::optional<DecompileEngine> Engine;
 	PCSTR pszDebugFilter = nullptr;
 	// The count of the functions that DecompileRaw began in this script.
 	int FunctionCount = 0;
@@ -241,11 +235,6 @@ bool ReadFunctionCode(DecompileLookups &lookups, const BYTE *pBegin, const BYTE 
 // goes past); -1 when that decode fails.
 int FunctionCodeLength(DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset);
 
-// Repoint the branch targets of `copy` (a positional duplicate of `source`) so
-// they refer to nodes inside `copy` instead of the shared nodes in `source`.
-// After this, `source` can be edited or have nodes erased without leaving the
-// copy's branch iterators dangling. See #62.
-void RepointBranchTargetsIntoCopy(std::list<scii> &source, std::list<scii> &copy);
 
 struct VariableRange
 {
@@ -257,7 +246,6 @@ void AddLocalVariablesToScript(sci::Script &script, const CompiledScript &compil
 
 std::string _GetProcNameFromScriptOffset(uint16_t wOffset);
 sci::ValueType _ScriptObjectTypeToPropertyValueType(ICompiledScriptSpecificLookups::ObjectType type);
-bool _ObtainInstructionSequence(code_pos branchInstruction, code_pos beginning, code_pos &beginningOfBranchInstructionSequence, bool includeDebugOpcodes = false);
 
 
 

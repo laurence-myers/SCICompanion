@@ -5,12 +5,9 @@ Open items only: gaps, unfixed findings, questions. The plan is in
 
 ## Outside the plan
 
-- **A slow classic decompile.** Hoyle Classic Card Games (1993), scripts
-  715 and 718: the classic engine takes minutes for one function (also
-  before this plan). The scope engine decompiles the scripts at once.
 - **Names that compile to another value.** The meaning check finds text
-  whose names the compiler resolves to another value. Both engines give
-  this text (the names come from the same lookups). 79 functions of the
+  whose names the compiler resolves to another value (the names come from
+  the lookups, not from the control flow). 79 functions of the
   gate sample (the gate allowlist has them):
   - an object with the name of a property: `(= controls controls)` in
     `Rm::init` of many SCI0 games stores the property, not the object
@@ -38,10 +35,10 @@ Open items only: gaps, unfixed findings, questions. The plan is in
   that gets two values). The meaning check gives them UNCOMPARED
   (`not-recompiled`).
 
-## For step 14
+## Refusals
 
-- The other refusals of the gate sample with the `scope` engine (16
-  functions; the classic engine gives no source for them either):
+- The refusals of the gate sample other than ICEMAN #235 (16 functions,
+  given as `asm`):
   `acc-no-fact` (ICEMAN 385 `localproc_02bc` in three copies, Hoyle
   Classic 716 `other1_tree::doit`, QfG1 VGA 0 `proc0_3` in two copies),
   `stack-underflow` (Camelot 40 `Rm40::handleEvent` in two copies),
@@ -49,10 +46,6 @@ Open items only: gaps, unfixed findings, questions. The plan is in
   `no-scope-for-target` (SQ4 patch 16, 271, 391), `dup-no-value` (QfG4
   floppy 670 `pMainDoor::doVerb`), `term-statement` (Pepper 230
   `sTalkPoorRich::changeState`).
-- The template snapshots change with the scope engine (12 of 86 scripts,
-  reviewed: the same meaning): `(breakif c)` for a `bt`, an empty
-  `(else )` gone, and the `if`/`else` form above (`Gauge`,
-  `ScrollableInventory`, `SaveRestoreDialog`).
 
 ## Gaps
 

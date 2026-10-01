@@ -507,7 +507,6 @@ private:
 		state.lookups->pszDebugFilter = _options.DebugFunctionMatch.c_str();
 		state.lookups->DecompileAsm = _options.DecompileAsm;
 		state.lookups->SubstituteTextTuples = _options.SubstituteTextTuples;
-		state.lookups->Engine = _options.Engine;
 
 		state.script = DecompileToAst(_helper, state.compiledScript, *state.lookups, _resourceMap.GetVocab000());
 	}

@@ -140,12 +140,6 @@
     <ClCompile Include="TestMergeScripts.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="TestDecompilerDangling.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="TestDecompilerDroppedBlock.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="TestCompileAllPumpIntegration.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

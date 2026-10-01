@@ -107,7 +107,7 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
   original (`scic dev compare-meaning`, plan section 3.6). Run the sample
   after a control-flow or value change of the decompiler; the full run is
   for the decision points of `docs\decompiler-scope-parser\plan.md` (steps
-  8 and 13). The fixtures of `TestDecompileScope` check the meaning too:
+  8 and 13). The fixtures of `TestDecompile` check the meaning too:
   that is the check that CI runs.
 - Read pass/fail counts from `TestResults\UnitTests.trx` (or
   `IntegrationTests.trx`) — the `<Counters>` element under

@@ -7,8 +7,7 @@
     the script:
       1. decompiles the scripts of the sample (default) or every script
          (-Full) with scic, on a copy of the game: scic script decompile
-         --engine <engine> --game-ini none --function-report. The engine
-         is -Engine, else SCIC_DECOMPILE_ENGINE, else scope;
+         --game-ini none --function-report;
       2. decompiles the whole game with sluicebox's Snuffer, once: the
          output stays in the cache;
       3. compares the two with scic dev compare-structure (in the sample
@@ -42,10 +41,7 @@
     report), compare.tsv (the table of compare-structure), and the logs; and
     gate.json (the counts of each game and the totals), rows.tsv (every
     row of the compare, with its game) and scope.tsv (each function that the
-    scope engine does not accept, with its result in the classic engine).
-    With the classic engine, the control-flow stages of the scope engine
-    run in shadow mode; the run tells how many functions of each classic
-    result (ok, graph, consumption) they accept, and counts each scope
+    scope engine does not accept, with the failure id). The run counts each
     failure id.
 
     Two counts of asm: the "asm" total counts the functions of the function
@@ -93,12 +89,12 @@
          UNCOMPARED has a reason. A game whose meaning check failed (also a
          script that compare-meaning could not read) fails the rule; a game
          that scic cannot open (decompile exit 2 or 3) has no check.
-    Rule 4 (the unit tests with SCIC_DECOMPILE_ENGINE) is not here.
+    Rule 4 (the unit tests) is not here.
 
     Usage:
       .\UnitTests\Tools\DecompileGate.ps1 -Library F:\Games\Sierra,F:\games\gog -Exclude '_vgm*' -Snuffer <Snuffer.exe>
-      .\UnitTests\Tools\DecompileGate.ps1 -Library ... -Snuffer ... -Engine scope -BaselineRun <run folder of classic> -Check
-      .\UnitTests\Tools\DecompileGate.ps1 -Library ... -Snuffer ... -Engine scope -Meaning -Check
+      .\UnitTests\Tools\DecompileGate.ps1 -Library ... -Snuffer ... -BaselineRun <run folder> -Check
+      .\UnitTests\Tools\DecompileGate.ps1 -Library ... -Snuffer ... -Meaning -Check
       .\UnitTests\Tools\DecompileGate.ps1 -Library ... -Snuffer ... -Record
       .\UnitTests\Tools\DecompileGate.ps1 -Library ... -MakeSample -Failures <sweep>\functions-verified.csv
 #>
@@ -108,8 +104,6 @@ param(
     [string[]]$Exclude = @(),
     [int]$Depth = 5,
     [string]$Snuffer = "",
-    [ValidateSet("", "classic", "scope", "auto")]
-    [string]$Engine = "",
     [switch]$Full,
     [string]$Sample = "",
     [string]$Work = (Join-Path ([IO.Path]::GetTempPath()) "scic-gate"),
@@ -135,8 +129,6 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot 'Corpus.Common.ps1')
 if (-not $Library) { throw "-Library is required." }
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-# The engine, as scic chooses it when no --engine is given.
-$engineName = if ($Engine) { $Engine } elseif ($env:SCIC_DECOMPILE_ENGINE) { $env:SCIC_DECOMPILE_ENGINE } else { "scope" }
 if (-not $Sample) { $Sample = Join-Path $repoRoot "UnitTests\Files\Corpus\gate-sample.json" }
 if (-not $Baseline) { $Baseline = Join-Path $repoRoot "UnitTests\Files\Corpus\gate-baseline.json" }
 if (-not $Scic) { $Scic = Join-Path $repoRoot "Release\scic.exe" }
@@ -234,7 +226,7 @@ $stamp = "{0}-{1}" -f (Get-Date -Format "yyyyMMdd-HHmmss"), $PID
 $run = Join-Path $workFull $stamp
 New-Item -ItemType Directory (Join-Path $run "games") -Force | Out-Null
 New-Item -ItemType Directory (Join-Path $cacheFull "games"), (Join-Path $cacheFull "snuffer") -Force | Out-Null
-Write-Host "scic: $Scic ($engineName, $(if ($Full) { 'every script' } else { 'the sample' }))"
+Write-Host "scic: $Scic ($(if ($Full) { 'every script' } else { 'the sample' }))"
 Write-Host "Games: $($games.Count). Run folder: $run. Cache: $cacheFull"
 
 # One game: the work of a runspace. Returns the facts of the game.
@@ -258,7 +250,7 @@ $gameWork = {
         $src = Join-Path $copy "src"
         if (Test-Path -LiteralPath $src) { [IO.Directory]::Delete($src, $true) }
 
-        $arguments = @("script", "decompile", $copy) + @($scripts) + @("--game-ini", "none", "-q", "--engine", $settings.Engine,
+        $arguments = @("script", "decompile", $copy) + @($scripts) + @("--game-ini", "none", "-q",
             "--function-report", (Join-Path $gameRun "functions.tsv"), "--data-dir", $settings.DataDir)
         $result.exit = Invoke-Logged $settings.Scic $arguments (Join-Path $gameRun "decompile.out.txt") (Join-Path $gameRun "decompile.err.txt") $settings.Timeout
         $log = @(Get-Content -LiteralPath (Join-Path $gameRun "decompile.err.txt"))
@@ -352,7 +344,7 @@ $gameWork = {
             $gameIni = Join-Path $copy "game.ini"
             $iniBefore = if (Test-Path -LiteralPath $gameIni) { [IO.File]::ReadAllBytes($gameIni) } else { $null }
             try {
-                $decompileAll = @("script", "decompile", $copy, "--all", "--game-ini", "none", "-q", "--engine", $settings.Engine,
+                $decompileAll = @("script", "decompile", $copy, "--all", "--game-ini", "none", "-q",
                     "--function-report", (Join-Path $meaningRun "functions.tsv"), "--data-dir", $settings.DataDir)
                 $code = Invoke-Logged $settings.Scic $decompileAll (Join-Path $meaningRun "decompile.out.txt") (Join-Path $meaningRun "decompile.err.txt") $settings.Timeout
                 if (@("0", "6") -notcontains $code) { throw "the decompile of every script: exit $code" }
@@ -384,7 +376,7 @@ $gameWork = {
 }
 
 $settings = @{
-    Tools = $PSScriptRoot; Run = $run; Cache = $cacheFull; Scic = $Scic; DataDir = (Split-Path -Parent $Scic); Engine = $engineName; RetrySnuffer = [bool]$RetrySnuffer; Meaning = [bool]$Meaning
+    Tools = $PSScriptRoot; Run = $run; Cache = $cacheFull; Scic = $Scic; DataDir = (Split-Path -Parent $Scic); RetrySnuffer = [bool]$RetrySnuffer; Meaning = [bool]$Meaning
     Snuffer = $(if ($Snuffer) { Get-FullPath $Snuffer "-Snuffer" } else { "" }); BaselineRun = $(if ($BaselineRun) { Get-FullPath $BaselineRun "-BaselineRun" } else { "" })
     Timeout = $TimeoutSeconds
 }
@@ -425,11 +417,10 @@ if ($Allowlist) {
     }
 }
 $gameCounts = @()
-$shadow = [ordered]@{}
-foreach ($name in @("ok", "graph", "consumption")) { $shadow[$name] = [ordered]@{ functions = 0; scopeOk = 0 } }
+
 $scopeFailures = @{}
 $scopeRows = New-Object System.Collections.Generic.List[string]
-$scopeRows.Add("game`tmd5`tscript`tclass`tfunction`toffset`tscope`tclassic")
+$scopeRows.Add("game`tmd5`tscript`tclass`tfunction`toffset`tscope")
 $allRows = New-Object System.Collections.Generic.List[string]
 $allRows.Add("game`tmd5`tscript`tkey`tfunction`tverdict`tbaseline`tchange")
 $ruleFailures = New-Object System.Collections.Generic.List[string]
@@ -437,7 +428,7 @@ $meaningNames = @("SAME", "DIFF", "UNCOMPARED")
 $meaningRows = New-Object System.Collections.Generic.List[string]
 $meaningRows.Add("game`tmd5`tscript`tkey`tfunction`toffset`toutput`tverdict`tdetail")
 $meaningTotals = [ordered]@{}
-foreach ($output in @("scope", "classic", "other")) {
+foreach ($output in @("scope", "other")) {
     $meaningTotals[$output] = [ordered]@{}
     foreach ($name in $meaningNames) { $meaningTotals[$output][$name] = 0 }
 }
@@ -488,7 +479,7 @@ foreach ($fact in ($facts | Sort-Object name)) {
         elseif (Test-Path -LiteralPath $meaningTable) {
             foreach ($row in @(Get-Content -LiteralPath $meaningTable | ConvertFrom-Csv -Delimiter "`t")) {
                 $output = $outputOf["$($row.script)`t$($row.offset)"]
-                $group = if (@("scope", "classic") -contains $output) { $output } else { "other" }
+                $group = if ($output -eq "scope") { $output } else { "other" }
                 if ($meaningTotals[$group].Contains($row.verdict)) { $meaningTotals[$group][$row.verdict]++ }
                 $meaningRows.Add("$($fact.name)`t$($fact.md5)`t$($row.script)`t$($row.key)`t$($row.function)`t$($row.offset)`t$output`t$($row.verdict)`t$($row.detail)")
                 # A function that the text adds has no output: it is a DIFF of the text.
@@ -515,14 +506,9 @@ foreach ($fact in ($facts | Sort-Object name)) {
         verdicts = $verdicts; changes = $changes
     }
     foreach ($f in $functions) {
-        $kind = if ($f.classic -eq "ok") { "ok" } elseif ($f.classic -like "graph*") { "graph" } elseif ($f.classic -like "consumption*") { "consumption" } else { "" }
-        if ($kind -and $f.scope) {
-            $shadow[$kind].functions++
-            if ($f.scope -eq "ok") { $shadow[$kind].scopeOk++ }
-        }
         if ($f.scope -and ($f.scope -ne "ok")) {
             $scopeFailures[$f.scope] = 1 + $(if ($scopeFailures.ContainsKey($f.scope)) { $scopeFailures[$f.scope] } else { 0 })
-            $scopeRows.Add("$($fact.name)`t$($fact.md5)`t$($f.script)`t$($f.class)`t$($f.function)`t$($f.offset)`t$($f.scope)`t$($f.classic)")
+            $scopeRows.Add("$($fact.name)`t$($fact.md5)`t$($f.script)`t$($f.class)`t$($f.function)`t$($f.offset)`t$($f.scope)")
         }
     }
 }
@@ -530,14 +516,13 @@ $totals = [ordered]@{ games = $gameCounts.Count }
 foreach ($name in @("functions", "scripts", "asm", "corrupt", "scopeOk")) { $totals[$name] = ($gameCounts | ForEach-Object { $_[$name] } | Measure-Object -Sum).Sum }
 $totals.verdicts = [ordered]@{}
 foreach ($name in $verdictNames) { $totals.verdicts[$name] = ($gameCounts | ForEach-Object { $_.verdicts[$name] } | Measure-Object -Sum).Sum }
-$totals.shadow = $shadow
 $totals.scopeFailures = [ordered]@{}
 foreach ($entry in ($scopeFailures.GetEnumerator() | Sort-Object -Property @{ Expression = "Value"; Descending = $true }, Name)) { $totals.scopeFailures[$entry.Name] = $entry.Value }
 $totals.changes = [ordered]@{}
 foreach ($name in $changeNames) { $totals.changes[$name] = ($gameCounts | ForEach-Object { $_.changes[$name] } | Measure-Object -Sum).Sum }
 if ($Meaning) { $totals.meaning = $meaningTotals }
 $mode = if ($Full) { "full" } else { "sample" }
-$gate = [ordered]@{ engine = $engineName; mode = $mode; date = (Get-Date -Format "yyyy-MM-dd"); totals = $totals; games = $gameCounts }
+$gate = [ordered]@{ mode = $mode; date = (Get-Date -Format "yyyy-MM-dd"); totals = $totals; games = $gameCounts }
 Write-Utf8 (Join-Path $run "gate.json") (($gate | ConvertTo-Json -Depth 6) + "`r`n")
 Write-Utf8 (Join-Path $run "rows.tsv") (($allRows -join "`r`n") + "`r`n")
 if ($Meaning) { Write-Utf8 (Join-Path $run "meaning.tsv") (($meaningRows -join "`r`n") + "`r`n") }
@@ -551,9 +536,7 @@ if ($Meaning) {
         Write-Host ("Meaning, {0} functions: {1}" -f $output, (($meaningNames | ForEach-Object { "$_ $($meaningTotals[$output][$_])" }) -join ", "))
     }
 }
-foreach ($name in @("ok", "graph", "consumption")) {
-    if ($shadow[$name].functions) { Write-Host ("Scope accepts {0} of {1} functions that classic gives as {2}" -f $shadow[$name].scopeOk, $shadow[$name].functions, $name) }
-}
+
 foreach ($name in $totals.scopeFailures.Keys) { Write-Host ("  {0}: {1}" -f $name, $totals.scopeFailures[$name]) }
 # A game with no compare: no Snuffer output, or an error before the compare.
 $notCompared = @($facts | Where-Object { -not $_.compared } | Sort-Object name | ForEach-Object { if ($_.error) { "$($_.name) (error: $($_.error))" } else { "$($_.name) (Snuffer: $($_.snuffer))" } })
@@ -569,7 +552,7 @@ if ($Record) {
     if ($partial -and (Test-Path -LiteralPath $Baseline)) {
         # A run of some games: the other games keep their entries.
         $old = Get-Content -LiteralPath $Baseline -Raw | ConvertFrom-Json
-        if (($old.mode -ne $mode) -or ($old.engine -ne $engineName)) { throw "-Record of some games (-Include) needs a baseline of the same mode and engine: $($old.mode), $($old.engine)." }
+        if ($old.mode -ne $mode) { throw "-Record of some games (-Include) needs a baseline of the same mode: $($old.mode)." }
         $runMd5 = @($entries | ForEach-Object { $_.md5 })
         foreach ($game in @($old.games | Where-Object { $runMd5 -notcontains $_.md5 })) {
             $verdictsOf = [ordered]@{}
@@ -582,7 +565,7 @@ if ($Record) {
     foreach ($name in @("functions", "scripts", "asm", "corrupt")) { $recordedTotals[$name] = ($entries | ForEach-Object { $_[$name] } | Measure-Object -Sum).Sum }
     $recordedTotals.verdicts = [ordered]@{}
     foreach ($name in $verdictNames) { $recordedTotals.verdicts[$name] = ($entries | ForEach-Object { $_.verdicts[$name] } | Measure-Object -Sum).Sum }
-    $recorded = [ordered]@{ engine = $engineName; mode = $mode; date = $gate.date; totals = $recordedTotals; games = $entries }
+    $recorded = [ordered]@{ mode = $mode; date = $gate.date; totals = $recordedTotals; games = $entries }
     New-Item -ItemType Directory (Split-Path -Parent $Baseline) -Force | Out-Null
     Write-Utf8 $Baseline (($recorded | ConvertTo-Json -Depth 6) + "`r`n")
     Write-Host "Recorded $Baseline."
@@ -592,7 +575,7 @@ if ($Check) {
     if (-not (Test-Path -LiteralPath $Baseline)) { throw "No baseline to check against: $Baseline" }
     $base = Get-Content -LiteralPath $Baseline -Raw | ConvertFrom-Json
     if ($base.mode -ne $mode) { throw "The baseline is of the $($base.mode) mode, and this run of the $mode mode." }
-    Write-Host "Baseline: the $($base.engine) engine ($($base.date)); this run: the $engineName engine."
+    Write-Host "Baseline: $($base.date)$(if ($base.engine) { ", the $($base.engine) engine" })."
     foreach ($game in $gameCounts) {
         $before = $base.games | Where-Object md5 -eq $game.md5 | Select-Object -First 1
         $result = @("0", "6") -contains $game.exit

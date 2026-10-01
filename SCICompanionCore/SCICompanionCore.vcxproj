@@ -87,9 +87,6 @@
     <ClInclude Include="..\SCICompanionLib\Src\Compile\CompiledScript.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\CompileInterfaces.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\CompileWrite.h" />
-    <ClInclude Include="..\SCICompanionLib\Src\Compile\ControlFlowGraph.h" />
-    <ClInclude Include="..\SCICompanionLib\Src\Compile\ControlFlowGraphViz.h" />
-    <ClInclude Include="..\SCICompanionLib\Src\Compile\ControlFlowNode.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileBatch.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerAstPasses.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerConfig.h" />
@@ -97,7 +94,6 @@
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerFallback.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerNew.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerResults.h" />
-    <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileEngine.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileRun.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileScript.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DisassembleHelper.h" />
@@ -134,7 +130,6 @@
     <ClInclude Include="..\SCICompanionLib\Src\Compile\MeaningCheck.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\ConsumptionNode.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\SyntaxParser.h" />
-    <ClInclude Include="..\SCICompanionLib\Src\Compile\TarjanAlgorithm.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\Types.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\ValidateSaid.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Core\ClassHints.h" />
@@ -236,9 +231,6 @@
     <ClCompile Include="..\SCICompanionLib\Src\Compile\CompiledScript.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\CompileScript.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\CompileWrite.cpp" />
-    <ClCompile Include="..\SCICompanionLib\Src\Compile\ControlFlowGraph.cpp" />
-    <ClCompile Include="..\SCICompanionLib\Src\Compile\ControlFlowGraphViz.cpp" />
-    <ClCompile Include="..\SCICompanionLib\Src\Compile\ControlFlowNode.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompileBatch.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompilerAstPasses.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompilerConfig.cpp" />
@@ -246,7 +238,6 @@
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompilerFallback.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompilerNew.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompilerSpecialCases.cpp" />
-    <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompileEngine.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompileRun.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompileScript.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DisassembleHelper.cpp" />
@@ -280,7 +271,6 @@
     <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeValues.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\MeaningCheck.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\SyntaxParser.cpp" />
-    <ClCompile Include="..\SCICompanionLib\Src\Compile\TarjanAlgorithm.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\Types.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\ValidateSaid.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Core\CoreLog.cpp" />

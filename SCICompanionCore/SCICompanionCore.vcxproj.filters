@@ -73,15 +73,6 @@
     <ClCompile Include="..\SCICompanionLib\Src\Compile\CompileWrite.cpp">
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
-    <ClCompile Include="..\SCICompanionLib\Src\Compile\ControlFlowGraph.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="..\SCICompanionLib\Src\Compile\ControlFlowGraphViz.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="..\SCICompanionLib\Src\Compile\ControlFlowNode.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompileBatch.cpp">
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
@@ -101,9 +92,6 @@
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompilerSpecialCases.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompileEngine.cpp">
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompileRun.cpp">
@@ -203,9 +191,6 @@
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Compile\SyntaxParser.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="..\SCICompanionLib\Src\Compile\TarjanAlgorithm.cpp">
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Compile\Types.cpp">
@@ -449,15 +434,6 @@ $include
     <ClInclude Include="..\SCICompanionLib\Src\Compile\CompileWrite.h">
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
-    <ClInclude Include="..\SCICompanionLib\Src\Compile\ControlFlowGraph.h">
-      <Filter>Source Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="..\SCICompanionLib\Src\Compile\ControlFlowGraphViz.h">
-      <Filter>Source Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="..\SCICompanionLib\Src\Compile\ControlFlowNode.h">
-      <Filter>Source Files\Compile</Filter>
-    </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileBatch.h">
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
@@ -477,9 +453,6 @@ $include
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerResults.h">
-      <Filter>Source Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileEngine.h">
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileRun.h">
@@ -588,9 +561,6 @@ $include
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Compile\SyntaxParser.h">
-      <Filter>Source Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="..\SCICompanionLib\Src\Compile\TarjanAlgorithm.h">
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Compile\Types.h">

@@ -73,8 +73,7 @@ modernizing the build. Broad highlights since the previous release:
   graph. On a sample of 92 game copies, 17 functions fall back to `asm`
   (343 with the old engine). Its tests compile the decompiled text again
   and check that each function does the same as the original bytecode (the
-  same calls, stores and tests, with the same values). `scic script
-  decompile --engine classic` still gives the old engine.
+  same calls, stores and tests, with the same values).
 * **Eliminated most `asm` fallbacks in the decompiler.** When the decompiler
   could not reconstruct a function's control flow it used to give up and emit
   raw `asm` disassembly. It now rebuilds the control flow into real source, so

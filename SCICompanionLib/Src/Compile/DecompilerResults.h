@@ -13,7 +13,6 @@
 ***************************************************************************/
 #pragma once
 
-#include "DecompileEngine.h"
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -39,21 +38,15 @@ struct DecompiledFunction
 	std::string name;
 	uint16_t offset = 0;		// the offset of its code in the script
 	int byteCount = 0;			// 0 when the end of its code is not known
-	DecompileEngine engine = DecompileEngine::Scope;	// the engine that was asked for
-	// The output of the function: "classic" or "scope" (the engine whose
-	// source it has), "asm" (the disassembly), "corrupt" (the end of its
+	// The output of the function: "scope" (source), "asm" (the
+	// disassembly), "corrupt" (the end of its
 	// code is not known), "error" (its decompile threw, so the script
 	// failed), or "stale" (an export that points into the code of another
 	// function: no function starts there, and it has no source).
 	std::string output;
-	// The result of each engine: empty when it did not run, "ok", or why it
-	// failed. Scope: "[scope:<stage>:<id>]"; with the classic engine, the
-	// control-flow stages of the scope engine run in shadow mode, and "ok"
-	// means that the parser and the verify stage accept the function.
-	// Classic: the stage ("graph" or "consumption"), ": ", and the message
-	// of the failure.
+	// The result of the scope engine: empty when it did not run (asm only,
+	// or no code), "ok", or why it failed ("[scope:<stage>:<id>]").
 	std::string scope;
-	std::string classic;
 	// With the debug dumps of the control flow: the region tree of the scope
 	// parser after the verify stage (scope::Dump), or the error of the stage
 	// that failed. Empty otherwise.

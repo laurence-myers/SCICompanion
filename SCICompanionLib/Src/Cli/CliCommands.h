@@ -142,8 +142,6 @@ namespace cli
         bool debugControlFlow = false;
         bool debugInstructions = false;
         std::string debugFilter;
-        // classic, scope or auto; empty: SCIC_DECOMPILE_ENGINE, else scope.
-        std::string engine;
         // The file of the function report; empty: no report.
         std::string functionReport;
     };

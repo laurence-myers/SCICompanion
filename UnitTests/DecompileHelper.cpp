@@ -277,12 +277,6 @@ std::vector<meaning::Function> ReadMeaningFunctions(uint16_t scriptNumber)
 
 void AssertMeaningKept(const std::string &fixtureName, const std::vector<meaning::Function> &original, uint16_t scriptNumber)
 {
-    // The check is for the scope engine: the classic engine has known value
-    // defects (A1_ReusedAcc).
-    if (DefaultDecompileEngine() == DecompileEngine::Classic)
-    {
-        return;
-    }
     std::string failures;
     for (const meaning::FunctionOutcome &row : meaning::CompareFunctions(original, ReadMeaningFunctions(scriptNumber)))
     {
@@ -542,14 +536,7 @@ DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, u
     Assert::IsFalse(first.ContainsAsm(),
         ToWString(fixtureName + ": expected no asm").c_str());
 
-    // A fixture whose text with the scope engine is another (better) text
-    // has a second expected file.
     std::string expectedPath = GetTestFileDirectory("Decompile\\SCI1.1") + "\\" + fixtureName + ".expected.sc";
-    std::string scopePath = GetTestFileDirectory("Decompile\\SCI1.1") + "\\" + fixtureName + ".scope.expected.sc";
-    if ((DefaultDecompileEngine() != DecompileEngine::Classic) && (GetFileAttributesA(scopePath.c_str()) != INVALID_FILE_ATTRIBUTES))
-    {
-        expectedPath = scopePath;
-    }
     std::string expected;
     if (!ReadTextFile(expectedPath, expected))
     {

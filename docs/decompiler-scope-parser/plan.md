@@ -367,10 +367,14 @@ failure.
 ```
 MSBuild.exe SCICompanion.sln -m -p:Configuration=Release -p:Platform=Win32 -p:VcpkgManifestInstall=false
 .\UnitTests\RunTests.ps1
-$env:SCIC_DECOMPILE_ENGINE = 'scope'; .\UnitTests\RunTests.ps1 -All
-.\UnitTests\Tools\DecompileGate.ps1 -Library F:\Games\Sierra,F:\games\gog -Exclude '_vgm*' -Snuffer E:\Code\Cs\sci-tools\Snuffer\bin\Release\net10.0\Snuffer.exe -Work I:\tmp\scic-gate -Engine classic
-.\UnitTests\Tools\DecompileGate.ps1 -Library F:\Games\Sierra,F:\games\gog -Exclude '_vgm*' -Snuffer E:\Code\Cs\sci-tools\Snuffer\bin\Release\net10.0\Snuffer.exe -Work I:\tmp\scic-gate -Engine scope -BaselineRun <run folder of the classic run> -Allowlist <allowlist> -RequireFewer -Meaning -Check
+.\UnitTests\RunTests.ps1 -All
+.\UnitTests\Tools\DecompileGate.ps1 -Library F:\Games\Sierra,F:\games\gog -Exclude '_vgm*' -Snuffer E:\Code\Cs\sci-tools\Snuffer\bin\Release\net10.0\Snuffer.exe -Work I:\tmp\scic-gate -BaselineRun <run folder> -Allowlist <allowlist> -RequireFewer -Meaning -Check
 ```
+
+From step 14 there is one engine: `--engine`, `SCIC_DECOMPILE_ENGINE`
+and the `-Engine` option of the gate are gone. `gate-baseline.json` keeps
+the counts of the classic engine, so rule 2 (`-RequireFewer`) measures the
+scope engine against it.
 
 - Per step: the tests of the step table, with a negative check for each
   rule.

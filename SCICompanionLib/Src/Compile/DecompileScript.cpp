@@ -583,7 +583,6 @@ unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const Compiled
 			report.name = lookups.ReverseLookupPublicExportName(compiledScript.GetScriptNumber(), (uint16_t)i);
 			report.offset = exportPointer;
 			report.index = lookups.FunctionCount++;
-			report.engine = lookups.Engine ? *lookups.Engine : DefaultDecompileEngine();
 			report.output = "stale";
 			lookups.DecompileResults().InformFunction(report);
 		}
