@@ -510,9 +510,19 @@ namespace UnitTests
 			)", "dup-no-value", 4);
 		}
 
-		// The second operand of an or is a value: a statement in it fails.
-		TEST_METHOD(Values_AStatementInAnOrFails)
+		// An or whose second operand has statements: as a statement, (or c
+		// X) is (if (not c) X). A reader of its value has no text.
+		TEST_METHOD(Values_AnOrWithStatements)
 		{
+			AssertValues(R"(
+				lal 0
+				bt end
+				ldi 1
+				sal 1
+				lal 2
+			end:
+				ret
+			)", "If(Condition(Invert(lal)) Then(sal(ldi) lal)) ret");
 			AssertValuesFail(R"(
 				lal 0
 				bt end
@@ -522,7 +532,7 @@ namespace UnitTests
 			end:
 				sal 3
 				ret
-			)", "or-statement", 1);
+			)", "acc-no-fact", 5);
 		}
 
 		// The value of an or and of the tests of an if with an else.
@@ -688,7 +698,24 @@ namespace UnitTests
 			)", "While(Condition(TrueNode) LoopBody(If(Condition(lal) Then(If(Condition(lal) Then(sal(ldi)) Else(Break))) Else(sal(ldi))) sal(ldi))) ret");
 		}
 
-		// Statements before the test: a repeat, with the if in it.
+		// The if of the second test of a while stays an if with an else
+		// break: the AST passes make (while (and a b)) of it.
+		TEST_METHOD(Values_TheSecondTestOfAWhile)
+		{
+			AssertValues(R"(
+			head:
+				lal 0
+				bnt exit
+				lal 1
+				bnt exit
+				jmp head
+			exit:
+				ret
+			)", "While(Condition(lal) LoopBody(If(Condition(lal) Then Else(Break)))) ret");
+		}
+
+		// Statements before the test: a repeat, with the if in it. An if with an
+		// empty then-part whose else is a break is (breakif (not c)).
 		TEST_METHOD(Values_ARepeatLoop)
 		{
 			AssertValues(R"(
@@ -700,7 +727,7 @@ namespace UnitTests
 				jmp head
 			exit:
 				ret
-			)", "While(Condition(TrueNode) LoopBody(sal(ldi) If(Condition(lal) Then Else(Break)))) ret");
+			)", "While(Condition(TrueNode) LoopBody(sal(ldi) If(Condition(Invert(lal)) Then(Break)))) ret");
 		}
 
 		// A bt latch is a do loop; a bnt latch a do loop of the inverted test.

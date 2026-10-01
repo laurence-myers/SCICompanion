@@ -164,6 +164,7 @@ namespace scope
 				_Region(root);
 				_EndList(list, _model.Size() - 1);
 				_CheckTree(*body);
+				_BreakIfForms(*body);
 				return body;
 			}
 
@@ -1072,9 +1073,77 @@ namespace scope
 				_DeadTest(region.branch);
 				std::unique_ptr<ConsumptionNode> first = _TakeAcc(region.branch);
 				_Structural(region.branch);
-				std::unique_ptr<ConsumptionNode> second = _OperandValue(region.body.get(), region.branch, "or-statement");
+
+				// The second operand.
+				std::unique_ptr<ConsumptionNode> thenNode = std::make_unique<ConsumptionNode>();
+				thenNode->SetType(ChunkType::Then);
+				List list = { thenNode.get(), _Depth(), {} };
+				List *outer = _list;
+				_list = &list;
+				_pending = nullptr;
+				if (region.body)
+				{
+					_Region(*region.body);
+				}
+				bool isValue = (thenNode->GetChildCount() == 0) || ((thenNode->GetChildCount() == 1) && _AccIsAvailable());
+				std::unique_ptr<ConsumptionNode> second = isValue ? _TakeAcc(region.branch) : nullptr;
+				_EndList(list, region.branch);
+				_list = outer;
 				_ResetFacts();
-				_Append(_Logical(ChunkType::Or, std::move(first), std::move(second)), true, region.branch);
+				if (isValue)
+				{
+					_Append(_Logical(ChunkType::Or, std::move(first), std::move(second)), true, region.branch);
+					return;
+				}
+				// Statements in the second operand: as a statement, (or c X) is
+				// (if (not c) X). It has no value: a reader of it has no text.
+				std::unique_ptr<ConsumptionNode> ifNode = std::make_unique<ConsumptionNode>();
+				ifNode->SetType(ChunkType::If);
+				ifNode->AppendChild(_Wrap(ChunkType::Condition, _Wrap(ChunkType::Invert, std::move(first))));
+				ifNode->AppendChild(std::move(thenNode));
+				_Append(std::move(ifNode), false, region.branch);
+			}
+
+			// The forms of Sierra's source and of Snuffer: an if whose then-part
+			// is empty and whose else is one break (or continue) of level 1 is
+			// (breakif (not c)) (or contif). A loop whose body is such an if
+			// took it as its test before.
+			void _BreakIfForms(ConsumptionNode &node)
+			{
+				for (size_t i = 0; i < node.GetChildCount(); ++i)
+				{
+					_BreakIfForms(*node.Child((int)i));
+				}
+				if (node.GetType() != ChunkType::If)
+				{
+					return;
+				}
+				ConsumptionNode *thenNode = node.GetChild(ChunkType::Then);
+				ConsumptionNode *elseNode = node.GetChild(ChunkType::Else);
+				if (!thenNode || (thenNode->GetChildCount() != 0) || !elseNode || (elseNode->GetChildCount() != 1))
+				{
+					return;
+				}
+				ConsumptionNode *jump = elseNode->Child(0);
+				if (((jump->GetType() != ChunkType::Break) && (jump->GetType() != ChunkType::Continue)) || (jump->_level != 1))
+				{
+					return;
+				}
+				// The only statement of a while (or for) with a test: the AST
+				// pass LoopTestAbsorber makes an and of the two tests.
+				ConsumptionNode *body = node._parentWeak;
+				ConsumptionNode *loop = body ? body->_parentWeak : nullptr;
+				if (body && loop && (body->GetType() == ChunkType::LoopBody) && (body->GetChildCount() == 1) &&
+					((loop->GetType() == ChunkType::While) || (loop->GetType() == ChunkType::For)) &&
+					(loop->GetChild(ChunkType::Condition)->Child(0)->GetType() != ChunkType::TrueNode))
+				{
+					return;
+				}
+				ConsumptionNode *condition = node.GetChild(ChunkType::Condition);
+				std::unique_ptr<ConsumptionNode> test = condition->StealChild(0);
+				condition->AppendChild(_Wrap(ChunkType::Invert, std::move(test)));
+				thenNode->AppendChild(elseNode->StealChild(0));
+				node.StealChild(node.GetIndexOf(elseNode));
 			}
 
 			// The invariants of the tree: each instruction is in the tree one

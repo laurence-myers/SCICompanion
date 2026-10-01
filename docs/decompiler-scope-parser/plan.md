@@ -151,7 +151,16 @@ accumulator and a statement list. It builds the same `ConsumptionNode` /
   a path of the tree goes through it (verify records these).
 - **Presentation** (`and` or nested `if`, `while` or `repeat`, shortest
   then-part, `contif`): decided here, from facts that the evaluator has
-  (a sequence is one value; a test is the first thing in a loop).
+  (a sequence is one value; a test is the first thing in a loop). The
+  forms: a loop whose body is one `if` with an `else` `break` is a `while`
+  of its test (the AST passes make an `and` of a second such test); a
+  `bt` latch is a `do` loop; a loop with a step is a `for`; a `bt` to a
+  loop exit or continue point is `breakif`/`contif`; an `if` with an
+  empty then-part and an `else` `break` is `(breakif (not c))`; an `or`
+  whose second operand has statements is, as a statement, `(if (not c)
+  X)` (this compiler has no statement list as an expression). An `if`
+  whose `else` marker goes to the continue point stays an `if`/`else`:
+  the bytecode cannot tell it from `(if c X (continue)) Y`.
 
 Invariants, each a failure to `asm`: each instruction is in the chunk tree
 one time (copies marked); the stack is balanced at each statement end and

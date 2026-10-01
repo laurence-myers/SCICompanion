@@ -18,22 +18,35 @@ Open items only: gaps, unfixed findings, questions. The plan is in
   715 and 718: the classic engine takes minutes for one function (also
   before this plan). The scope engine decompiles the scripts at once.
 
-## For step 11 (corpus gate sample with -Engine auto)
+## Questions for the owner (gate rule 6)
 
-- Forms that are worse against Snuffer than classic, with the same
-  meaning: `cond` arms where Snuffer has `if`s with `(continue)` (PQ2
-  `phoneNumber::changeState`), `(if c (break) else …)` chains where Snuffer
-  has `breakif`s (KQ5 `invW::doit`), `else` in place of `(continue)` (Longbow
-  `series::changeState`). The template snapshots change the same way
-  (`breakif`, `(if c else (break))`, `cond` arms).
-- Names: when a function that was asm becomes source, the name guess
-  (the assignments of the text) finds new names for locals and globals, so
-  other functions of the game go from SAME to NAMES against Snuffer (16
-  functions, Longbow scripts 200 and 330).
-- Refusals other than the function-bounds ones: `or-statement` (12, a
-  statement list as an operand), `toss-outside-switch` (2), `case-test`
-  (4), `term-statement` (1).
+On the gate sample with -Engine auto (step 11), 23 functions that change
+are worse against Snuffer than with the classic engine; 29 are better.
 
+- **Forms that the bytecode cannot tell apart (7 functions).** An `if`
+  whose then-part ends with a `jmp` to the loop head: the scope engine
+  gives `(if c X else Y)` (a `cond` for a chain), Snuffer and classic
+  give `(if c X (continue)) Y` in some places (PQ2
+  `phoneNumber::changeState`, KQ5 `invW::doit`, Longbow
+  `series::changeState`). Snuffer marks each such `jmp` as a `continue`
+  and its pass `IfContinueRefactor` makes an `else` of it only in a loop
+  body list or a then-part. A `continue` form for every such `jmp` made
+  the source shape of P2/F11 (a nested `cond`) worse, so it is not in
+  this branch. Accept, or copy Snuffer's rule exactly?
+- **Names (16 functions).** When a function that was asm becomes source,
+  the name guess (from the assignments of the text) finds names for some
+  locals and globals, so other functions of the game go from SAME to
+  NAMES (Longbow scripts 200 and 330). Accept as not worse?
+
+## For step 12
+
+- Refusals on the gate sample, other than the function bounds above:
+  `case-test` (4), `no-scope-for-target` (3), `toss-outside-switch` (2),
+  `dup-no-value` (1).
+- The template snapshots change with the scope engine (12 of 86 scripts,
+  reviewed: the same meaning): `(breakif c)` for a `bt`, an empty
+  `(else )` gone, and the `if`/`else` form above (`Gauge`,
+  `ScrollableInventory`, `SaveRestoreDialog`).
 ## Gaps
 
 - The value stage refuses an empty and-term (`empty-term`: a `bnt` right
