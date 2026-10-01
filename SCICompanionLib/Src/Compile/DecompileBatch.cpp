@@ -398,7 +398,7 @@ public:
 		}
 		if ((_number == 0) && !mainSCO)
 		{
-			mainSCO = SCOFromScriptAndCompiledScript(*state.script, state.compiledScript);
+			mainSCO = SCOFromScriptAndCompiledScript(*state.script, state.compiledScript, NameSelectorOf(_scriptLookups.GetSelectorTable(), _helper.Version.SeparateHeapResources));
 		}
 
 		// The skeleton comes from the tree before it is named, so that the
@@ -548,7 +548,7 @@ private:
 
 		// Decompiling always generates an SCO. Any pertinent info from the old SCO should be transfered
 		// to the new one based extracting info from the script.
-		unique_ptr<CSCOFile> scoFile = SCOFromScriptAndCompiledScript(*state.script, state.compiledScript);
+		unique_ptr<CSCOFile> scoFile = SCOFromScriptAndCompiledScript(*state.script, state.compiledScript, NameSelectorOf(_scriptLookups.GetSelectorTable(), _helper.Version.SeparateHeapResources));
 		ScriptId objectFileScript = _ObjectFileScript(_helper, *scoFile);
 		string sourceFilename = _helper.GetScriptFileName(_number);
 		sci::Status objectFile;

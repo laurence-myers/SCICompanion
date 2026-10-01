@@ -34,14 +34,10 @@ Open items only: gaps, unfixed findings, questions. The plan is in
 
 ## Meaning DIFFs of the full corpus
 
-The full gate run (`-Full -Meaning`, 93 games) gives 148 DIFF rows of
+The full gate run (`-Full -Meaning`, 93 games) gives 43 DIFF rows of
 scope functions. Many games have two or three copies, so there are fewer
 distinct defects. Survey by cause:
 
-- **A class with no `of`** (105 rows): `Class_943_3` (Castle of Dr.
-  Brain), `Class_86_0`, `Class_47_1`, SQ4 EGA `Class_950_0`. Each
-  property of the recompile is at index + 2; the original has no `name`
-  slot (not checked in the bytes).
 - **Another property layout of a superclass** (38 rows): LSL1 and
   Mixed-Up Fairy Tales 995, IconBar and `Inv`; LSL1 VGA
   `GameControls::show` reads `okButton` (property 42) as property 44.

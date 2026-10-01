@@ -23,6 +23,9 @@
 using namespace std;
 using namespace sci;
 
+// In the count of the properties of a class: the class has no name slot after --info--.
+const uint16_t NoNameSlotFlag = 0x8000;
+
 
 //
 // SCO format header:
@@ -86,11 +89,7 @@ bool CSCOFile::Load(sci::istream &stream, const SelectorTable &selectors)
 	stream >> _bAlignment;
 	stream >> _wScriptNumber;
 
-	uint16_t nameSelector;
-	if (!selectors.ReverseLookup("name", nameSelector))
-	{
-		nameSelector = (_bSCIVersion == SCOVersion::SCI0) ? 23 : 20; // Defaults for template games, at least.
-	}
+	uint16_t nameSelector = NameSelectorOf(selectors, _bSCIVersion != SCOVersion::SCI0);
 
 	if (stream.good())
 	{
@@ -509,6 +508,12 @@ bool CSCOObjectClass::Load(sci::istream &stream, SCOVersion version, uint16_t na
 	stream >> wNumMethods;
 	stream >> _wSpecies;
 	stream >> _wSuperClass;
+	// NoNameSlotFlag in the count: the properties start right after --info--.
+	_nameSlot = (wNumPropsExcludingCore == 0xffff) || ((wNumPropsExcludingCore & NoNameSlotFlag) == 0);
+	if (wNumPropsExcludingCore != 0xffff)
+	{
+		wNumPropsExcludingCore &= ~NoNameSlotFlag;
+	}
 	bool fRet = stream.good();
 	if (fRet)
 	{
@@ -518,7 +523,10 @@ bool CSCOObjectClass::Load(sci::istream &stream, SCOVersion version, uint16_t na
 			_properties.push_back(CSCOObjectProperty(0, _wSpecies));		// 0) species
 			_properties.push_back(CSCOObjectProperty(1, _wSuperClass));	 // 1) superclass
 			_properties.push_back(CSCOObjectProperty(2, 0x8000));		   // 2) -info- always 0x8000 for classes
-			_properties.push_back(CSCOObjectProperty(nameSelector, 0));	 // 3) name - meaningless here
+			if (_nameSlot)
+			{
+				_properties.push_back(CSCOObjectProperty(nameSelector, 0));	 // 3) name - meaningless here
+			}
 			// TODO: look up the name selector?
 		}
 		else
@@ -532,7 +540,10 @@ bool CSCOObjectClass::Load(sci::istream &stream, SCOVersion version, uint16_t na
 			_properties.push_back(CSCOObjectProperty(4101, _wSpecies));	 // -script- (but seems to be species)
 			_properties.push_back(CSCOObjectProperty(4102, _wSuperClass));  // -super-
 			_properties.push_back(CSCOObjectProperty(4103, 0x8000));		// -info-
-			_properties.push_back(CSCOObjectProperty(nameSelector, 0));	 // name
+			if (_nameSlot)
+			{
+				_properties.push_back(CSCOObjectProperty(nameSelector, 0));	 // name
+			}
 		}
 		if (wNumPropsExcludingCore != 0xffff)   // In case there are less props than the core. Some SCI1 are missing name.
 		{
@@ -597,6 +608,11 @@ void CSCOObjectClass::Save(std::vector<BYTE> &output, SCOVersion version) const
 	push_string(output, _strName);
 
 	size_t numDefaultProps = (version == SCOVersion::SCI0) ? 4 : 9;
+	if (!_nameSlot)
+	{
+		// No name slot: the properties after --info-- are all written.
+		numDefaultProps--;
+	}
 
 	// assert(_properties.size() >= numDefaultProps);
 	// Sometimes the name property is left off (e.g. two classes in SQ5, script 948).
@@ -616,7 +632,7 @@ void CSCOObjectClass::Save(std::vector<BYTE> &output, SCOVersion version) const
 		numNonDefaultProps = _properties.size() - numDefaultProps;
 	}
 
-	push_word(output, (uint16_t)numNonDefaultProps);
+	push_word(output, (uint16_t)((!_nameSlot && (numNonDefaultProps != 0xffff)) ? (numNonDefaultProps | NoNameSlotFlag) : numNonDefaultProps));
 	push_word(output, (uint16_t)_methods.size());
 	push_word(output, _wSpecies);
 	push_word(output, _wSuperClass);
@@ -690,7 +706,17 @@ sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco, Scr
 	return written;
 }
 
-unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const Script &script, const CompiledScript &compiledScript)
+uint16_t NameSelectorOf(const SelectorTable &selectors, bool separateHeap)
+{
+	uint16_t nameSelector;
+	if (!selectors.ReverseLookup("name", nameSelector))
+	{
+		nameSelector = separateHeap ? 20 : 23; // Defaults for template games, at least.
+	}
+	return nameSelector;
+}
+
+unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const Script &script, const CompiledScript &compiledScript, uint16_t nameSelector)
 {
 	unique_ptr<CSCOFile> sco = make_unique<CSCOFile>();
 	sco->SetVersion(compiledScript.GetVersion().SeparateHeapResources ? SCOVersion::SeparateHeap : SCOVersion::SCI0);
@@ -758,7 +784,10 @@ unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const Script &script, const 
 			methods.emplace_back(methodSelector);
 		}
 
-		// And finally properties.
+		// And finally properties. The name slot is after --info-- when the selector there is
+		// name (a class with no superclass can have another property there).
+		size_t nameSlot = compiledScript.GetVersion().SeparateHeapResources ? 8 : 3;
+		newSCOObject.SetHasNameSlot((compiledObject->GetProperties().size() > nameSlot) && (compiledObject->GetProperties()[nameSlot] == nameSelector));
 		vector<CSCOObjectProperty> &properties = newSCOObject.GetPropertiesNonConst();
 		for (size_t i = 0; i < compiledObject->GetProperties().size(); i++)
 		{

@@ -72,6 +72,10 @@ struct FunctionCode
 	// A method: the name of its object, and its selector.
 	bool method = false;
 	std::string objectName;
+	// The key of the object for the meaning check: its name, or its species
+	// for a class with a made-up name (CompiledObject::HasMadeUpName: the
+	// position of a class in the script can change when it compiles again).
+	std::string objectKey;
 	uint16_t selector = 0;
 	// A procedure: the index of its export; -1 for an internal procedure
 	// (and for a method).

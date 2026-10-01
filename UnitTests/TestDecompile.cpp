@@ -468,6 +468,43 @@ namespace UnitTests
         FIXTURE_TEST(RestBeforeTheLastArgument, "R2_RestBeforeTheLastArgument", 969)
         // Sends that the compiler warns about.
         FIXTURE_TEST(CompilerWarnings, "C5_CompilerWarnings", 970)
+        // Classes with no superclass: their properties in the order of the text.
+        FIXTURE_TEST(RootClasses, "R3_RootClasses", 972)
+
+        // The meaning check keys the methods of a class with a made-up name (no
+        // name string, or a made-up name as its string) by its species: the
+        // position of the class, and so its made-up name, can change when the
+        // text compiles again (Castle of Dr. Brain script 943).
+        TEST_METHOD(RootClasses_MadeUpNameKeyedBySpecies)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AddFixtureScript("R3_RootClasses");
+            std::string error;
+            Assert::IsTrue(CompileFixture(972, "R3_RootClasses", &error), Wide(error).c_str());
+            bool madeUp = false;
+            bool madeUpString = false;
+            bool named = false;
+            for (const meaning::Function &function : ReadMeaningFunctions(972))
+            {
+                if (function.display == "Class_972_0::doit")
+                {
+                    madeUp = true;
+                    Assert::IsTrue(function.key.rfind("class ", 0) == 0, Wide(function.key).c_str());
+                    Assert::IsTrue(function.key.find("::doit") != std::string::npos, Wide(function.key).c_str());
+                }
+                if (function.display == "Class_972_9::doit")
+                {
+                    madeUpString = true;
+                    Assert::IsTrue(function.key.rfind("class ", 0) == 0, Wide(function.key).c_str());
+                }
+                if (function.display == "r3NamedRoot::doit")
+                {
+                    named = true;
+                    Assert::AreEqual(std::string("r3NamedRoot::doit"), function.key);
+                }
+            }
+            Assert::IsTrue(madeUp && madeUpString && named, L"the three methods");
+        }
 
         // Switches: a switch as a value, a case value with a branch, an
         // empty last case (also in a loop), and cases that all return.

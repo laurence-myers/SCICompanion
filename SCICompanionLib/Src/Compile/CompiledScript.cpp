@@ -803,6 +803,20 @@ std::string _GenerateInstanceName(uint16_t scriptNumber, int &index)
 	return fmt::format("Instance_{0}_{1}", scriptNumber, index++);
 }
 
+// A name that _GenerateClassName or _GenerateInstanceName makes for the script.
+bool _IsMadeUpName(const std::string &name, uint16_t scriptNumber)
+{
+	for (const std::string &prefix : { fmt::format("Class_{0}_", scriptNumber), fmt::format("Instance_{0}_", scriptNumber) })
+	{
+		if ((name.size() > prefix.size()) && (name.compare(0, prefix.size(), prefix) == 0) &&
+			std::all_of(name.begin() + prefix.size(), name.end(), [](char c) { return isdigit(static_cast<unsigned char>(c)) != 0; }))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 // A name with no letter is not a valid identifier (the parser needs one). An
 // object stripped of its name has such a name, so treat it as unnamed.
 bool _IsBlankObjectName(const std::string &name)
@@ -874,11 +888,17 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 			_fInstance = ((_wInfo & InfoClassFlag) == 0);
 			break;
 		case 8:
-			// TODO: Known issue with SQ5, script 943 (and others). Class without a name, and we're assuming position #8 is the name property,
-			// when it's actually x. We can't technically determine if this is name without knowing the super classes.
+			// The name slot, unless the layout has none (see below).
 			wName = _propertyValues[i].value;
 			break;
 		}
+	}
+	if ((_propertyValues.size() > 8) && !_propertyValues[8].isObjectOrString)
+	{
+		// A class with no superclass, and its subclasses and instances, can have another
+		// property after --info-- (Castle of Dr. Brain script 943, Class_943_3: x): the
+		// value is the name only when it points to a string.
+		wName = 0;
 	}
 
 	// Get the property selectors, which are only present for classes. This must
@@ -930,6 +950,11 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 		// name). Synthesize one so the decompiled text round-trips.
 		_strName = _fInstance ? _GenerateInstanceName(scriptNum, classIndex)
 			: _GenerateClassName(scriptNum, classIndex);
+		_madeUpName = true;
+	}
+	else
+	{
+		_madeUpName = _IsMadeUpName(_strName, scriptNum);
 	}
 
 	*endOfObjectInScript = (uint16_t)scriptStream.tellg();
@@ -983,7 +1008,9 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 			_wSpeciesIfClass = _propertyValues[0].value;
 			_wSuperClass = _propertyValues[1].value;
 			_wInfo = _propertyValues[2].value;
-			if (_propertyValues.size() >= 4)
+			// A class with no superclass, and its subclasses and instances, can have another
+			// property after --info--: the value is the name only when it points to a string.
+			if ((_propertyValues.size() >= 4) && _propertyValues[3].isObjectOrString)
 			{
 				wName = _propertyValues[3].value;
 			}
@@ -1067,6 +1094,11 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 			// its name). Synthesize one so the decompiled text round-trips.
 			_strName = fClass ? _GenerateClassName(scriptNum, classIndex)
 				: _GenerateInstanceName(scriptNum, classIndex);
+			_madeUpName = true;
+		}
+		else
+		{
+			_madeUpName = _IsMadeUpName(_strName, scriptNum);
 		}
 
 		// The rest of the stuff we don't care about!

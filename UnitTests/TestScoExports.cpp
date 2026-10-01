@@ -102,7 +102,7 @@ namespace UnitTests
 
             // Before the fix: a null dereference on the unknown class and a read
             // past the end of the (empty) public-procedure name list.
-            std::unique_ptr<CSCOFile> sco = SCOFromScriptAndCompiledScript(script, *compiled);
+            std::unique_ptr<CSCOFile> sco = SCOFromScriptAndCompiledScript(script, *compiled, NameSelectorOf(SelectorTable(), false));
 
             Assert::IsTrue(sco != nullptr);
 
@@ -164,7 +164,7 @@ namespace UnitTests
             CompiledScript compiled(950);
             Assert::IsTrue(compiled.Load(resourceMap.Helper(), resourceMap.Helper().Version, 950), L"the compiled script must load");
 
-            std::unique_ptr<CSCOFile> sco = SCOFromScriptAndCompiledScript(*script, compiled);
+            std::unique_ptr<CSCOFile> sco = SCOFromScriptAndCompiledScript(*script, compiled, NameSelectorOf(SelectorTable(), resourceMap.Helper().Version.SeparateHeapResources));
 
             std::map<std::string, int> slots;
             for (const CSCOPublicExport &publicExport : sco->GetExports())
@@ -242,7 +242,7 @@ namespace UnitTests
             {
                 return scriptId.GetTitle() + ": the .sco, the source or the compiled script did not load\n";
             }
-            std::unique_ptr<CSCOFile> built = SCOFromScriptAndCompiledScript(*script, compiledScript);
+            std::unique_ptr<CSCOFile> built = SCOFromScriptAndCompiledScript(*script, compiledScript, NameSelectorOf(lookups.GetSelectorTable(), helper.Version.SeparateHeapResources));
             std::string writtenText = ExportsText(*written);
             std::string builtText = ExportsText(*built);
             if (writtenText == builtText)

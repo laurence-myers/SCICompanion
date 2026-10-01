@@ -2001,7 +2001,7 @@ namespace meaning
 			if (code.method)
 			{
 				display = code.objectName + "::" + lookups.LookupSelectorName(code.selector);
-				key = display;
+				key = code.objectKey + "::" + lookups.LookupSelectorName(code.selector);
 			}
 			else if (code.exportIndex >= 0)
 			{

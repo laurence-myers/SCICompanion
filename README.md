@@ -79,8 +79,9 @@ modernizing the build. Broad highlights since the previous release:
   compared with the original. More of it now compiles, and means the same:
   classes keep their species (also a copy of a class in another script),
   objects with the name of a property or a keyword get another name and
-  keep their name string, selectors and kernels with no name of their own
-  read back as their numbers, `&rest` keeps its place among the arguments,
+  keep their name string, a class with no superclass keeps the order of
+  its properties, selectors and kernels with no name of their own read
+  back as their numbers, `&rest` keeps its place among the arguments,
   and SQ4 EGA's objects resolve. Code that the text cannot have (a
   property past the end of its object, a `super` in a procedure) is
   `asm`, so the rest of the script compiles. More of Sierra's control flow

@@ -758,6 +758,10 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
     return sci::Guard("making the .sco files", [&]() -> sci::Result<std::vector<ObjectFileOutcome>>
     {
         const GameFolderHelper &helper = session.Helper();
+        // A table that does not load gives the name selector of the templates.
+        SelectorTable selectors;
+        selectors.Load(helper);
+        uint16_t nameSelector = NameSelectorOf(selectors, helper.Version.SeparateHeapResources);
         std::vector<ObjectFileOutcome> outcomes;
         for (const ScriptId &script : scripts)
         {
@@ -816,7 +820,7 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
                 }
                 SCI_TRY(CheckPublicBlock(parsed, script, outcome.number, compiled, outcome.diagnostics));
 
-                std::unique_ptr<CSCOFile> objectFile = SCOFromScriptAndCompiledScript(parsed, compiled);
+                std::unique_ptr<CSCOFile> objectFile = SCOFromScriptAndCompiledScript(parsed, compiled, nameSelector);
                 // The pair must agree: the .sco describes the compiled script.
                 objectFile->SetScriptNumber(outcome.number);
                 // The class names of the source, as the compiler writes them:

@@ -109,6 +109,11 @@ public:
 	void SetProperties(std::vector<CSCOObjectProperty> &properties) { _properties = properties; }
 	void SetPublic(bool fPublic) { _fPublic = fPublic; }
 	bool IsPublic() const { return _fPublic; }
+	// The layout has the name slot after --info-- (not so for a class with no
+	// superclass that has no name, or that has it after another property, and
+	// for its subclasses).
+	void SetHasNameSlot(bool nameSlot) { _nameSlot = nameSlot; }
+	bool HasNameSlot() const { return _nameSlot; }
  
 private:
 	// Real data
@@ -117,6 +122,8 @@ private:
 	std::string _strName;
 	WORD _wSpecies;
 	WORD _wSuperClass;
+
+	bool _nameSlot = true;
 
 	// Handy things:
 	bool _fPublic;
@@ -225,5 +232,7 @@ sci::Status SaveSCOFile(const GameFolderHelper &helper, const CSCOFile &sco);
 sci::Result<bool> SCOFileWouldChange(const GameFolderHelper &helper, const CSCOFile &sco, ScriptId script);
 
 class CompiledScript;
-std::unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const sci::Script &script, const CompiledScript &compiledScript);
+// The name selector of the game (the template number when the table has none).
+uint16_t NameSelectorOf(const SelectorTable &selectors, bool separateHeap);
+std::unique_ptr<CSCOFile> SCOFromScriptAndCompiledScript(const sci::Script &script, const CompiledScript &compiledScript, uint16_t nameSelector);
 std::unique_ptr<CSCOFile> GetExistingSCOFromScriptNumber(const GameFolderHelper &helper, uint16_t number, const SelectorTable &selectors);

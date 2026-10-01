@@ -175,6 +175,9 @@ public:
 	void AdjustName(const std::string &newCodeName) { if (_originalName.empty()) { _originalName = _strName; } _strName = newCodeName; }
 	// The name before AdjustName; empty when the name was not adjusted.
 	const std::string &GetOriginalName() const { return _originalName; }
+	// The name is made up from the script and the position of the object: it has no
+	// name string, or its string is such a name (the text of a decompile, compiled).
+	bool HasMadeUpName() const { return _madeUpName; }
 	const std::vector<uint16_t> &GetProperties() const { return _propertySelectors; }
 	const std::vector<uint16_t> &GetMethods() const { return _functionSelectors; }
 	const std::vector<CompiledVarValue> &GetPropertyValues() const{ return _propertyValues; }
@@ -197,6 +200,7 @@ private:
 	uint16_t _wSuperClass = 0;
 	std::string _strName;
 	std::string _originalName;
+	bool _madeUpName = false;
 	uint16_t _wInfo = 0;
 	// These start from the 4th position (e.g. leave out species, superclass, --info-- and name)
 	std::vector<uint16_t> _propertySelectors;

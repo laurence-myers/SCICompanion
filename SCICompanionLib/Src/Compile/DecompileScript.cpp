@@ -87,7 +87,16 @@ void DecompileObject(const CompiledObject &object,
 			// TODO: Output a warning... mismatched prop sizes.
 		}
 		
-		for (size_t i = object.GetNumberOfDefaultSelectors(propertySelectorList, lookups.GetNameSelector()); i < numberOfProps; i++)
+		size_t firstProperty = object.GetNumberOfDefaultSelectors(propertySelectorList, lookups.GetNameSelector());
+		if (pClass->GetSuperClass().empty() && !object.IsInstance() && object.GetOriginalName().empty() &&
+			(firstProperty > 0) && (firstProperty < numberOfProps) && (propertySelectorList[firstProperty - 1] == lookups.GetNameSelector()))
+		{
+			// A class with no superclass that declares other properties has a
+			// name slot only when its text declares name, so the name property
+			// is written.
+			firstProperty--;
+		}
+		for (size_t i = firstProperty; i < numberOfProps; i++)
 		{
 			const CompiledVarValue &propValue = object.GetPropertyValues()[i];
 			// If this is an instance, look up the species values, and only
@@ -691,7 +700,7 @@ Script *Decompile(const GameFolderHelper &helper, const CompiledScript &compiled
 
 		// Decompiling always generates an SCO. Any pertinent info from the old SCO should be transfered
 		// to the new one based extracting info from the script.
-		std::unique_ptr<CSCOFile> scoFile = SCOFromScriptAndCompiledScript(*pScript, compiledScript);
+		std::unique_ptr<CSCOFile> scoFile = SCOFromScriptAndCompiledScript(*pScript, compiledScript, NameSelectorOf(lookups.GetSelectorTable(), helper.Version.SeparateHeapResources));
 		sci::Status wroteObjectFile = SaveSCOFile(helper, *scoFile);
 		if (!wroteObjectFile)
 		{
@@ -827,6 +836,7 @@ std::vector<FunctionCode> ReadScriptFunctions(const CompiledScript &compiledScri
 			FunctionCode &function = functions.back();
 			function.method = true;
 			function.objectName = object->GetName();
+			function.objectKey = (object->HasMadeUpName() && !object->IsInstance()) ? fmt::format("class {0}", object->GetSpecies()) : object->GetName();
 			function.selector = selectors[i];
 			function.offset = offsets[i];
 			read(function);
