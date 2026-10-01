@@ -85,9 +85,10 @@ modernizing the build. Broad highlights since the previous release:
   property past the end of its object, a `super` in a procedure) is
   `asm`, so the rest of the script compiles. More of Sierra's control flow
   decompiles (for example a loop used as a value, or values that a case
-  leaves on the stack). Two compiler errors are now warnings: a `&rest`
-  in the parameters of a send whose target calls, and a property sent with
-  more than one value (Sierra's compiler gives both).
+  leaves on the stack). Three compiler errors are now warnings: a
+  `&rest` in the parameters of a send whose target calls, a selector that
+  the object does not have, and a property sent with more than one value
+  (Sierra's compiler gives them).
 * **Eliminated most `asm` fallbacks in the decompiler.** When the decompiler
   could not reconstruct a function's control flow it used to give up and emit
   raw `asm` disassembly. It now rebuilds the control flow into real source, so

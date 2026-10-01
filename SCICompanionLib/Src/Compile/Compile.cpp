@@ -1698,12 +1698,13 @@ CodeResult SendParam::OutputByteCode(CompileContext &context) const
 			// (e.g. by casting to var).
 			// REVIEW: a strongly-typed alternative would be support for interfaces.
 
-			// Before generating an error here, see if typeName is an instance in the current script. Instances can define
-			// their own methods.
+			// The send compiles, as in Sierra's compiler (Mixed-Up Mother Goose sends delete to the super of
+			// a Prop), so this is a warning. Before the warning, see if typeName is an instance in the current
+			// script: instances can define their own methods.
 			if (!context.DoesScriptObjectHaveMethod(typeName, GetSelectorName()))
 			{
 				std::string objectTypeString = context.SpeciesIndexToDataTypeString(calleeSpecies);
-				context.ReportError(this, "%s is not a property or method on type '%s'.", GetSelectorName().c_str(), objectTypeString.c_str());
+				context.ReportWarning(this, "%s is not a property or method on type '%s'.", GetSelectorName().c_str(), objectTypeString.c_str());
 			}
 		}
 	}

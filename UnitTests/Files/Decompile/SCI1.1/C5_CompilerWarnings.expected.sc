@@ -20,5 +20,6 @@
 	
 	(method (doit)
 		(c5Target state: 1 2)
+		(c5Target setMotion:)
 	)
 )

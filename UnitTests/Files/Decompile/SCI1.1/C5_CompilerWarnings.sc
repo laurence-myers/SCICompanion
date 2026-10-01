@@ -5,9 +5,10 @@
 
 ; Sends that Sierra's compiler gives, and that this compiler took as errors:
 ; a &rest in the parameters of a send whose target calls (PQ2 Main:
-; ((ScriptID param1) notify: &rest)), and a property sent with more than
-; one value (Longbow: a talker's loop: with five values). The decompiled
-; text compiles to the same code, with a warning.
+; ((ScriptID param1) notify: &rest)), a selector that the object does not
+; have (Mixed-Up Mother Goose: (super delete:) to a Prop), and a property
+; sent with more than one value (Longbow: a talker's loop: with five
+; values). The decompiled text compiles to the same code, with a warning.
 (public
 	c5RestWithACallInTheTarget 0
 )
@@ -40,6 +41,10 @@
 			pushi 2
 			lofsa c5Target
 			send 8
+			pushi #setMotion
+			push0
+			lofsa c5Target
+			send 4
 			ret
 		)
 	)
