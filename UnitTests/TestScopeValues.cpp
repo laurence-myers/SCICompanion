@@ -1161,6 +1161,68 @@ namespace UnitTests
 		}
 
 
+		// Shapes that the rules of the refusals must not accept: an or as a
+		// statement in a loop whose value a test reads (the text leaves
+		// another value at the exit), a toss that takes a value that a case
+		// leaves (the switch value stays, and add reads it), and a statement
+		// in the operands of another statement in the operands of the next
+		// statement (it would come before the call that reads the old value).
+		TEST_METHOD(Values_ShapesThatTheRefusalRulesDoNotAccept)
+		{
+			AssertValuesFail(R"(
+			h:
+				lat 0
+				bnt x
+				lap 1
+				bnt l
+				lat 1
+				bt b
+				+at 1
+				+at 0
+			b:
+				jmp x
+			l:
+				jmp h
+			x:
+				bnt e
+				ldi 1
+				ret
+			e:
+				ldi 2
+				ret
+			)", "acc-no-fact", 10, true);
+			AssertValuesFail(R"(
+				lst 0
+				lap 1
+				push
+				dup
+				ldi 1
+				eq?
+				bnt c
+				pushi 40
+				ldi 16
+				jmp t
+			c:
+				ldi 5
+			t:
+				toss
+				add
+				ret
+			)", "stack-unbalanced", 9, true);
+			AssertValuesFail(R"(
+				pushi 7
+				pushi 1
+				lst 0
+				ldi 5
+				sat 0
+				callk 61 2
+				ldi 3
+				add
+				ret
+			)", "statement-in-expression", 4, true);
+		}
+
+
 		// Another effect in the slot of a call: a call result as the
 		// argument count.
 		TEST_METHOD(Values_AnEffectInTheArgumentCountOfACall)

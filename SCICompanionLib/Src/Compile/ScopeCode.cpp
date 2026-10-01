@@ -251,7 +251,8 @@ namespace scope
 			// place (with only jmps that do nothing between them): when no
 			// other branch goes to it or to the jmps (except a branch of the
 			// other kind), control gets to it only on the fall-through of the
-			// first one or from such a branch, with a value that does not branch. (Sierra's optimiser deletes a load of the value that the
+			// first one or from such a branch, with a value that does not
+			// branch. (Sierra's optimiser deletes a load of the value that the
 			// accumulator has: (and a b b) gives "bnt; bnt".) A first one
 			// that goes to its fall-through is such another branch.
 			if (IsLive(i) && IsConditional(i))

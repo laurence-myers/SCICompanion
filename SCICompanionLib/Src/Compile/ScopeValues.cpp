@@ -966,6 +966,31 @@ namespace scope
 				return false;
 			}
 
+			// The innermost loop around the node is the value of a reader (its
+			// parent is not a statement list).
+			static bool _InLoopWithValue(ConsumptionNode &node)
+			{
+				ConsumptionNode *loop = node._parentWeak;
+				while (loop && !_IsLoopNode(*loop))
+				{
+					loop = loop->_parentWeak;
+				}
+				ConsumptionNode *list = loop ? loop->_parentWeak : nullptr;
+				switch (list ? list->GetType() : ChunkType::None)
+				{
+				case ChunkType::FunctionBody:
+				case ChunkType::Then:
+				case ChunkType::Else:
+				case ChunkType::LoopBody:
+				case ChunkType::CaseBody:
+				case ChunkType::Step:
+				case ChunkType::None:
+					return false;
+				default:
+					return true;
+				}
+			}
+
 			static bool _IsLoopNode(const ConsumptionNode &node)
 			{
 				ChunkType type = node.GetType();
@@ -1164,6 +1189,7 @@ namespace scope
 			// bt or bnt latch reads the accumulator at the end of the body.
 			void _Loop(const Region &region)
 			{
+				int orStatements = _orStatements;
 				int latch = region.branch;
 				Opcode latchOp = _model.Op(latch);
 				bool conditional = _model.IsLive(latch) && (latchOp != Opcode::JMP);
@@ -1224,7 +1250,9 @@ namespace scope
 				// exit of its test, the value of a breakif, the value before a
 				// break): a test after it can read it (ICEMAN script 385,
 				// localproc_02bc: the test of the outer loop is the inner loop).
-				_Append(std::move(loop), true, region.head);
+				// An or as a statement in the loop gives its text another value at
+				// an exit: then the loop has no value.
+				_AppendStructure(std::move(loop), orStatements, region.head);
 			}
 
 			// The test of a while: a body that is one if whose else is the
@@ -1370,16 +1398,37 @@ namespace scope
 				// Values that the sequence pushed, that have no effect, and that
 				// no instruction takes (SQ1 VGA script 40, pinkShip::doVerb:
 				// "pushi 40; ldi 16; jmp" to the toss of a switch, which pops
-				// the 40, and the ret discards the rest): no code. An
-				// instruction after the sequence that takes such a value stops
-				// the value stage (stack-underflow), so no text loses a value
-				// that the code reads.
+				// the 40, and the ret discards the rest): no code, when no
+				// instruction after them reads them (_DroppedValuesAreUnread).
 				std::vector<int> dropped;
-				while ((_Depth() > list.floor) && (_stack.back().kind == EntryKind::Value) && _stack.back().node && !_HasEffect(*_stack.back().node))
+				size_t count = 0;
+				int lastPush = -1;
+				while ((_Depth() - (int)count > list.floor) && (count < _stack.size()))
 				{
-					dropped.push_back(_FirstInstruction(*_stack.back().node));
-					_UnmakeTree(*_stack.back().node);
-					_stack.pop_back();
+					const StackEntry &entry = _stack[_stack.size() - 1 - count];
+					if ((entry.kind != EntryKind::Value) || !entry.node || _HasEffect(*entry.node))
+					{
+						break;
+					}
+					if (entry.node->_hasPos)
+					{
+						lastPush = (std::max)(lastPush, _indexOf.at(&*entry.node->GetCode()));
+					}
+					++count;
+				}
+				if ((count > 0) && (_Depth() - (int)count == list.floor) && (lastPush >= 0) && _DroppedValuesAreUnread(lastPush))
+				{
+					for (size_t d = 0; d < count; ++d)
+					{
+						dropped.push_back(_FirstInstruction(*_stack.back().node));
+						_UnmakeTree(*_stack.back().node);
+						_stack.pop_back();
+					}
+					// A copy of a pushed node would read a node that is gone.
+					if (_acc.kind == FactKind::Pushed)
+					{
+						_acc = Fact();
+					}
 				}
 				if (_Depth() != list.floor)
 				{
@@ -1397,7 +1446,52 @@ namespace scope
 				}
 			}
 
-			// Each instruction of the subtree (not copies) is not in the tree.
+			// The values that a sequence leaves on the stack, whose last push
+			// is at lastPush, stay there with no instruction that reads them:
+			// the code after it (following each jmp) gets to a ret, and each
+			// instruction on the way takes only values that it pushed after
+			// them, except a toss (which takes a value and reads nothing).
+			// A branch, or a dup or pprev at their depth, reads them or can.
+			bool _DroppedValuesAreUnread(int lastPush) const
+			{
+				int above = 0;
+				int k = lastPush + 1;
+				for (int steps = 0; (steps < 256) && (k >= 0) && (k < _model.Size()); ++steps)
+				{
+					Opcode op = _model.Op(k);
+					if (op == Opcode::JMP)
+					{
+						k = _model.Target(k);
+						continue;
+					}
+					if (op == Opcode::RET)
+					{
+						return true;
+					}
+					if ((op == Opcode::BT) || (op == Opcode::BNT))
+					{
+						return false;
+					}
+					if (((op == Opcode::DUP) || (op == Opcode::PPREV)) && (above == 0))
+					{
+						return false;
+					}
+					int pops = _model.Pops(k);
+					if (pops > above)
+					{
+						if (op != Opcode::TOSS)
+						{
+							return false;
+						}
+						pops = above;
+					}
+					above += _model.Pushes(k) - pops;
+					++k;
+				}
+				return false;
+			}
+
+
 			void _UnmakeTree(ConsumptionNode &node)
 			{
 				if (node._hasPos && !node._copy)
@@ -1421,12 +1515,10 @@ namespace scope
 			// (ConsumptionNode::_hoisted).
 			bool _StatementBeforeItsExpression(const List &list, size_t n)
 			{
+				// Only when the statement after it is that statement: a statement
+				// between them would be in the operands of one of them.
 				size_t next = n + 1;
-				while ((next < list.items.size()) && (list.items[next].first != list.floor))
-				{
-					++next;
-				}
-				if (next >= list.items.size())
+				if ((next >= list.items.size()) || (list.items[next].first != list.floor))
 				{
 					return false;
 				}
@@ -1671,6 +1763,12 @@ namespace scope
 				// break: the AST pass LoopTestAbsorber makes an and of the two
 				// tests.
 				ConsumptionNode *loop = list->_parentWeak;
+				// A break of a loop whose value a reader takes: the break leaves the
+				// value of c, and (breakif (not c)) would leave 1.
+				if ((jump->GetType() == ChunkType::Break) && _InLoopWithValue(node))
+				{
+					return;
+				}
 				if ((jump->GetType() == ChunkType::Break) && loop && (list->GetType() == ChunkType::LoopBody) && (list->GetChildCount() == 1) &&
 					(loop->GetType() == ChunkType::While) && (loop->GetChild(ChunkType::Condition)->Child(0)->GetType() != ChunkType::TrueNode))
 				{

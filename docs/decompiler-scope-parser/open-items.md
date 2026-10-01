@@ -51,7 +51,7 @@ fewer distinct defects. Survey by cause:
 
 ## Refusals
 
-The full corpus run gives 66 functions as `asm`:
+The full corpus run gives 67 functions as `asm`:
 
 - `case-test` (46): each function has a corrupt branch (issue #235; the
   decode replaces it with `ldi 47789` and warns "Bad branch").
@@ -63,9 +63,13 @@ The full corpus run gives 66 functions as `asm`:
   operands of a `mul` in the other order, with a variable pushed after the
   call (`callk Random; lsg 199; mul`); as text, the compiler reads the
   variable before the call, which can change it.
-- `statement-in-expression` (4): Longbow 24 `yeoScript::changeState`
-  (three copies) and QfG4 CD 81 `antOut::changeState`: a call whose value
-  no instruction reads, in the operands of another call after a store.
+- `stack-unbalanced` (4): Longbow 24 `yeoScript::changeState` (three
+  copies) and SQ4 EGA 376 `sp1::doVerb`: values that a sequence leaves on
+  the stack, where the code after it can read them (a `dup` at their depth,
+  a branch).
+- `statement-in-expression` (1): QfG4 CD 81 `antOut::changeState`: a call
+  whose value no instruction reads, in the operands of another call after a
+  store.
 - `slot-effect` (2): PQ1 VGA 999 `Obj::showSelf` and `Collect::showSelf`:
   a `calle` with no arguments takes the result of a send as its argument
   count (`push; calle 921 0 0`).

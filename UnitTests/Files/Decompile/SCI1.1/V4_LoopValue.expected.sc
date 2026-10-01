@@ -4,6 +4,7 @@
 
 (public
 	v4LoopValue 0
+	v4LoopValueBreak 1
 )
 
 (procedure (v4LoopValue param1 &tmp temp0 temp1)
@@ -20,4 +21,14 @@
 		)
 	)
 	(return temp0)
+)
+
+(procedure (v4LoopValueBreak param1 &tmp temp0)
+	(if (repeat
+		(++ temp0)
+		(if param1 else (break))
+	)
+		(return 1)
+	)
+	(return 2)
 )

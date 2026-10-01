@@ -5,9 +5,11 @@
 ; The value of a loop is the accumulator at its exit: 0 at the exit of its
 ; test, the value of a breakif. The test of the outer loop is the inner
 ; loop (ICEMAN script 385, localproc_02bc; Snuffer gives a for whose test
-; is the inner for).
+; is the inner for). A break of such a loop, as an if whose else is the
+; break, stays that form: (breakif (not c)) would leave 1 at the exit.
 (public
 	v4LoopValue 0
+	v4LoopValueBreak 1
 )
 
 (procedure (v4LoopValue param1 &tmp temp0 temp1)
@@ -41,6 +43,23 @@
 		jmp outer
 	end:
 		lat temp0
+		ret
+	)
+)
+
+(procedure (v4LoopValueBreak param1 &tmp temp0)
+	(asm
+	h:
+		+at temp0
+		lap param1
+		bnt x
+		jmp h
+	x:
+		bnt e
+		ldi 1
+		ret
+	e:
+		ldi 2
 		ret
 	)
 )
