@@ -234,6 +234,7 @@ namespace scope
 				{
 					_pending = raw;
 					_pendingTime = ++_time;
+					_accDiffers = false;
 				}
 			}
 
@@ -583,6 +584,11 @@ namespace scope
 					{
 						node->AppendChild(_CopyOfAcc(i));
 					}
+					else if (_accDiffers)
+					{
+						// The text leaves another value in the accumulator.
+						_Fail("acc-differs", i);
+					}
 					// A ret with no node of its own: the source can be (return)
 					// or a return of the value that the accumulator holds, which
 					// compile to the same code. It is a bare return.
@@ -694,6 +700,7 @@ namespace scope
 			// accumulator at its end.
 			void _Switch(const Region &region)
 			{
+				int orStatements = _orStatements;
 				std::unique_ptr<ConsumptionNode> switchNode = std::make_unique<ConsumptionNode>();
 				switchNode->SetType(ChunkType::Switch);
 				_Instruction(region.head);
@@ -735,7 +742,7 @@ namespace scope
 				}
 				_stack.pop_back();
 				_Structural(region.toss);
-				_Append(std::move(switchNode), true, region.head);
+				_AppendStructure(std::move(switchNode), orStatements, region.head);
 			}
 
 			// The value of a case: [dup, eq?], with the case value in the
@@ -1001,6 +1008,7 @@ namespace scope
 
 			void _If(const Region &region)
 			{
+				int orStatements = _orStatements;
 				std::unique_ptr<ConsumptionNode> ifNode = std::make_unique<ConsumptionNode>();
 				ifNode->SetType(ChunkType::If);
 				_DeadTest(region.tests.front());
@@ -1056,7 +1064,7 @@ namespace scope
 				// The join is a label. The value of the if is the accumulator
 				// at its end.
 				_ResetFacts();
-				_Append(std::move(ifNode), true, region.tests.front());
+				_AppendStructure(std::move(ifNode), orStatements, region.tests.front());
 			}
 
 			// A test that no path reaches has no value.
@@ -1102,6 +1110,21 @@ namespace scope
 				ifNode->AppendChild(_Wrap(ChunkType::Condition, _Wrap(ChunkType::Invert, std::move(first))));
 				ifNode->AppendChild(std::move(thenNode));
 				_Append(std::move(ifNode), false, region.branch);
+				++_orStatements;
+				_accDiffers = true;
+			}
+
+			// A structure whose value is the accumulator at its end. With the
+			// statement form of an or in it, the text has another value there:
+			// the structure is no value, and a bare ret after it fails.
+			void _AppendStructure(std::unique_ptr<ConsumptionNode> node, int orStatementsBefore, int index)
+			{
+				bool hasOrStatement = (_orStatements != orStatementsBefore);
+				_Append(std::move(node), !hasOrStatement, index);
+				if (hasOrStatement)
+				{
+					_accDiffers = true;
+				}
 			}
 
 			// The forms of Sierra's source and of Snuffer: an if whose then-part
@@ -1129,13 +1152,26 @@ namespace scope
 				{
 					return;
 				}
-				// The only statement of a while (or for) with a test: the AST
-				// pass LoopTestAbsorber makes an and of the two tests.
-				ConsumptionNode *body = node._parentWeak;
-				ConsumptionNode *loop = body ? body->_parentWeak : nullptr;
-				if (body && loop && (body->GetType() == ChunkType::LoopBody) && (body->GetChildCount() == 1) &&
-					((loop->GetType() == ChunkType::While) || (loop->GetType() == ChunkType::For)) &&
-					(loop->GetChild(ChunkType::Condition)->Child(0)->GetType() != ChunkType::TrueNode))
+				// Only a statement: an if that is a value keeps its value.
+				ConsumptionNode *list = node._parentWeak;
+				switch (list ? list->GetType() : ChunkType::None)
+				{
+				case ChunkType::FunctionBody:
+				case ChunkType::Then:
+				case ChunkType::Else:
+				case ChunkType::LoopBody:
+				case ChunkType::CaseBody:
+				case ChunkType::Step:
+					break;
+				default:
+					return;
+				}
+				// The only statement of a while with a test, whose else is a
+				// break: the AST pass LoopTestAbsorber makes an and of the two
+				// tests.
+				ConsumptionNode *loop = list->_parentWeak;
+				if ((jump->GetType() == ChunkType::Break) && loop && (list->GetType() == ChunkType::LoopBody) && (list->GetChildCount() == 1) &&
+					(loop->GetType() == ChunkType::While) && (loop->GetChild(ChunkType::Condition)->Child(0)->GetType() != ChunkType::TrueNode))
 				{
 					return;
 				}
@@ -1222,6 +1258,11 @@ namespace scope
 			bool _expectCaseDup = false;
 			// The case value that the eq? of a case took.
 			std::unique_ptr<ConsumptionNode> _caseValue;
+			// The count of the statement forms of or so far.
+			int _orStatements = 0;
+			// The text leaves another value in the accumulator than the code
+			// (after the statement form of an or).
+			bool _accDiffers = false;
 			// The last live instruction is a ret (in the same sequence).
 			bool _afterReturn = false;
 		};

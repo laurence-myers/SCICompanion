@@ -535,6 +535,70 @@ namespace UnitTests
 			)", "acc-no-fact", 5);
 		}
 
+		// The statement form of an or has another value in the accumulator
+		// than the code: an if with it is no value, and a bare ret after it
+		// (in a function that returns a value) has no text.
+		TEST_METHOD(Values_AnOrWithStatementsGivesNoValue)
+		{
+			AssertValuesFail(R"(
+				lal 0
+				bnt elseBranch
+				lal 1
+				bt orEnd
+				ldi 1
+				sal 2
+				lal 3
+			orEnd:
+				jmp join
+			elseBranch:
+				ldi 5
+			join:
+				sal 4
+				ret
+			)", "acc-no-fact", 9);
+			AssertValuesFail(R"(
+				lal 0
+				bt end
+				ldi 1
+				sal 1
+				lal 2
+			end:
+				ret
+			)", "acc-differs", 5, true);
+		}
+
+		// An if that is a value keeps its form; an if with an empty then-part
+		// whose else is a continue is (contif (not c)).
+		TEST_METHOD(Values_TheBreakIfFormIsForStatements)
+		{
+			AssertValues(R"(
+			head:
+				lal 0
+				bnt elseBranch
+				jmp join
+			elseBranch:
+				jmp exit
+			join:
+				sal 1
+				jmp head
+			exit:
+				ret
+			)", "While(Condition(TrueNode) LoopBody(sal(If(Condition(lal) Then Else(Break))))) ret");
+			AssertValues(R"(
+			head:
+				lal 0
+				bnt join
+				ldi 1
+				sal 1
+				lal 2
+				bnt head
+			join:
+				ldi 3
+				sal 3
+				jmp head
+			)", "While(Condition(TrueNode) LoopBody(If(Condition(lal) Then(sal(ldi) If(Condition(Invert(lal)) Then(Continue)))) sal(ldi)))");
+		}
+
 		// The value of an or and of the tests of an if with an else.
 		TEST_METHOD(Values_OrAndAnd)
 		{
