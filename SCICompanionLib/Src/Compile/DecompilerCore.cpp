@@ -1300,6 +1300,13 @@ static const BYTE *_DecodeFunction(DecompileLookups &lookups, std::list<scii> &c
 	return discoveredEnd;
 }
 
+int FunctionCodeLength(DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset)
+{
+	std::list<scii> code;
+	const BYTE *end = _ConvertToInstructions(lookups, code, pBegin, pScriptResourceEnd, wBaseOffset, true);
+	return end ? (int)(end - pBegin) : -1;
+}
+
 bool ReadFunctionCode(DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset, std::list<scii> &code, bool &returnsValue)
 {
 	code.clear();

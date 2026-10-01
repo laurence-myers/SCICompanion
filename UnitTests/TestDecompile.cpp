@@ -23,7 +23,12 @@
 #include "SCO.h"
 #include "CompiledScript.h"
 #include "GameFolderHelper.h"
+#include "ScriptOMAll.h"
+#include "DecompileScript.h"
+#include "DecompilerConfig.h"
+#include "ResourceContainer.h"
 #include "format.h"
+#include <sstream>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -110,6 +115,71 @@ namespace UnitTests
             DecompileOutput out = DecompileToText(940);
             Assert::IsTrue(out.text.find("procFoo") != std::string::npos,
                 L"the public procedure procFoo should decompile with its name intact");
+        }
+
+        // An export that points into the code of the function before it
+        // (Sierra left such stale exports, for example QfG3 script 7) is
+        // no procedure: the decompiler leaves it out, with a warning, and the
+        // meaning check reads no function there.
+        TEST_METHOD(StaleExport_IsLeftOut)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AddFixtureScript("X3_StaleExport");
+            std::string error;
+            Assert::IsTrue(CompileFixture(964, "X3_StaleExport", &error), Wide(error).c_str());
+            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            CompiledScript compiled(964, CompiledScriptFlags::RemoveBadExports);
+            Assert::IsTrue(compiled.Load(helper, helper.Version, 964), L"setup: the script loads");
+            std::vector<uint8_t> script = compiled.GetRawBytes();
+            std::unique_ptr<ResourceBlob> heapBlob = helper.MostRecentResource(ResourceType::Heap, 964, ResourceEnumFlags::None);
+            Assert::IsNotNull(heapBlob.get(), L"setup: the heap");
+            sci::istream heapRead = heapBlob->GetReadStream();
+            std::vector<uint8_t> heap(heapRead.GetDataSize());
+            heapRead.read_data(heap.data(), (uint32_t)heap.size());
+            // SCI1.1: the count of the exports at 6, the exports from 8.
+            Assert::AreEqual((uint16_t)2, (uint16_t)(script[6] | (script[7] << 8)), L"setup: two exports");
+            uint16_t first = (uint16_t)(script[8] | (script[9] << 8));
+            uint16_t inside = first + 4;    // the second ldi of staleFirst
+            script[10] = (uint8_t)(inside & 0xff);
+            script[11] = (uint8_t)(inside >> 8);
+
+            // The meaning check reads no function at the stale export.
+            GlobalCompiledScriptLookups lookups;
+            lookups.Load(helper);
+            sci::Result<std::vector<meaning::Function>> functions = meaning::ReadScriptData(helper, lookups, appState->GetResourceMap().GetVocab000(), 964, script, &heap);
+            Assert::IsTrue(functions.has_value(), L"the patched script reads");
+            for (const meaning::Function &function : *functions)
+            {
+                Assert::AreNotEqual(std::string("export 1"), function.key, L"no function at the stale export");
+            }
+
+            // The decompile leaves the export out.
+            CompiledScript patched(964, CompiledScriptFlags::RemoveBadExports);
+            sci::istream scriptStream(script.data(), (uint32_t)script.size());
+            sci::istream heapStream(heap.data(), (uint32_t)heap.size());
+            Assert::IsTrue(patched.Load(helper, helper.Version, 964, scriptStream, &heapStream), L"the patched script loads");
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
+            TestDecompilerResults results;
+            std::unique_ptr<sci::Script> decompiled = DecompileScript(config.get(), lookups, appState->GetResourceMap(), 964, patched, results);
+            std::stringstream text;
+            sci::SourceCodeWriter writer(text, decompiled.get());
+            decompiled->OutputSourceCode(writer);
+            std::string source = text.str();
+            Assert::IsTrue(source.find("(procedure (staleFirst") != std::string::npos, Wide(source).c_str());
+            Assert::IsTrue(source.find("staleSecond") == std::string::npos, Wide(source).c_str());
+            bool warned = false;
+            for (const std::string &warning : results.warnings)
+            {
+                warned = warned || (warning.find("Export 1 points into the code of another function") != std::string::npos);
+            }
+            Assert::IsTrue(warned, L"a warning names the export");
+            // The function report has a line for it.
+            bool reported = false;
+            for (const DecompiledFunction &function : results.functions)
+            {
+                reported = reported || ((function.output == "stale") && (function.offset == inside));
+            }
+            Assert::IsTrue(reported, L"the function report has the stale export");
         }
 
         // A stale .sco with fewer exports than the compiled script. The proc at

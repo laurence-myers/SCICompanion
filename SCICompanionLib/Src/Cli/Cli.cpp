@@ -216,7 +216,7 @@ namespace cli
         decompile->add_option("--engine", decompileOptions.engine, "classic: the control-flow graph; scope: the scope parser; auto: scope, then classic for a function that scope cannot do. Default: SCIC_DECOMPILE_ENGINE, else classic.")
             ->check(CLI::IsMember({ "classic", "scope", "auto" }));
         CLI::Option *functionReportOption = decompile->add_option("--function-report", decompileOptions.functionReport,
-            "Also write a line for each function into this file (tab-separated): its script, class, name, offset and bytes, the engine, the output (classic, scope, asm, corrupt or error), and the result of each engine.");
+            "Also write a line for each function into this file (tab-separated): its script, class, name, offset and bytes, the engine, the output (classic, scope, asm, corrupt, error or stale), and the result of each engine.");
 
         CLI::App *sco = script->add_subcommand("sco", "Make src\\<name>.sco from src\\<name>.sc and the compiled script, for source from another tool.");
         sco->fallthrough();

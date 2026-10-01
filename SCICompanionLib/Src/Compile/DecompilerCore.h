@@ -236,6 +236,11 @@ void DecompileRaw(sci::FunctionBase &func, DecompileLookups &lookups, const BYTE
 // accumulator. False when no bound gives whole instructions.
 bool ReadFunctionCode(DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset, std::list<scii> &code, bool &returnsValue);
 
+// The bytes of the code of the function at pBegin, by the first decode of
+// DecompileRaw (to the end of the script: it ends at a ret that no branch
+// goes past); -1 when that decode fails.
+int FunctionCodeLength(DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset);
+
 // Repoint the branch targets of `copy` (a positional duplicate of `source`) so
 // they refer to nodes inside `copy` instead of the shared nodes in `source`.
 // After this, `source` can be edited or have nodes erased without leaving the

@@ -440,15 +440,20 @@ private:
 };
 
 // The start of each function of the script (codePointersTO): the methods,
-// the exported procedures and the internal procedures; and the internal
-// procedures that are not exported (internalProcOffsetsTO).
-static void _FindCodePointers(const CompiledScript &compiledScript, set<uint16_t> &codePointersTO, set<uint16_t> &internalProcOffsetsTO)
+// the exported procedures and the internal procedures; the internal
+// procedures that are not exported (internalProcOffsetsTO); and the exports
+// that point into the code of the function before them (staleExportsTO:
+// Sierra left such exports, for example in QfG3 script 7; no procedure
+// starts there, and Snuffer leaves them out too).
+static void _FindCodePointers(const CompiledScript &compiledScript, DecompileLookups &lookups, set<uint16_t> &codePointersTO, set<uint16_t> &internalProcOffsetsTO, set<uint16_t> &staleExportsTO)
 {
 	// Make an index of code pointers by looking at the object methods
+	set<uint16_t> methodPointersAll;
 	for (auto &object : compiledScript._objects)
 	{
 		const vector<uint16_t> &methodPointersTO = object->GetMethodCodePointersTO();
 		codePointersTO.insert(methodPointersTO.begin(), methodPointersTO.end());
+		methodPointersAll.insert(methodPointersTO.begin(), methodPointersTO.end());
 	}
 
 	// and the exported procedures
@@ -466,6 +471,9 @@ static void _FindCodePointers(const CompiledScript &compiledScript, set<uint16_t
 	// and finally, the most difficult of all, we'll need to scan though for any call calls...
 	// those would be our internal procs
 	internalProcOffsetsTO = compiledScript.FindInternalCallsTO();
+	// A call goes to the start of a function: an export that a call targets
+	// is not stale.
+	const set<uint16_t> callTargetsTO = internalProcOffsetsTO;
 	// Before adding these though, remove any exports from the internalProcOffsets.
 	for (const auto &exporty : compiledScript._exportsTO)
 	{
@@ -481,6 +489,36 @@ static void _FindCodePointers(const CompiledScript &compiledScript, set<uint16_t
 	}
 	// Now add the internal guys to the full list
 	codePointersTO.insert(internalProcOffsetsTO.begin(), internalProcOffsetsTO.end());
+
+	// An export whose address the code of the function before it reaches
+	// (its decode goes past the address) is stale.
+	const std::vector<BYTE> &bytes = compiledScript.GetRawBytes();
+	set<uint16_t> exportPointers;
+	for (uint16_t exportPointer : compiledScript._exportsTO)
+	{
+		if (compiledScript.IsExportAProcedure(exportPointer) && (methodPointersAll.count(exportPointer) == 0) && (callTargetsTO.count(exportPointer) == 0))
+		{
+			exportPointers.insert(exportPointer);
+		}
+	}
+	for (uint16_t exportPointer : exportPointers)
+	{
+		auto it = codePointersTO.find(exportPointer);
+		if ((it == codePointersTO.end()) || (it == codePointersTO.begin()))
+		{
+			continue;
+		}
+		uint16_t before = *std::prev(it);
+		if ((before < bytes.size()) && (exportPointer < bytes.size()))
+		{
+			int length = FunctionCodeLength(lookups, &bytes[before], compiledScript.GetEndOfRawBytes(), before);
+			if ((length > 0) && ((int)before + length > (int)exportPointer))
+			{
+				codePointersTO.erase(it);
+				staleExportsTO.insert(exportPointer);
+			}
+		}
+	}
 	// Now we know the length of each code segment (assuming none overlap)
 }
 
@@ -511,7 +549,8 @@ unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const Compiled
 	// Now its time for code.
 	set<uint16_t> codePointersTO;
 	set<uint16_t> internalProcOffsetsTO;
-	_FindCodePointers(compiledScript, codePointersTO, internalProcOffsetsTO);
+	set<uint16_t> staleExportsTO;
+	_FindCodePointers(compiledScript, lookups, codePointersTO, internalProcOffsetsTO, staleExportsTO);
 
 	// Spit out code segments:
 	// First, the objects (instances, classes)
@@ -534,7 +573,21 @@ unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const Compiled
 		// contains the Rm/Room class.  Filter these out by ignoring code pointers which point outside
 		// the codesegment.
 		uint16_t exportPointer = compiledScript._exportsTO[i];
-		if (compiledScript.IsExportAProcedure(exportPointer))
+		if (staleExportsTO.count(exportPointer) != 0)
+		{
+			// No procedure starts there (_FindCodePointers). The function report
+			// has a line for it.
+			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, fmt::format("Export {0} points into the code of another function ({1:04x}): it is left out.", i, exportPointer));
+			DecompiledFunction report;
+			report.script = compiledScript.GetScriptNumber();
+			report.name = lookups.ReverseLookupPublicExportName(compiledScript.GetScriptNumber(), (uint16_t)i);
+			report.offset = exportPointer;
+			report.index = lookups.FunctionCount++;
+			report.engine = lookups.Engine ? *lookups.Engine : DefaultDecompileEngine();
+			report.output = "stale";
+			lookups.DecompileResults().InformFunction(report);
+		}
+		else if (compiledScript.IsExportAProcedure(exportPointer))
 		{
 			std::unique_ptr<ProcedureDefinition> pProc = std::make_unique<ProcedureDefinition>();
 			pProc->SetScript(pScript.get());
@@ -711,7 +764,8 @@ std::vector<FunctionCode> ReadScriptFunctions(const CompiledScript &compiledScri
 	compiledScript.PopulateSaidStrings(pWords);
 	set<uint16_t> codePointersTO;
 	set<uint16_t> internalProcOffsetsTO;
-	_FindCodePointers(compiledScript, codePointersTO, internalProcOffsetsTO);
+	set<uint16_t> staleExportsTO;
+	_FindCodePointers(compiledScript, lookups, codePointersTO, internalProcOffsetsTO, staleExportsTO);
 	const std::vector<BYTE> &bytes = compiledScript.GetRawBytes();
 	const BYTE *pEndScript = compiledScript.GetEndOfRawBytes();
 
@@ -746,7 +800,7 @@ std::vector<FunctionCode> ReadScriptFunctions(const CompiledScript &compiledScri
 	for (size_t i = 0; i < compiledScript._exportsTO.size(); i++)
 	{
 		uint16_t offset = compiledScript._exportsTO[i];
-		if (compiledScript.IsExportAProcedure(offset))
+		if (compiledScript.IsExportAProcedure(offset) && (staleExportsTO.count(offset) == 0))
 		{
 			functions.emplace_back();
 			FunctionCode &function = functions.back();

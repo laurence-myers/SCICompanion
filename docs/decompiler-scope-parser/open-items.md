@@ -5,16 +5,6 @@ Open items only: gaps, unfixed findings, questions. The plan is in
 
 ## Outside the plan
 
-- **Functions that start inside another function.** The decompiler takes
-  some procedures to start in the middle of the code of another one (for
-  example QfG3 `proc7_0` starts after the push of `new`, which Snuffer
-  shows as `(sleepIcon new: 2 0 0 5)`; QfG1 `proc32_3` starts with
-  `bnot`; QfG4 floppy `proc670_1` starts inside a `send`). The classic
-  engine gives wrong text for some of them with no warning (QfG4
-  `proc670_1` is `(fChopBlock)`); the scope engine refuses them
-  (`stack-underflow` or `acc-no-fact` at the first instruction that takes
-  a value). The cause is in the search of the function bounds, not in the
-  engines. About 20 functions of the gate sample.
 - **A slow classic decompile.** Hoyle Classic Card Games (1993), scripts
   715 and 718: the classic engine takes minutes for one function (also
   before this plan). The scope engine decompiles the scripts at once.
@@ -34,6 +24,14 @@ Open items only: gaps, unfixed findings, questions. The plan is in
   - two selectors with one name: the SCI1.1 template sends selector 509
     (`case`), and its recompile sends 732 (`Conversation::add`,
     `DialogEditor::exit`).
+- **An export table that differs from Snuffer's.** KQ5 floppy and Mixed-Up
+  Fairy Tales (VGA and EGA), script 975: the decompiler reads export 1 as
+  `013a`, export 2 as `015c`, export 3 as `007c` and export 4 as `5776`;
+  Snuffer has other addresses and a real `proc975_3`. Export 3 is inside
+  `DR::quitGame`, so the decompiler leaves it out as stale, and no function
+  covers the code from `008c` to `013a` (Snuffer's `proc975_1` and
+  `proc975_3`). Older than the stale-export rule; 3 of the 39 stale
+  exports of the corpus (the other 36 are not in Snuffer's public blocks).
 - **Decompiled text that does not compile.** 1418 functions of the gate
   sample are in scripts whose decompiled text has compile errors (for
   example `&rest` in a send whose target has a nested send, or a property
@@ -42,17 +40,20 @@ Open items only: gaps, unfixed findings, questions. The plan is in
 
 ## For step 13
 
-- Four functions that the classic engine decompiles and the scope engine
+- Two functions that the classic engine decompiles and the scope engine
   refuses. With `scope` as the default they are asm: rule 1 counts them as
   REGRESSED. ICEMAN (1989) 100 `introScript::changeState` (issue #235: the
-  decode replaces a corrupt branch with `ldi 47789`), QfG3 7 `proc7_0` and
-  QfG4 floppy 670 `proc670_1` (the function bounds above: the classic text
-  is wrong), SQ4 patch 381 `roboClerkWelcome::changeState` (the fan
-  patch). Owner decision needed: accept them as REGRESSED, or fix the
-  function bounds first.
-- Refusals on the gate sample, other than the function bounds above:
-  `case-test` (4), `no-scope-for-target` (3), `toss-outside-switch` (2),
-  `dup-no-value` (1).
+  decode replaces a corrupt branch with `ldi 47789`) and SQ4 patch 381
+  `roboClerkWelcome::changeState` (the fan patch). Owner decision needed.
+- The other refusals of the gate sample with the `scope` engine (16
+  functions; the classic engine gives no source for them either):
+  `acc-no-fact` (ICEMAN 385 `localproc_02bc` in three copies, Hoyle
+  Classic 716 `other1_tree::doit`, QfG1 VGA 0 `proc0_3` in two copies),
+  `stack-underflow` (Camelot 40 `Rm40::handleEvent` in two copies),
+  `case-test` (PQ3 36 `alreadyDoneIV::changeState` in three copies),
+  `no-scope-for-target` (SQ4 patch 16, 271, 391), `dup-no-value` (QfG4
+  floppy 670 `pMainDoor::doVerb`), `term-statement` (Pepper 230
+  `sTalkPoorRich::changeState`).
 - The template snapshots change with the scope engine (12 of 86 scripts,
   reviewed: the same meaning): `(breakif c)` for a `bt`, an empty
   `(else )` gone, and the `if`/`else` form above (`Gauge`,

@@ -42,8 +42,9 @@ struct DecompiledFunction
 	DecompileEngine engine = DecompileEngine::Classic;	// the engine that was asked for
 	// The output of the function: "classic" or "scope" (the engine whose
 	// source it has), "asm" (the disassembly), "corrupt" (the end of its
-	// code is not known), or "error" (its decompile threw, so the script
-	// failed).
+	// code is not known), "error" (its decompile threw, so the script
+	// failed), or "stale" (an export that points into the code of another
+	// function: no function starts there, and it has no source).
 	std::string output;
 	// The result of each engine: empty when it did not run, "ok", or why it
 	// failed. Scope: "[scope:<stage>:<id>]"; with the classic engine, the

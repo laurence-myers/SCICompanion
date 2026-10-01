@@ -107,7 +107,9 @@ modernizing the build. Broad highlights since the previous release:
   `#` as the game has it (for example `river#1`, before `river_1`). The
   Decompile dialog names new scripts in script-number order, so the `_N`
   suffix of a duplicate name is stable, and a name is always a valid file
-  name and `(use ...)` name.
+  name and `(use ...)` name. An export that Sierra left pointing into the
+  middle of another function (for example in Quest for Glory III) is left
+  out with a warning, as in sluicebox's tools; it gave wrong text before.
 * **More accurate compile messages.** Every compile message gives the right
   line (some parser messages were one line early), the error and warning
   counts are exact, and a script file that cannot be read gives an error. A
