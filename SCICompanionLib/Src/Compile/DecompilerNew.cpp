@@ -561,6 +561,19 @@ std::string _GetPossiblyMissingPublicProcedureName(DecompileLookups &lookups, ui
 	return name;
 }
 
+// The name of a property of the object of the code. A property past the end of the object (Act::canBeHere
+// of LSL3 and others reads one), or a property read in a procedure of no class, has no name: the text
+// cannot have it, and the function falls back to asm (which gives the number).
+std::string _PropertyName(DecompileLookups &lookups, ConsumptionNode &node, WORD wPropertyIndex)
+{
+	std::string name;
+	if (!lookups.LookupPropertyName(wPropertyIndex, name) || IsPlaceholderPropertyName(name))
+	{
+		throw ConsumptionNodeException(&node, "A property with no name.");
+	}
+	return name;
+}
+
 std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, DecompileLookups &lookups)
 {
 	bool preferLValue = lookups.PreferLValue;
@@ -695,7 +708,12 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, Decompi
 				// Actually you can send to any super class... the first operand says which. Does anyone use this?
 				// Let's assert that they don't
 				const sci::ClassDefinition *classDefinition = lookups.GetClassContext();
-				assert(classDefinition);
+				if (!classDefinition)
+				{
+					// A super in a procedure (an export at the code of a method, PQ4 CD script
+					// 10, JustifyText): the text cannot have it. The function falls back to asm.
+					throw ConsumptionNodeException(&node, "A super in a procedure.");
+				}
 				if (classDefinition)
 				{
 					uint16_t species = inst.get_first_operand();
@@ -994,7 +1012,7 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, Decompi
 			// Now this is a property... find out which.
 			WORD wPropertyIndex = node.GetCode()->get_first_operand();
 			unique_ptr<LValue> lValue = make_unique<LValue>();
-			lValue->SetName(lookups.LookupPropertyName(wPropertyIndex));
+			lValue->SetName(_PropertyName(lookups, node, wPropertyIndex));
 			pAssignment->SetVariable(move(lValue));
 			pAssignment->Operator = AssignmentOperator::Assign;
 			return unique_ptr<SyntaxNode>(move(pAssignment));
@@ -1011,7 +1029,7 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, Decompi
 			unique_ptr<PropertyValue> pValue = std::make_unique<PropertyValue>();
 			assert(node.GetChildCount() == 0);
 			WORD wPropertyIndex = node.GetCode()->get_first_operand();
-			pValue->SetValue(lookups.LookupPropertyName(wPropertyIndex), ValueType::Token);
+			pValue->SetValue(_PropertyName(lookups, node, wPropertyIndex), ValueType::Token);
 			bool fIncrement = (bOpcode == Opcode::IPTOA) || (bOpcode == Opcode::IPTOS);
 			bool fDecrement = (bOpcode == Opcode::DPTOA) || (bOpcode == Opcode::DPTOS);
 			if (fIncrement || fDecrement)

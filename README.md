@@ -74,6 +74,16 @@ modernizing the build. Broad highlights since the previous release:
   (343 with the old engine). Its tests compile the decompiled text again
   and check that each function does the same as the original bytecode (the
   same calls, stores and tests, with the same values).
+* **Decompiled text that compiles to the same game.** Over a library of 93
+  game copies, the decompiled text is compiled again and each function is
+  compared with the original. More of it now compiles, and means the same:
+  classes keep their species (also a copy of a class in another script),
+  objects with the name of a property or a keyword get another name and
+  keep their name string, selectors and kernels with no name of their own
+  read back as their numbers, `&rest` keeps its place among the arguments,
+  and SQ4 EGA's objects resolve. Fewer functions fall back to `asm` (for
+  example a loop used as a value, or values that a case leaves on the
+  stack).
 * **Eliminated most `asm` fallbacks in the decompiler.** When the decompiler
   could not reconstruct a function's control flow it used to give up and emit
   raw `asm` disassembly. It now rebuilds the control flow into real source, so

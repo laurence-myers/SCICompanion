@@ -55,8 +55,8 @@ class SelectorTable;
 // syntax. The resource map gives the game (its helper), the script's text
 // resource and vocab.000.
 std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, uint16_t wScript, CompiledScript &compiledScript, IDecompilerResults &results, bool debugControlFlow = false, bool debugInstConsumption = false, PCSTR pszDebugFilter = nullptr, bool decompileAsm = false, bool substituteTextTuples = false);
-// Gives objects that share a name, and an instance (not public) with the name of a property of an object of the
-// script, distinct names (name_a, name_b, ...); the text keeps the original as the name property.
+// Gives objects that share a name, an instance (not public) with the name of a property of an object of the
+// script, and an instance with the name of a keyword, distinct names (name_a, name_b, ...); the text keeps the original as the name property.
 void FixDuplicateObjectNames(CompiledScript &compiledScript, GlobalCompiledScriptLookups &lookups);
 
 // The code of one function of a compiled script (ReadScriptFunctions).

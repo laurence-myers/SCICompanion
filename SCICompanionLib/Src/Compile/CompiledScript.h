@@ -135,6 +135,12 @@ private:
 	const SelectorTable &_selectors;
 };
 
+// The name that a property with no name gets: past the end of the object, or read in a
+// procedure of no class. The text cannot have it.
+extern const char UnknownPropertyName[];
+extern const char PropertyInNonMethodName[];
+bool IsPlaceholderPropertyName(const std::string &name);
+
 class ILookupPropertyName
 {
 public:

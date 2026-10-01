@@ -1330,6 +1330,14 @@ int CompiledObject::GetNumberOfDefaultSelectors(const std::vector<uint16_t> &pro
 	return count - 1;
 }
 
+const char UnknownPropertyName[] = "--UNKNOWN-PROP-NAME--";
+const char PropertyInNonMethodName[] = "PROPERTY-ACCESS-IN-NON-METHOD";
+
+bool IsPlaceholderPropertyName(const std::string &name)
+{
+	return (name == UnknownPropertyName) || (name == PropertyInNonMethodName);
+}
+
 std::string CompiledObject::LookupPropertyName(ICompiledScriptLookups *pLookup, uint16_t wPropertyIndex) const
 {
 	// PERF: vector copy that is used frequently.
@@ -1348,7 +1356,7 @@ std::string CompiledObject::LookupPropertyName(ICompiledScriptLookups *pLookup, 
 	}
 	else
 	{
-		return "--UNKNOWN-PROP-NAME--";
+		return UnknownPropertyName;
 	}
 }
 

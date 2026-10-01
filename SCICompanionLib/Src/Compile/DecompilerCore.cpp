@@ -1386,7 +1386,7 @@ std::string DecompileLookups::LookupPropertyName(WORD wPropertyIndex)
 	}
 	else
 	{
-		return "PROPERTY-ACCESS-IN-NON-METHOD";
+		return PropertyInNonMethodName;
 	}
 }
 bool DecompileLookups::LookupPropertyName(uint16_t wPropertyIndex, std::string &name)

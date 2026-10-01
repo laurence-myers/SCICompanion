@@ -1491,11 +1491,11 @@ CodeResult SendCall::OutputByteCode(CompileContext &context) const
 			{
 				if (param->ContainsRest())
 				{
-					// If the target made a proc or send call, then we can't use &rest in our params, since it would affect the target's code
-					// (which is executed after the params are pushed to the stack)
-					// REVIEW: Maybe I could just output put &rest after? I dunno.
-					// REVIEW: We probably also need to guard against multi-sends using rest in multiple places.
-					context.ReportError(param.get(), "&rest cannot be used if the send target itself contains nested procedure calls or sends. Assign the result of the procedure call or send to a temporary variable and use that instead.");
+					// If the target made a proc or send call, the &rest affects the target's code (which
+					// is executed after the params are pushed to the stack): the call of the target gets
+					// the extra parameters. Sierra's compiler makes this code too (PQ2 Main:
+					// ((ScriptID param1) notify: &rest)), so it is a warning: the code is the same.
+					context.ReportWarning(param.get(), "&rest in the parameters of a send whose target contains nested procedure calls or sends: the call of the target gets the extra parameters. Assign the result of the procedure call or send to a temporary variable to avoid this.");
 					break;
 				}
 			}
@@ -1662,7 +1662,10 @@ CodeResult SendParam::OutputByteCode(CompileContext &context) const
 				if (parameterTypes.size() > 1)
 				{
 					string selName = GetSelectorName();
-					context.ReportError(this, "%s is a property.  Only one parameter may be supplied.", selName.c_str());
+					// Sierra's compiler gives such sends too (Longbow: a talker's loop: with five values;
+					// a property of the class that the compiler knows can be a method of the object). The
+					// send has each value: a warning.
+					context.ReportWarning(this, "%s is a property. Only one parameter is used when it is set.", selName.c_str());
 				}
 				if (parameterTypes.empty())
 				{

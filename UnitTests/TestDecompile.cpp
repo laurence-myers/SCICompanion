@@ -447,6 +447,8 @@ namespace UnitTests
         // argument.
         FIXTURE_TEST(ObjectNamedLikeAProperty, "O1_ObjectNamedLikeAProperty", 968)
         FIXTURE_TEST(RestBeforeTheLastArgument, "R2_RestBeforeTheLastArgument", 969)
+        // Sends that the compiler warns about.
+        FIXTURE_TEST(CompilerWarnings, "C5_CompilerWarnings", 970)
 
         // Switches: a switch as a value, a case value with a branch, an
         // empty last case (also in a loop), and cases that all return.

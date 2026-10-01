@@ -10,10 +10,17 @@
 	)
 )
 
+(instance string_a of Code
+	(properties
+		name {string}
+	)
+)
+
 (instance aScript of Script
 	(properties)
 	
 	(method (doit)
 		(= client client_a)
+		(string_a doit:)
 	)
 )

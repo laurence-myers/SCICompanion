@@ -750,7 +750,10 @@ void FixDuplicateObjectNames(CompiledScript &compiledScript, GlobalCompiledScrip
 	{
 		const std::string name = object->GetName();
 		bool shadowed = object->IsInstance() && !object->IsPublic && (propertyNames.count(name) > 0);
-		if ((countOfNames[name] > 1) || shadowed)
+		// An instance with the name of a keyword of the syntax does not compile (Pepper
+		// script 350 and KQ7 have an instance named string).
+		bool keyword = object->IsInstance() && IsSCIKeyword(name);
+		if ((countOfNames[name] > 1) || shadowed || keyword)
 		{
 			std::string newName;
 			do
