@@ -253,6 +253,11 @@ From `DecompileGate.ps1 -Check`:
 6. A function whose text changes from Classic: the verify and invariant
    checks pass, and its verdict against Snuffer is not worse.
 
+**Owner decision (2026-10-01) on rule 6:** two kinds of change are not
+worse: names that change because a function that was `asm` is now source
+(the name guess reads its assignments), and `(if c X else Y)` where Snuffer
+has `(if c X (continue)) Y` (the bytecode is the same).
+
 ## 7. Risks
 
 - The parser rules came from hand simulation. Step 8 measures them on the
