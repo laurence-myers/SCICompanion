@@ -118,7 +118,8 @@ namespace meaning
 	// function with no partner is DIFF ("no-recompiled-function" or
 	// "no-original-function"). The local procedures pair by meaning (the
 	// text can have them in another order), and an export whose address is
-	// not in the original script is UNCOMPARED ("bad-export").
+	// not in the original script is UNCOMPARED ("bad-export") when the text
+	// gives it an empty procedure.
 	std::vector<FunctionOutcome> CompareFunctions(const std::vector<Function> &original, const std::vector<Function> &recompiled);
 
 	// The functions of a compiled script (ReadScriptFunctions), for the check.

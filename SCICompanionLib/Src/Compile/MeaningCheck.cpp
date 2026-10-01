@@ -41,8 +41,11 @@ namespace meaning
 		// The longest text of a value (a value that grows on each turn of a
 		// loop, or doubles with each instruction).
 		const size_t MaxExpressionText = 4000;
-		// The tests that a run looks past, to find a test with no effect.
+		// The tests that a run looks past, to find a test with no effect; more
+		// when the two sides differ at a test (a chain of tests that all get to
+		// the same effect, where the other side has fewer tests).
 		const int MaxTestLookahead = 2;
+		const int MaxDeepTestLookahead = 12;
 
 		// A form that the check does not read: the function is UNCOMPARED.
 		struct Unreadable
@@ -163,6 +166,13 @@ namespace meaning
 			{
 				if (op == OpcodeToName(binary, 0))
 				{
+					// A division by 0, and -32768 / -1, stop the PMachine: no
+					// value.
+					bool divide = (binary == Opcode::DIV) || (binary == Opcode::MOD);
+					if (divide && ((values[1] == 0) || ((values[0] == 0x8000) && (values[1] == 0xffff))))
+					{
+						return false;
+					}
 					return EvalBinaryOp(binary, values[0], values[1], result);
 				}
 			}
@@ -510,10 +520,33 @@ namespace meaning
 			Walker(const Function &function, bool returnsValue) : _function(function), _returnsValue(returnsValue)
 			{
 				_loopHead.assign(function.code.size() + 1, false);
+				// The instructions that control gets to from the entry: a
+				// branch back in dead code makes no loop head.
+				std::vector<bool> live(function.code.size(), false);
+				std::vector<int> pending = { 0 };
+				while (!pending.empty())
+				{
+					int i = pending.back();
+					pending.pop_back();
+					if ((i < 0) || (i >= (int)function.code.size()) || live[i])
+					{
+						continue;
+					}
+					live[i] = true;
+					const Instruction &inst = function.code[i];
+					if (inst.target >= 0)
+					{
+						pending.push_back(inst.target);
+					}
+					if ((inst.op != Opcode::JMP) && (inst.op != Opcode::RET))
+					{
+						pending.push_back(i + 1);
+					}
+				}
 				for (size_t i = 0; i < function.code.size(); i++)
 				{
 					const Instruction &inst = function.code[i];
-					if ((inst.target >= 0) && (inst.target <= (int)i))
+					if (live[i] && (inst.target >= 0) && (inst.target <= (int)i))
 					{
 						_loopHead[inst.target] = true;
 					}
@@ -548,7 +581,7 @@ namespace meaning
 			// Runs the instructions that have no effect, and stops at the
 			// next effect (state.pc is its instruction). depth counts the
 			// tests that the run looks past.
-			Effect RunToEffect(State &state, int depth = 0) const
+			Effect RunToEffect(State &state, int depth = 0, int maxDepth = MaxTestLookahead) const
 			{
 				for (int steps = 0; ; steps++)
 				{
@@ -568,28 +601,24 @@ namespace meaning
 					Effect effect;
 					if (_Describe(state, effect))
 					{
-						if ((effect.kind == EffectKind::Test) && (depth < MaxTestLookahead))
+						if ((effect.kind == EffectKind::Test) && (depth < maxDepth))
 						{
 							// A test whose two outcomes get to the same effect in
 							// the same state (an empty then-part, a last case with
 							// no body) is no effect.
 							State onTrue = Branch(state, effect, true);
 							State onFalse = Branch(state, effect, false);
-							Effect nextTrue = RunToEffect(onTrue, depth + 1);
-							Effect nextFalse = RunToEffect(onFalse, depth + 1);
+							Effect nextTrue = RunToEffect(onTrue, depth + 1, maxDepth);
+							Effect nextFalse = RunToEffect(onFalse, depth + 1, maxDepth);
 							int truth = (onTrue.accTruth == onFalse.accTruth) ? onTrue.accTruth : 0;
 							onTrue.accTruth = truth;
 							onFalse.accTruth = truth;
-							// The truths that the test gave the variables.
-							for (auto &binding : onTrue.bindings)
-							{
-								auto other = onFalse.bindings.find(binding.first);
-								if ((other != onFalse.bindings.end()) && (other->second.truth != binding.second.truth))
-								{
-									binding.second.truth = 0;
-									other->second.truth = 0;
-								}
-							}
+							// The truths that the tests gave the variables (no store
+							// is between: a store is an effect): a truth that the
+							// two outcomes do not share is not known, and a binding
+							// that a test made on one outcome only is dropped.
+							_MergeTestBindings(onTrue, onFalse);
+							_MergeTestBindings(onFalse, onTrue);
 							if ((nextTrue.text == nextFalse.text) && (KeyOf(onTrue) == KeyOf(onFalse)))
 							{
 								state = onTrue;
@@ -656,6 +685,26 @@ namespace meaning
 			}
 
 		private:
+			// The bindings of state that other shares (see RunToEffect).
+			static void _MergeTestBindings(State &state, State &other)
+			{
+				for (auto it = state.bindings.begin(); it != state.bindings.end(); )
+				{
+					auto found = other.bindings.find(it->first);
+					if (found == other.bindings.end())
+					{
+						it = state.bindings.erase(it);
+						continue;
+					}
+					if (found->second.truth != it->second.truth)
+					{
+						it->second.truth = 0;
+						found->second.truth = 0;
+					}
+					++it;
+				}
+			}
+
 			void _ArriveAt(State &state, int pc) const
 			{
 				state.pc = pc;
@@ -1395,10 +1444,22 @@ namespace meaning
 			State &b = item.second;
 			try
 			{
+				State startA = a;
+				State startB = b;
 				side = "original";
 				Effect effectA = walkerA.RunToEffect(a);
 				side = "recompiled";
 				Effect effectB = walkerB.RunToEffect(b);
+				if (((effectA.kind != effectB.kind) || (effectA.text != effectB.text)) && ((effectA.kind == EffectKind::Test) || (effectB.kind == EffectKind::Test)))
+				{
+					// Look past more tests on both sides.
+					a = startA;
+					b = startB;
+					side = "original";
+					effectA = walkerA.RunToEffect(a, 0, MaxDeepTestLookahead);
+					side = "recompiled";
+					effectB = walkerB.RunToEffect(b, 0, MaxDeepTestLookahead);
+				}
 				if ((effectA.kind != effectB.kind) || (effectA.text != effectB.text))
 				{
 					outcome.verdict = Verdict::Diff;
@@ -1520,6 +1581,25 @@ namespace meaning
 	{
 		const char LocalPrefix[] = "local ";
 
+		// The code of an empty procedure: a ret, with no other instruction
+		// than a link or a line number.
+		bool _IsEmptyProcedure(const Function &function)
+		{
+			bool ret = false;
+			for (const Instruction &inst : function.code)
+			{
+				if (inst.op == Opcode::RET)
+				{
+					ret = true;
+				}
+				else if ((inst.op != Opcode::LINK) && (inst.op != Opcode::LineNumber) && (inst.op != Opcode::Filename))
+				{
+					return false;
+				}
+			}
+			return ret;
+		}
+
 		bool _IsLocalKey(const std::string &key)
 		{
 			return key.compare(0, sizeof(LocalPrefix) - 1, LocalPrefix) == 0;
@@ -1547,8 +1627,9 @@ namespace meaning
 		// count them in address order. Each original local procedure pairs
 		// with a recompiled one that means the same when the targets of the
 		// calls of local procedures are hidden: the one at its own place
-		// first, else the first other one. A procedure with no such partner
-		// keeps its key.
+		// first, else the first other one; then the others pair with one that
+		// the compare cannot read (UNCOMPARED), and those that are left pair in
+		// their order.
 		std::vector<Function> _PairLocalProcedures(const std::vector<Function> &original, const std::vector<Function> &recompiled)
 		{
 			std::vector<const Function *> originalLocals;
@@ -1580,38 +1661,48 @@ namespace meaning
 			std::vector<bool> taken(recompiledLocals.size(), false);
 			std::vector<bool> paired(originalLocals.size(), false);
 			std::map<std::string, std::string> newKeys;
-			for (size_t o = 0; o < originalLocals.size(); o++)
+			// First the partners that mean the same, then those that the compare
+			// cannot read (UNCOMPARED).
+			for (int pass = 0; pass < 2; pass++)
 			{
-				if (!originalLocals[o]->unreadable.empty())
+				for (size_t o = 0; o < originalLocals.size(); o++)
 				{
-					continue;
-				}
-				Function hidden = _WithoutLocalTargets(*originalLocals[o]);
-				auto same = [&](size_t r)
-				{
-					return !taken[r] && (Compare(hidden, hiddenRecompiled[r]).verdict == Verdict::Same);
-				};
-				size_t partner = recompiledLocals.size();
-				if ((o < recompiledLocals.size()) && same(o))
-				{
-					partner = o;
-				}
-				else
-				{
-					for (size_t r = 0; r < recompiledLocals.size(); r++)
+					if (paired[o] || !originalLocals[o]->unreadable.empty())
 					{
-						if (same(r))
+						continue;
+					}
+					Function hidden = _WithoutLocalTargets(*originalLocals[o]);
+					auto same = [&](size_t r)
+					{
+						if (taken[r])
 						{
-							partner = r;
-							break;
+							return false;
+						}
+						Verdict verdict = Compare(hidden, hiddenRecompiled[r]).verdict;
+						return (verdict == Verdict::Same) || ((pass == 1) && (verdict == Verdict::Uncompared));
+					};
+					size_t partner = recompiledLocals.size();
+					if ((o < recompiledLocals.size()) && same(o))
+					{
+						partner = o;
+					}
+					else
+					{
+						for (size_t r = 0; r < recompiledLocals.size(); r++)
+						{
+							if (same(r))
+							{
+								partner = r;
+								break;
+							}
 						}
 					}
-				}
-				if (partner < recompiledLocals.size())
-				{
-					taken[partner] = true;
-					paired[o] = true;
-					newKeys[recompiled[recompiledLocals[partner]].key] = originalLocals[o]->key;
+					if (partner < recompiledLocals.size())
+					{
+						taken[partner] = true;
+						paired[o] = true;
+						newKeys[recompiled[recompiledLocals[partner]].key] = originalLocals[o]->key;
+					}
 				}
 			}
 			// The procedures with no such partner pair in their order (the
@@ -1680,11 +1771,16 @@ namespace meaning
 			row.display = function.display;
 			row.offset = function.offset;
 			auto partner = byKey.find(function.key);
-			if (function.badExport)
+			if (function.badExport && (partner != byKey.end()) && _IsEmptyProcedure(*partner->second))
 			{
 				// No code: the text has an empty procedure for the export.
 				row.outcome.verdict = Verdict::Uncompared;
 				row.outcome.detail = "bad-export";
+			}
+			else if (function.badExport && (partner != byKey.end()))
+			{
+				row.outcome.verdict = Verdict::Diff;
+				row.outcome.detail = "bad-export-body";
 			}
 			else if (partner == byKey.end())
 			{
@@ -1752,7 +1848,13 @@ namespace meaning
 		std::vector<uint16_t> exports = script.GetExports();
 		auto calleKey = [&](uint16_t scriptNumber, uint16_t exportIndex) -> std::string
 		{
-			return ((scriptNumber == script.GetScriptNumber()) && (exportIndex < exports.size())) ? procedureKey(exports[exportIndex]) : std::string();
+			if ((scriptNumber != script.GetScriptNumber()) || (exportIndex >= exports.size()))
+			{
+				return std::string();
+			}
+			// An export with no procedure (an object) keeps the calle form.
+			auto it = procedureKeys.find(exports[exportIndex]);
+			return (it != procedureKeys.end()) ? it->second : std::string();
 		};
 		auto addressText = [&](uint16_t address) -> std::string
 		{

@@ -689,6 +689,48 @@ namespace UnitTests
 				callk 1 0
 				ret
 			)", "push0\ncallk 1 0\nret"));
+			// A test of another value after a branch to the next instruction.
+			AssertVerdict(meaning::Verdict::Diff, Check("lap 1\nbnt a\na:\nlap 2\nbnt end\npush0\ncallk 1 0\nend:\nret", "push0\ncallk 1 0\nret"));
+		}
+
+		// Where the two sides differ at a test, the check looks past more
+		// tests: a chain of tests whose outcomes all get to the same effect
+		// is no test (LB2 script 250, Trash::inBounds: four tests and an
+		// empty then-part; the recompiled code has fewer).
+		TEST_METHOD(Meaning_ALongChainOfTestsWithOneOutcomeIsNoTest)
+		{
+			AssertVerdict(meaning::Verdict::Same, Check(R"(
+				lal 0
+				bnt end
+				lal 1
+				bnt end
+				lal 2
+				bnt end
+				lal 3
+				bnt end
+				jmp end
+			end:
+				ret
+			)", "ret"));
+			AssertVerdict(meaning::Verdict::Diff, Check(R"(
+				lal 0
+				bnt end
+				lal 1
+				bnt end
+				lal 2
+				bnt end
+				push0
+				callk 1 0
+			end:
+				ret
+			)", "ret"));
+		}
+
+		// A division by 0 stops the PMachine: it does not fold.
+		TEST_METHOD(Meaning_ADivisionByZeroDoesNotFold)
+		{
+			AssertVerdict(meaning::Verdict::Diff, Check("pushi 5\nldi 0\ndiv\nsal 0\nret", "ldi 0\nsal 0\nret"));
+			AssertVerdict(meaning::Verdict::Same, Check("pushi 6\nldi 3\ndiv\nsal 0\nret", "ldi 2\nsal 0\nret"));
 		}
 
 		// Each export by its index; an export whose address is not in the
@@ -714,6 +756,15 @@ namespace UnitTests
 				AssertVerdict(meaning::Verdict::Uncompared, row.outcome);
 				Assert::AreEqual(std::string("bad-export"), row.outcome.detail);
 			}
+			// The text lost the export, or gave it code.
+			rows = meaning::CompareFunctions({ bad6, bad7 }, { stub6, Fn("push0\ncallk 1 0\nret") });
+			AssertVerdict(meaning::Verdict::Diff, rows[1].outcome);
+			Assert::AreEqual(std::string("no-recompiled-function"), rows[1].outcome.detail);
+			meaning::Function body7 = Fn("push0\ncallk 1 0\nret");
+			body7.key = "export 7";
+			rows = meaning::CompareFunctions({ bad6, bad7 }, { stub6, body7 });
+			AssertVerdict(meaning::Verdict::Diff, rows[1].outcome);
+			Assert::AreEqual(std::string("bad-export-body"), rows[1].outcome.detail);
 		}
 
 		// The local procedures pair by meaning: the text can have them in
@@ -748,6 +799,112 @@ namespace UnitTests
 			// The caller calls the other procedure.
 			rows = meaning::CompareFunctions({ a0, b1, caller("local 1") }, { b0, a1, caller("local 1") });
 			AssertVerdict(meaning::Verdict::Diff, rows[2].outcome);
+		}
+
+		// A test gives its truth to a variable whose value is the tested
+		// value: a call result stored, tested, and loaded again.
+		TEST_METHOD(Meaning_AStoredValueGetsTheTruthOfItsTest)
+		{
+			AssertVerdict(meaning::Verdict::Same, Check(R"(
+				push0
+				callk 1 0
+				sal 0
+				bnt end
+				lal 0
+				bnt end
+				push0
+				callk 2 0
+			end:
+				ret
+			)", R"(
+				push0
+				callk 1 0
+				sal 0
+				bnt end
+				push0
+				callk 2 0
+			end:
+				ret
+			)"));
+			// A store between the tests gives the variable another value.
+			AssertVerdict(meaning::Verdict::Diff, Check(R"(
+				push0
+				callk 1 0
+				sal 0
+				bnt end
+				push0
+				callk 3 0
+				sal 0
+				lal 0
+				bnt end
+				push0
+				callk 2 0
+			end:
+				ret
+			)", R"(
+				push0
+				callk 1 0
+				sal 0
+				bnt end
+				push0
+				callk 3 0
+				sal 0
+				push0
+				callk 2 0
+			end:
+				ret
+			)"));
+		}
+
+		// Local procedures that the compare cannot read pair with a partner
+		// that it cannot read either, before the others pair in order.
+		TEST_METHOD(Meaning_UncomparedLocalProceduresPairToo)
+		{
+			auto local = [](const std::string &key, const std::string &code)
+			{
+				meaning::Function function = Fn(code);
+				function.key = key;
+				return function;
+			};
+			auto caller = [](const std::string &target)
+			{
+				meaning::Function function = Fn("push0\ncall 0 0\nret");
+				function.key = "f";
+				function.code[1].text = target;
+				return function;
+			};
+			const char *first = "push0\ncallk 2 0\ntoss\nret";
+			const char *second = "push0\ncallk 3 0\ntoss\nret";
+			std::vector<meaning::FunctionOutcome> rows = meaning::CompareFunctions(
+				{ local("local 0", first), local("local 1", second), caller("local 0") },
+				{ local("local 0", second), local("local 1", first), caller("local 1") });
+			Assert::AreEqual((size_t)3, rows.size());
+			AssertVerdict(meaning::Verdict::Same, rows[2].outcome);
+		}
+
+		// A branch back in dead code makes no loop head (LSL6 script 0,
+		// LSL6::doit: a dead jmp goes back to the second test of global84).
+		TEST_METHOD(Meaning_ADeadBranchBackMakesNoLoopHead)
+		{
+			AssertVerdict(meaning::Verdict::Same, Check(R"(
+				lag 1
+				bnt end
+			again:
+				lag 1
+				bnt end
+				push0
+				callk 1 0
+			end:
+				ret
+				jmp again
+			)", R"(
+				lag 1
+				bnt end
+				push0
+				callk 1 0
+			end:
+				ret
+			)"));
 		}
 	};
 }
