@@ -245,11 +245,14 @@ namespace scope
 			// in the source, its value comes after the node.
 			bool _AccIsAvailable() const
 			{
-				if (!_pending || (_list->node->GetChildCount() == 0) || (_list->node->Child((int)_list->node->GetChildCount() - 1) != _pending))
-				{
-					return false;
-				}
-				return _stack.empty() || (_stack.back().time < _pendingTime);
+				return _PendingIsLast() && (_stack.empty() || (_stack.back().time < _pendingTime));
+			}
+
+			// The node of the accumulator is the last statement of the current
+			// list.
+			bool _PendingIsLast() const
+			{
+				return _pending && (_list->node->GetChildCount() > 0) && (_list->node->Child((int)_list->node->GetChildCount() - 1) == _pending);
 			}
 
 			std::unique_ptr<ConsumptionNode> _TakePending()
@@ -261,14 +264,44 @@ namespace scope
 				return node;
 			}
 
+			// Operands in the other order: one operand stays in the accumulator,
+			// and a constant is pushed after it, for an arithmetic or bit
+			// operation whose operands can change places (not a compare: it sets
+			// the previous value). The SQ4 copy in a "patch" folder has this in
+			// script 381 (roboClerkWelcome::changeState: "callk Random; pushi 6;
+			// mul"); Sierra's compiler gives "push; ldi 6; mul". True when the
+			// reader is such an operation, the node of the accumulator is the
+			// last statement, the accumulator has no fact (with a fact, the
+			// operand is a copy), and the only value pushed after the node is a
+			// constant.
+			bool _IsSwappedOperands(int reader, const Consumption &consumption) const
+			{
+				Opcode op = _model.Op(reader);
+				bool swappable = (op == Opcode::ADD) || (op == Opcode::MUL) || (op == Opcode::AND) || (op == Opcode::OR) || (op == Opcode::XOR);
+				if (!swappable || (consumption.cStackConsume != 1) || (consumption.cAccConsume != 1) || !_PendingIsLast() ||
+					(_acc.kind != FactKind::Unknown) || _stack.empty())
+				{
+					return false;
+				}
+				const StackEntry &top = _stack.back();
+				if ((top.kind != EntryKind::Value) || !top.node || !top.node->_hasPos || (top.node->GetChildCount() != 0) || (top.time < _pendingTime))
+				{
+					return false;
+				}
+				if ((_stack.size() >= 2) && (_stack[_stack.size() - 2].time > _pendingTime))
+				{
+					return false;
+				}
+				Opcode pushed = top.node->GetCode()->get_opcode();
+				return (pushed == Opcode::PUSHI) || (pushed == Opcode::PUSH0) || (pushed == Opcode::PUSH1) || (pushed == Opcode::PUSH2);
+			}
+
 			// A copy of the value of the accumulator, from its fact.
 			std::unique_ptr<ConsumptionNode> _CopyOfAcc(int reader)
 			{
 				if (_acc.kind == FactKind::Unknown)
 				{
-					std::string why = !_pending ? "no node" :
-						((_list->node->GetChildCount() == 0) || (_list->node->Child((int)_list->node->GetChildCount() - 1) != _pending)) ? "a statement after the node" :
-						"a push after the node";
+					std::string why = !_pending ? "no node" : (!_PendingIsLast() ? "a statement after the node" : "a push after the node");
 					_Fail("acc-no-fact", reader, fmt::format("{0}: {1}, and no fact", OpcodeToName(_model.Op(reader), 0), why));
 				}
 				std::unique_ptr<ConsumptionNode> copy = std::make_unique<ConsumptionNode>();
@@ -570,6 +603,21 @@ namespace scope
 				// The accumulator operand comes after the stack operands: a node
 				// that was made before them is not the operand.
 				bool accAvailable = _AccIsAvailable();
+				if (!accAvailable && _IsSwappedOperands(i, consumption))
+				{
+					// A constant on the stack after the other operand, which
+					// stays in the accumulator: the node of the
+					// accumulator is an operand too, before the constant (address
+					// order). The text has the operands in either order.
+					node->AppendChild(_TakePending());
+					for (auto &operand : _Pop(i, consumption.cStackConsume))
+					{
+						node->AppendChild(std::move(operand));
+					}
+					_UpdateFacts(i);
+					_Append(std::move(node), consumption.cAccGenerate != 0, i);
+					return;
+				}
 				for (auto &operand : _Pop(i, consumption.cStackConsume))
 				{
 					node->AppendChild(std::move(operand));

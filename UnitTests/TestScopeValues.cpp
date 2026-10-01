@@ -755,6 +755,35 @@ namespace UnitTests
 			)", "Switch(SwitchValue(lsp) Case(CaseCondition(ldi) CaseBody(sat(ldi))) Case(CaseBody(eq?(lsp* ldi) sat(ldi)))) ret");
 		}
 
+		// The operands of an operation that can change places, in the other
+		// order: the call, then "pushi 6", then mul. The node of the
+		// accumulator is an operand, before the constant (the SQ4 copy in a
+		// "patch" folder, script 381, roboClerkWelcome::changeState).
+		TEST_METHOD(Values_SwappedOperandsOfAMul)
+		{
+			AssertValues(R"(
+				push2
+				pushi 8
+				pushi 15
+				callk 60 4
+				pushi 6
+				mul
+				aTop 32
+				ret
+			)", "aTop(mul(callk(push2 pushi pushi) pushi)) ret");
+			// Not for an operation whose operands cannot change places.
+			AssertValuesFail(R"(
+				push2
+				pushi 8
+				pushi 15
+				callk 60 4
+				pushi 6
+				sub
+				aTop 32
+				ret
+			)", "acc-no-fact", 5);
+		}
+
 		TEST_METHOD(Values_ADeadBreak)
 		{
 			AssertValues(R"(

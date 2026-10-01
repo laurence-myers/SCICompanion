@@ -744,6 +744,8 @@ namespace UnitTests
         FIXTURE_TEST(Family8_DeadValueStatement, "F8_DeadValueStatement", 919)
         // Values that the optimiser reuses across a branch.
         FIXTURE_TEST(ReuseAcrossBranch, "V1_ReuseAcrossBranch", 953)
+        // The operands of a mul that the optimiser swapped.
+        FIXTURE_TEST(SwappedOperands, "V2_SwappedOperands", 965)
         FIXTURE_TEST(ChainedComparison, "N1_ChainedCompare", 923)
         FIXTURE_TEST(SierraChainedComparison, "N2_SierraChainedCompare", 933)
         FIXTURE_TEST(Family4_BreakElseEdge, "F4_BreakElseEdge", 904)
