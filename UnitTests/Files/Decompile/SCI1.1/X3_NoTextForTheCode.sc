@@ -3,12 +3,14 @@
 (include sci.sh)
 (use System)
 
-; Code that the text cannot have: a super in a procedure (an export at the
-; code of a method, PQ4 CD script 10), and a property past the end of the
-; object (Act::canBeHere of LSL3 reads one). Each function falls back to
-; asm, which compiles to the same code.
+; Code that the text cannot have: a super and a property read in a procedure
+; (an export at the code of a method: Mixed-Up Mother Goose script 0 reads a
+; property), and a property past the end of the object (Act::canBeHere of
+; LSL3 reads one). Each function falls back to asm, which compiles to the
+; same code.
 (public
 	x3SuperInAProcedure 0
+	x3PropertyInAProcedure 1
 )
 
 (procedure (x3SuperInAProcedure)
@@ -16,6 +18,13 @@
 		pushi #init
 		push0
 		super Script, 4
+		ret
+	)
+)
+
+(procedure (x3PropertyInAProcedure)
+	(asm
+		pToa 4
 		ret
 	)
 )

@@ -399,7 +399,7 @@ namespace UnitTests
             _gameFolder = SetUpGameSCI11();
             DecompileOutput out = DecompileAndRoundTrip("X3_NoTextForTheCode", 971);
             LogWarnings("X3", out);
-            Assert::AreEqual(2, out.fallbacks, L"expected two fallbacks");
+            Assert::AreEqual(3, out.fallbacks, L"expected three fallbacks");
             Assert::IsTrue(out.HasWarningContaining("A super in a procedure."));
             Assert::IsTrue(out.HasWarningContaining("A property with no name."));
             Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");

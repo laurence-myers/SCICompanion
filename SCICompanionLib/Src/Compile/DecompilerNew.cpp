@@ -561,14 +561,21 @@ std::string _GetPossiblyMissingPublicProcedureName(DecompileLookups &lookups, ui
 	return name;
 }
 
+// The compiler makes scripts of the version: text that it cannot compile falls back to asm.
+// SCI2 text is for reading only, so such code keeps its text.
+bool _CompilerMakesTheVersion(DecompileLookups &lookups)
+{
+	return lookups.GetVersion().PackageFormat < ResourcePackageFormat::SCI2;
+}
+
 // The name of a property of the object of the code. A property past the end of the object (Act::canBeHere
-// of LSL3 and others reads one) has no name: the text cannot have it, and the function falls back to asm
-// (which gives the number). A property read in a procedure of no class keeps its placeholder name (SCI2
-// games, which the compiler does not make, have many: the text is for reading).
+// of LSL3 and others reads one) has no name, and neither has a property read in a procedure (an export at
+// the code of a method, Mixed-Up Mother Goose script 0, proc0_12): the text cannot have it, and the
+// function falls back to asm (which gives the number). In SCI2 the code keeps its placeholder name.
 std::string _PropertyName(DecompileLookups &lookups, ConsumptionNode &node, WORD wPropertyIndex)
 {
 	std::string name = lookups.LookupPropertyName(wPropertyIndex);
-	if (name == UnknownPropertyName)
+	if (IsPlaceholderPropertyName(name) && _CompilerMakesTheVersion(lookups))
 	{
 		throw ConsumptionNodeException(&node, "A property with no name.");
 	}
@@ -709,16 +716,20 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, Decompi
 				// The first operand names the class; the text's super is the superclass of the
 				// class of the method.
 				const sci::ClassDefinition *classDefinition = lookups.GetClassContext();
-				if (!classDefinition)
+				if (!classDefinition && _CompilerMakesTheVersion(lookups))
 				{
-					// A super in a procedure (an export at the code of a method, PQ4 CD script
-					// 10, JustifyText): the text cannot have it. The function falls back to asm.
+					// A super in a procedure (an export at the code of a method): the text
+					// cannot have it, and the function falls back to asm. In SCI2 (LSL6 CD
+					// script 1826 has many) the code keeps its super.
 					throw ConsumptionNodeException(&node, "A super in a procedure.");
 				}
-				uint16_t species = inst.get_first_operand();
-				std::string superClassContext = classDefinition->GetSuperClass();
-				std::string superClassStated = lookups.LookupClassName(species);
-				assert(superClassContext == superClassStated);
+				if (classDefinition)
+				{
+					uint16_t species = inst.get_first_operand();
+					std::string superClassContext = classDefinition->GetSuperClass();
+					std::string superClassStated = lookups.LookupClassName(species);
+					assert(superClassContext == superClassStated);
+				}
 				sendCall->SetName("super");
 			}
 			Consumption cons = _GetInstructionConsumption(inst, &lookups);
