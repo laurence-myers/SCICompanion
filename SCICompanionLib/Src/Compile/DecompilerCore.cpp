@@ -1287,7 +1287,15 @@ _wScript(wScript), _pLookups(pLookups), _pOFLookups(pOFLookups), _pScriptThings(
 
 std::string DecompileLookups::LookupSelectorName(WORD wIndex)
 {
-	return _pLookups->LookupSelectorName(wIndex);
+	std::string name = _pLookups->LookupSelectorName(wIndex);
+	// A selector with the name of a keyword of the syntax, which the text would give another
+	// name (the SCI1.1 template has cond, 509, which the text would write as case, the name
+	// of 732): sel_<number>, which the compiler reads back as the number.
+	if ((name == "cond") || (name == "continue") || (name == "repeat"))
+	{
+		name = fmt::format("sel_{0}", wIndex);
+	}
+	return name;
 }
 std::string DecompileLookups::LookupKernelName(WORD wIndex)
 {

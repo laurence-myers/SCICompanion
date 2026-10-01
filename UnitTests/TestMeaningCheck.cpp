@@ -952,5 +952,90 @@ namespace UnitTests
 				ret
 			)"));
 		}
+
+		// A value that an eq? found equal to a number: a later test of an eq?
+		// of the value and another number is false (SQ4 patch script 391: a
+		// case body that falls into the test of the next case, and no later
+		// case can match).
+		TEST_METHOD(Meaning_AValueEqualToANumberIsNotAnother)
+		{
+			AssertVerdict(meaning::Verdict::Same, Check(R"(
+				lsp 1
+				dup
+				ldi 29
+				eq?
+				bnt c30
+				push0
+				callk 1 0
+			c30:
+				dup
+				ldi 30
+				eq?
+				bnt done
+				push0
+				callk 2 0
+			done:
+				toss
+				ret
+			)", R"(
+				lsp 1
+				dup
+				ldi 29
+				eq?
+				bnt c30
+				push0
+				callk 1 0
+				jmp done
+			c30:
+				dup
+				ldi 30
+				eq?
+				bnt done
+				push0
+				callk 2 0
+			done:
+				toss
+				ret
+			)"));
+			// The same number: the second case runs too.
+			AssertVerdict(meaning::Verdict::Diff, Check(R"(
+				lsp 1
+				dup
+				ldi 29
+				eq?
+				bnt c30
+				push0
+				callk 1 0
+			c30:
+				dup
+				ldi 29
+				eq?
+				bnt done
+				push0
+				callk 2 0
+			done:
+				toss
+				ret
+			)", R"(
+				lsp 1
+				dup
+				ldi 29
+				eq?
+				bnt c30
+				push0
+				callk 1 0
+				jmp done
+			c30:
+				dup
+				ldi 29
+				eq?
+				bnt done
+				push0
+				callk 2 0
+			done:
+				toss
+				ret
+			)"));
+		}
 	};
 }

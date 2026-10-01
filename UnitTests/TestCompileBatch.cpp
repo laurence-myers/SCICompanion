@@ -380,6 +380,35 @@ namespace UnitTests
         }
 
 
+        // A method named sel_<number> of a selector that has a name (the
+        // decompiler writes a selector whose name the compiler gives another
+        // selector, or a keyword, that way): the class gets the method of
+        // that selector.
+        TEST_METHOD(Methods_ANumberedNameOfANamedSelector)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            SelectorTable selectors;
+            Assert::IsTrue(selectors.Load(session.Helper()));
+            uint16_t doit = 0;
+            Assert::IsTrue(selectors.ReverseLookup("doit", doit));
+            std::string text = "(script# 907)\n(include sci.sh)\n(include game.sh)\n(use main)\n(use obj)\n"
+                "(instance s2Numbered of Obj\n    (properties)\n    (method (sel_" + std::to_string(doit) + ")\n        (return 1)\n    )\n)\n";
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Numbered", 907, text) }, ToPatchFiles()));
+            CompiledScript compiled(907);
+            AssertOk(compiled.TryLoad(session.Helper(), session.Helper().Version, 907), "the compiled script");
+            bool found = false;
+            for (const auto &object : compiled.GetObjects())
+            {
+                for (uint16_t method : object->GetMethods())
+                {
+                    found = found || (method == doit);
+                }
+            }
+            Assert::IsTrue(found, L"the instance has the method of the selector");
+        }
+
+
     public:
         // Every script of both templates compiles in one batch, with no
         // error, and the tables and the one commit are Ok.

@@ -182,6 +182,10 @@ namespace scope
 				region->toss = toss;
 				int depth = _model.DepthAfter(head);
 				int entry = head + 1;
+				// For each case: its constant (dup; ldi n; eq?), or -1; and whether its body
+				// falls through into the test of the next case.
+				std::vector<int> constants;
+				std::vector<int> fallsThrough;
 				while (entry < toss)
 				{
 					std::unique_ptr<Region> item = std::make_unique<Region>(RegionKind::Case);
@@ -219,6 +223,7 @@ namespace scope
 					int test = compare + 1;
 					if (test == toss)
 					{
+						constants.push_back(((compare == entry + 2) && (_model.Op(entry + 1) == Opcode::LDI)) ? _model.At(entry + 1).get_first_operand() : -1);
 						item->body = MakeSequence();
 						region->cases.push_back(std::move(item));
 						break;
@@ -250,7 +255,33 @@ namespace scope
 					}
 					item->body = _Sequence(test + 1, bodyEnd, nullptr);
 					region->cases.push_back(std::move(item));
+					bool constant = (compare == entry + 2) && (_model.Op(entry + 1) == Opcode::LDI);
+					constants.push_back(constant ? _model.At(entry + 1).get_first_operand() : -1);
+					int last = next - 1;
+					while ((last > test) && !_model.IsLive(last))
+					{
+						--last;
+					}
+					if ((bodyEnd == next) && (next < toss) && _model.FallsThrough(last))
+					{
+						fallsThrough.push_back((int)constants.size() - 1);
+					}
 					entry = next;
+				}
+				// A body that falls through into the test of the next case goes on with
+				// the tests (SQ4 patch script 391, doCatalog::changeState): as text, the
+				// switch ends after the body. Only when no later case can match its value
+				// (each one has another constant) is the text the same.
+				for (int fall : fallsThrough)
+				{
+					for (size_t later = fall + 1; later < region->cases.size(); ++later)
+					{
+						int laterConstant = (later < constants.size()) ? constants[later] : -1;
+						if (!region->cases[later]->value || (laterConstant < 0) || (constants[fall] < 0) || (laterConstant == constants[fall]))
+						{
+							_FailAt("case-fall-through", region->cases[fall]->branch);
+						}
+					}
 				}
 				return region;
 			}

@@ -441,6 +441,70 @@ namespace UnitTests
 			AssertParses(shapes::Switch, shapes::SwitchTree);
 		}
 
+		// A case body that falls through into the test of the next case goes
+		// on with the tests (SQ4 patch script 391, doCatalog::changeState): as
+		// text, the switch ends after the body. With an else case after it, the
+		// else would run in the code; with only cases of other constants after
+		// it, no later case can match, and the text means the same.
+		TEST_METHOD(Switches_ACaseBodyThatFallsThrough)
+		{
+			AssertParseFails(R"(
+				lsp 1
+				dup
+				ldi 29
+				eq?
+				bnt c30
+				ldi 1
+				sal 0
+			c30:
+				dup
+				ldi 30
+				eq?
+				bnt other
+				ldi 2
+				sal 0
+				jmp done
+			other:
+				ldi 3
+				sal 0
+			done:
+				toss
+				ret
+			)", "case-fall-through", 4);
+			AssertParses(R"(
+				lsp 1
+				dup
+				ldi 29
+				eq?
+				bnt c30
+				ldi 1
+				sal 0
+			c30:
+				dup
+				ldi 30
+				eq?
+				bnt done
+				ldi 2
+				sal 0
+			done:
+				toss
+				ret
+			)",
+				"switch 0000 toss 000d\n"
+				"  case bnt 0004\n"
+				"    value\n"
+				"      code 0001-0003\n"
+				"    body\n"
+				"      code 0005-0006\n"
+				"  case bnt 000a\n"
+				"    value\n"
+				"      code 0007-0009\n"
+				"    body\n"
+				"      code 000b-000c\n"
+				"code 000e\n");
+		}
+
+
 		// A switch in a loop: the jmp at the end of the case goes to the
 		// toss (here it does nothing), and a case breaks out of the loop
 		// with the switch value on the stack.

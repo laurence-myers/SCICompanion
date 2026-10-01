@@ -61,6 +61,9 @@ public:
 	std::vector<std::string> GetNamesForDisplay() const;
 	bool ReverseLookup(std::string name, uint16_t &wIndex) const;
 	bool IsSelectorName(const std::string &name) const;
+	// When the name is sel_<number> and the selector has no name: it gets the name, so
+	// that Add gives a new selector another number.
+	void ReserveNumberedName(const std::string &name, uint16_t wIndex);
 	const std::vector<std::string> &GetNames() const { return _names; }
 
 	bool Load(const GameFolderHelper &helpern);

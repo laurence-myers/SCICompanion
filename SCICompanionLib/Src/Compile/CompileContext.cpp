@@ -281,7 +281,11 @@ const vector<string> &CompileContext::GetResourceStrings()
 WORD CompileContext::LookupSelectorAndAdd(const string &str)
 {
 	WORD w;
-	if (!_tables.Selectors().ReverseLookup(str, w))
+	if (_tables.Selectors().ReverseLookup(str, w))
+	{
+		_tables.Selectors().ReserveNumberedName(str, w);
+	}
+	else
 	{
 		// It doesn't exist ... add it.
 		// We can just keep on adding to the selectors list (lots of room)
@@ -291,7 +295,12 @@ WORD CompileContext::LookupSelectorAndAdd(const string &str)
 }
 bool CompileContext::LookupSelector(const string &str, WORD &wIndex)
 {
-	return _tables.Selectors().ReverseLookup(str, wIndex);
+	bool found = _tables.Selectors().ReverseLookup(str, wIndex);
+	if (found)
+	{
+		_tables.Selectors().ReserveNumberedName(str, wIndex);
+	}
+	return found;
 }
 void CompileContext::DefineNewSelector(const std::string &str, WORD &wIndex)
 {
@@ -1084,6 +1093,21 @@ void CompileContext::TrackLocalProcCall(const string &name)
 {
 	assert(_localProcs.find(name) != _localProcs.end());
 	_localProcCalls.insert(ref_multimap::value_type(name, code().get_cur_pos()));
+}
+code_pos CompileContext::GetMethodPos(const string &className, uint16_t selector)
+{
+	// The method is under the name that the source gives it: the name of the selector, or
+	// sel_<number> (a selector whose name the decompiler does not use).
+	string key = className + "::" + LookupSelectorName(selector);
+	if (_localProcs.find(key) == _localProcs.end())
+	{
+		string numbered = className + "::sel_" + std::to_string(selector);
+		if (_localProcs.find(numbered) != _localProcs.end())
+		{
+			key = numbered;
+		}
+	}
+	return GetLocalProcPos(key);
 }
 code_pos CompileContext::GetLocalProcPos(const string &name)
 {

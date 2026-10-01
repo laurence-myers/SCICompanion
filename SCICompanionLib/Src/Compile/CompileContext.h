@@ -333,6 +333,8 @@ public:
 
 	void TrackLocalProcCall(const std::string &name);
 	code_pos GetLocalProcPos(const std::string &name);
+	// The code of a method of the class.
+	code_pos GetMethodPos(const std::string &className, uint16_t selector);
 	void FixupLocalCalls();
 	void FixupAsmLabelBranches();
 	void TrackCallOffsetInstruction(WORD wProcIndex);

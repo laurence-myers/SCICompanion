@@ -38,12 +38,26 @@ namespace UnitTests
             Assert::IsTrue(kernels.Load(helper));
             Assert::IsTrue(kernels.ReverseLookup("kernel_200", number));
             Assert::AreEqual(200, (int)number);
+            // A kernel with a name of its own: kernel_<number> is not it (a procedure
+            // of the source can have that name).
+            Assert::IsFalse(kernels.ReverseLookup("kernel_5", number));
+
+            // sel_<number> of a selector with no name reserves it: a new selector
+            // gets another number.
+            uint16_t free = (uint16_t)(selectors.GetNames().size() + 20);
+            Assert::IsTrue(selectors.ReverseLookup("sel_" + std::to_string(free), number));
+            selectors.ReserveNumberedName("sel_" + std::to_string(free), number);
+            Assert::AreEqual(std::string("sel_") + std::to_string(free), selectors.Lookup(free));
+            for (int i = 0; i < 40; i++)
+            {
+                Assert::AreNotEqual((int)free, (int)selectors.Add("vocabNamesNew" + std::to_string(i)));
+            }
         }
 
-        // A selector with the name of a keyword of the syntax is sel_<number>:
-        // the SCI1.1 template names 509 cond, which the text would write as case
-        // (the name of 732). A selector past the names is sel_<number> too.
-        TEST_METHOD(KeywordSelectorNames_AreNumbered)
+        // The names of the lookups: the SCI1.1 template names 509 cond and 732 case
+        // (the decompiled text writes cond as sel_509: DecompileLookups). A selector
+        // past the names is sel_<number>.
+        TEST_METHOD(SelectorNames_ReadBackAsTheirNumbers)
         {
             GameSession &session = _game.OpenCopy(TemplateSci11, false, SessionOptions());
             const GameFolderHelper &helper = session.Helper();
@@ -51,7 +65,7 @@ namespace UnitTests
             Assert::IsTrue(lookups.Load(helper));
             std::string first = lookups.LookupSelectorName(509);
             std::string second = lookups.LookupSelectorName(732);
-            Assert::AreEqual(std::string("sel_509"), first);
+            Assert::AreEqual(std::string("cond"), first);
             Assert::AreEqual(std::string("case"), second);
             uint16_t number = 0;
             for (uint16_t selector : { (uint16_t)509, (uint16_t)732, (uint16_t)4000 })

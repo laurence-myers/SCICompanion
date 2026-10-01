@@ -340,9 +340,7 @@ void _WriteClassOrInstance(const CSCOObjectClass &object, bool fInstance, vector
 	string className = object.GetName();
 	for (uint16_t scoMethod : methods)
 	{
-		string methodName = pContext->LookupSelectorName(scoMethod);
-		assert(!methodName.empty()); // Means we have a bug.
-		code_pos methodPos = pContext->GetLocalProcPos(className + "::" + methodName);
+		code_pos methodPos = pContext->GetMethodPos(className, scoMethod);
 		// Then from the code_pos, we get the offset at which it was written.
 		push_word(output, methodPos->get_final_offset());
 	}
@@ -1338,9 +1336,7 @@ void WriteMethodCodePointers(const CSCOObjectClass &oClass, vector<uint8_t> &out
 {
 	for (uint16_t method : oClass.GetMethods())
 	{
-		string methodName = context.LookupSelectorName(method);
-		assert(!methodName.empty()); // Means we have a bug.
-		code_pos methodPos = context.GetLocalProcPos(oClass.GetName() + "::" + methodName);
+		code_pos methodPos = context.GetMethodPos(oClass.GetName(), method);
 		// Then from the code_pos, we get the offset at which it was written.
 		uint16_t offsetOfMethodPointer = trackMethodCodePointerOffsets[index];
 		write_word(outputScr, offsetOfMethodPointer, methodPos->get_final_offset());

@@ -407,6 +407,9 @@ namespace meaning
 			// load) are one value. A loop head drops them: a value of the last
 			// turn of the loop is not one value.
 			std::map<std::string, Binding> bindings;
+			// The values that a test on this path found equal to a number (the eq? of a
+			// switch case): a test of eq? of the value and another number is false.
+			std::vector<std::pair<ExprPtr, uint16_t>> equals;
 
 			// The text of the state. With accDead, the accumulator is left
 			// out: no instruction reads its value.
@@ -421,6 +424,11 @@ namespace meaning
 				for (const auto &binding : bindings)
 				{
 					key += fmt::format("{0}={1}:{2},", binding.first, binding.second.value->text, binding.second.truth);
+				}
+				key += "|";
+				for (const auto &equal : equals)
+				{
+					key += fmt::format("{0}=={1},", equal.first->text, equal.second);
 				}
 				return key;
 			}
@@ -439,6 +447,10 @@ namespace meaning
 				{
 					binding.second.value = meaning::Age(binding.second.value, pair);
 				}
+				for (auto &equal : equals)
+				{
+					equal.first = meaning::Age(equal.first, pair);
+				}
 			}
 
 			void Freeze(const VarPredicate &changed, int pair)
@@ -453,6 +465,10 @@ namespace meaning
 				for (ExprPtr &value : stack)
 				{
 					value = meaning::Freeze(value, changed, pair);
+				}
+				for (auto &equal : equals)
+				{
+					equal.first = meaning::Freeze(equal.first, changed, pair);
 				}
 				for (auto it = bindings.begin(); it != bindings.end(); )
 				{
@@ -675,6 +691,21 @@ namespace meaning
 				{
 					state.acc = Const((state.accTruth > 0) ? 1 : 0);
 				}
+				// A value that an eq? found equal to a number (a case of a switch): a later test
+				// of it against another number is false (SQ4 patch script 391: a case body that
+				// falls into the test of the next case).
+				ExprPtr compared;
+				uint16_t number;
+				bool switchValue = false;
+				if (zeroOrOne && _CompareWithNumber(effect.test, compared, number))
+				{
+					// Only the value of a switch (on the stack until its toss).
+					switchValue = std::any_of(state.stack.begin(), state.stack.end(), [&](const ExprPtr &entry) { return entry->text == compared->text; });
+				}
+				if (switchValue && ((effect.test->head == "eq?") == truth))
+				{
+					state.equals.emplace_back(compared, number);
+				}
 				// A variable whose value is the tested value has its truth: a
 				// load of it again (the compiler does not reuse the value) is
 				// no test.
@@ -720,6 +751,7 @@ namespace meaning
 				if ((pc >= 0) && (pc < (int)_loopHead.size()) && _loopHead[pc])
 				{
 					state.bindings.clear();
+					state.equals.clear();
 					// A continue out of a switch leaves the switch value on the
 					// stack, and no instruction reads it: the stack keeps the
 					// depth of the loop head.
@@ -728,6 +760,54 @@ namespace meaning
 						state.stack.resize(_function.depth[pc]);
 					}
 				}
+			}
+
+			// An eq? or ne? of a value and a number: the value and the number.
+			static bool _CompareWithNumber(const ExprPtr &test, ExprPtr &value, uint16_t &number)
+			{
+				if (((test->head != "eq?") && (test->head != "ne?")) || (test->args.size() != 2))
+				{
+					return false;
+				}
+				if (IsConst(test->args[1], number) && !IsConst(test->args[0], number))
+				{
+					value = test->args[0];
+					return true;
+				}
+				if (IsConst(test->args[0], number) && !IsConst(test->args[1], number))
+				{
+					value = test->args[1];
+					return true;
+				}
+				return false;
+			}
+
+			// The truth of the accumulator that a value found equal to a number gives: an eq?
+			// or ne? of the value and a number (under nots); 0 when it is not known.
+			static int _TruthFromEquals(const State &state)
+			{
+				ExprPtr test = state.acc;
+				bool swapped = false;
+				while ((test->head == "not") && (test->args.size() == 1))
+				{
+					test = test->args[0];
+					swapped = !swapped;
+				}
+				ExprPtr compared;
+				uint16_t number;
+				if (!_CompareWithNumber(test, compared, number))
+				{
+					return 0;
+				}
+				for (const auto &equal : state.equals)
+				{
+					if (equal.first->text == compared->text)
+					{
+						bool truth = ((equal.second == number) == (test->head == "eq?")) != swapped;
+						return truth ? 1 : -1;
+					}
+				}
+				return 0;
 			}
 
 			// A value that is 1 or 0: a compare or a not.
@@ -1035,7 +1115,7 @@ namespace meaning
 				case Opcode::BNT:
 				{
 					uint16_t value;
-					if ((state.accTruth != 0) || IsConst(state.acc, value) || (inst.target == state.pc + 1))
+					if ((state.accTruth != 0) || IsConst(state.acc, value) || (inst.target == state.pc + 1) || (_TruthFromEquals(state) != 0))
 					{
 						// A known outcome, or a branch to the next instruction.
 						return false;
@@ -1155,7 +1235,8 @@ namespace meaning
 					// A test whose outcome is known: the truth of a test before
 					// it on this path, or a constant.
 					uint16_t value;
-					bool truth = (state.accTruth != 0) ? (state.accTruth > 0) : (IsConst(state.acc, value) && (value != 0));
+					int fromEquals = _TruthFromEquals(state);
+					bool truth = (state.accTruth != 0) ? (state.accTruth > 0) : ((fromEquals != 0) ? (fromEquals > 0) : (IsConst(state.acc, value) && (value != 0)));
 					if ((op == Opcode::BT) == truth)
 					{
 						next = inst.target;
@@ -1180,8 +1261,18 @@ namespace meaning
 					state.stack.push_back(Const((uint16_t)((int)op - (int)Opcode::PUSH0)));
 					break;
 				case Opcode::TOSS:
+				{
 					_Pop(state);
+					// The end of a switch: a fact about its value ends with it (so that the
+					// paths of its cases get to one state after it).
+					auto onStack = [&](const ExprPtr &value)
+					{
+						return std::any_of(state.stack.begin(), state.stack.end(), [&](const ExprPtr &entry) { return entry->text == value->text; });
+					};
+					state.equals.erase(std::remove_if(state.equals.begin(), state.equals.end(), [&](const std::pair<ExprPtr, uint16_t> &equal) { return !onStack(equal.first); }),
+						state.equals.end());
 					break;
+				}
 				case Opcode::DUP:
 					state.stack.push_back(_Top(state, 0));
 					break;

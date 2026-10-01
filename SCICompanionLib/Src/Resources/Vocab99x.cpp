@@ -753,6 +753,27 @@ bool SelectorTable::Load(const GameFolderHelper &helper)
 	return fRet;
 }
 
+void SelectorTable::ReserveNumberedName(const std::string &name, uint16_t wIndex)
+{
+	uint16_t number;
+	if (!_ParseNumberedName(name, "sel_", number) || (number != wIndex) || ((wIndex < _indices.size()) && (_indices[wIndex] != -1)))
+	{
+		return;
+	}
+	while (_indices.size() <= wIndex)
+	{
+		_indices.push_back(-1);
+	}
+	_indices[wIndex] = (int)_names.size();
+	_names.push_back(name);
+	_nameToValueCache[name] = wIndex;
+	_fDirty = true;
+	while ((_firstInvalidSelector < _indices.size()) && (_indices[_firstInvalidSelector] != -1))
+	{
+		_firstInvalidSelector++;
+	}
+}
+
 uint16_t SelectorTable::Add(const std::string &str)
 {
 	assert(find(_names.begin(), _names.end(), str) == _names.end());
@@ -1537,7 +1558,16 @@ bool KernelTable::ReverseLookup(std::string name, uint16_t &wIndex) const
 	// names, or a later kernel with the name of another one.
 	if (!result)
 	{
-		result = _ParseNumberedName(name, "kernel_", wIndex);
+		// Only for a kernel past the names, or one whose name an earlier kernel has: a
+		// procedure of the source can have the name kernel_<number>.
+		uint16_t number;
+		uint16_t first;
+		if (_ParseNumberedName(name, "kernel_", number) &&
+			((number >= _names.size()) || (__super::ReverseLookup(_names[number], first) && (first != number))))
+		{
+			wIndex = number;
+			result = true;
+		}
 	}
 	return result;
 }

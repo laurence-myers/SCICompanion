@@ -1557,12 +1557,9 @@ std::string GlobalCompiledScriptLookups::LookupSelectorName(uint16_t wIndex)
 	// It is legit (e.g. script 99 in SQ3) for there to be selectors that don't have a name
 	// in the official selector list. "private" selectors for "private" classes. Such a
 	// selector is sel_<number>, which the compiler reads back as the number. So is a selector
-	// whose name the compiler gives another selector (a later one with the same name), and a
-	// selector with the name of a keyword of the syntax, which the text would give another
-	// name (the SCI1.1 template has cond, 509, which the text would write as case, 732).
+	// whose name the compiler gives another selector (a later one with the same name).
 	uint16_t back;
-	bool keyword = (str == "cond") || (str == "continue") || (str == "repeat");
-	if (str.empty() || keyword || !_selectors.ReverseLookup(str, back) || (back != wIndex))
+	if (str.empty() || !_selectors.ReverseLookup(str, back) || (back != wIndex))
 	{
 		str = fmt::format("sel_{0}", wIndex);
 	}

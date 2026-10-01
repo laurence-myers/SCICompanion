@@ -735,12 +735,14 @@ void FixDuplicateObjectNames(CompiledScript &compiledScript, GlobalCompiledScrip
 	for (const auto &object : compiledScript.GetObjects())
 	{
 		vector<uint16_t> properties;
-		if (lookups.LookupSpeciesPropertyList(object->GetSpecies(), properties))
+		if (!lookups.LookupSpeciesPropertyList(object->GetSpecies(), properties) && !object->IsInstance())
 		{
-			for (uint16_t selector : properties)
-			{
-				propertyNames.insert(lookups.LookupSelectorName(selector));
-			}
+			// A class that the class table does not have (a private class): its own list.
+			properties = object->GetProperties();
+		}
+		for (uint16_t selector : properties)
+		{
+			propertyNames.insert(lookups.LookupSelectorName(selector));
 		}
 	}
 
