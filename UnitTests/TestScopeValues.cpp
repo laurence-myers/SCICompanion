@@ -824,8 +824,10 @@ namespace UnitTests
 				super 166 4
 				ret
 			)", "aTop(ldi) super(push(ldi*) push0) ret");
-			// The argument count of the second message.
-			AssertValues(R"(
+			// The argument count of the second message: the store comes
+			// after the pushes of the first message, so it cannot come
+			// before the send in the text.
+			AssertValuesFail(R"(
 				pushi 110
 				push0
 				pushi 111
@@ -836,7 +838,37 @@ namespace UnitTests
 				selfID
 				send 10
 				ret
-			)", "aTop(ldi) send(pushi push0 pushi push(ldi*) push2 selfID) ret");
+			)", "slot-order", 8);
+			// An argument before the slot reads the variable that the store
+			// sets: in the text, it would read the new value.
+			AssertValuesFail(R"(
+				pushi 51
+				push1
+				lst 0
+				pushi 110
+				ldi 1
+				sat 0
+				push
+				push0
+				lap 1
+				send 12
+				ret
+			)", "slot-order", 9);
+			// The argument count reads back a variable that a store of a
+			// number set (the optimiser deleted the load): the slot is the
+			// number, so the send keeps its arguments.
+			AssertValues(R"(
+				ldi 3
+				sat 0
+				pushi 110
+				push
+				pushi 1
+				pushi 2
+				pushi 3
+				lap 1
+				send 10
+				ret
+			)", "sat(ldi) send(pushi push(ldi*) pushi pushi pushi lap) ret");
 			// A selector that a variable holds, from a call (Hoyle Classic
 			// script 700, BridgeHand::bid): the push reads the variable back.
 			AssertValues(R"(
@@ -879,7 +911,7 @@ namespace UnitTests
 				selfID
 				send 10
 				ret
-			)", "slot-effect", 10);
+			)", "slot-order", 10);
 		}
 
 		TEST_METHOD(Values_ADeadBreak)

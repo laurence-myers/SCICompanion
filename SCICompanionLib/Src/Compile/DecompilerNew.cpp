@@ -801,7 +801,12 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, Decompi
 							else
 							{
 								// Must be a param count
-								cParamsLeft = _GetImmediateFromCodeNode(*node.Child(i), pPreviousChild);
+								bool foundCount;
+								cParamsLeft = _GetImmediateFromCodeNode(*node.Child(i), pPreviousChild, false, &foundCount);
+								if (!foundCount)
+								{
+									throw ConsumptionNodeException(node.Child(i), "Expected the number of arguments.");
+								}
 								if (cParamsLeft == 0)
 								{
 									if (_MaybeConsumeRestInstruction(sendParam.get(), i + 1, node, lookups))

@@ -7,9 +7,10 @@
 ; then take a store whose value is that number (SQ1 VGA script 34,
 ; egoDropOratPart::changeState; KQ6 floppy script 370, AzurePrint::init).
 ; A selector can also be the value of a variable that a store sets (Hoyle
-; Classic script 700, BridgeHand::bid).
+; Classic script 700, BridgeHand::bid). The argument count of a send can read
+; back a variable that a store of a number set.
 ; Sierra: (= temp0 2) (Random 2 1) (= temp1 init) (param1 init:)
-; (= temp2 (param1 size:)) (param1 temp2:).
+; (= temp2 (param1 size:)) (param1 temp2:) (= temp0 3) (param1 posn: 1 2 3).
 (public
 	v3StoreInSlot 0
 )
@@ -37,6 +38,15 @@
 		push0
 		lap param1
 		send 4
+		ldi 3
+		sat temp0
+		pushi #posn
+		push
+		pushi 1
+		pushi 2
+		pushi 3
+		lap param1
+		send 10
 		ret
 	)
 )

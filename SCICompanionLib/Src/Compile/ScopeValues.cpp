@@ -763,13 +763,15 @@ namespace scope
 			// call, and the push takes a copy of the value. A selector can
 			// also be the value of a variable that the store sets (Hoyle
 			// Classic script 700, BridgeHand::bid: "sat temp6; push; push0;
-			// lat temp5; send"): the push reads the variable back. The
-			// operands before the slot must have no effect: in the text, the
-			// store comes before them. Another effect in a slot is a failure.
+			// lat temp5; send"): the push reads the variable back. The store
+			// must come before each instruction of the operands before the
+			// slot (in the text, it comes before the call). Another effect in
+			// a slot is a failure. A slot that reads back a variable that a
+			// store of ldi n set (the optimiser deleted the load) is the
+			// number: the text of a send needs the number of its arguments.
 			void _HoistSlotStores(int reader, ConsumptionNode &call)
 			{
 				Opcode op = _model.Op(reader);
-				std::vector<ConsumptionNode *> slots;
 				size_t count = call.GetChildCount();
 				if ((op == Opcode::SEND) || (op == Opcode::SELF) || (op == Opcode::SUPER))
 				{
@@ -789,8 +791,8 @@ namespace scope
 							break;
 						}
 						ConsumptionNode *argc = call.Child((int)k + 1);
-						slots.push_back(selector);
-						slots.push_back(argc);
+						_Slot(reader, call, *selector);
+						_Slot(reader, call, *argc);
 						int number = 0;
 						if (!_SlotNumber(*argc, number))
 						{
@@ -801,49 +803,82 @@ namespace scope
 				}
 				else if (count > 0)
 				{
-					slots.push_back(call.Child(0));
-				}
-				for (ConsumptionNode *slot : slots)
-				{
-					if (!slot->_hasPos || (slot->GetCode()->get_opcode() != Opcode::PUSH) || (slot->GetChildCount() != 1))
-					{
-						continue;
-					}
-					ConsumptionNode *value = slot->Child(0);
-					bool plain = _IsPlainStore(*value);
-					if (plain || _IsVariableStore(*value))
-					{
-						for (size_t k = 0; call.Child((int)k) != slot; ++k)
-						{
-							if (_HasEffect(*call.Child((int)k)))
-							{
-								_Fail("slot-effect", reader, "an effect before a store in a slot");
-							}
-						}
-						std::unique_ptr<ConsumptionNode> store = slot->StealChild(0);
-						store->_hoisted = true;
-						if (plain)
-						{
-							slot->AppendChild(_DeepCopy(*store->Child(0)));
-						}
-						else
-						{
-							// The value is read back from the variable.
-							std::unique_ptr<ConsumptionNode> copy = std::make_unique<ConsumptionNode>();
-							copy->SetType(ChunkType::ShortCircuitInstruction);
-							copy->SetPos(store->GetCode());
-							copy->_copy = true;
-							slot->AppendChild(std::move(copy));
-						}
-						int index = _indexOf.at(&*store->GetCode());
-						_Append(std::move(store), false, index);
-					}
-					else if (_HasEffect(*value))
-					{
-						_Fail("slot-effect", reader);
-					}
+					_Slot(reader, call, *call.Child(0));
 				}
 			}
+
+			// One slot of the call (see _HoistSlotStores).
+			void _Slot(int reader, ConsumptionNode &call, ConsumptionNode &slot)
+			{
+				if (!slot._hasPos || (slot.GetCode()->get_opcode() != Opcode::PUSH) || (slot.GetChildCount() != 1))
+				{
+					return;
+				}
+				ConsumptionNode *value = slot.Child(0);
+				if (value->_copy)
+				{
+					// A copy that reads back a variable that a store of ldi n
+					// set: the slot is the number.
+					auto immediate = (value->GetType() == ChunkType::ShortCircuitInstruction) ? _storeImmediate.find(_indexOf.at(&*value->GetCode())) : _storeImmediate.end();
+					if (immediate != _storeImmediate.end())
+					{
+						std::unique_ptr<ConsumptionNode> number = std::make_unique<ConsumptionNode>();
+						number->SetPos(_pos[immediate->second]);
+						number->_copy = true;
+						slot.StealChild(0);
+						slot.AppendChild(std::move(number));
+					}
+					return;
+				}
+				bool plain = _IsPlainStore(*value);
+				if (plain || _IsVariableStore(*value))
+				{
+					// The store must come before each instruction of the
+					// operands before the slot: in the text, it comes before
+					// the call.
+					int storeFirst = _FirstInstruction(*value);
+					for (size_t k = 0; call.Child((int)k) != &slot; ++k)
+					{
+						if (_FirstInstruction(*call.Child((int)k)) < storeFirst)
+						{
+							_Fail("slot-order", reader, "an operand before a store in a slot");
+						}
+					}
+					std::unique_ptr<ConsumptionNode> store = slot.StealChild(0);
+					if (plain)
+					{
+						slot.AppendChild(_DeepCopy(*store->Child(0)));
+					}
+					else
+					{
+						// The value is read back from the variable.
+						std::unique_ptr<ConsumptionNode> copy = std::make_unique<ConsumptionNode>();
+						copy->SetType(ChunkType::ShortCircuitInstruction);
+						copy->SetPos(store->GetCode());
+						copy->_copy = true;
+						slot.AppendChild(std::move(copy));
+					}
+					int index = _indexOf.at(&*store->GetCode());
+					_Append(std::move(store), false, index);
+				}
+				else if (_HasEffect(*value))
+				{
+					_Fail("slot-effect", reader);
+				}
+			}
+
+			// The first instruction of the subtree that is not a copy;
+			// INT_MAX when it has none.
+			int _FirstInstruction(ConsumptionNode &node) const
+			{
+				int first = (node._hasPos && !node._copy) ? _indexOf.at(&*node.GetCode()) : INT_MAX;
+				for (size_t k = 0; k < node.GetChildCount(); ++k)
+				{
+					first = (std::min)(first, _FirstInstruction(*node.Child((int)k)));
+				}
+				return first;
+			}
+
 
 			// A dup outside a switch: a copy of the value on the stack top
 			// (the optimiser makes a dup of a push of the same value). The
@@ -1167,6 +1202,12 @@ namespace scope
 					}
 					return;
 				}
+				if (!load && !_IsVOIndexed(op) && (_acc.kind == FactKind::Immediate) && _IsVOStoreOperation(op))
+				{
+					// A store of ldi n: a copy that reads the variable back is
+					// the number too.
+					_storeImmediate[i] = _acc.source;
+				}
 				_acc = _IsVOIndexed(op) ? Fact() : Fact{ FactKind::Variable, i };
 			}
 
@@ -1448,7 +1489,7 @@ namespace scope
 				for (size_t c = 0; c < node.GetChildCount(); ++c)
 				{
 					std::pair<int, int> child = _CheckOrder(*node.Child((int)c), indexOf, inTree);
-					if ((child.first == -1) || node.Child((int)c)->_hoisted)
+					if (child.first == -1)
 					{
 						continue;
 					}
@@ -1504,6 +1545,8 @@ namespace scope
 			// The text leaves another value in the accumulator than the code
 			// (after the statement form of an or).
 			bool _accDiffers = false;
+			// A store of ldi n to a variable (its instruction): the ldi.
+			std::map<int, int> _storeImmediate;
 			// The last live instruction is a ret (in the same sequence).
 			bool _afterReturn = false;
 		};

@@ -13,4 +13,6 @@
 	(param1 init:)
 	(= temp2 (param1 size?))
 	(param1 temp2?)
+	(= temp0 3)
+	(param1 posn: 1 2 3)
 )
