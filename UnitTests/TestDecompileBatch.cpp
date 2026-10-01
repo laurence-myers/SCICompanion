@@ -203,6 +203,57 @@ namespace UnitTests
             Assert::IsTrue(ContainsIdentifier(text, "gGame_opt"), ToW("script 953 should use gGame_opt:\n" + text).c_str());
             Assert::IsTrue(ContainsIdentifier(text, "theSave_sol"), ToW("the local is named from save.sol:\n" + text).c_str());
             Assert::IsTrue(ContainsIdentifier(text, "theMenu_opt"), ToW("the temp is named from menu.opt:\n" + text).c_str());
+            Assert::IsTrue(text.find("theSave.sol") == std::string::npos, ToW("the local declaration should have no dot:\n" + text).c_str());
+            Assert::IsTrue(text.find("theMenu.opt") == std::string::npos, ToW("the temp declaration should have no dot:\n" + text).c_str());
+            Assert::IsTrue(CompileFixture(953, "DottedObjectNames", &error), ToW("the decompiled script should compile: " + error + "\n" + text).c_str());
+        }
+
+        // An older namer wrote names with a dot into the .sco files. The batch
+        // cleans such a global name, writes it to Main.sco and reports it as
+        // a rename. It cleans such a local name too.
+        TEST_METHOD(Batch_DottedNamesInOldObjectFiles_AreCleaned)
+        {
+            _gameFolder = SetUpGameSCI11();
+            UnnameGlobal5();
+            AddFixtureScript("DottedObjectNames");
+            std::string error;
+            Assert::IsTrue(CompileFixture(953, "DottedObjectNames", &error), ToW("compile of DottedObjectNames failed: " + error).c_str());
+
+            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            GlobalCompiledScriptLookups lookups;
+            Assert::IsTrue(lookups.Load(helper), L"lookups should load");
+            {
+                std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(helper, 0, lookups.GetSelectorTable());
+                Assert::IsNotNull(mainSCO.get(), L"the template game should have Main.sco");
+                mainSCO->GetVariables()[5].SetName("gGame.opt");
+                Assert::IsTrue(SaveSCOFile(helper, *mainSCO).has_value(), L"setup: could not write Main.sco");
+                std::unique_ptr<CSCOFile> scriptSCO = GetExistingSCOFromScriptNumber(helper, 953, lookups.GetSelectorTable());
+                Assert::IsNotNull(scriptSCO.get(), L"the fixture should have an .sco");
+                Assert::AreEqual(std::string("local0"), scriptSCO->GetVariableName(0), L"the fixture's local 0 is local0");
+                scriptSCO->GetVariables()[0].SetName("theSave.sol");
+                Assert::IsTrue(SaveSCOFile(helper, *scriptSCO).has_value(), L"setup: could not write the fixture's .sco");
+            }
+
+            uint16_t dummy;
+            lookups.GetSelectorTable().ReverseLookup("", dummy);
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
+            TestDecompilerResults results;
+            DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
+            Assert::IsTrue(batch.Run({ 953 }).has_value());
+
+            bool reported = false;
+            for (const auto &rename : batch.GetGlobalRenames())
+            {
+                reported = reported || ((rename.first == "global5") && (rename.second == "gGame_opt"));
+            }
+            Assert::IsTrue(reported, L"the cleaned name of global5 should be a rename");
+            std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(helper, 0, lookups.GetSelectorTable());
+            Assert::IsNotNull(mainSCO.get(), L"Main.sco should still exist");
+            Assert::AreEqual(std::string("gGame_opt"), mainSCO->GetVariableName(5), L"Main.sco should hold the cleaned name");
+
+            std::string text = ReadTextFile(helper.GetScriptFileName(953));
+            Assert::IsTrue(text.find("theSave.sol") == std::string::npos, ToW("the local declaration should have no dot:\n" + text).c_str());
+            Assert::IsTrue(ContainsIdentifier(text, "theSave_sol"), ToW("the local should keep its cleaned name:\n" + text).c_str());
             Assert::IsTrue(CompileFixture(953, "DottedObjectNames", &error), ToW("the decompiled script should compile: " + error + "\n" + text).c_str());
         }
 

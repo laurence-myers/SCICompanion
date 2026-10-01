@@ -135,7 +135,7 @@ public:
 			const vector<CSCOLocalVariable> &localVars = scriptSCO->GetVariables();
 			for (int index = 0; index < (int)localVars.size(); index++)
 			{
-				const string &scoName = localVars[index].GetName();
+				const string scoName = CleanTokenSCI(localVars[index].GetName());
 				auto declaration = declarationAt.find(index);
 				if (!scoName.empty() && (declaration != declarationAt.end()))
 				{
@@ -171,10 +171,19 @@ public:
 
 	vector<pair<string, string>> IsMainDirty() { return _mainRenamesInfo; }
 	void ClearMainDirty() { _mainRenamesInfo.clear(); }
+	// Adds the globals that ImportGlobalNames cleaned to the globals this
+	// namer named.
+	void ReportCleanedGlobals()
+	{
+		_mainRenamesInfo.insert(_mainRenamesInfo.end(), _cleanedGlobals.begin(), _cleanedGlobals.end());
+		_cleanedGlobals.clear();
+	}
 
 	// Adopts the global names in the SCO that holds the globals. A global that
 	// already has a name here keeps it, so this can be called again whenever
-	// another script has pushed new names to that SCO.
+	// another script has pushed new names to that SCO. A name that is not a
+	// valid token (an older namer made names such as "gGame.opt") is cleaned,
+	// also in the SCO, and ReportCleanedGlobals reports it.
 	void ImportGlobalNames()
 	{
 		if (_globalVarSCO)
@@ -192,7 +201,14 @@ public:
 					!_IsUndeterminedGlobalScope(globalVar.GetName()))
 				{
 					// It must have been given a name, so use it.
-					SetRenamed(nullptr, stdGlobalName, globalVar.GetName(), false);
+					string name = CleanTokenSCI(globalVar.GetName());
+					SetRenamed(nullptr, stdGlobalName, name, false);
+					if (name != globalVar.GetName())
+					{
+						name = GetRenamed(nullptr, stdGlobalName);
+						globalVar.SetName(name);
+						_cleanedGlobals.emplace_back(stdGlobalName, name);
+					}
 				}
 				index++;
 			}
@@ -314,6 +330,7 @@ private:
 
 	bool _dirty;
 	std::vector<std::pair<std::string, std::string>> _mainRenamesInfo;
+	std::vector<std::pair<std::string, std::string>> _cleanedGlobals;
 	TwoWayMap localMap;
 	CSCOFile *_mainSCO;
 	CSCOFile *_globalVarSCO;
@@ -766,6 +783,7 @@ vector<pair<string, string>> VariableNamer::Run()
 	// only suggests a name once it has one itself, so a global that is still
 	// "globalN" in the tree would suggest nothing.
 	renameContext.ImportGlobalNames();
+	renameContext.ReportCleanedGlobals();
 	{
 		ApplyVariableNames applyVarNames(renameContext, _config->GetSelectorTable());
 		_script.Traverse(applyVarNames);
