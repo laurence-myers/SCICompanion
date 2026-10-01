@@ -111,5 +111,30 @@ namespace UnitTests
                 Assert::IsTrue((uint32_t)section.end <= rawByteCount, L"code section: end past GetRawBytes().size()");
             }
         }
+
+        // An SCI0 export section whose size fits 2-byte entries is read with
+        // 2-byte entries, also in a game whose exports are 4 bytes (KQ5 and
+        // Mixed-Up Fairy Tales script 975); and the other way round.
+        TEST_METHOD(SCI0_ExportWidthFromTheSectionSize)
+        {
+            GameFolderHelper helper;
+            const std::vector<uint8_t> narrow = { 0x07, 0x00, 0x0a, 0x00, 0x02, 0x00, 0x34, 0x12, 0x78, 0x56, 0x00, 0x00 };
+            const std::vector<uint8_t> wide = { 0x07, 0x00, 0x0e, 0x00, 0x02, 0x00, 0x34, 0x12, 0x00, 0x00, 0x78, 0x56, 0x00, 0x00, 0x00, 0x00 };
+            for (bool gameIsWide : { true, false })
+            {
+                for (const std::vector<uint8_t> *bytes : { &narrow, &wide })
+                {
+                    SCIVersion version = sciVersion0;
+                    version.IsExportWide = gameIsWide;
+                    CompiledScript compiledScript(975);
+                    sci::istream stream(bytes->data(), (uint32_t)bytes->size());
+                    compiledScript.Load(helper, version, 975, stream);
+                    std::vector<uint16_t> exports = compiledScript.GetExports();
+                    Assert::AreEqual((size_t)2, exports.size());
+                    Assert::AreEqual((uint16_t)0x1234, exports[0]);
+                    Assert::AreEqual((uint16_t)0x5678, exports[1]);
+                }
+            }
+        }
     };
 }

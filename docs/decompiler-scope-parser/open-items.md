@@ -21,14 +21,6 @@ Open items only: gaps, unfixed findings, questions. The plan is in
   - two selectors with one name: the SCI1.1 template sends selector 509
     (`case`), and its recompile sends 732 (`Conversation::add`,
     `DialogEditor::exit`).
-- **An export table that differs from Snuffer's.** KQ5 floppy and Mixed-Up
-  Fairy Tales (VGA and EGA), script 975: the decompiler reads export 1 as
-  `013a`, export 2 as `015c`, export 3 as `007c` and export 4 as `5776`;
-  Snuffer has other addresses and a real `proc975_3`. Export 3 is inside
-  `DR::quitGame`, so the decompiler leaves it out as stale, and no function
-  covers the code from `008c` to `013a` (Snuffer's `proc975_1` and
-  `proc975_3`). Older than the stale-export rule; 3 of the 39 stale
-  exports of the corpus (the other 36 are not in Snuffer's public blocks).
 - **Decompiled text that does not compile.** 1418 functions of the gate
   sample are in scripts whose decompiled text has compile errors (for
   example `&rest` in a send whose target has a nested send, or a property

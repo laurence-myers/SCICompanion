@@ -284,7 +284,8 @@ private:
 	bool _LoadSCI0_SCI1(sci::istream &byteStream);
 	bool _LoadSCI1_1(const GameFolderHelper &helper, int iScriptNumber, sci::istream &byteStream, sci::istream *heapStream);
 	void _LoadStringOffsetsSCI1_1(uint16_t offset, sci::istream heapStream);
-	bool _ReadExports(sci::istream &stream);
+	// sectionSize: the size of an SCI0 export section; 0 when it is not known.
+	bool _ReadExports(sci::istream &stream, uint16_t sectionSize = 0);
 	bool _ReadStrings(sci::istream &stream, uint16_t wDataSize);
 	bool _ReadSaids(sci::istream &stream, uint16_t wDataSize);
 	CompiledObject *_FindObjectWithSpecies(uint16_t wIndex);

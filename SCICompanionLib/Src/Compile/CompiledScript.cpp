@@ -701,7 +701,7 @@ bool CompiledScript::_LoadSCI0_SCI1(sci::istream &byteStream)
 						// (also: magic entry point for script 0, entry 0, the play method.
 						if (!IsFlagSet(_flags, CompiledScriptFlags::DontLoadExports))
 						{
-							fRet = _ReadExports(byteStream);
+							fRet = _ReadExports(byteStream, wSectionSize);
 						}
 					}
 					break;
@@ -1077,16 +1077,32 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 	return stream.good();
 }
 
-bool CompiledScript::_ReadExports(sci::istream &stream)
+bool CompiledScript::_ReadExports(sci::istream &stream, uint16_t sectionSize)
 {
 	uint16_t wNumExports;
 	stream >> wNumExports;
 	if (stream.good())
 	{
+		// The width of an entry: the game's, unless the size of the section
+		// (with its type, size and count words) fits only the other width.
+		// KQ5 and Mixed-Up Fairy Tales have 4-byte exports, but script 975
+		// (a debug script) has 2-byte ones.
+		bool wide = _version.IsExportWide;
+		if ((sectionSize != 0) && (wNumExports != 0))
+		{
+			if (sectionSize == 6 + wNumExports * 2)
+			{
+				wide = false;
+			}
+			else if (sectionSize == 6 + wNumExports * 4)
+			{
+				wide = true;
+			}
+		}
 		for (uint16_t i = 0; stream.good() && i < wNumExports; i++)
 		{
 			uint16_t offset;
-			if (_version.IsExportWide)
+			if (wide)
 			{
 				uint32_t offsetWide;
 				stream >> offsetWide;
