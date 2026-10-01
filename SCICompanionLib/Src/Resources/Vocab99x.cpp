@@ -1095,31 +1095,35 @@ std::vector<uint16_t> GlobalClassTable::GetSubclassesOf(uint16_t baseClass)
 }
 
 // vocab.996 gives the script of each species, so _map lists a script's
-// species in number order. The compiler and the .sco number a script's
-// classes in the order of its source; for a decompiled script, that is the
-// order of the compiled script. A game can have its classes in another order
-// (LB2 script 0); with the species in number order, a recompile would give
-// two classes each other's species. So each script's list starts with the
+// species in number order. The .sco and the compile find a class by its
+// place in its script: the order of the source, which for a decompiled
+// script is the order of the compiled script. A game can have its classes
+// in another order (LB2 script 0). So each script's list starts with the
 // species of the script's compiled classes, in their order; the table's
 // other species for the script follow, in number order (The Colonel's
 // Bequest has a species for script 999 that script 999 does not have). A
 // compiled class can have a species that the table gives another script (a
 // leftover class: KQ5 script 992 has Rev, species 24 of script 978; LSL1
 // VGA has egoActions, species 119 of script 390, in six other scripts): it
-// keeps its species and its place, so the classes after it keep theirs.
-// The table does not change. A script that does not load keeps its order.
+// keeps its place in the list. The table does not change. A script that
+// does not load keeps its order.
 void SpeciesTable::_AlignScript(uint16_t wScript, const CompiledScript &compiledScript)
 {
-	_aligned.insert(wScript);
 	vector<uint16_t> ordered;
 	unordered_set<uint16_t> placed;
+	vector<pair<string, uint16_t>> &classes = _compiledClasses[wScript];
+	classes.clear();
 	for (const auto &object : compiledScript.GetObjects())
 	{
 		uint16_t objectSpecies = object->GetSpecies();
-		if (!object->IsInstance() && (objectSpecies < _direct.size()) && !placed.count(objectSpecies))
+		if (!object->IsInstance() && (objectSpecies < _direct.size()))
 		{
-			ordered.push_back(objectSpecies);
-			placed.insert(objectSpecies);
+			classes.emplace_back(object->GetName(), objectSpecies);
+			if (!placed.count(objectSpecies))
+			{
+				ordered.push_back(objectSpecies);
+				placed.insert(objectSpecies);
+			}
 		}
 	}
 	auto existing = _map.find(wScript);
@@ -1153,6 +1157,58 @@ void SpeciesTable::AlignScript(const GameFolderHelper &helper, uint16_t wScript)
 	}
 }
 
+// A class gets its species by its name, not by its place: a class that the
+// source adds, removes or moves leaves the others their species, and only
+// the class with the name of a leftover class gets the leftover's species
+// (a class at the place of a removed leftover class would get the species of
+// another script's class).
+bool SpeciesTable::CompiledClassSpecies(uint16_t wScript, const std::string &className, const std::unordered_set<uint16_t> &used, SpeciesIndex &species) const
+{
+	auto classes = _compiledClasses.find(wScript);
+	if (classes != _compiledClasses.end())
+	{
+		for (const auto &compiledClass : classes->second)
+		{
+			if ((compiledClass.first == className) && !used.count(compiledClass.second))
+			{
+				species = compiledClass.second;
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+SpeciesIndex SpeciesTable::UnusedSpecies(uint16_t wScript, const std::unordered_set<uint16_t> &used)
+{
+	auto list = _map.find(wScript);
+	if (list != _map.end())
+	{
+		for (uint16_t species : list->second)
+		{
+			if ((_direct[species] == wScript) && !used.count(species))
+			{
+				return species;
+			}
+		}
+	}
+	return MaybeAddSpeciesIndex(wScript, (uint16_t)((list != _map.end()) ? list->second.size() : 0));
+}
+
+void SpeciesTable::SetScriptOrder(uint16_t wScript, const std::vector<uint16_t> &species)
+{
+	vector<uint16_t> ordered = species;
+	unordered_set<uint16_t> placed(species.begin(), species.end());
+	for (uint16_t tableSpecies : _map[wScript])
+	{
+		if (!placed.count(tableSpecies))
+		{
+			ordered.push_back(tableSpecies);
+		}
+	}
+	_map[wScript] = ordered;
+}
+
 void SpeciesTable::_AlignToCompiledScripts(const GameFolderHelper &helper)
 {
 	// Find the scripts and their heaps in one pass: a lookup for each script
@@ -1175,10 +1231,6 @@ void SpeciesTable::_AlignToCompiledScripts(const GameFolderHelper &helper)
 	for (auto &scriptAndSpecies : _map)
 	{
 		vector<uint16_t> &species = scriptAndSpecies.second;
-		if (species.size() < 2)
-		{
-			continue;   // Nothing to order.
-		}
 		auto found = scriptsAndHeaps.find(scriptAndSpecies.first);
 		if ((found == scriptsAndHeaps.end()) || !found->second.first)
 		{
@@ -1189,6 +1241,7 @@ void SpeciesTable::_AlignToCompiledScripts(const GameFolderHelper &helper)
 		{
 			continue;
 		}
+		_aligned.insert(scriptAndSpecies.first);
 		_AlignScript(scriptAndSpecies.first, compiledScript);
 	}
 }
@@ -1276,6 +1329,8 @@ void SpeciesTable::PurgeOldClasses(CResourceMap &resourceMap)
 		// Then reload.
 		_map.clear();
 		_direct.clear();
+		_aligned.clear();
+		_compiledClasses.clear();
 		_wNewSpeciesIndex = 0;
 		_fDirty = false;
 		this->Load(helper, false);   // No caller reads the species order after a purge.

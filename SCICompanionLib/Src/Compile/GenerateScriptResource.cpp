@@ -1008,15 +1008,19 @@ void GenerateSCOObjects(CompileContext &context, const Script &script)
 	// they were defined in the script.
 	// scriptClassIndexToSpeciesIndex will make the index of each in class in this script,
 	// to a global species index.
-	vector<WORD> scriptClassIndexToSpeciesIndex;
+	vector<string> classNames;
 	for (auto &classDef : script.GetClasses())
 	{
 		if (!classDef->IsInstance())
 		{
-			// This is a class.  Ensure it has a spot in the species table.
-			WORD wSpeciesIndex = context.EnsureSpeciesTableEntry((WORD)scriptClassIndexToSpeciesIndex.size());
-			scriptClassIndexToSpeciesIndex.push_back(wSpeciesIndex);
-
+			classNames.push_back(classDef->GetName());
+		}
+	}
+	vector<WORD> scriptClassIndexToSpeciesIndex = context.EnsureSpeciesTableEntries(classNames);
+	for (auto &classDef : script.GetClasses())
+	{
+		if (!classDef->IsInstance())
+		{
 			// This is sort of a hack.  We need to have the CSCOObjectClass for all the classes in this file
 			// around, prior to executing the rest of this function.  For example, if the Script class has
 			// a property of type Script (which it does), we need this data type to resolve propertly.
@@ -1028,11 +1032,9 @@ void GenerateSCOObjects(CompileContext &context, const Script &script)
 		}
 	}
 
-	// NOTE: if the user moves classes around in a file, things will get corrupt.  The species indicies will
-	// be wrong.  We need to figure this out now (look in the SCO file?) - and tell the species table that
-	// it needs to dirty itself, even though the number of classes didn't change... hmm. Actually - that won't
-	// change the species table at all.  But it does mean that any file that references one of these classes
-	// will need to recompile.
+	// A class keeps its species by its name (EnsureSpeciesTableEntries), so a
+	// class that moves in the file keeps it, and so do the classes after a
+	// class that the file adds or removes.
 
 	// Now that we're sure we have an entry in the species table for each class, we
 	// can construct the SCO object for each.

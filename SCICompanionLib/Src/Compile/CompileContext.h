@@ -359,7 +359,10 @@ public:
 	std::vector<code_pos> &GetExports();
 	std::vector<WORD> &GetPublicInstanceOffsets();
 	void SetScriptNumber();
-	WORD EnsureSpeciesTableEntry(WORD wIndexInScript);
+	// The species of each class of the script, in the order of the source:
+	// the species of the compiled class with its name, else a species of the
+	// script that is left, else a new one.
+	std::vector<WORD> EnsureSpeciesTableEntries(const std::vector<std::string> &classNames);
 	void LoadIncludes();
 	void AddSCOClass(CSCOObjectClass scoClass, bool fInstance);
 	void ReplaceSCOClass(CSCOObjectClass scoClass);

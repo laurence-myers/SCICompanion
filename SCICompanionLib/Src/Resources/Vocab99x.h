@@ -157,10 +157,21 @@ public:
 	bool GetSpeciesLocation(SpeciesIndex wSpeciesIndex, uint16_t &wScript, uint16_t &wClassIndexInScript) const;
 	SpeciesIndex MaybeAddSpeciesIndex(uint16_t wScript, uint16_t wClassIndexInScript);
 	// Orders the species of the script as the classes of its compiled
-	// script (once for each script; Load aligns the scripts that the table
-	// gives two species or more). The compile calls it before it numbers
-	// the classes of the script.
+	// script, and keeps their names (once for each script; Load aligns the
+	// scripts of the table). The compile calls it before it gives the
+	// classes of the script their species.
 	void AlignScript(const GameFolderHelper &helper, uint16_t wScript);
+	// The species of the compiled class of the script with the name, when
+	// the compile has not used it (also a species that the table gives another
+	// script: a leftover class).
+	bool CompiledClassSpecies(uint16_t wScript, const std::string &className, const std::unordered_set<uint16_t> &used, SpeciesIndex &species) const;
+	// The script's first own species that the compile has not used, else a
+	// new species.
+	SpeciesIndex UnusedSpecies(uint16_t wScript, const std::unordered_set<uint16_t> &used);
+	// The order of the classes of the source: the script's list starts with
+	// their species, so a class's place in the list is its place in the
+	// compiled script.
+	void SetScriptOrder(uint16_t wScript, const std::vector<uint16_t> &species);
 	std::vector<std::string> GetNames() const;
 
 	void PurgeOldClasses(CResourceMap &resourceMap);
@@ -170,6 +181,9 @@ private:
 	void _AlignToCompiledScripts(const GameFolderHelper &helper);
 	void _AlignScript(uint16_t wScript, const CompiledScript &compiledScript);
 	std::unordered_set<uint16_t> _aligned;
+	// The classes of each aligned script's compiled script: name and
+	// species, in order.
+	std::unordered_map<uint16_t, std::vector<std::pair<std::string, uint16_t>>> _compiledClasses;
 
 	typedef std::unordered_map<uint16_t, std::vector<uint16_t> > species_map;
 

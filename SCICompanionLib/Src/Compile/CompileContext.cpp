@@ -1220,14 +1220,38 @@ void CompileContext::SetScriptNumber()
 	}
 	_scos[_wScriptNumber].SetScriptNumber(_wScriptNumber);
 }
-WORD CompileContext::EnsureSpeciesTableEntry(WORD wIndexInScript)
+std::vector<WORD> CompileContext::EnsureSpeciesTableEntries(const std::vector<std::string> &classNames)
 {
 	// This won't work unless we have a valid script number
 	assert(_wScriptNumber != InvalidResourceNumber);
-	// The classes keep the species of the classes at their places in the
-	// compiled script.
-	_tables.Species().AlignScript(Helper(), _wScriptNumber);
-	return _tables.Species().MaybeAddSpeciesIndex(_wScriptNumber, wIndexInScript);
+	SpeciesTable &table = _tables.Species();
+	table.AlignScript(Helper(), _wScriptNumber);
+	// First each class with the name of a compiled class of the script gets
+	// its species; then the others get the species that are left, or new
+	// ones.
+	std::vector<WORD> species(classNames.size(), 0);
+	std::vector<bool> given(classNames.size(), false);
+	std::unordered_set<uint16_t> used;
+	for (size_t i = 0; i < classNames.size(); i++)
+	{
+		SpeciesIndex compiledSpecies;
+		if (table.CompiledClassSpecies(_wScriptNumber, classNames[i], used, compiledSpecies))
+		{
+			species[i] = compiledSpecies.Type();
+			given[i] = true;
+			used.insert(compiledSpecies.Type());
+		}
+	}
+	for (size_t i = 0; i < classNames.size(); i++)
+	{
+		if (!given[i])
+		{
+			species[i] = table.UnusedSpecies(_wScriptNumber, used).Type();
+			used.insert(species[i]);
+		}
+	}
+	table.SetScriptOrder(_wScriptNumber, std::vector<uint16_t>(species.begin(), species.end()));
+	return species;
 }
 void CompileContext::LoadIncludes()
 {

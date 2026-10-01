@@ -12,6 +12,7 @@
 #include "ExitCodes.h"
 #include "FileWrite.h"
 #include "Vocab99x.h"
+#include "CompiledScript.h"
 #include "ResourceBlob.h"
 #include "Helper.h"
 #include "TestSupport.h"
@@ -283,6 +284,101 @@ namespace UnitTests
             options.write.writeObjectFile = !dryRun;
             options.write.writeDebugInfo = !dryRun;
         }
+
+        // The species of the classes of the script that the compile wrote, in
+        // their order.
+        static std::vector<uint16_t> CompiledSpecies(GameSession &session, uint16_t number, std::vector<const CompiledObject *> *classesOut = nullptr, std::unique_ptr<CompiledScript> *keep = nullptr)
+        {
+            auto compiled = std::make_unique<CompiledScript>(number);
+            AssertOk(compiled->TryLoad(session.Helper(), session.Helper().Version, number), "the compiled script");
+            std::vector<uint16_t> species;
+            for (const auto &object : compiled->GetObjects())
+            {
+                if (!object->IsInstance())
+                {
+                    species.push_back(object->GetSpecies());
+                    if (classesOut)
+                    {
+                        classesOut->push_back(object.get());
+                    }
+                }
+            }
+            if (keep)
+            {
+                *keep = std::move(compiled);
+            }
+            return species;
+        }
+
+        static std::string TwoClassText(const std::vector<std::string> &names)
+        {
+            std::string text = "(script# 907)\n(include sci.sh)\n(include game.sh)\n(use main)\n(use obj)\n";
+            for (const std::string &name : names)
+            {
+                text += "(class S2" + name + " of Obj\n    (properties\n        s2" + name + "Size 0\n    )\n)\n";
+            }
+            return text;
+        }
+
+        // A class keeps its species by its name: a class that moves keeps it,
+        // and the species of a leftover class (one that the table gives
+        // another script: KQ5 script 992 has Rev, species 24 of script 978)
+        // goes only to the class with its name. Removing the leftover class
+        // leaves the next class its own species, not the leftover's.
+        TEST_METHOD(Species_FollowTheClassNames)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Classes", 907, TwoClassText({ "Alpha", "Beta" })) }, ToPatchFiles()));
+            std::vector<const CompiledObject *> classes;
+            std::unique_ptr<CompiledScript> keep;
+            std::vector<uint16_t> first = CompiledSpecies(session, 907, &classes, &keep);
+            Assert::AreEqual((size_t)2, first.size());
+            uint16_t alpha = first[0];
+            uint16_t beta = first[1];
+
+            // The classes in the other order keep their species.
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Classes", 907, TwoClassText({ "Beta", "Alpha" })) }, ToPatchFiles()));
+            std::vector<uint16_t> swapped = CompiledSpecies(session, 907);
+            Assert::AreEqual((int)beta, (int)swapped[0]);
+            Assert::AreEqual((int)alpha, (int)swapped[1]);
+
+            // Alpha with the species of another script (a leftover class).
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Classes", 907, TwoClassText({ "Alpha", "Beta" })) }, ToPatchFiles()));
+            classes.clear();
+            CompiledSpecies(session, 907, &classes, &keep);
+            SpeciesTable table;
+            Assert::IsTrue(table.Load(session.Helper(), false));
+            uint16_t other = 0;
+            uint16_t otherScript = 0;
+            uint16_t place = 0;
+            while (table.GetSpeciesLocation(SpeciesIndex(other), otherScript, place) && (otherScript == 907))
+            {
+                other++;
+            }
+            Assert::AreNotEqual((uint16_t)907, otherScript, L"setup: a species of another script");
+            const GameFolderHelper &helper = session.Helper();
+            std::unique_ptr<ResourceBlob> original = helper.MostRecentResource(ResourceType::Script, 907, ResourceEnumFlags::None);
+            std::vector<uint8_t> data(original->GetData(), original->GetData() + original->GetLength());
+            size_t alphaAt = classes[0]->GetPosInResource() + 6;
+            Assert::IsTrue((data[alphaAt] | (data[alphaAt + 1] << 8)) == alpha, L"setup: the species is where the SCI0 format puts it");
+            data[alphaAt] = (uint8_t)(other & 0xff);
+            data[alphaAt + 1] = (uint8_t)(other >> 8);
+            ResourceBlob patched(helper, nullptr, ResourceType::Script, data, helper.Version.DefaultVolumeFile, 907, NoBase36, helper.Version, ResourceSourceFlags::PatchFile);
+            AssertOk(session.ResourceMap().WriteResource(patched));
+
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Classes", 907, TwoClassText({ "Alpha", "Beta" })) }, ToPatchFiles()));
+            std::vector<uint16_t> leftover = CompiledSpecies(session, 907);
+            Assert::AreEqual((int)other, (int)leftover[0], L"the leftover class keeps its species");
+            Assert::AreEqual((int)beta, (int)leftover[1], L"the class after it keeps its species");
+
+            // Without the leftover class, Beta keeps its species.
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Classes", 907, TwoClassText({ "Beta" })) }, ToPatchFiles()));
+            std::vector<uint16_t> removed = CompiledSpecies(session, 907);
+            Assert::AreEqual((size_t)1, removed.size());
+            Assert::AreEqual((int)beta, (int)removed[0], L"the class after a removed leftover class keeps its species");
+        }
+
 
     public:
         // Every script of both templates compiles in one batch, with no
