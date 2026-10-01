@@ -767,6 +767,70 @@ namespace UnitTests
 			Assert::AreEqual(std::string("bad-export-body"), rows[1].outcome.detail);
 		}
 
+		// A local procedure that only dead code calls is dead code too: the
+		// text leaves out the dead call, so the recompiled script has no
+		// caller for it (QfG3 script 460, localproc_1f5b).
+		TEST_METHOD(Meaning_AProcedureThatOnlyDeadCodeCallsIsUncompared)
+		{
+			auto local = [](const std::string &key, const std::string &code)
+			{
+				meaning::Function function = Fn(code);
+				function.key = key;
+				return function;
+			};
+			// f calls local 0, and local 1 after its ret.
+			meaning::Function original = Fn("push0\ncall 0 0\nret\npush0\ncall 0 0\nret");
+			original.code[1].text = "local 0";
+			original.code[4].text = "local 1";
+			meaning::Function recompiled = Fn("push0\ncall 0 0\nret");
+			recompiled.code[1].text = "local 0";
+			meaning::Function a0 = local("local 0", "push0\ncallk 1 0\nret");
+			meaning::Function b1 = local("local 1", "push0\ncallk 2 0\nret");
+			std::vector<meaning::FunctionOutcome> rows = meaning::CompareFunctions({ original, a0, b1 }, { recompiled, a0 });
+			Assert::AreEqual((size_t)3, rows.size());
+			AssertVerdict(meaning::Verdict::Same, rows[0].outcome);
+			AssertVerdict(meaning::Verdict::Same, rows[1].outcome);
+			AssertVerdict(meaning::Verdict::Uncompared, rows[2].outcome);
+			Assert::AreEqual(std::string("no-live-caller"), rows[2].outcome.detail);
+			// A procedure that live code calls, and that the text lost, differs.
+			original.code[1].text = "local 1";
+			rows = meaning::CompareFunctions({ original, a0, b1 }, { recompiled, a0 });
+			AssertVerdict(meaning::Verdict::Diff, rows[2].outcome);
+			// The calls of a function that the check cannot read all count.
+			original.code[1].text = "local 0";
+			original.unreadable = "code-bounds";
+			rows = meaning::CompareFunctions({ original, a0, b1 }, { recompiled, a0 });
+			AssertVerdict(meaning::Verdict::Diff, rows[2].outcome);
+			Assert::AreEqual(std::string("no-recompiled-function"), rows[2].outcome.detail);
+		}
+
+		// A recompiled procedure with no partner of the same meaning does not
+		// pair with an original procedure that only dead code calls.
+		TEST_METHOD(Meaning_AProcedureThatOnlyDeadCodeCallsDoesNotPairInOrder)
+		{
+			auto local = [](const std::string &key, const std::string &code)
+			{
+				meaning::Function function = Fn(code);
+				function.key = key;
+				return function;
+			};
+			// f calls local 1, and local 0 after its ret.
+			meaning::Function original = Fn("push0\ncall 0 0\nret\npush0\ncall 0 0\nret");
+			original.code[1].text = "local 1";
+			original.code[4].text = "local 0";
+			meaning::Function recompiled = Fn("push0\ncall 0 0\nret");
+			recompiled.code[1].text = "local 0";
+			meaning::Function dead = local("local 0", "push0\ncallk 1 0\nret");
+			meaning::Function called = local("local 1", "push0\ncallk 2 0\nret");
+			meaning::Function changed = local("local 0", "push0\ncallk 3 0\nret");
+			std::vector<meaning::FunctionOutcome> rows = meaning::CompareFunctions({ original, dead, called }, { recompiled, changed });
+			Assert::AreEqual((size_t)3, rows.size());
+			AssertVerdict(meaning::Verdict::Uncompared, rows[1].outcome);
+			Assert::AreEqual(std::string("no-live-caller"), rows[1].outcome.detail);
+			AssertVerdict(meaning::Verdict::Diff, rows[2].outcome);
+			Assert::AreNotEqual(std::string("no-recompiled-function"), rows[2].outcome.detail);
+		}
+
 		// The local procedures pair by meaning: the text can have them in
 		// another order (Castle of Dr. Brain script 995: the decompiler
 		// prints a procedure that reads properties inside its class).

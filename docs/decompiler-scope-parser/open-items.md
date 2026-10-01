@@ -10,8 +10,16 @@ Open items only: gaps, unfixed findings, questions. The plan is in
   an object of its script, another name (with its name string as an
   explicit `name` property). A public instance keeps its name, because
   other scripts refer to it by its name: in a method of an object with
-  that property, the text then means the property.
-- **Decompiled text that does not compile.** 2122 functions of the full
+  that property, the text then means the property. The full corpus has no
+  such case.
+- **The name of an object with no name slot after --info--.** The reader
+  takes the name of an object only from the slot after `--info--`, and only
+  when the value there points to a string. It has no selector table, so it
+  cannot find a `name` slot that is later in the layout: QfG3 47
+  `Class_47_1` and its subclasses get made-up names, and a class with no
+  superclass whose first property holds a string gets that string as its
+  name. The meaning check keys a class with a made-up name by its species.
+- **Decompiled text that does not compile.** 2112 functions of the full
   corpus are in scripts whose decompiled text has compile errors (the
   meaning check gives them UNCOMPARED `not-recompiled`). By cause:
   - 1156: two script names in `game.ini` that differ only in case
@@ -32,22 +40,20 @@ Open items only: gaps, unfixed findings, questions. The plan is in
 
 ## Meaning DIFFs of the full corpus
 
-The full gate run (`-Full -Meaning`, 93 games) gives 43 DIFF rows of
-scope functions. Many games have two or three copies, so there are fewer
-distinct defects. Survey by cause:
+The full gate run (`-Full -Meaning`, 93 games) gives 38 DIFF rows of
+scope functions, all of one cause. Many games have two or three copies,
+so there are fewer distinct defects.
 
-- **Another property layout of a superclass** (38 rows): LSL1 and
-  Mixed-Up Fairy Tales 995, IconBar and `Inv`; LSL1 VGA
-  `GameControls::show` reads `okButton` (property 42) as property 44.
-  `DelayedEvent` of script 947 (Castle of Dr. Brain, Mixed-Up Fairy Tales,
-  QfG2) is a class of `Event` with the properties of `Script`. EcoQuest 2
-  959 `QSnd` and 960 `TimedCue`, The Colonel's Bequest dev 414
-  `ToastClass`.
-- **A local procedure that only dead code calls** (3 rows): QfG3 460
-  `localproc_1f5b`, Mixed-Up Fairy Tales 927 `localproc_0492`. The
-  decompiler finds it as the target of a call in dead code after the end
-  of another function, and leaves that code out. The recompiled procedure
-  has no caller, so the check does not find it (`no-recompiled-function`).
+- **Another property layout of a superclass** (38 rows): a class whose
+  properties do not start with those of its superclass (the superclass
+  changed after the class was compiled). LSL1 and Mixed-Up Fairy Tales 995,
+  IconBar and `Inv`; LSL1 VGA `GameControls::show` reads `okButton`
+  (property 42) as property 44. `DelayedEvent` of script 947 (Castle of
+  Dr. Brain, Mixed-Up Fairy Tales, QfG2) is a class of `Event` with the
+  properties of `Script`. EcoQuest 2 959 `QSnd` and 960 `TimedCue`, The
+  Colonel's Bequest dev 414 `ToastClass`. The text has no form for such a
+  layout: `of` gives the layout of the superclass. Question for the owner:
+  leave these rows, or add a syntax that states the layout of a class.
 
 ## Refusals
 

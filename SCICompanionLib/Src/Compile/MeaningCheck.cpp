@@ -530,35 +530,41 @@ namespace meaning
 		// 4-5 the operation (load, store, increment, decrement).
 		const char VarKinds[] = { 'g', 'l', 't', 'p' };
 
+		// The instructions that control gets to from the entry.
+		std::vector<bool> _LiveInstructions(const Function &function)
+		{
+			std::vector<bool> live(function.code.size(), false);
+			std::vector<int> pending = { 0 };
+			while (!pending.empty())
+			{
+				int i = pending.back();
+				pending.pop_back();
+				if ((i < 0) || (i >= (int)function.code.size()) || live[i])
+				{
+					continue;
+				}
+				live[i] = true;
+				const Instruction &inst = function.code[i];
+				if (inst.target >= 0)
+				{
+					pending.push_back(inst.target);
+				}
+				if ((inst.op != Opcode::JMP) && (inst.op != Opcode::RET))
+				{
+					pending.push_back(i + 1);
+				}
+			}
+			return live;
+		}
+
 		class Walker
 		{
 		public:
 			Walker(const Function &function, bool returnsValue) : _function(function), _returnsValue(returnsValue)
 			{
 				_loopHead.assign(function.code.size() + 1, false);
-				// The instructions that control gets to from the entry: a
-				// branch back in dead code makes no loop head.
-				std::vector<bool> live(function.code.size(), false);
-				std::vector<int> pending = { 0 };
-				while (!pending.empty())
-				{
-					int i = pending.back();
-					pending.pop_back();
-					if ((i < 0) || (i >= (int)function.code.size()) || live[i])
-					{
-						continue;
-					}
-					live[i] = true;
-					const Instruction &inst = function.code[i];
-					if (inst.target >= 0)
-					{
-						pending.push_back(inst.target);
-					}
-					if ((inst.op != Opcode::JMP) && (inst.op != Opcode::RET))
-					{
-						pending.push_back(i + 1);
-					}
-				}
+				// A branch back in dead code makes no loop head.
+				std::vector<bool> live = _LiveInstructions(function);
 				for (size_t i = 0; i < function.code.size(); i++)
 				{
 					const Instruction &inst = function.code[i];
@@ -1719,6 +1725,46 @@ namespace meaning
 			return key.compare(0, sizeof(LocalPrefix) - 1, LocalPrefix) == 0;
 		}
 
+		// The keys of the local procedures that live code calls: the live code of
+		// the methods and exports, and of each local procedure that such code calls.
+		std::set<std::string> _CalledLocalProcedures(const std::vector<Function> &functions)
+		{
+			std::map<std::string, const Function *> locals;
+			std::vector<const Function *> pending;
+			for (const Function &function : functions)
+			{
+				if (_IsLocalKey(function.key))
+				{
+					locals[function.key] = &function;
+				}
+				else
+				{
+					pending.push_back(&function);
+				}
+			}
+			std::set<std::string> called;
+			while (!pending.empty())
+			{
+				const Function *function = pending.back();
+				pending.pop_back();
+				// The check cannot read an unreadable function: each of its calls counts.
+				std::vector<bool> live = function->unreadable.empty() ? _LiveInstructions(*function) : std::vector<bool>(function->code.size(), true);
+				for (size_t i = 0; i < function->code.size(); i++)
+				{
+					const Instruction &inst = function->code[i];
+					if (live[i] && (inst.op == Opcode::CALL) && called.insert(inst.text).second)
+					{
+						auto local = locals.find(inst.text);
+						if (local != locals.end())
+						{
+							pending.push_back(local->second);
+						}
+					}
+				}
+			}
+			return called;
+		}
+
 		// The function with the targets of its calls of local procedures
 		// hidden.
 		Function _WithoutLocalTargets(const Function &function)
@@ -1744,7 +1790,7 @@ namespace meaning
 		// first, else the first other one; then the others pair with one that
 		// the compare cannot read (UNCOMPARED), and those that are left pair in
 		// their order.
-		std::vector<Function> _PairLocalProcedures(const std::vector<Function> &original, const std::vector<Function> &recompiled)
+		std::vector<Function> _PairLocalProcedures(const std::vector<Function> &original, const std::vector<Function> &recompiled, const std::set<std::string> &calledLocals)
 		{
 			std::vector<const Function *> originalLocals;
 			std::vector<size_t> recompiledLocals;
@@ -1820,8 +1866,9 @@ namespace meaning
 				}
 			}
 			// The procedures with no such partner pair in their order (the
-			// compare then shows where they differ); a recompiled procedure
-			// that is left gets a key that no original procedure has.
+			// compare then shows where they differ), but not with an original
+			// procedure that only dead code calls; a recompiled procedure that is
+			// left gets a key that no original procedure has.
 			size_t next = 0;
 			for (size_t r = 0; r < recompiledLocals.size(); r++)
 			{
@@ -1829,7 +1876,7 @@ namespace meaning
 				{
 					continue;
 				}
-				while ((next < originalLocals.size()) && paired[next])
+				while ((next < originalLocals.size()) && (paired[next] || (calledLocals.count(originalLocals[next]->key) == 0)))
 				{
 					next++;
 				}
@@ -1869,7 +1916,8 @@ namespace meaning
 
 	std::vector<FunctionOutcome> CompareFunctions(const std::vector<Function> &original, const std::vector<Function> &recompiledAsRead)
 	{
-		std::vector<Function> recompiled = _PairLocalProcedures(original, recompiledAsRead);
+		std::set<std::string> calledLocals = _CalledLocalProcedures(original);
+		std::vector<Function> recompiled = _PairLocalProcedures(original, recompiledAsRead, calledLocals);
 		std::map<std::string, const Function *> byKey;
 		for (const Function &function : recompiled)
 		{
@@ -1895,6 +1943,13 @@ namespace meaning
 			{
 				row.outcome.verdict = Verdict::Diff;
 				row.outcome.detail = "bad-export-body";
+			}
+			else if ((partner == byKey.end()) && _IsLocalKey(function.key) && (calledLocals.count(function.key) == 0))
+			{
+				// Only dead code calls the procedure: the text leaves out the dead
+				// call, and the recompiled script has no caller for it.
+				row.outcome.verdict = Verdict::Uncompared;
+				row.outcome.detail = "no-live-caller";
 			}
 			else if (partner == byKey.end())
 			{
