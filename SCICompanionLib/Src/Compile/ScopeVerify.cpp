@@ -103,6 +103,10 @@ namespace scope
 
 			const std::vector<SkeletonOp> &Ops() const { return _ops; }
 
+			// The resolutions of From and SuccessorAt add the dead branches that
+			// they go through to the set (when it is not null).
+			void RecordDeadBranches(std::set<int> *passed) { _passed = passed; }
+
 		private:
 			struct LoopLabels
 			{
@@ -371,6 +375,7 @@ namespace scope
 					case SkeletonKind::End:
 						return _model.Size();
 					case SkeletonKind::Jmp:
+						_Passed(op.inst);
 						position = _labels[op.label];
 						break;
 					case SkeletonKind::Bnt:
@@ -380,6 +385,7 @@ namespace scope
 						{
 							return AtTest;
 						}
+						_Passed(op.inst);
 						bool taken = (arrival == Arrival::True) == (op.kind == SkeletonKind::Bt);
 						position = taken ? _labels[op.label] : (position + 1);
 						break;
@@ -410,7 +416,16 @@ namespace scope
 				return NoIndex;
 			}
 
+			void _Passed(int inst) const
+			{
+				if (_passed && (inst != NoIndex) && !_model.IsLive(inst))
+				{
+					_passed->insert(inst);
+				}
+			}
+
 			const CodeModel &_model;
+			std::set<int> *_passed = nullptr;
 			std::vector<SkeletonOp> _ops;
 			std::vector<int> _labels;
 			std::vector<LoopLabels> _loops;
@@ -504,7 +519,7 @@ namespace scope
 		}
 	}
 
-	void Verify(const CodeModel &model, const Region &root)
+	void Verify(const CodeModel &model, const Region &root, std::set<int> *passedDeadBranches)
 	{
 		_CheckCodeRanges(model, &root);
 		std::vector<int> layout = Layout(root);
@@ -523,6 +538,7 @@ namespace scope
 
 		Skeleton skeleton(model);
 		skeleton.Build(root);
+		skeleton.RecordDeadBranches(passedDeadBranches);
 		const std::vector<SkeletonOp> &ops = skeleton.Ops();
 		Successor treeEntry = skeleton.From(0);
 		Successor bytecodeEntry = _BytecodeFrom(model, 0);

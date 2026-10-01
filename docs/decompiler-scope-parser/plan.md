@@ -147,8 +147,8 @@ accumulator and a statement list. It builds the same `ConsumptionNode` /
   of the previous compare (n-ary).
 - **Dead code:** dead code right after a `ret` stays as statements, with no
   fact; other dead code gives no statement; a structure that no path
-  reaches is dead code. A dead `break` or `continue` is a statement, except
-  right after a `jmp` that does nothing (the skip goes past it).
+  reaches is dead code. A dead `break` or `continue` is a statement only when
+  a path of the tree goes through it (verify records these).
 - **Presentation** (`and` or nested `if`, `while` or `repeat`, shortest
   then-part, `contif`): decided here, from facts that the evaluator has
   (a sequence is one value; a test is the first thing in a loop).

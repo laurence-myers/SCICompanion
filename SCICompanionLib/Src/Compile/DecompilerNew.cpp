@@ -3486,9 +3486,9 @@ void _RestructureCaseHeaders(ConsumptionNode *chunk, DecompileLookups &lookups)
 	}
 }
 
-void OutputNewStructure(sci::FunctionBase &func, const scope::CodeModel &model, const scope::Region &root, std::list<scii> &code, DecompileLookups &lookups)
+void OutputNewStructure(sci::FunctionBase &func, const scope::CodeModel &model, const scope::Region &root, std::list<scii> &code, const std::set<int> &passedDeadBranches, DecompileLookups &lookups)
 {
-	unique_ptr<ConsumptionNode> mainChunk = scope::BuildValues(model, root, code, lookups.FunctionDecompileHints.ReturnsValue);
+	unique_ptr<ConsumptionNode> mainChunk = scope::BuildValues(model, root, code, lookups.FunctionDecompileHints.ReturnsValue, passedDeadBranches);
 
 	string debugTrackName = GetMethodTrackingName(func.GetOwnerClass(), func, true);
 	if (lookups.DebugInstructionConsumption && (!lookups.pszDebugFilter || PathMatchSpec(debugTrackName.c_str(), lookups.pszDebugFilter)))

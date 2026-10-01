@@ -1486,13 +1486,23 @@ public:
 	void Visit(const BreakStatement &breakStatement) override
 	{
 		_MaybeNewLineIndent();
-		out.out << "(break)";
+		out.out << "(break";
+		if (breakStatement.Levels != 1)
+		{
+			out.out << " " << breakStatement.Levels;
+		}
+		out.out << ")";
 	}
 
-	void Visit(const ContinueStatement &breakStatement) override
+	void Visit(const ContinueStatement &continueStatement) override
 	{
 		_MaybeNewLineIndent();
-		out.out << "(continue)";
+		out.out << "(continue";
+		if (continueStatement.Levels != 1)
+		{
+			out.out << " " << continueStatement.Levels;
+		}
+		out.out << ")";
 	}
 
 	void Visit(const CaseStatement &caseStatement) override

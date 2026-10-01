@@ -1,5 +1,6 @@
 #pragma once
 
+#include <set>
 #include "ScopeCode.h"
 #include "ScopeRegion.h"
 
@@ -25,6 +26,8 @@ namespace scope
 	//   in the tree than in the bytecode;
 	// - successor: after an instruction, control goes to another place in
 	//   the tree than in the bytecode.
-	// The detail of the error tells the two places.
-	void Verify(const CodeModel &model, const Region &root);
+	// The detail of the error tells the two places. passedDeadBranches (when
+	// it is not null) gets the dead branches that a path of the tree goes
+	// through (a dead jmp after a loop that an inner break goes to).
+	void Verify(const CodeModel &model, const Region &root, std::set<int> *passedDeadBranches = nullptr);
 }

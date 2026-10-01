@@ -135,8 +135,8 @@ namespace scope
 		class Evaluator
 		{
 		public:
-			Evaluator(const CodeModel &model, std::list<scii> &code, bool returnsValue) :
-				_model(model), _returnsValue(returnsValue), _structural(model.Size(), 0), _made(model.Size(), 0)
+			Evaluator(const CodeModel &model, std::list<scii> &code, bool returnsValue, const std::set<int> &passedDeadBranches) :
+				_model(model), _returnsValue(returnsValue), _passedDeadBranches(passedDeadBranches), _structural(model.Size(), 0), _made(model.Size(), 0)
 			{
 				for (auto it = code.begin(); it != code.end(); ++it)
 				{
@@ -357,29 +357,24 @@ namespace scope
 
 			void _Region(const Region &region)
 			{
-				// A structure has labels: the code after a jmp that does
-				// nothing goes on there.
-				bool afterSkip = _afterSkip;
+				// A structure ends the code right after a ret.
 				if (region.kind != RegionKind::Code)
 				{
-					_afterSkip = false;
 					_afterReturn = false;
 				}
-				_RegionBody(region, afterSkip);
+				_RegionBody(region);
 				if (region.kind != RegionKind::Code)
 				{
-					_afterSkip = false;
 					_afterReturn = false;
 				}
 			}
 
-			void _RegionBody(const Region &region, bool afterSkip)
+			void _RegionBody(const Region &region)
 			{
 				// A break, a continue and an exit keep their place when they are
 				// dead: another branch can resolve through it (an inner break
 				// that goes to a dead jmp after its loop leaves the outer loop
-				// too). Right after a jmp that does nothing, a dead break or
-				// continue is no statement: no path gets to it.
+				// too).
 				bool hasTest = (region.kind != RegionKind::Sequence) && (region.kind != RegionKind::Code) && (region.kind != RegionKind::Break) &&
 					(region.kind != RegionKind::Continue) && (region.kind != RegionKind::Exit);
 				if (hasTest)
@@ -434,7 +429,9 @@ namespace scope
 				case RegionKind::Continue:
 					// The rest of the sequence is dead.
 					_Structural(region.branch);
-					if (_model.IsLive(region.branch) || !afterSkip)
+					// A dead one is a statement when a path of the tree goes
+					// through it (verify), as the text gets there.
+					if (_model.IsLive(region.branch) || (_passedDeadBranches.count(region.branch) != 0))
 					{
 						_Append(_LoopJump(region.kind == RegionKind::Break, region.level), false, region.branch);
 					}
@@ -505,13 +502,6 @@ namespace scope
 					_afterReturn = (_model.Op(i) == Opcode::RET);
 				}
 				Opcode op = _model.Op(i);
-				// A jmp that does nothing goes past the dead code after it: a
-				// dead break or continue there is no statement (as in the
-				// verify stage).
-				if (_model.IsLive(i))
-				{
-					_afterSkip = (op == Opcode::JMP) && _model.IsNoOp(i);
-				}
 				if (_model.IsBranch(i))
 				{
 					// A branch that does nothing, or the inert bnt of an n-ary
@@ -1141,6 +1131,8 @@ namespace scope
 			const CodeModel &_model;
 			// The function returns a value: a ret reads the accumulator.
 			bool _returnsValue;
+			// The dead branches that a path of the tree goes through.
+			const std::set<int> &_passedDeadBranches;
 			std::vector<code_pos> _pos;
 			std::vector<int> _structural;
 			std::vector<int> _made;
@@ -1161,16 +1153,14 @@ namespace scope
 			bool _expectCaseDup = false;
 			// The case value that the eq? of a case took.
 			std::unique_ptr<ConsumptionNode> _caseValue;
-			// The last live instruction is a jmp that does nothing.
-			bool _afterSkip = false;
 			// The last live instruction is a ret (in the same sequence).
 			bool _afterReturn = false;
 		};
 	}
 
-	std::unique_ptr<ConsumptionNode> BuildValues(const CodeModel &model, const Region &root, std::list<scii> &code, bool returnsValue)
+	std::unique_ptr<ConsumptionNode> BuildValues(const CodeModel &model, const Region &root, std::list<scii> &code, bool returnsValue, const std::set<int> &passedDeadBranches)
 	{
-		Evaluator evaluator(model, code, returnsValue);
+		Evaluator evaluator(model, code, returnsValue, passedDeadBranches);
 		return evaluator.Run(root);
 	}
 }

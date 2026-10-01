@@ -1270,8 +1270,9 @@ namespace
 		{
 			scope::CodeModel model(code);
 			std::unique_ptr<scope::Region> root = scope::Parse(model);
-			scope::Verify(model, *root);
-			OutputNewStructure(func, model, *root, code, lookups);
+			std::set<int> passedDeadBranches;
+			scope::Verify(model, *root, &passedDeadBranches);
+			OutputNewStructure(func, model, *root, code, passedDeadBranches, lookups);
 		}, where);
 	}
 

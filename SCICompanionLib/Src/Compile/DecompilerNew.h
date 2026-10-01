@@ -25,9 +25,10 @@ namespace scope
 
 // The scope engine: the forward value stage makes the chunk tree of the
 // region tree, and the chunk tree gives the statements of func. code is the
-// list that the model was made from. Throws a scope::ScopeError when a stage
-// fails.
-void OutputNewStructure(sci::FunctionBase &func, const scope::CodeModel &model, const scope::Region &root, std::list<scii> &code, DecompileLookups &lookups);
+// list that the model was made from; passedDeadBranches has the dead branches
+// that a path of the tree goes through (scope::Verify). Throws a
+// scope::ScopeError when a stage fails.
+void OutputNewStructure(sci::FunctionBase &func, const scope::CodeModel &model, const scope::Region &root, std::list<scii> &code, const std::set<int> &passedDeadBranches, DecompileLookups &lookups);
 
 // Returns the node's single predecessor, or null if it has none. The main-chunk
 // output walk requires at most one predecessor; this throws ControlFlowException

@@ -396,6 +396,29 @@ namespace UnitTests
             }
         }
 
+        // A function that the scope engine refuses and the classic engine
+        // decompiles: with auto, the classic engine gives it, and the scope
+        // failure is no warning.
+        TEST_METHOD(Engine_AutoGivesClassicWhenScopeFails)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AddFixtureScript("X2_DupOfExpression");
+            std::string error;
+            Assert::IsTrue(CompileFixture(955, "X2_DupOfExpression", &error), Wide(error).c_str());
+
+            DecompileOutput automatic;
+            {
+                ScopedEnvironmentVariable engine("SCIC_DECOMPILE_ENGINE", "auto");
+                automatic = DecompileToText(955);
+            }
+            Assert::IsFalse(automatic.ContainsAsm(), Wide(automatic.text).c_str());
+            Assert::AreEqual((size_t)1, automatic.functions.size());
+            Assert::AreEqual(std::string("classic"), automatic.functions[0].output);
+            Assert::AreEqual(std::string("ok"), automatic.functions[0].classic);
+            Assert::AreEqual(std::string("[scope:values:dup-no-value]"), automatic.functions[0].scope);
+            Assert::IsFalse(automatic.HasWarningContaining("[scope:"), L"with auto, a scope failure is no warning");
+        }
+
         // A function that the scope engine cannot decompile: with auto, the
         // classic engine runs too (here it fails as well), and the scope
         // failure is no warning; with scope, the classic engine does not run,
@@ -674,6 +697,13 @@ namespace UnitTests
         FIXTURE_TEST(EmptyLastCase, "S3_EmptyLastCase", 947)
         FIXTURE_TEST(EmptyLastCaseInLoop, "S4_EmptyLastCaseInLoop", 948)
         FIXTURE_TEST(SwitchAllReturn, "S5_SwitchAllReturn", 949)
+        // A break of level 2, and a continue in a do loop. No round trip:
+        // the compiler of this repository gives the repeat another shape.
+        TEST_METHOD(LoopLevels)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AssertDecompileMatchesExpected("L1_LoopLevels", 954, false);
+        }
 
         // The fixtures with no expected file: each round-trips with no asm.
         TEST_METHOD(RoundTrips)

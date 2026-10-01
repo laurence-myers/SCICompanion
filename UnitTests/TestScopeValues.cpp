@@ -53,8 +53,9 @@ namespace UnitTests
 		{
 			CodeModel model(a.code);
 			std::unique_ptr<Region> root = Parse(model);
-			Verify(model, *root);
-			return BuildValues(model, *root, a.code, returnsValue);
+			std::set<int> passed;
+			Verify(model, *root, &passed);
+			return BuildValues(model, *root, a.code, returnsValue, passed);
 		}
 
 		// The statements of the function, each as Chunk gives it.
@@ -619,11 +620,11 @@ namespace UnitTests
 			)", "While(Condition(lal) LoopBody(While(Condition(lal) LoopBody(If(Condition(lal) Then(Break2)) sal(ldi))))) ret");
 		}
 
-		// A dead break right after a jmp that does nothing is no statement
-		// (QfG1 TalkObj::messages: the else-break of a cond, after the bnt
-		// went straight to the exit). (F14_BreakPastLatch has a dead break
-		// after a loop: the place of the inner break, which leaves the outer
-		// loop.)
+		// A dead break that no path of the tree goes through is no statement:
+		// after a jmp that does nothing (QfG1 TalkObj::messages: the else-break
+		// of a cond, after the bnt went straight to the exit), also after more
+		// dead jmps, or after an exit. (F14_BreakPastLatch has a dead break
+		// that a path goes through: the inner break leaves the outer loop.)
 		TEST_METHOD(Values_ADeadBreak)
 		{
 			AssertValues(R"(
@@ -643,6 +644,48 @@ namespace UnitTests
 			exit:
 				ret
 			)", "While(Condition(lal) LoopBody(If(Condition(lal) Then(sal(ldi) sal(ldi)) Else(Break)))) ret");
+			// Two dead jmps after the jmp that does nothing.
+			AssertValues(R"(
+			head:
+				lal 0
+				bnt exit
+				lal 1
+				bnt exit
+				ldi 1
+				sal 1
+				jmp join
+				jmp exit
+				jmp exit
+			join:
+				ldi 2
+				sal 2
+				jmp head
+			exit:
+				ret
+			)", "While(Condition(lal) LoopBody(If(Condition(lal) Then(sal(ldi) sal(ldi)) Else(Break)))) ret");
+			// A dead break after the jmp of an exit: (if a (if b X else
+			// (break)) else W) Z.
+			AssertValues(R"(
+			head:
+				lal 0
+				bnt else0
+				lal 1
+				bnt exit
+				ldi 1
+				sal 1
+				jmp join0
+				jmp exit
+				jmp join0
+			else0:
+				ldi 2
+				sal 2
+			join0:
+				ldi 3
+				sal 3
+				jmp head
+			exit:
+				ret
+			)", "While(Condition(TrueNode) LoopBody(If(Condition(lal) Then(If(Condition(lal) Then(sal(ldi)) Else(Break))) Else(sal(ldi))) sal(ldi))) ret");
 		}
 
 		// Statements before the test: a repeat, with the if in it.
@@ -727,7 +770,8 @@ namespace UnitTests
 				push
 				callk 5 2
 				jmp head
-			)", "acc-no-fact", 10);		}
+			)", "acc-no-fact", 10);
+		}
 
 		// The head of a loop is a label: no fact.
 		TEST_METHOD(Values_TheHeadOfALoopHasNoFact)
