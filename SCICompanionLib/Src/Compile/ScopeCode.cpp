@@ -249,9 +249,9 @@ namespace scope
 			}
 			// A bt or bnt right after a bt or bnt of the same kind to the same
 			// place (with only jmps that do nothing between them): when no
-			// other branch goes to it or to the jmps, control gets to it only
-			// on the fall-through of the first one, with a value that does not
-			// branch. (Sierra's optimiser deletes a load of the value that the
+			// other branch goes to it or to the jmps (except a branch of the
+			// other kind), control gets to it only on the fall-through of the
+			// first one or from such a branch, with a value that does not branch. (Sierra's optimiser deletes a load of the value that the
 			// accumulator has: (and a b b) gives "bnt; bnt".) A first one
 			// that goes to its fall-through is such another branch.
 			if (IsLive(i) && IsConditional(i))
@@ -261,10 +261,18 @@ namespace scope
 				{
 					--previous;
 				}
+				// A branch of the other kind arrives with a value that does not
+				// branch either (a bt that goes past the bnt of an or to the
+				// second bnt: PQ4 CD script 505, soundScript::changeState;
+				// LSL6 CD script 330, arcScr::doit).
+				Opcode otherKind = (Op(i) == Opcode::BNT) ? Opcode::BT : Opcode::BNT;
 				bool onlyFallThrough = true;
 				for (int k = previous + 1; (k <= i) && onlyFallThrough; ++k)
 				{
-					onlyFallThrough = std::all_of(Sources(k).begin(), Sources(k).end(), [&](int source) { return (source > previous) && (source < k); });
+					onlyFallThrough = std::all_of(Sources(k).begin(), Sources(k).end(), [&](int source)
+					{
+						return ((source > previous) && (source < k)) || (Op(source) == otherKind);
+					});
 				}
 				if ((previous >= 0) && IsLive(previous) && (Op(previous) == Op(i)) && onlyFallThrough &&
 					SameTarget(Target(i), Target(previous), ArrivalOf(Op(i))))
@@ -517,6 +525,14 @@ namespace scope
 			int lowest = Size() + 1;
 			for (int k = first - 1; k >= 0; --k)
 			{
+				if ((Op(k) == Opcode::TOSS) && (_insts[k].switchHead != NoIndex))
+				{
+					// A switch inside this one (its toss is dead too, and
+					// comes first): its head is not the head of this one
+					// (QfG3 script 160, localproc_0482).
+					k = _insts[k].switchHead;
+					continue;
+				}
 				if (!IsLive(k))
 				{
 					continue;

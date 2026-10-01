@@ -97,7 +97,7 @@ namespace scope
 		// leaves), a bt or bnt whose target is its fall-through, or a bt or
 		// bnt right after a bt or bnt of the same kind to the same place
 		// (only jmps that do nothing between them), when no other branch
-		// goes to it or to those jmps.
+		// goes to it or to those jmps (a bt to a bnt, or a bnt to a bt, can).
 		bool IsNoOp(int i) const { return _insts[i].noOp; }
 		// A bnt inside an n-ary compare ("cmp; bnt O; pprev"): part of the
 		// value of the compare, not a branch of the control flow.

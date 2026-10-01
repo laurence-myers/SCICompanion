@@ -259,8 +259,9 @@ namespace UnitTests
 		}
 
 		// Dead code after a jmp gives no statement: as text, it would run.
-		// The live code after it starts at a label (the jmp goes there): no
-		// fact. Dead code right after a ret stays as statements (with no
+		// The live code after it starts at a label: no fact, unless the jmp
+		// does nothing and is the only branch there (the accumulator keeps its
+		// value). Dead code right after a ret stays as statements (with no
 		// fact): no text gets to it either.
 		TEST_METHOD(Values_DeadCodeGivesNoStatement)
 		{
@@ -279,7 +280,7 @@ namespace UnitTests
 				callk 5 2
 				ret
 			)", "acc-no-fact", 3);
-			AssertValuesFail(R"(
+			AssertValues(R"(
 				ldi 5
 				jmp next
 				ldi 9
@@ -288,7 +289,20 @@ namespace UnitTests
 				push
 				callk 5 2
 				ret
-			)", "acc-no-fact", 4);
+			)", "ldi callk(push1 push(ldi*)) ret");
+			// Another branch to the label: no fact.
+			AssertValuesFail(R"(
+				lal 0
+				bnt next
+				ldi 5
+				jmp next
+				ldi 9
+			next:
+				push1
+				push
+				callk 5 2
+				ret
+			)", "acc-no-fact", 6);
 		}
 
 		// A structure that no path reaches is dead code: its test has no
@@ -417,11 +431,34 @@ namespace UnitTests
 			)", "acc-no-fact", 3);
 		}
 
-		// A statement in the middle of an expression has no text.
+		// A statement in the middle of an expression has no text, unless only
+		// pushes of numbers come before it (QfG4 CD script 81, ant::cue) or it
+		// has no effect (LSL3 script 460, LightScript::changeState): it comes
+		// before the expression.
 		TEST_METHOD(Values_AStatementInAnExpressionFails)
 		{
-			AssertValuesFail(R"(
+			AssertValues(R"(
 				push1
+				ldi 5
+				sal 0
+				lal 1
+				add
+				ret
+			)", "sal(ldi) add(push1 lal) ret");
+			AssertValues(R"(
+				push0
+				callk 60 0
+				push
+				lsl 2
+				ldi 2
+				div
+				lal 1
+				add
+				ret
+			)", "div(lsl ldi) add(push(callk(push0)) lal) ret");
+			// The variable before the store is one that the store changes.
+			AssertValuesFail(R"(
+				lsl 0
 				ldi 5
 				sal 0
 				lal 1
@@ -884,6 +921,245 @@ namespace UnitTests
 				ret
 			)", "sat(send(pushi push0 lag)) send(push(sat*) push0 lat) ret");
 		}
+
+		// A dup in the value of a case copies the value of the switch (QfG4
+		// floppy script 670, pMainDoor::doVerb: the case value is an and
+		// whose first term compares the switch value).
+		TEST_METHOD(Values_ADupInTheValueOfACase)
+		{
+			AssertValues(R"(
+				lsp 1
+				dup
+				dup
+				ldi 4
+				eq?
+				bnt no
+				lal 4
+				not
+			no:
+				eq?
+				bnt other
+				ldi 1
+				sal 1
+				jmp done
+			other:
+				ldi 2
+				sal 1
+			done:
+				toss
+				ret
+			)", "Switch(SwitchValue(lsp) Case(CaseCondition(If(Condition(eq?(lsp* ldi)) Then(not(lal)))) CaseBody(sal(ldi))) Case(CaseBody(sal(ldi)))) ret");
+		}
+
+		// A jmp over dead code that does nothing keeps the value of the
+		// accumulator for the code after it (the KQ4 copy in "patch\NEW",
+		// script 996, User::getInput).
+		TEST_METHOD(Values_AValueOverDeadCode)
+		{
+			AssertValues(R"(
+				lal 1
+				bnt else
+				ldi 2
+				jmp join
+			else:
+				ldi 3
+			join:
+				jmp store
+				push1
+				lal 5
+				send 2
+			store:
+				sat 0
+				ret
+			)", "sat(If(Condition(lal) Then(ldi) Else(ldi))) ret");
+		}
+
+		// A push leaves its value in the accumulator: a reader of the
+		// accumulator after it gets a copy of the pushed node, when the node
+		// has no effect (Longbow script 893, Table::at: "push; add").
+		TEST_METHOD(Values_AReaderAfterAPushGetsACopy)
+		{
+			AssertValues(R"(
+				lsp 1
+				lap 2
+				add
+				push
+				add
+				aTop 32
+				ret
+			)", "aTop(add(push(add(lsp lap)) add*(lsp* lap*))) ret");
+			// A node with an effect: no copy.
+			AssertValuesFail(R"(
+				push0
+				callk 60 0
+				push
+				add
+				aTop 32
+				ret
+			)", "acc-no-fact", 3);
+			// A store to the stack between the push and the reader can change
+			// a variable that the node reads.
+			AssertValuesFail(R"(
+				lsp 1
+				lap 2
+				add
+				push
+				pushi 3
+				ssp 2
+				add
+				aTop 32
+				ret
+			)", "acc-no-fact", 6);
+		}
+
+
+		// An operation on a value that no node has, whose result no
+		// instruction reads, is no code (LB2 script 250: "bnt L; bnot; bnot;
+		// L: ldi 1"; PQ3 script 994, Game::doit).
+		TEST_METHOD(Values_ADeadOperationOnATestedValue)
+		{
+			AssertValues(R"(
+				push0
+				callk 60 0
+				bnt end
+				bnot
+				bnot
+			end:
+				ldi 1
+				aTop 32
+				ret
+			)", "If(Condition(callk(push0)) Then) aTop(ldi) ret");
+			// A store reads the result.
+			AssertValuesFail(R"(
+				push0
+				callk 60 0
+				bnt end
+				bnot
+			end:
+				aTop 32
+				ret
+			)", "acc-no-fact", 3);
+		}
+
+		// Values that a sequence pushed and that no instruction takes are no
+		// code when they have no effect (SQ1 VGA script 40, pinkShip::doVerb:
+		// a case body "pushi 40; ldi 16" before the toss of the switch).
+		TEST_METHOD(Values_PushesThatNoInstructionTakes)
+		{
+			AssertValues(R"(
+				lsp 1
+				dup
+				ldi 3
+				eq?
+				bnt other
+				push2
+				pushi 40
+				pushi 13
+				callk 5 4
+				jmp done
+			other:
+				pushi 40
+				ldi 16
+			done:
+				toss
+				ret
+			)", "ret(Switch(SwitchValue(lsp) Case(CaseCondition(ldi) CaseBody(callk(push2 pushi pushi))) Case(CaseBody(ldi))))", true);
+			// A pushed call result: the call is an effect.
+			AssertValuesFail(R"(
+				lsp 1
+				dup
+				ldi 3
+				eq?
+				bnt other
+				ldi 2
+				jmp done
+			other:
+				push0
+				callk 5 0
+				push
+				ldi 16
+			done:
+				toss
+				ret
+			)", "stack-unbalanced", 11, true);
+		}
+
+
+		// On the fall-through of the bnt of a compare, the accumulator is 1:
+		// the body of a case, and the then-part of an if whose test is a
+		// compare (QfG3 script 471, uhuraCompete::changeState: "bnt; pushi 3;
+		// push1; push").
+		TEST_METHOD(Values_TheAccumulatorIsOneAfterACompare)
+		{
+			AssertValues(R"(
+				lsp 1
+				dup
+				ldi 3
+				eq?
+				bnt done
+				pushi 3
+				push1
+				push
+				lap 2
+				send 6
+			done:
+				toss
+				ret
+			)", "Switch(SwitchValue(lsp) Case(CaseCondition(ldi) CaseBody(send(pushi push1 push(TrueNode) lap)))) ret");
+			AssertValues(R"(
+				lsp 1
+				ldi 3
+				eq?
+				bnt done
+				pushi 3
+				push1
+				push
+				lap 2
+				send 6
+			done:
+				ret
+			)", "If(Condition(eq?(lsp ldi)) Then(send(pushi push1 push(TrueNode) lap))) ret");
+		}
+
+
+		// A bnt right after a bnt to the same place, that another branch
+		// reaches (a bt makes it a no-op: LiveCode_ABtToTheSecondTestIsLikeThe
+		// FallThrough). From a bnt, the value is false: the target equivalence
+		// takes the bnt to the place of the second one. From a jmp, any value:
+		// the test of the second one is an if with a value. Neither shape gives
+		// an and-term with no code (empty-term).
+		TEST_METHOD(Values_ABranchToTheSecondOfTwoTests)
+		{
+			AssertValues(R"(
+				lal 0
+				bnt second
+				lal 1
+				bnt else
+			second:
+				bnt else
+				ldi 1
+				sal 2
+			else:
+				ret
+			)", "If(Condition(lal) Then(If(Condition(lal) Then(If(Condition(lal*) Then(sal(ldi))))))) ret");
+			// A jmp to it: any value.
+			AssertValues(R"(
+				lal 0
+				bnt next
+				lal 3
+				jmp second
+			next:
+				lal 1
+				bnt else
+			second:
+				bnt else
+				ldi 1
+				sal 2
+			else:
+				ret
+			)", "If(Condition(If(Condition(lal) Then(lal) Else(If(Condition(lal) Then)))) Then(sal(ldi))) ret");
+		}
+
 
 		// Another effect in the slot of a call: a call result as the
 		// argument count.

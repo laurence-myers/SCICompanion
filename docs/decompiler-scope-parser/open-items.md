@@ -51,19 +51,25 @@ fewer distinct defects. Survey by cause:
 
 ## Refusals
 
-- The refusals of the gate sample other than ICEMAN #235 (16 functions,
-  given as `asm`):
-  `acc-no-fact` (ICEMAN 385 `localproc_02bc` in three copies, Hoyle
-  Classic 716 `other1_tree::doit`, QfG1 VGA 0 `proc0_3` in two copies),
-  `stack-underflow` (Camelot 40 `Rm40::handleEvent` in two copies),
-  `case-test` (PQ3 36 `alreadyDoneIV::changeState` in three copies),
-  `no-scope-for-target` (SQ4 patch 16, 271, 391), `dup-no-value` (QfG4
-  floppy 670 `pMainDoor::doVerb`), `term-statement` (Pepper 230
-  `sTalkPoorRich::changeState`).
+The full corpus run gives 66 functions as `asm`:
 
-## Gaps
-
-- The value stage refuses an empty and-term (`empty-term`: a `bnt` right
-  after a `bnt` to the same place that another branch reaches). No test
-  builds the shape with forward branches only; the guard is verified by
-  inspection.
+- `case-test` (46): each function has a corrupt branch (issue #235; the
+  decode replaces it with `ldi 47789` and warns "Bad branch").
+- `no-scope-for-target` (5): the SQ4 copy in a "patch" folder (scripts 16,
+  271, 387, 391): a fan patch.
+- `acc-no-fact` (6): QfG1 VGA 0 `proc0_3` (two copies): the value of a
+  loop is an operand of an `or`, after a store that would have to be the
+  initialisation of a `for`. SQ4 patch 405 and 410 (four functions): the
+  operands of a `mul` in the other order, with a variable pushed after the
+  call (`callk Random; lsg 199; mul`); as text, the compiler reads the
+  variable before the call, which can change it.
+- `statement-in-expression` (4): Longbow 24 `yeoScript::changeState`
+  (three copies) and QfG4 CD 81 `antOut::changeState`: a call whose value
+  no instruction reads, in the operands of another call after a store.
+- `slot-effect` (2): PQ1 VGA 999 `Obj::showSelf` and `Collect::showSelf`:
+  a `calle` with no arguments takes the result of a send as its argument
+  count (`push; calle 921 0 0`).
+- `stack-underflow` (2): Camelot 40 `Rm40::handleEvent` (two copies): a
+  branch back goes past the push of an argument count.
+- `term-statement` (1): Pepper 230 `sTalkPoorRich::changeState`: an
+  and-term with statements before its value.

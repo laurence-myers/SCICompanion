@@ -606,8 +606,8 @@ namespace meaning
 							// A test whose two outcomes get to the same effect in
 							// the same state (an empty then-part, a last case with
 							// no body) is no effect.
-							State onTrue = Branch(state, effect, true);
-							State onFalse = Branch(state, effect, false);
+							State onTrue = Branch(state, effect, true, false);
+							State onFalse = Branch(state, effect, false, false);
 							Effect nextTrue = RunToEffect(onTrue, depth + 1, maxDepth);
 							Effect nextFalse = RunToEffect(onFalse, depth + 1, maxDepth);
 							int truth = (onTrue.accTruth == onFalse.accTruth) ? onTrue.accTruth : 0;
@@ -662,10 +662,19 @@ namespace meaning
 			}
 
 			// The state of an outcome of a test.
-			State Branch(const State &before, const Effect &effect, bool truth) const
+			State Branch(const State &before, const Effect &effect, bool truth, bool zeroOrOne = true) const
 			{
 				State state = before;
 				state.accTruth = _AccTruth(state.acc, effect.test, truth);
+				// A compare and a not give 1 or 0: on an outcome of a test, the
+				// value is that number (not in the lookahead of RunToEffect, which
+				// merges the two outcomes) (QfG3 script 471: the text passes TRUE
+				// where the code passes the value of the eq? that the test
+				// read).
+				if (zeroOrOne && _IsZeroOrOne(state.acc))
+				{
+					state.acc = Const((state.accTruth > 0) ? 1 : 0);
+				}
 				// A variable whose value is the tested value has its truth: a
 				// load of it again (the compiler does not reuse the value) is
 				// no test.
@@ -719,6 +728,20 @@ namespace meaning
 						state.stack.resize(_function.depth[pc]);
 					}
 				}
+			}
+
+			// A value that is 1 or 0: a compare or a not.
+			static bool _IsZeroOrOne(const ExprPtr &value)
+			{
+				static const char *const ZeroOrOne[] = { "not", "eq?", "ne?", "gt?", "ge?", "lt?", "le?", "ugt?", "uge?", "ult?", "ule?" };
+				for (const char *head : ZeroOrOne)
+				{
+					if (value->args.size() && (value->head == head))
+					{
+						return true;
+					}
+				}
+				return false;
 			}
 
 			// The truth of the accumulator when the test value (the

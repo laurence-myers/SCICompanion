@@ -19,6 +19,8 @@ namespace scope
 			Immediate,	// ldi n
 			Variable,	// a load of a variable, or a store to it, or an increment or decrement of it
 			Property,	// a load of a property
+			Pushed,		// a push of a node with no effect: the accumulator still has its value
+			One,		// the fall-through of a bnt of a compare: the machine put 1 there
 		};
 
 		struct Fact
@@ -304,6 +306,14 @@ namespace scope
 					std::string why = !_pending ? "no node" : (!_PendingIsLast() ? "a statement after the node" : "a push after the node");
 					_Fail("acc-no-fact", reader, fmt::format("{0}: {1}, and no fact", OpcodeToName(_model.Op(reader), 0), why));
 				}
+				if (_acc.kind == FactKind::Pushed)
+				{
+					return _DeepCopy(*_pushedNode);
+				}
+				if (_acc.kind == FactKind::One)
+				{
+					return _Wrap(ChunkType::TrueNode, nullptr);
+				}
 				std::unique_ptr<ConsumptionNode> copy = std::make_unique<ConsumptionNode>();
 				Opcode op = _model.Op(_acc.source);
 				if (_IsVariableOp(op) && (_IsVOStoreOperation(op) || _IsVOIncremented(op) || _IsVODecremented(op)))
@@ -522,7 +532,14 @@ namespace scope
 					// gets to it either); other dead code gives no statement:
 					// no path of the tree gets to it (verify), and as text it
 					// would run.
-					if ((i == 0) || _model.IsLive(i - 1))
+					// A jmp over the dead code that does nothing, and that is
+					// the only branch to the live code after it, keeps the
+					// node and the facts (the KQ4 copy in "patch\NEW", script
+					// 996, User::getInput: the value of an if goes over dead
+					// code to a store).
+					bool passedOver = (i > 0) && (_model.Op(i - 1) == Opcode::JMP) && _model.IsNoOp(i - 1) && (_model.Target(i - 1) != NoIndex) &&
+						(_model.Sources(_model.Target(i - 1)).size() == 1);
+					if (((i == 0) || _model.IsLive(i - 1)) && !passedOver)
 					{
 						_ResetFacts();
 					}
@@ -583,6 +600,16 @@ namespace scope
 				default:
 					break;
 				}
+				if (((op == Opcode::NOT) || (op == Opcode::BNOT) || (op == Opcode::NEG)) && !_AccIsAvailable() && (_acc.kind == FactKind::Unknown) &&
+					_AccIsDeadAfter(i))
+				{
+					// An operation on a value that no node has (a test took
+					// it), whose result no instruction reads: no code (LB2
+					// script 250, sDoTakeOffFlight::changeState: "bnt L;
+					// bnot; bnot; L: ldi 1").
+					_Structural(i);
+					return;
+				}
 				if (CodeModel::IsCompare(op) && !_stack.empty() && (_stack.back().kind == EntryKind::Prev))
 				{
 					_NaryCompare(i);
@@ -603,6 +630,12 @@ namespace scope
 				// The accumulator operand comes after the stack operands: a node
 				// that was made before them is not the operand.
 				bool accAvailable = _AccIsAvailable();
+				if ((op == Opcode::RET) && accAvailable && _IsLoopNode(*_pending))
+				{
+					// A ret after a loop is a bare return, not a return of the value
+					// of the loop.
+					accAvailable = false;
+				}
 				if (!accAvailable && _IsSwappedOperands(i, consumption))
 				{
 					// A constant on the stack after the other operand, which
@@ -646,11 +679,21 @@ namespace scope
 				{
 					_HoistSlotStores(i, *node);
 				}
+				// A push of a node with no effect, when the accumulator has no fact:
+				// a reader of the accumulator after it gets a copy of the node
+				// (Longbow script 893, Table::at: "push; add").
+				ConsumptionNode *pushed = ((op == Opcode::PUSH) && accAvailable && accOperand && !_HasEffect(*accOperand)) ? accOperand.get() : nullptr;
 				if (accOperand)
 				{
 					node->AppendChild(std::move(accOperand));
 				}
+				bool noFact = (_acc.kind == FactKind::Unknown);
 				_UpdateFacts(i);
+				if (pushed && noFact)
+				{
+					_acc = { FactKind::Pushed, i };
+					_pushedNode = pushed;
+				}
 				if (consumption.cStackGenerate)
 				{
 					_Push(std::move(node));
@@ -880,6 +923,55 @@ namespace scope
 			}
 
 
+			// No instruction reads the accumulator after the instruction:
+			// the code after it (following each jmp) puts a value there
+			// before an instruction reads it, or before a branch or a ret
+			// that can read it.
+			bool _AccIsDeadAfter(int i)
+			{
+				int k = i + 1;
+				for (int steps = 0; (steps < 64) && (k >= 0) && (k < _model.Size()); ++steps)
+				{
+					Opcode op = _model.Op(k);
+					if (op == Opcode::JMP)
+					{
+						k = _model.Target(k);
+						continue;
+					}
+					if ((op == Opcode::BT) || (op == Opcode::BNT))
+					{
+						return false;
+					}
+					if (op == Opcode::RET)
+					{
+						return !_returnsValue;
+					}
+					if ((op == Opcode::NOT) || (op == Opcode::BNOT) || (op == Opcode::NEG))
+					{
+						// It reads the value only to put another one there.
+						++k;
+						continue;
+					}
+					Consumption consumption = _GetInstructionConsumption(*_pos[k], nullptr);
+					if (consumption.cAccConsume)
+					{
+						return false;
+					}
+					if (consumption.cAccGenerate)
+					{
+						return true;
+					}
+					++k;
+				}
+				return false;
+			}
+
+			static bool _IsLoopNode(const ConsumptionNode &node)
+			{
+				ChunkType type = node.GetType();
+				return (type == ChunkType::While) || (type == ChunkType::For) || (type == ChunkType::Do);
+			}
+
 			// A dup outside a switch: a copy of the value on the stack top
 			// (the optimiser makes a dup of a push of the same value). The
 			// dup does not take the value, so the value can be one that was
@@ -902,6 +994,18 @@ namespace scope
 						_Fail("dup-no-value", i);
 					}
 					_Push(_DeepCopy(*_stack.back().ref));
+					return;
+				}
+				if (!_stack.empty() && (_stack.back().kind == EntryKind::CaseDup) && (_stack.size() >= 2) &&
+					(_stack[_stack.size() - 2].kind == EntryKind::SwitchValue) && _IsPureValue(*_stack[_stack.size() - 2].ref))
+				{
+					// A dup in the value of a case: a copy of the value of the
+					// switch, which the dup at the start of the case value
+					// copied (QfG4 floppy script 670, pMainDoor::doVerb:
+					// "dup; dup; ldi 4; eq?": the case value is an and whose
+					// first term compares the switch value).
+					_Structural(i);
+					_Push(_DeepCopy(*_stack[_stack.size() - 2].ref));
 					return;
 				}
 				if (_stack.empty() || (_stack.back().kind != EntryKind::Value) || !_IsPureValue(*_stack.back().node))
@@ -1003,6 +1107,13 @@ namespace scope
 						caseNode->AppendChild(_Wrap(ChunkType::CaseCondition, _CaseValue(*item)));
 					}
 					_Structural(item->branch);
+					if (item->value && (_acc.kind == FactKind::Unknown))
+					{
+						// The body of a case starts on the fall-through of the bnt of
+						// the eq? of its value: the accumulator is 1 (QfG3 script 471,
+						// uhuraCompete::changeState: "bnt; pushi 3; push1; push").
+						_acc = { FactKind::One, NoIndex };
+					}
 					std::unique_ptr<ConsumptionNode> body = std::make_unique<ConsumptionNode>();
 					body->SetType(ChunkType::CaseBody);
 					ConsumptionNode *bodyRaw = body.get();
@@ -1109,7 +1220,11 @@ namespace scope
 				{
 					loop->AppendChild(std::move(step));
 				}
-				_Append(std::move(loop), false, region.head);
+				// The value of the loop is the accumulator at its exit (0 at the
+				// exit of its test, the value of a breakif, the value before a
+				// break): a test after it can read it (ICEMAN script 385,
+				// localproc_02bc: the test of the outer loop is the inner loop).
+				_Append(std::move(loop), true, region.head);
 			}
 
 			// The test of a while: a body that is one if whose else is the
@@ -1160,7 +1275,6 @@ namespace scope
 				case Opcode::PUSH2:
 				case Opcode::PUSHSELF:
 				case Opcode::PTOS:
-				case Opcode::ATOP:
 				case Opcode::REST:
 				case Opcode::RET:
 				case Opcode::BT:
@@ -1169,9 +1283,21 @@ namespace scope
 				case Opcode::TOSS:
 				case Opcode::LINK:
 					return;
+				case Opcode::ATOP:
+					// The property changes; the accumulator does not. A pushed
+					// node can read the property.
+					if (_acc.kind == FactKind::Pushed)
+					{
+						_acc = Fact();
+					}
+					return;
 				case Opcode::STOP:
 				case Opcode::IPTOS:
 				case Opcode::DPTOS:
+					if (_acc.kind == FactKind::Pushed)
+					{
+						_acc = Fact();
+					}
 					// The property changes; the accumulator does not.
 					if ((_acc.kind == FactKind::Property) && (_model.At(_acc.source).get_first_operand() == _model.At(i).get_first_operand()))
 					{
@@ -1189,6 +1315,11 @@ namespace scope
 				bool load = !_IsVOStoreOperation(op) && !_IsVOIncremented(op) && !_IsVODecremented(op);
 				if (_IsVOPureStack(op))
 				{
+					if (!load && (_acc.kind == FactKind::Pushed))
+					{
+						// A pushed node can read the variable.
+						_acc = Fact();
+					}
 					if (!load && (_acc.kind == FactKind::Variable))
 					{
 						// The variable changes; the accumulator does not. An
@@ -1236,17 +1367,99 @@ namespace scope
 			// statement ended there.
 			void _EndList(const List &list, int endIndex)
 			{
+				// Values that the sequence pushed, that have no effect, and that
+				// no instruction takes (SQ1 VGA script 40, pinkShip::doVerb:
+				// "pushi 40; ldi 16; jmp" to the toss of a switch, which pops
+				// the 40, and the ret discards the rest): no code. An
+				// instruction after the sequence that takes such a value stops
+				// the value stage (stack-underflow), so no text loses a value
+				// that the code reads.
+				std::vector<int> dropped;
+				while ((_Depth() > list.floor) && (_stack.back().kind == EntryKind::Value) && _stack.back().node && !_HasEffect(*_stack.back().node))
+				{
+					dropped.push_back(_FirstInstruction(*_stack.back().node));
+					_UnmakeTree(*_stack.back().node);
+					_stack.pop_back();
+				}
 				if (_Depth() != list.floor)
 				{
 					_Fail("stack-unbalanced", endIndex, fmt::format("depth {0}, expected {1}", _Depth(), list.floor));
 				}
-				for (const auto &item : list.items)
+				for (size_t n = 0; n < list.items.size(); ++n)
 				{
-					if (item.first != list.floor)
+					const auto &item = list.items[n];
+					// A statement after such values was at their depth.
+					int below = (int)std::count_if(dropped.begin(), dropped.end(), [&](int first) { return first < item.second; });
+					if ((item.first != list.floor) && (item.first - list.floor > below) && !_StatementBeforeItsExpression(list, n))
 					{
 						_Fail("statement-in-expression", item.second, fmt::format("depth {0}, expected {1}", item.first, list.floor));
 					}
 				}
+			}
+
+			// Each instruction of the subtree (not copies) is not in the tree.
+			void _UnmakeTree(ConsumptionNode &node)
+			{
+				if (node._hasPos && !node._copy)
+				{
+					_Unmade(_indexOf.at(&*node.GetCode()));
+				}
+				for (size_t k = 0; k < node.GetChildCount(); ++k)
+				{
+					_UnmakeTree(*node.Child((int)k));
+				}
+			}
+
+			// A statement in the middle of the operands of the statement after
+			// it, whose value no instruction reads (QfG4 CD script 81,
+			// ant::cue: "pushi 65; push1; pushi 65; push0; lag 0; send 4; ldi
+			// 5; push; ..."). When each instruction of that statement before
+			// it is a push of a number (a selector, an argument count), or when
+			// the statement has no effect (LSL3 script 460, LightScript::changeState:
+			// a div whose value no push takes), the statement comes before it in
+			// the text with the same effects; the tree check skips its place
+			// (ConsumptionNode::_hoisted).
+			bool _StatementBeforeItsExpression(const List &list, size_t n)
+			{
+				size_t next = n + 1;
+				while ((next < list.items.size()) && (list.items[next].first != list.floor))
+				{
+					++next;
+				}
+				if (next >= list.items.size())
+				{
+					return false;
+				}
+				ConsumptionNode *statement = list.node->Child((int)n);
+				int first = _FirstInstruction(*statement);
+				if (_HasEffect(*statement) && !_OnlyNumbersBefore(*list.node->Child((int)next), first))
+				{
+					return false;
+				}
+				statement->_hoisted = true;
+				return true;
+			}
+
+			// Each instruction of the subtree before the instruction limit
+			// (not copies) is a push of a number.
+			bool _OnlyNumbersBefore(ConsumptionNode &node, int limit) const
+			{
+				if (node._hasPos && !node._copy && (_indexOf.at(&*node.GetCode()) < limit))
+				{
+					Opcode op = node.GetCode()->get_opcode();
+					if ((op != Opcode::PUSHI) && (op != Opcode::PUSH0) && (op != Opcode::PUSH1) && (op != Opcode::PUSH2))
+					{
+						return false;
+					}
+				}
+				for (size_t k = 0; k < node.GetChildCount(); ++k)
+				{
+					if (!_OnlyNumbersBefore(*node.Child((int)k), limit))
+					{
+						return false;
+					}
+				}
+				return true;
 			}
 
 			// The value at the end of a sequence that is an operand (an
@@ -1315,7 +1528,13 @@ namespace scope
 				condition->SetType(ChunkType::Condition);
 				condition->AppendChild(std::move(test));
 
-				// The then-part starts with the facts of the branch.
+				// The then-part starts with the facts of the branch: after the bnt of a
+				// compare, the accumulator is 1.
+				ConsumptionNode *lastTest = (region.tests.size() == 1) ? condition->Child(0) : nullptr;
+				if (lastTest && _IsCompareNode(*lastTest) && (_acc.kind == FactKind::Unknown))
+				{
+					_acc = { FactKind::One, NoIndex };
+				}
 				std::unique_ptr<ConsumptionNode> thenNode = std::make_unique<ConsumptionNode>();
 				thenNode->SetType(ChunkType::Then);
 				ConsumptionNode *thenRaw = thenNode.get();
@@ -1489,7 +1708,7 @@ namespace scope
 				for (size_t c = 0; c < node.GetChildCount(); ++c)
 				{
 					std::pair<int, int> child = _CheckOrder(*node.Child((int)c), indexOf, inTree);
-					if (child.first == -1)
+					if ((child.first == -1) || node.Child((int)c)->_hoisted)
 					{
 						continue;
 					}
@@ -1545,6 +1764,8 @@ namespace scope
 			// The text leaves another value in the accumulator than the code
 			// (after the statement form of an or).
 			bool _accDiffers = false;
+			// FactKind::Pushed: the node that the push took.
+			ConsumptionNode *_pushedNode = nullptr;
 			// A store of ldi n to a variable (its instruction): the ldi.
 			std::map<int, int> _storeImmediate;
 			// The last live instruction is a ret (in the same sequence).

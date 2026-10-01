@@ -441,6 +441,8 @@ namespace UnitTests
         FIXTURE_TEST(SwappedOperands, "V2_SwappedOperands", 965)
         // A store that the push of an argument count or a selector takes.
         FIXTURE_TEST(StoreInSlot, "V3_StoreInSlot", 966)
+        // A loop whose value is the test of an if.
+        FIXTURE_TEST(LoopValue, "V4_LoopValue", 967)
 
         // Switches: a switch as a value, a case value with a branch, an
         // empty last case (also in a loop), and cases that all return.

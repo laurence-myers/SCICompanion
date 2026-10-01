@@ -906,5 +906,51 @@ namespace UnitTests
 				ret
 			)"));
 		}
+
+		// A compare gives 1 or 0: on the true outcome of a test of it, its
+		// value is 1 (QfG3 script 471, uhuraCompete::changeState: the text
+		// passes TRUE where the code passes the tested eq?).
+		TEST_METHOD(Meaning_ATestedCompareIsOneOrZero)
+		{
+			AssertVerdict(meaning::Verdict::Same, Check(R"(
+				lsp 1
+				ldi 3
+				eq?
+				bnt end
+				push1
+				push
+				callk 1 2
+			end:
+				ret
+			)", R"(
+				lsp 1
+				ldi 3
+				eq?
+				bnt end
+				push1
+				push1
+				callk 1 2
+			end:
+				ret
+			)"));
+			// A value that is not a compare: any true value.
+			AssertVerdict(meaning::Verdict::Diff, Check(R"(
+				lap 1
+				bnt end
+				push1
+				push
+				callk 1 2
+			end:
+				ret
+			)", R"(
+				lap 1
+				bnt end
+				push1
+				push1
+				callk 1 2
+			end:
+				ret
+			)"));
+		}
 	};
 }

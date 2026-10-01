@@ -58,6 +58,9 @@ struct ConsumptionNode
 	// A copy of a value that the code has in another place (the scope
 	// engine reads a value again that the optimiser did not load again).
 	bool _copy = false;
+	// A statement that the scope engine puts before the statement whose
+	// operands it is among (only pushes of numbers come before it).
+	bool _hoisted = false;
 	// Break, Continue: the loop, 1 for the innermost one.
 	int _level = 1;
 

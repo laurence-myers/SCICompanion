@@ -163,6 +163,91 @@ namespace UnitTests
 			Assert::IsFalse(model.IsNoOp(a.At("otherKind")), L"after a bt");
 		}
 
+		// A bt to the second of two bnts to one place arrives with a true
+		// value: the second bnt does nothing for it either (PQ4 CD script
+		// 505, soundScript::changeState; LSL6 CD script 330, arcScr::doit). A
+		// bnt to it arrives with a false value: the second bnt branches.
+		TEST_METHOD(LiveCode_ABtToTheSecondTestIsLikeTheFallThrough)
+		{
+			ScopeAsm a(R"(
+				lal 4
+				bt second
+				lap 1
+				bnt else
+			second:
+				bnt else
+				ldi 1
+				sal 2
+			else:
+				ret
+			)");
+			CodeModel model(a.code);
+			Assert::IsTrue(model.IsNoOp(a.At("second")));
+			ScopeAsm b(R"(
+				lal 4
+				bnt second
+				lap 1
+				bnt else
+			second:
+				bnt else
+				ldi 1
+				sal 2
+			else:
+				ret
+			)");
+			CodeModel modelB(b.code);
+			Assert::IsFalse(modelB.IsNoOp(b.At("second")));
+		}
+
+		// Two switches whose tosses are dead (each case returns), one inside a
+		// case of the other: each toss gets the head of its own switch (QfG3
+		// script 160, localproc_0482).
+		TEST_METHOD(Depths_DeadTossesOfNestedSwitches)
+		{
+			ScopeAsm a(R"(
+			outerHead:
+				lsg 125
+				dup
+				ldi 0
+				eq?
+				bnt case1
+				+al 1
+			innerHead:
+				push
+				dup
+				ldi 1
+				eq?
+				bnt inner2
+				ldi 20
+				ret
+				jmp innerDone
+			inner2:
+				ldi 16
+				ret
+			innerDone:
+				toss
+				jmp outerDone
+			case1:
+				dup
+				ldi 1
+				eq?
+				bnt other
+				ldi 11
+				ret
+				jmp outerDone
+			other:
+				ldi 15
+				ret
+			outerDone:
+				toss
+				ret
+			)");
+			CodeModel model(a.code);
+			Assert::AreEqual(a.At("innerHead"), model.SwitchHead(a.At("innerDone")));
+			Assert::AreEqual(a.At("outerHead"), model.SwitchHead(a.At("outerDone")));
+		}
+
+
 		// Code after a ret that no branch goes to is dead. A jmp over nothing
 		// or over dead code does nothing, and so does a bnt to its
 		// fall-through. A dead branch gives no label.
