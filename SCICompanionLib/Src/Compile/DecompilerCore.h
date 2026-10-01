@@ -229,6 +229,13 @@ private:
 
 void DecompileRaw(sci::FunctionBase &func, DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEnd, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset);
 
+// The instructions of one function, as DecompileRaw reads them: the decode
+// to the end of the script, else to pEstimatedMaxEnd. The placeholder
+// (Opcode::INDETERMINATE) comes first, and the branch targets point into
+// code. returnsValue gets the guess of the decompiler: a ret reads the
+// accumulator. False when no bound gives whole instructions.
+bool ReadFunctionCode(DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset, std::list<scii> &code, bool &returnsValue);
+
 // Repoint the branch targets of `copy` (a positional duplicate of `source`) so
 // they refer to nodes inside `copy` instead of the shared nodes in `source`.
 // After this, `source` can be edited or have nodes erased without leaving the

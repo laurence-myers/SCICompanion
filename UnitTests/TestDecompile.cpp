@@ -697,6 +697,15 @@ namespace UnitTests
         FIXTURE_TEST(EmptyLastCase, "S3_EmptyLastCase", 947)
         FIXTURE_TEST(EmptyLastCaseInLoop, "S4_EmptyLastCaseInLoop", 948)
         FIXTURE_TEST(SwitchAllReturn, "S5_SwitchAllReturn", 949)
+        // A case whose test does nothing is the else case.
+        FIXTURE_TEST(NoOpCaseTest, "S6_NoOpCaseTest", 963)
+        // Dead breaks after the jmp of a then-part: no statement.
+        FIXTURE_TEST(DeadBreak, "D1_DeadBreak", 956)
+        // Dead code after a jmp and after a break: no statement.
+        FIXTURE_TEST(DeadCode, "D2_DeadCode", 958)
+        // A continue of a for from an inner while (the compiler makes its
+        // jmp to the step of the for).
+        FIXTURE_TEST(ContinueTwoInFor, "L2_ContinueTwoInFor", 962)
         // A break of level 2, and a continue in a do loop. No round trip:
         // the compiler of this repository gives the repeat another shape.
         TEST_METHOD(LoopLevels)

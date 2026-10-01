@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 #include "DecompilerResults.h"
+#include "MeaningCheck.h"
 
 // Result of a decompile: the source text, the warning/error messages, and the
 // count of functions that fell back to assembly.
@@ -66,11 +67,20 @@ DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks = false,
 // control-flow dump on. For diagnosing a failure. Returns false if not found.
 bool DecompileTemplateScriptByTitle(const std::string &title, DecompileOutput &out);
 
+// The functions of the compiled script, for the meaning check. Asserts that
+// the script loads.
+std::vector<meaning::Function> ReadMeaningFunctions(uint16_t scriptNumber);
+
+// Asserts that each function of the compiled script means what the function
+// of the original means (meaning::CompareFunctions gives SAME). Nothing with
+// the classic engine.
+void AssertMeaningKept(const std::string &fixtureName, const std::vector<meaning::Function> &original, uint16_t scriptNumber);
+
 // Compiles the fixture, decompiles it, recompiles the decompiled text, and
-// decompiles again. Asserts the second decompile matches the first, so the
-// script survives a decompile, recompile, decompile round trip. This proves
-// the round trip is stable. It does not prove the source is faithful to the
-// original. Returns the first decompile.
+// decompiles again. Asserts that each function of the recompiled script means
+// what the function of the fixture means (AssertMeaningKept), and that the
+// second decompile matches the first, so the script survives a decompile,
+// recompile, decompile round trip. Returns the first decompile.
 DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t scriptNumber);
 
 // Decompiles every script in the game. Returns the total number of functions
@@ -94,8 +104,9 @@ int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
 // fallback, no asm, an exact match after whitespace normalization, and a stable
 // round trip. On mismatch it writes the actual text to TestResults so a diff is
 // easy. This tests fidelity, not just round-trip stability. Returns the first
-// decompile. With roundTrip false, it does not recompile the decompiled text:
-// for a fixture whose recompiled bytecode has another shape. With the scope
+// decompile. With roundTrip false, it recompiles the decompiled text for the
+// meaning check only: for a fixture whose recompiled bytecode has another
+// shape. With the scope
 // engine (SCIC_DECOMPILE_ENGINE), the expected file is
 // "<name>.scope.expected.sc" when the fixture has one.
 DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, uint16_t scriptNumber, bool roundTrip = true);

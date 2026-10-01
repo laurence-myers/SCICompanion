@@ -64,6 +64,8 @@ namespace scope
 			SkeletonKind kind;
 			int inst;
 			int label;
+			// The jmp of an else: the text has it also when it is dead.
+			bool elseJump = false;
 		};
 
 		class Skeleton
@@ -237,6 +239,7 @@ namespace scope
 					{
 						_Expect(region->branch, Opcode::JMP, "jmp before an else");
 						_Branch(SkeletonKind::Jmp, region->branch, endLabel);
+						_ops.back().elseJump = true;
 						_Place(elseLabel);
 						_Emit(region->elsePart.get());
 					}
@@ -404,9 +407,10 @@ namespace scope
 						++position;
 						break;
 					case SkeletonKind::Skip:
-						// Like the bytecode: past each dead instruction after it.
+						// Like the bytecode: past each dead instruction after it,
+						// but not past the jmp of an else (the text has it).
 						++position;
-						while ((_ops[position].inst != NoIndex) && !_model.IsLive(_ops[position].inst))
+						while ((_ops[position].inst != NoIndex) && !_model.IsLive(_ops[position].inst) && !_ops[position].elseJump)
 						{
 							++position;
 						}

@@ -1039,6 +1039,61 @@ namespace UnitTests
             Assert::IsTrue(help.out.find("Tools for the development") == std::string::npos, Wide(help.out).c_str());
         }
 
+        // scic dev compare-meaning: a template script against the script that
+        // a compile of its decompiled text makes (--out-dir --raw); a text
+        // with another meaning gives DIFF, and a script with no compiled file
+        // gives UNCOMPARED.
+        TEST_METHOD(Dev_CompareMeaning)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            fs::path root = fs::path(_copyFolder) / "meaning";
+            fs::create_directories(root / "same");
+            Expect(0, { "script", "decompile", _copyFolder, "974", "--engine", "scope" });
+            Expect(0, { "script", "compile", _copyFolder, "974", "--out-dir", (root / "same").string(), "--raw" });
+            std::string table = (root / "table.tsv").string();
+            cli::StringConsole compared = Expect(0, { "dev", "compare-meaning", _copyFolder, (root / "same").string(), "--scripts", "974", "--out", table });
+            std::vector<std::string> lines = Lines(ReadFileText(table));
+            Assert::IsTrue(lines.size() > 2, Wide(ReadFileText(table)).c_str());
+            Assert::AreEqual(std::string(cli::CompareMeaningHeader), lines[0]);
+            for (size_t i = 1; i < lines.size(); i++)
+            {
+                Assert::IsTrue(lines[i].rfind("974\t", 0) == 0, Wide(lines[i]).c_str());
+                Assert::IsTrue(lines[i].find("\tSAME\t") != std::string::npos, Wide(lines[i]).c_str());
+            }
+            Assert::IsTrue(compared.err.find("Verdicts: SAME") != std::string::npos, Wide(compared.err).c_str());
+
+            // Another meaning: a store to a property at the start of a method.
+            fs::path source = fs::path(_copyFolder) / "src" / "Door.sc";
+            std::string changed = ReadFileText(source.string());
+            size_t method = changed.find("(method (");
+            size_t bodyStart = (method != std::string::npos) ? changed.find('\n', method) : std::string::npos;
+            Assert::IsTrue(bodyStart != std::string::npos, Wide("setup: a method to change\n" + changed).c_str());
+            changed.insert(bodyStart + 1, "\t\t(= x 7)\r\n");
+            WriteFileText(source.string(), changed);
+            fs::create_directories(root / "changed");
+            Expect(0, { "script", "compile", _copyFolder, "974", "--out-dir", (root / "changed").string(), "--raw" });
+            std::string changedTable = Expect(0, { "dev", "compare-meaning", _copyFolder, (root / "changed").string(), "--scripts", "974" }).out;
+            Assert::IsTrue(changedTable.find("\tDIFF\t") != std::string::npos, Wide(changedTable).c_str());
+            Assert::IsTrue(changedTable.find("| store P") != std::string::npos, Wide(changedTable).c_str());
+
+            // No compiled file: each function is UNCOMPARED.
+            fs::create_directories(root / "empty");
+            std::vector<std::string> empty = Lines(Expect(0, { "dev", "compare-meaning", _copyFolder, (root / "empty").string(), "--scripts", "974" }).out);
+            Assert::AreEqual(lines.size(), empty.size());
+            for (size_t i = 1; i < empty.size(); i++)
+            {
+                Assert::IsTrue(empty[i].find("\tUNCOMPARED\tnot-recompiled") != std::string::npos, Wide(empty[i]).c_str());
+            }
+
+            // The scripts are the script resources: game.ini can be missing.
+            fs::remove(fs::path(_copyFolder) / "game.ini");
+            Assert::AreEqual(lines.size(), Lines(Expect(0, { "dev", "compare-meaning", _copyFolder, (root / "same").string(), "--scripts", "974" }).out).size());
+
+            Expect(3, { "dev", "compare-meaning", _copyFolder, (root / "none").string() });
+            Expect(2, { "dev", "compare-meaning", _copyFolder, (root / "same").string(), "--out", "" });
+            Expect(2, { "dev", "compare-meaning", _copyFolder });
+        }
+
         // Plan section 4.6: script sco makes the .sco files of both templates
         // from their sources. The SCI1.1 template's Main and DebugHandler
         // get a warning in the MSBuild format: their compiled scripts export

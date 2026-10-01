@@ -230,6 +230,16 @@ namespace scope
 					{
 						_FailAt("case-test", test);
 					}
+					// A bnt that does nothing, before code: that code runs for
+					// each value, also for the value of the case. It is the
+					// else case, and the compare is a statement of it.
+					if (_model.IsNoOp(test) && (_model.NextLive(next) < toss))
+					{
+						item->value.reset();
+						item->body = _Sequence(entry, toss, nullptr);
+						region->cases.push_back(std::move(item));
+						break;
+					}
 					item->branch = test;
 					int bodyEnd = next;
 					int jump = next - 1;
@@ -409,6 +419,20 @@ namespace scope
 				return region;
 			}
 
+			// The last live instruction of (p, marker) is a jmp that does
+			// nothing.
+			bool _EndsWithNoOpJmp(int p, int marker) const
+			{
+				for (int i = marker - 1; i > p; --i)
+				{
+					if (_model.IsLive(i))
+					{
+						return (_model.Op(i) == Opcode::JMP) && _model.IsNoOp(i);
+					}
+				}
+				return false;
+			}
+
 			// No instruction of [lo, hi) is live.
 			bool _IsDead(int lo, int hi) const
 			{
@@ -417,7 +441,9 @@ namespace scope
 
 			// A bnt to X inside (p, hi]: an if. A jmp J at X - 1 is the else
 			// marker when it does something, it is not the latch of a loop,
-			// and J is inside (X, hi] or is the end of the sequence. Such a jmp
+			// and J is inside (X, hi] or is the end of the sequence. A dead jmp
+			// is no marker when the then-part ends with a jmp that does
+			// nothing: that jmp goes to X. Such a jmp
 			// can also be the last statement of the then-part (a continue to
 			// the step of a for loop, before the statements after the if):
 			// when the reading with an else fails, the reading with no else is
@@ -430,7 +456,8 @@ namespace scope
 				}
 				int marker = target - 1;
 				int elseEnd = NoIndex;
-				if ((marker > p) && (_model.Op(marker) == Opcode::JMP) && !(_model.IsLive(marker) && _model.IsNoOp(marker)) && !_loopSet.IsLatch(marker))
+				if ((marker > p) && (_model.Op(marker) == Opcode::JMP) && !(_model.IsLive(marker) && _model.IsNoOp(marker)) && !_loopSet.IsLatch(marker) &&
+					!_EndsWithNoOpJmp(p, marker))
 				{
 					int jumpTarget = _model.Target(marker);
 					if ((jumpTarget > target) && (jumpTarget <= hi))

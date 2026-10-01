@@ -1347,31 +1347,40 @@ public:
 
 		out.out << "(for (";
 
+		// The initializer, the condition and the looper are on one line,
+		// unless one of them is long.
 		bool firstBlobMultiline = _ShouldBeMultiline(forLoop.GetInitializer()) || _ShouldBeMultiline(forLoop.GetCondition().get()) || _ShouldBeMultiline(forLoop._looper.get());
 
 		{
 			SET_MULTILINEMODE(firstBlobMultiline);
 			if (forLoop.GetInitializer())
 			{
+				// No space after the parenthesis (an empty block uses none).
+				_SkipNextSpace();
 				_MaybeIndentAccept(*forLoop.GetInitializer());
+				_skipNextSpace = false;
 				_MaybeNewLineIndentNoSpace();
 			}
 			out.out << ")";
 
 			_MaybeIndentAccept(*forLoop.GetCondition());
 
+			_MaybeNewLineIndent();
+			out.out << "(";
 			if (forLoop._looper)
 			{
-				_MaybeNewLineIndent();
-				out.out << " (";
+				_SkipNextSpace();
 				_MaybeIndentAccept(*forLoop._looper);
+				_skipNextSpace = false;
 				_MaybeNewLineIndentNoSpace();
-				out.out << ")";
 			}
+			out.out << ")";
 		}
 
-		// Now the code
-		SET_MULTILINEMODE(firstBlobMultiline);
+		// Now the code, indented, as in a while loop.
+		bool isMultiline = _ShouldBeMultiline(&forLoop);
+		assert(isMultiline); // It's important that this returns true so that parents are multiline too.
+		SET_MULTILINEMODE(isMultiline);
 		_MaybeIndentAcceptChildren(forLoop.GetStatements());
 		_MaybeNewLineIndentNoSpace();
 		out.out << ")";

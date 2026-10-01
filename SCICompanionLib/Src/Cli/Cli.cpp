@@ -257,6 +257,14 @@ namespace cli
         CLI::Option *compareOutOption = compareStructure->add_option("--out", compareOptions.outFile, "Write the table into this file (default: stdout).");
         compareStructure->add_option("--scripts", compareOptions.scripts, "Compare only these scripts (numbers, separated by commas).")
             ->delimiter(',')->check(CLI::Range(0, 65535));
+        CompareMeaningOptions meaningOptions;
+        CLI::App *compareMeaning = dev->add_subcommand("compare-meaning", "Compare the meaning of each function of a game with the same function of the script compiled from the decompiled text.");
+        compareMeaning->fallthrough();
+        compareMeaning->add_option("game-folder", meaningOptions.gameFolder, "The game with the original scripts.")->required();
+        compareMeaning->add_option("recompiled-folder", meaningOptions.recompiledFolder, "The scripts compiled from the decompiled text (scic script compile --out-dir <folder> --raw).")->required();
+        CLI::Option *meaningOutOption = compareMeaning->add_option("--out", meaningOptions.outFile, "Write the table into this file (default: stdout).");
+        compareMeaning->add_option("--scripts", meaningOptions.scripts, "Compare only these scripts (numbers, separated by commas).")
+            ->delimiter(',')->check(CLI::Range(0, 65535));
 
         CliOutput output(console, common);
         try
@@ -378,7 +386,7 @@ namespace cli
             {
                 return "--baseline needs a folder";
             }
-            if ((compareOutOption->count() > 0) && compareOptions.outFile.empty())
+            if (((compareOutOption->count() > 0) && compareOptions.outFile.empty()) || ((meaningOutOption->count() > 0) && meaningOptions.outFile.empty()))
             {
                 return "--out needs a file";
             }
@@ -430,14 +438,19 @@ namespace cli
         }
         if (dev->parsed())
         {
-            // A dev command opens no game.
-            if (!compareStructure->parsed())
+            // No game of the command line: compare-structure reads folders,
+            // and compare-meaning opens its two games.
+            if (!compareStructure->parsed() && !compareMeaning->parsed())
             {
                 logged.Help(HelpOf(dev, "scic dev"));
                 return (int)ExitCode::Success;
             }
-            sci::Result<ExitCode> compared = sci::Guard("comparing the structure", [&]() -> sci::Result<ExitCode>
+            sci::Result<ExitCode> compared = sci::Guard(compareMeaning->parsed() ? "comparing the meaning" : "comparing the structure", [&]() -> sci::Result<ExitCode>
             {
+                if (compareMeaning->parsed())
+                {
+                    return RunCompareMeaning(meaningOptions, AbsolutePath(DataFolderOf(common)), logged);
+                }
                 return RunCompareStructure(compareOptions, logged);
             });
             if (!compared)

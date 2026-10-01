@@ -3096,15 +3096,18 @@ CodeResult ContinueStatement::OutputByteCode(CompileContext &context) const
 		if (continueTarget == context.code().get_undetermined())
 		{
 			// This is a jump forward whose target has not yet been determined. This means there
-			// should be a branch block for us.
-			if (context.code().in_branch_block(BranchBlockIndex::Continue, Levels))
+			// should be a branch block for us: only the frames with no target yet have one, so
+			// the level of the block counts those frames (a while loop between it and the
+			// continue has none).
+			uint16_t blockLevels = context.code().count_forward_continue_frames(Levels);
+			if (context.code().in_branch_block(BranchBlockIndex::Continue, blockLevels))
 			{
-				context.code().inst(GetLineNumber(), Opcode::JMP, context.code().get_undetermined(), BranchBlockIndex::Continue);
+				context.code().inst(GetLineNumber(), Opcode::JMP, context.code().get_undetermined(), BranchBlockIndex::Continue, blockLevels);
 				DEBUG_BRANCH(context.code(), DEBUG_CONTINUE);
 			}
 			else
 			{
-				assert(false && "internal compiler error");
+				context.ReportError(this, "Internal compiler error: the continue statement has no target.");
 			}
 		}
 		else

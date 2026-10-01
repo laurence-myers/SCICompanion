@@ -131,6 +131,7 @@
     <ClInclude Include="..\SCICompanionLib\Src\Compile\ScopeRegion.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\ScopeCode.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\ScopeValues.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\MeaningCheck.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\ConsumptionNode.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\SyntaxParser.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\TarjanAlgorithm.h" />
@@ -277,6 +278,7 @@
     <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeRegion.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeCode.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeValues.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\MeaningCheck.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\SyntaxParser.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\TarjanAlgorithm.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Compile\Types.cpp" />

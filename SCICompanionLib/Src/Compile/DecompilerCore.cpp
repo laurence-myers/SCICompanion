@@ -1284,6 +1284,43 @@ namespace
 	}
 }
 
+// The decode of a function: to the end of the script, else to the estimated
+// end. The end of the code, or nullptr.
+static const BYTE *_DecodeFunction(DecompileLookups &lookups, std::list<scii> &code, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset)
+{
+	const BYTE *discoveredEnd = _ConvertToInstructions(lookups, code, pBegin, pScriptResourceEnd, wBaseOffset, true);
+	if (discoveredEnd == nullptr)
+	{
+		// If there were problems with that (say bogus branches that go somewhere incorrect), try a tighter bound.
+		// We don't want to try the tight bound right away, because it might have been determined using bogus
+		// exports in the export table (e.g. SQ5 does this in script 243).
+		code.clear();
+		discoveredEnd = _ConvertToInstructions(lookups, code, pBegin, pEstimatedMaxEnd, wBaseOffset, false);
+	}
+	return discoveredEnd;
+}
+
+bool ReadFunctionCode(DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset, std::list<scii> &code, bool &returnsValue)
+{
+	code.clear();
+	returnsValue = false;
+	if (!_DecodeFunction(lookups, code, pBegin, pEstimatedMaxEnd, pScriptResourceEnd, wBaseOffset))
+	{
+		return false;
+	}
+	code.insert(code.begin(), scii(lookups.GetVersion(), Opcode::INDETERMINATE, -1));
+	// The guess reads the code after the dead-branch removal, as in
+	// DecompileRaw.
+	std::list<scii> edited = code;
+	RepointBranchTargetsIntoCopy(code, edited);
+	_RemoveDeadBranches(edited);
+	lookups.FunctionDecompileHints.Reset();
+	_DetermineIfFunctionReturnsValue(edited, lookups);
+	returnsValue = lookups.FunctionDecompileHints.ReturnsValue;
+	lookups.FunctionDecompileHints.Reset();
+	return true;
+}
+
 // The decompile of one function; the caller sends its report line.
 static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset, DecompiledFunction &report)
 {
@@ -1295,15 +1332,7 @@ static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, con
 	// Take the raw data, and turn it into a list of scii instructions, and make sure the branch targets point to code_pos's
 	std::list<scii> code;
 	std::list<scii> originalCode;
-	const BYTE *discoveredEnd = _ConvertToInstructions(lookups, code, pBegin, pScriptResourceEnd, wBaseOffset, true);
-	if (discoveredEnd == nullptr)
-	{
-		// If there were problems with that (say bogus branches that go somewhere incorrect), try a tighter bound.
-		// We don't want to try the tight bound right away, because it might have been determined using bogus
-		// exports in the export table (e.g. SQ5 does this in script 243).
-		code.clear();
-		discoveredEnd = _ConvertToInstructions(lookups, code, pBegin, pEstimatedMaxEnd, wBaseOffset, false);
-	}
+	const BYTE *discoveredEnd = _DecodeFunction(lookups, code, pBegin, pEstimatedMaxEnd, pScriptResourceEnd, wBaseOffset);
 
 	bool success = (discoveredEnd != nullptr);
 	if (success)

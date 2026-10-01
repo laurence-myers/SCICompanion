@@ -25,6 +25,7 @@
 #include "DecompileScript.h"
 #include "DecompilerConfig.h"
 #include "ResourceContainer.h"
+#include "MeaningCheck.h"
 #include "format.h"
 #include <filesystem>
 #include <map>
@@ -264,6 +265,48 @@ bool DecompileTemplateScriptByTitle(const std::string &title, DecompileOutput &o
     return false;
 }
 
+std::vector<meaning::Function> ReadMeaningFunctions(uint16_t scriptNumber)
+{
+    CResourceMap &rm = appState->GetResourceMap();
+    GlobalCompiledScriptLookups lookups;
+    lookups.Load(rm.Helper());
+    sci::Result<std::vector<meaning::Function>> functions = meaning::ReadScript(rm.Helper(), lookups, rm.GetVocab000(), scriptNumber);
+    Assert::IsTrue(functions.has_value(), ToWString(fmt::format("cannot read script {0} for the meaning check", scriptNumber)).c_str());
+    return *functions;
+}
+
+void AssertMeaningKept(const std::string &fixtureName, const std::vector<meaning::Function> &original, uint16_t scriptNumber)
+{
+    // The check is for the scope engine: the classic engine has known value
+    // defects (A1_ReusedAcc).
+    if (DefaultDecompileEngine() == DecompileEngine::Classic)
+    {
+        return;
+    }
+    std::string failures;
+    for (const meaning::FunctionOutcome &row : meaning::CompareFunctions(original, ReadMeaningFunctions(scriptNumber)))
+    {
+        if (row.outcome.verdict != meaning::Verdict::Same)
+        {
+            failures += fmt::format("\n  {0}: {1} {2}", row.display, meaning::VerdictName(row.outcome.verdict), row.outcome.detail);
+        }
+    }
+    Assert::IsTrue(failures.empty(), ToWString(fixtureName + ": the recompiled functions do not mean the same:" + failures).c_str());
+}
+
+// Writes the decompiled text into the source of the fixture, and compiles it.
+static void RecompileDecompiledText(const std::string &fixtureName, uint16_t scriptNumber, const std::string &text)
+{
+    std::string path = appState->GetResourceMap().Helper().GetScriptFileName(fixtureName);
+    WriteTextFile(path, text);
+    std::string compileError;
+    if (!CompileFixture(scriptNumber, fixtureName, &compileError))
+    {
+        Logger::WriteMessage(ToWString("Decompiled text:\n" + text).c_str());
+        Assert::Fail(ToWString("Recompile of decompiled text failed: " + fixtureName + ": " + compileError).c_str());
+    }
+}
+
 DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t scriptNumber)
 {
     AddFixtureScript(fixtureName);
@@ -271,6 +314,7 @@ DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t s
     std::string compileError;
     bool compiled = CompileFixture(scriptNumber, fixtureName, &compileError);
     Assert::IsTrue(compiled, ToWString("Initial compile failed: " + fixtureName + ": " + compileError).c_str());
+    std::vector<meaning::Function> original = ReadMeaningFunctions(scriptNumber);
 
     // The control-flow-graph "digraph code" dump is a developer aid. It was on
     // unconditionally here, so every round-trip test logged a graphviz block per
@@ -282,14 +326,8 @@ DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t s
     bool debugCfg = (getenv("SCICOMP_DEBUG_CFG") != nullptr);
     DecompileOutput first = DecompileToText(scriptNumber, debugChunks, debugCfg);
 
-    std::string path = appState->GetResourceMap().Helper().GetScriptFileName(fixtureName);
-    WriteTextFile(path, first.text);
-    compileError.clear();
-    if (!CompileFixture(scriptNumber, fixtureName, &compileError))
-    {
-        Logger::WriteMessage(ToWString("Decompiled text:\n" + first.text).c_str());
-        Assert::Fail(ToWString("Recompile of decompiled text failed: " + fixtureName + ": " + compileError).c_str());
-    }
+    RecompileDecompiledText(fixtureName, scriptNumber, first.text);
+    AssertMeaningKept(fixtureName, original, scriptNumber);
 
     DecompileOutput second = DecompileToText(scriptNumber);
     Assert::AreEqual(Normalize(first.text), Normalize(second.text),
@@ -483,7 +521,12 @@ DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, u
         std::string compileError;
         bool compiled = CompileFixture(scriptNumber, fixtureName, &compileError);
         Assert::IsTrue(compiled, ToWString("Compile failed: " + fixtureName + ": " + compileError).c_str());
+        std::vector<meaning::Function> original = ReadMeaningFunctions(scriptNumber);
         first = DecompileToText(scriptNumber);
+        // The text has another layout after a recompile, but the same
+        // meaning.
+        RecompileDecompiledText(fixtureName, scriptNumber, first.text);
+        AssertMeaningKept(fixtureName, original, scriptNumber);
     }
     if (first.fallbacks != 0)
     {

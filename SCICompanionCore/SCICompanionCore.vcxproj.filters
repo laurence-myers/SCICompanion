@@ -199,6 +199,9 @@
     <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeValues.cpp">
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\MeaningCheck.cpp">
+      <Filter>Source Files\Compile</Filter>
+    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Compile\SyntaxParser.cpp">
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
@@ -576,6 +579,9 @@ $include
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Compile\ScopeValues.h">
+      <Filter>Source Files\Compile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\MeaningCheck.h">
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Compile\ConsumptionNode.h">

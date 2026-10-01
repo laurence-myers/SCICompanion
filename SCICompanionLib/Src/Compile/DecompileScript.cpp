@@ -439,6 +439,51 @@ private:
 	const IDecompilerConfig &_config;
 };
 
+// The start of each function of the script (codePointersTO): the methods,
+// the exported procedures and the internal procedures; and the internal
+// procedures that are not exported (internalProcOffsetsTO).
+static void _FindCodePointers(const CompiledScript &compiledScript, set<uint16_t> &codePointersTO, set<uint16_t> &internalProcOffsetsTO)
+{
+	// Make an index of code pointers by looking at the object methods
+	for (auto &object : compiledScript._objects)
+	{
+		const vector<uint16_t> &methodPointersTO = object->GetMethodCodePointersTO();
+		codePointersTO.insert(methodPointersTO.begin(), methodPointersTO.end());
+	}
+
+	// and the exported procedures
+	for (size_t i = 0; i < compiledScript._exportsTO.size(); i++)
+	{
+		uint16_t wCodeOffset = compiledScript._exportsTO[i];
+		// Export offsets could point to objects too - we're only interested in code pointers, so
+		// check that it's not an object
+		if (compiledScript.IsExportAProcedure(wCodeOffset))
+		{
+			codePointersTO.insert(wCodeOffset);
+		}
+	}
+
+	// and finally, the most difficult of all, we'll need to scan though for any call calls...
+	// those would be our internal procs
+	internalProcOffsetsTO = compiledScript.FindInternalCallsTO();
+	// Before adding these though, remove any exports from the internalProcOffsets.
+	for (const auto &exporty : compiledScript._exportsTO)
+	{
+		if (compiledScript.IsExportAProcedure(exporty)) // Exported objects can have the same address as a proc, we need to make sure we don't omit a proc because of that.
+		{
+			set<uint16_t>::iterator internalsIndex = find(internalProcOffsetsTO.begin(), internalProcOffsetsTO.end(), exporty);
+			if (internalsIndex != internalProcOffsetsTO.end())
+			{
+				// Remove this guy.
+				internalProcOffsetsTO.erase(internalsIndex);
+			}
+		}
+	}
+	// Now add the internal guys to the full list
+	codePointersTO.insert(internalProcOffsetsTO.begin(), internalProcOffsetsTO.end());
+	// Now we know the length of each code segment (assuming none overlap)
+}
+
 unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const CompiledScript &compiledScript, DecompileLookups &lookups, const Vocab000 *pWords)
 {
 	unique_ptr<Script> pScript = std::make_unique<Script>();
@@ -464,45 +509,9 @@ unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const Compiled
 	}
 
 	// Now its time for code.
-	// Make an index of code pointers by looking at the object methods
 	set<uint16_t> codePointersTO;
-	for (auto &object : compiledScript._objects)
-	{
-		const vector<uint16_t> &methodPointersTO = object->GetMethodCodePointersTO();
-		codePointersTO.insert(methodPointersTO.begin(), methodPointersTO.end());
-	}
-
-	// and the exported procedures
-	for (size_t i = 0; i < compiledScript._exportsTO.size(); i++)
-	{
-		uint16_t wCodeOffset = compiledScript._exportsTO[i];
-		// Export offsets could point to objects too - we're only interested in code pointers, so
-		// check that it's not an object
-		if (compiledScript.IsExportAProcedure(wCodeOffset))
-		{
-			codePointersTO.insert(wCodeOffset);
-		}
-	}
-
-	// and finally, the most difficult of all, we'll need to scan though for any call calls...
-	// those would be our internal procs
-	set<uint16_t> internalProcOffsetsTO = compiledScript.FindInternalCallsTO();
-	// Before adding these though, remove any exports from the internalProcOffsets.
-	for (const auto &exporty : compiledScript._exportsTO)
-	{
-		if (compiledScript.IsExportAProcedure(exporty)) // Exported objects can have the same address as a proc, we need to make sure we don't omit a proc because of that.
-		{
-			set<uint16_t>::iterator internalsIndex = find(internalProcOffsetsTO.begin(), internalProcOffsetsTO.end(), exporty);
-			if (internalsIndex != internalProcOffsetsTO.end())
-			{
-				// Remove this guy.
-				internalProcOffsetsTO.erase(internalsIndex);
-			}
-		}
-	}
-	// Now add the internal guys to the full list
-	codePointersTO.insert(internalProcOffsetsTO.begin(), internalProcOffsetsTO.end());
-	// Now we know the length of each code segment (assuming none overlap)
+	set<uint16_t> internalProcOffsetsTO;
+	_FindCodePointers(compiledScript, codePointersTO, internalProcOffsetsTO);
 
 	// Spit out code segments:
 	// First, the objects (instances, classes)
@@ -695,4 +704,63 @@ std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, Gl
 	ConvertToSCISyntaxHelper(*pScript, &scriptLookups);
 
 	return pScript;
+}
+
+std::vector<FunctionCode> ReadScriptFunctions(const CompiledScript &compiledScript, DecompileLookups &lookups, const Vocab000 *pWords)
+{
+	compiledScript.PopulateSaidStrings(pWords);
+	set<uint16_t> codePointersTO;
+	set<uint16_t> internalProcOffsetsTO;
+	_FindCodePointers(compiledScript, codePointersTO, internalProcOffsetsTO);
+	const std::vector<BYTE> &bytes = compiledScript.GetRawBytes();
+	const BYTE *pEndScript = compiledScript.GetEndOfRawBytes();
+
+	std::vector<FunctionCode> functions;
+	auto read = [&](FunctionCode &function)
+	{
+		set<uint16_t>::const_iterator start = codePointersTO.find(function.offset);
+		CodeSection section;
+		// As DecompileFunction: a procedure at a bad address has no code.
+		bool validProcedure = (function.offset < bytes.size()) && (function.offset != BogusSQ5Export);
+		if ((start != codePointersTO.end()) && (function.method || validProcedure) &&
+			FindStartEndCode(start, codePointersTO, compiledScript._codeSections, section))
+		{
+			function.read = ReadFunctionCode(lookups, &bytes[section.begin], &bytes[section.end], pEndScript, function.offset, function.code, function.returnsValue);
+		}
+	};
+	for (const auto &object : compiledScript._objects)
+	{
+		const vector<uint16_t> &selectors = object->GetMethods();
+		const vector<uint16_t> &offsets = object->GetMethodCodePointersTO();
+		for (size_t i = 0; (i < selectors.size()) && (i < offsets.size()); i++)
+		{
+			functions.emplace_back();
+			FunctionCode &function = functions.back();
+			function.method = true;
+			function.objectName = object->GetName();
+			function.selector = selectors[i];
+			function.offset = offsets[i];
+			read(function);
+		}
+	}
+	for (size_t i = 0; i < compiledScript._exportsTO.size(); i++)
+	{
+		uint16_t offset = compiledScript._exportsTO[i];
+		if (compiledScript.IsExportAProcedure(offset))
+		{
+			functions.emplace_back();
+			FunctionCode &function = functions.back();
+			function.exportIndex = (int)i;
+			function.offset = offset;
+			read(function);
+		}
+	}
+	for (uint16_t offset : internalProcOffsetsTO)
+	{
+		functions.emplace_back();
+		FunctionCode &function = functions.back();
+		function.offset = offset;
+		read(function);
+	}
+	return functions;
 }

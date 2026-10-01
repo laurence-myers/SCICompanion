@@ -245,6 +245,32 @@ namespace cli
     // (NotFound).
     sci::Result<ExitCode> RunCompareStructure(const CompareStructureOptions &options, CliOutput &output);
 
+    // scic dev compare-meaning (hidden): the meaning of each function of a
+    // game against the same function of the script that a compile of the
+    // decompiled text made.
+    struct CompareMeaningOptions
+    {
+        std::string gameFolder;
+        // The compiled scripts as scic script compile --out-dir --raw writes
+        // them: script.<n>.bin and heap.<n>.bin.
+        std::string recompiledFolder;
+        std::string outFile;            // empty: stdout
+        std::vector<int> scripts;       // empty: every script of the game
+    };
+
+    // The first line of the table of compare-meaning.
+    extern const char *const CompareMeaningHeader;
+
+    // Compares each function of each script of the game with the function of
+    // the same key in the recompiled script (meaning::Compare). A script with
+    // no file in the recompiled folder (its compile failed) gives each of its
+    // functions UNCOMPARED, "not-recompiled". Writes a table (tab-separated:
+    // script, key, function, offset, verdict, detail) to the out file or
+    // stdout, then the count of each verdict to stderr. A script that cannot
+    // be read is a warning, and exit code 6. Fails when the game does not
+    // open, or the recompiled folder does not exist (NotFound).
+    sci::Result<ExitCode> RunCompareMeaning(const CompareMeaningOptions &options, const std::string &dataFolder, CliOutput &output);
+
     // The full path of a folder or a file, from GetFullPathName: a relative
     // path starts at the current folder, and the case of the path stays. A
     // separator at the end goes, except the one of a root (C:\, \\?\C:\). An

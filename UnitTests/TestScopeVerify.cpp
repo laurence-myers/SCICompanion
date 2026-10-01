@@ -168,6 +168,50 @@ namespace UnitTests
 				"layout", 0x0002);
 		}
 
+		// Negative check: a dead jmp after a jmp that does nothing as the jmp
+		// of an else. The then-part goes on to the code after it; the text of
+		// the tree skips that code.
+		TEST_METHOD(Reject_DeadJmpAfterANoOpJmpAsAnElse)
+		{
+			AssertRejects(R"(
+			head:
+				lal 0
+				bnt exit
+				lal 1
+				bnt next
+				ldi 1
+				sal 2
+				jmp next
+				jmp head
+			next:
+				lal 3
+				bnt skip
+				ldi 2
+				sal 4
+			skip:
+				jmp head
+			exit:
+				ret
+			)",
+				"loop 0000 latch 000c\n"
+				"  body\n"
+				"    code 0000\n"
+				"    if 0001\n"
+				"      then\n"
+				"        code 0002\n"
+				"        if 0003\n"
+				"          then\n"
+				"            code 0004-0006\n"
+				"          else 0007\n"
+				"            code 0008\n"
+				"            if 0009\n"
+				"              then\n"
+				"                code 000a-000b\n"
+				"      else break 1\n"
+				"code 000d\n",
+				"successor", 0x0005);
+		}
+
 		// Negative check: a code region is not in the tree.
 		TEST_METHOD(Reject_DroppedLeaf)
 		{

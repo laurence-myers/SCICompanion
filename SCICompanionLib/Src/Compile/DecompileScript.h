@@ -13,6 +13,11 @@
 ***************************************************************************/
 #pragma once
 
+#include <list>
+#include <string>
+#include <vector>
+#include "scii.h"
+
 namespace sci
 {
 	class Script;
@@ -52,3 +57,35 @@ class SelectorTable;
 std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, uint16_t wScript, CompiledScript &compiledScript, IDecompilerResults &results, bool debugControlFlow = false, bool debugInstConsumption = false, PCSTR pszDebugFilter = nullptr, bool decompileAsm = false, bool substituteTextTuples = false);
 // Gives objects that share a name distinct names (name_a, name_b, ...), keeping the original as the name property.
 void FixDuplicateObjectNames(CompiledScript &compiledScript, const SelectorTable &selectorTable);
+
+// The code of one function of a compiled script (ReadScriptFunctions).
+struct FunctionCode
+{
+	FunctionCode() = default;
+	FunctionCode(FunctionCode &&) = default;
+	FunctionCode &operator=(FunctionCode &&) = default;
+	// A copy of the code keeps its branch targets in the code of the source.
+	FunctionCode(const FunctionCode &) = delete;
+	FunctionCode &operator=(const FunctionCode &) = delete;
+
+	// A method: the name of its object, and its selector.
+	bool method = false;
+	std::string objectName;
+	uint16_t selector = 0;
+	// A procedure: the index of its export; -1 for an internal procedure
+	// (and for a method).
+	int exportIndex = -1;
+	// The address of the code.
+	uint16_t offset = 0;
+	// The decode found whole instructions.
+	bool read = false;
+	// The instructions (ReadFunctionCode), and the guess that a ret reads
+	// the accumulator.
+	std::list<scii> code;
+	bool returnsValue = false;
+};
+
+// The functions of the script, as the decompiler finds them: the methods of
+// each object, the exported procedures, then the internal procedures (in
+// address order). pWords gives the text of the said strings.
+std::vector<FunctionCode> ReadScriptFunctions(const CompiledScript &compiledScript, DecompileLookups &lookups, const Vocab000 *pWords);

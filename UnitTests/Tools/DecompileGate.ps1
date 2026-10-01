@@ -20,6 +20,17 @@
     The corpus folders stay read-only: scic runs on the copy, and Snuffer
     reads the game folder (a copy when it must leave out a volume file).
 
+    With -Meaning, the meaning check (plan section 3.6) runs too: for each
+    game, scic decompiles every script of the copy again (the compile needs
+    the .sco of each script), compiles them (scic script compile --all
+    --out-dir <folder> --raw: the resources of the copy do not change), and
+    compares the meaning of each function of the scripts of the run with
+    the recompiled function (scic dev compare-meaning). The run folder gets
+    games\<md5>\meaning\ (the function report of that decompile, the
+    compiled scripts, the logs) and games\<md5>\meaning.tsv, and
+    meaning.tsv (every row of the check, with its game and the output of
+    the function).
+
     The sample (-Sample, UnitTests\Files\Corpus\gate-sample.json) lists for
     each game (by MD5) the scripts with functions that fell back to asm in
     a sweep, and a fixed random choice of other scripts. -MakeSample makes
@@ -72,12 +83,19 @@
          category);
       6. (needs -BaselineRun) a function whose text changed has a verdict
          against Snuffer that is not worse than before (SAME < NAMES <
-         SHAPE < DIFF < ASM).
+         SHAPE < DIFF < ASM), or its game, script and function are in the
+         allowlist (a kind of change that the owner accepted);
+      7. (needs -Meaning) no function that the scope engine gives as source
+         has DIFF in the meaning check, unless its game, script and function
+         are in the allowlist; each UNCOMPARED has a reason. A game whose
+         meaning check failed fails the rule (a game that scic does not
+         decompile has no check: rule 3).
     Rule 4 (the unit tests with SCIC_DECOMPILE_ENGINE) is not here.
 
     Usage:
       .\UnitTests\Tools\DecompileGate.ps1 -Library F:\Games\Sierra,F:\games\gog -Exclude '_vgm*' -Snuffer <Snuffer.exe>
       .\UnitTests\Tools\DecompileGate.ps1 -Library ... -Snuffer ... -Engine scope -BaselineRun <run folder of classic> -Check
+      .\UnitTests\Tools\DecompileGate.ps1 -Library ... -Snuffer ... -Engine scope -Meaning -Check
       .\UnitTests\Tools\DecompileGate.ps1 -Library ... -Snuffer ... -Record
       .\UnitTests\Tools\DecompileGate.ps1 -Library ... -MakeSample -Failures <sweep>\functions-verified.csv
 #>
@@ -98,6 +116,7 @@ param(
     [switch]$Record,
     [switch]$Check,
     [switch]$RequireFewer,
+    [switch]$Meaning,
     [string]$Allowlist = "",
     [string]$Scic = "",
     [int]$Throttle = 4,
@@ -220,7 +239,7 @@ $gameWork = {
     param($game, $scripts, $settings)
     $ErrorActionPreference = "Stop"
     . (Join-Path $settings.Tools 'Corpus.Common.ps1')
-    $result = [ordered]@{ name = $game.Name; md5 = $game.Md5; exit = ""; bug = $false; snuffer = ""; error = ""; compared = $false }
+    $result = [ordered]@{ name = $game.Name; md5 = $game.Md5; exit = ""; bug = $false; snuffer = ""; error = ""; compared = $false; meaning = "" }
     try {
         $gameRun = Join-Path $settings.Run "games\$($game.Md5)"
         New-Item -ItemType Directory $gameRun -Force | Out-Null
@@ -315,6 +334,44 @@ $gameWork = {
             $compareExit = Invoke-Logged $settings.Scic $compare (Join-Path $gameRun "compare.out.txt") (Join-Path $gameRun "compare.err.txt") $settings.Timeout
             if (@("0", "6") -notcontains $compareExit) { $result.error = "compare-structure: exit $compareExit" }
         }
+
+        if ($settings.Meaning -and (@("0", "6") -notcontains $result.exit)) {
+            # A game that scic does not decompile (rule 3).
+            $result.meaning = "skipped: decompile exit $($result.exit)"
+        }
+        elseif ($settings.Meaning) {
+            # The meaning check: decompile every script of the copy, compile
+            # them into a folder, and compare the scripts of the run. The
+            # compile can write game.ini: the copy gets its old one back.
+            $meaningRun = Join-Path $gameRun "meaning"
+            $bin = Join-Path $meaningRun "bin"
+            New-Item -ItemType Directory $bin -Force | Out-Null
+            $gameIni = Join-Path $copy "game.ini"
+            $iniBefore = if (Test-Path -LiteralPath $gameIni) { [IO.File]::ReadAllBytes($gameIni) } else { $null }
+            try {
+                $decompileAll = @("script", "decompile", $copy, "--all", "--game-ini", "none", "-q", "--engine", $settings.Engine,
+                    "--function-report", (Join-Path $meaningRun "functions.tsv"), "--data-dir", $settings.DataDir)
+                $code = Invoke-Logged $settings.Scic $decompileAll (Join-Path $meaningRun "decompile.out.txt") (Join-Path $meaningRun "decompile.err.txt") $settings.Timeout
+                if (@("0", "6") -notcontains $code) { throw "the decompile of every script: exit $code" }
+                # 5 or 6: a script did not compile (it has no file in the folder);
+                # its functions are UNCOMPARED.
+                $code = Invoke-Logged $settings.Scic @("script", "compile", $copy, "--all", "-q", "--out-dir", $bin, "--raw", "--data-dir", $settings.DataDir) (Join-Path $meaningRun "compile.out.txt") (Join-Path $meaningRun "compile.err.txt") $settings.Timeout
+                if (@("0", "5", "6") -notcontains $code) { throw "the compile: exit $code" }
+                $check = @("dev", "compare-meaning", $copy, $bin, "--out", (Join-Path $gameRun "meaning.tsv"), "--data-dir", $settings.DataDir)
+                if ($scripts -notcontains "--all") { $check += @("--scripts", ($scripts -join ",")) }
+                $code = Invoke-Logged $settings.Scic $check (Join-Path $meaningRun "compare.out.txt") (Join-Path $meaningRun "compare.err.txt") $settings.Timeout
+                if (@("0", "6") -notcontains $code) { throw "compare-meaning: exit $code" }
+                $result.meaning = "ok"
+            }
+            catch {
+                $result.meaning = "$_"
+            }
+            finally {
+                if (Test-Path -LiteralPath $src) { [IO.Directory]::Delete($src, $true) }
+                if ($null -ne $iniBefore) { [IO.File]::WriteAllBytes($gameIni, $iniBefore) }
+                elseif (Test-Path -LiteralPath $gameIni) { [IO.File]::Delete($gameIni) }
+            }
+        }
     }
     catch {
         $result.error = "$_"
@@ -323,7 +380,7 @@ $gameWork = {
 }
 
 $settings = @{
-    Tools = $PSScriptRoot; Run = $run; Cache = $cacheFull; Scic = $Scic; DataDir = (Split-Path -Parent $Scic); Engine = $engineName; RetrySnuffer = [bool]$RetrySnuffer
+    Tools = $PSScriptRoot; Run = $run; Cache = $cacheFull; Scic = $Scic; DataDir = (Split-Path -Parent $Scic); Engine = $engineName; RetrySnuffer = [bool]$RetrySnuffer; Meaning = [bool]$Meaning
     Snuffer = $(if ($Snuffer) { Get-FullPath $Snuffer "-Snuffer" } else { "" }); BaselineRun = $(if ($BaselineRun) { Get-FullPath $BaselineRun "-BaselineRun" } else { "" })
     Timeout = $TimeoutSeconds
 }
@@ -342,10 +399,10 @@ foreach ($job in $jobs) {
     $output = $job.Shell.EndInvoke($job.Handle)
     $job.Shell.Dispose()
     $fact = $output | Select-Object -Last 1
-    if (-not $fact) { $fact = [pscustomobject]@{ name = $job.Game.Name; md5 = $job.Game.Md5; exit = ""; bug = $false; snuffer = ""; error = "no result"; compared = $false } }
+    if (-not $fact) { $fact = [pscustomobject]@{ name = $job.Game.Name; md5 = $job.Game.Md5; exit = ""; bug = $false; snuffer = ""; error = "no result"; compared = $false; meaning = "" } }
     $facts += $fact
     $done++
-    Write-Host ("[{0}/{1}] {2}: decompile {3}{4}; snuffer {5}{6}" -f $done, $jobs.Count, $fact.name, $fact.exit, $(if ($fact.bug) { " (BUG)" } else { "" }), $fact.snuffer, $(if ($fact.error) { "; error: $($fact.error)" } else { "" }))
+    Write-Host ("[{0}/{1}] {2}: decompile {3}{4}; snuffer {5}{6}{7}" -f $done, $jobs.Count, $fact.name, $fact.exit, $(if ($fact.bug) { " (BUG)" } else { "" }), $fact.snuffer, $(if ($Meaning) { "; meaning $($fact.meaning)" } else { "" }), $(if ($fact.error) { "; error: $($fact.error)" } else { "" }))
 }
 $pool.Close()
 
@@ -370,6 +427,14 @@ $scopeRows.Add("game`tmd5`tscript`tclass`tfunction`toffset`tscope`tclassic")
 $allRows = New-Object System.Collections.Generic.List[string]
 $allRows.Add("game`tmd5`tscript`tkey`tfunction`tverdict`tbaseline`tchange")
 $ruleFailures = New-Object System.Collections.Generic.List[string]
+$meaningNames = @("SAME", "DIFF", "UNCOMPARED")
+$meaningRows = New-Object System.Collections.Generic.List[string]
+$meaningRows.Add("game`tmd5`tscript`tkey`tfunction`toffset`toutput`tverdict`tdetail")
+$meaningTotals = [ordered]@{}
+foreach ($output in @("scope", "classic", "other")) {
+    $meaningTotals[$output] = [ordered]@{}
+    foreach ($name in $meaningNames) { $meaningTotals[$output][$name] = 0 }
+}
 foreach ($fact in ($facts | Sort-Object name)) {
     $gameRun = Join-Path $run "games\$($fact.md5)"
     $functions = @()
@@ -391,7 +456,8 @@ foreach ($fact in ($facts | Sort-Object name)) {
     foreach ($row in $rows) {
         $allRows.Add("$($fact.name)`t$($fact.md5)`t$($row.script)`t$($row.key)`t$($row.function)`t$($row.verdict)`t$($row.baseline)`t$($row.change)")
         if ($row.change -eq "REGRESSED") { $ruleFailures.Add("rule 1: $($fact.name) script $($row.script) $($row.function) was source and is now asm") }
-        if (($row.change -eq "CHANGED") -and $rank.ContainsKey($row.verdict) -and $rank.ContainsKey($row.baseline) -and ($rank[$row.verdict] -gt $rank[$row.baseline])) {
+        if (($row.change -eq "CHANGED") -and $rank.ContainsKey($row.verdict) -and $rank.ContainsKey($row.baseline) -and ($rank[$row.verdict] -gt $rank[$row.baseline]) -and
+            -not $allowed.ContainsKey("$($fact.md5)`t$($row.script)`t$($row.function)")) {
             $ruleFailures.Add("rule 6: $($fact.name) script $($row.script) $($row.function) changed from $($row.baseline) to $($row.verdict)")
         }
         if ($Allowlist -and (@("SHAPE", "DIFF") -contains $row.verdict) -and -not $allowed.ContainsKey("$($fact.md5)`t$($row.script)`t$($row.function)")) {
@@ -399,6 +465,31 @@ foreach ($fact in ($facts | Sort-Object name)) {
         }
     }
     if ($fact.bug -or $fact.error) { $ruleFailures.Add("rule 3: $($fact.name): decompile exit $($fact.exit)$(if ($fact.error) { ", $($fact.error)" })") }
+    if ($Meaning) {
+        # The output of each function in the decompile of the check, by its
+        # script and address.
+        $outputOf = @{}
+        $meaningReport = Join-Path $gameRun "meaning\functions.tsv"
+        if (Test-Path -LiteralPath $meaningReport) {
+            foreach ($f in @(Get-Content -LiteralPath $meaningReport | ConvertFrom-Csv -Delimiter "`t")) { $outputOf["$($f.script)`t$($f.offset)"] = $f.output }
+        }
+        $meaningTable = Join-Path $gameRun "meaning.tsv"
+        if (($fact.meaning -ne "ok") -and ($fact.meaning -notlike "skipped*")) { $ruleFailures.Add("rule 7: $($fact.name): the meaning check did not run: $($fact.meaning)") }
+        elseif (Test-Path -LiteralPath $meaningTable) {
+            foreach ($row in @(Get-Content -LiteralPath $meaningTable | ConvertFrom-Csv -Delimiter "`t")) {
+                $output = $outputOf["$($row.script)`t$($row.offset)"]
+                $group = if (@("scope", "classic") -contains $output) { $output } else { "other" }
+                if ($meaningTotals[$group].Contains($row.verdict)) { $meaningTotals[$group][$row.verdict]++ }
+                $meaningRows.Add("$($fact.name)`t$($fact.md5)`t$($row.script)`t$($row.key)`t$($row.function)`t$($row.offset)`t$output`t$($row.verdict)`t$($row.detail)")
+                if (($row.verdict -eq "DIFF") -and ($output -eq "scope") -and -not $allowed.ContainsKey("$($fact.md5)`t$($row.script)`t$($row.function)")) {
+                    $ruleFailures.Add("rule 7: $($fact.name) script $($row.script) $($row.function) does not mean the same: $($row.detail)")
+                }
+                if (($row.verdict -eq "UNCOMPARED") -and -not $row.detail) {
+                    $ruleFailures.Add("rule 7: $($fact.name) script $($row.script) $($row.function) is UNCOMPARED with no reason")
+                }
+            }
+        }
+    }
     # A source of scic that does not parse is a defect of scic.
     $compareErrors = @(Get-Content -LiteralPath (Join-Path $gameRun "compare.err.txt") -ErrorAction SilentlyContinue | Where-Object { $_ -match "^scic: warning: .* \((actual|baseline)\): " })
     foreach ($line in $compareErrors) { $ruleFailures.Add("rule 3: $($fact.name): $($line.Substring(15))") }
@@ -432,15 +523,22 @@ $totals.scopeFailures = [ordered]@{}
 foreach ($entry in ($scopeFailures.GetEnumerator() | Sort-Object -Property @{ Expression = "Value"; Descending = $true }, Name)) { $totals.scopeFailures[$entry.Name] = $entry.Value }
 $totals.changes = [ordered]@{}
 foreach ($name in $changeNames) { $totals.changes[$name] = ($gameCounts | ForEach-Object { $_.changes[$name] } | Measure-Object -Sum).Sum }
+if ($Meaning) { $totals.meaning = $meaningTotals }
 $mode = if ($Full) { "full" } else { "sample" }
 $gate = [ordered]@{ engine = $engineName; mode = $mode; date = (Get-Date -Format "yyyy-MM-dd"); totals = $totals; games = $gameCounts }
 Write-Utf8 (Join-Path $run "gate.json") (($gate | ConvertTo-Json -Depth 6) + "`r`n")
 Write-Utf8 (Join-Path $run "rows.tsv") (($allRows -join "`r`n") + "`r`n")
+if ($Meaning) { Write-Utf8 (Join-Path $run "meaning.tsv") (($meaningRows -join "`r`n") + "`r`n") }
 
 Write-Host ""
 Write-Host ("Functions: {0}; asm: {1}; corrupt: {2}; scope ok: {3}" -f $totals.functions, $totals.asm, $totals.corrupt, $totals.scopeOk)
 Write-Host ("Verdicts: " + (($verdictNames | ForEach-Object { "$_ $($totals.verdicts[$_])" }) -join ", "))
 if ($BaselineRun) { Write-Host ("Changes: " + (($changeNames | ForEach-Object { "$_ $($totals.changes[$_])" }) -join ", ")) }
+if ($Meaning) {
+    foreach ($output in $meaningTotals.Keys) {
+        Write-Host ("Meaning, {0} functions: {1}" -f $output, (($meaningNames | ForEach-Object { "$_ $($meaningTotals[$output][$_])" }) -join ", "))
+    }
+}
 foreach ($name in @("ok", "graph", "consumption")) {
     if ($shadow[$name].functions) { Write-Host ("Scope accepts {0} of {1} functions that classic gives as {2}" -f $shadow[$name].scopeOk, $shadow[$name].functions, $name) }
 }
@@ -506,6 +604,7 @@ if ($Check) {
     if (-not $RequireFewer) { Write-Host "Rule 2, fewer asm functions in total: not checked (give -RequireFewer)." }
     if (-not $BaselineRun) { Write-Host "Rules 1 and 6: not checked (give -BaselineRun)." }
     if (-not $Allowlist) { Write-Host "Rule 5: not checked (give -Allowlist)." }
+    if (-not $Meaning) { Write-Host "Rule 7: not checked (give -Meaning)." }
     if ($ruleFailures.Count -gt 0) {
         Write-Host ""
         Write-Host "The gate fails:"

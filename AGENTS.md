@@ -102,9 +102,13 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
 - The decompiler corpus gate: `UnitTests\Tools\DecompileGate.ps1` (local use
   only; the games are not in CI) decompiles a sample of each game of a
   local library (or every script, with `-Full`), and compares it with
-  sluicebox's Snuffer output. Run the sample after a control-flow or value
-  change of the decompiler; the full run is for the decision points of
-  `docs\decompiler-scope-parser\plan.md` (steps 8 and 13).
+  sluicebox's Snuffer output. With `-Meaning` it also recompiles the
+  decompiled text and compares the meaning of each function with the
+  original (`scic dev compare-meaning`, plan section 3.6). Run the sample
+  after a control-flow or value change of the decompiler; the full run is
+  for the decision points of `docs\decompiler-scope-parser\plan.md` (steps
+  8 and 13). The fixtures of `TestDecompileScope` check the meaning too:
+  that is the check that CI runs.
 - Read pass/fail counts from `TestResults\UnitTests.trx` (or
   `IntegrationTests.trx`) — the `<Counters>` element under
   `TestRun/ResultSummary`. The full unit suite takes a few minutes.

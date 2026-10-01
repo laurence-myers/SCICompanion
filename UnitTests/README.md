@@ -324,12 +324,20 @@ game data other than the template games.
   engine (`-Engine`), and compares them with sluicebox's Snuffer output
   (`scic dev compare-structure`). `-Record` writes the counts into
   `Files\Corpus\gate-baseline.json`; `-Check` applies the rules of the gate.
+  `-Meaning` also decompiles every script of each game copy, compiles the
+  text into a folder (`scic script compile --all --out-dir <folder> --raw`)
+  and compares the meaning of each function of the run with the original
+  (`scic dev compare-meaning`; plan section 3.6, gate rule 7). The
+  fixtures of `TestDecompileScope` compare the meaning of each recompiled
+  fixture in the same way (`AssertMeaningKept`), and `TestMeaningCheck`
+  tests the check on pairs of asm functions.
   The cache keeps a copy of each game and the Snuffer output. `Corpus.Common.ps1`
   has the functions that it shares with `CliCorpusSweep.ps1`.
 
   ```
   .\UnitTests\Tools\DecompileGate.ps1 -Library 'F:\Games\Sierra', 'F:\games\gog' -Exclude '_vgm*' -Snuffer <Snuffer.exe> -Work I:\tmp\scic-gate
   .\UnitTests\Tools\DecompileGate.ps1 ... -Engine scope -BaselineRun <run folder of classic> -Check
+  .\UnitTests\Tools\DecompileGate.ps1 ... -Engine scope -Meaning -Allowlist <allowlist> -Check
   ```
 
 ## Other tests

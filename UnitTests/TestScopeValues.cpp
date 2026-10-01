@@ -699,6 +699,62 @@ namespace UnitTests
 		// of a cond, after the bnt went straight to the exit), also after more
 		// dead jmps, or after an exit. (F14_BreakPastLatch has a dead break
 		// that a path goes through: the inner break leaves the outer loop.)
+		// A then-part that ends with a jmp that does nothing, then a dead jmp
+		// to the loop head: the dead jmp is no else marker. The code after it
+		// runs after the then-part (Dr. Brain, script 245, localproc_10cb).
+		TEST_METHOD(Values_ADeadJmpAfterANoOpJmpIsNoElse)
+		{
+			AssertValues(R"(
+			head:
+				lal 0
+				bnt exit
+				lal 1
+				bnt next
+				ldi 1
+				sal 2
+				jmp next
+				jmp head
+			next:
+				lal 3
+				bnt skip
+				ldi 2
+				sal 4
+			skip:
+				jmp head
+			exit:
+				ret
+			)", "While(Condition(lal) LoopBody(If(Condition(lal) Then(sal(ldi))) If(Condition(lal) Then(sal(ldi))))) ret");
+		}
+
+		// A case whose bnt goes to the next instruction (it does nothing):
+		// the code after it runs for each value, also for the value of the
+		// case. It is the else case, and the compare is a statement of it
+		// (PQ1 VGA, script 141, uniform::doVerb).
+		TEST_METHOD(Values_ACaseWithANoOpBntIsTheElse)
+		{
+			AssertValues(R"(
+				lsp 1
+				dup
+				ldi 4
+				eq?
+				bnt case2
+				ldi 5
+				sat 0
+				jmp done
+			case2:
+				dup
+				ldi 1
+				eq?
+				bnt body
+			body:
+				ldi 7
+				sat 0
+			done:
+				toss
+				ret
+			)", "Switch(SwitchValue(lsp) Case(CaseCondition(ldi) CaseBody(sat(ldi))) Case(CaseBody(eq?(lsp* ldi) sat(ldi)))) ret");
+		}
+
 		TEST_METHOD(Values_ADeadBreak)
 		{
 			AssertValues(R"(

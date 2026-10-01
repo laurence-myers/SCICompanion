@@ -197,26 +197,47 @@ an effect graph of each:
 - **Normal forms:** `jmp` chains and threading resolve away; `bt x` is
   `bnt (not x)`; a deleted load, a `push` of the accumulator, `pushi`,
   `dup` and `pprev` give the same expressions as the plain loads; a
-  `switch` gives compares of the switch value; `toss`, `link` and line
-  numbers are no effects. Variables compare by kind and index, properties
-  and selectors by number, objects by name, strings by text.
+  `switch` gives compares of the switch value; `toss`, `link`, line
+  numbers and a `send` with no message are no effects. Variables compare
+  by kind and index (in script 0 a local is the global of its index),
+  properties and selectors by number, objects by name, strings by text; a
+  `lofsa` of a class of the script is the value of `class`. The values:
+  - a load gives the value of the last store to the variable on the path,
+    and the truth of that value when a test on the path read it (so a
+    load and a reused value are one value); a loop head drops these
+    values (a value of the last turn is not the same value);
+  - a store or a call changes the variables that it can change: a value
+    of the old variable is a value of its own (`x@<effect>`);
+  - the operands of `+`, `*`, `&`, `|` and `^` are one list, their
+    numbers fold into one, and an operation on numbers folds;
+  - a test is no effect when the path knows its truth, when it tests a
+    number, or when its two outcomes get to the same next effect in the
+    same state (with no accumulator where no instruction reads it);
+  - a loop head keeps the stack depth of the code model: a `continue` out
+    of a switch leaves values on the stack that no instruction reads.
 - **Compare:** a bisimulation of the two graphs from the entry: matched
   nodes are the same kind of effect with equal expressions, and their
   successors match for each outcome of a test.
 - **Report:** SAME, DIFF (with the first place that differs), or
-  UNCOMPARED with a reason (the function is `asm`, the recompile failed, a
-  form the check does not read). DIFF of a function that the scope
-  engine gives is a defect.
+  UNCOMPARED with a reason: the recompile of the script failed
+  (`not-recompiled`), the version is SCI2 or later (the compiler makes
+  SCI0 to SCI1.1), the code runs past the end of the function (its end
+  was found wrong), or a form the check does not read (a stack underflow,
+  a `send` frame, too many paths, a very large value). The gate joins
+  the rows with the function report: DIFF of a function that the scope
+  engine gives is a defect, or a defect of the names or of the compiler
+  that the open items list.
 
 Where it runs:
 
 - Unit tests: each fixture of `TestDecompileScope` also compares the
   meaning of the decompiled and recompiled function with the compiled
   fixture. CI has no games, so this is the check that CI runs.
-- Corpus: a hidden `scic dev compare-meaning <original> <recompiled>`
-  command, and `DecompileGate.ps1 -Meaning`, which decompiles each game
-  copy with the scope engine, recompiles it (`scic script compile --all`)
-  and compares each function. Gate rule 7 (section 6).
+- Corpus: a hidden `scic dev compare-meaning <game> <compiled folder>`
+  command (the folder of `scic script compile --all --out-dir <folder>
+  --raw`), and `DecompileGate.ps1 -Meaning`, which decompiles each game
+  copy with the engine of the run, compiles it into a folder and compares
+  each function of the scripts of the run. Gate rule 7 (section 6).
 
 ## 4. Evidence
 

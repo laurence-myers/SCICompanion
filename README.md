@@ -88,7 +88,9 @@ modernizing the build. Broad highlights since the previous release:
   call with no warning. The compiler now also reports an
   error instead of silently emitting bad bytecode when it cannot resolve a
   branch, corrects the SCI0 public-export order, and rejects assembly opcodes
-  that the target SCI interpreter cannot run.
+  that the target SCI interpreter cannot run. A `(continue 2)` (or a higher
+  level) from a loop inside a `for` loop now goes to the step of the `for`;
+  it gave no code before.
 * **Faster whole-game decompiles.** Naming the global variables used to mean
   decompiling every script again, several times over, until no more names
   changed. The decompiler now decompiles and writes each script once, keeps
