@@ -342,7 +342,6 @@ namespace cli
             {
                 return "--function-report would overwrite " + decompileOptions.functionReport + ", which is not a function report; give a new file, an empty file, or a function report";
             }
-
             if (version)
             {
                 return std::string();

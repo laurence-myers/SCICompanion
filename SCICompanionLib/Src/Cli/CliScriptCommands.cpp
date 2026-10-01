@@ -510,7 +510,6 @@ namespace cli
         run.engine.DebugControlFlow = options.debugControlFlow;
         run.engine.DebugInstructionConsumption = options.debugInstructions;
         run.engine.DebugFunctionMatch = options.debugFilter;
-
         run.names = options.resetNames ? NameAssignment::All : NameAssignment::Missing;
         run.gameIni = GameIniNamesOf(options.gameIni);
         run.updateStale = options.updateStale;

@@ -17,7 +17,6 @@
 #include "scii.h"
 #include "ScriptOM.h"
 #include <cstdint>
-#include <optional>
 #include "CompileCommon.h"
 
 // fwd decl
@@ -42,16 +41,12 @@ struct Consumption
 		cStackConsume = 0;
 		cAccGenerate = 0;
 		cStackGenerate = 0;
-		cPrevConsume = 0;
-		cPrevGenerate = 0;
 	}
 
 	int cAccConsume;
 	int cStackConsume;
 	int cAccGenerate;
 	int cStackGenerate;
-	int cPrevConsume;
-	int cPrevGenerate;
 };
 
 Consumption _GetInstructionConsumption(scii &inst, DecompileLookups *lookups = nullptr);
@@ -234,7 +229,6 @@ bool ReadFunctionCode(DecompileLookups &lookups, const BYTE *pBegin, const BYTE 
 // DecompileRaw (to the end of the script: it ends at a ret that no branch
 // goes past); -1 when that decode fails.
 int FunctionCodeLength(DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset);
-
 
 struct VariableRange
 {

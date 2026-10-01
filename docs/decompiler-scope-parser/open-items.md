@@ -35,6 +35,48 @@ Open items only: gaps, unfixed findings, questions. The plan is in
   that gets two values). The meaning check gives them UNCOMPARED
   (`not-recompiled`).
 
+## Meaning DIFFs of the full corpus
+
+The full gate run (`-Full -Meaning`, 93 games) gives 1506 DIFF rows (1402
+of scope functions). Many games have two or three copies, so there are
+fewer distinct defects. Survey by cause:
+
+- **Text with the wrong meaning: a lost store** (9 rows). The value stage
+  leaves out a store whose value later pushes reuse as the argument count
+  or an argument. Example: SQ1 VGA 34 `egoDropOratPart::changeState`
+  (`ldi 3; aTop cycles; push; push; ...; callb`) gives `(proc0_1 3 1 61)`
+  with no `(= cycles 3)`. Also ICEMAN 339 `battleShip1::changeState`,
+  Hoyle Classic 17 `Character::init`, KQ6 floppy 370 `AzurePrint::init`
+  and `AerielPrint::init`, and SQ5 243 and 245.
+- **The compile gives other species** (1074 rows, 1010 in KQ5). The
+  compile takes the species of a class from the class table (vocab 996)
+  by script and position, and fails when a game has one species in two
+  scripts (KQ5: `Rev` in scripts 992 and 978). Also ECO1, PQ1, SQ4,
+  Freddy, LSL1 and LSL3.
+- **A class with no `of`** (104 rows): `Class_943_3` (Castle of Dr.
+  Brain), `Class_86_0`, `Class_47_1`. Each property of the recompile is
+  at index + 2; the original has no `name` slot (not checked in the
+  bytes).
+- **Another property layout of a superclass** (35 rows): LSL1 and
+  Mixed-Up Fairy Tales 995, IconBar and `Inv`.
+- **An object with the name of a property** (67 rows; see "Names that
+  compile to another value").
+- **The compile leaves out an uncalled local procedure** (22 rows): QfG3
+  460 `localproc_1f5b`, Mixed-Up Fairy Tales 927 `localproc_0492`; each
+  later `local N` moves.
+- **Selectors with no name** (22 rows): QfG2 dev 909, `sel_713` and
+  others get new numbers in the compile.
+- **Two kernel functions with one name** (6 rows): ECO1 540 `Dummy` (81
+  and 38).
+- **False DIFFs of the meaning check:** exports that share an address or
+  point past the end (96 rows, ICEMAN 0); local procedures in another
+  order in the text (40 rows: the check keys `local N` by order, Castle of
+  Dr. Brain 995); a test of a joined `or` or of the accumulator with no
+  reload (21 rows, QfG3 23 `Teller::respond`, KQ4 49); `calle` against
+  `call export` (8 rows, ICEMAN 3, Pepper 120, QfG1 15).
+- **Not explained** (2 rows): Hoyle Classic 17 `Character::startText`,
+  Island of Dr. Brain 268 `anElement::select`.
+
 ## Refusals
 
 - The refusals of the gate sample other than ICEMAN #235 (16 functions,

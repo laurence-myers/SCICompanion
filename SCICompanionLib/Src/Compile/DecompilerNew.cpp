@@ -52,22 +52,14 @@ const char *chunkTypeNames[] =
 	"Invert",
 	"Switch",
 	"Case",
-	"DefaultCase",
 	"CaseCondition",
 	"CaseBody",
 	"SwitchValue",
 	"Break",
 	"Continue",
-	"NeedsAccumulator",
-	"NeedsAccumulatorSpecial",
-	"FailedToGetAccumulator",
-	"FailedToGetStack",
-	"NeedsStack",
-	"ZeroNode",
 	"TrueNode",
 	"ShortCircuitInstruction",
 	"FunctionBody",
-	"CaseDeleted",
 	"Nary",
 	"For",
 	"Step",
@@ -260,34 +252,19 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode2(ConsumptionNode &node, Decomp
 				}
 				else
 				{
-					assert((child->GetType() == ChunkType::CaseDeleted) && "Unexpected child of switch chunk.");
+					assert(false && "Unexpected child of switch chunk.");
 				}
 			}
 
 			return unique_ptr<SyntaxNode>(move(switchStatement));
 		}
 
-		case ChunkType::ZeroNode:
-		{
-			// This could mean FALSE, or NULL, we don't know which. So just use 0.
-			unique_ptr<PropertyValue> valueTemp = make_unique<PropertyValue>();
-			valueTemp->SetValue(0, IntegerFlags::None);
-			return unique_ptr<SyntaxNode>(move(valueTemp));
-		}
 
 		case ChunkType::TrueNode:
 		{
 			// This could mean TRUE
 			unique_ptr<PropertyValue> valueTemp = make_unique<PropertyValue>();
 			valueTemp->SetValue("TRUE", ValueType::Token);
-			return unique_ptr<SyntaxNode>(move(valueTemp));
-		}
-
-		case ChunkType::NeedsAccumulator:
-		case ChunkType::NeedsAccumulatorSpecial:
-		{
-			unique_ptr<PropertyValue> valueTemp = make_unique<PropertyValue>();
-			valueTemp->SetValue("ERROR_NEED_ACC", ValueType::Token);
 			return unique_ptr<SyntaxNode>(move(valueTemp));
 		}
 	}

@@ -59,12 +59,13 @@ bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::
     std::vector<std::string> *outErrors = nullptr);
 
 // Decompiles the compiled script resource to source text plus diagnostics.
-// debugControlFlow adds a text dump of the control-flow graph to the warnings
-// when a function's analysis fails.
+// debugControlFlow adds the scope region tree and the code of each function
+// to the debug output.
 DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks = false, bool debugControlFlow = false);
 
 // Decompiles a template script by its title (e.g. "PolygonEdit"), with the
-// control-flow dump on. For diagnosing a failure. Returns false if not found.
+// dumps that SCICOMP_DEBUG_CHUNKS and SCICOMP_DEBUG_CONTROL_FLOW turn on. For
+// diagnosing a failure. Returns false if not found.
 bool DecompileTemplateScriptByTitle(const std::string &title, DecompileOutput &out);
 
 // The functions of the compiled script, for the meaning check. Asserts that

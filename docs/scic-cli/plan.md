@@ -366,7 +366,7 @@ Counts are for the engine folders (`Src\Compile`, `Src\Resources`,
 | Style | Count | Notes |
 |---|---|---|
 | `throw std::exception("…")` | 52 | Mostly bad data in resource readers. The constructor with a message is a Microsoft extension, not standard C++. |
-| Decompiler control-flow exceptions | 38 | `ControlFlowException` (22) and `ConsumptionNodeException` (16). Caught inside the decompiler for the asm fallback (`ControlFlowGraph.cpp:2862`, `DecompilerNew.cpp:3734, 3755`). They never leave it. |
+| Decompiler control-flow exceptions | 8 | `ConsumptionNodeException`, in the syntax stage of `DecompilerNew.cpp`. Caught inside the decompiler for the asm fallback (`OutputNewStructure` in `DecompilerNew.cpp`). They never leave it. The stages of the scope engine throw `scope::ScopeError`, a `sci::DataError`. |
 | `HRESULT` returns | 28 functions | For example `AppendResource`, `GetScriptNumber`, `SaveToFile`. |
 | `bool` returns | 30 or more | Load, save and create functions. The reason for a failure is usually lost. |
 | Stream state | `sci::istream` | Sets a fail bit by default. Resource-entity reading turns on throw mode (`ResourceEntity.cpp:77`), and `CreateResourceHelper` then substitutes a default resource. |
@@ -1110,12 +1110,11 @@ Rules:
 
 These stay as they are, inside an exception boundary:
 
-- The decompiler's control-flow exceptions (38 throw sites). They mean "give
-  up on this function and fall back to asm", inside one function's
+- The decompiler's `ConsumptionNodeException` (8 throw sites). They mean
+  "give up on this function and fall back to asm", inside one function's
   decompile, and they never leave the decompiler. To convert them would
-  thread results through the structuring code (`ControlFlowGraph.cpp`, 2930
-  lines; `DecompilerNew.cpp`, 3771 lines), with a risk to the golden
-  snapshots and no gain for callers.
+  thread results through the syntax stage of `DecompilerNew.cpp`, with no
+  gain for callers.
 - The resource component readers, which use the stream's throw mode
   (`ResourceEntity.cpp:77`). The boundary is `CreateResourceFromResourceData`,
   which gets a `Result` form in PR F2. The GUI can still use the
@@ -1759,7 +1758,7 @@ Must not:
 | Open a game | `Src\Resources\ResourceMap.cpp:1266-1302`; `Src\Resources\VersionDetectionHelper.cpp:586` |
 | Parser input | `Src\Util\CrystalScriptStream.h`, `.cpp:34-64`; `Src\CrystalEdit\CCrystalTextBuffer.cpp:289-397` |
 | Stream error mode | `Src\Util\Stream.h:86-133`; `Src\Resources\ResourceEntity.cpp:77` |
-| Decompiler exception containment | `Src\Compile\ControlFlowGraph.cpp:2862`; `Src\Compile\DecompilerNew.cpp:3734, 3755` |
+| Decompiler exception containment | `OutputNewStructure` in `Src\Compile\DecompilerNew.cpp` |
 | Silent swallows | `TextReadFrom` in `Src\Resources\Text.cpp`; `Src\Dialogs\DecompileDialog.cpp:866`; `Src\Resources\VersionDetectionHelper.cpp:902, 925` |
 | Precompiled header | `SCICompanionLib\stdafx.h` |
 | Headless test set-up | `UnitTests\Helper.cpp:53-128`; `UnitTests\DecompileHelper.cpp:132-222, 544-593` |

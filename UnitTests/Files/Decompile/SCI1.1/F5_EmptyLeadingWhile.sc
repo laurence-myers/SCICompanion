@@ -2,9 +2,8 @@
 (script# 905)
 (include sci.sh)
 
-; Family 5: an empty while loop is the first statement.
-; Its head dominates every node. Its follow node is the head of the next loop.
-; Child collection then pulls the follow node into the loop's own children.
+; Family 5: an empty while loop is the first statement. The end of the loop
+; is the head of the next loop, which is not in the first loop.
 (public
 	f5EmptyLeadingWhile 0
 )

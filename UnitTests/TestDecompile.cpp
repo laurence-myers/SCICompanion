@@ -355,7 +355,6 @@ namespace UnitTests
             LogWarnings("F1", out);
             Assert::AreEqual(0, out.fallbacks, L"should decompile with no fallback");
             Assert::IsFalse(out.ContainsAsm(), L"should have no asm");
-
             Assert::IsTrue(out.text.find("(if temp1") != std::string::npos,
                 L"the if at the end of the loop body should reconstruct");
         }
@@ -382,6 +381,14 @@ namespace UnitTests
             Assert::IsTrue(out.HasWarningContaining("[scope:parse:no-scope-for-target]"),
                 L"expected the scope parser to refuse the shape");
             Assert::IsTrue(out.ContainsAsm(), L"expected an asm fallback");
+            // The function report has the refusal.
+            Assert::AreEqual((size_t)1, out.functions.size());
+            const DecompiledFunction &function = out.functions[0];
+            Assert::AreEqual((uint16_t)903, function.script);
+            Assert::AreEqual(std::string(), function.className);
+            Assert::AreEqual(std::string("asm"), function.output);
+            Assert::IsTrue(function.byteCount > 0, L"the bytes of the function");
+            Assert::AreEqual(std::string("[scope:parse:no-scope-for-target]"), function.scope);
         }
 
         // Family 4: a "bnt" to the loop exit inside the body.
@@ -407,7 +414,6 @@ namespace UnitTests
             LogWarnings("F5", out);
             Assert::AreEqual(0, out.fallbacks, L"should decompile with no fallback");
             Assert::IsFalse(out.ContainsAsm(), L"should have no asm");
-
             Assert::IsTrue(out.text.find("(while") != std::string::npos,
                 L"expected the two while loops to reconstruct");
         }
@@ -420,7 +426,6 @@ namespace UnitTests
             LogWarnings("F6", out);
             Assert::AreEqual(0, out.fallbacks, L"should decompile with no fallback");
             Assert::IsFalse(out.ContainsAsm(), L"should have no asm");
-
             Assert::IsTrue(out.text.find("(while") != std::string::npos,
                 L"expected the outer while to reconstruct");
         }

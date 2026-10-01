@@ -417,7 +417,6 @@ if ($Allowlist) {
     }
 }
 $gameCounts = @()
-
 $scopeFailures = @{}
 $scopeRows = New-Object System.Collections.Generic.List[string]
 $scopeRows.Add("game`tmd5`tscript`tclass`tfunction`toffset`tscope")
@@ -536,7 +535,6 @@ if ($Meaning) {
         Write-Host ("Meaning, {0} functions: {1}" -f $output, (($meaningNames | ForEach-Object { "$_ $($meaningTotals[$output][$_])" }) -join ", "))
     }
 }
-
 foreach ($name in $totals.scopeFailures.Keys) { Write-Host ("  {0}: {1}" -f $name, $totals.scopeFailures[$name]) }
 # A game with no compare: no Snuffer output, or an error before the compare.
 $notCompared = @($facts | Where-Object { -not $_.compared } | Sort-Object name | ForEach-Object { if ($_.error) { "$($_.name) (error: $($_.error))" } else { "$($_.name) (Snuffer: $($_.snuffer))" } })

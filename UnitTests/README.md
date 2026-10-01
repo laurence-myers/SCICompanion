@@ -133,7 +133,7 @@ expected file is missing, the test writes the actual to
 | `F12_BreakJoin` | 925 | (control flow) | fixed; the if does not hold a statement that a break of another branch also reaches |
 | `R1_ReturnShapes` | 927 | (returns) | fixed; an if whose branches return is not returned, a value if at the end is, a `++` is not a return value |
 | `A1_ReusedAcc` | 928 | (values) | fixed; a store whose value a later send reuses stays a statement |
-| `B1_DeadBranch` | 929 | (control flow) | fixed; a `bnt` right after a `bnt` to the same target is dead; the compare is not cloned |
+| `B1_DeadBranch` | 929 | (control flow) | fixed; a `bnt` right after a `bnt` to the same target is dead; the compare is one operand |
 | `A2_ReusedSelector` | 930 | (values) | fixed; a selector pushed as `push` after an `ldi` of its number, and a `dup` argument |
 | `F13_ValueIfArgument` | 931 | (values) | fixed; a send whose arguments are value ifs, with the selector and earlier arguments pushed before the if |
 | `F14_BreakPastLatch` | 936 | (control flow) | fixed; a loop whose break jumps past its latch, to the end of the loop, holds the loop after its latch; King's Quest V script 755 |

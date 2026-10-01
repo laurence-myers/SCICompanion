@@ -231,7 +231,7 @@ an effect graph of each:
 
 Where it runs:
 
-- Unit tests: each fixture of `TestDecompileScope` also compares the
+- Unit tests: each fixture of `TestDecompile` also compares the
   meaning of the decompiled and recompiled function with the compiled
   fixture. CI has no games, so this is the check that CI runs.
 - Corpus: a hidden `scic dev compare-meaning <game> <compiled folder>`
@@ -297,7 +297,7 @@ after. New files in `SCICompanionLib\Src\Compile\`, registered in
 
 | # | PR | Main changes | Exit |
 |---|---|---|---|
-| 12 | Meaning check and gate fixes | The meaning check (section 3.6): the effect graph, the compare, the fixture assertion in `TestDecompileScope`, `scic dev compare-meaning`, `DecompileGate.ps1 -Meaning`; then the defects that the gate and the meaning check show | Negative checks: the three defects of milestone 2 (a dead `break` as a statement, dead code after an exit, `(break 2)` printed as `(break)`), put back one at a time, each give DIFF in a fixture and on the corpus. Gate rules 1-7 pass on the sample (section 6). |
+| 12 | Meaning check and gate fixes | The meaning check (section 3.6): the effect graph, the compare, the fixture assertion in `TestDecompile`, `scic dev compare-meaning`, `DecompileGate.ps1 -Meaning`; then the defects that the gate and the meaning check show | Negative checks: the three defects of milestone 2 (a dead `break` as a statement, dead code after an exit, `(break 2)` printed as `(break)`), put back one at a time, each give DIFF in a fixture and on the corpus. Gate rules 1-7 pass on the sample (section 6). |
 | 13 | Default = `scope` | New snapshot baseline after review; README "What's new" | `RunTests.ps1 -All` passes. |
 | 14 | Remove the old stages | Delete `ControlFlowGraph.*`, `ControlFlowNode.*`, `TarjanAlgorithm.*`, `ControlFlowGraphViz.*` (about 4,500 lines); in `DecompilerNew.cpp` the backward walk and its passes (about 2,200 lines); in `DecompilerCore.cpp` `_RemoveDeadBranches`, `_ObtainInstructionSequence`, the shared-head retry | Build clean; `CheckFailureHandling.ps1 -Update`. |
 
@@ -315,7 +315,7 @@ From `DecompileGate.ps1 -Check`:
 1. REGRESSED = 0 (a function that was source and is now `asm`).
 2. The `asm` count is not higher in any game and lower in total.
 3. No crash, `[internal]` or timeout rows.
-4. `RunTests.ps1 -All` passes with `SCIC_DECOMPILE_ENGINE=scope`.
+4. `RunTests.ps1 -All` passes.
 5. Against Snuffer, where both are source: SAME or NAMES, or an allowlist
    entry with a category (allowlist outside the repo).
 6. A function whose text changes from Classic: the verify and invariant

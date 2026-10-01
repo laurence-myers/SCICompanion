@@ -29,22 +29,14 @@ enum class ChunkType
 	Invert,
 	Switch,
 	Case,
-	DefaultCase,
 	CaseCondition,
 	CaseBody,
 	SwitchValue,
 	Break,
 	Continue,
-	NeedsAccumulator,
-	NeedsAccumulatorSpecial,
-	FailedToGetAccumulator,
-	FailedToGetStack,
-	NeedsStack,
-	ZeroNode,
 	TrueNode,
 	ShortCircuitInstruction,
 	FunctionBody,
-	CaseDeleted,
 	Nary,
 	For,		// Condition, LoopBody, Step
 	Step,		// the statements of the step of a for loop
@@ -54,9 +46,6 @@ enum class ChunkType
 extern const char *chunkTypeNames[];
 
 std::string _indent2(int iIndent);
-
-struct ConsumptionNode;
-Consumption _GetInstructionConsumption(ConsumptionNode &node, DecompileLookups &lookups);
 
 struct ConsumptionNode
 {
@@ -72,24 +61,6 @@ struct ConsumptionNode
 	// Break, Continue: the loop, 1 for the innermost one.
 	int _level = 1;
 
-	std::unique_ptr<ConsumptionNode> Clone()
-	{
-		std::unique_ptr<ConsumptionNode> clone = std::make_unique<ConsumptionNode>();
-		clone->_hasPos = _hasPos;
-		clone->pos = pos;
-		clone->_chunkType = _chunkType;
-		clone->_copy = _copy;
-		clone->_level = _level;
-		for (auto &child : children)
-		{
-			clone->children.push_back(std::move(child->Clone()));
-			assert(clone->children.back()->_parentWeak == nullptr);
-			clone->children.back()->_parentWeak = clone.get();
-		}
-		assert(_parentWeak); // Don't want to be cloning top-levl eguy
-		return clone;
-	}
-
 	code_pos GetCode() const
 	{
 		assert(_hasPos);
@@ -98,11 +69,6 @@ struct ConsumptionNode
 	ChunkType GetType() const
 	{
 		return _chunkType;
-	}
-
-	int GetMyIndex() const
-	{
-		return _parentWeak->GetIndexOf(this);
 	}
 
 	int GetIndexOf(const ConsumptionNode *child) const
@@ -132,7 +98,6 @@ struct ConsumptionNode
 
 	void SetPos(code_pos pos) { this->pos = pos; _hasPos = true; }
 	void SetType(ChunkType type) { this->_chunkType = type; _hasPos = false; }
-	void SetTypeDontClearPos(ChunkType type) { this->_chunkType = type; }
 
 	ConsumptionNode *PrependChild()
 	{
@@ -178,52 +143,17 @@ struct ConsumptionNode
 
 	const std::vector<std::unique_ptr<ConsumptionNode>> &Children() { return children; }
 
-	std::unique_ptr<ConsumptionNode> ReplaceChild(size_t index, std::unique_ptr<ConsumptionNode> replacement)
-	{
-		std::unique_ptr<ConsumptionNode> returnValue = std::move(children[index]);
-		children[index] = std::move(replacement);
-		children[index]->_parentWeak = this;
-		returnValue->_parentWeak = nullptr;
-		return returnValue;
-	}
-
-	void InsertChild(size_t index, std::unique_ptr<ConsumptionNode> replacement)
-	{
-		children.insert(children.begin() + index, std::move(replacement));
-		children[index]->_parentWeak = this;
-	}
-
-	// If lookups is provided, then we will replace stolen nodes with NeedsStack, if necessary.
-	// This is a recent change, so I've scoped it only to where I encountered this bug (switch statements, SQ4, script 376)
-	std::unique_ptr<ConsumptionNode> StealChild(size_t index, DecompileLookups *lookups = nullptr)
+	std::unique_ptr<ConsumptionNode> StealChild(size_t index)
 	{
 		std::unique_ptr<ConsumptionNode> stolen = std::move(children[index]);
 		children.erase(children.begin() + index);
 		stolen->_parentWeak = nullptr;
-
-		// What if we needed this?
-		bool replace = false;
-		if (lookups)
-		{
-			if (_GetInstructionConsumption(*stolen, *lookups).cStackGenerate)
-			{
-				if (_GetInstructionConsumption(*this, *lookups).cStackConsume)
-				{
-					// We just lost a stack that we were relying on, so we'll need a replacement.
-					// We'll insert it at the beginning. So like, stuff "shifts down".
-					ConsumptionNode *replacementChild = PrependChild();
-					replacementChild->SetType(ChunkType::NeedsStack);
-				}
-			}
-		}
-
 		return stolen;
 	}
 	size_t GetChildCount() { return children.size(); }
 	ConsumptionNode *Child(int i) { return children[i].get(); }
 
 private:
-	// Children might be stored backward for now, we'll see
 	std::vector<std::unique_ptr<ConsumptionNode>> children;
 };
 

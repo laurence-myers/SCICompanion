@@ -24,9 +24,9 @@ enum class DecompilerResultType
 	Important, // Important status
 	Warning,
 	Error,
-	// A dump that a debug option asked for (the control-flow graphs, the
-	// instruction chunks). Not a warning: the command line prints it
-	// plainly.
+	// A dump that a debug option asked for (the region trees and the code
+	// of the scope engine, the instruction chunks). Not a warning: the
+	// command line prints it plainly.
 	Debug
 };
 

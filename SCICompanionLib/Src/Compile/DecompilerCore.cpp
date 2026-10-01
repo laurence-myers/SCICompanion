@@ -398,8 +398,6 @@ Consumption _GetInstructionConsumption(scii &inst, DecompileLookups *lookups)
 	bool fChangesAcc = false;
 	bool fEatsAcc = false;
 	bool fPutsOnStack = false;
-	bool fEatsPrev = false;
-	bool fChangesPrev = false;
 
 	switch (bOpcode)
 	{
@@ -451,7 +449,6 @@ Consumption _GetInstructionConsumption(scii &inst, DecompileLookups *lookups)
 	case Opcode::UGE:
 	case Opcode::ULT:
 	case Opcode::ULE:
-		fChangesPrev = true;
 		fChangesAcc = true;
 		fEatsAcc = true;
 		cEatStack = 1;
@@ -538,7 +535,6 @@ Consumption _GetInstructionConsumption(scii &inst, DecompileLookups *lookups)
 
 	case Opcode::PPREV:
 		fPutsOnStack = true;
-		fEatsPrev = true;
 		break;
 
 	case Opcode::REST:
@@ -640,14 +636,6 @@ Consumption _GetInstructionConsumption(scii &inst, DecompileLookups *lookups)
 	if (fPutsOnStack)
 	{
 		cons.cStackGenerate++;
-	}
-	if (fEatsPrev)
-	{
-		cons.cPrevConsume++;
-	}
-	if (fChangesPrev)
-	{
-		cons.cPrevGenerate++;
 	}
 
 	return cons;
@@ -1073,7 +1061,8 @@ static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, con
 	bool success = false;
 	if (discoveredEnd)
 	{
-		// A placeholder at the start of the code (the scope engine leaves it out).
+		// A placeholder at the start of the code: the scope CodeModel skips it,
+		// and the list scans below use it.
 		code.insert(code.begin(), scii(lookups.GetVersion(), Opcode::INDETERMINATE, -1));
 		if (lookups.DebugControlFlow)
 		{
@@ -1132,6 +1121,7 @@ static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, con
 		DisassembleFallback(func, code.begin(), code.end(), lookups);
 		report.output = "asm";
 	}
+
 	// Give some statistics.
 	if (discoveredEnd)
 	{

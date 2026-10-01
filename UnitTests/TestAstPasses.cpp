@@ -415,7 +415,7 @@ namespace UnitTests
             Assert::IsTrue(wrapped.find("(return (== a b))") != std::string::npos, L"init returns a comparison");
         }
         // A cautious method never returns a send, a call, or an assignment,
-        // even when the chunk stage gave the ret that value.
+        // even when the value stage gave the ret that value.
         TEST_METHOD(Return_HandleEventUnwrapsSend)
         {
             std::string atEnd = ApplyAllPassesToMethod("handleEvent", "(if a (return 1)) (return (b claimed:))");
