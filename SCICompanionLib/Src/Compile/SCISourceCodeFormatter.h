@@ -18,3 +18,8 @@ void OutputSourceCode_SCI(const sci::ClassDefinition &classDef, sci::SourceCodeW
 void OutputSourceCode_SCI(const sci::MethodDefinition &script, sci::SourceCodeWriter &out);
 void OutputSourceCode_SCI(const sci::ProcedureDefinition &proc, sci::SourceCodeWriter &out);
 void OutputSourceCode_SCI(const sci::ClassProperty &classDef, sci::SourceCodeWriter &out);
+
+// Makes a token that the SCI parser takes: a character that a token cannot
+// have becomes '_', and a name that starts with a digit gets a '_' prefix.
+// paramTotal becomes argc.
+std::string CleanTokenSCI(const std::string &src);

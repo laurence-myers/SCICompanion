@@ -63,26 +63,29 @@ namespace UnitTests
             }
         }
 
-        // Copies and compiles the two fixtures. Before compiling, renames slot 5
-        // of Main.sco (gCast in the template) to its standard name, global5, so
-        // the fixtures can refer to it and the decompiler sees it as unnamed.
-        // Slot 3 is already global3 (an unused slot in the template's Main).
-        // The .sco is what the compiler resolves (use Main) globals against, and
-        // what the decompiler reads global names from, so Main.sc is left alone.
-        void PrepareBatchFixtures()
+        // Renames slot 5 of Main.sco (gCast in the template) to its standard
+        // name, global5, so a fixture can refer to it and the decompiler sees it
+        // as unnamed. Slot 3 is already global3 (an unused slot in the
+        // template's Main). The .sco is what the compiler resolves (use Main)
+        // globals against, and what the decompiler reads global names from, so
+        // Main.sc is left alone.
+        void UnnameGlobal5()
         {
             const GameFolderHelper &helper = appState->GetResourceMap().Helper();
-            {
-                GlobalCompiledScriptLookups lookups;
-                Assert::IsTrue(lookups.Load(helper), L"lookups should load");
-                std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(helper, 0, lookups.GetSelectorTable());
-                Assert::IsNotNull(mainSCO.get(), L"the template game should have Main.sco");
-                Assert::IsTrue(mainSCO->GetVariables().size() > 5, L"Main should have more than 5 globals");
-                Assert::AreEqual(std::string("global3"), mainSCO->GetVariableName(3), L"slot 3 should be unnamed in the template");
-                mainSCO->GetVariables()[5].SetName("global5");
-                Assert::IsTrue(SaveSCOFile(helper, *mainSCO).has_value(), L"setup: could not write Main.sco");
-            }
+            GlobalCompiledScriptLookups lookups;
+            Assert::IsTrue(lookups.Load(helper), L"lookups should load");
+            std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(helper, 0, lookups.GetSelectorTable());
+            Assert::IsNotNull(mainSCO.get(), L"the template game should have Main.sco");
+            Assert::IsTrue(mainSCO->GetVariables().size() > 5, L"Main should have more than 5 globals");
+            Assert::AreEqual(std::string("global3"), mainSCO->GetVariableName(3), L"slot 3 should be unnamed in the template");
+            mainSCO->GetVariables()[5].SetName("global5");
+            Assert::IsTrue(SaveSCOFile(helper, *mainSCO).has_value(), L"setup: could not write Main.sco");
+        }
 
+        // Copies and compiles the two fixtures, after UnnameGlobal5.
+        void PrepareBatchFixtures()
+        {
+            UnnameGlobal5();
             AddFixtureScript("BatchGlobalsA");
             AddFixtureScript("BatchGlobalsB");
             std::string error;
@@ -165,6 +168,93 @@ namespace UnitTests
             // Each script got its own .sco too.
             Assert::IsNotNull(GetExistingSCOFromScriptNumber(helper, 950, lookups.GetSelectorTable()).get(), L"script 950 should have an .sco");
             Assert::IsNotNull(GetExistingSCOFromScriptNumber(helper, 951, lookups.GetSelectorTable()).get(), L"script 951 should have an .sco");
+        }
+
+        // Some objects of the Hoyle games have a dot in their names
+        // ("game.opt"). A global, a local and a temp that are named from such an
+        // object get a name without the dot, so the decompiled script compiles
+        // again. Main.sc declares the globals with the names of Main.sco.
+        TEST_METHOD(Batch_ObjectNameWithADot_GivesAValidVariableName)
+        {
+            _gameFolder = SetUpGameSCI11();
+            UnnameGlobal5();
+            AddFixtureScript("DottedObjectNames");
+            std::string error;
+            Assert::IsTrue(CompileFixture(953, "DottedObjectNames", &error), ToW("compile of DottedObjectNames failed: " + error).c_str());
+
+            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            {
+                GlobalCompiledScriptLookups lookups;
+                Assert::IsTrue(lookups.Load(helper), L"lookups should load");
+                uint16_t dummy;
+                lookups.GetSelectorTable().ReverseLookup("", dummy);
+                std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
+                TestDecompilerResults results;
+                DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
+                Assert::IsTrue(batch.Run({ 953 }).has_value());
+                Assert::AreEqual(0, results.fallbacks, L"the fixture should not fall back");
+
+                std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(helper, 0, lookups.GetSelectorTable());
+                Assert::IsNotNull(mainSCO.get(), L"Main.sco should still exist");
+                Assert::AreEqual(std::string("gGame_opt"), mainSCO->GetVariableName(5), L"global5 is named from game.opt");
+            }
+
+            std::string text = ReadTextFile(helper.GetScriptFileName(953));
+            Assert::IsTrue(ContainsIdentifier(text, "gGame_opt"), ToW("script 953 should use gGame_opt:\n" + text).c_str());
+            Assert::IsTrue(ContainsIdentifier(text, "theSave_sol"), ToW("the local is named from save.sol:\n" + text).c_str());
+            Assert::IsTrue(ContainsIdentifier(text, "theMenu_opt"), ToW("the temp is named from menu.opt:\n" + text).c_str());
+            Assert::IsTrue(text.find("theSave.sol") == std::string::npos, ToW("the local declaration should have no dot:\n" + text).c_str());
+            Assert::IsTrue(text.find("theMenu.opt") == std::string::npos, ToW("the temp declaration should have no dot:\n" + text).c_str());
+            Assert::IsTrue(CompileFixture(953, "DottedObjectNames", &error), ToW("the decompiled script should compile: " + error + "\n" + text).c_str());
+        }
+
+        // An older namer wrote names with a dot into the .sco files. The batch
+        // cleans such a global name, writes it to Main.sco and reports it as
+        // a rename. It cleans such a local name too.
+        TEST_METHOD(Batch_DottedNamesInOldObjectFiles_AreCleaned)
+        {
+            _gameFolder = SetUpGameSCI11();
+            UnnameGlobal5();
+            AddFixtureScript("DottedObjectNames");
+            std::string error;
+            Assert::IsTrue(CompileFixture(953, "DottedObjectNames", &error), ToW("compile of DottedObjectNames failed: " + error).c_str());
+
+            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            GlobalCompiledScriptLookups lookups;
+            Assert::IsTrue(lookups.Load(helper), L"lookups should load");
+            {
+                std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(helper, 0, lookups.GetSelectorTable());
+                Assert::IsNotNull(mainSCO.get(), L"the template game should have Main.sco");
+                mainSCO->GetVariables()[5].SetName("gGame.opt");
+                Assert::IsTrue(SaveSCOFile(helper, *mainSCO).has_value(), L"setup: could not write Main.sco");
+                std::unique_ptr<CSCOFile> scriptSCO = GetExistingSCOFromScriptNumber(helper, 953, lookups.GetSelectorTable());
+                Assert::IsNotNull(scriptSCO.get(), L"the fixture should have an .sco");
+                Assert::AreEqual(std::string("local0"), scriptSCO->GetVariableName(0), L"the fixture's local 0 is local0");
+                scriptSCO->GetVariables()[0].SetName("theSave.sol");
+                Assert::IsTrue(SaveSCOFile(helper, *scriptSCO).has_value(), L"setup: could not write the fixture's .sco");
+            }
+
+            uint16_t dummy;
+            lookups.GetSelectorTable().ReverseLookup("", dummy);
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
+            TestDecompilerResults results;
+            DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
+            Assert::IsTrue(batch.Run({ 953 }).has_value());
+
+            bool reported = false;
+            for (const auto &rename : batch.GetGlobalRenames())
+            {
+                reported = reported || ((rename.first == "global5") && (rename.second == "gGame_opt"));
+            }
+            Assert::IsTrue(reported, L"the cleaned name of global5 should be a rename");
+            std::unique_ptr<CSCOFile> mainSCO = GetExistingSCOFromScriptNumber(helper, 0, lookups.GetSelectorTable());
+            Assert::IsNotNull(mainSCO.get(), L"Main.sco should still exist");
+            Assert::AreEqual(std::string("gGame_opt"), mainSCO->GetVariableName(5), L"Main.sco should hold the cleaned name");
+
+            std::string text = ReadTextFile(helper.GetScriptFileName(953));
+            Assert::IsTrue(text.find("theSave.sol") == std::string::npos, ToW("the local declaration should have no dot:\n" + text).c_str());
+            Assert::IsTrue(ContainsIdentifier(text, "theSave_sol"), ToW("the local should keep its cleaned name:\n" + text).c_str());
+            Assert::IsTrue(CompileFixture(953, "DottedObjectNames", &error), ToW("the decompiled script should compile: " + error + "\n" + text).c_str());
         }
 
         // A second batch over the same scripts finds nothing new to name and
