@@ -67,22 +67,34 @@ void DecompileObject(const CompiledObject &object,
 	}
 	// The slots after --info-- (name first, if the class has a name slot).
 	size_t firstSlotAfterInfo = (size_t)object.GetNumberOfDefaultSelectors() - 1;
-	if (fSuccess && !object.IsInstance() && !pClass->GetSuperClass().empty())
+	// The superclass has a name slot after --info-- (or it is not known).
+	bool superHasNameSlot = true;
+	if (fSuccess && !object.IsInstance())
 	{
-		// The compiler gives a class the slots of its superclass, then the new
-		// properties of the text. A class whose slots do not start with the slots
-		// of its superclass gets &layout: its text then has all its slots after
-		// --info--, in their order.
-		vector<uint16_t> superSelectorList;
-		vector<CompiledVarValue> superValueList;
-		if (lookups.LookupSpeciesPropertyListAndValues(object.GetSuperClass(), superSelectorList, superValueList))
+		if (pClass->GetSuperClass().empty())
 		{
-			bool startsWithSuper = (superSelectorList.size() <= propertySelectorList.size());
-			for (size_t i = firstSlotAfterInfo; startsWithSuper && (i < superSelectorList.size()); i++)
+			// The compiler gives a class with no superclass and no properties a
+			// name slot. A class with no slot after --info-- gets &layout.
+			pClass->SetExplicitLayout(propertySelectorList.size() <= firstSlotAfterInfo);
+		}
+		else
+		{
+			// The compiler gives a class the slots of its superclass, then the new
+			// properties of the text. A class whose slots do not start with the
+			// slots of its superclass gets &layout: its text then has all its slots
+			// after --info--, in their order.
+			vector<uint16_t> superSelectorList;
+			vector<CompiledVarValue> superValueList;
+			if (lookups.LookupSpeciesPropertyListAndValues(object.GetSuperClass(), superSelectorList, superValueList))
 			{
-				startsWithSuper = (superSelectorList[i] == propertySelectorList[i]);
+				bool startsWithSuper = (superSelectorList.size() <= propertySelectorList.size());
+				for (size_t i = firstSlotAfterInfo; startsWithSuper && (i < superSelectorList.size()); i++)
+				{
+					startsWithSuper = (superSelectorList[i] == propertySelectorList[i]);
+				}
+				pClass->SetExplicitLayout(!startsWithSuper);
+				superHasNameSlot = (superSelectorList.size() > firstSlotAfterInfo) && (superSelectorList[firstSlotAfterInfo] == lookups.GetNameSelector());
 			}
-			pClass->SetExplicitLayout(!startsWithSuper);
 		}
 	}
 	if (!object.GetOriginalName().empty() && !pClass->HasExplicitLayout())
@@ -112,12 +124,13 @@ void DecompileObject(const CompiledObject &object,
 		{
 			firstProperty = firstSlotAfterInfo;
 		}
-		else if (pClass->GetSuperClass().empty() && !object.IsInstance() && object.GetOriginalName().empty() &&
-			(firstProperty > 0) && (firstProperty < numberOfProps) && (propertySelectorList[firstProperty - 1] == lookups.GetNameSelector()))
+		else if (!object.IsInstance() && object.GetOriginalName().empty() &&
+			(firstProperty > 0) && (propertySelectorList[firstProperty - 1] == lookups.GetNameSelector()) &&
+			((pClass->GetSuperClass().empty() && (firstProperty < numberOfProps)) || !superHasNameSlot))
 		{
-			// A class with no superclass that declares other properties has a
-			// name slot only when its text declares name, so the name property
-			// is written.
+			// A class with no superclass that declares other properties, and a
+			// class whose superclass has no name slot, have a name slot only when
+			// their text declares name, so the name property is written.
 			firstProperty--;
 		}
 		for (size_t i = firstProperty; i < numberOfProps; i++)

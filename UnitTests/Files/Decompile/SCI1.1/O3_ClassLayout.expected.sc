@@ -53,3 +53,63 @@
 		cycles 3
 	)
 )
+
+(class o3Dup of o3Base
+	(properties &layout
+		name {o3Dup}
+		y 1
+	)
+	
+	(method (doit)
+		(return y)
+	)
+)
+
+(class o3Dup_a of o3Base
+	(properties &layout
+		name {o3Dup}
+		x 1
+	)
+	
+	(method (doit)
+		(return x)
+	)
+)
+
+(class a_string of o3Base
+	(properties &layout
+		y {a string}
+		x 0
+	)
+	
+	(method (doit)
+		(return x)
+	)
+)
+
+(class Class_974_8 of o3Base
+	(properties &layout)
+	
+	(method (doit)
+		(return 0)
+	)
+)
+
+(class o3EmptySub of Class_974_8
+	(properties
+		name {o3EmptySub}
+		client 1
+	)
+	
+	(method (doit)
+		(return client)
+	)
+)
+
+(class Class_974_10
+	(properties &layout)
+	
+	(method (doit)
+		(return 1)
+	)
+)

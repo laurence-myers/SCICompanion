@@ -95,7 +95,8 @@ tuple<const ClassDefinition *, const sci::ClassDefinition *, const ClassProperty
 				// This is the most "top" class
 				sourceClassDef = *itClass;
 			}
-			current = (*itClass)->GetSuperClass();
+			// A class with &layout has only the properties of its text.
+			current = (*itClass)->HasExplicitLayout() ? std::string() : (*itClass)->GetSuperClass();
 		}
 		else
 		{

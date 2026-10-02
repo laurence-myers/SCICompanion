@@ -590,6 +590,26 @@ void SCIClassBrowser::ReLoadFromCompiled(ITaskStatus &task)
 	startProgress = 75;
 	endProgress = 100;
 
+	// A compiled class has all its slots. One whose slots do not start with the
+	// slots of its superclass has &layout, so it does not get the properties of
+	// its superclass.
+	for (auto &classEntry : _classMap)
+	{
+		sci::ClassDefinition *pClass = const_cast<sci::ClassDefinition*>(classEntry.second->GetClassDefinition());
+		auto superIt = pClass ? _classMap.find(pClass->GetSuperClass()) : _classMap.end();
+		if (superIt != _classMap.end() && superIt->second->GetClassDefinition())
+		{
+			const sci::ClassPropertyVector &classProps = pClass->GetProperties();
+			const sci::ClassPropertyVector &superClassProps = superIt->second->GetClassDefinition()->GetProperties();
+			bool startsWithSuper = (superClassProps.size() <= classProps.size());
+			for (size_t i = 0; startsWithSuper && (i < superClassProps.size()); i++)
+			{
+				startsWithSuper = (superClassProps[i]->GetName() == classProps[i]->GetName());
+			}
+			pClass->SetExplicitLayout(!startsWithSuper);
+		}
+	}
+
 	// Now we have one missing piece when loading compiled things.  We couldn't get property names
 	// resolved for instances, since we didn't necessarily already encounter the super class which
 	// mapped property index to property selector.  So do that now.

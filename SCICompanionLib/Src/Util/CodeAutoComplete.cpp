@@ -89,6 +89,7 @@ std::unique_ptr<AutoCompleteResult> GetAutoCompleteResult(const std::string &pre
 
 		//OutputDebugString(fmt::format("ParseContext: {}\n", (int)acContext).c_str());
 		AutoCompleteSourceType sourceTypes = AutoCompleteSourceType::None;
+		bool propertyList = false; // The properties of a class or an instance
 		for (auto acContext : acContexts)
 		{
 			switch (acContext)
@@ -99,6 +100,7 @@ std::unique_ptr<AutoCompleteResult> GetAutoCompleteResult(const std::string &pre
 
 				case ParseAutoCompleteContext::ClassSelector:
 					sourceTypes |= AutoCompleteSourceType::ClassSelector;
+					propertyList = true;
 					break;
 
 				case ParseAutoCompleteContext::TopLevelKeyword:
@@ -141,6 +143,11 @@ std::unique_ptr<AutoCompleteResult> GetAutoCompleteResult(const std::string &pre
 		if (sourceTypes != AutoCompleteSourceType::None)
 		{
 			browser.GetAutoCompleteChoices(prefix, sourceTypes, result->choices);
+		}
+
+		if (propertyList)
+		{
+			MergeResults(result->choices, prefix, AutoCompleteIconIndex::Keyword, { "&layout" });
 		}
 
 		// Now get things from the local script

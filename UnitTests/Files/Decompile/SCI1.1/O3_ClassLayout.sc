@@ -57,3 +57,70 @@
 		cycles 3
 	)
 )
+
+; Two classes with &layout and one name string: the second gets another
+; name in the text, and its name slot keeps the string.
+(class o3Dup of o3Base
+	(properties &layout
+		name "o3Dup"
+		y 1
+	)
+
+	(method (doit)
+		(return y)
+	)
+)
+
+(class o3DupToo of o3Base
+	(properties &layout
+		name "o3Dup"
+		x 1
+	)
+
+	(method (doit)
+		(return x)
+	)
+)
+
+; A class with &layout and no name whose first property is a string: the
+; decompiler takes its name from the string, and adds no name slot.
+(class o3StringFirst of o3Base
+	(properties &layout
+		y "a string"
+		x 0
+	)
+
+	(method (doit)
+		(return x)
+	)
+)
+
+; A class with &layout and no slot after --info--, and its subclass, whose
+; name slot is a new property.
+(class o3Empty of o3Base
+	(properties &layout)
+
+	(method (doit)
+		(return 0)
+	)
+)
+
+(class o3EmptySub of o3Empty
+	(properties
+		name "o3EmptySub"
+		client 1
+	)
+
+	(method (doit)
+		(return client)
+	)
+)
+
+; A class with no superclass and no slot after --info--.
+(class o3EmptyRoot
+	(properties &layout)
+
+	(method (doit)
+		(return 1)
+	)
+)
