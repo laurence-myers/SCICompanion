@@ -55,17 +55,6 @@ void DecompileObject(const CompiledObject &object,
 	pClass->SetName(object.GetName());
 	pClass->SetSuperClass(lookups.LookupClassName(object.GetSuperClass()));
 	pClass->SetPublic(object.IsPublic);
-	if (!object.GetOriginalName().empty())
-	{
-		// The object has another name in the text (FixDuplicateObjectNames): its name
-		// property keeps the original string.
-		unique_ptr<ClassProperty> nameProperty = make_unique<ClassProperty>();
-		nameProperty->SetName("name");
-		PropertyValue nameValue;
-		nameValue.SetValue(object.GetOriginalName(), ValueType::String);
-		nameProperty->SetValue(nameValue);
-		pClass->AddProperty(move(nameProperty));
-	}
 	vector<uint16_t> propertySelectorList;
 	vector<CompiledVarValue> speciesPropertyValueList;
 	bool fSuccess = lookups.LookupSpeciesPropertyListAndValues(object.GetSpecies(), propertySelectorList, speciesPropertyValueList);
@@ -75,6 +64,37 @@ void DecompileObject(const CompiledObject &object,
 		propertySelectorList = object.GetProperties();
 		speciesPropertyValueList = object.GetPropertyValues();
 		fSuccess = true;
+	}
+	// The slots after --info-- (name first, if the class has a name slot).
+	size_t firstSlotAfterInfo = (size_t)object.GetNumberOfDefaultSelectors() - 1;
+	if (fSuccess && !object.IsInstance() && !pClass->GetSuperClass().empty())
+	{
+		// The compiler gives a class the slots of its superclass, then the new
+		// properties of the text. A class whose slots do not start with the slots
+		// of its superclass gets &layout: its text then has all its slots after
+		// --info--, in their order.
+		vector<uint16_t> superSelectorList;
+		vector<CompiledVarValue> superValueList;
+		if (lookups.LookupSpeciesPropertyListAndValues(object.GetSuperClass(), superSelectorList, superValueList))
+		{
+			bool startsWithSuper = (superSelectorList.size() <= propertySelectorList.size());
+			for (size_t i = firstSlotAfterInfo; startsWithSuper && (i < superSelectorList.size()); i++)
+			{
+				startsWithSuper = (superSelectorList[i] == propertySelectorList[i]);
+			}
+			pClass->SetExplicitLayout(!startsWithSuper);
+		}
+	}
+	if (!object.GetOriginalName().empty() && !pClass->HasExplicitLayout())
+	{
+		// The object has another name in the text (FixDuplicateObjectNames): its name
+		// property keeps the original string. With &layout, the name slot gives it.
+		unique_ptr<ClassProperty> nameProperty = make_unique<ClassProperty>();
+		nameProperty->SetName("name");
+		PropertyValue nameValue;
+		nameValue.SetValue(object.GetOriginalName(), ValueType::String);
+		nameProperty->SetValue(nameValue);
+		pClass->AddProperty(move(nameProperty));
 	}
 	if (fSuccess)
 	{
@@ -88,7 +108,11 @@ void DecompileObject(const CompiledObject &object,
 		}
 		
 		size_t firstProperty = object.GetNumberOfDefaultSelectors(propertySelectorList, lookups.GetNameSelector());
-		if (pClass->GetSuperClass().empty() && !object.IsInstance() && object.GetOriginalName().empty() &&
+		if (pClass->HasExplicitLayout())
+		{
+			firstProperty = firstSlotAfterInfo;
+		}
+		else if (pClass->GetSuperClass().empty() && !object.IsInstance() && object.GetOriginalName().empty() &&
 			(firstProperty > 0) && (firstProperty < numberOfProps) && (propertySelectorList[firstProperty - 1] == lookups.GetNameSelector()))
 		{
 			// A class with no superclass that declares other properties has a

@@ -80,7 +80,9 @@ modernizing the build. Broad highlights since the previous release:
   classes keep their species (also a copy of a class in another script),
   objects with the name of a property, a keyword or a class, and two
   classes with one name, get another name and keep their name string, a
-  class with no superclass keeps the order of its properties, selectors
+  class with no superclass keeps the order of its properties, a class whose
+  properties are not those of its superclass keeps them (with the new
+  `&layout`, see "Language extensions"), selectors
   and kernels with no name of their own read back as their numbers,
   `&rest` keeps its place among the arguments, and SQ4 EGA's objects
   resolve. Code that the text cannot have (a property past the end of its
@@ -197,6 +199,7 @@ are no build-time feature switches.
 * `&exists` - clearer optional-argument checks, as in `(if (&exists theX) ...)` instead of `(if (>= argc 1) ...)`.
 * `foreach` - iterate an array or a Node-based collection (anything using the Node kernel calls and exposing `elements`): `(foreach val anArray ...)`. `val` need not be declared beforehand. `foreach` is a reserved word.
 * `verbs` - a terse block that expands into a standard `doVerb` method. `verbs` is a reserved word.
+* `&layout` - `(properties &layout ...)` in a class gives all the property slots of the class after `--info--`: the properties of the text, in the order of the text. The class then has no other property of its superclass, and it has a `name` property only when its text has one (usually as the first property). Without `&layout`, a class has the properties of its superclass, then its new properties. Some classes of Sierra's games have properties that are not those of their superclass (Sierra probably changed the superclass and did not compile the class again). The decompiler writes `&layout` for such a class, so that its methods read the same slots when the text compiles again. A subclass or an instance of the class gets its layout. `&layout` is not for an instance.
 * `&getpoly` - `(gRoom addObstacle: (&getpoly "Foo"))`, where `Foo` is a named polygon from the picture editor, expands into the `((Polygon new:) type: ... init: ... yourself:)` bytecode you would see when decompiling a Sierra original. Remove the room's `(include ___.shp)` line and add `(use Polygon)`.
 
 Check out [the examples](examples.md) for a somewhat better explanation of the keywords.

@@ -81,8 +81,8 @@ int SCIClassBrowserNode::ComputeAllProperties(RawClassPropertyVector &array) con
 			// else yes.  Subclasses win, so don't do anything here
 		}
 		iIndexSubclassBegin = (int)array.size();
-		// Now go to our parent.
-		if (_pSuperClass)
+		// Now go to our parent. A class with &layout has only the properties of its text.
+		if (_pSuperClass && !_pClass->HasExplicitLayout())
 		{
 			_pSuperClass->ComputeAllProperties(array);
 		}

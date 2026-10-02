@@ -955,6 +955,10 @@ namespace sci
 		void SetSuperClass(const std::string &superClass) { _superClass = superClass; }
 		void SetPublic(bool fPublic) { _fPublic = fPublic; }
 		void SetInstance(bool fInstance) { _fInstance = fInstance; }
+		// (properties &layout ...): the slots after --info-- are the properties of
+		// the text, in the order of the text, and not the slots of the superclass.
+		bool HasExplicitLayout() const { return _explicitLayout; }
+		void SetExplicitLayout(bool explicitLayout) { _explicitLayout = explicitLayout; }
 		void AddProperty(std::unique_ptr<ClassProperty> classProp) { _properties.push_back(move(classProp)); }
 		void AddProperty(const std::string &name, uint16_t value);
 		void AddMethod(std::unique_ptr<MethodDefinition> method) { _methods.push_back(std::move(method)); }
@@ -979,6 +983,7 @@ namespace sci
 		std::string _superClass;
 		bool _fPublic;
 		bool _fInstance; // Instance or class.
+		bool _explicitLayout = false;
 		ClassPropertyVector _properties;
 		MethodVector _methods;
 		std::vector<std::unique_ptr<VerbHandlerDefinition>> _verbHandlers;

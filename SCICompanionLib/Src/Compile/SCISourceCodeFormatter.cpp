@@ -299,7 +299,8 @@ public:
 						break;
 					}
 				}
-				if (!nameAlreadySpecified)
+				// A class with &layout has a name slot only when its text has name.
+				if (!nameAlreadySpecified && !classDef->HasExplicitLayout())
 				{
 					classDef->GetPropertiesNC().push_back(std::make_unique<ClassProperty>("name", PropertyValue(classDef->GetName(), ValueType::ResourceString)));
 				}
@@ -980,13 +981,14 @@ public:
 		{
 			INDENT_BLOCK;
 			_MaybeNewLineIndent();
+			const char *propertiesKeyword = classDef.HasExplicitLayout() ? "(properties &layout" : "(properties";
 			if (classDef.GetProperties().empty())
 			{
-				out.out << "(properties)";
+				out.out << propertiesKeyword << ")";
 			}
 			else
 			{
-				out.out << "(properties";
+				out.out << propertiesKeyword;
 				_IndentAcceptChildren(classDef.GetProperties());
 				_FakeGoToNextLine();
 				_MaybeNewLineIndent();

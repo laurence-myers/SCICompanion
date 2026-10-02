@@ -524,6 +524,8 @@ namespace UnitTests
         FIXTURE_TEST(CompilerWarnings, "C5_CompilerWarnings", 970)
         // Classes with no superclass: their properties in the order of the text.
         FIXTURE_TEST(RootClasses, "R3_RootClasses", 972)
+        // Classes with &layout: slots that are not the slots of the superclass.
+        FIXTURE_TEST(ClassLayout, "O3_ClassLayout", 974)
 
         // The meaning check keys the methods of a class with a made-up name (no
         // name string, or a made-up name as its string) by its species: the

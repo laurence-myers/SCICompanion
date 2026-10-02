@@ -1109,6 +1109,21 @@ void GenerateSCOObjects(CompileContext &context, const Script &script)
 			speciesProps[2].wValue = classDef->IsInstance() ? 0x0000 : 0x8000; // --info--
 			firstNameIndex = 3;
 		}
+		// A class with &layout has the properties of its text right after --info--,
+		// in the order of the text, and no other slot of its superclass. Some
+		// classes of the games have slots that are not the slots of their
+		// superclass (Castle of Dr. Brain script 947, DelayedEvent).
+		if (classDef->HasExplicitLayout())
+		{
+			if (classDef->IsInstance())
+			{
+				context.ReportError(classDef.get(), "&layout is for a class. An instance has the layout of its class.");
+			}
+			else
+			{
+				speciesProps.erase(speciesProps.begin() + firstNameIndex, speciesProps.end());
+			}
+		}
 		// A class with no superclass that declares properties has its properties in the
 		// order of the text, right after --info--: name has the slot after --info-- only
 		// when it is the first property (Object). The private root classes of some games
@@ -1135,7 +1150,6 @@ void GenerateSCOObjects(CompileContext &context, const Script &script)
 		{
 			speciesProps[nameIndex].wValue = context.GetTempToken(ValueType::String, classDef->GetName()); // name (can be overridden explicitly too)
 		}
-		sco.SetHasNameSlot(nameIndex == (int)firstNameIndex);
 
 		// Replace the species default values, with any that the user specified.
 		int iIndex = 0;
@@ -1190,6 +1204,9 @@ void GenerateSCOObjects(CompileContext &context, const Script &script)
 				}
 			}
 		}
+		// The name slot is the slot after --info-- when it has the name selector (a
+		// class with &layout has it when name is the first property of its text).
+		sco.SetHasNameSlot((scoProperties.size() > firstNameIndex) && (context.LookupSelectorName(scoProperties[firstNameIndex].GetSelector()) == "name"));
 		sco.SetProperties(scoProperties);
 
 		// Now methods

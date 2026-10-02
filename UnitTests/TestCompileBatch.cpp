@@ -581,6 +581,90 @@ namespace UnitTests
             Assert::IsTrue(root->HasMadeUpName(), Wide(root->GetName()).c_str());
         }
 
+        // A class with &layout has the properties of its text right after
+        // --info--, in the order of the text, and no other slot of its
+        // superclass. A subclass and an instance in another script (which
+        // read the class from the .sco file) have its layout.
+        TEST_METHOD(ExplicitLayout_TheSlotsOfTheText)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            std::string classes = "(script# 907)\n(include sci.sh)\n(include game.sh)\n"
+                "(class S2Base\n    (properties\n        name \"S2Base\"\n        x 0\n        y 0\n    )\n)\n"
+                "(class S2Layout of S2Base\n    (properties &layout\n        name \"S2Layout\"\n        y 5\n        z 6\n    )\n)\n";
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Layouts", 907, classes) }, ToPatchFiles()));
+            std::string users = "(script# 908)\n(include sci.sh)\n(include game.sh)\n(use S2Layouts)\n"
+                "(class S2LayoutSub of S2Layout\n    (properties\n        x 9\n    )\n)\n"
+                "(instance s2OfLayout of S2Layout\n    (properties\n        z 4\n    )\n)\n";
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2LayoutUsers", 908, users) }, ToPatchFiles()));
+            SelectorTable selectors;
+            Assert::IsTrue(selectors.Load(session.Helper()));
+            uint16_t nameSelector = 0;
+            uint16_t xSelector = 0;
+            uint16_t ySelector = 0;
+            uint16_t zSelector = 0;
+            Assert::IsTrue(selectors.ReverseLookup("name", nameSelector));
+            Assert::IsTrue(selectors.ReverseLookup("x", xSelector));
+            Assert::IsTrue(selectors.ReverseLookup("y", ySelector));
+            Assert::IsTrue(selectors.ReverseLookup("z", zSelector));
+
+            CompiledScript layouts(907);
+            AssertOk(layouts.TryLoad(session.Helper(), session.Helper().Version, 907), "the compiled script");
+            Assert::AreEqual((size_t)2, layouts.GetObjects().size());
+            // species, superClass, --info--, name, y, z.
+            const CompiledObject &layout = *layouts.GetObjects()[1];
+            Assert::AreEqual(std::string("S2Layout"), layout.GetName());
+            Assert::AreEqual((size_t)6, layout.GetProperties().size());
+            Assert::AreEqual(nameSelector, layout.GetProperties()[3]);
+            Assert::AreEqual(ySelector, layout.GetProperties()[4]);
+            Assert::AreEqual(zSelector, layout.GetProperties()[5]);
+            Assert::AreEqual((int)5, (int)layout.GetPropertyValues()[4].value);
+            Assert::AreEqual((int)6, (int)layout.GetPropertyValues()[5].value);
+
+            CompiledScript compiledUsers(908);
+            AssertOk(compiledUsers.TryLoad(session.Helper(), session.Helper().Version, 908), "the compiled script");
+            int checked = 0;
+            for (const auto &object : compiledUsers.GetObjects())
+            {
+                const std::vector<CompiledVarValue> &values = object->GetPropertyValues();
+                if (object->IsInstance())
+                {
+                    // species, superClass, --info--, name, y, z.
+                    Assert::AreEqual((size_t)6, values.size());
+                    Assert::AreEqual((int)5, (int)values[4].value, L"y of s2OfLayout");
+                    Assert::AreEqual((int)4, (int)values[5].value, L"z of s2OfLayout");
+                    checked++;
+                }
+                else
+                {
+                    // The slots of S2Layout, then x.
+                    const std::vector<uint16_t> &properties = object->GetProperties();
+                    Assert::AreEqual((size_t)7, properties.size());
+                    Assert::AreEqual(ySelector, properties[4]);
+                    Assert::AreEqual(zSelector, properties[5]);
+                    Assert::AreEqual(xSelector, properties[6]);
+                    Assert::AreEqual((int)9, (int)values[6].value, L"x of S2LayoutSub");
+                    checked++;
+                }
+            }
+            Assert::AreEqual(2, checked);
+        }
+
+        // An instance has the layout of its class: &layout in an instance is
+        // an error.
+        TEST_METHOD(ExplicitLayout_InAnInstanceIsAnError)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            std::string text = "(script# 907)\n(include sci.sh)\n(include game.sh)\n"
+                "(class S2Base\n    (properties\n        name \"S2Base\"\n        x 0\n    )\n)\n"
+                "(instance s2Bad of S2Base\n    (properties &layout\n        x 1\n    )\n)\n";
+            auto report = Compile(session, { WriteScript(session, "S2Layouts", 907, text) }, ToPatchFiles());
+            AssertOk(report);
+            Assert::IsFalse(report->Succeeded(), Wide(Describe(*report)).c_str());
+            Assert::IsNotNull(FindDiagnostic(report->scripts[0], DiagnosticKind::Error, "&layout is for a class"), Wide(Describe(*report)).c_str());
+        }
+
 
     public:
         // Every script of both templates compiles in one batch, with no
