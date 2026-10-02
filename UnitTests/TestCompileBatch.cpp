@@ -581,6 +581,63 @@ namespace UnitTests
             Assert::IsTrue(root->HasMadeUpName(), Wide(root->GetName()).c_str());
         }
 
+        // With the selector of name, the reader takes the name of an object from
+        // the slot of name in the slots of its class (QfG3 script 47, Class_47_1:
+        // dynamicName, then name), also for an instance in another script. A
+        // class with no name slot has a made-up name, also when the slot after
+        // --info-- has a string.
+        static void AssertTheReaderFindsTheNameSlot(GameSession &session)
+        {
+            std::string roots = "(script# 907)\n(include sci.sh)\n(include game.sh)\n"
+                "(class S2NameSecond\n    (properties\n        x \"first\"\n        name \"S2NameSecond\"\n        y 5\n    )\n)\n"
+                "(class S2NoName\n    (properties\n        x \"hello\"\n    )\n)\n"
+                "(instance s2Here of S2NameSecond\n    (properties)\n)\n";
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Roots", 907, roots) }, ToPatchFiles()));
+            std::string users = "(script# 908)\n(include sci.sh)\n(include game.sh)\n(use S2Roots)\n"
+                "(instance s2There of S2NameSecond\n    (properties\n        x \"other\"\n    )\n)\n";
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Users", 908, users) }, ToPatchFiles()));
+            GlobalCompiledScriptLookups lookups;
+            Assert::IsTrue(lookups.Load(session.Helper()), L"setup: the lookups");
+
+            CompiledScript roots907(907);
+            roots907.SetNameSelector(lookups.GetSelectorTable(), &lookups);
+            AssertOk(roots907.TryLoad(session.Helper(), session.Helper().Version, 907), "the compiled script");
+            Assert::AreEqual((size_t)3, roots907.GetObjects().size());
+            Assert::AreEqual(std::string("S2NameSecond"), roots907.GetObjects()[0]->GetName());
+            Assert::IsFalse(roots907.GetObjects()[0]->HasMadeUpName());
+            Assert::IsTrue(roots907.GetObjects()[1]->HasMadeUpName(), Wide(roots907.GetObjects()[1]->GetName()).c_str());
+            Assert::AreEqual(std::string("s2Here"), roots907.GetObjects()[2]->GetName());
+
+            CompiledScript users908(908);
+            users908.SetNameSelector(lookups.GetSelectorTable(), &lookups);
+            AssertOk(users908.TryLoad(session.Helper(), session.Helper().Version, 908), "the compiled script");
+            Assert::AreEqual((size_t)1, users908.GetObjects().size());
+            Assert::AreEqual(std::string("s2There"), users908.GetObjects()[0]->GetName());
+
+            // Without the class of another script, an instance gets the string
+            // after --info--.
+            CompiledScript noClasses(908);
+            noClasses.SetNameSelector(lookups.GetSelectorTable());
+            AssertOk(noClasses.TryLoad(session.Helper(), session.Helper().Version, 908), "the compiled script");
+            Assert::AreEqual(std::string("other"), noClasses.GetObjects()[0]->GetName());
+
+            // The class table has the names of the name slots.
+            uint16_t species = 0;
+            Assert::IsTrue(lookups.GetGlobalClassTable().LookupSpeciesCompiledName("S2NameSecond", species), L"the class table has S2NameSecond");
+        }
+
+        TEST_METHOD(RootClass_TheReaderFindsTheNameSlotSci0)
+        {
+            NoAppState noAppState;
+            AssertTheReaderFindsTheNameSlot(_game.OpenCopy(TemplateSci0));
+        }
+
+        TEST_METHOD(RootClass_TheReaderFindsTheNameSlotSci11)
+        {
+            NoAppState noAppState;
+            AssertTheReaderFindsTheNameSlot(_game.OpenCopy(TemplateSci11));
+        }
+
         // A class with &layout has the properties of its text right after
         // --info--, in the order of the text, and no other slot of its
         // superclass. A subclass and an instance in another script (which

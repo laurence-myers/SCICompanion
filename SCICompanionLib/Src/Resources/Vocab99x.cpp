@@ -967,7 +967,7 @@ bool GlobalClassTable::Load(const GameFolderHelper &helper, const SelectorTable 
 	bool fRet = speciesTable.Load(helper, false);
 	if (fRet)
 	{
-		fRet = _Create(speciesTable, helper);
+		fRet = _Create(speciesTable, helper, selectors);
 		_GiveUniqueNames(selectors);
 	}
 	if (!fRet)
@@ -977,7 +977,7 @@ bool GlobalClassTable::Load(const GameFolderHelper &helper, const SelectorTable 
 	return fRet;
 }
 
-bool GlobalClassTable::_Create(const SpeciesTable &speciesTable, const GameFolderHelper &helper)
+bool GlobalClassTable::_Create(const SpeciesTable &speciesTable, const GameFolderHelper &helper, const SelectorTable *selectors)
 {
 	// Collect the heap/script pairs first, since fetching the heap individually for each script is a performance issue.
 	// Patch files win out.
@@ -1008,6 +1008,10 @@ bool GlobalClassTable::_Create(const SpeciesTable &speciesTable, const GameFolde
 			_scriptNums.push_back(scriptNumber);
 
 			unique_ptr<CompiledScript> compiledScript = make_unique<CompiledScript>(scriptNumber);
+			if (selectors)
+			{
+				compiledScript->SetNameSelector(*selectors);
+			}
 			std::unique_ptr<sci::istream> heapStream;
 			if (scriptAndHeap.second)
 			{
@@ -1238,6 +1242,20 @@ void SpeciesTable::_AlignScript(uint16_t wScript, const CompiledScript &compiled
 	}
 }
 
+void SpeciesTable::_SetNameSelector(const GameFolderHelper &helper, CompiledScript &compiledScript)
+{
+	if (!_nameSelectorRead)
+	{
+		_nameSelectorRead = true;
+		SelectorTable selectors;
+		_hasNameSelector = selectors.Load(helper) && selectors.ReverseLookup("name", _nameSelector);
+	}
+	if (_hasNameSelector)
+	{
+		compiledScript.SetNameSelector(_nameSelector);
+	}
+}
+
 void SpeciesTable::AlignScript(const GameFolderHelper &helper, uint16_t wScript)
 {
 	if (_aligned.count(wScript))
@@ -1246,6 +1264,7 @@ void SpeciesTable::AlignScript(const GameFolderHelper &helper, uint16_t wScript)
 	}
 	_aligned.insert(wScript);
 	CompiledScript compiledScript(wScript);
+	_SetNameSelector(helper, compiledScript);
 	if (compiledScript.TryLoad(helper, helper.Version, wScript))
 	{
 		_AlignScript(wScript, compiledScript);
@@ -1332,6 +1351,7 @@ void SpeciesTable::_AlignToCompiledScripts(const GameFolderHelper &helper)
 			continue;
 		}
 		CompiledScript compiledScript(scriptAndSpecies.first);
+		_SetNameSelector(helper, compiledScript);
 		if (!compiledScript.TryLoad(helper, helper.Version, scriptAndSpecies.first, *found->second.first, found->second.second.get()))
 		{
 			continue;

@@ -26,7 +26,7 @@
 	)
 )
 
-(class Class_972_2
+(class r3NameSecond
 	(properties
 		x 0
 		name {r3NameSecond}
@@ -45,5 +45,18 @@
 	
 	(method (doit)
 		(return x)
+	)
+)
+
+(class Class_972_4
+	(properties
+		x {r3Text}
+	)
+)
+
+(instance r3SecondObj of r3NameSecond
+	(properties
+		name {r3SecondObj}
+		y 9
 	)
 )

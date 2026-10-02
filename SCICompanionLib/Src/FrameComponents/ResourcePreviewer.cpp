@@ -312,6 +312,8 @@ void ScriptPreviewer::SetResource(const ResourceBlob &blob)
 
 		// If that wasn't possible, spew info from the compiled script resource:
 		CompiledScript compiledScript(0);
+		GlobalCompiledScriptLookups *lookups = appState->GetResourceMap().GetCompiledScriptLookups();
+		compiledScript.SetNameSelector(lookups->GetSelectorTable(), lookups);
 		if (compiledScript.Load(appState->GetResourceMap().Helper(), appState->GetVersion(), blob.GetNumber(), blob.GetReadStream()))
 		{
 			// Write some crap.

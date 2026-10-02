@@ -133,7 +133,7 @@ public:
 	bool GetSpeciesScriptNumber(uint16_t species, uint16_t &scriptNumber);
 
 private:
-	bool _Create(const SpeciesTable &speciesTable, const GameFolderHelper &helper);
+	bool _Create(const SpeciesTable &speciesTable, const GameFolderHelper &helper, const SelectorTable *selectors);
 	void _GiveUniqueNames(const SelectorTable *selectors);
 
 	std::unordered_map<std::string, uint16_t> _nameToSpecies;
@@ -186,6 +186,12 @@ private:
 	bool _Create(sci::istream &byteStream);
 	void _AlignToCompiledScripts(const GameFolderHelper &helper);
 	void _AlignScript(uint16_t wScript, const CompiledScript &compiledScript);
+	// Gives the script the selector of name, so that the class names are those of the
+	// decompiled text.
+	void _SetNameSelector(const GameFolderHelper &helper, CompiledScript &compiledScript);
+	bool _nameSelectorRead = false;
+	bool _hasNameSelector = false;
+	uint16_t _nameSelector = 0;
 	std::unordered_set<uint16_t> _aligned;
 	// The classes of each aligned script's compiled script: name and
 	// species, in order.

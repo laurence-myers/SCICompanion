@@ -206,6 +206,8 @@ void CScriptDocument::OnCompile()
 void DisassembleScript(WORD wScript)
 {
 	CompiledScript compiledScript(0);
+	GlobalCompiledScriptLookups *lookups = appState->GetResourceMap().GetCompiledScriptLookups();
+	compiledScript.SetNameSelector(lookups->GetSelectorTable(), lookups);
 	if (compiledScript.Load(appState->GetResourceMap().Helper(), appState->GetVersion(), wScript))
 	{
 		// Write some crap.
@@ -269,6 +271,8 @@ void CScriptDocument::OnViewScriptResource()
 		if (SUCCEEDED(appState->GetResourceMap().GetScriptNumber(_scriptId, wScript)))
 		{
 			CompiledScript compiledScript(0);
+			GlobalCompiledScriptLookups *lookups = appState->GetResourceMap().GetCompiledScriptLookups();
+			compiledScript.SetNameSelector(lookups->GetSelectorTable(), lookups);
 			if (compiledScript.Load(appState->GetResourceMap().Helper(), appState->GetVersion(), wScript))
 			{
 				// Write some crap.

@@ -83,7 +83,8 @@
 )
 
 ; A class with &layout and no name whose first property is a string: the
-; decompiler takes its name from the string, and adds no name slot.
+; string is not its name (it has no name slot), so it gets a made-up name,
+; and the decompiler adds no name slot.
 (class o3StringFirst of o3Base
 	(properties &layout
 		y "a string"

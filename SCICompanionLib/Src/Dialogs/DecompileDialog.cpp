@@ -361,6 +361,8 @@ void DecompileDialog::_SyncSelection(bool force)
 				// Detect which exports are not procedures by seeing if its name
 				// matches a public instance in the compiled script (which should be sync'd with the SCO)
 				CompiledScript compiledScript((uint16_t)param);
+				GlobalCompiledScriptLookups *lookups = appState->GetResourceMap().GetCompiledScriptLookups();
+				compiledScript.SetNameSelector(lookups->GetSelectorTable(), lookups);
 				compiledScript.Load(_helper, _helper.Version, param);
 				int exportIndex = 0;
 				for (auto &publicExport : _sco->GetExports())

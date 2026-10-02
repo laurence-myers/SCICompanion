@@ -468,7 +468,7 @@ void SCIClassBrowser::ReLoadFromCompiled(ITaskStatus &task)
 	_selectorNames.Load(appState->GetResourceMap().Helper());
 
 	GlobalClassTable classTable;
-	if (!classTable.Load(appState->GetResourceMap().Helper()))
+	if (!classTable.Load(appState->GetResourceMap().Helper(), &_selectorNames))
 	{
 		return;
 	}
@@ -518,6 +518,7 @@ void SCIClassBrowser::ReLoadFromCompiled(ITaskStatus &task)
 				heapStream.reset(new sci::istream(entry.second->GetData(), entry.second->GetLength()));
 			}
 			std::unique_ptr<CompiledScript> pCompiledScript = std::make_unique<CompiledScript>(scriptNumber);
+			pCompiledScript->SetNameSelector(_selectorNames);
 			if (pCompiledScript->Load(appState->GetResourceMap().Helper(), appState->GetVersion(), scriptNumber, *scriptStream, heapStream.get()))
 			{
 				compiledScriptsMap[scriptNumber] = move(pCompiledScript);

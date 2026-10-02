@@ -540,6 +540,7 @@ namespace UnitTests
             bool madeUp = false;
             bool madeUpString = false;
             bool named = false;
+            bool nameSecond = false;
             for (const meaning::Function &function : ReadMeaningFunctions(972))
             {
                 if (function.display == "Class_972_0::doit")
@@ -558,8 +559,14 @@ namespace UnitTests
                     named = true;
                     Assert::AreEqual(std::string("r3NamedRoot::doit"), function.key);
                 }
+                if (function.display == "r3NameSecond::doit")
+                {
+                    // The name slot is after another property.
+                    nameSecond = true;
+                    Assert::AreEqual(std::string("r3NameSecond::doit"), function.key);
+                }
             }
-            Assert::IsTrue(madeUp && madeUpString && named, L"the three methods");
+            Assert::IsTrue(madeUp && madeUpString && named && nameSecond, L"the four methods");
         }
 
         // Switches: a switch as a value, a case value with a branch, an

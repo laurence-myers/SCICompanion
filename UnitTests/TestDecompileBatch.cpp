@@ -246,6 +246,7 @@ namespace UnitTests
             for (uint16_t number : { (uint16_t)951, (uint16_t)950 })
             {
                 CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+                compiled.SetNameSelector(lookups.GetSelectorTable(), &lookups);
                 Assert::IsTrue(compiled.Load(helper, helper.Version, number), L"the fixture should load");
                 FixDuplicateObjectNames(compiled, lookups);
                 ObjectFileScriptLookups objectFileLookups(helper, lookups.GetSelectorTable());

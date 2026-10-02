@@ -155,7 +155,7 @@ class CompiledObject : public ILookupPropertyName
 public:
 	CompiledObject() { _fInstance = false; IsPublic = false; }
 	bool IsInstance() const { return _fInstance; }
-	bool Create_SCI0(const std::vector<uint16_t> &saidOffsets, const std::vector<uint16_t> &stringOffsets, uint16_t scriptNumber, SCIVersion version, sci::istream &stream, BOOL fClass, uint16_t *pwOffset, int classIndex);
+	bool Create_SCI0(const CompiledScript &compiledScript, SCIVersion version, sci::istream &stream, BOOL fClass, uint16_t *pwOffset, int classIndex);
 	bool Create_SCI1_1(const CompiledScript &compiledScript, SCIVersion version, sci::istream scriptStream, sci::istream &heapStream, uint16_t *pwOffset, int classIndex, uint16_t *endOfObjectInScript);
 	std::string GetName() const { return _strName; }
 	void SetName(PCTSTR pszName) { _strName = pszName; }
@@ -237,6 +237,19 @@ class CompiledScript : public IPrivateSpeciesLookups, public ICompiledScriptSpec
 public:
 	CompiledScript(const CompiledScript &src) = delete;
 	CompiledScript(uint16_t wScript, CompiledScriptFlags flags = CompiledScriptFlags::None) { _wScript = wScript; _flags = flags; }
+	// Call these before Load. The name of an object is the string of its name
+	// slot: the slot of the selector "name" in the slots of its class (a class
+	// with no superclass can have that slot later, or not have it). classes
+	// gives the slots of a class of another script, for an instance. Without
+	// the selector (a caller with no selector table, or a table with no
+	// "name"), and for an instance whose class is not known, the name is the
+	// string of the slot after --info--.
+	void SetNameSelector(uint16_t nameSelector, ICompiledScriptLookups *classes = nullptr);
+	void SetNameSelector(const SelectorTable &selectors, ICompiledScriptLookups *classes = nullptr);
+	// The name slot of an object with these slots (selectors: the slots of a
+	// class; empty for an instance). False when it is not known; npos when the
+	// object has no name slot.
+	bool FindNameSlot(bool isInstance, uint16_t species, const std::vector<uint16_t> &selectors, size_t slotCount, size_t &slot) const;
 	bool Load(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber);
 	bool Load(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber, sci::istream &byteStream, sci::istream *heapStream = nullptr);
 	// Loads the most recent script resource (and in SCI1.1 its heap) of the
@@ -311,6 +324,9 @@ private:
 	std::vector<uint16_t> _stringPointerOffsetsSCI1_1;
 	SCIVersion _version;
 	CompiledScriptFlags _flags;
+	bool _hasNameSelector = false;
+	uint16_t _nameSelector = 0;
+	ICompiledScriptLookups *_nameSlotClasses = nullptr;
 };
 
 int GetOperandSize(BYTE bOpcode, OperandType operandType, const uint8_t *pNext, const uint8_t *pEnd);

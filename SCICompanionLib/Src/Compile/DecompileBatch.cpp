@@ -325,10 +325,11 @@ namespace
 	// in use. DecompileLookups points at the other members.
 	struct DecompileState
 	{
-		DecompileState(const GameFolderHelper &helper, const SelectorTable &selectorTable) :
+		DecompileState(const GameFolderHelper &helper, GlobalCompiledScriptLookups &scriptLookups) :
 			compiledScript(0, CompiledScriptFlags::RemoveBadExports),
-			objectFileLookups(helper, selectorTable)
+			objectFileLookups(helper, scriptLookups.GetSelectorTable())
 		{
+			compiledScript.SetNameSelector(scriptLookups.GetSelectorTable(), &scriptLookups);
 		}
 		CompiledScript compiledScript;
 		ObjectFileScriptLookups objectFileLookups;
@@ -388,7 +389,7 @@ public:
 		_wrote = false;
 		_objectFileChanged = false;
 		_lastRenames.clear();
-		DecompileState state(_helper, _scriptLookups.GetSelectorTable());
+		DecompileState state(_helper, _scriptLookups);
 		SCI_TRY(state.compiledScript.TryLoad(_helper, _helper.Version, _number));
 		_Decompile(state, _results);
 		if (_results.IsAborted())
@@ -475,7 +476,7 @@ public:
 		_objectFileChanged = false;
 		_lastRenames.clear();
 
-		DecompileState state(_helper, _scriptLookups.GetSelectorTable());
+		DecompileState state(_helper, _scriptLookups);
 		sci::Status loaded = state.compiledScript.TryLoad(_helper, _helper.Version, _number);
 		if (!loaded)
 		{

@@ -221,6 +221,7 @@ DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks, bool de
 
     DecompileOutput out;
     CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+    compiled.SetNameSelector(lookups.GetSelectorTable(), &lookups);
     if (!compiled.Load(helper, helper.Version, scriptNumber))
     {
         out.text = "<<compiled script load failed>>";
@@ -343,6 +344,7 @@ int CountFallbacksAllScripts(std::vector<std::string> *outFailedScripts, int *ou
     {
         uint16_t number = scriptId.GetResourceNumber();
         CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+        compiled.SetNameSelector(lookups.GetSelectorTable(), &lookups);
         if (!compiled.Load(helper, helper.Version, number))
         {
             continue;
@@ -434,6 +436,7 @@ int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
     {
         int number = blob->GetNumber();
         CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+        compiled.SetNameSelector(lookups.GetSelectorTable(), &lookups);
         if (!compiled.Load(helper, helper.Version, static_cast<uint16_t>(number)))
         {
             continue;
@@ -574,6 +577,7 @@ SnapshotResult CompareTemplateSnapshots()
     {
         uint16_t number = scriptId.GetResourceNumber();
         CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+        compiled.SetNameSelector(lookups.GetSelectorTable(), &lookups);
         if (!compiled.Load(helper, helper.Version, number))
         {
             continue;

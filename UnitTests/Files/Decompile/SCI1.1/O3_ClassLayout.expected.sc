@@ -76,7 +76,7 @@
 	)
 )
 
-(class a_string of o3Base
+(class Class_974_7 of o3Base
 	(properties &layout
 		y {a string}
 		x 0

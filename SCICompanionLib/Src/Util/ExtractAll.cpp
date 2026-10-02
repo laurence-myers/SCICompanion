@@ -188,6 +188,7 @@ void ExtractAllResources(SCIVersion version, const std::string &destinationFolde
 					}
 
 					CompiledScript compiledScript(blob->GetNumber());
+					compiledScript.SetNameSelector(scriptLookups.GetSelectorTable(), &scriptLookups);
 					compiledScript.Load(appState->GetResourceMap().Helper(), appState->GetVersion(), blob->GetNumber(), blob->GetReadStream(), heapStream.get());
 					std::stringstream out;
 					DisassembleScript(compiledScript, out, &scriptLookups, &objectFileLookups, appState->GetResourceMap().GetVocab000());

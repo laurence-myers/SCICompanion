@@ -224,6 +224,12 @@ namespace
         }
         std::map<PatchKey, std::vector<std::string>> patchFiles = PatchFilesOf(helper, patchTypes);
         std::map<uint16_t, CompiledInfo> scripts;
+        // The names of the classes come from their name slots.
+        SelectorTable selectors;
+        if (readObjects)
+        {
+            selectors.Load(helper);
+        }
         for (auto &script : scriptBlobs)
         {
             CompiledInfo &info = scripts[script.first];
@@ -243,6 +249,7 @@ namespace
             {
                 auto heap = heapBlobs.find(script.first);
                 CompiledScript compiled(script.first);
+                compiled.SetNameSelector(selectors);
                 sci::Status loaded = compiled.TryLoad(helper, helper.Version, script.first, blob, (heap != heapBlobs.end()) ? heap->second.get() : nullptr);
                 if (loaded)
                 {

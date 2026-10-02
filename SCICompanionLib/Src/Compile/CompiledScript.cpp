@@ -628,7 +628,7 @@ bool CompiledScript::_LoadSCI0_SCI1(sci::istream &byteStream)
 						// instance
 						unique_ptr<CompiledObject> pObject = make_unique<CompiledObject>();
 						uint16_t wInstanceOffsetTO;
-						fRet = pObject->Create_SCI0(_saidsOffset, _stringsOffset, this->_wScript, _version, byteStream, FALSE, &wInstanceOffsetTO, classIndex);
+						fRet = pObject->Create_SCI0(*this, _version, byteStream, FALSE, &wInstanceOffsetTO, classIndex);
 						if (fRet)
 						{
 							_objectsOffsetTO.push_back(wInstanceOffsetTO);
@@ -683,7 +683,7 @@ bool CompiledScript::_LoadSCI0_SCI1(sci::istream &byteStream)
 						// class
 						unique_ptr<CompiledObject> pObject = make_unique<CompiledObject>();
 						uint16_t wClassOffset;
-						fRet = pObject->Create_SCI0(_saidsOffset, _stringsOffset, this->_wScript, _version, byteStream, TRUE, &wClassOffset, classIndex);
+						fRet = pObject->Create_SCI0(*this, _version, byteStream, TRUE, &wClassOffset, classIndex);
 						if (fRet)
 						{
 							_objectsOffsetTO.push_back(wClassOffset);
@@ -888,16 +888,17 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 			_fInstance = ((_wInfo & InfoClassFlag) == 0);
 			break;
 		case 8:
-			// The name slot, unless the layout has none (see below).
+			// The name slot, when the name slot is not known (see below).
 			wName = _propertyValues[i].value;
 			break;
 		}
 	}
 	if ((_propertyValues.size() > 8) && !_propertyValues[8].isObjectOrString)
 	{
-		// A class with no superclass, and its subclasses and instances, can have another
-		// property after --info-- (Castle of Dr. Brain script 943, Class_943_3: x): the
-		// value is the name only when it points to a string.
+		// When the name slot is not known (FindNameSlot): a class with no superclass, and
+		// its subclasses and instances, can have another property after --info-- (Castle
+		// of Dr. Brain script 943, Class_943_3: x): the value is the name only when it
+		// points to a string.
 		wName = 0;
 	}
 
@@ -916,6 +917,11 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 			scriptStream >> propertySelector;
 			_propertySelectors.push_back(propertySelector);
 		}
+	}
+	size_t nameSlot;
+	if (compiledScript.FindNameSlot(_fInstance, GetSpecies(), _propertySelectors, _propertyValues.size(), nameSlot))
+	{
+		wName = ((nameSlot < _propertyValues.size()) && _propertyValues[nameSlot].isObjectOrString) ? _propertyValues[nameSlot].value : 0;
 	}
 
 	// We need to read function selectors, and code
@@ -963,8 +969,9 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 	return true;
 }
 
-bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const std::vector<uint16_t> &stringOffsets, uint16_t scriptNum, SCIVersion version, sci::istream &stream, BOOL fClass, uint16_t *pwOffset, int classIndex)
+bool CompiledObject::Create_SCI0(const CompiledScript &compiledScript, SCIVersion version, sci::istream &stream, BOOL fClass, uint16_t *pwOffset, int classIndex)
 {
+	uint16_t scriptNum = compiledScript.GetScriptNumber();
 	_version = version;
 	*pwOffset = static_cast<uint16_t>(stream.tellg());
 	_fInstance = !fClass;
@@ -993,7 +1000,7 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 				stream >> wValue;
 				if (stream.good())
 				{
-					_propertyValues.push_back({ wValue, IsAnOffset(wValue, saidOffsets, stringOffsets) });
+					_propertyValues.push_back({ wValue, IsAnOffset(wValue, compiledScript._saidsOffset, compiledScript._stringsOffset) });
 				}
 				wNumVarValuesLeft--;
 			}
@@ -1008,8 +1015,9 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 			_wSpeciesIfClass = _propertyValues[0].value;
 			_wSuperClass = _propertyValues[1].value;
 			_wInfo = _propertyValues[2].value;
-			// A class with no superclass, and its subclasses and instances, can have another
-			// property after --info--: the value is the name only when it points to a string.
+			// When the name slot is not known (FindNameSlot): a class with no superclass, and
+			// its subclasses and instances, can have another property after --info--: the
+			// value is the name only when it points to a string.
 			if ((_propertyValues.size() >= 4) && _propertyValues[3].isObjectOrString)
 			{
 				wName = _propertyValues[3].value;
@@ -1030,6 +1038,11 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 					_propertySelectors.push_back(wSelectorID);
 				}
 			}
+		}
+		size_t nameSlot;
+		if (compiledScript.FindNameSlot(_fInstance, GetSpecies(), _propertySelectors, _propertyValues.size(), nameSlot))
+		{
+			wName = ((nameSlot < _propertyValues.size()) && _propertyValues[nameSlot].isObjectOrString) ? _propertyValues[nameSlot].value : 0;
 		}
 
 		// Now their function selectors, for both instances and classes.
@@ -1473,6 +1486,69 @@ CompiledObject *CompiledScript::_FindObjectWithSpecies(uint16_t wIndex)
 		}
 	}
 	return nullptr;
+}
+
+void CompiledScript::SetNameSelector(uint16_t nameSelector, ICompiledScriptLookups *classes)
+{
+	_hasNameSelector = true;
+	_nameSelector = nameSelector;
+	_nameSlotClasses = classes;
+}
+
+void CompiledScript::SetNameSelector(const SelectorTable &selectors, ICompiledScriptLookups *classes)
+{
+	uint16_t nameSelector;
+	if (selectors.ReverseLookup("name", nameSelector))
+	{
+		SetNameSelector(nameSelector, classes);
+	}
+}
+
+bool CompiledScript::FindNameSlot(bool isInstance, uint16_t species, const std::vector<uint16_t> &selectors, size_t slotCount, size_t &slot) const
+{
+	if (!_hasNameSelector)
+	{
+		return false;
+	}
+	std::vector<uint16_t> classSlots;
+	const std::vector<uint16_t> *slots = &selectors;
+	if (isInstance)
+	{
+		// The slots of the class: a class of this script that the load has
+		// read, else a class of the game.
+		slots = nullptr;
+		for (const auto &object : _objects)
+		{
+			if (!object->IsInstance() && (object->GetSpecies() == species))
+			{
+				slots = &object->GetProperties();
+				break;
+			}
+		}
+		if (!slots && _nameSlotClasses && _nameSlotClasses->LookupSpeciesPropertyList(species, classSlots))
+		{
+			slots = &classSlots;
+		}
+		if (!slots)
+		{
+			return false;
+		}
+	}
+	if (slots->size() != slotCount)
+	{
+		// The slots are not the slots of the object.
+		return false;
+	}
+	slot = std::string::npos;
+	for (size_t i = _version.SeparateHeapResources ? 8 : 3; i < slots->size(); i++)
+	{
+		if ((*slots)[i] == _nameSelector)
+		{
+			slot = i;
+			break;
+		}
+	}
+	return true;
 }
 
 std::string CompiledScript::LookupClassName(uint16_t wIndex)

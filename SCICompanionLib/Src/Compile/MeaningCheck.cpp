@@ -2117,6 +2117,7 @@ namespace meaning
 	sci::Result<std::vector<Function>> ReadScript(const GameFolderHelper &helper, GlobalCompiledScriptLookups &lookups, const Vocab000 *pWords, uint16_t scriptNumber)
 	{
 		CompiledScript compiled(scriptNumber, CompiledScriptFlags::RemoveBadExports);
+		compiled.SetNameSelector(lookups.GetSelectorTable(), &lookups);
 		SCI_TRY(compiled.TryLoad(helper, helper.Version, scriptNumber));
 		return _ReadLoaded(compiled, helper, lookups, pWords, scriptNumber);
 	}
@@ -2125,6 +2126,7 @@ namespace meaning
 		const std::vector<uint8_t> &script, const std::vector<uint8_t> *heap)
 	{
 		CompiledScript compiled(scriptNumber, CompiledScriptFlags::RemoveBadExports);
+		compiled.SetNameSelector(lookups.GetSelectorTable(), &lookups);
 		if (script.empty() || (helper.Version.SeparateHeapResources && (!heap || heap->empty())))
 		{
 			return sci::Fail(sci::ErrorCode::NotFound, "the script or its heap is missing");

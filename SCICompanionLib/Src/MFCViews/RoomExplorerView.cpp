@@ -1315,6 +1315,7 @@ void CRoomExplorerView::_RecalcHeight()
 			{
 				sci::istream byteStream = blob->GetReadStream();
 				CompiledScript compiledScript(blob->GetNumber());
+				compiledScript.SetNameSelector(selectorTable, &globalLookups);
 				if (compiledScript.Load(appState->GetResourceMap().Helper(), appState->GetVersion(), blob->GetNumber(), byteStream))
 				{
 					for (auto &classDefinition : compiledScript.GetObjects())

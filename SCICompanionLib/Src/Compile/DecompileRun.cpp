@@ -788,6 +788,7 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
                     return sci::Ok();
                 }
                 CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+                compiled.SetNameSelector(selectors);
                 sci::Status loaded = compiled.TryLoad(helper, helper.Version, outcome.number);
                 if (!loaded && (loaded.error().code == sci::ErrorCode::NotFound))
                 {
