@@ -38,30 +38,13 @@ Open items only: gaps, unfixed findings, questions. The plan is in
     property name that is no selector (`curPosnX`), corrupt code that reads
     as variables such as `global33792`.
 
-## Meaning DIFFs of the full corpus
-
-The full gate run (`-Full -Meaning`, 93 games) gives 38 DIFF rows of
-scope functions, all of one cause. Many games have two or three copies,
-so there are fewer distinct defects.
-
-- **Another property layout of a superclass** (38 rows): a class whose
-  properties do not start with those of its superclass (the superclass
-  changed after the class was compiled). LSL1 and Mixed-Up Fairy Tales 995,
-  IconBar and `Inv`; LSL1 VGA `GameControls::show` reads `okButton`
-  (property 42) as property 44. `DelayedEvent` of script 947 (Castle of
-  Dr. Brain, Mixed-Up Fairy Tales, QfG2) is a class of `Event` with the
-  properties of `Script`. EcoQuest 2 959 `QSnd` and 960 `TimedCue`, The
-  Colonel's Bequest dev 414 `ToastClass`. The text has no form for such a
-  layout: `of` gives the layout of the superclass. Question for the owner:
-  leave these rows, or add a syntax that states the layout of a class.
-
 ## Refusals
 
-The full corpus run gives 116 functions as `asm`:
+The full corpus run gives 113 functions as `asm`:
 
-- `syntax` (49): code that the text cannot have: a property past the end
+- `syntax` (46): code that the text cannot have: a property past the end
   of its object (for example `Act::canBeHere` of ICEMAN, LSL3 and QfG1,
-  Hoyle 1 `Deck`, King's Quest V `SaveIcon`, `MouthSync::init`), and a
+  Hoyle 1 `Deck`, `MouthSync::init`), and a
   property read in a procedure (an export at the code of a method:
   Mixed-Up Mother Goose script 0).
 - `case-test` (46): each function has a corrupt branch (issue #235; the
