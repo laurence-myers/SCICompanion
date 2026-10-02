@@ -340,9 +340,7 @@ void _WriteClassOrInstance(const CSCOObjectClass &object, bool fInstance, vector
 	string className = object.GetName();
 	for (uint16_t scoMethod : methods)
 	{
-		string methodName = pContext->LookupSelectorName(scoMethod);
-		assert(!methodName.empty()); // Means we have a bug.
-		code_pos methodPos = pContext->GetLocalProcPos(className + "::" + methodName);
+		code_pos methodPos = pContext->GetMethodPos(className, scoMethod);
 		// Then from the code_pos, we get the offset at which it was written.
 		push_word(output, methodPos->get_final_offset());
 	}
@@ -1008,15 +1006,19 @@ void GenerateSCOObjects(CompileContext &context, const Script &script)
 	// they were defined in the script.
 	// scriptClassIndexToSpeciesIndex will make the index of each in class in this script,
 	// to a global species index.
-	vector<WORD> scriptClassIndexToSpeciesIndex;
+	vector<string> classNames;
 	for (auto &classDef : script.GetClasses())
 	{
 		if (!classDef->IsInstance())
 		{
-			// This is a class.  Ensure it has a spot in the species table.
-			WORD wSpeciesIndex = context.EnsureSpeciesTableEntry((WORD)scriptClassIndexToSpeciesIndex.size());
-			scriptClassIndexToSpeciesIndex.push_back(wSpeciesIndex);
-
+			classNames.push_back(classDef->GetName());
+		}
+	}
+	vector<WORD> scriptClassIndexToSpeciesIndex = context.EnsureSpeciesTableEntries(classNames);
+	for (auto &classDef : script.GetClasses())
+	{
+		if (!classDef->IsInstance())
+		{
 			// This is sort of a hack.  We need to have the CSCOObjectClass for all the classes in this file
 			// around, prior to executing the rest of this function.  For example, if the Script class has
 			// a property of type Script (which it does), we need this data type to resolve propertly.
@@ -1028,11 +1030,9 @@ void GenerateSCOObjects(CompileContext &context, const Script &script)
 		}
 	}
 
-	// NOTE: if the user moves classes around in a file, things will get corrupt.  The species indicies will
-	// be wrong.  We need to figure this out now (look in the SCO file?) - and tell the species table that
-	// it needs to dirty itself, even though the number of classes didn't change... hmm. Actually - that won't
-	// change the species table at all.  But it does mean that any file that references one of these classes
-	// will need to recompile.
+	// A class keeps its species by its name (EnsureSpeciesTableEntries), so a
+	// class that moves in the file keeps it, and so do the classes after a
+	// class that the file adds or removes.
 
 	// Now that we're sure we have an entry in the species table for each class, we
 	// can construct the SCO object for each.
@@ -1086,7 +1086,8 @@ void GenerateSCOObjects(CompileContext &context, const Script &script)
 		// And get the properties that we declared
 		property_vector newProps = GetOverriddenProperties(context, classDef.get());
 
-		int nameIndex;
+		int nameIndex = -1;
+		size_t firstNameIndex;
 		// But first, provide some of our own overrides.
 		if (context.GetVersion().SeparateHeapResources)
 		{
@@ -1098,8 +1099,7 @@ void GenerateSCOObjects(CompileContext &context, const Script &script)
 			speciesProps[5].wValue = sco.GetSpecies();
 			speciesProps[6].wValue = wSuperClass; // superclass index
 			speciesProps[7].wValue = classDef->IsInstance() ? 0x0000 : 0x8000; // --info--
-			speciesProps[8].wValue = context.GetTempToken(ValueType::String, classDef->GetName()); // name (can be overridden explicitly too)
-			nameIndex = 8;
+			firstNameIndex = 8;
 		}
 		else
 		{
@@ -1107,8 +1107,48 @@ void GenerateSCOObjects(CompileContext &context, const Script &script)
 			speciesProps[0].wValue = sco.GetSpecies();
 			speciesProps[1].wValue = wSuperClass; // superclass index
 			speciesProps[2].wValue = classDef->IsInstance() ? 0x0000 : 0x8000; // --info--
-			speciesProps[3].wValue = context.GetTempToken(ValueType::String, classDef->GetName()); // name (can be overridden explicitly too)
-			nameIndex = 3;
+			firstNameIndex = 3;
+		}
+		// A class with &layout has the properties of its text right after --info--,
+		// in the order of the text, and no other slot of its superclass. Some
+		// classes of the games have slots that are not the slots of their
+		// superclass (Castle of Dr. Brain script 947, DelayedEvent).
+		if (classDef->HasExplicitLayout())
+		{
+			if (classDef->IsInstance())
+			{
+				context.ReportError(classDef.get(), "&layout is for a class. An instance has the layout of its class.");
+			}
+			else
+			{
+				speciesProps.erase(speciesProps.begin() + firstNameIndex, speciesProps.end());
+			}
+		}
+		// A class with no superclass that declares properties has its properties in the
+		// order of the text, right after --info--: name has the slot after --info-- only
+		// when it is the first property (Object). The private root classes of some games
+		// have no name (Castle of Dr. Brain script 943, Class_943_3), or have it after
+		// another property (QfG3 script 47, Class_47_1: dynamicName, then name). Their
+		// subclasses and instances have the same layout, so the name slot is where the
+		// name selector is, if there is one.
+		bool rootWithoutNameFirst = classDef->GetSuperClass().empty() && !classDef->IsInstance() && !classDef->GetProperties().empty() &&
+			(classDef->GetProperties().front()->GetName() != "name");
+		for (size_t i = firstNameIndex; i < speciesProps.size(); i++)
+		{
+			if (context.LookupSelectorName(speciesProps[i].wSelector) == "name")
+			{
+				nameIndex = (int)i;
+				break;
+			}
+		}
+		if (rootWithoutNameFirst && (nameIndex >= 0))
+		{
+			speciesProps.erase(speciesProps.begin() + nameIndex);
+			nameIndex = -1;
+		}
+		if (nameIndex >= 0)
+		{
+			speciesProps[nameIndex].wValue = context.GetTempToken(ValueType::String, classDef->GetName()); // name (can be overridden explicitly too)
 		}
 
 		// Replace the species default values, with any that the user specified.
@@ -1141,8 +1181,9 @@ void GenerateSCOObjects(CompileContext &context, const Script &script)
 			if (speciesIt == speciesProps.end())
 			{
 				// Must be - we didn't find it in the species props.
-				// Make sure it's not a default property either
-				if (context.IsDefaultSelector(newProp.wSelector))
+				// Make sure it's not a default property either (name is a new property of a
+				// class with no superclass that declares it after another property).
+				if (context.IsDefaultSelector(newProp.wSelector) && !((nameIndex == -1) && (context.LookupSelectorName(newProp.wSelector) == "name")))
 				{
 					// Someone tried to override a default property
 					context.ReportError(classDef.get(), "Can't override default selectors.");
@@ -1163,6 +1204,9 @@ void GenerateSCOObjects(CompileContext &context, const Script &script)
 				}
 			}
 		}
+		// The name slot is the slot after --info-- when it has the name selector (a
+		// class with &layout has it when name is the first property of its text).
+		sco.SetHasNameSlot((scoProperties.size() > firstNameIndex) && (context.LookupSelectorName(scoProperties[firstNameIndex].GetSelector()) == "name"));
 		sco.SetProperties(scoProperties);
 
 		// Now methods
@@ -1336,9 +1380,7 @@ void WriteMethodCodePointers(const CSCOObjectClass &oClass, vector<uint8_t> &out
 {
 	for (uint16_t method : oClass.GetMethods())
 	{
-		string methodName = context.LookupSelectorName(method);
-		assert(!methodName.empty()); // Means we have a bug.
-		code_pos methodPos = context.GetLocalProcPos(oClass.GetName() + "::" + methodName);
+		code_pos methodPos = context.GetMethodPos(oClass.GetName(), method);
 		// Then from the code_pos, we get the offset at which it was written.
 		uint16_t offsetOfMethodPointer = trackMethodCodePointerOffsets[index];
 		write_word(outputScr, offsetOfMethodPointer, methodPos->get_final_offset());

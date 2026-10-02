@@ -12,12 +12,17 @@
 #include "ExitCodes.h"
 #include "FileWrite.h"
 #include "Vocab99x.h"
+#include "CompiledScript.h"
 #include "ResourceBlob.h"
 #include "Helper.h"
 #include "TestSupport.h"
+#include "SCO.h"
+#include "DecompileRun.h"
+#include "format.h"
 #include <algorithm>
 #include <atomic>
 #include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -283,6 +288,483 @@ namespace UnitTests
             options.write.writeObjectFile = !dryRun;
             options.write.writeDebugInfo = !dryRun;
         }
+
+        // The species of the classes of the script that the compile wrote, in
+        // their order.
+        static std::vector<uint16_t> CompiledSpecies(GameSession &session, uint16_t number, std::vector<const CompiledObject *> *classesOut = nullptr, std::unique_ptr<CompiledScript> *keep = nullptr)
+        {
+            auto compiled = std::make_unique<CompiledScript>(number);
+            AssertOk(compiled->TryLoad(session.Helper(), session.Helper().Version, number), "the compiled script");
+            std::vector<uint16_t> species;
+            for (const auto &object : compiled->GetObjects())
+            {
+                if (!object->IsInstance())
+                {
+                    species.push_back(object->GetSpecies());
+                    if (classesOut)
+                    {
+                        classesOut->push_back(object.get());
+                    }
+                }
+            }
+            if (keep)
+            {
+                *keep = std::move(compiled);
+            }
+            return species;
+        }
+
+        static std::string TwoClassText(const std::vector<std::string> &names)
+        {
+            std::string text = "(script# 907)\n(include sci.sh)\n(include game.sh)\n(use main)\n(use obj)\n";
+            for (const std::string &name : names)
+            {
+                text += "(class S2" + name + " of Obj\n    (properties\n        s2" + name + "Size 0\n    )\n)\n";
+            }
+            return text;
+        }
+
+        // A class keeps its species by its name: a class that moves keeps it,
+        // and the species of a leftover class (one that the table gives
+        // another script: KQ5 script 992 has Rev, species 24 of script 978)
+        // goes only to the class with its name. Removing the leftover class
+        // leaves the next class its own species, not the leftover's.
+        TEST_METHOD(Species_FollowTheClassNames)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Classes", 907, TwoClassText({ "Alpha", "Beta" })) }, ToPatchFiles()));
+            std::vector<const CompiledObject *> classes;
+            std::unique_ptr<CompiledScript> keep;
+            std::vector<uint16_t> first = CompiledSpecies(session, 907, &classes, &keep);
+            Assert::AreEqual((size_t)2, first.size());
+            uint16_t alpha = first[0];
+            uint16_t beta = first[1];
+
+            // The classes in the other order keep their species.
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Classes", 907, TwoClassText({ "Beta", "Alpha" })) }, ToPatchFiles()));
+            std::vector<uint16_t> swapped = CompiledSpecies(session, 907);
+            Assert::AreEqual((int)beta, (int)swapped[0]);
+            Assert::AreEqual((int)alpha, (int)swapped[1]);
+
+            // Alpha with the species of another script (a leftover class).
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Classes", 907, TwoClassText({ "Alpha", "Beta" })) }, ToPatchFiles()));
+            classes.clear();
+            CompiledSpecies(session, 907, &classes, &keep);
+            SpeciesTable table;
+            Assert::IsTrue(table.Load(session.Helper(), false));
+            uint16_t other = 0;
+            uint16_t otherScript = 0;
+            uint16_t place = 0;
+            while (table.GetSpeciesLocation(SpeciesIndex(other), otherScript, place) && (otherScript == 907))
+            {
+                other++;
+            }
+            Assert::AreNotEqual((uint16_t)907, otherScript, L"setup: a species of another script");
+            const GameFolderHelper &helper = session.Helper();
+            std::unique_ptr<ResourceBlob> original = helper.MostRecentResource(ResourceType::Script, 907, ResourceEnumFlags::None);
+            std::vector<uint8_t> data(original->GetData(), original->GetData() + original->GetLength());
+            size_t alphaAt = classes[0]->GetPosInResource() + 6;
+            Assert::IsTrue((data[alphaAt] | (data[alphaAt + 1] << 8)) == alpha, L"setup: the species is where the SCI0 format puts it");
+            data[alphaAt] = (uint8_t)(other & 0xff);
+            data[alphaAt + 1] = (uint8_t)(other >> 8);
+            ResourceBlob patched(helper, nullptr, ResourceType::Script, data, helper.Version.DefaultVolumeFile, 907, NoBase36, helper.Version, ResourceSourceFlags::PatchFile);
+            AssertOk(session.ResourceMap().WriteResource(patched));
+
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Classes", 907, TwoClassText({ "Alpha", "Beta" })) }, ToPatchFiles()));
+            std::vector<uint16_t> leftover = CompiledSpecies(session, 907);
+            Assert::AreEqual((int)other, (int)leftover[0], L"the leftover class keeps its species");
+            Assert::AreEqual((int)beta, (int)leftover[1], L"the class after it keeps its species");
+
+            // Without the leftover class, Beta keeps its species.
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Classes", 907, TwoClassText({ "Beta" })) }, ToPatchFiles()));
+            std::vector<uint16_t> removed = CompiledSpecies(session, 907);
+            Assert::AreEqual((size_t)1, removed.size());
+            Assert::AreEqual((int)beta, (int)removed[0], L"the class after a removed leftover class keeps its species");
+        }
+
+
+        // A method named sel_<number> of a selector that has a name (the
+        // decompiler writes a selector whose name the compiler gives another
+        // selector, or a keyword, that way): the class gets the method of
+        // that selector.
+        TEST_METHOD(Methods_ANumberedNameOfANamedSelector)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            SelectorTable selectors;
+            Assert::IsTrue(selectors.Load(session.Helper()));
+            uint16_t doit = 0;
+            Assert::IsTrue(selectors.ReverseLookup("doit", doit));
+            std::string text = "(script# 907)\n(include sci.sh)\n(include game.sh)\n(use main)\n(use obj)\n"
+                "(instance s2Numbered of Obj\n    (properties)\n    (method (sel_" + std::to_string(doit) + ")\n        (return 1)\n    )\n)\n";
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Numbered", 907, text) }, ToPatchFiles()));
+            CompiledScript compiled(907);
+            AssertOk(compiled.TryLoad(session.Helper(), session.Helper().Version, 907), "the compiled script");
+            bool found = false;
+            for (const auto &object : compiled.GetObjects())
+            {
+                for (uint16_t method : object->GetMethods())
+                {
+                    found = found || (method == doit);
+                }
+            }
+            Assert::IsTrue(found, L"the instance has the method of the selector");
+        }
+
+
+        // A class with no superclass that declares properties has them in the
+        // order of the text, right after --info--: no name slot when it declares
+        // no name (Castle of Dr. Brain script 943, Class_943_3), name after
+        // another property where the text has it (QfG3 script 47, Class_47_1),
+        // and the name slot after --info-- when name is the first property.
+        TEST_METHOD(RootClass_PropertiesInTheOrderOfTheText)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            std::string text = "(script# 907)\n(include sci.sh)\n(include game.sh)\n"
+                "(class S2Root\n    (properties\n        x 0\n        y 7\n    )\n    (method (doit)\n        (return y)\n    )\n)\n"
+                "(class S2NamedRoot\n    (properties\n        name \"S2NamedRoot\"\n        x 0\n    )\n)\n"
+                "(class S2NameSecond\n    (properties\n        x 0\n        name \"S2NameSecond\"\n        y 5\n    )\n)\n";
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Roots", 907, text) }, ToPatchFiles()));
+            CompiledScript compiled(907);
+            AssertOk(compiled.TryLoad(session.Helper(), session.Helper().Version, 907), "the compiled script");
+            SelectorTable selectors;
+            Assert::IsTrue(selectors.Load(session.Helper()));
+            uint16_t nameSelector = 0;
+            uint16_t xSelector = 0;
+            uint16_t ySelector = 0;
+            Assert::IsTrue(selectors.ReverseLookup("name", nameSelector));
+            Assert::IsTrue(selectors.ReverseLookup("x", xSelector));
+            Assert::IsTrue(selectors.ReverseLookup("y", ySelector));
+            Assert::AreEqual((size_t)3, compiled.GetObjects().size());
+            // species, superClass, --info--, then the properties of the text.
+            const std::vector<uint16_t> &rootProperties = compiled.GetObjects()[0]->GetProperties();
+            Assert::AreEqual((size_t)5, rootProperties.size());
+            Assert::AreEqual(xSelector, rootProperties[3]);
+            Assert::AreEqual(ySelector, rootProperties[4]);
+            Assert::AreEqual((int)7, (int)compiled.GetObjects()[0]->GetPropertyValues()[4].value);
+            const std::vector<uint16_t> &namedProperties = compiled.GetObjects()[1]->GetProperties();
+            Assert::AreEqual((size_t)5, namedProperties.size());
+            Assert::AreEqual(nameSelector, namedProperties[3]);
+            Assert::AreEqual(xSelector, namedProperties[4]);
+            const std::vector<uint16_t> &secondProperties = compiled.GetObjects()[2]->GetProperties();
+            Assert::AreEqual((size_t)6, secondProperties.size());
+            Assert::AreEqual(xSelector, secondProperties[3]);
+            Assert::AreEqual(nameSelector, secondProperties[4]);
+            Assert::AreEqual(ySelector, secondProperties[5]);
+        }
+
+        // The subclasses and instances of a class with no superclass have its
+        // layout, also in another script (which reads the class from the
+        // .sco file): the name of an object goes to the name slot if there is
+        // one, and never over another property.
+        TEST_METHOD(RootClass_SubclassesAndInstancesKeepTheLayout)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            std::string roots = "(script# 907)\n(include sci.sh)\n(include game.sh)\n"
+                "(class S2Root\n    (properties\n        x 0\n        y 7\n    )\n)\n"
+                "(class S2NameSecond\n    (properties\n        x 0\n        name \"S2NameSecond\"\n        y 5\n    )\n)\n";
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Roots", 907, roots) }, ToPatchFiles()));
+            std::string users = "(script# 908)\n(include sci.sh)\n(include game.sh)\n(use S2Roots)\n"
+                "(instance s2OfRoot of S2Root\n    (properties\n        y 3\n    )\n)\n"
+                "(instance s2OfNameSecond of S2NameSecond\n    (properties\n        y 4\n    )\n)\n"
+                "(class S2Sub of S2NameSecond\n    (properties)\n)\n";
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Users", 908, users) }, ToPatchFiles()));
+            CompiledScript compiled(908);
+            AssertOk(compiled.TryLoad(session.Helper(), session.Helper().Version, 908), "the compiled script");
+            SelectorTable selectors;
+            Assert::IsTrue(selectors.Load(session.Helper()));
+            uint16_t nameSelector = 0;
+            uint16_t xSelector = 0;
+            Assert::IsTrue(selectors.ReverseLookup("name", nameSelector));
+            Assert::IsTrue(selectors.ReverseLookup("x", xSelector));
+            int checked = 0;
+            for (const auto &object : compiled.GetObjects())
+            {
+                const std::vector<CompiledVarValue> &values = object->GetPropertyValues();
+                if (object->IsInstance() && (values.size() == 5))
+                {
+                    // species, superClass, --info--, x, y.
+                    Assert::AreEqual((int)0, (int)values[3].value, L"x of s2OfRoot");
+                    Assert::AreEqual((int)3, (int)values[4].value, L"y of s2OfRoot");
+                    checked++;
+                }
+                else if (object->IsInstance())
+                {
+                    // species, superClass, --info--, x, name, y.
+                    Assert::AreEqual((size_t)6, values.size());
+                    Assert::AreEqual((int)0, (int)values[3].value, L"x of s2OfNameSecond");
+                    Assert::IsTrue(values[4].isObjectOrString, L"the name of s2OfNameSecond");
+                    Assert::AreEqual((int)4, (int)values[5].value, L"y of s2OfNameSecond");
+                    checked++;
+                }
+                else
+                {
+                    const std::vector<uint16_t> &properties = object->GetProperties();
+                    Assert::AreEqual((size_t)6, properties.size());
+                    Assert::AreEqual(xSelector, properties[3]);
+                    Assert::AreEqual(nameSelector, properties[4]);
+                    Assert::AreEqual((int)0, (int)values[3].value, L"x of S2Sub");
+                    checked++;
+                }
+            }
+            Assert::AreEqual(3, checked);
+        }
+
+        // The .sco file that is made from a compiled script and its source keeps
+        // the layout of a class with no superclass whose first property has a
+        // string: that property is no name slot.
+        TEST_METHOD(RootClass_TheScoOfACompiledScriptKeepsTheLayout)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            std::string text = "(script# 907)\n(include sci.sh)\n(include game.sh)\n"
+                "(class S2Text\n    (properties\n        view \"hi\"\n        x 2\n    )\n)\n";
+            ScriptId script = WriteScript(session, "S2Roots", 907, text);
+            AssertSucceeded(Compile(session, { script }, ToPatchFiles()));
+            auto outcomes = GenerateObjectFiles(session, { script });
+            Assert::IsTrue(outcomes.has_value() && (outcomes->size() == 1) && (*outcomes)[0].status.has_value(), L"the .sco file");
+            SelectorTable selectors;
+            Assert::IsTrue(selectors.Load(session.Helper()), L"setup: the selectors");
+            uint16_t viewSelector = 0;
+            uint16_t xSelector = 0;
+            Assert::IsTrue(selectors.ReverseLookup("view", viewSelector), L"setup: view");
+            Assert::IsTrue(selectors.ReverseLookup("x", xSelector));
+            std::ifstream file(session.Helper().GetScriptObjectFileName("S2Roots"), std::ios::binary);
+            std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            Assert::IsFalse(bytes.empty(), L"setup: the .sco file");
+            sci::istream stream(bytes.data(), (uint32_t)bytes.size());
+            std::unique_ptr<CSCOFile> sco = std::make_unique<CSCOFile>();
+            Assert::IsTrue(sco->Load(stream, selectors), L"the .sco file loads");
+            Assert::AreEqual((size_t)1, sco->GetObjects().size());
+            // species, superClass, --info--, view, x.
+            const std::vector<CSCOObjectProperty> &properties = sco->GetObjects()[0].GetProperties();
+            Assert::AreEqual((size_t)5, properties.size());
+            Assert::AreEqual(viewSelector, (uint16_t)properties[3].GetSelector());
+            Assert::AreEqual(xSelector, (uint16_t)properties[4].GetSelector());
+        }
+
+        // The reader takes the name of an object from the slot after --info--
+        // only when the value there points to a string: a class with no
+        // superclass can have another property there, whose value can be the
+        // address of a string by chance.
+        TEST_METHOD(RootClass_APropertyAfterInfoIsNoName)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci11);
+            auto text = [](uint16_t x)
+            {
+                return fmt::format("(script# 907)\n(include sci.sh)\n(include game.sh)\n"
+                    "(class S2Named\n    (properties\n        name \"S2Named\"\n    )\n)\n"
+                    "(class S2Root\n    (properties\n        x {0}\n    )\n)\n", x);
+            };
+            auto load = [&](uint16_t x, const CompiledObject **named, const CompiledObject **root, std::unique_ptr<CompiledScript> &compiled)
+            {
+                AssertSucceeded(Compile(session, { WriteScript(session, "S2Roots", 907, text(x)) }, ToPatchFiles()));
+                compiled = std::make_unique<CompiledScript>(907);
+                AssertOk(compiled->TryLoad(session.Helper(), session.Helper().Version, 907), "the compiled script");
+                Assert::AreEqual((size_t)2, compiled->GetObjects().size());
+                *named = compiled->GetObjects()[0].get();
+                *root = compiled->GetObjects()[1].get();
+            };
+            std::unique_ptr<CompiledScript> compiled;
+            const CompiledObject *named = nullptr;
+            const CompiledObject *root = nullptr;
+            load(0, &named, &root, compiled);
+            Assert::AreEqual(std::string("S2Named"), named->GetName());
+            // x has the address of the name of S2Named.
+            uint16_t address = named->GetPropertyValues()[8].value;
+            load(address, &named, &root, compiled);
+            Assert::AreEqual((int)address, (int)root->GetPropertyValues()[8].value, L"setup: x has the address");
+            Assert::IsTrue(root->HasMadeUpName(), Wide(root->GetName()).c_str());
+        }
+
+        // With the selector of name, the reader takes the name of an object from
+        // the slot of name in the slots of its class (QfG3 script 47, Class_47_1:
+        // dynamicName, then name), also for an instance in another script. A
+        // class with no name slot has a made-up name, also when the slot after
+        // --info-- has a string.
+        static void AssertTheReaderFindsTheNameSlot(GameSession &session)
+        {
+            std::string roots = "(script# 907)\n(include sci.sh)\n(include game.sh)\n"
+                "(class S2NameSecond\n    (properties\n        x \"first\"\n        name \"S2NameSecond\"\n        y 5\n    )\n)\n"
+                "(class S2NoName\n    (properties\n        x \"hello\"\n    )\n)\n"
+                "(instance s2Here of S2NameSecond\n    (properties)\n)\n";
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Roots", 907, roots) }, ToPatchFiles()));
+            std::string users = "(script# 908)\n(include sci.sh)\n(include game.sh)\n(use S2Roots)\n"
+                "(public\n    s2There 0\n)\n"
+                "(instance s2There of S2NameSecond\n    (properties\n        x \"other\"\n    )\n)\n";
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Users", 908, users) }, ToPatchFiles()));
+            GlobalCompiledScriptLookups lookups;
+            Assert::IsTrue(lookups.Load(session.Helper()), L"setup: the lookups");
+
+            CompiledScript roots907(907);
+            roots907.SetNameSelector(lookups.GetSelectorTable(), &lookups);
+            AssertOk(roots907.TryLoad(session.Helper(), session.Helper().Version, 907), "the compiled script");
+            Assert::AreEqual((size_t)3, roots907.GetObjects().size());
+            Assert::AreEqual(std::string("S2NameSecond"), roots907.GetObjects()[0]->GetName());
+            Assert::IsFalse(roots907.GetObjects()[0]->HasMadeUpName());
+            Assert::IsTrue(roots907.GetObjects()[1]->HasMadeUpName(), Wide(roots907.GetObjects()[1]->GetName()).c_str());
+            Assert::AreEqual(std::string("s2Here"), roots907.GetObjects()[2]->GetName());
+
+            CompiledScript users908(908);
+            users908.SetNameSelector(lookups.GetSelectorTable(), &lookups);
+            AssertOk(users908.TryLoad(session.Helper(), session.Helper().Version, 908), "the compiled script");
+            Assert::AreEqual((size_t)1, users908.GetObjects().size());
+            Assert::AreEqual(std::string("s2There"), users908.GetObjects()[0]->GetName());
+
+            // Without the classes of the game, an instance gets the slots of its
+            // class from its own script, else the string after --info--; then
+            // ResolveInstanceNames gives it the name of its name slot.
+            CompiledScript rootsNoClasses(907);
+            rootsNoClasses.SetNameSelector(lookups.GetSelectorTable());
+            AssertOk(rootsNoClasses.TryLoad(session.Helper(), session.Helper().Version, 907), "the compiled script");
+            Assert::AreEqual(std::string("s2Here"), rootsNoClasses.GetObjects()[2]->GetName());
+            CompiledScript noClasses(908);
+            noClasses.SetNameSelector(lookups.GetSelectorTable());
+            AssertOk(noClasses.TryLoad(session.Helper(), session.Helper().Version, 908), "the compiled script");
+            Assert::AreEqual(std::string("other"), noClasses.GetObjects()[0]->GetName());
+            noClasses.ResolveInstanceNames([&lookups](uint16_t species, std::vector<uint16_t> &slots)
+            {
+                return lookups.LookupSpeciesPropertyList(species, slots);
+            });
+            Assert::AreEqual(std::string("s2There"), noClasses.GetObjects()[0]->GetName());
+
+            // The name slot of an instance: the slots of its class, only when
+            // they are as many as the slots of the instance.
+            const CompiledObject &nameSecond = *roots907.GetObjects()[0];
+            uint16_t nameSelector = 0;
+            Assert::IsTrue(lookups.GetSelectorTable().ReverseLookup("name", nameSelector), L"setup: name");
+            // --info--, x, then name.
+            size_t expectedSlot = session.Helper().Version.SeparateHeapResources ? 9 : 4;
+            Assert::AreEqual(nameSelector, nameSecond.GetProperties()[expectedSlot], L"setup: the name slot");
+            size_t slot = 0;
+            size_t slotCount = nameSecond.GetProperties().size();
+            Assert::IsTrue(rootsNoClasses.FindNameSlot(true, nameSecond.GetSpecies(), {}, slotCount, slot), L"the class of the same script");
+            Assert::AreEqual(expectedSlot, slot);
+            Assert::IsFalse(rootsNoClasses.FindNameSlot(true, nameSecond.GetSpecies(), {}, slotCount + 1, slot), L"other slots");
+            Assert::IsTrue(rootsNoClasses.FindNameSlot(false, nameSecond.GetSpecies(), nameSecond.GetProperties(), slotCount, slot));
+            Assert::AreEqual(expectedSlot, slot);
+            Assert::IsTrue(rootsNoClasses.FindNameSlot(false, 0, roots907.GetObjects()[1]->GetProperties(), roots907.GetObjects()[1]->GetProperties().size(), slot));
+            Assert::AreEqual(CompiledScript::NoNameSlot, slot, L"S2NoName has no name slot");
+
+            // The class table, and the names that scic script list derives,
+            // have the names of the name slots.
+            uint16_t species = 0;
+            Assert::IsTrue(lookups.GetGlobalClassTable().LookupSpeciesCompiledName("S2NameSecond", species), L"the class table has S2NameSecond");
+            bool found = false;
+            for (CompiledScript *script : lookups.GetGlobalClassTable().GetAllScripts())
+            {
+                if (script->GetScriptNumber() == 908)
+                {
+                    found = true;
+                    Assert::AreEqual(std::string("s2There"), script->GetObjects()[0]->GetName());
+                }
+            }
+            Assert::IsTrue(found, L"the class table has script 908");
+            sci::Result<std::map<uint16_t, std::string>> derived = DeriveScriptNames(session, true);
+            Assert::IsTrue(derived.has_value(), L"the derived names");
+            Assert::AreEqual(std::string("s2There"), (*derived)[908]);
+        }
+
+        TEST_METHOD(RootClass_TheReaderFindsTheNameSlotSci0)
+        {
+            NoAppState noAppState;
+            AssertTheReaderFindsTheNameSlot(_game.OpenCopy(TemplateSci0));
+        }
+
+        TEST_METHOD(RootClass_TheReaderFindsTheNameSlotSci11)
+        {
+            NoAppState noAppState;
+            AssertTheReaderFindsTheNameSlot(_game.OpenCopy(TemplateSci11));
+        }
+
+        // A class with &layout has the properties of its text right after
+        // --info--, in the order of the text, and no other slot of its
+        // superclass. A subclass and an instance in another script (which
+        // read the class from the .sco file) have its layout.
+        TEST_METHOD(ExplicitLayout_TheSlotsOfTheText)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            std::string classes = "(script# 907)\n(include sci.sh)\n(include game.sh)\n"
+                "(class S2Base\n    (properties\n        name \"S2Base\"\n        x 0\n        y 0\n    )\n)\n"
+                "(class S2Layout of S2Base\n    (properties &layout\n        name \"S2Layout\"\n        y 5\n        z 6\n    )\n)\n";
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2Layouts", 907, classes) }, ToPatchFiles()));
+            std::string users = "(script# 908)\n(include sci.sh)\n(include game.sh)\n(use S2Layouts)\n"
+                "(class S2LayoutSub of S2Layout\n    (properties\n        x 9\n    )\n)\n"
+                "(instance s2OfLayout of S2Layout\n    (properties\n        z 4\n    )\n)\n";
+            AssertSucceeded(Compile(session, { WriteScript(session, "S2LayoutUsers", 908, users) }, ToPatchFiles()));
+            SelectorTable selectors;
+            Assert::IsTrue(selectors.Load(session.Helper()));
+            uint16_t nameSelector = 0;
+            uint16_t xSelector = 0;
+            uint16_t ySelector = 0;
+            uint16_t zSelector = 0;
+            Assert::IsTrue(selectors.ReverseLookup("name", nameSelector));
+            Assert::IsTrue(selectors.ReverseLookup("x", xSelector));
+            Assert::IsTrue(selectors.ReverseLookup("y", ySelector));
+            Assert::IsTrue(selectors.ReverseLookup("z", zSelector));
+
+            CompiledScript layouts(907);
+            AssertOk(layouts.TryLoad(session.Helper(), session.Helper().Version, 907), "the compiled script");
+            Assert::AreEqual((size_t)2, layouts.GetObjects().size());
+            // species, superClass, --info--, name, y, z.
+            const CompiledObject &layout = *layouts.GetObjects()[1];
+            Assert::AreEqual(std::string("S2Layout"), layout.GetName());
+            Assert::AreEqual((size_t)6, layout.GetProperties().size());
+            Assert::AreEqual(nameSelector, layout.GetProperties()[3]);
+            Assert::AreEqual(ySelector, layout.GetProperties()[4]);
+            Assert::AreEqual(zSelector, layout.GetProperties()[5]);
+            Assert::AreEqual((int)5, (int)layout.GetPropertyValues()[4].value);
+            Assert::AreEqual((int)6, (int)layout.GetPropertyValues()[5].value);
+
+            CompiledScript compiledUsers(908);
+            AssertOk(compiledUsers.TryLoad(session.Helper(), session.Helper().Version, 908), "the compiled script");
+            int checked = 0;
+            for (const auto &object : compiledUsers.GetObjects())
+            {
+                const std::vector<CompiledVarValue> &values = object->GetPropertyValues();
+                if (object->IsInstance())
+                {
+                    // species, superClass, --info--, name, y, z.
+                    Assert::AreEqual((size_t)6, values.size());
+                    Assert::AreEqual((int)5, (int)values[4].value, L"y of s2OfLayout");
+                    Assert::AreEqual((int)4, (int)values[5].value, L"z of s2OfLayout");
+                    checked++;
+                }
+                else
+                {
+                    // The slots of S2Layout, then x.
+                    const std::vector<uint16_t> &properties = object->GetProperties();
+                    Assert::AreEqual((size_t)7, properties.size());
+                    Assert::AreEqual(ySelector, properties[4]);
+                    Assert::AreEqual(zSelector, properties[5]);
+                    Assert::AreEqual(xSelector, properties[6]);
+                    Assert::AreEqual((int)9, (int)values[6].value, L"x of S2LayoutSub");
+                    checked++;
+                }
+            }
+            Assert::AreEqual(2, checked);
+        }
+
+        // An instance has the layout of its class: &layout in an instance is
+        // an error.
+        TEST_METHOD(ExplicitLayout_InAnInstanceIsAnError)
+        {
+            NoAppState noAppState;
+            GameSession &session = _game.OpenCopy(TemplateSci0);
+            std::string text = "(script# 907)\n(include sci.sh)\n(include game.sh)\n"
+                "(class S2Base\n    (properties\n        name \"S2Base\"\n        x 0\n    )\n)\n"
+                "(instance s2Bad of S2Base\n    (properties &layout\n        x 1\n    )\n)\n";
+            auto report = Compile(session, { WriteScript(session, "S2Layouts", 907, text) }, ToPatchFiles());
+            AssertOk(report);
+            Assert::IsFalse(report->Succeeded(), Wide(Describe(*report)).c_str());
+            Assert::IsNotNull(FindDiagnostic(report->scripts[0], DiagnosticKind::Error, "&layout is for a class"), Wide(Describe(*report)).c_str());
+        }
+
 
     public:
         // Every script of both templates compiles in one batch, with no

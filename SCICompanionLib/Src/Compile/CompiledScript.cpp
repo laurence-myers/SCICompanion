@@ -628,7 +628,7 @@ bool CompiledScript::_LoadSCI0_SCI1(sci::istream &byteStream)
 						// instance
 						unique_ptr<CompiledObject> pObject = make_unique<CompiledObject>();
 						uint16_t wInstanceOffsetTO;
-						fRet = pObject->Create_SCI0(_saidsOffset, _stringsOffset, this->_wScript, _version, byteStream, FALSE, &wInstanceOffsetTO, classIndex);
+						fRet = pObject->Create_SCI0(*this, _version, byteStream, FALSE, &wInstanceOffsetTO, classIndex);
 						if (fRet)
 						{
 							_objectsOffsetTO.push_back(wInstanceOffsetTO);
@@ -683,7 +683,7 @@ bool CompiledScript::_LoadSCI0_SCI1(sci::istream &byteStream)
 						// class
 						unique_ptr<CompiledObject> pObject = make_unique<CompiledObject>();
 						uint16_t wClassOffset;
-						fRet = pObject->Create_SCI0(_saidsOffset, _stringsOffset, this->_wScript, _version, byteStream, TRUE, &wClassOffset, classIndex);
+						fRet = pObject->Create_SCI0(*this, _version, byteStream, TRUE, &wClassOffset, classIndex);
 						if (fRet)
 						{
 							_objectsOffsetTO.push_back(wClassOffset);
@@ -701,7 +701,7 @@ bool CompiledScript::_LoadSCI0_SCI1(sci::istream &byteStream)
 						// (also: magic entry point for script 0, entry 0, the play method.
 						if (!IsFlagSet(_flags, CompiledScriptFlags::DontLoadExports))
 						{
-							fRet = _ReadExports(byteStream);
+							fRet = _ReadExports(byteStream, wSectionSize);
 						}
 					}
 					break;
@@ -803,6 +803,20 @@ std::string _GenerateInstanceName(uint16_t scriptNumber, int &index)
 	return fmt::format("Instance_{0}_{1}", scriptNumber, index++);
 }
 
+// A name that _GenerateClassName or _GenerateInstanceName makes for the script.
+bool _IsMadeUpName(const std::string &name, uint16_t scriptNumber)
+{
+	for (const std::string &prefix : { fmt::format("Class_{0}_", scriptNumber), fmt::format("Instance_{0}_", scriptNumber) })
+	{
+		if ((name.size() > prefix.size()) && (name.compare(0, prefix.size(), prefix) == 0) &&
+			std::all_of(name.begin() + prefix.size(), name.end(), [](char c) { return isdigit(static_cast<unsigned char>(c)) != 0; }))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 // A name with no letter is not a valid identifier (the parser needs one). An
 // object stripped of its name has such a name, so treat it as unnamed.
 bool _IsBlankObjectName(const std::string &name)
@@ -817,10 +831,33 @@ bool _IsBlankObjectName(const std::string &name)
 	return true;
 }
 
+uint16_t CompiledObject::_NameValue(size_t slot) const
+{
+	return ((slot < _propertyValues.size()) && _propertyValues[slot].isObjectOrString) ? _propertyValues[slot].value : 0;
+}
+
+void CompiledObject::_SetName(const std::string &nameString, uint16_t scriptNumber)
+{
+	_strName = nameString;
+	if (_IsBlankObjectName(_strName))
+	{
+		// A missing or blank name (e.g. Control, or an object stripped of its
+		// name). Synthesize one so the decompiled text round-trips.
+		int index = _classIndex;
+		_strName = _fInstance ? _GenerateInstanceName(scriptNumber, index) : _GenerateClassName(scriptNumber, index);
+		_madeUpName = true;
+	}
+	else
+	{
+		_madeUpName = _IsMadeUpName(_strName, scriptNumber);
+	}
+}
+
 // Very important: scriptStream is passed by value. Heapstream is not.
 bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVersion version, sci::istream scriptStream, sci::istream &heapStream, uint16_t *pwOffset, int classIndex, uint16_t *endOfObjectInScript)
 {
 	uint16_t scriptNum = compiledScript.GetScriptNumber();
+	_classIndex = classIndex;
 	*pwOffset = heapStream.tellg();
 	// The object position is the offset of the object's 0x1234 magic word in the
 	// heap resource. Note the SCI0 path records the script offset just AFTER its
@@ -874,11 +911,18 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 			_fInstance = ((_wInfo & InfoClassFlag) == 0);
 			break;
 		case 8:
-			// TODO: Known issue with SQ5, script 943 (and others). Class without a name, and we're assuming position #8 is the name property,
-			// when it's actually x. We can't technically determine if this is name without knowing the super classes.
+			// The name slot, when the name slot is not known (see below).
 			wName = _propertyValues[i].value;
 			break;
 		}
+	}
+	if ((_propertyValues.size() > 8) && !_propertyValues[8].isObjectOrString)
+	{
+		// When the name slot is not known (FindNameSlot): a class with no superclass, and
+		// its subclasses and instances, can have another property after --info-- (Castle
+		// of Dr. Brain script 943, Class_943_3: x): the value is the name only when it
+		// points to a string.
+		wName = 0;
 	}
 
 	// Get the property selectors, which are only present for classes. This must
@@ -897,6 +941,12 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 			_propertySelectors.push_back(propertySelector);
 		}
 	}
+	size_t nameSlot;
+	_nameSlotKnown = compiledScript.FindNameSlot(_fInstance, GetSpecies(), _propertySelectors, _propertyValues.size(), nameSlot);
+	if (_nameSlotKnown)
+	{
+		wName = _NameValue(nameSlot);
+	}
 
 	// We need to read function selectors, and code
 	// _functionSelectors, _functionOffsetsTO
@@ -913,24 +963,19 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 	}
 
 	// Get the name
+	std::string nameString;
 	if (wName != 0)
 	{
 		// Don't modify heapstream, it's right where we need it. The name read
 		// stays tolerant in throw mode (TryLoad): script 990 of the SCI1.1
 		// template has a name value outside its heap, and the object then gets
-		// a made-up name below.
+		// a made-up name.
 		sci::istream temp = heapStream;
 		temp.setThrowExceptions(false);
 		temp.seekg(wName);
-		temp >> _strName;
+		temp >> nameString;
 	}
-	if (_IsBlankObjectName(_strName))
-	{
-		// A missing or blank name (e.g. Control, or an object stripped of its
-		// name). Synthesize one so the decompiled text round-trips.
-		_strName = _fInstance ? _GenerateInstanceName(scriptNum, classIndex)
-			: _GenerateClassName(scriptNum, classIndex);
-	}
+	_SetName(nameString, scriptNum);
 
 	*endOfObjectInScript = (uint16_t)scriptStream.tellg();
 
@@ -938,8 +983,10 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 	return true;
 }
 
-bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const std::vector<uint16_t> &stringOffsets, uint16_t scriptNum, SCIVersion version, sci::istream &stream, BOOL fClass, uint16_t *pwOffset, int classIndex)
+bool CompiledObject::Create_SCI0(const CompiledScript &compiledScript, SCIVersion version, sci::istream &stream, BOOL fClass, uint16_t *pwOffset, int classIndex)
 {
+	uint16_t scriptNum = compiledScript.GetScriptNumber();
+	_classIndex = classIndex;
 	_version = version;
 	*pwOffset = static_cast<uint16_t>(stream.tellg());
 	_fInstance = !fClass;
@@ -968,7 +1015,7 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 				stream >> wValue;
 				if (stream.good())
 				{
-					_propertyValues.push_back({ wValue, IsAnOffset(wValue, saidOffsets, stringOffsets) });
+					_propertyValues.push_back({ wValue, IsAnOffset(wValue, compiledScript._saidsOffset, compiledScript._stringsOffset) });
 				}
 				wNumVarValuesLeft--;
 			}
@@ -983,7 +1030,10 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 			_wSpeciesIfClass = _propertyValues[0].value;
 			_wSuperClass = _propertyValues[1].value;
 			_wInfo = _propertyValues[2].value;
-			if (_propertyValues.size() >= 4)
+			// When the name slot is not known (FindNameSlot): a class with no superclass, and
+			// its subclasses and instances, can have another property after --info--: the
+			// value is the name only when it points to a string.
+			if ((_propertyValues.size() >= 4) && _propertyValues[3].isObjectOrString)
 			{
 				wName = _propertyValues[3].value;
 			}
@@ -1003,6 +1053,12 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 					_propertySelectors.push_back(wSelectorID);
 				}
 			}
+		}
+		size_t nameSlot;
+		_nameSlotKnown = compiledScript.FindNameSlot(_fInstance, GetSpecies(), _propertySelectors, _propertyValues.size(), nameSlot);
+		if (_nameSlotKnown)
+		{
+			wName = _NameValue(nameSlot);
 		}
 
 		// Now their function selectors, for both instances and classes.
@@ -1052,22 +1108,17 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 			}
 		}
 
+		std::string nameString;
 		if (stream.good() && (wName != 0))
 		{
 			// Retrieve the name of the object.  wName is a pointer.
 			DWORD dwSavePos = stream.tellg();
 			stream.seekg(wName);
-			stream >> _strName;
+			stream >> nameString;
 			// Restore
 			stream.seekg(dwSavePos);
 		}
-		if (_IsBlankObjectName(_strName))
-		{
-			// A missing or blank name (e.g. Control, or an object stripped of
-			// its name). Synthesize one so the decompiled text round-trips.
-			_strName = fClass ? _GenerateClassName(scriptNum, classIndex)
-				: _GenerateInstanceName(scriptNum, classIndex);
-		}
+		_SetName(nameString, scriptNum);
 
 		// The rest of the stuff we don't care about!
 	}
@@ -1077,16 +1128,32 @@ bool CompiledObject::Create_SCI0(const std::vector<uint16_t> &saidOffsets, const
 	return stream.good();
 }
 
-bool CompiledScript::_ReadExports(sci::istream &stream)
+bool CompiledScript::_ReadExports(sci::istream &stream, uint16_t sectionSize)
 {
 	uint16_t wNumExports;
 	stream >> wNumExports;
 	if (stream.good())
 	{
+		// The width of an entry: the game's, unless the size of the section
+		// (with its type, size and count words) fits only the other width.
+		// KQ5 and Mixed-Up Fairy Tales have 4-byte exports, but script 975
+		// (a debug script) has 2-byte ones.
+		bool wide = _version.IsExportWide;
+		if ((sectionSize != 0) && (wNumExports != 0))
+		{
+			if (sectionSize == 6 + wNumExports * 2)
+			{
+				wide = false;
+			}
+			else if (sectionSize == 6 + wNumExports * 4)
+			{
+				wide = true;
+			}
+		}
 		for (uint16_t i = 0; stream.good() && i < wNumExports; i++)
 		{
 			uint16_t offset;
-			if (_version.IsExportWide)
+			if (wide)
 			{
 				uint32_t offsetWide;
 				stream >> offsetWide;
@@ -1314,6 +1381,14 @@ int CompiledObject::GetNumberOfDefaultSelectors(const std::vector<uint16_t> &pro
 	return count - 1;
 }
 
+const char UnknownPropertyName[] = "--UNKNOWN-PROP-NAME--";
+const char PropertyInNonMethodName[] = "PROPERTY-ACCESS-IN-NON-METHOD";
+
+bool IsPlaceholderPropertyName(const std::string &name)
+{
+	return (name == UnknownPropertyName) || (name == PropertyInNonMethodName);
+}
+
 std::string CompiledObject::LookupPropertyName(ICompiledScriptLookups *pLookup, uint16_t wPropertyIndex) const
 {
 	// PERF: vector copy that is used frequently.
@@ -1332,7 +1407,7 @@ std::string CompiledObject::LookupPropertyName(ICompiledScriptLookups *pLookup, 
 	}
 	else
 	{
-		return "--UNKNOWN-PROP-NAME--";
+		return UnknownPropertyName;
 	}
 }
 
@@ -1419,6 +1494,100 @@ CompiledObject *CompiledScript::_FindObjectWithSpecies(uint16_t wIndex)
 	return nullptr;
 }
 
+void CompiledScript::SetNameSelector(uint16_t nameSelector, ICompiledScriptLookups *classes)
+{
+	_hasNameSelector = true;
+	_nameSelector = nameSelector;
+	_nameSlotClasses = classes;
+}
+
+void CompiledScript::SetNameSelector(const SelectorTable &selectors, ICompiledScriptLookups *classes)
+{
+	uint16_t nameSelector;
+	if (selectors.ReverseLookup("name", nameSelector))
+	{
+		SetNameSelector(nameSelector, classes);
+	}
+}
+
+bool CompiledScript::FindNameSlot(bool isInstance, uint16_t species, const std::vector<uint16_t> &selectors, size_t slotCount, size_t &slot) const
+{
+	if (!_hasNameSelector)
+	{
+		return false;
+	}
+	std::vector<uint16_t> classSlots;
+	const std::vector<uint16_t> *slots = &selectors;
+	if (isInstance)
+	{
+		// The slots of the class: a class of this script that the load has
+		// read, else a class of the game.
+		slots = nullptr;
+		for (const auto &object : _objects)
+		{
+			if (!object->IsInstance() && (object->GetSpecies() == species))
+			{
+				slots = &object->GetProperties();
+				break;
+			}
+		}
+		if (!slots && _nameSlotClasses && _nameSlotClasses->LookupSpeciesPropertyList(species, classSlots))
+		{
+			slots = &classSlots;
+		}
+		if (!slots)
+		{
+			return false;
+		}
+	}
+	return _FindNameSlotIn(*slots, slotCount, slot);
+}
+
+bool CompiledScript::_FindNameSlotIn(const std::vector<uint16_t> &slots, size_t slotCount, size_t &slot) const
+{
+	if (slots.size() != slotCount)
+	{
+		// The slots are not the slots of the object.
+		return false;
+	}
+	slot = NoNameSlot;
+	for (size_t i = _version.SeparateHeapResources ? 8 : 3; i < slots.size(); i++)
+	{
+		if (slots[i] == _nameSelector)
+		{
+			slot = i;
+			break;
+		}
+	}
+	return true;
+}
+
+void CompiledScript::ResolveInstanceNames(const SpeciesSlots &classes)
+{
+	if (!_hasNameSelector)
+	{
+		return;
+	}
+	for (auto &object : _objects)
+	{
+		std::vector<uint16_t> slots;
+		size_t slot;
+		if (object->IsInstance() && !object->_nameSlotKnown && classes(object->GetSpecies(), slots) &&
+			_FindNameSlotIn(slots, object->GetPropertyValues().size(), slot))
+		{
+			object->_nameSlotKnown = true;
+			std::string nameString;
+			ObjectType type;
+			uint16_t value = object->_NameValue(slot);
+			if ((value == 0) || !LookupObjectName(value, type, nameString) || (type != ObjectTypeString))
+			{
+				nameString.clear();
+			}
+			object->_SetName(nameString, _wScript);
+		}
+	}
+}
+
 std::string CompiledScript::LookupClassName(uint16_t wIndex)
 {
 	std::string ret;
@@ -1463,7 +1632,7 @@ bool GlobalCompiledScriptLookups::Load(const GameFolderHelper &helper)
 {
 	bool selOk = _selectors.Load(helper);
 	bool kernelOk = _kernels.Load(helper);
-	bool classesOk = _classes.Load(helper);
+	bool classesOk = _classes.Load(helper, &_selectors);
 	// The class table changed, so the selector categories are stale.
 	_selectorCategoriesValid = false;
 	_propertySelectors.clear();
@@ -1493,7 +1662,7 @@ sci::Status GlobalCompiledScriptLookups::TryLoad(const GameFolderHelper &helper)
 			where.resource = DescribeResource(ResourceType::Vocab, 999);
 			return sci::Fail(sci::ErrorCode::Format, "the kernel table is not valid", where);
 		}
-		if (!_classes.Load(helper))
+		if (!_classes.Load(helper, &_selectors))
 		{
 			where.resource = DescribeResource(ResourceType::Vocab, 996);
 			return sci::Fail(sci::ErrorCode::Format, "the class table is not valid", where);
@@ -1538,19 +1707,29 @@ const std::unordered_set<uint16_t> &GlobalCompiledScriptLookups::GetMethodSelect
 std::string GlobalCompiledScriptLookups::LookupSelectorName(uint16_t wIndex)
 {
 	std::string str = _selectors.Lookup(wIndex);
-	if (str.empty())
+	// It is legit (e.g. script 99 in SQ3) for there to be selectors that don't have a name
+	// in the official selector list. "private" selectors for "private" classes. Such a
+	// selector is sel_<number>, which the compiler reads back as the number. So is a selector
+	// whose name the compiler gives another selector (a later one with the same name).
+	uint16_t back;
+	if (str.empty() || !_selectors.ReverseLookup(str, back) || (back != wIndex))
 	{
-		// It is legit (e.g. script 99 in SQ3) for there to be selectors that don't have a name
-		// in the official selector list. "private" selectors for "private" classes.
-		std::stringstream ss;
-		ss << "selector" << wIndex;
-		str = ss.str();
+		str = fmt::format("sel_{0}", wIndex);
 	}
 	return str;
 }
 std::string GlobalCompiledScriptLookups::LookupKernelName(uint16_t wIndex)
 {
-	return _kernels.Lookup(wIndex);
+	// A kernel whose name the compiler gives another kernel (EcoQuest 1 names
+	// 38 and 81 Dummy) is kernel_<number>, which the compiler reads back as
+	// the number.
+	std::string name = _kernels.Lookup(wIndex);
+	uint16_t back;
+	if (!_kernels.ReverseLookup(name, back) || (back != wIndex))
+	{
+		name = fmt::format("kernel_{0}", wIndex);
+	}
+	return name;
 }
 std::string GlobalCompiledScriptLookups::LookupClassName(uint16_t wIndex)
 {

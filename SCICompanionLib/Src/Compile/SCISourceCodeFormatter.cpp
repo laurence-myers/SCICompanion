@@ -299,7 +299,8 @@ public:
 						break;
 					}
 				}
-				if (!nameAlreadySpecified)
+				// A class with &layout has a name slot only when its text has name.
+				if (!nameAlreadySpecified && !classDef->HasExplicitLayout())
 				{
 					classDef->GetPropertiesNC().push_back(std::make_unique<ClassProperty>("name", PropertyValue(classDef->GetName(), ValueType::ResourceString)));
 				}
@@ -325,6 +326,7 @@ public:
 			{
 				_functionSig = (static_cast<FunctionBase*>(&node))->GetSignaturesNC()[0].get();
 				_rests.clear();
+				_restsNotLast.clear();
 				_explicitVarUsage.clear();
 			}
 			else
@@ -333,7 +335,10 @@ public:
 				if (!_functionSig->GetParams().empty())
 				{
 					string lastParamName = _functionSig->GetParams().back()->GetName();
-					if (_explicitVarUsage.find(lastParamName) == _explicitVarUsage.end())
+					// A &rest with no name before another argument would take that
+					// argument as its name: such a &rest keeps the parameter.
+					bool restNotLast = std::any_of(_rests.begin(), _rests.end(), [&](RestStatement *rest) { return rest && (rest->GetName() == lastParamName) && _restsNotLast.count(rest); });
+					if ((_explicitVarUsage.find(lastParamName) == _explicitVarUsage.end()) && !restNotLast)
 					{
 						// Last parameter is never used, other than possibly in rests. Remove it:
 						_functionSig->GetParams().pop_back();
@@ -356,6 +361,20 @@ public:
 		{
 			if (state == ExploreNodeState::Pre)
 			{
+				// The rests that another argument follows.
+				StatementsNode *arguments = (node.GetNodeType() == NodeType::NodeTypeSendParam) ? static_cast<StatementsNode*>(static_cast<SendParam*>(&node)) :
+					((node.GetNodeType() == NodeType::NodeTypeProcedureCall) ? static_cast<StatementsNode*>(static_cast<ProcedureCall*>(&node)) : nullptr);
+				if (arguments)
+				{
+					const SyntaxNodeVector &statements = arguments->GetStatements();
+					for (size_t k = 0; k + 1 < statements.size(); ++k)
+					{
+						if (statements[k]->GetNodeType() == NodeType::NodeTypeRest)
+						{
+							_restsNotLast.insert(static_cast<RestStatement*>(statements[k].get()));
+						}
+					}
+				}
 				switch (node.GetNodeType())
 				{
 					// Keep track of all rests.
@@ -404,6 +423,8 @@ public:
 private:
 	FunctionSignature *_functionSig;
 	vector<RestStatement*> _rests;
+	// The rests that another argument of their call or message follows.
+	std::unordered_set<RestStatement*> _restsNotLast;
 	std::set<string> _explicitVarUsage;
 };
 
@@ -960,13 +981,14 @@ public:
 		{
 			INDENT_BLOCK;
 			_MaybeNewLineIndent();
+			const char *propertiesKeyword = classDef.HasExplicitLayout() ? "(properties &layout" : "(properties";
 			if (classDef.GetProperties().empty())
 			{
-				out.out << "(properties)";
+				out.out << propertiesKeyword << ")";
 			}
 			else
 			{
-				out.out << "(properties";
+				out.out << propertiesKeyword;
 				_IndentAcceptChildren(classDef.GetProperties());
 				_FakeGoToNextLine();
 				_MaybeNewLineIndent();
@@ -1347,31 +1369,40 @@ public:
 
 		out.out << "(for (";
 
+		// The initializer, the condition and the looper are on one line,
+		// unless one of them is long.
 		bool firstBlobMultiline = _ShouldBeMultiline(forLoop.GetInitializer()) || _ShouldBeMultiline(forLoop.GetCondition().get()) || _ShouldBeMultiline(forLoop._looper.get());
 
 		{
 			SET_MULTILINEMODE(firstBlobMultiline);
 			if (forLoop.GetInitializer())
 			{
+				// No space after the parenthesis (an empty block uses none).
+				_SkipNextSpace();
 				_MaybeIndentAccept(*forLoop.GetInitializer());
+				_skipNextSpace = false;
 				_MaybeNewLineIndentNoSpace();
 			}
 			out.out << ")";
 
 			_MaybeIndentAccept(*forLoop.GetCondition());
 
+			_MaybeNewLineIndent();
+			out.out << "(";
 			if (forLoop._looper)
 			{
-				_MaybeNewLineIndent();
-				out.out << " (";
+				_SkipNextSpace();
 				_MaybeIndentAccept(*forLoop._looper);
+				_skipNextSpace = false;
 				_MaybeNewLineIndentNoSpace();
-				out.out << ")";
 			}
+			out.out << ")";
 		}
 
-		// Now the code
-		SET_MULTILINEMODE(firstBlobMultiline);
+		// Now the code, indented, as in a while loop.
+		bool isMultiline = _ShouldBeMultiline(&forLoop);
+		assert(isMultiline); // It's important that this returns true so that parents are multiline too.
+		SET_MULTILINEMODE(isMultiline);
 		_MaybeIndentAcceptChildren(forLoop.GetStatements());
 		_MaybeNewLineIndentNoSpace();
 		out.out << ")";
@@ -1486,13 +1517,23 @@ public:
 	void Visit(const BreakStatement &breakStatement) override
 	{
 		_MaybeNewLineIndent();
-		out.out << "(break)";
+		out.out << "(break";
+		if (breakStatement.Levels != 1)
+		{
+			out.out << " " << breakStatement.Levels;
+		}
+		out.out << ")";
 	}
 
-	void Visit(const ContinueStatement &breakStatement) override
+	void Visit(const ContinueStatement &continueStatement) override
 	{
 		_MaybeNewLineIndent();
-		out.out << "(continue)";
+		out.out << "(continue";
+		if (continueStatement.Levels != 1)
+		{
+			out.out << " " << continueStatement.Levels;
+		}
+		out.out << ")";
 	}
 
 	void Visit(const CaseStatement &caseStatement) override

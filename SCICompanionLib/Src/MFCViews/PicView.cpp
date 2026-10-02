@@ -97,7 +97,7 @@ const COLORREF PolygonColors[] =
 template<typename _TPoint>
 _TPoint ScreenResolutionToGameResolution(_TPoint point)
 {
-	return ScreenResolutionToGameResolution(point, appState->GetVersion().DefaultResolution);
+	return ScreenResolutionToGameResolution(point, AppVersion().DefaultResolution);
 }
 
 struct CommandModifier
@@ -2190,7 +2190,7 @@ void CPicView::OnUpdateAllPicCommands(CCmdUI *pCmdUI)
 	}
 	if (pCmdUI->m_nID == ID_POLYPATH)
 	{
-		enabled = appState->GetVersion().UsesPolygons;
+		enabled = AppVersion().UsesPolygons;
 	}
 
 	if (!_GetEditPic()->Traits->SupportsVectorCommands)
@@ -2373,7 +2373,7 @@ void CPicView::_DrawEgoCoordinates(CDC *pDC)
 
 void AdjustPolyPointsForScreen(std::vector<POINT> &points)
 {
-	NativeResolution resolution = appState->GetVersion().DefaultResolution;
+	NativeResolution resolution = AppVersion().DefaultResolution;
 	for (auto &point : points)
 	{
 		point = GameResolutionToScreenResolution(point, resolution);
@@ -2448,7 +2448,7 @@ void CPicView::_DrawPolygon(CDC *pDC, const SCIPolygon *polygon, bool isActive)
 			CBrush brush(RGB(222, 222, 222));   // Mitigation: Pure white doesn't show up against white backgrounds, which is the default pic background.
 			HGDIOBJ hOldBrush = pDC->SelectObject(brush);
 			point16 hoverPoint = (_currentHoverPolyPointIndex == _polyDragPointIndex) ? _currentDragPolyPoint : polygon->Points()[_currentHoverPolyPointIndex];
-			hoverPoint = GameResolutionToScreenResolution(hoverPoint, appState->GetVersion().DefaultResolution);
+			hoverPoint = GameResolutionToScreenResolution(hoverPoint, AppVersion().DefaultResolution);
 			CRect rectEllipse(hoverPoint.x, hoverPoint.y, hoverPoint.x, hoverPoint.y);
 			rectEllipse.InflateRect(3, 3);
 			pDC->Ellipse(&rectEllipse);
@@ -3640,7 +3640,7 @@ ResourceEntity *CPicView::_GetFakeEgo()
 	if (!_fakeEgo && GetDocument())
 	{
 		_fakeEgoAttributes.back().View = GetDocument()->GetFakeEgo();
-		_fakeEgo = appState->GetResourceMap().CreateResourceFromNumber(ResourceType::View, _fakeEgoAttributes.back().View);
+		_fakeEgo = AppResourceMap().CreateResourceFromNumber(ResourceType::View, _fakeEgoAttributes.back().View);
 	}
 	return _fakeEgo.get();
 }
@@ -3799,7 +3799,7 @@ void CPicView::_OnPolygonRClick(CPoint point)
 	}
 	else
 	{
-		CPoint ptScreen = GameResolutionToScreenResolution(point, appState->GetVersion().DefaultResolution);
+		CPoint ptScreen = GameResolutionToScreenResolution(point, AppVersion().DefaultResolution);
 		ptScreen = _MapPicPointToClient(ptScreen);
 		ClientToScreen(&ptScreen);
 

@@ -179,6 +179,7 @@
 
 (class Class_943_3
 	(properties
+		name {Class\_943\_3}
 		x 0
 		y 0
 		underBits 0
@@ -720,7 +721,7 @@
 			(if
 			(not (and curMenu (curMenu handleEvent: newEvent)))
 				(GlobalToLocal newEvent)
-				(if (self handleEvent: newEvent) (break))
+				(breakif (self handleEvent: newEvent))
 			)
 			(newEvent dispose:)
 		)

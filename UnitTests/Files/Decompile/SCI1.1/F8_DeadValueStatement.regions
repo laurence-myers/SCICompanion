@@ -1,0 +1,8 @@
+== f8DeadValueStatement
+code 000a-000f
+if 0011
+  then
+    code 0013
+  else 0015
+    code 0017
+code 0019

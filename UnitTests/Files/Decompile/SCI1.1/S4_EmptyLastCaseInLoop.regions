@@ -1,0 +1,20 @@
+== s4EmptyLastCaseInLoop
+code 000a
+loop 000c latch 002a
+  body
+    code 000c-0010
+    if 0011
+      then
+        switch 0013 toss 0027
+          case bnt 0019 jmp 001f
+            value
+              code 0015-0018
+            body
+              code 001b-001d
+          case bnt 0025
+            value
+              code 0021-0024
+            body
+        code 0028
+      else break 1
+code 002c

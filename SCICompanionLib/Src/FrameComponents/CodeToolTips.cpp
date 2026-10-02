@@ -16,7 +16,6 @@
 #include "ScriptOMAll.h"
 #include "SyntaxParser.h"
 #include "CodeToolTips.h"
-#include "AppState.h"
 #include <string>
 #include "OutputCodeHelper.h"
 
@@ -95,7 +94,8 @@ tuple<const ClassDefinition *, const sci::ClassDefinition *, const ClassProperty
 				// This is the most "top" class
 				sourceClassDef = *itClass;
 			}
-			current = (*itClass)->GetSuperClass();
+			// A class with &layout has only the properties of its text.
+			current = (*itClass)->HasExplicitLayout() ? std::string() : (*itClass)->GetSuperClass();
 		}
 		else
 		{

@@ -124,7 +124,7 @@
 		eraseOnly 0
 		noun 0
 		verb 0
-		case 0
+		sel_509 0
 		seq 0
 		modNum 0
 	)
@@ -184,9 +184,9 @@
 		(if (localproc_02b6 self)
 			(if title (Memory 3 title))
 			(= title
-				(Memory 1 (Message 2 modNum noun verb case seq))
+				(Memory 1 (Message 2 modNum noun verb sel_509 seq))
 			)
-			(Message 0 modNum noun verb case seq title)
+			(Message 0 modNum noun verb sel_509 seq title)
 		)
 		(self create:)
 	)
@@ -220,7 +220,7 @@
 		(if seq
 			(Memory 3 title)
 			(= noun
-				(= verb (= case (= seq (= modNum (= title 0)))))
+				(= verb (= sel_509 (= seq (= modNum (= title 0)))))
 			)
 		)
 		(if (not title)
@@ -281,7 +281,7 @@
 				)
 				(self moveTo: temp0 temp1)
 				(param1 dispose:)
-				(breakif(not (MouseStillDown)))
+				(breakif (not (MouseStillDown)))
 			)
 			(DrawStatus {_} 0 0)
 			(DrawStatus 0)
@@ -361,7 +361,7 @@
 		width 0
 		noun 0
 		verb 0
-		case 0
+		sel_509 0
 		seq 0
 		modNum 0
 	)
@@ -441,9 +441,9 @@
 		(if (localproc_02b6 self)
 			(Memory 3 text)
 			(= text
-				(Memory 1 (Message 2 modNum noun verb case seq))
+				(Memory 1 (Message 2 modNum noun verb sel_509 seq))
 			)
-			(Message 0 modNum noun verb case seq text)
+			(Message 0 modNum noun verb sel_509 seq text)
 		)
 		(self hide: setSize: draw:)
 	)
@@ -457,7 +457,7 @@
 			(Memory 3 text)
 			(= text (Memory 1 100))
 			(StrCpy text {text})
-			(= noun (= verb (= case (= seq (= modNum 0)))))
+			(= noun (= verb (= sel_509 (= seq (= modNum 0)))))
 		)
 		(Print
 			addTitle: @local42
@@ -585,7 +585,7 @@
 		font 0
 		noun 0
 		verb 0
-		case 0
+		sel_509 0
 		seq 0
 		modNum 0
 	)
@@ -635,9 +635,9 @@
 		(if (localproc_02b6 self)
 			(Memory 3 text)
 			(= text
-				(Memory 1 (Message 2 modNum noun verb case seq))
+				(Memory 1 (Message 2 modNum noun verb sel_509 seq))
 			)
-			(Message 0 modNum noun verb case seq text)
+			(Message 0 modNum noun verb sel_509 seq text)
 		)
 		(self hide: setSize: draw:)
 	)
@@ -651,7 +651,7 @@
 			(Memory 3 text)
 			(= text (Memory 1 50))
 			(StrCpy text {button})
-			(= noun (= verb (= case (= seq (= modNum 0)))))
+			(= noun (= verb (= sel_509 (= seq (= modNum 0)))))
 		)
 		(Print
 			addTitle: @local42
@@ -853,7 +853,7 @@
 			(= newEvent (Event new:))
 			(if (not (curMenu handleEvent: newEvent))
 				(GlobalToLocal newEvent)
-				(if (self handleEvent: newEvent) (break))
+				(breakif (self handleEvent: newEvent))
 			)
 			(newEvent dispose:)
 		)
@@ -1266,7 +1266,7 @@
 						{\t\t\taddTitle:\t%d %d %d %d %d,\n\n}
 						(DlgWindow noun?)
 						(DlgWindow verb?)
-						(DlgWindow case?)
+						(DlgWindow sel_509?)
 						(DlgWindow seq?)
 						(DlgWindow modNum?)
 					)

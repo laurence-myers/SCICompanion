@@ -126,6 +126,28 @@ void RemoveFolder(const std::string &folder)
     fs::remove_all(folder, ec);
 }
 
+ScopedEnvironmentVariable::ScopedEnvironmentVariable(const char *name, const char *value) : _name(name), _wasSet(false)
+{
+    DWORD length = GetEnvironmentVariableA(name, nullptr, 0);
+    if (length > 0)
+    {
+        std::string saved(length, '\0');
+        DWORD copied = GetEnvironmentVariableA(name, &saved[0], length);
+        if (copied < length)
+        {
+            saved.resize(copied);
+            _saved = saved;
+            _wasSet = true;
+        }
+    }
+    SetEnvironmentVariableA(name, value);
+}
+
+ScopedEnvironmentVariable::~ScopedEnvironmentVariable()
+{
+    SetEnvironmentVariableA(_name.c_str(), _wasSet ? _saved.c_str() : nullptr);
+}
+
 std::wstring Wide(const std::string &text)
 {
     return std::wstring(text.begin(), text.end());

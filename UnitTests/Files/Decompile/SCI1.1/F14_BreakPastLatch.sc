@@ -4,11 +4,10 @@
 
 ; A repeat whose body is an if-else. A break in the then branch jumps past
 ; the latch (the jump back to the head at the end of the then branch), so
-; the follow node of the repeat is far past its latch. The else branch
+; the end of the repeat is far past its latch. The else branch
 ; comes after the latch and holds a second repeat, which nests in the first
 ; one although it is not between the head and the latch of the first one.
-; The second repeat starts with a while, so the loops nest three deep: the
-; while is made first, then the second repeat, then the first one.
+; The second repeat starts with a while, so the loops nest three deep.
 ; The break of the second repeat jumps straight to the end: Sierra's
 ; compiler sends a jump to a jump on to the final target. The two jumps
 ; before "done" are dead code from Sierra's compiler: the break after the

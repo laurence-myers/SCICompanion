@@ -258,7 +258,7 @@ namespace UnitTests
             appState = new AppState(nullptr);
             try
             {
-                appState->GetResourceMap().SetGameFolder(gameFolder);
+                AppResourceMap().SetGameFolder(gameFolder);
             }
             catch (CException *pEx)
             {
@@ -271,17 +271,17 @@ namespace UnitTests
                 std::wstring message = fmt::format(L"Failed to open the game in {0}. Its resource map could not be read (missing, corrupt, or an unrecognised SCI version).", toWide(gameFolder));
                 Assert::IsTrue(false, message.c_str());
             }
-            Assert::IsTrue(appState->GetResourceMap().IsGameLoaded());
+            Assert::IsTrue(AppResourceMap().IsGameLoaded());
 
             // Normally ResourceMap uses the module filename for this. But unit tests are run from another exe.
             std::string exeFolder = szPath;
             exeFolder += "\\";
-            appState->GetResourceMap().SetDataFolder(exeFolder);
+            AppResourceMap().SetDataFolder(exeFolder);
 
             ResourceTypeFlags flags = ResourceTypeFlags::AllCreatable;
             flags &= ~ResourceTypeFlags::Sound;     // Leave sounds out for now, we still don't load SCI10 sounds properly.
             flags &= ~ResourceTypeFlags::Vocab;     // Vocabs can't just be "created", we need to follow more specific logic. TODO
-            auto container = appState->GetResourceMap().Resources(flags, ResourceEnumFlags::None | ResourceEnumFlags::AddInDefaultEnumFlags);
+            auto container = AppResourceMap().Resources(flags, ResourceEnumFlags::None | ResourceEnumFlags::AddInDefaultEnumFlags);
             int count = _LoadResourceContainer(container.get());
 
             // CD talkie games keep their speech in per-room message-audio maps. A
@@ -290,10 +290,10 @@ namespace UnitTests
             // number), so load each room's speech through its own map context. Freddy
             // Pharkas, for example, keeps ~47 room maps plus RESOURCE.AUD in an AUDIO
             // subfolder. (#182)
-            const int mainAudioMapNumber = appState->GetResourceMap().Helper().Version.AudioMapResourceNumber;
+            const int mainAudioMapNumber = AppResourceMap().Helper().Version.AudioMapResourceNumber;
             std::vector<int> audioMapNumbers;
             {
-                auto mapContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::AudioMap, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+                auto mapContainer = AppResourceMap().Resources(ResourceTypeFlags::AudioMap, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
                 for (auto it = mapContainer->begin(); it != mapContainer->end(); )
                 {
                     audioMapNumbers.push_back(it.GetResourceNumber());
@@ -309,7 +309,7 @@ namespace UnitTests
                 {
                     continue;
                 }
-                auto speechContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::Audio, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags, audioMapNumber);
+                auto speechContainer = AppResourceMap().Resources(ResourceTypeFlags::Audio, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags, audioMapNumber);
                 count += _LoadResourceContainer(speechContainer.get());
             }
 

@@ -4,9 +4,8 @@
 
 ; Family 1: a conditional branch to the loop head.
 ; The if has no else. It is the last statement in the loop body. The compiler
-; sends the if false path to the loop head. The loop now has two back edges.
-; The decompiler merges them into a common latch node. Then/else resolution
-; then fails.
+; sends the if false path to the loop head, so the loop has two jumps back to
+; its head.
 (public
 	f1LoopHeadContinue 0
 )

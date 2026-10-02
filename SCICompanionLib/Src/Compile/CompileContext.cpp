@@ -87,7 +87,7 @@ bool CompileTables::Load(CResourceMap &resourceMap)
 	// REVIEW: this could be deleted while we're compiling.
 	_pVocab = resourceMap.GetVocab000();
 	const GameFolderHelper &helper = resourceMap.Helper();
-	return _kernels.Load(helper) && _species.Load(helper) && _selectors.Load(helper);
+	return _kernels.Load(helper) && _selectors.Load(helper) && _species.Load(helper, true, &_selectors);
 }
 
 sci::Status CompileTables::TryLoad(CResourceMap &resourceMap)
@@ -107,15 +107,16 @@ sci::Status CompileTables::TryLoad(CResourceMap &resourceMap)
 			where.resource = DescribeResource(ResourceType::Vocab, 999);
 			return sci::Fail(sci::ErrorCode::Format, "the kernel table is not valid", where);
 		}
-		if (!_species.Load(helper))
-		{
-			where.resource = DescribeResource(ResourceType::Vocab, 996);
-			return sci::Fail(sci::ErrorCode::Format, "the class table is not valid", where);
-		}
 		if (!_selectors.Load(helper))
 		{
 			where.resource = DescribeResource(ResourceType::Vocab, 997);
 			return sci::Fail(sci::ErrorCode::Format, "the selector table is not valid", where);
+		}
+		// The species table names the compiled classes with the selector of name.
+		if (!_species.Load(helper, true, &_selectors))
+		{
+			where.resource = DescribeResource(ResourceType::Vocab, 996);
+			return sci::Fail(sci::ErrorCode::Format, "the class table is not valid", where);
 		}
 		return sci::Ok();
 	});
@@ -281,7 +282,11 @@ const vector<string> &CompileContext::GetResourceStrings()
 WORD CompileContext::LookupSelectorAndAdd(const string &str)
 {
 	WORD w;
-	if (!_tables.Selectors().ReverseLookup(str, w))
+	if (_tables.Selectors().ReverseLookup(str, w))
+	{
+		_tables.Selectors().ReserveNumberedName(str, w);
+	}
+	else
 	{
 		// It doesn't exist ... add it.
 		// We can just keep on adding to the selectors list (lots of room)
@@ -291,7 +296,12 @@ WORD CompileContext::LookupSelectorAndAdd(const string &str)
 }
 bool CompileContext::LookupSelector(const string &str, WORD &wIndex)
 {
-	return _tables.Selectors().ReverseLookup(str, wIndex);
+	bool found = _tables.Selectors().ReverseLookup(str, wIndex);
+	if (found)
+	{
+		_tables.Selectors().ReserveNumberedName(str, wIndex);
+	}
+	return found;
 }
 void CompileContext::DefineNewSelector(const std::string &str, WORD &wIndex)
 {
@@ -1085,6 +1095,21 @@ void CompileContext::TrackLocalProcCall(const string &name)
 	assert(_localProcs.find(name) != _localProcs.end());
 	_localProcCalls.insert(ref_multimap::value_type(name, code().get_cur_pos()));
 }
+code_pos CompileContext::GetMethodPos(const string &className, uint16_t selector)
+{
+	// The method is under the name that the source gives it: the name of the selector, or
+	// sel_<number> (a selector whose name the decompiler does not use).
+	string key = className + "::" + LookupSelectorName(selector);
+	if (_localProcs.find(key) == _localProcs.end())
+	{
+		string numbered = className + "::sel_" + std::to_string(selector);
+		if (_localProcs.find(numbered) != _localProcs.end())
+		{
+			key = numbered;
+		}
+	}
+	return GetLocalProcPos(key);
+}
 code_pos CompileContext::GetLocalProcPos(const string &name)
 {
 	assert(_localProcs.find(name) != _localProcs.end());
@@ -1220,11 +1245,38 @@ void CompileContext::SetScriptNumber()
 	}
 	_scos[_wScriptNumber].SetScriptNumber(_wScriptNumber);
 }
-WORD CompileContext::EnsureSpeciesTableEntry(WORD wIndexInScript)
+std::vector<WORD> CompileContext::EnsureSpeciesTableEntries(const std::vector<std::string> &classNames)
 {
 	// This won't work unless we have a valid script number
 	assert(_wScriptNumber != InvalidResourceNumber);
-	return _tables.Species().MaybeAddSpeciesIndex(_wScriptNumber, wIndexInScript);
+	SpeciesTable &table = _tables.Species();
+	table.AlignScript(Helper(), _wScriptNumber);
+	// First each class with the name of a compiled class of the script gets
+	// its species; then the others get the species that are left, or new
+	// ones.
+	std::vector<WORD> species(classNames.size(), 0);
+	std::vector<bool> given(classNames.size(), false);
+	std::unordered_set<uint16_t> used;
+	for (size_t i = 0; i < classNames.size(); i++)
+	{
+		SpeciesIndex compiledSpecies;
+		if (table.CompiledClassSpecies(_wScriptNumber, classNames[i], used, compiledSpecies))
+		{
+			species[i] = compiledSpecies.Type();
+			given[i] = true;
+			used.insert(compiledSpecies.Type());
+		}
+	}
+	for (size_t i = 0; i < classNames.size(); i++)
+	{
+		if (!given[i])
+		{
+			species[i] = table.UnusedSpecies(_wScriptNumber, used).Type();
+			used.insert(species[i]);
+		}
+	}
+	table.SetScriptOrder(_wScriptNumber, std::vector<uint16_t>(species.begin(), species.end()));
+	return species;
 }
 void CompileContext::LoadIncludes()
 {

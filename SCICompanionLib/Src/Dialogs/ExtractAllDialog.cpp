@@ -12,7 +12,9 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
+#include "resource.h"
 #include "ExtractAllDialog.h"
 #include "PaletteOperations.h"
 #include "format.h"
@@ -34,7 +36,7 @@ static char THIS_FILE[] = __FILE__;
 ExtractAllDialog::ExtractAllDialog(CWnd* pParent /*=NULL*/)
 	: CExtResizableDialog(ExtractAllDialog::IDD, pParent)
 {
-	_version = appState->GetVersion();
+	_version = AppVersion();
 	_fResult = false;
 	_fAbort = false;
 	_fExtracting = false;
@@ -190,7 +192,7 @@ void ExtractAllDialog::OnBnClickedExtract()
 
 	if (good)
 	{
-		if (0 == strLocation.CompareNoCase(appState->GetResourceMap().GetGameFolder().c_str()))
+		if (0 == strLocation.CompareNoCase(AppResourceMap().GetGameFolder().c_str()))
 		{
 			good = (IDYES == AfxMessageBox("The extract location is the game folder.\nAre you sure you want to continue?", MB_ICONWARNING | MB_YESNO));
 		}
@@ -242,7 +244,7 @@ void ExtractAllDialog::OnBnClickedExtract()
 		_globalPalette.reset();
 		if (_extractViewImages)
 		{
-			const PaletteComponent *global999 = appState->GetResourceMap().GetPalette999();
+			const PaletteComponent *global999 = AppResourceMap().GetPalette999();
 			if (global999)
 			{
 				_globalPalette = std::make_unique<PaletteComponent>(*global999);

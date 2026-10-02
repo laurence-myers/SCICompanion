@@ -1491,11 +1491,12 @@ CodeResult SendCall::OutputByteCode(CompileContext &context) const
 			{
 				if (param->ContainsRest())
 				{
-					// If the target made a proc or send call, then we can't use &rest in our params, since it would affect the target's code
-					// (which is executed after the params are pushed to the stack)
-					// REVIEW: Maybe I could just output put &rest after? I dunno.
-					// REVIEW: We probably also need to guard against multi-sends using rest in multiple places.
-					context.ReportError(param.get(), "&rest cannot be used if the send target itself contains nested procedure calls or sends. Assign the result of the procedure call or send to a temporary variable and use that instead.");
+					// If the target made a proc or send call, the &rest affects the target's code (which
+					// is executed after the params are pushed to the stack): the call of the target takes
+					// the &rest parameters, and reads the wrong parameters. Sierra's compiler makes this
+					// code too (PQ2 Main: ((ScriptID param1) notify: &rest)), so it is a warning: the code
+					// is the same.
+					context.ReportWarning(param.get(), "&rest in the parameters of a send whose target contains nested procedure calls or sends: the call of the target takes the &rest parameters, and reads the wrong parameters. Assign the result of the procedure call or send to a temporary variable to avoid this.");
 					break;
 				}
 			}
@@ -1662,7 +1663,9 @@ CodeResult SendParam::OutputByteCode(CompileContext &context) const
 				if (parameterTypes.size() > 1)
 				{
 					string selName = GetSelectorName();
-					context.ReportError(this, "%s is a property.  Only one parameter may be supplied.", selName.c_str());
+					// Sierra's compiler gives such sends too (Longbow: a talker's loop: with five
+					// values). The send has each value: a warning.
+					context.ReportWarning(this, "%s is a property. Only one parameter is used when it is set.", selName.c_str());
 				}
 				if (parameterTypes.empty())
 				{
@@ -1695,12 +1698,13 @@ CodeResult SendParam::OutputByteCode(CompileContext &context) const
 			// (e.g. by casting to var).
 			// REVIEW: a strongly-typed alternative would be support for interfaces.
 
-			// Before generating an error here, see if typeName is an instance in the current script. Instances can define
-			// their own methods.
+			// The send compiles, as in Sierra's compiler (Mixed-Up Mother Goose sends delete to the super of
+			// a Prop), so this is a warning. Before the warning, see if typeName is an instance in the current
+			// script: instances can define their own methods.
 			if (!context.DoesScriptObjectHaveMethod(typeName, GetSelectorName()))
 			{
 				std::string objectTypeString = context.SpeciesIndexToDataTypeString(calleeSpecies);
-				context.ReportError(this, "%s is not a property or method on type '%s'.", GetSelectorName().c_str(), objectTypeString.c_str());
+				context.ReportWarning(this, "%s is not a property or method on type '%s'.", GetSelectorName().c_str(), objectTypeString.c_str());
 			}
 		}
 	}
@@ -3096,15 +3100,18 @@ CodeResult ContinueStatement::OutputByteCode(CompileContext &context) const
 		if (continueTarget == context.code().get_undetermined())
 		{
 			// This is a jump forward whose target has not yet been determined. This means there
-			// should be a branch block for us.
-			if (context.code().in_branch_block(BranchBlockIndex::Continue, Levels))
+			// should be a branch block for us: only the frames with no target yet have one, so
+			// the level of the block counts those frames (a while loop between it and the
+			// continue has none).
+			uint16_t blockLevels = context.code().count_forward_continue_frames(Levels);
+			if (context.code().in_branch_block(BranchBlockIndex::Continue, blockLevels))
 			{
-				context.code().inst(GetLineNumber(), Opcode::JMP, context.code().get_undetermined(), BranchBlockIndex::Continue);
+				context.code().inst(GetLineNumber(), Opcode::JMP, context.code().get_undetermined(), BranchBlockIndex::Continue, blockLevels);
 				DEBUG_BRANCH(context.code(), DEBUG_CONTINUE);
 			}
 			else
 			{
-				assert(false && "internal compiler error");
+				context.ReportError(this, "Internal compiler error: the continue statement has no target.");
 			}
 		}
 		else

@@ -85,6 +85,7 @@ namespace UnitTests
         void AddResult(DecompilerResultType, const std::string &message) override { messages.push_back(message); }
         bool IsAborted() override { return false; }
         void InformStats(bool, int) override {}
+        void InformFunction(const DecompiledFunction &) override {}
         void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &) override {}
         std::vector<std::string> messages;
     };
@@ -414,7 +415,7 @@ namespace UnitTests
             Assert::IsTrue(wrapped.find("(return (== a b))") != std::string::npos, L"init returns a comparison");
         }
         // A cautious method never returns a send, a call, or an assignment,
-        // even when the chunk stage gave the ret that value.
+        // even when the value stage gave the ret that value.
         TEST_METHOD(Return_HandleEventUnwrapsSend)
         {
             std::string atEnd = ApplyAllPassesToMethod("handleEvent", "(if a (return 1)) (return (b claimed:))");
@@ -553,7 +554,7 @@ namespace UnitTests
                 ")\n"
                 "(procedure (proc990_1)\n\t(return 1)\n)\n";
             std::string detail;
-            std::vector<std::string> differences = CompareScriptTexts(golden, companion, &detail);
+            std::vector<std::string> differences = CompareScriptTexts(golden, companion, AppVersion(), &detail);
             std::string msg = "differences: " + std::to_string(differences.size()) + "\n" + detail;
             for (const std::string &d : differences)
             {
@@ -575,7 +576,7 @@ namespace UnitTests
                 "(script# 990)\n(include sci.sh)\n"
                 "(procedure (theProc a)\n\t(if a (return 1))\n\t(= a 0)\n\t(return 0)\n)\n"
                 "(procedure (other)\n\t(return 2)\n)\n";
-            std::vector<std::string> differences = CompareScriptTexts(golden, actual);
+            std::vector<std::string> differences = CompareScriptTexts(golden, actual, AppVersion());
             Assert::AreEqual(size_t(1), differences.size(), L"one function differs");
             Assert::AreEqual(std::string("theProc"), differences[0], L"the differing function is named");
         }

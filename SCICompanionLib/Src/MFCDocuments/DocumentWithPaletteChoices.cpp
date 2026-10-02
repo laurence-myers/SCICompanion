@@ -13,7 +13,8 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "DocumentWithPaletteChoices.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
 #include "ResourceEntity.h"
 #include "format.h"
 
@@ -65,7 +66,7 @@ void DocumentWithPaletteChoices::_SetInitialPalette()
 
 void DocumentWithPaletteChoices::RefreshPaletteOptions()
 {
-	_paletteChoices = appState->GetResourceMap().GetPaletteList();
+	_paletteChoices = AppResourceMap().GetPaletteList();
 	if (_GetEmbeddedPalette())
 	{
 		_paletteChoices.insert(_paletteChoices.begin(), EmbeddedPaletteId);
@@ -84,7 +85,7 @@ void DocumentWithPaletteChoices::SetPaletteChoice(int index, bool force)
 		int choice = _paletteChoices[index];
 		if (choice == EmbeddedPaletteId)
 		{
-			_currentPaletteComponent = appState->GetResourceMap().GetMergedPalette(*v_GetResource(), 999);
+			_currentPaletteComponent = AppResourceMap().GetMergedPalette(*v_GetResource(), 999);
 		}
 		else if (choice == EmbeddedPaletteOnlyId)
 		{
@@ -100,7 +101,7 @@ void DocumentWithPaletteChoices::SetPaletteChoice(int index, bool force)
 		}
 		else
 		{
-			_currentPaletteComponent = appState->GetResourceMap().GetPalette(choice);
+			_currentPaletteComponent = AppResourceMap().GetPalette(choice);
 		}
 		v_OnUpdatePaletteChoice();
 	}

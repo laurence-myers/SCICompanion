@@ -51,7 +51,7 @@ public:
 	ResourceBlob blob;
 	std::vector<std::unique_ptr<CRoomView>> _views;
 	// Captured on the UI thread when the item is built. The render worker uses
-	// this copy instead of reading appState->GetVersion(), which the UI thread
+	// this copy instead of reading AppVersion(), which the UI thread
 	// can rewrite via SetVersion (game load / version sniff) (#131).
 	SCIVersion version;
 };

@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include "CppUnitTest.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceMap.h"
 #include "ResourceBlob.h"
 #include "ResourceEntity.h"
@@ -49,7 +49,7 @@ namespace UnitTests
 
         std::string PatchPath(int number) const
         {
-            return _gameFolder + "\\" + GetFileNameFor(ResourceType::Text, number, NoBase36, appState->GetResourceMap().Helper().Version);
+            return _gameFolder + "\\" + GetFileNameFor(ResourceType::Text, number, NoBase36, AppResourceMap().Helper().Version);
         }
 
         // The patch file's data, without its two-byte header.
@@ -104,7 +104,7 @@ namespace UnitTests
 
         TEST_METHOD(WriteEntity_Oversize_ReturnsUnsupportedAndWritesNothing)
         {
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
             std::unique_ptr<ResourceEntity> text(CreateTextResource(rm.GetSCIVersion()));
             text->GetComponent<TextComponent>().AddString(std::string(MaxResourceSize + 10, 'x'));
             text->ResourceNumber = 913;
@@ -124,7 +124,7 @@ namespace UnitTests
 
         TEST_METHOD(ReadOnlyTarget_ReplacesNoPatchFile)
         {
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
             const GameFolderHelper &helper = rm.Helper();
             AssertOk(rm.WriteResource(MakeText(helper, 920, Bytes("old920"))));
             AssertOk(rm.WriteResource(MakeText(helper, 921, Bytes("old921"))));
@@ -153,7 +153,7 @@ namespace UnitTests
             // Audio needs an SCI1.1 game.
             CleanUpGame(_gameFolder);
             _gameFolder = SetUpGameSCI11();
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
             const GameFolderHelper &helper = rm.Helper();
             int mapNumber = helper.Version.AudioMapResourceNumber;
             std::string upToDatePath = _gameFolder + "\\audiocache\\uptodate.bin";
@@ -187,7 +187,7 @@ namespace UnitTests
             // Audio needs an SCI1.1 game.
             CleanUpGame(_gameFolder);
             _gameFolder = SetUpGameSCI11();
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
             const GameFolderHelper &helper = rm.Helper();
             ResourceBlob audio(helper, nullptr, ResourceType::Audio, std::vector<uint8_t>(64, 0x80), 0, 5, NoBase36, helper.Version, ResourceSourceFlags::AudioCache);
 
@@ -205,7 +205,7 @@ namespace UnitTests
 
         TEST_METHOD(OversizeResource_KeepsTheOldPatchFile)
         {
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
             const GameFolderHelper &helper = rm.Helper();
             AssertOk(rm.WriteResource(MakeText(helper, 907, Bytes("original"))));
             Assert::AreEqual(std::string("original"), ReadPatchText(907));
@@ -221,7 +221,7 @@ namespace UnitTests
 
         TEST_METHOD(FailedResourceInBatch_KeepsTheOtherPatchFiles)
         {
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
             const GameFolderHelper &helper = rm.Helper();
             AssertOk(rm.WriteResource(MakeText(helper, 908, Bytes("old"))));
 

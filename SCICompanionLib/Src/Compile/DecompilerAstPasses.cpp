@@ -660,7 +660,9 @@ namespace
 		}
 	};
 
-	// The statement list of a loop, or null.
+	// The statement list of a loop whose body ends where a continue goes, or
+	// null. A do loop with a test has the test at the end of its body: a
+	// continue there goes past the test.
 	SyntaxNodeVector *LoopBody(SyntaxNode *node)
 	{
 		switch (node->GetNodeType())
@@ -668,7 +670,10 @@ namespace
 		case NodeTypeWhileLoop:
 			return &SafeSyntaxNode<WhileLoop>(node)->GetStatements();
 		case NodeTypeDoLoop:
-			return &SafeSyntaxNode<DoLoop>(node)->GetStatements();
+		{
+			DoLoop *doLoop = SafeSyntaxNode<DoLoop>(node);
+			return IsTrueCondition(*doLoop) ? &doLoop->GetStatements() : nullptr;
+		}
 		case NodeTypeForLoop:
 			return &SafeSyntaxNode<ForLoop>(node)->GetStatements();
 		default:

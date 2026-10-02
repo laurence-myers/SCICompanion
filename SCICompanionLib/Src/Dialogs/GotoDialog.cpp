@@ -15,7 +15,7 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "resource.h"
 #include "GotoDialog.h"
 
 // CGotoDialog dialog

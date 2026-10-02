@@ -27,10 +27,10 @@
 CGamePropertiesDialog::CGamePropertiesDialog(RunLogic &runLogic, CWnd* pParent /*=NULL*/)
 	: CExtNCW<CExtResizableDialog>(CGamePropertiesDialog::IDD, pParent), _runLogic(runLogic), _initialized(false), _wasAspectRatioChanged(false), _gameNeedsReload(false)
 {
-	_fAspectRatioStart = appState->GetResourceMap().Helper().GetUseSierraAspectRatio(!!appState->_fUseOriginalAspectRatioDefault);
-	_fPatchFileStart = appState->GetResourceMap().Helper().GetResourceSaveLocation(ResourceSaveLocation::Default) == ResourceSaveLocation::Patch;
-	_fUnditherStart = appState->GetResourceMap().Helper().GetUndither();
-	_fNoDbugStr = appState->GetResourceMap().Helper().GetNoDbugStr();
+	_fAspectRatioStart = AppResourceMap().Helper().GetUseSierraAspectRatio(!!appState->_fUseOriginalAspectRatioDefault);
+	_fPatchFileStart = AppResourceMap().Helper().GetResourceSaveLocation(ResourceSaveLocation::Default) == ResourceSaveLocation::Patch;
+	_fUnditherStart = AppResourceMap().Helper().GetUndither();
+	_fNoDbugStr = AppResourceMap().Helper().GetNoDbugStr();
 }
 
 CGamePropertiesDialog::~CGamePropertiesDialog()
@@ -55,7 +55,7 @@ void CGamePropertiesDialog::DoDataExchange(CDataExchange* pDX)
 
 	DDX_Control(pDX, IDC_STATIC4, m_wndStatic4);
 	DDX_Control(pDX, IDC_COMBOLANGUAGE, m_wndComboLanguage);
-	m_wndComboLanguage.SetCurSel(appState->GetResourceMap().Helper().GetCodepage() == 1252 ? 1 : 0);
+	m_wndComboLanguage.SetCurSel(AppResourceMap().Helper().GetCodepage() == 1252 ? 1 : 0);
 
 	DDX_Control(pDX, IDC_STATICPROFILE, m_wndStaticProfile);
 	DDX_Control(pDX, IDC_COMBOPROFILE, m_wndComboProfile);
@@ -68,7 +68,7 @@ void CGamePropertiesDialog::DoDataExchange(CDataExchange* pDX)
 
 	DDX_Control(pDX, IDC_CHECKUNDITHEREGA, m_wndCheckUnditherEGA);
 	m_wndCheckUnditherEGA.SetCheck(_fUnditherStart ? BST_CHECKED : BST_UNCHECKED);
-	if (appState->GetResourceMap().GetSCIVersion().PicFormat != PicFormat::EGA)
+	if (AppResourceMap().GetSCIVersion().PicFormat != PicFormat::EGA)
 	{
 		// Not an option for VGA
 		m_wndCheckUnditherEGA.EnableWindow(FALSE);
@@ -119,7 +119,7 @@ void CGamePropertiesDialog::OnBrowse()
 						   NULL,
 						   OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR,
 						   TEXT("Programs|*.exe;*.cmd;*.bat|All files|*.*||"));
-	std::string gameFolder = appState->GetResourceMap().GetGameFolder();
+	std::string gameFolder = AppResourceMap().GetGameFolder();
 	fileDialog.m_pOFN->lpstrInitialDir = gameFolder.c_str();
 
 	if (IDOK == fileDialog.DoModal())
@@ -165,7 +165,7 @@ void CGamePropertiesDialog::OnOK()
 	if (_wasAspectRatioChanged)
 	{
 		// Set it
-		appState->GetResourceMap().Helper().SetUseSierraAspectRatio(useSierraAspectRatio);
+		AppResourceMap().Helper().SetUseSierraAspectRatio(useSierraAspectRatio);
 	}
 	appState->_fUseOriginalAspectRatioCached = useSierraAspectRatio;
 	if (_fAspectRatioStart != useSierraAspectRatio)
@@ -173,18 +173,18 @@ void CGamePropertiesDialog::OnOK()
 		appState->NotifyChangeAspectRatio();
 	}
 
-	appState->GetResourceMap().Helper().SetCodepage(m_wndComboLanguage.GetCurSel() == 1 ? 1252 : 437);
+	AppResourceMap().Helper().SetCodepage(m_wndComboLanguage.GetCurSel() == 1 ? 1252 : 437);
 
 	bool unditherEGA = m_wndCheckUnditherEGA.GetCheck() == BST_CHECKED;
 	if (unditherEGA != _fUnditherStart)
 	{
-		appState->GetResourceMap().Helper().SetUndither(unditherEGA);
+		AppResourceMap().Helper().SetUndither(unditherEGA);
 	}
 
 	bool noDbugStr = m_wndCheckNoDbugStr.GetCheck() == BST_CHECKED;
 	if (noDbugStr != _fNoDbugStr)
 	{
-		appState->GetResourceMap().Helper().SetNoDbugStr(noDbugStr);
+		AppResourceMap().Helper().SetNoDbugStr(noDbugStr);
 	}
 
 	bool usePatchFiles = m_wndCheckPatchFiles.GetCheck() == BST_CHECKED;
@@ -199,14 +199,14 @@ void CGamePropertiesDialog::OnOK()
 			if (usePatchFiles)
 			{
 				// Extract all resources
-				ExtractAllResources(appState->GetVersion(), appState->GetResourceMap().GetGameFolder(), true, false, false, false, false, false, nullptr, nullptr);
+				ExtractAllResources(AppVersion(), AppResourceMap().GetGameFolder(), true, false, false, false, false, false, nullptr, nullptr);
 			}
 			else
 			{
 				// Put everything into resource.map, resource.001, etc...
 				PurgeUnnecessaryResources();
 				// Now delete...
-				auto resourceContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::All, ResourceEnumFlags::ExcludePackagedFiles);
+				auto resourceContainer = AppResourceMap().Resources(ResourceTypeFlags::All, ResourceEnumFlags::ExcludePackagedFiles);
 				std::vector<std::unique_ptr<ResourceBlob>> itemsToDelete;
 				for (auto &blob : *resourceContainer)
 				{
@@ -214,12 +214,12 @@ void CGamePropertiesDialog::OnOK()
 				}
 				for (auto &blob : itemsToDelete)
 				{
-					appState->GetResourceMap().DeleteResource(blob.get());
+					AppResourceMap().DeleteResource(blob.get());
 				}
 			}
 
 			// Set it
-			appState->GetResourceMap().Helper().SetResourceSaveLocation(usePatchFiles ? ResourceSaveLocation::Patch : ResourceSaveLocation::Package);
+			AppResourceMap().Helper().SetResourceSaveLocation(usePatchFiles ? ResourceSaveLocation::Patch : ResourceSaveLocation::Package);
 
 			_gameNeedsReload = true;
 		}

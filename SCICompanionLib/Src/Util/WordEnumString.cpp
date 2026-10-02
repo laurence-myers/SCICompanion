@@ -17,7 +17,7 @@
 #include "WordEnumString.h"
 #include "Vocab000.h"
 #include "ResourceMap.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceEntity.h"
 
 using namespace std;
@@ -142,7 +142,7 @@ HRESULT CWordEnumString::Init()
 {
 	// A game with no vocabulary resource has no words to offer: its
 	// vocabulary is null.
-	const Vocab000 *vocab = appState->GetResourceMap().GetVocab000();
+	const Vocab000 *vocab = AppResourceMap().GetVocab000();
 	if (vocab)
 	{
 		_vocab = *vocab;

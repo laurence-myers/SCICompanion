@@ -12,7 +12,7 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
-#include "AppState.h"
+#include "resource.h"
 #include "MessageNounConditionPane.h"
 #include "MessageDoc.h"
 #include "MessageSource.h"

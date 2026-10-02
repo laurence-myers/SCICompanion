@@ -1,0 +1,32 @@
+== p2CondInLoop
+code 000a-0012
+loop 0014 latch 0058
+  body
+    code 0014-0018
+    if 0019
+      then
+        code 001b-0021
+        if 0022
+          then
+            code 0024-0028
+            if 0029
+              then
+                code 002b-002d
+              else 002f
+                code 0031-0035
+                if 0036
+                  then
+                    code 0038-003a
+          else 003c
+            code 003e-0042
+            if 0043
+              then
+                code 0045-0049
+                if 004a
+                  then
+                    code 004c-004e
+                    break 1 0050
+              else 0052
+                code 0054-0056
+      else break 1
+code 005a-005c

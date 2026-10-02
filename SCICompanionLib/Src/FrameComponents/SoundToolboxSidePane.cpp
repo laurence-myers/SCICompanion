@@ -16,7 +16,8 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "resource.h"
 #include "SoundToolboxSidePane.h"
 #include "SoundDoc.h"
 #include "SoundUtil.h"
@@ -146,7 +147,7 @@ void SoundToolboxSidePane::OnSelChange()
 	CSoundDoc *pDoc = GetDocument();
 	if (pDoc)
 	{
-		pDoc->SetDevice(GetDeviceFromComboHelper(appState->GetVersion(), m_wndDevices));
+		pDoc->SetDevice(GetDeviceFromComboHelper(AppVersion(), m_wndDevices));
 	}
 	// Whoa, hit a crash here once, when loading up a game. REVIEW
 	// pDoc was non null, but invalid.
@@ -671,7 +672,7 @@ void SoundToolboxSidePane::UpdateNonView(CObject *pObject)
 		CSoundDoc *pDoc = GetDocument();
 		if (pDoc)
 		{
-			SelectDeviceInComboHelper(appState->GetVersion(), m_wndDevices, pDoc->GetDevice());
+			SelectDeviceInComboHelper(AppVersion(), m_wndDevices, pDoc->GetDevice());
 		}
 	}
 
@@ -693,7 +694,7 @@ void SoundToolboxSidePane::SetDocument(CDocument *pDoc)
 	{
 		int prevSel = m_wndDevices.GetCurSel();
 		m_wndDevices.ResetContent();
-		PopulateComboWithDevicesHelper(appState->GetVersion(), m_wndDevices);
+		PopulateComboWithDevicesHelper(AppVersion(), m_wndDevices);
 		if ((prevSel >= 0) && (prevSel < m_wndDevices.GetCount()))
 		{
 			m_wndDevices.SetCurSel(prevSel);

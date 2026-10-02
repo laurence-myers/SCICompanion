@@ -218,7 +218,7 @@ CDocument* SCICompanionApp::OpenDocumentFile(PCTSTR lpszFileName)
 				// Override the title - get the game name
 				PCTSTR pszName = NULL;
 				std::string strGameName = appState->GetGameName();
-				std::string gameFolder = appState->GetResourceMap().GetGameFolder(); // Keep gameFolder in scope...
+				std::string gameFolder = AppResourceMap().GetGameFolder(); // Keep gameFolder in scope...
 				if (!strGameName.empty())
 				{
 					pszName = strGameName.c_str();
@@ -408,7 +408,7 @@ BOOL SCICompanionApp::InitInstance()
 
 	if (!_RegisterWindowClasses())
 	{
-		appState->LogInfo(TEXT("Couldn't register window classes."));
+		CoreLogFormat(LogLevel::Info, TEXT("Couldn't register window classes."));
 		return FALSE;
 	}
 
@@ -646,7 +646,7 @@ void SCICompanionApp::OnOpenPluginsFolder()
 
 void SCICompanionApp::OnWindowsExplorer()
 {
-	std::string gameFolder = appState->GetResourceMap().GetGameFolder();
+	std::string gameFolder = AppResourceMap().GetGameFolder();
 	if (!gameFolder.empty())
 	{
 		ShellExecute(NULL, "open", gameFolder.c_str(), "", "", SW_SHOWNORMAL);
@@ -740,15 +740,15 @@ void SCICompanionApp::OnCloseGame()
 
 void SCICompanionApp::OnGameVersionDetection()
 {
-	SCIVersion version = appState->GetVersion();
+	SCIVersion version = AppVersion();
 	CGameVersionDialog dialog(version);
 	if (IDOK == dialog.DoModal())
 	{
-		appState->GetResourceMap().SetVersion(version);
+		AppResourceMap().SetVersion(version);
 		// Close and re-open
-		std::string gameFolder = appState->GetResourceMap().GetGameFolder();
+		std::string gameFolder = AppResourceMap().GetGameFolder();
 		OnCloseGame();
-		appState->GetResourceMap().SkipNextVersionSniff();
+		AppResourceMap().SkipNextVersionSniff();
 		OpenDocumentFile(gameFolder.c_str());
 	}
 }
@@ -763,7 +763,7 @@ void SCICompanionApp::OnGameProperties()
 		if (dialog.NeedsReload())
 		{
 			// Close and re-open the game
-			std::string gameFolder = appState->GetResourceMap().GetGameFolder();
+			std::string gameFolder = AppResourceMap().GetGameFolder();
 			OnCloseGame();
 			OpenDocumentFile(gameFolder.c_str());
 		}
@@ -773,5 +773,5 @@ void SCICompanionApp::OnGameProperties()
 void SCICompanionApp::OnUpdateGameLoaded(CCmdUI *pCmdUI)
 {
 	// If we have a resource map loaded, then we can close game.
-	pCmdUI->Enable(appState->GetResourceMap().IsGameLoaded());
+	pCmdUI->Enable(AppResourceMap().IsGameLoaded());
 }

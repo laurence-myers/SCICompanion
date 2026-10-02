@@ -677,6 +677,9 @@
     <ClInclude Include="Src\Dialogs\AudioEditDialog.h">
       <Filter>Header Files\Dialogs</Filter>
     </ClInclude>
+    <ClInclude Include="Src\Util\AppSession.h">
+      <Filter>Header Files\Util</Filter>
+    </ClInclude>
     <ClInclude Include="Src\Util\AppState.h">
       <Filter>Header Files\Util</Filter>
     </ClInclude>

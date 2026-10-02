@@ -17,7 +17,9 @@
 #include "Sync.h"
 #include "LipSyncUtil.h"
 #include "format.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
+#include "resource.h"
 #include <sphelper.h>
 #include "sapi_lipsync.h"
 #include <locale>
@@ -63,7 +65,7 @@ ExtractLipSyncDialog::ExtractLipSyncDialog(const ResourceEntity &resource, uint8
 	_useText(useText)
 {
 	uint16_t view, loop;
-	if (appState->GetResourceMap().GetTalkerToViewMap().TalkerToViewLoop(_talker, view, loop))
+	if (AppResourceMap().GetTalkerToViewMap().TalkerToViewLoop(_talker, view, loop))
 	{
 		_nView = view;
 		_nLoop = loop;
@@ -225,15 +227,15 @@ void ExtractLipSyncDialog::_SyncViewLoop()
 		_viewResource = nullptr;
 		if (!_wantToUseSample)
 		{
-			_viewResource = appState->GetResourceMap().CreateResourceFromNumber(ResourceType::View, _nView);
+			_viewResource = AppResourceMap().CreateResourceFromNumber(ResourceType::View, _nView);
 			_actuallyUsingSample = false;
 		}
 		if (!_viewResource)
 		{
 			// Fallback to sample view when we want it, or when we couldn't load it.
-			std::string mouthSampleFilename = appState->GetResourceMap().GetSamplesFolder() + "\\views\\MouthShapes.bin";
+			std::string mouthSampleFilename = AppResourceMap().GetSamplesFolder() + "\\views\\MouthShapes.bin";
 			ResourceBlob blob;
-			if (SUCCEEDED(blob.CreateFromFile("it's a mouth", mouthSampleFilename, sciVersion1_1, appState->GetResourceMap().GetDefaultResourceSaveLocation(), -1, -1)))
+			if (SUCCEEDED(blob.CreateFromFile("it's a mouth", mouthSampleFilename, sciVersion1_1, AppResourceMap().GetDefaultResourceSaveLocation(), -1, -1)))
 			{
 				_viewResource = CreateResourceFromResourceData(blob);
 				_actuallyUsingSample = true;
@@ -270,7 +272,7 @@ void ExtractLipSyncDialog::_SyncViewLoop()
 void ExtractLipSyncDialog::_ReloadPhonemeMap()
 {
 	// Try to load one. If we can't, show errors and load a default one.
-	_phonemeMap = LoadPhonemeMapForViewLoop(appState, _nView, _nLoop);
+	_phonemeMap = LoadPhonemeMapForViewLoop(AppResourceMap().Helper(), _nView, _nLoop);
 	if (_phonemeMap->HasErrors() && _phonemeMap->GetFileContents().empty())
 	{
 		// couldn't even load the file. Show the deafult one?
@@ -426,7 +428,7 @@ void ExtractLipSyncDialog::OnBnClickedButtonSetview()
 			_nLoop = dialog.GetLoop();
 			_wantToUseSample = false;
 			m_wndUseSample.SetCheck(BST_UNCHECKED);
-			appState->GetResourceMap().GetTalkerToViewMap().SetTalkerToViewLoop(_talker, _nView, _nLoop);
+			AppResourceMap().GetTalkerToViewMap().SetTalkerToViewLoop(_talker, _nView, _nLoop);
 			_SyncViewLoop();
 		}
 	}
@@ -518,8 +520,8 @@ void ExtractLipSyncDialog::OnBnClickedEditphonememap()
 			std::string errors;
 			CString strText;
 			std::string message = "Saving ";
-			message += GetPhonemeMapFilespec(appState, _nView, _nLoop);
-			if (!SaveForViewLoop(*_phonemeMap, appState, _nView, _nLoop, errors))
+			message += GetPhonemeMapFilespec(_nView, _nLoop);
+			if (!SaveForViewLoop(*_phonemeMap, AppResourceMap().Helper(), _nView, _nLoop, errors))
 			{
 				message += " : ";
 				message += errors;
@@ -535,11 +537,11 @@ void ExtractLipSyncDialog::OnBnClickedButtonOpenmapping()
 {
 	if (_phonemeMap)
 	{
-		std::string fullPath = GetPhonemeMapPath(appState, _nView, _nLoop);
+		std::string fullPath = GetPhonemeMapPath(AppResourceMap().Helper(), _nView, _nLoop);
 		if (!PathFileExists(fullPath.c_str()))
 		{
 			std::string errors;
-			SaveForViewLoop(*_phonemeMap, appState, _nView, _nLoop, errors);
+			SaveForViewLoop(*_phonemeMap, AppResourceMap().Helper(), _nView, _nLoop, errors);
 		}
 		ShowFile(fullPath);
 	}

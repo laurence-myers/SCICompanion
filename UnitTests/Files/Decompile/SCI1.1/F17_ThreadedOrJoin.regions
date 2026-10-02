@@ -1,0 +1,28 @@
+== f17ThreadedOr
+code 000c-000e
+if 0010
+  then
+    code 0012
+    if 0014
+      then
+        code 0016
+        if 0018
+          then
+            code 001a-001c
+        or 001e
+          code 0020-0022
+    or 0024
+      code 0026
+code 0028
+== f17ThreadedOrThree
+code 0029
+if 002b
+  then
+    code 002d
+    or 002f
+      code 0031
+      or 0033
+        code 0035
+or 0037
+  code 0039
+code 003b

@@ -1,0 +1,8 @@
+== f8AssignBeforeCondInRet
+code 000a-001e
+if 001f
+  then
+    code 0021
+  else 0023
+    code 0025
+code 0027

@@ -1,0 +1,13 @@
+== f1LoopHeadContinue
+code 000a-000e
+loop 0010 latch 0022
+  body
+    code 0010-0014
+    if 0015
+      then
+        code 0017
+        if 0019
+          then
+            code 001b-0020
+      else break 1
+code 0024

@@ -17,13 +17,15 @@
 #include "ScriptOMAll.h"
 #include "scii.h"
 #include "DisassembleHelper.h"
-#include "ControlFlowGraph.h"
+#include "ScopeParser.h"
+#include "ScopeVerify.h"
 #include "DecompilerNew.h"
 #include "DecompilerAstPasses.h"
 #include "DecompilerFallback.h"
 #include "SCISourceCodeFormatter.h"
 #include "format.h"
 #include "DecompilerConfig.h"
+#include "DecompilerResults.h"
 #include <iterator>
 #include "GameFolderHelper.h"
 #include "Operators.h"
@@ -396,8 +398,6 @@ Consumption _GetInstructionConsumption(scii &inst, DecompileLookups *lookups)
 	bool fChangesAcc = false;
 	bool fEatsAcc = false;
 	bool fPutsOnStack = false;
-	bool fEatsPrev = false;
-	bool fChangesPrev = false;
 
 	switch (bOpcode)
 	{
@@ -449,7 +449,6 @@ Consumption _GetInstructionConsumption(scii &inst, DecompileLookups *lookups)
 	case Opcode::UGE:
 	case Opcode::ULT:
 	case Opcode::ULE:
-		fChangesPrev = true;
 		fChangesAcc = true;
 		fEatsAcc = true;
 		cEatStack = 1;
@@ -536,7 +535,6 @@ Consumption _GetInstructionConsumption(scii &inst, DecompileLookups *lookups)
 
 	case Opcode::PPREV:
 		fPutsOnStack = true;
-		fEatsPrev = true;
 		break;
 
 	case Opcode::REST:
@@ -639,111 +637,8 @@ Consumption _GetInstructionConsumption(scii &inst, DecompileLookups *lookups)
 	{
 		cons.cStackGenerate++;
 	}
-	if (fEatsPrev)
-	{
-		cons.cPrevConsume++;
-	}
-	if (fChangesPrev)
-	{
-		cons.cPrevGenerate++;
-	}
 
 	return cons;
-}
-
-// Works backward from branchInstruction to beginning (inclusive) until the sequence of instructions leading up to the branch
-// has been satisfied. If it fails, it returns false.
-//
-// This fails in situations where it shouldn't need to. For instance, in SQ5, script 801, offset 0x34a
-// sat	temp[$4]				// This is the acc we needed
-// pushi	$b4; 180, check	 // this was for a compare operation after callk
-// pushi	$4; cel			 // first stack push for callk
-// lst	temp[$5]
-// lst	temp[$6]
-// lst	temp[$3]				// Oh... no acc, it's another stack... don't need a stack, so I bail
-// push						 // Here's a stack, but this needs acc
-// callk	kernel_63, $8	   // I need 5 stacks
-//
-// We'd need to implement some kind of instruction borrowing system to get this to work.
-bool _ObtainInstructionSequence(code_pos endingInstruction, code_pos beginning, code_pos &beginningOfBranchInstructionSequence, bool includeDebugOpcodes)
-{
-	bool success = true;
-
-	code_pos beforeBeginning = beginning;
-	--beforeBeginning; // Since beginning is inclusive.
-	code_pos cur = endingInstruction;
-	beginningOfBranchInstructionSequence = cur;
-	Consumption consTemp = _GetInstructionConsumption(*endingInstruction);
-	int cStackConsume = consTemp.cStackConsume;
-	int cAccConsume = consTemp.cAccConsume;
-	--cur;
-	while (success && (cur != beforeBeginning) && (cStackConsume || cAccConsume))
-	{
-		Consumption consTemp = _GetInstructionConsumption(*cur);
-		if (consTemp.cAccGenerate)
-		{
-			if (cAccConsume)
-			{
-				cAccConsume -= consTemp.cAccGenerate;
-			}
-			// else... is acc generate ok even if we're not consuming?
-		}
-		if (consTemp.cStackGenerate)
-		{
-			if (cStackConsume)
-			{
-				cStackConsume -= consTemp.cStackGenerate;
-			}
-			else
-			{
-				// Something put something on the stack and we didn't need it.
-				// We can't do anything useful here.
-				success = false;
-			}
-		}
-
-		if (consTemp.cAccConsume || consTemp.cStackConsume)
-		{
-			// This instruction we just got consumes stuff. We need to recurse here and
-			// have it eat up its stuff.
-			// Afterwards, if success is true, cur will point to the beginning of its thing
-			// and we can keep going (if necessary)
-			code_pos save = cur;
-			success = _ObtainInstructionSequence(cur, beginning, cur, false);
-			if (!success && !consTemp.cStackConsume)
-			{
-				// It's a "needs acc". Try to muddle through anyway... SQ5, localproc_0beb needs this.
-				success = true;
-				cur = save;
-			}
-		}
-
-		beginningOfBranchInstructionSequence = cur;
-
-		--cur;
-	}
-	
-	if (includeDebugOpcodes)
-	{
-		// Add on any opcodes that don't do anything (debug opcodes) to complete our sequences.
-		while (success && (cur != beforeBeginning))
-		{
-			if ((cur->get_opcode() != Opcode::Filename) && (cur->get_opcode() != Opcode::LineNumber))
-			{
-				break;
-			}
-			beginningOfBranchInstructionSequence = cur;
-			--cur;
-		}
-	}
-
-	return success;
-}
-
-ControlFlowNode *GetFirstSuccessorOrNull(ControlFlowNode *node)
-{
-	assert(node->Successors().size() <= 1);
-	return node->Successors().empty() ? nullptr : *node->Successors().begin();
 }
 
 class DetermineHexValues : public IExploreNode
@@ -922,104 +817,6 @@ private:
 	stack<bool> useNeg;
 };
 
-static bool _IsBranch(const scii &inst)
-{
-	Opcode op = inst.get_opcode();
-	return (op == Opcode::BT) || (op == Opcode::BNT) || (op == Opcode::JMP);
-}
-
-// Sierra's compiler emits a bnt right after a bnt to the same target (a
-// nested and in a test comes out as "lt?; bnt L; bnt L"). The accumulator
-// is unchanged and true at the second one, so it is never taken; left in,
-// the chunk stage gives it a clone of the compare and the condition prints
-// the operand twice. Delete it (sluicebox's DeadBranches does the same) and
-// point any branch to it at the first bnt. A no-op jmp to the next
-// instruction between the two is dead too.
-void _RemoveDeadBranches(std::list<scii> &code)
-{
-	for (code_pos cur = code.begin(); cur != code.end(); ++cur)
-	{
-		if (cur->get_opcode() != Opcode::BNT)
-		{
-			continue;
-		}
-		for (;;)
-		{
-			code_pos next = cur;
-			++next;
-			if (next == code.end())
-			{
-				break;
-			}
-			code_pos dead = next;
-			code_pos after = next;
-			++after;
-			std::vector<code_pos> toErase;
-			if ((dead->get_opcode() == Opcode::JMP) && (after != code.end()) && (dead->get_branch_target() == after) &&
-				(after->get_opcode() == Opcode::BNT) && (after->get_branch_target() == cur->get_branch_target()))
-			{
-				toErase.push_back(dead);
-				toErase.push_back(after);
-			}
-			else if ((dead->get_opcode() == Opcode::BNT) && (dead->get_branch_target() == cur->get_branch_target()))
-			{
-				toErase.push_back(dead);
-			}
-			if (toErase.empty())
-			{
-				break;
-			}
-			for (code_pos victim : toErase)
-			{
-				for (scii &inst : code)
-				{
-					if (_IsBranch(inst) && (inst.get_branch_target() == victim))
-					{
-						inst.set_branch_target(cur, inst.is_forward_branch());
-					}
-				}
-				code.erase(victim);
-			}
-		}
-	}
-}
-
-// `copy` is a positional duplicate of `source` (list assignment copies each
-// scii by value, so a branch target still points at the node in `source`).
-// Repoint every branch target in `copy` at the matching node inside `copy`, so
-// `copy` no longer depends on `source`. The caller then edits or erases nodes
-// from `source` (see _RemoveDeadBranches) while `copy` stays valid. The two
-// lists are identical when this runs, so map node-to-node by position.
-void RepointBranchTargetsIntoCopy(std::list<scii> &source, std::list<scii> &copy)
-{
-	// `copy` must be a positional duplicate of `source` (the caller copies the
-	// list immediately before this call), so the two walk in lockstep.
-	assert(source.size() == copy.size());
-	std::map<code_pos, code_pos> sourceToCopy;
-	code_pos itCopy = copy.begin();
-	for (code_pos itSource = source.begin(); (itSource != source.end()) && (itCopy != copy.end()); ++itSource, ++itCopy)
-	{
-		sourceToCopy[itSource] = itCopy;
-	}
-	// Only BNT/BT/JMP get a within-list target iterator during decompilation
-	// (see _ConvertToInstructions), and a successful conversion resolves every
-	// one, so the target node is always present in the map. The assert makes a
-	// future change that breaks either invariant fail loudly, rather than leave
-	// a copied branch still pointing into `source` (the #62 dangle).
-	for (scii &inst : copy)
-	{
-		if (inst._is_branch_instruction())
-		{
-			auto found = sourceToCopy.find(inst.get_branch_target());
-			assert(found != sourceToCopy.end());
-			if (found != sourceToCopy.end())
-			{
-				inst.set_branch_target(found->second, inst.is_forward_branch());
-			}
-		}
-	}
-}
-
 void _DetermineIfFunctionReturnsValue(std::list<scii> code, DecompileLookups &lookups)
 {
 	// Look for return statements and see if they have any statements without side effects before them.
@@ -1167,50 +964,56 @@ void _TrackExternalScriptUsage(std::list<scii> code, DecompileLookups &lookups)
 
 namespace
 {
-	// Holds the messages of a control-flow analysis until DecompileRaw knows
-	// which analysis it uses. The abort state and the rest go through.
-	class HeldDecompilerResults : public IDecompilerResults
+	// Stages of the scope engine. An error has the message of the stage that
+	// failed, "[scope:<stage>:<id>]"; an exception that is not a ScopeError
+	// gives "[scope:internal] <text>". where (when it is not null) gets the
+	// place and the detail of a ScopeError, " at <offset>: <detail>" (with
+	// no place: ": <detail>").
+	sci::Status _ScopeStages(const std::function<void()> &stages, std::string *where = nullptr)
 	{
-	public:
-		HeldDecompilerResults(IDecompilerResults &inner) : _inner(inner) {}
-		void AddResult(DecompilerResultType type, const std::string &message) override
+		sci::Status status = sci::Guard("scope", [&]() -> sci::Status
 		{
-			_held.emplace_back(type, message);
-		}
-		bool IsAborted() override { return _inner.IsAborted(); }
-		void InformStats(bool functionSuccessful, int byteCount) override
-		{
-			_inner.InformStats(functionSuccessful, byteCount);
-		}
-		void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override
-		{
-			_inner.SetGlobalVarsUpdated(renames);
-		}
-		// Passes the held messages on, in order.
-		void Release()
-		{
-			for (const auto &held : _held)
+			try
 			{
-				_inner.AddResult(held.first, held.second);
+				stages();
 			}
-			_held.clear();
+			catch (const scope::ScopeError &e)
+			{
+				if (where)
+				{
+					*where = (e.Offset() >= 0) ? fmt::format(" at {0:04x}: {1}", e.Offset(), e.Detail()) : (": " + e.Detail());
+				}
+				throw;
+			}
+			return sci::Ok();
+		});
+		if (!status && (status.error().code != sci::ErrorCode::Unsupported))
+		{
+			return sci::Fail(sci::ErrorCode::Internal, "[scope:internal] " + status.error().message);
 		}
-	private:
-		IDecompilerResults &_inner;
-		std::vector<std::pair<DecompilerResultType, std::string>> _held;
-	};
+		return status;
+	}
+
+	// The scope engine: the control-flow stages, then the value stage, which
+	// gives the statements of the function. code is the list of the
+	// instructions as they were decoded.
+	sci::Status _DecompileWithScope(FunctionBase &func, DecompileLookups &lookups, std::list<scii> &code, std::string *where)
+	{
+		return _ScopeStages([&]()
+		{
+			scope::CodeModel model(code);
+			std::unique_ptr<scope::Region> root = scope::Parse(model);
+			std::set<int> passedDeadBranches;
+			scope::Verify(model, *root, &passedDeadBranches);
+			OutputNewStructure(func, model, *root, code, passedDeadBranches, lookups);
+		}, where);
+	}
 }
 
-// pEnd can be the end of script data. I have added autodetection support.
-void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset)
+// The decode of a function: to the end of the script, else to the estimated
+// end. The end of the code, or nullptr.
+static const BYTE *_DecodeFunction(DecompileLookups &lookups, std::list<scii> &code, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset)
 {
-	bool allowContinues = true;
-
-	lookups.EndowWithFunction(&func);
-
-	// Take the raw data, and turn it into a list of scii instructions, and make sure the branch targets point to code_pos's
-	std::list<scii> code;
-	std::list<scii> originalCode;
 	const BYTE *discoveredEnd = _ConvertToInstructions(lookups, code, pBegin, pScriptResourceEnd, wBaseOffset, true);
 	if (discoveredEnd == nullptr)
 	{
@@ -1220,24 +1023,57 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 		code.clear();
 		discoveredEnd = _ConvertToInstructions(lookups, code, pBegin, pEstimatedMaxEnd, wBaseOffset, false);
 	}
+	return discoveredEnd;
+}
 
-	bool success = (discoveredEnd != nullptr);
-	if (success)
+int FunctionCodeLength(DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset)
+{
+	std::list<scii> code;
+	const BYTE *end = _ConvertToInstructions(lookups, code, pBegin, pScriptResourceEnd, wBaseOffset, true);
+	return end ? (int)(end - pBegin) : -1;
+}
+
+bool ReadFunctionCode(DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset, std::list<scii> &code, bool &returnsValue)
+{
+	code.clear();
+	returnsValue = false;
+	if (!_DecodeFunction(lookups, code, pBegin, pEstimatedMaxEnd, pScriptResourceEnd, wBaseOffset))
 	{
-		success = false;
-		// Insert a no-op at the beginning of code (so we can get an iterator to point to a spot before code)
-		code.insert(code.begin(), scii(lookups.GetVersion(), Opcode::INDETERMINATE, -1));
+		return false;
+	}
+	code.insert(code.begin(), scii(lookups.GetVersion(), Opcode::INDETERMINATE, -1));
+	lookups.FunctionDecompileHints.Reset();
+	_DetermineIfFunctionReturnsValue(code, lookups);
+	returnsValue = lookups.FunctionDecompileHints.ReturnsValue;
+	lookups.FunctionDecompileHints.Reset();
+	return true;
+}
 
-		// Do some early things. The fallback disassembles the original
-		// instructions, not the ones the dead-branch removal edited.
-		originalCode = code;
-		// The copied instructions still hold branch targets that point into
-		// `code`. _RemoveDeadBranches erases nodes from `code` below, which
-		// would leave those copied iterators dangling; the fallback path then
-		// dereferences them (CalcBranchLabels and DisassembleFallback). Repoint
-		// the copy's branch targets into itself so it is self-contained. See #62.
-		RepointBranchTargetsIntoCopy(code, originalCode);
-		_RemoveDeadBranches(code);
+// The decompile of one function; the caller sends its report line.
+static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset, DecompiledFunction &report)
+{
+	lookups.EndowWithFunction(&func);
+
+	// Take the raw data, and turn it into a list of scii instructions, and make sure the branch targets point to code_pos's
+	std::list<scii> code;
+	const BYTE *discoveredEnd = _DecodeFunction(lookups, code, pBegin, pEstimatedMaxEnd, pScriptResourceEnd, wBaseOffset);
+
+	bool success = false;
+	if (discoveredEnd)
+	{
+		// A placeholder at the start of the code: the scope CodeModel skips it,
+		// and the list scans below use it.
+		code.insert(code.begin(), scii(lookups.GetVersion(), Opcode::INDETERMINATE, -1));
+		if (lookups.DebugControlFlow)
+		{
+			report.scopeTree = scope::ParseForDump(code);
+			string trackingName = GetMethodTrackingName(func.GetOwnerClass(), func, true);
+			if (!lookups.pszDebugFilter || PathMatchSpec(trackingName.c_str(), lookups.pszDebugFilter))
+			{
+				lookups.DecompileResults().AddResult(DecompilerResultType::Debug,
+					fmt::format("Scope: {0}\n{1}Code:\n{2}", trackingName, report.scopeTree, scope::CodeForDump(code)));
+			}
+		}
 		_DetermineIfFunctionReturnsValue(code, lookups);
 
 		// Construct the function -> for now use procedure, but really should be method or proc
@@ -1249,54 +1085,22 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 
 		if (!lookups.DecompileAsm)
 		{
-			string className = func.GetOwnerClass() ? func.GetOwnerClass()->GetName() : "";
-			string messageDescription = fmt::format("{0} {1}::{2}: Analyzing control flow", func.GetOwnerScript()->GetName(), className, func.GetName());
-			lookups.DecompileResults().AddResult(DecompilerResultType::Update, messageDescription);
-
-			// The analysis edits the instructions, so a second analysis works on
-			// a copy.
-			std::list<scii> nestedCode = code;
-			RepointBranchTargetsIntoCopy(code, nestedCode);
-
-			// The analysis makes one loop of the loops that share a head, which
-			// gives the output that it can structure. When it fails, and such
-			// loops nest, a second analysis makes them nested loops. The
-			// messages are those of the analysis that is used.
-			string trackingName = GetMethodTrackingName(func.GetOwnerClass(), func, true);
-			HeldDecompilerResults results(lookups.DecompileResults());
-			HeldDecompilerResults nestedResults(lookups.DecompileResults());
-			unique_ptr<ControlFlowGraph> cfg;
-			try
+			std::string where;
+			sci::Status scoped = _DecompileWithScope(func, lookups, code, &where);
+			if (scoped)
 			{
-				cfg = make_unique<ControlFlowGraph>(messageDescription, results, trackingName, allowContinues, lookups.DebugControlFlow, lookups.pszDebugFilter);
-				success = cfg->Generate(code.begin(), code.end());
-				if (!success && cfg->MergedNestedLoops() && !lookups.DecompileResults().IsAborted())
-				{
-					unique_ptr<ControlFlowGraph> nestedCfg = make_unique<ControlFlowGraph>(messageDescription, nestedResults, trackingName, allowContinues, lookups.DebugControlFlow, lookups.pszDebugFilter, true);
-					if (nestedCfg->Generate(nestedCode.begin(), nestedCode.end()))
-					{
-						success = true;
-						cfg = std::move(nestedCfg);
-					}
-				}
+				success = true;
+				report.scope = "ok";
+				report.output = "scope";
 			}
-			catch (...)
+			else
 			{
-				// An analysis that throws: its messages (the progress and the
-				// debug dumps) help to find the cause, so they go on first.
-				results.Release();
-				nestedResults.Release();
-				throw;
-			}
-			(cfg->NestsLoopsWithOneHead() ? nestedResults : results).Release();
-
-			if (success && !lookups.DecompileResults().IsAborted())
-			{
-				const NodeSet &controlStructures = cfg->ControlStructures();
-				MainNode *mainNode = cfg->GetMain();
-				lookups.DecompileResults().AddResult(DecompilerResultType::Update, fmt::format("{0} {1}::{2}: Generating code", func.GetOwnerScript()->GetName(), className, func.GetName()));
-				messageDescription = fmt::format("{0} {1}::{2}: Instruction consumption", func.GetOwnerScript()->GetName(), className, func.GetName());
-				success = OutputNewStructure(messageDescription, func, *mainNode, lookups);
+				report.scope = scoped.error().message;
+				func.GetStatements().clear();
+				lookups.ResetOnFailure();
+				string className = func.GetOwnerClass() ? func.GetOwnerClass()->GetName() : "";
+				lookups.DecompileResults().AddResult(DecompilerResultType::Warning,
+					fmt::format("{0} {1}::{2}: {3}{4}", func.GetOwnerScript()->GetName(), className, func.GetName(), report.scope, where));
 			}
 		}
 	}
@@ -1305,7 +1109,7 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 		func.AddSignature(std::make_unique<FunctionSignature>());
 		func.AddStatement(std::make_unique<sci::PropertyValue>("CorruptFunction_CantDetermineCodeBounds", ValueType::Token));
 	}
-	
+
 	if (!success && !lookups.DecompileResults().IsAborted() && discoveredEnd)
 	{
 		// Disassemble the function instead.
@@ -1314,13 +1118,22 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 		lookups.ResetOnFailure();
 
 		lookups.DecompileResults().AddResult(DecompilerResultType::Important, fmt::format("Falling back to disassembly for {0}", func.GetName()));
-		DisassembleFallback(func, originalCode.begin(), originalCode.end(), lookups);
+		DisassembleFallback(func, code.begin(), code.end(), lookups);
+		report.output = "asm";
 	}
 
 	// Give some statistics.
 	if (discoveredEnd)
 	{
 		lookups.DecompileResults().InformStats(success, discoveredEnd - pBegin);
+	}
+	if (!lookups.DecompileResults().IsAborted())
+	{
+		if (!discoveredEnd)
+		{
+			report.output = "corrupt";
+		}
+		report.byteCount = discoveredEnd ? (int)(discoveredEnd - pBegin) : 0;
 	}
 
 	if (!lookups.DecompileResults().IsAborted())
@@ -1329,7 +1142,7 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 		{
 			if (lookups.DebugInstructionConsumption)
 			{
-				// The text as the chunk stage made it, for diagnosing a pass.
+				// The text before the AST passes, for diagnosing a pass.
 				std::stringstream ss;
 				sci::SourceCodeWriter writer(ss);
 				if (auto *method = dynamic_cast<sci::MethodDefinition*>(&func))
@@ -1356,6 +1169,36 @@ void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBe
 		lookups.EndowWithFunction(nullptr);
 
 		func.PruneExtraneousReturn();
+	}
+}
+
+// pEnd can be the end of script data. I have added autodetection support.
+void DecompileRaw(FunctionBase &func, DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset)
+{
+	DecompiledFunction report;
+	report.script = lookups.GetScriptNumber();
+	report.className = func.GetOwnerClass() ? func.GetOwnerClass()->GetName() : "";
+	report.name = func.GetName();
+	report.offset = wBaseOffset;
+	report.index = lookups.FunctionCount++;
+	try
+	{
+		_DecompileRawBody(func, lookups, pBegin, pEstimatedMaxEnd, pScriptResourceEnd, wBaseOffset, report);
+	}
+	catch (...)
+	{
+		// The script fails; the report still has a line for the function.
+		if (!lookups.DecompileResults().IsAborted())
+		{
+			report.output = "error";
+			lookups.DecompileResults().InformFunction(report);
+		}
+		throw;
+	}
+	// The line comes after the AST passes and the naming of the function.
+	if (!lookups.DecompileResults().IsAborted())
+	{
+		lookups.DecompileResults().InformFunction(report);
 	}
 }
 
@@ -1444,7 +1287,15 @@ _wScript(wScript), _pLookups(pLookups), _pOFLookups(pOFLookups), _pScriptThings(
 
 std::string DecompileLookups::LookupSelectorName(WORD wIndex)
 {
-	return _pLookups->LookupSelectorName(wIndex);
+	std::string name = _pLookups->LookupSelectorName(wIndex);
+	// A selector with the name of a keyword of the syntax, which the text would give another
+	// name (the SCI1.1 template has cond, 509, which the text would write as case, the name
+	// of 732): sel_<number>, which the compiler reads back as the number.
+	if ((name == "cond") || (name == "continue") || (name == "repeat"))
+	{
+		name = fmt::format("sel_{0}", wIndex);
+	}
+	return name;
 }
 std::string DecompileLookups::LookupKernelName(WORD wIndex)
 {
@@ -1535,7 +1386,7 @@ std::string DecompileLookups::LookupPropertyName(WORD wPropertyIndex)
 	}
 	else
 	{
-		return "PROPERTY-ACCESS-IN-NON-METHOD";
+		return PropertyInNonMethodName;
 	}
 }
 bool DecompileLookups::LookupPropertyName(uint16_t wPropertyIndex, std::string &name)

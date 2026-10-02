@@ -15,7 +15,7 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "resource.h"
 #include "ChooseColorAdvancedDialog.h"
 #include "ImageUtil.h"
 #include <format.h>

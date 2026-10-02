@@ -11,9 +11,13 @@
 ; Sierra:
 ;   (= temp0 5) (temp0 init:)
 ;   (= temp0 param1) (temp1 perform: temp0)
-;   (= x param1) (temp1 perform: x)
+;   (= x param1) (temp1 perform: param1)
 ;   ((= x temp0) init: self &rest)   the store target reuses temp0 across the pushes and the &rest
 ;   6 (temp1 perform: 6)   a reused number stays a statement; the argument is a copy
+; After "aTop x", Sierra's optimiser still knows the accumulator as param1
+; (a store to a property does not change what it knows), so the push in
+; place of a load is a push of param1: "pTos x" stays a load. The decompiler
+; gives the parameter: (temp1 perform: theX).
 (class A1Reuse of Code
 	(properties
 		x 0

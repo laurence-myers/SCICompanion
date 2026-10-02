@@ -17,7 +17,7 @@
 #include "AstPassHelper.h"
 #include "Helper.h"
 #include "DecompileHelper.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceMap.h"
 #include "TestSupport.h"
 #include <string>
@@ -181,7 +181,7 @@ namespace UnitTests
                 "        (return (+ t dungeon#))\n"
                 "    )\n"
                 ")\n";
-            std::string path = appState->GetResourceMap().Helper().GetScriptFileName("HashTest");
+            std::string path = AppResourceMap().Helper().GetScriptFileName("HashTest");
             WriteFileText(path, source);
             // Compile first: the text of the assert must not read error in
             // the same call.

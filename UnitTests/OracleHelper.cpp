@@ -15,7 +15,7 @@
 #include "OracleHelper.h"
 #include "Helper.h"
 #include "DecompileHelper.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceMap.h"
 #include "ResourceContainer.h"
 #include "ResourceBlob.h"
@@ -56,7 +56,7 @@ static void MakeDirsLocal(const std::string &path)
 
 bool IsFullRoundTripEligible()
 {
-    return appState->GetVersion().PackageFormat <= ResourcePackageFormat::SCI11;
+    return AppVersion().PackageFormat <= ResourcePackageFormat::SCI11;
 }
 
 std::string ToHexDump(const std::vector<uint8_t> &bytes)
@@ -116,9 +116,9 @@ static bool LoadScriptBytes(const GameFolderHelper &helper, bool separateHeap, u
 
 static std::map<uint16_t, ScriptBytes> CaptureAllScriptBytes()
 {
-    CResourceMap &rm = appState->GetResourceMap();
+    CResourceMap &rm = AppResourceMap();
     const GameFolderHelper &helper = rm.Helper();
-    bool separateHeap = appState->GetVersion().SeparateHeapResources;
+    bool separateHeap = AppVersion().SeparateHeapResources;
 
     std::vector<ScriptId> scripts;
     rm.GetAllScripts(scripts);
@@ -247,9 +247,9 @@ BytecodeSnapshotResult CompareTemplateBytecodeSnapshots()
     std::string actualDir = GetTestModuleDirectory() + "\\SnapshotActuals\\Bytecode\\SCI1.1";
     MakeDirsLocal(actualDir);
 
-    CResourceMap &rm = appState->GetResourceMap();
+    CResourceMap &rm = AppResourceMap();
     const GameFolderHelper &helper = rm.Helper();
-    bool separateHeap = appState->GetVersion().SeparateHeapResources;
+    bool separateHeap = AppVersion().SeparateHeapResources;
 
     std::vector<ScriptId> scripts;
     rm.GetAllScripts(scripts);

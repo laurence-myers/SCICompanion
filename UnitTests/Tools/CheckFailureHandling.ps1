@@ -8,7 +8,9 @@
                                throw sci::DataError or return a sci::Result instead
       afxmessagebox-in-engine  AfxMessageBox in Src\Core, Src\Compile or Src\Resources;
                                return a sci::Result and let the GUI show it
-      appstate-in-engine       the GUI object appState in Src\Core, Src\Compile,
+      appstate-in-engine       the GUI object appState, or the functions of
+                               AppSession.h (AppSession, AppResourceMap,
+                               AppVersion), in Src\Core, Src\Compile,
                                Src\Resources or Src\Util; take the session, the
                                resource map or the helper as a parameter (plan
                                section 3.2). Src\Util also holds GUI code, so
@@ -38,7 +40,7 @@ $rules = @(
     @{ Name = "empty-catch-all"; Pattern = 'catch\s*\(\s*\.\.\.\s*\)\s*\{(?:\s|;|//[^\n]*|/\*[\s\S]*?\*/)*\}'; Folders = $null },
     @{ Name = "throw-std-exception"; Pattern = 'throw\s+std::exception\s*\('; Folders = $null },
     @{ Name = "afxmessagebox-in-engine"; Pattern = '\bAfxMessageBox\s*\('; Folders = @("Core", "Compile", "Resources") },
-    @{ Name = "appstate-in-engine"; Pattern = '\bappState\b'; Folders = @("Core", "Compile", "Resources", "Util") }
+    @{ Name = "appstate-in-engine"; Pattern = '\bappState\b|\bApp(Session|ResourceMap|Version)\s*\('; Folders = @("Core", "Compile", "Resources", "Util") }
 )
 
 $found = @{}

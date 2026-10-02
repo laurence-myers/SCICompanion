@@ -1,0 +1,38 @@
+== n1ChainedCompare
+code 000a-0019
+if 001a
+  then
+    code 001c-001e
+code 0020-0029
+if 002a
+  then
+    code 002c
+code 002e-0032
+if 0033
+  then
+    code 0035-0039
+    if 003a
+      then
+        code 003c-003e
+code 0040-004d
+if 004e
+  then
+    code 0050-0052
+code 0054-0063
+if 0064
+  then
+    code 0066-0068
+loop 006a latch 0078
+  body
+    code 006a-0073
+    if 0074
+      then
+        code 0076
+      else break 1
+code 007a-007e
+or 007f
+  code 0081-008a
+if 008b
+  then
+    code 008d-008f
+code 0091-009c

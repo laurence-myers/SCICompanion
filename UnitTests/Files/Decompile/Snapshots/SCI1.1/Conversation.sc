@@ -11,7 +11,7 @@
 		modNum -1
 		noun 0
 		verb 0
-		case 0
+		sel_509 0
 		sequence 0
 		whoSays 0
 		client 0
@@ -24,7 +24,7 @@
 	(method (showSelf &tmp [temp0 40])
 		(= whoSays
 			(gMessager
-				findTalker: (Message 0 modNum noun verb case (or sequence 1))
+				findTalker: (Message 0 modNum noun verb sel_509 (or sequence 1))
 			)
 		)
 		(if (not (IsObject whoSays))
@@ -34,7 +34,7 @@
 					modNum
 					noun
 					verb
-					case
+					sel_509
 					sequence
 				init:
 			)
@@ -42,7 +42,7 @@
 		else
 			(if font (whoSays font: font))
 			(if (or x y) (whoSays x: x y: y))
-			(gMessager say: noun verb case sequence caller modNum)
+			(gMessager say: noun verb sel_509 sequence caller modNum)
 		)
 	)
 )
@@ -122,7 +122,7 @@
 							modNum: theGRoomNumber
 							noun: theTheGRoomNumber
 							verb: theTheTheGRoomNumber
-							case: theTheTheTheGRoomNumber
+							sel_509: theTheTheTheGRoomNumber
 							sequence: theTheTheTheTheGRoomNumber
 							x: temp5
 							y: temp6

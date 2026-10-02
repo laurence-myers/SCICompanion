@@ -15,7 +15,6 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
 #include "VocabView.h"
 #include "VocabDoc.h"
 #include "Vocab000.h"

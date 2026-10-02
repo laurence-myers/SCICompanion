@@ -176,7 +176,7 @@ namespace cli
         app.add_flag("-v,--verbose", common.verbose, "Show more detail.");
         CLI::Option *logOption = app.add_option("--log", common.logFile, "Also write all messages to a file: a new file, an empty file, or a log of scic.");
         CLI::Option *dataFolderOption = app.add_option("--data-dir", common.dataFolder, "The folder that holds include\\ and Decompiler\\. Default: SCIC_DATA_DIR, or the folder of scic.exe.");
-        app.add_flag("--dry-run", common.dryRun, "Do the work in memory, and write nothing.");
+        app.add_flag("--dry-run", common.dryRun, "Do the work in memory, and write nothing into the game (--log and --function-report are still written).");
         app.add_flag("--version", version, "Show the version.");
 
         CLI::App *help = app.add_subcommand("help", "Show the help of a group or of a command: scic help script list.");
@@ -212,6 +212,8 @@ namespace cli
         decompile->add_flag("--debug-control-flow", decompileOptions.debugControlFlow, "Show the control flow (decompiler debug output).");
         decompile->add_flag("--debug-instructions", decompileOptions.debugInstructions, "Show the use of the instructions (decompiler debug output).");
         decompile->add_option("--debug-filter", decompileOptions.debugFilter, "The debug output only for this function.");
+        CLI::Option *functionReportOption = decompile->add_option("--function-report", decompileOptions.functionReport,
+            "Also write a line for each function into this file (tab-separated): its script, class, name, offset and bytes, the output (scope, asm, corrupt, error or stale), and the result of the scope engine (ok, or why it failed).");
 
         CLI::App *sco = script->add_subcommand("sco", "Make src\\<name>.sco from src\\<name>.sc and the compiled script, for source from another tool.");
         sco->fallthrough();
@@ -236,6 +238,30 @@ namespace cli
             ->check(CLI::Range(1, 100));
         compile->add_flag("--fail-fast", compileOptions.failFast, "Stop after the first script that fails.");
         compile->add_flag("--no-warn-unused", compileOptions.noWarnUnused, "No warning for an instance that is not used.");
+
+        // Tools for the development of the decompiler. The empty group hides
+        // them from the help of scic.
+        CompareStructureOptions compareOptions;
+        CLI::App *dev = app.add_subcommand("dev", "Tools for the development of scic.");
+        dev->group("");
+        dev->fallthrough();
+        dev->require_subcommand(0, 1);
+        CLI::App *compareStructure = dev->add_subcommand("compare-structure", "Compare the structure of each function of decompiled scripts with another decompile of the game.");
+        compareStructure->fallthrough();
+        compareStructure->add_option("expected-folder", compareOptions.expectedFolder, "The .sc files to compare with (for example the output of another decompiler).")->required();
+        compareStructure->add_option("actual-folder", compareOptions.actualFolder, "The .sc files of scic.")->required();
+        CLI::Option *baselineOption = compareStructure->add_option("--baseline", compareOptions.baselineFolder, "The .sc files of an earlier decompile: the table gets the change of each function.");
+        CLI::Option *compareOutOption = compareStructure->add_option("--out", compareOptions.outFile, "Write the table into this file (default: stdout).");
+        compareStructure->add_option("--scripts", compareOptions.scripts, "Compare only these scripts (numbers, separated by commas).")
+            ->delimiter(',')->check(CLI::Range(0, 65535));
+        CompareMeaningOptions meaningOptions;
+        CLI::App *compareMeaning = dev->add_subcommand("compare-meaning", "Compare the meaning of each function of a game with the same function of the script compiled from the decompiled text.");
+        compareMeaning->fallthrough();
+        compareMeaning->add_option("game-folder", meaningOptions.gameFolder, "The game with the original scripts.")->required();
+        compareMeaning->add_option("recompiled-folder", meaningOptions.recompiledFolder, "The scripts compiled from the decompiled text (scic script compile --out-dir <folder> --raw).")->required();
+        CLI::Option *meaningOutOption = compareMeaning->add_option("--out", meaningOptions.outFile, "Write the table into this file (default: stdout).");
+        compareMeaning->add_option("--scripts", meaningOptions.scripts, "Compare only these scripts (numbers, separated by commas).")
+            ->delimiter(',')->check(CLI::Range(0, 65535));
 
         CliOutput output(console, common);
         try
@@ -308,6 +334,14 @@ namespace cli
             {
                 return "--stdout takes one script, not --all";
             }
+            if ((functionReportOption->count() > 0) && decompileOptions.functionReport.empty())
+            {
+                return "--function-report needs a file";
+            }
+            if (decompile->parsed() && !decompileOptions.functionReport.empty() && !MayOverwriteFunctionReport(decompileOptions.functionReport))
+            {
+                return "--function-report would overwrite " + decompileOptions.functionReport + ", which is not a function report; give a new file, an empty file, or a function report";
+            }
             if (version)
             {
                 return std::string();
@@ -335,7 +369,15 @@ namespace cli
                 }
                 return std::string();
             }
-            if (!script->parsed())
+            if ((baselineOption->count() > 0) && compareOptions.baselineFolder.empty())
+            {
+                return "--baseline needs a folder";
+            }
+            if (((compareOutOption->count() > 0) && compareOptions.outFile.empty()) || ((meaningOutOption->count() > 0) && meaningOptions.outFile.empty()))
+            {
+                return "--out needs a file";
+            }
+            if (!script->parsed() && !dev->parsed())
             {
                 helpAfterUsageError = HelpOf(&app, "scic");
                 return "give a command";
@@ -381,6 +423,30 @@ namespace cli
             logged.Help(HelpOf(helpTopic, helpTopicName));
             return (int)ExitCode::Success;
         }
+        if (dev->parsed())
+        {
+            // No game of the command line: compare-structure reads folders,
+            // and compare-meaning opens its two games.
+            if (!compareStructure->parsed() && !compareMeaning->parsed())
+            {
+                logged.Help(HelpOf(dev, "scic dev"));
+                return (int)ExitCode::Success;
+            }
+            sci::Result<ExitCode> compared = sci::Guard(compareMeaning->parsed() ? "comparing the meaning" : "comparing the structure", [&]() -> sci::Result<ExitCode>
+            {
+                if (compareMeaning->parsed())
+                {
+                    return RunCompareMeaning(meaningOptions, AbsolutePath(DataFolderOf(common)), logged);
+                }
+                return RunCompareStructure(compareOptions, logged);
+            });
+            if (!compared)
+            {
+                logged.Error(compared.error().ToString());
+                return (int)ExitCodeForStartError(compared.error());
+            }
+            return (int)*compared;
+        }
         if (!list->parsed() && !decompile->parsed() && !sco->parsed() && !compile->parsed())
         {
             // Plan section 4.1: "scic script" lists the script commands.
@@ -393,12 +459,38 @@ namespace cli
         // headers then have absolute paths.
         std::string dataFolder = AbsolutePath(DataFolderOf(common));
         std::error_code ec;
+        // A run that cannot start leaves a function report with no functions,
+        // not the report of an older run.
+        bool functionReport = decompile->parsed() && !decompileOptions.functionReport.empty();
+        auto writeEmptyReport = [&]()
+        {
+            if (functionReport)
+            {
+                sci::Status written = WriteEmptyFunctionReport(decompileOptions.functionReport);
+                if (!written)
+                {
+                    logged.Error("the function report: " + written.error().ToString());
+                }
+            }
+        };
         if (dataFolder.empty() || !fs::exists(fs::path(dataFolder) / "include" / "sci.sh", ec))
         {
             logged.Error(fmt::format("the data folder \"{0}\" has no include\\sci.sh. Give the folder that holds include\\ and Decompiler\\ with --data-dir, or set SCIC_DATA_DIR.", dataFolder));
+            writeEmptyReport();
             return (int)ExitCode::CannotStart;
         }
         logged.Detail("The data folder: " + dataFolder);
+        if (functionReport)
+        {
+            // A report that cannot be written stops the command before the
+            // decompile.
+            sci::Status writable = CheckFunctionReportFile(decompileOptions.functionReport);
+            if (!writable)
+            {
+                logged.Error("the function report: " + writable.error().ToString());
+                return (int)ExitCode::WriteFailed;
+            }
+        }
         ConsoleLogSink sink(logged);
         ScopedCoreLogSink scopedSink(sink);
         SessionOptions sessionOptions;
@@ -415,6 +507,7 @@ namespace cli
             // Plan section 8: 3, but 2 for a usage error (for example an
             // empty game folder).
             logged.Error("cannot open the game: " + opened.error().ToString());
+            writeEmptyReport();
             return (int)ExitCodeForStartError(opened.error());
         }
 

@@ -62,7 +62,7 @@ namespace UnitTests
     static bool CompileSource(uint16_t number, const std::string &name, const std::string &source, std::string &outError, std::vector<std::string> *outWarnings = nullptr,
         std::vector<std::string> *outErrors = nullptr)
     {
-        std::string path = appState->GetResourceMap().Helper().GetScriptFileName(name);
+        std::string path = AppResourceMap().Helper().GetScriptFileName(name);
         {
             std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
             file << source;
@@ -80,7 +80,7 @@ namespace UnitTests
     // Loads the compiled script resource and returns its raw bytes.
     static std::vector<uint8_t> LoadCompiledBytes(uint16_t number)
     {
-        const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+        const GameFolderHelper &helper = AppResourceMap().Helper();
         CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
         Assert::IsTrue(compiled.Load(helper, helper.Version, number),
             L"could not load the compiled script resource");
@@ -280,7 +280,7 @@ namespace UnitTests
         TEST_METHOD(MissingScriptProc_CompilesToCalleWithAWarning)
         {
             _gameFolder = SetUpGameSCI11();
-            Assert::IsTrue(nullptr == appState->GetResourceMap().Helper().MostRecentResource(ResourceType::Script, 911, ResourceEnumFlags::None),
+            Assert::IsTrue(nullptr == AppResourceMap().Helper().MostRecentResource(ResourceType::Script, 911, ResourceEnumFlags::None),
                 L"the template has no script 911");
             std::string source = KTest("", "\t(proc911_0 5)\n");
             std::string error;
@@ -303,7 +303,7 @@ namespace UnitTests
         TEST_METHOD(SaidWithNoVocabulary_IsAnErrorThatNamesTheResource)
         {
             _gameFolder = SetUpGameSCI0();
-            CResourceMap &resourceMap = appState->GetResourceMap();
+            CResourceMap &resourceMap = AppResourceMap();
             std::unique_ptr<ResourceBlob> vocabulary = resourceMap.Helper().MostRecentResource(ResourceType::Vocab, 0, ResourceEnumFlags::None);
             Assert::IsTrue(vocabulary != nullptr, L"the SCI0 template has vocab.000");
             resourceMap.DeleteResource(vocabulary.get());
@@ -334,7 +334,7 @@ namespace UnitTests
         TEST_METHOD(SaidWithNoVocabulary_SCI11_NamesVocab900)
         {
             _gameFolder = SetUpGameSCI11();
-            CResourceMap &resourceMap = appState->GetResourceMap();
+            CResourceMap &resourceMap = AppResourceMap();
             Assert::AreEqual(900, (int)resourceMap.Helper().Version.MainVocabResource, L"setup: the main vocabulary is vocab 900");
             Assert::IsTrue(nullptr == resourceMap.GetVocab000(), L"setup: no vocabulary");
 
@@ -354,7 +354,7 @@ namespace UnitTests
         TEST_METHOD(SynonymsWithNoVocabulary_OneError)
         {
             _gameFolder = SetUpGameSCI0();
-            CResourceMap &resourceMap = appState->GetResourceMap();
+            CResourceMap &resourceMap = AppResourceMap();
             std::unique_ptr<ResourceBlob> vocabulary = resourceMap.Helper().MostRecentResource(ResourceType::Vocab, 0, ResourceEnumFlags::None);
             Assert::IsTrue(vocabulary != nullptr, L"the SCI0 template has vocab.000");
             resourceMap.DeleteResource(vocabulary.get());
@@ -374,7 +374,7 @@ namespace UnitTests
         TEST_METHOD(WordList_GameWithNoVocabulary_IsEmpty)
         {
             _gameFolder = SetUpGameSCI11();
-            Assert::IsTrue(nullptr == appState->GetResourceMap().GetVocab000(), L"setup: no vocabulary");
+            Assert::IsTrue(nullptr == AppResourceMap().GetVocab000(), L"setup: no vocabulary");
 
             IEnumString *words = nullptr;
             HRESULT hr = CWordEnumString_CreateInstance(IID_IEnumString, (void **)&words);

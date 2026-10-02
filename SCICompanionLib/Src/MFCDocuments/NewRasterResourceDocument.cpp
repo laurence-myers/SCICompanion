@@ -71,7 +71,7 @@ NativeResolution IDToNativeResolution(UINT id)
 void CNewRasterResourceDocument::OnUpdateResolution(CCmdUI *pCmdID)
 {
 	const RasterComponent &raster = GetComponent<RasterComponent>();
-	if (appState->GetVersion().DefaultResolution == NativeResolution::Res320x200)
+	if (AppVersion().DefaultResolution == NativeResolution::Res320x200)
 	{
 		pCmdID->Enable(FALSE);
 	}
@@ -101,7 +101,7 @@ void CNewRasterResourceDocument::OnSetResolution(UINT nID)
 CNewRasterResourceDocument::CNewRasterResourceDocument()
 {
 	// Add ourselves as a sync
-	CResourceMap &map = appState->GetResourceMap();
+	CResourceMap &map = AppResourceMap();
 	map.AddSync(this);
 
 	_currentPaletteIndex = 0;
@@ -900,7 +900,7 @@ void CNewRasterResourceDocument::MakeFont()
 void CNewRasterResourceDocument::OnCloseDocument()
 {
 	// Remove ourselves as a sync
-	CResourceMap &map = appState->GetResourceMap();
+	CResourceMap &map = AppResourceMap();
 	map.RemoveSync((IResourceMapEvents*)this);
 	__super::OnCloseDocument();
 }

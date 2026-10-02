@@ -679,10 +679,37 @@ std::string SelectorTable::_GetMissingName(uint16_t wName) const
 	return fmt::format("sel_{0}", wName);
 }
 
+// A name that the decompiler gives a number with no name of its own:
+// <prefix><number> (sel_713, kernel_81).
+static bool _ParseNumberedName(const std::string &name, const char *prefix, uint16_t &number)
+{
+	size_t length = strlen(prefix);
+	if ((name.size() <= length) || (name.size() > length + 5) || (name.compare(0, length, prefix) != 0))
+	{
+		return false;
+	}
+	uint32_t value = 0;
+	for (size_t i = length; i < name.size(); i++)
+	{
+		if (!isdigit((unsigned char)name[i]))
+		{
+			return false;
+		}
+		value = value * 10 + (name[i] - '0');
+	}
+	if (value > 0xffff)
+	{
+		return false;
+	}
+	number = (uint16_t)value;
+	return true;
+}
+
 bool SelectorTable::IsSelectorName(const std::string &name) const
 {
 	assert(!_nameToValueCache.empty());
-	return (_nameToValueCache.find(name) != _nameToValueCache.end());
+	uint16_t number;
+	return (_nameToValueCache.find(name) != _nameToValueCache.end()) || _ParseNumberedName(name, "sel_", number);
 }
 
 bool SelectorTable::ReverseLookup(std::string name, uint16_t &wIndex) const
@@ -693,7 +720,9 @@ bool SelectorTable::ReverseLookup(std::string name, uint16_t &wIndex) const
 		wIndex = it->second;
 		return true;
 	}
-	return false;
+	// sel_<number>: the name that the decompiler gives a selector with no
+	// name, or a later selector with the name of another one.
+	return _ParseNumberedName(name, "sel_", wIndex);
 }
 
 bool SelectorTable::Load(const GameFolderHelper &helper)
@@ -722,6 +751,27 @@ bool SelectorTable::Load(const GameFolderHelper &helper)
 		CoreLogFormat(LogLevel::Warning, "Failed to load selector names from vocab resource");
 	}
 	return fRet;
+}
+
+void SelectorTable::ReserveNumberedName(const std::string &name, uint16_t wIndex)
+{
+	uint16_t number;
+	if (!_ParseNumberedName(name, "sel_", number) || (number != wIndex) || ((wIndex < _indices.size()) && (_indices[wIndex] != -1)))
+	{
+		return;
+	}
+	while (_indices.size() <= wIndex)
+	{
+		_indices.push_back(-1);
+	}
+	_indices[wIndex] = (int)_names.size();
+	_names.push_back(name);
+	_nameToValueCache[name] = wIndex;
+	_fDirty = true;
+	while ((_firstInvalidSelector < _indices.size()) && (_indices[_firstInvalidSelector] != -1))
+	{
+		_firstInvalidSelector++;
+	}
 }
 
 uint16_t SelectorTable::Add(const std::string &str)
@@ -908,7 +958,7 @@ bool KernelTable::Load(const GameFolderHelper &helper)
 	return fRet;
 }
 
-bool GlobalClassTable::Load(const GameFolderHelper &helper)
+bool GlobalClassTable::Load(const GameFolderHelper &helper, const SelectorTable *selectors)
 {
 	SpeciesTable speciesTable;
 	// _Create needs only the script of each species, not its place in the
@@ -917,7 +967,8 @@ bool GlobalClassTable::Load(const GameFolderHelper &helper)
 	bool fRet = speciesTable.Load(helper, false);
 	if (fRet)
 	{
-		fRet = _Create(speciesTable, helper);
+		fRet = _Create(speciesTable, helper, selectors);
+		_GiveUniqueNames(selectors);
 	}
 	if (!fRet)
 	{
@@ -926,7 +977,7 @@ bool GlobalClassTable::Load(const GameFolderHelper &helper)
 	return fRet;
 }
 
-bool GlobalClassTable::_Create(const SpeciesTable &speciesTable, const GameFolderHelper &helper)
+bool GlobalClassTable::_Create(const SpeciesTable &speciesTable, const GameFolderHelper &helper, const SelectorTable *selectors)
 {
 	// Collect the heap/script pairs first, since fetching the heap individually for each script is a performance issue.
 	// Patch files win out.
@@ -957,6 +1008,10 @@ bool GlobalClassTable::_Create(const SpeciesTable &speciesTable, const GameFolde
 			_scriptNums.push_back(scriptNumber);
 
 			unique_ptr<CompiledScript> compiledScript = make_unique<CompiledScript>(scriptNumber);
+			if (selectors)
+			{
+				compiledScript->SetNameSelector(*selectors);
+			}
 			std::unique_ptr<sci::istream> heapStream;
 			if (scriptAndHeap.second)
 			{
@@ -983,9 +1038,12 @@ bool GlobalClassTable::_Create(const SpeciesTable &speciesTable, const GameFolde
 						if (speciesTable.GetSpeciesLocation(species, statedScript, scriptPos) &&
 							(statedScript == scriptNumber))
 						{
-							_nameToSpecies[compiledObject->GetName()] = species;
-							_speciesToScriptNumber[species] = scriptNumber;
-							_speciesToCompiledObjectWeak[species] = compiledObject.get(); // Owned by _scripts
+							// Of two classes with one species, the first is the class of the species.
+							if (_speciesToCompiledObjectWeak.count(species) == 0)
+							{
+								_speciesToScriptNumber[species] = scriptNumber;
+								_speciesToCompiledObjectWeak[species] = compiledObject.get(); // Owned by _scripts
+							}
 						}
 						else
 						{
@@ -998,7 +1056,57 @@ bool GlobalClassTable::_Create(const SpeciesTable &speciesTable, const GameFolde
 			}
 		}
 	}
+	// An instance of a class of another script gets the name of its name slot.
+	for (auto &script : _scripts)
+	{
+		script->ResolveInstanceNames([this](uint16_t species, std::vector<uint16_t> &slots)
+		{
+			std::vector<CompiledVarValue> values;
+			return GetSpeciesPropertySelector(species, slots, values);
+		});
+	}
 	return true; // We're done when we run out of stuff to read... it's not failure.
+}
+
+void GlobalClassTable::_GiveUniqueNames(const SelectorTable *selectors)
+{
+	// Two classes of the table can have one name (Hoyle 1 has a Deck class in scripts 1
+	// and 5). The text refers to a
+	// class by its name, so each class after the first (in species order) gets another
+	// name (name_a, name_b, ..., not the name of a selector); its name property keeps
+	// the original string.
+	std::vector<uint16_t> speciesList;
+	std::unordered_set<std::string> names;
+	for (const auto &speciesAndObject : _speciesToCompiledObjectWeak)
+	{
+		speciesList.push_back(speciesAndObject.first);
+		names.insert(speciesAndObject.second->GetName());
+	}
+	std::sort(speciesList.begin(), speciesList.end());
+	std::unordered_set<std::string> used;
+	for (uint16_t species : speciesList)
+	{
+		CompiledObject *object = _speciesToCompiledObjectWeak[species];
+		std::string name = object->GetName();
+		if (used.count(name) > 0)
+		{
+			char suffix = 'a';
+			std::string newName;
+			do
+			{
+				newName = fmt::format("{0}_{1}", name, suffix++);
+			} while ((names.count(newName) > 0) || (selectors && selectors->IsSelectorName(newName)));
+			names.insert(newName);
+			object->AdjustName(newName);
+			name = newName;
+		}
+		used.insert(name);
+	}
+	_nameToSpecies.clear();
+	for (uint16_t species : speciesList)
+	{
+		_nameToSpecies[_speciesToCompiledObjectWeak[species]->GetName()] = species;
+	}
 }
 
 bool GlobalClassTable::LookupSpeciesCompiledName(const std::string &className, uint16_t &species)
@@ -1095,18 +1203,135 @@ std::vector<uint16_t> GlobalClassTable::GetSubclassesOf(uint16_t baseClass)
 }
 
 // vocab.996 gives the script of each species, so _map lists a script's
-// species in number order. The compiler and the .sco number a script's
-// classes in the order of its source; for a decompiled script, that is the
-// order of the compiled script. A game can have its classes in another order
-// (LB2 script 0); with the species in number order, a recompile would give
-// two classes each other's species. So each script's list starts with the
-// species that the table gives the script, in the order of the script's
-// compiled classes; the table's other species for the script follow, in
-// number order (The Colonel's Bequest has a species for script 999 that
-// script 999 does not have). A compiled class whose species the table does
-// not give the script (a leftover class) is left out: to give it that
-// species would give a new class there the species of another script's
-// class. A script that does not load keeps its order.
+// species in number order. The .sco and the compile find a class by its
+// place in its script: the order of the source, which for a decompiled
+// script is the order of the compiled script. A game can have its classes
+// in another order (LB2 script 0). So each script's list starts with the
+// species of the script's compiled classes, in their order; the table's
+// other species for the script follow, in number order (The Colonel's
+// Bequest has a species for script 999 that script 999 does not have). A
+// compiled class can have a species that the table gives another script (a
+// leftover class: KQ5 script 992 has Rev, species 24 of script 978; LSL1
+// VGA has egoActions, species 119 of script 390, in six other scripts): it
+// keeps its place in the list. The table does not change. A script that
+// does not load keeps its order.
+void SpeciesTable::_AlignScript(uint16_t wScript, const CompiledScript &compiledScript)
+{
+	vector<uint16_t> ordered;
+	unordered_set<uint16_t> placed;
+	vector<pair<string, uint16_t>> &classes = _compiledClasses[wScript];
+	classes.clear();
+	for (const auto &object : compiledScript.GetObjects())
+	{
+		uint16_t objectSpecies = object->GetSpecies();
+		if (!object->IsInstance() && (objectSpecies < _direct.size()))
+		{
+			classes.emplace_back(object->GetName(), objectSpecies);
+			if (!placed.count(objectSpecies))
+			{
+				ordered.push_back(objectSpecies);
+				placed.insert(objectSpecies);
+			}
+		}
+	}
+	auto existing = _map.find(wScript);
+	if (existing != _map.end())
+	{
+		for (uint16_t tableSpecies : existing->second)
+		{
+			if (!placed.count(tableSpecies))
+			{
+				ordered.push_back(tableSpecies);
+			}
+		}
+	}
+	if (!ordered.empty())
+	{
+		_map[wScript] = ordered;
+	}
+}
+
+void SpeciesTable::_SetNameSelector(const GameFolderHelper &helper, CompiledScript &compiledScript)
+{
+	if (!_nameSelectorRead)
+	{
+		_nameSelectorRead = true;
+		SelectorTable selectors;
+		_hasNameSelector = selectors.Load(helper) && selectors.ReverseLookup("name", _nameSelector);
+	}
+	if (_hasNameSelector)
+	{
+		compiledScript.SetNameSelector(_nameSelector);
+	}
+}
+
+void SpeciesTable::AlignScript(const GameFolderHelper &helper, uint16_t wScript)
+{
+	if (_aligned.count(wScript))
+	{
+		return;
+	}
+	_aligned.insert(wScript);
+	CompiledScript compiledScript(wScript);
+	_SetNameSelector(helper, compiledScript);
+	if (compiledScript.TryLoad(helper, helper.Version, wScript))
+	{
+		_AlignScript(wScript, compiledScript);
+	}
+}
+
+// A class gets its species by its name, not by its place: a class that the
+// source adds, removes or moves leaves the others their species, and only
+// the class with the name of a leftover class gets the leftover's species
+// (a class at the place of a removed leftover class would get the species of
+// another script's class).
+bool SpeciesTable::CompiledClassSpecies(uint16_t wScript, const std::string &className, const std::unordered_set<uint16_t> &used, SpeciesIndex &species) const
+{
+	auto classes = _compiledClasses.find(wScript);
+	if (classes != _compiledClasses.end())
+	{
+		for (const auto &compiledClass : classes->second)
+		{
+			if ((compiledClass.first == className) && !used.count(compiledClass.second))
+			{
+				species = compiledClass.second;
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+SpeciesIndex SpeciesTable::UnusedSpecies(uint16_t wScript, const std::unordered_set<uint16_t> &used)
+{
+	auto list = _map.find(wScript);
+	if (list != _map.end())
+	{
+		for (uint16_t species : list->second)
+		{
+			if ((_direct[species] == wScript) && !used.count(species))
+			{
+				return species;
+			}
+		}
+	}
+	return MaybeAddSpeciesIndex(wScript, (uint16_t)((list != _map.end()) ? list->second.size() : 0));
+}
+
+void SpeciesTable::SetScriptOrder(uint16_t wScript, const std::vector<uint16_t> &species)
+{
+	vector<uint16_t> ordered = species;
+	unordered_set<uint16_t> placed(species.begin(), species.end());
+	for (uint16_t tableSpecies : _map[wScript])
+	{
+		if (!placed.count(tableSpecies))
+		{
+			ordered.push_back(tableSpecies);
+		}
+	}
+	_map[wScript] = ordered;
+}
+
 void SpeciesTable::_AlignToCompiledScripts(const GameFolderHelper &helper)
 {
 	// Find the scripts and their heaps in one pass: a lookup for each script
@@ -1129,45 +1354,29 @@ void SpeciesTable::_AlignToCompiledScripts(const GameFolderHelper &helper)
 	for (auto &scriptAndSpecies : _map)
 	{
 		vector<uint16_t> &species = scriptAndSpecies.second;
-		if (species.size() < 2)
-		{
-			continue;   // Nothing to order.
-		}
 		auto found = scriptsAndHeaps.find(scriptAndSpecies.first);
 		if ((found == scriptsAndHeaps.end()) || !found->second.first)
 		{
 			continue;
 		}
 		CompiledScript compiledScript(scriptAndSpecies.first);
+		_SetNameSelector(helper, compiledScript);
 		if (!compiledScript.TryLoad(helper, helper.Version, scriptAndSpecies.first, *found->second.first, found->second.second.get()))
 		{
 			continue;
 		}
-		unordered_set<uint16_t> inTable(species.begin(), species.end());
-		vector<uint16_t> ordered;
-		unordered_set<uint16_t> placed;
-		for (const auto &object : compiledScript.GetObjects())
-		{
-			uint16_t objectSpecies = object->GetSpecies();
-			if (!object->IsInstance() && inTable.count(objectSpecies) && !placed.count(objectSpecies))
-			{
-				ordered.push_back(objectSpecies);
-				placed.insert(objectSpecies);
-			}
-		}
-		for (uint16_t tableSpecies : species)
-		{
-			if (!placed.count(tableSpecies))
-			{
-				ordered.push_back(tableSpecies);
-			}
-		}
-		species = ordered;
+		_aligned.insert(scriptAndSpecies.first);
+		_AlignScript(scriptAndSpecies.first, compiledScript);
 	}
 }
 
-bool SpeciesTable::Load(const GameFolderHelper &helper, bool alignToCompiledScripts)
+bool SpeciesTable::Load(const GameFolderHelper &helper, bool alignToCompiledScripts, const SelectorTable *selectors)
 {
+	if (selectors)
+	{
+		_nameSelectorRead = true;
+		_hasNameSelector = selectors->ReverseLookup("name", _nameSelector);
+	}
 	bool fRet = false;
 	unique_ptr<ResourceBlob> blob(_GetVocabData(helper, VocabClassTable));
 	if (blob)
@@ -1249,6 +1458,8 @@ void SpeciesTable::PurgeOldClasses(CResourceMap &resourceMap)
 		// Then reload.
 		_map.clear();
 		_direct.clear();
+		_aligned.clear();
+		_compiledClasses.clear();
 		_wNewSpeciesIndex = 0;
 		_fDirty = false;
 		this->Load(helper, false);   // No caller reads the species order after a purge.
@@ -1421,6 +1632,21 @@ bool KernelTable::ReverseLookup(std::string name, uint16_t &wIndex) const
 	{
 		wIndex = wMissingKernel;
 		result = true;
+	}
+	// kernel_<number>: the name that the decompiler gives a kernel past the
+	// names, or a later kernel with the name of another one.
+	if (!result)
+	{
+		// Only for a kernel past the names, or one whose name an earlier kernel has: a
+		// procedure of the source can have the name kernel_<number>.
+		uint16_t number;
+		uint16_t first;
+		if (_ParseNumberedName(name, "kernel_", number) &&
+			((number >= _names.size()) || (__super::ReverseLookup(_names[number], first) && (first != number))))
+		{
+			wIndex = number;
+			result = true;
+		}
 	}
 	return result;
 }

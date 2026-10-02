@@ -114,7 +114,7 @@ namespace UnitTests
 
             if (!IsFullRoundTripEligible())
             {
-                CResourceMap &rm = appState->GetResourceMap();
+                CResourceMap &rm = AppResourceMap();
                 const GameFolderHelper &helper = rm.Helper();
                 std::vector<ScriptId> scripts;
                 rm.GetAllScripts(scripts);

@@ -427,7 +427,8 @@ void OutputPropertyTableRST(SCIClassBrowser &browser, DocScript &docScript, fmt:
 	std::vector<std::string> inheritedProperties;
 	std::vector<std::string> newProperties;
 	auto allProps = browser.CreatePropertyNameArray(theClass.GetName());
-	if (theClass.GetSuperClass().empty())
+	// A class with &layout inherits no property: its text has all of them.
+	if (theClass.GetSuperClass().empty() || theClass.HasExplicitLayout())
 	{
 		newProperties = *allProps;
 	}

@@ -13,52 +13,15 @@
 ***************************************************************************/
 #pragma once
 
-bool OutputNewStructure(const std::string &messagePrefix, sci::FunctionBase &func, MainNode &main, DecompileLookups &lookups);
+namespace scope
+{
+	class CodeModel;
+	struct Region;
+}
 
-// Returns the node's single predecessor, or null if it has none. The main-chunk
-// output walk requires at most one predecessor; this throws ControlFlowException
-// if the node has more (a block reached by two one-way jmps), so the caller falls
-// back to disassembly instead of silently dropping code. (#64)
-ControlFlowNode *GetFirstPredecessorOrNull(ControlFlowNode *node);
-
-// Returns the node's single successor, or null if it has none. Symmetric to
-// GetFirstPredecessorOrNull: throws ControlFlowException if the node has more
-// than one successor, so the caller falls back to disassembly instead of
-// silently dropping code. (#104)
-ControlFlowNode *GetFirstSuccOrNull(ControlFlowNode *node);
-
-/*
-	Decompilation summary
-
-	0) For each function or method, we get the start and end code markers.
-
-	1) In preparation for control flow analysis, the code is partitioned into blocks based on
-		branch and jump instructions. These form the base blocks for control flow analysis.
-		We also do some "instruction consumption" here and produce breaks prior to if statements,
-		which isn't a good thing. With a more robust control flow analysis, we could probably avoid this.
-
-	2) Then we do "control flow analysis". We identify loops, switch statements, compound conditions and
-		if/else constructs. We do a bit of patchup in some cases. We try to stick with theorical
-		control flow graph paradigms as much as possible, but sometimes we do SCI-dependent things, such
-		as knowing that code is always sequential (i.e. we never branch backward except in loops).
-		For debugging purposes VISUALIZE_FLOW can be uncommented to produce a graph file in .dot format
-		so we can visualize the graph (essential for debugging). A good .dot visualizer is here:
-		https://stamm-wilbrandt.de/GraphvizFiddle/
-
-	3) The result of control flow analysis is a tree of nodes that represent the flow structures. We
-		turn this into a tree of instruction consumption. e.g. an instruction that consumes two stack
-		values will have two instructions that produce stack values as children. Sometimes we need
-		to look outisde our control flow nodes to find the instructions to include as children. This is
-		due (presumably) to optimizations Sierra's compiler did, or possibly to language-specific features
-		that reused previous results in the accumulator or stack. In some cases this means we end up
-		duplicating sections of the tree. 
-		Note that control structures are included in the consumption tree. They generally act as
-		an accumulator generator.
-
-	4) From the instruction consumption tree, we can directly generate the SyntaxNode tree. These correspond
-		directly to high level statements. It's here we can attempt to give meaningul names to variables and such.
-
-	5) From the SyntaxNode tree, we can produce textual output in any of the supported languages.
-
-
-*/
+// The scope engine: the forward value stage makes the chunk tree of the
+// region tree, and the chunk tree gives the statements of func. code is the
+// list that the model was made from; passedDeadBranches has the dead branches
+// that a path of the tree goes through (scope::Verify). Throws a
+// scope::ScopeError when a stage fails.
+void OutputNewStructure(sci::FunctionBase &func, const scope::CodeModel &model, const scope::Region &root, std::list<scii> &code, const std::set<int> &passedDeadBranches, DecompileLookups &lookups);

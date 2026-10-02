@@ -1,0 +1,12 @@
+== f4WhileOr
+code 000a
+loop 000c latch 0018
+  body
+    code 000c
+    or 000e
+      code 0010
+    if 0012
+      then
+        code 0014-0016
+      else break 1
+code 001a

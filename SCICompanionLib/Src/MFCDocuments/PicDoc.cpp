@@ -53,7 +53,7 @@ END_MESSAGE_MAP()
 CPicDoc::CPicDoc() : _previewPalette(nullptr), _showPolygons(false), _currentPolyIndex(-1), _fakeEgoResourceNumber(-1), _dependencyTracker(nullptr), _isUndithered(false)
 {
 	// Add ourselves as a sync
-	CResourceMap &map = appState->GetResourceMap();
+	CResourceMap &map = AppResourceMap();
 	map.AddSync(this);
 }
 
@@ -228,7 +228,7 @@ BOOL CPicDoc::OnNewDocument()
 void CPicDoc::OnCloseDocument()
 {
 	// Remove ourselves as a sync
-	CResourceMap &map = appState->GetResourceMap();
+	CResourceMap &map = AppResourceMap();
 	map.RemoveSync((IResourceMapEvents*)this);
 	__super::OnCloseDocument();
 }
@@ -251,15 +251,15 @@ void CPicDoc::OnResourceAdded(const ResourceBlob *pData, AppendBehavior appendBe
 
 void CPicDoc::SetEditPic(DependencyTracker &tracker, std::unique_ptr<ResourceEntity> pEditPic, int id)
 {
-	_isUndithered = appState->GetResourceMap().Helper().GetUndither();
+	_isUndithered = AppResourceMap().Helper().GetUndither();
 
 	_dependencyTracker = &tracker;
 	_checksum = id;
 
-	if (pEditPic && appState->GetVersion().UsesPolygons)
+	if (pEditPic && AppVersion().UsesPolygons)
 	{
 		// Add a polygon component
-		pEditPic->AddComponent<PolygonComponent>(CreatePolygonComponent(appState->GetResourceMap().Helper().GetPolyFolder(), pEditPic->ResourceNumber));
+		pEditPic->AddComponent<PolygonComponent>(CreatePolygonComponent(AppResourceMap().Helper().GetPolyFolder(), pEditPic->ResourceNumber));
 		_lastPoly = std::make_unique<PolygonComponent>(pEditPic->GetComponent<PolygonComponent>());
 	}
 

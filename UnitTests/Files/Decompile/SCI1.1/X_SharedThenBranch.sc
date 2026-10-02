@@ -4,8 +4,9 @@
 
 ; A shared-then shape: a "bnt" whose target is an inner if's then block. That
 ; is (or (not X) Y) made with a synthesized not, a shape Sierra's compiler does
-; not emit. The structurer must not merge it as an and, because that changes
-; the value. It must fall back to asm cleanly ("Unstructured branches").
+; not emit. The decompiler must not merge it as an and, because that changes
+; the value. It must fall back to asm cleanly
+; ("[scope:parse:no-scope-for-target]").
 (public
 	xSharedThenBranch 0
 )

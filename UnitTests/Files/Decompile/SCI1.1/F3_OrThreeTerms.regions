@@ -1,0 +1,10 @@
+== f3OrThreeTerms
+code 000a-000c
+or 000e
+  code 0010
+  or 0012
+    code 0014
+if 0016
+  then
+    code 0018-001a
+code 001c

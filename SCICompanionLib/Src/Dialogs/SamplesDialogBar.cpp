@@ -93,13 +93,13 @@ void CSamplesDialogBar::_PrepareSamples()
 
 	if (_pDoc)
 	{
-		SCIVersion sampleVersion = (appState->GetVersion().MapFormat <= ResourceMapFormat::SCI0_LayoutSCI1) ? sciVersion0 : sciVersion1_1;
+		SCIVersion sampleVersion = (AppVersion().MapFormat <= ResourceMapFormat::SCI0_LayoutSCI1) ? sciVersion0 : sciVersion1_1;
 
 		ResourceType type = _pDoc->GetShownResourceType();
 		if (type != ResourceType::None)
 		{
 			// Find all the samples in a particular folder.
-			std::string samplesFolder = appState->GetResourceMap().GetSamplesFolder() + "\\" + GetResourceInfo(type).pszSampleFolderName + "s";
+			std::string samplesFolder = AppResourceMap().GetSamplesFolder() + "\\" + GetResourceInfo(type).pszSampleFolderName + "s";
 			std::string findFirstString = samplesFolder + "\\*.bin";
 			WIN32_FIND_DATA findData;
 			HANDLE hFolder = FindFirstFile(findFirstString.c_str(), &findData);
@@ -113,11 +113,11 @@ void CSamplesDialogBar::_PrepareSamples()
 					// Use the filename minus the .bin:
 					TCHAR *pszExt = PathFindExtension(findData.cFileName);
 					*pszExt = 0; // Get rid of it.
-					if (SUCCEEDED(blob->CreateFromFile(findData.cFileName, fileName.c_str(), sampleVersion, appState->GetResourceMap().GetDefaultResourceSaveLocation(), - 1, -1)))
+					if (SUCCEEDED(blob->CreateFromFile(findData.cFileName, fileName.c_str(), sampleVersion, AppResourceMap().GetDefaultResourceSaveLocation(), - 1, -1)))
 					{
 						if (blob->GetType() == type)
 						{
-							if (IsVersionCompatible(type, blob->GetVersion(), appState->GetVersion()))
+							if (IsVersionCompatible(type, blob->GetVersion(), AppVersion()))
 							{
 								_samples.push_back(std::move(blob));
 							}
@@ -166,7 +166,7 @@ void CSamplesDialogBar::_PrepareSamples()
 						std::unique_ptr<PaletteComponent> temp;
 						if (pRaster->Traits.PaletteType == PaletteType::VGA_256)
 						{
-							temp = appState->GetResourceMap().GetMergedPalette(*resource, 999);
+							temp = AppResourceMap().GetMergedPalette(*resource, 999);
 							pPalette = temp.get();
 						}
 
@@ -239,7 +239,7 @@ void CSamplesDialogBar::_ResetUI()
 void CSamplesDialogBar::OnGotoView(UINT nID)
 {
 	ResourceBlob &blob = *_samples[nID - ID_GOTOVIEW1];
-	appState->GetResourceMap().AppendResourceAskForNumber(blob, true);
+	AppResourceMap().AppendResourceAskForNumber(blob, true);
 }
 
 

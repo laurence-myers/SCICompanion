@@ -1,0 +1,39 @@
+== f20OrAndInLoop
+code 000c
+loop 000e latch 002f
+  body
+    code 000e-0013
+    if 0014
+      then
+        code 0016-001a
+        or 001b
+          code 001d-0021
+          if 0022
+            then
+              code 0024-0028
+        if 0029
+          then
+            code 002b-002d
+      else break 1
+code 0031
+== f20OrTwoAnds
+code 0032
+loop 0034 latch 0051
+  body
+    code 0034
+    if 0036
+      then
+        code 0038-003a
+        if 003b
+          then
+            code 003d-0041
+        or 0042
+          code 0044
+          if 0046
+            then
+              code 0048-004c
+        if 004d
+          then
+            code 004f
+      else break 1
+code 0053-0055

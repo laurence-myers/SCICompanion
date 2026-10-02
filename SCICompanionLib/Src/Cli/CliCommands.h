@@ -142,7 +142,24 @@ namespace cli
         bool debugControlFlow = false;
         bool debugInstructions = false;
         std::string debugFilter;
+        // The file of the function report; empty: no report.
+        std::string functionReport;
     };
+
+    // The first line of a function report: the names of its columns.
+    extern const char *const FunctionReportHeader;
+
+    // True when --function-report may write over the file: there is no such
+    // file, the file is empty, or it is a function report (its first line is
+    // FunctionReportHeader).
+    bool MayOverwriteFunctionReport(const std::string &path);
+
+    // The function report can be written: its folder exists, and the file,
+    // when it exists, opens for writing. The file does not change.
+    sci::Status CheckFunctionReportFile(const std::string &path);
+
+    // Writes a function report with no functions (its first line only).
+    sci::Status WriteEmptyFunctionReport(const std::string &path);
 
     // Decompiles the scripts (RunDecompile) and prints the report: the
     // messages of the decompiler as they come, then the summary. --stdout
@@ -150,7 +167,11 @@ namespace cli
     // lists the files that a run would write, with the stale scripts
     // (DecompileRunOptions::dryRun). The exit code of the report (plan
     // section 8); an error of the decompiler in a script that it wrote
-    // (a function whose code it cannot find) is 6. Fails when the run
+    // (a function whose code it cannot find) is 6. With --function-report,
+    // the report goes to its file at the end, also after Ctrl+C or a
+    // dry run: a line for each function that the run decompiled (the last
+    // decompile of a script counts), in the order of the scripts and of
+    // the offsets; a report that cannot be written is 9. Fails when the run
     // cannot start: a bad selector, or --stdout with more than one script
     // (Usage).
     sci::Result<ExitCode> RunScriptDecompile(GameSession &session, const ScriptDecompileOptions &options, const CommonOptions &common, CliOutput &output);
@@ -197,6 +218,58 @@ namespace cli
     // write. The exit code of the report (plan section 8). Fails when the
     // batch cannot start (the code of ExitCodeForStartError: 1, 2, 3, 7 or 8).
     sci::Result<ExitCode> RunScriptCompile(GameSession &session, const ScriptCompileOptions &options, const CommonOptions &common, CliOutput &output);
+
+    // scic dev compare-structure (hidden): the structure of the functions of
+    // a folder of decompiled scripts against another decompile.
+    struct CompareStructureOptions
+    {
+        std::string expectedFolder;
+        std::string actualFolder;
+        std::string baselineFolder;     // empty: no baseline
+        std::string outFile;            // empty: stdout
+        std::vector<int> scripts;       // empty: every script
+    };
+
+    // The first line of the table of compare-structure.
+    extern const char *const CompareStructureHeader;
+
+    // Compares the .sc files of the actual folder with those of the expected
+    // folder (CompareScriptFolders), and with those of the baseline folder
+    // when it is given. Writes a table (tab-separated: script, key,
+    // function, verdict, baseline verdict, change; the last two are empty
+    // with no baseline) to the out file or stdout, then the count of each
+    // verdict and change to stderr. A file that cannot be read or parsed is
+    // a warning, and exit code 6. Fails when a folder does not exist
+    // (NotFound).
+    sci::Result<ExitCode> RunCompareStructure(const CompareStructureOptions &options, CliOutput &output);
+
+    // scic dev compare-meaning (hidden): the meaning of each function of a
+    // game against the same function of the script that a compile of the
+    // decompiled text made.
+    struct CompareMeaningOptions
+    {
+        std::string gameFolder;
+        // The compiled scripts as scic script compile --out-dir --raw writes
+        // them: script.<n>.bin and heap.<n>.bin.
+        std::string recompiledFolder;
+        std::string outFile;            // empty: stdout
+        std::vector<int> scripts;       // empty: every script of the game
+    };
+
+    // The first line of the table of compare-meaning.
+    extern const char *const CompareMeaningHeader;
+
+    // Compares each function of each script of the game with the function of
+    // the same key in the recompiled script (meaning::Compare). A script with
+    // no file in the recompiled folder (its compile failed) gives each of its
+    // functions UNCOMPARED, "not-recompiled". Writes a table (tab-separated:
+    // script, key, function, offset, verdict, detail) to the out file or
+    // stdout, then the count of each verdict to stderr. A script that cannot
+    // be read is a warning, and exit code 6; a recompiled script that cannot
+    // be read also gives each of its functions UNCOMPARED,
+    // "recompiled-unreadable". Fails when the game does not open, or the
+    // recompiled folder does not exist (NotFound).
+    sci::Result<ExitCode> RunCompareMeaning(const CompareMeaningOptions &options, const std::string &dataFolder, CliOutput &output);
 
     // The full path of a folder or a file, from GetFullPathName: a relative
     // path starts at the current folder, and the case of the path stays. A

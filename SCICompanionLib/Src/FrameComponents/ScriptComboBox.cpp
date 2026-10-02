@@ -136,7 +136,7 @@ bool CScriptComboBox::_SpawnScriptTask()
 					[](ITaskStatus &status, ParsePayload &payload)
 				{
 					std::unique_ptr<Script> pScript(new Script(payload.Script));
-					if (!SyntaxParser_Parse(*pScript, payload.Stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), nullptr))
+					if (!SyntaxParser_Parse(*pScript, payload.Stream, PreProcessorDefinesFromSCIVersion(AppVersion()), nullptr))
 					{
 						pScript.reset(nullptr);
 					}

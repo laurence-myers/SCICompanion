@@ -349,7 +349,7 @@ void DisassembleFallback(FunctionBase &func, code_pos start, code_pos end, Decom
 				{
 					std::string propertyName;
 					uint16_t propIndex = cur->get_first_operand();
-					if (lookups.LookupPropertyName(propIndex, propertyName))
+					if (lookups.LookupPropertyName(propIndex, propertyName) && !IsPlaceholderPropertyName(propertyName))
 					{
 						_AddToken(*asmStatement, propertyName);
 					}

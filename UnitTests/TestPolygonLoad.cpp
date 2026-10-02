@@ -17,7 +17,7 @@ GNU General Public License for more details.
 #include "Polygon.h"
 #include "ResourceEntity.h"
 #include "ResourceMap.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceContainer.h"
 #include "Helper.h"
 #include "format.h"
@@ -52,7 +52,7 @@ namespace UnitTests
         void _DoItHelper(int picNumber)
         {
             // Open it (if it exists, which it shouldn't)
-            std::string polyFolder = appState->GetResourceMap().Helper().GetPolyFolder();
+            std::string polyFolder = AppResourceMap().Helper().GetPolyFolder();
             std::unique_ptr<PolygonComponent> poly = CreatePolygonComponent(polyFolder, picNumber);
             SCIPolygon polygon;
             polygon.Type = PolygonType::ContainedAccess;

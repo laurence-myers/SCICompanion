@@ -65,19 +65,113 @@ void DecompileObject(const CompiledObject &object,
 		speciesPropertyValueList = object.GetPropertyValues();
 		fSuccess = true;
 	}
+	// The slots after --info-- (name first, if the class has a name slot).
+	size_t firstSlotAfterInfo = (size_t)object.GetNumberOfDefaultSelectors() - 1;
+	// The superclass has a name slot after --info-- (or it is not known).
+	bool superHasNameSlot = true;
+	if (fSuccess && !object.IsInstance())
+	{
+		if (pClass->GetSuperClass().empty())
+		{
+			// The compiler gives a class with no superclass and no properties a
+			// name slot. A class with no slot after --info-- gets &layout.
+			pClass->SetExplicitLayout(propertySelectorList.size() <= firstSlotAfterInfo);
+		}
+		else
+		{
+			// The compiler gives a class the slots of its superclass, then the new
+			// properties of the text. A class whose slots do not start with the
+			// slots of its superclass gets &layout: its text then has all its slots
+			// after --info--, in their order.
+			vector<uint16_t> superSelectorList;
+			vector<CompiledVarValue> superValueList;
+			if (lookups.LookupSpeciesPropertyListAndValues(object.GetSuperClass(), superSelectorList, superValueList))
+			{
+				bool startsWithSuper = (superSelectorList.size() <= propertySelectorList.size());
+				for (size_t i = firstSlotAfterInfo; startsWithSuper && (i < superSelectorList.size()); i++)
+				{
+					startsWithSuper = (superSelectorList[i] == propertySelectorList[i]);
+				}
+				pClass->SetExplicitLayout(!startsWithSuper);
+				superHasNameSlot = (superSelectorList.size() > firstSlotAfterInfo) && (superSelectorList[firstSlotAfterInfo] == lookups.GetNameSelector());
+			}
+		}
+	}
+	size_t numberOfProps = 0;
+	size_t firstProperty = 0;
+	// The name slot that the property loop writes, if any.
+	size_t nameSlotWritten = CompiledScript::NoNameSlot;
+	// The name slot of an instance that has the name of the instance: the
+	// compiler fills it, so the loop does not write it.
+	size_t ownNameSlot = CompiledScript::NoNameSlot;
 	if (fSuccess)
 	{
 		assert(propertySelectorList.size() == speciesPropertyValueList.size());
 		size_t size1 = propertySelectorList.size();
 		size_t size2 = object.GetPropertyValues().size();
-		size_t numberOfProps = min(size1, size2);
+		numberOfProps = min(size1, size2);
 		if (size1 != size2)
 		{
 			// TODO: Output a warning... mismatched prop sizes.
 		}
-		
-		for (size_t i = object.GetNumberOfDefaultSelectors(propertySelectorList, lookups.GetNameSelector()); i < numberOfProps; i++)
+
+		firstProperty = object.GetNumberOfDefaultSelectors(propertySelectorList, lookups.GetNameSelector());
+		if (pClass->HasExplicitLayout())
 		{
+			firstProperty = firstSlotAfterInfo;
+		}
+		else if (!object.IsInstance() && object.GetOriginalName().empty() &&
+			(firstProperty > 0) && (propertySelectorList[firstProperty - 1] == lookups.GetNameSelector()) &&
+			((pClass->GetSuperClass().empty() && (firstProperty < numberOfProps)) || !superHasNameSlot))
+		{
+			// A class with no superclass that declares other properties, and a
+			// class whose superclass has no name slot, have a name slot only when
+			// their text declares name, so the name property is written.
+			firstProperty--;
+		}
+		// A name slot that is not right after --info-- (a class with no
+		// superclass can have its name slot after other properties).
+		for (size_t i = firstProperty; i < numberOfProps; i++)
+		{
+			if (propertySelectorList[i] == lookups.GetNameSelector())
+			{
+				const CompiledVarValue &nameValue = object.GetPropertyValues()[i];
+				ICompiledScriptSpecificLookups::ObjectType type;
+				std::string nameString;
+				if (object.IsInstance() && object.GetOriginalName().empty() && nameValue.isObjectOrString &&
+					lookups.LookupScriptThing(nameValue.value, type, nameString) &&
+					(type == ICompiledScriptSpecificLookups::ObjectTypeString) && (nameString == object.GetName()))
+				{
+					ownNameSlot = i;
+				}
+				else if (!object.IsInstance() || (nameValue.value != speciesPropertyValueList[i].value))
+				{
+					nameSlotWritten = i;
+				}
+				break;
+			}
+		}
+	}
+	if (!object.GetOriginalName().empty() && !pClass->HasExplicitLayout() && (nameSlotWritten == CompiledScript::NoNameSlot))
+	{
+		// The object has another name in the text (FixDuplicateObjectNames): its name
+		// property keeps the original string. With &layout, or when the property loop
+		// writes the name slot, the name slot gives it.
+		unique_ptr<ClassProperty> nameProperty = make_unique<ClassProperty>();
+		nameProperty->SetName("name");
+		PropertyValue nameValue;
+		nameValue.SetValue(object.GetOriginalName(), ValueType::String);
+		nameProperty->SetValue(nameValue);
+		pClass->AddProperty(move(nameProperty));
+	}
+	if (fSuccess)
+	{
+		for (size_t i = firstProperty; i < numberOfProps; i++)
+		{
+			if (i == ownNameSlot)
+			{
+				continue;
+			}
 			const CompiledVarValue &propValue = object.GetPropertyValues()[i];
 			// If this is an instance, look up the species values, and only
 			// include those that are different.
@@ -439,6 +533,89 @@ private:
 	const IDecompilerConfig &_config;
 };
 
+// The start of each function of the script (codePointersTO): the methods,
+// the exported procedures and the internal procedures; the internal
+// procedures that are not exported (internalProcOffsetsTO); and the exports
+// that point into the code of the function before them (staleExportsTO:
+// Sierra left such exports, for example in QfG3 script 7; no procedure
+// starts there, and Snuffer leaves them out too).
+static void _FindCodePointers(const CompiledScript &compiledScript, DecompileLookups &lookups, set<uint16_t> &codePointersTO, set<uint16_t> &internalProcOffsetsTO, set<uint16_t> &staleExportsTO)
+{
+	// Make an index of code pointers by looking at the object methods
+	set<uint16_t> methodPointersAll;
+	for (auto &object : compiledScript._objects)
+	{
+		const vector<uint16_t> &methodPointersTO = object->GetMethodCodePointersTO();
+		codePointersTO.insert(methodPointersTO.begin(), methodPointersTO.end());
+		methodPointersAll.insert(methodPointersTO.begin(), methodPointersTO.end());
+	}
+
+	// and the exported procedures
+	for (size_t i = 0; i < compiledScript._exportsTO.size(); i++)
+	{
+		uint16_t wCodeOffset = compiledScript._exportsTO[i];
+		// Export offsets could point to objects too - we're only interested in code pointers, so
+		// check that it's not an object
+		if (compiledScript.IsExportAProcedure(wCodeOffset))
+		{
+			codePointersTO.insert(wCodeOffset);
+		}
+	}
+
+	// and finally, the most difficult of all, we'll need to scan though for any call calls...
+	// those would be our internal procs
+	internalProcOffsetsTO = compiledScript.FindInternalCallsTO();
+	// A call goes to the start of a function: an export that a call targets
+	// is not stale.
+	const set<uint16_t> callTargetsTO = internalProcOffsetsTO;
+	// Before adding these though, remove any exports from the internalProcOffsets.
+	for (const auto &exporty : compiledScript._exportsTO)
+	{
+		if (compiledScript.IsExportAProcedure(exporty)) // Exported objects can have the same address as a proc, we need to make sure we don't omit a proc because of that.
+		{
+			set<uint16_t>::iterator internalsIndex = find(internalProcOffsetsTO.begin(), internalProcOffsetsTO.end(), exporty);
+			if (internalsIndex != internalProcOffsetsTO.end())
+			{
+				// Remove this guy.
+				internalProcOffsetsTO.erase(internalsIndex);
+			}
+		}
+	}
+	// Now add the internal guys to the full list
+	codePointersTO.insert(internalProcOffsetsTO.begin(), internalProcOffsetsTO.end());
+
+	// An export whose address the code of the function before it reaches
+	// (its decode goes past the address) is stale.
+	const std::vector<BYTE> &bytes = compiledScript.GetRawBytes();
+	set<uint16_t> exportPointers;
+	for (uint16_t exportPointer : compiledScript._exportsTO)
+	{
+		if (compiledScript.IsExportAProcedure(exportPointer) && (methodPointersAll.count(exportPointer) == 0) && (callTargetsTO.count(exportPointer) == 0))
+		{
+			exportPointers.insert(exportPointer);
+		}
+	}
+	for (uint16_t exportPointer : exportPointers)
+	{
+		auto it = codePointersTO.find(exportPointer);
+		if ((it == codePointersTO.end()) || (it == codePointersTO.begin()))
+		{
+			continue;
+		}
+		uint16_t before = *std::prev(it);
+		if ((before < bytes.size()) && (exportPointer < bytes.size()))
+		{
+			int length = FunctionCodeLength(lookups, &bytes[before], compiledScript.GetEndOfRawBytes(), before);
+			if ((length > 0) && ((int)before + length > (int)exportPointer))
+			{
+				codePointersTO.erase(it);
+				staleExportsTO.insert(exportPointer);
+			}
+		}
+	}
+	// Now we know the length of each code segment (assuming none overlap)
+}
+
 unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const CompiledScript &compiledScript, DecompileLookups &lookups, const Vocab000 *pWords)
 {
 	unique_ptr<Script> pScript = std::make_unique<Script>();
@@ -464,45 +641,10 @@ unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const Compiled
 	}
 
 	// Now its time for code.
-	// Make an index of code pointers by looking at the object methods
 	set<uint16_t> codePointersTO;
-	for (auto &object : compiledScript._objects)
-	{
-		const vector<uint16_t> &methodPointersTO = object->GetMethodCodePointersTO();
-		codePointersTO.insert(methodPointersTO.begin(), methodPointersTO.end());
-	}
-
-	// and the exported procedures
-	for (size_t i = 0; i < compiledScript._exportsTO.size(); i++)
-	{
-		uint16_t wCodeOffset = compiledScript._exportsTO[i];
-		// Export offsets could point to objects too - we're only interested in code pointers, so
-		// check that it's not an object
-		if (compiledScript.IsExportAProcedure(wCodeOffset))
-		{
-			codePointersTO.insert(wCodeOffset);
-		}
-	}
-
-	// and finally, the most difficult of all, we'll need to scan though for any call calls...
-	// those would be our internal procs
-	set<uint16_t> internalProcOffsetsTO = compiledScript.FindInternalCallsTO();
-	// Before adding these though, remove any exports from the internalProcOffsets.
-	for (const auto &exporty : compiledScript._exportsTO)
-	{
-		if (compiledScript.IsExportAProcedure(exporty)) // Exported objects can have the same address as a proc, we need to make sure we don't omit a proc because of that.
-		{
-			set<uint16_t>::iterator internalsIndex = find(internalProcOffsetsTO.begin(), internalProcOffsetsTO.end(), exporty);
-			if (internalsIndex != internalProcOffsetsTO.end())
-			{
-				// Remove this guy.
-				internalProcOffsetsTO.erase(internalsIndex);
-			}
-		}
-	}
-	// Now add the internal guys to the full list
-	codePointersTO.insert(internalProcOffsetsTO.begin(), internalProcOffsetsTO.end());
-	// Now we know the length of each code segment (assuming none overlap)
+	set<uint16_t> internalProcOffsetsTO;
+	set<uint16_t> staleExportsTO;
+	_FindCodePointers(compiledScript, lookups, codePointersTO, internalProcOffsetsTO, staleExportsTO);
 
 	// Spit out code segments:
 	// First, the objects (instances, classes)
@@ -525,7 +667,20 @@ unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const Compiled
 		// contains the Rm/Room class.  Filter these out by ignoring code pointers which point outside
 		// the codesegment.
 		uint16_t exportPointer = compiledScript._exportsTO[i];
-		if (compiledScript.IsExportAProcedure(exportPointer))
+		if (staleExportsTO.count(exportPointer) != 0)
+		{
+			// No procedure starts there (_FindCodePointers). The function report
+			// has a line for it.
+			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, fmt::format("Export {0} points into the code of another function ({1:04x}): it is left out.", i, exportPointer));
+			DecompiledFunction report;
+			report.script = compiledScript.GetScriptNumber();
+			report.name = lookups.ReverseLookupPublicExportName(compiledScript.GetScriptNumber(), (uint16_t)i);
+			report.offset = exportPointer;
+			report.index = lookups.FunctionCount++;
+			report.output = "stale";
+			lookups.DecompileResults().InformFunction(report);
+		}
+		else if (compiledScript.IsExportAProcedure(exportPointer))
 		{
 			std::unique_ptr<ProcedureDefinition> pProc = std::make_unique<ProcedureDefinition>();
 			pProc->SetScript(pScript.get());
@@ -619,7 +774,7 @@ Script *Decompile(const GameFolderHelper &helper, const CompiledScript &compiled
 
 		// Decompiling always generates an SCO. Any pertinent info from the old SCO should be transfered
 		// to the new one based extracting info from the script.
-		std::unique_ptr<CSCOFile> scoFile = SCOFromScriptAndCompiledScript(*pScript, compiledScript);
+		std::unique_ptr<CSCOFile> scoFile = SCOFromScriptAndCompiledScript(*pScript, compiledScript, NameSelectorOf(lookups.GetSelectorTable(), helper.Version.SeparateHeapResources));
 		sci::Status wroteObjectFile = SaveSCOFile(helper, *scoFile);
 		if (!wroteObjectFile)
 		{
@@ -641,14 +796,35 @@ Script *Decompile(const GameFolderHelper &helper, const CompiledScript &compiled
 	return pScript.release();
 }
 
-void FixDuplicateObjectNames(CompiledScript &compiledScript, const SelectorTable &selectorTable)
+void FixDuplicateObjectNames(CompiledScript &compiledScript, GlobalCompiledScriptLookups &lookups)
 {
 	// Occasionally a script will have objects with duplicate names. Rather than a bug, this indicates that there were two separate objects that had
 	// their name property explicitly provided. An example is _MapInSection.sc in QFG2.
-	// There are a few ways to address it, but we'll try the following here:
-	//  Check for any name dupes in the objects.
-	//  If so, change their name to some unique name
-	//  Then add a name property with a value pointing to the original string.
+	// Such objects get a unique name (name_a, name_b, ...), and the text keeps the original
+	// string as an explicit name property (CompiledObject::GetOriginalName).
+	// A class of the class table takes the name that the table gives it (two classes of
+	// the table can have one name: GlobalClassTable gives each one its own), and keeps
+	// it: the text of other scripts refers to the class by that name. Of two classes with
+	// one species (King's Quest V script 764 has two SaveIcon classes), the first is the
+	// class of the table.
+	GlobalClassTable &classTable = lookups.GetGlobalClassTable();
+	unordered_set<const CompiledObject*> tableClasses;
+	unordered_set<uint16_t> tableSpecies;
+	for (auto &object : compiledScript.GetObjects())
+	{
+		uint16_t scriptNumber;
+		if (!object->IsInstance() && classTable.GetSpeciesScriptNumber(object->GetSpecies(), scriptNumber) &&
+			(scriptNumber == compiledScript.GetScriptNumber()) && tableSpecies.insert(object->GetSpecies()).second)
+		{
+			tableClasses.insert(object.get());
+			std::string tableName = classTable.Lookup(object->GetSpecies());
+			if (!tableName.empty() && (tableName != object->GetName()))
+			{
+				object->AdjustName(tableName);
+			}
+		}
+	}
+
 	unordered_map<string, int> countOfNames;
 	unordered_map<string, char> suffixes;
 	for (const auto &object : compiledScript.GetObjects())
@@ -657,14 +833,44 @@ void FixDuplicateObjectNames(CompiledScript &compiledScript, const SelectorTable
 		suffixes[object->GetName()] = 'a';
 	}
 
+	// The names of the properties of the objects of the script (their species). In a
+	// method, the compiler reads such a name as the property: an instance with that
+	// name (Rm::init of many SCI0 games: (= controls controls)) gets another name too.
+	// A public instance keeps its name: other scripts refer to it by its name.
+	unordered_set<string> propertyNames;
+	for (const auto &object : compiledScript.GetObjects())
+	{
+		vector<uint16_t> properties;
+		if (!lookups.LookupSpeciesPropertyList(object->GetSpecies(), properties) && !object->IsInstance())
+		{
+			// A class that the class table does not have (a private class): its own list.
+			properties = object->GetProperties();
+		}
+		for (uint16_t selector : properties)
+		{
+			propertyNames.insert(lookups.LookupSelectorName(selector));
+		}
+	}
+
 	for (auto &object : compiledScript.GetObjects())
 	{
-		int count = countOfNames[object->GetName()];
-		if (count > 1)
+		const std::string name = object->GetName();
+		bool shadowed = object->IsInstance() && !object->IsPublic && (propertyNames.count(name) > 0);
+		// An instance with the name of a keyword of the syntax does not compile (Pepper
+		// script 350 and KQ7 have an instance named string).
+		bool keyword = object->IsInstance() && IsSCIKeyword(name);
+		// An instance with the name of a class of the table: the text would mean the class
+		// (Pepper script 110 has an Actor named twisty, the name of the game class).
+		uint16_t species;
+		bool className = object->IsInstance() && !object->IsPublic && classTable.LookupSpeciesCompiledName(name, species);
+		if ((tableClasses.count(object.get()) == 0) && ((countOfNames[name] > 1) || shadowed || keyword || className))
 		{
-			// This is a multiple named one.
-			std::string newName = fmt::format("{0}_{1}", object->GetName(), suffixes[object->GetName()]++);
-			object->AdjustName(newName); // This will track the old name so we can explicitly list it
+			std::string newName;
+			do
+			{
+				newName = fmt::format("{0}_{1}", name, suffixes[name]++);
+			} while (countOfNames.count(newName) || propertyNames.count(newName) || classTable.LookupSpeciesCompiledName(newName, species));
+			object->AdjustName(newName);
 		}
 	}
 }
@@ -682,7 +888,7 @@ std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, Gl
 		pText = textResource->TryGetComponent<TextComponent>();
 	}
 
-	FixDuplicateObjectNames(compiledScript, config->GetSelectorTable());
+	FixDuplicateObjectNames(compiledScript, scriptLookups);
 
 	DecompileLookups decompileLookups(config, helper, wScript, &scriptLookups, &objectFileLookups, &compiledScript, pText, &compiledScript, results);
 	decompileLookups.DebugControlFlow = debugControlFlow;
@@ -695,4 +901,66 @@ std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, Gl
 	ConvertToSCISyntaxHelper(*pScript, &scriptLookups);
 
 	return pScript;
+}
+
+std::vector<FunctionCode> ReadScriptFunctions(const CompiledScript &compiledScript, DecompileLookups &lookups, const Vocab000 *pWords)
+{
+	compiledScript.PopulateSaidStrings(pWords);
+	set<uint16_t> codePointersTO;
+	set<uint16_t> internalProcOffsetsTO;
+	set<uint16_t> staleExportsTO;
+	_FindCodePointers(compiledScript, lookups, codePointersTO, internalProcOffsetsTO, staleExportsTO);
+	const std::vector<BYTE> &bytes = compiledScript.GetRawBytes();
+	const BYTE *pEndScript = compiledScript.GetEndOfRawBytes();
+
+	std::vector<FunctionCode> functions;
+	auto read = [&](FunctionCode &function)
+	{
+		set<uint16_t>::const_iterator start = codePointersTO.find(function.offset);
+		CodeSection section;
+		// As DecompileFunction: a procedure at a bad address has no code.
+		bool validProcedure = (function.offset < bytes.size()) && (function.offset != BogusSQ5Export);
+		function.badAddress = !function.method && !validProcedure;
+		if ((start != codePointersTO.end()) && (function.method || validProcedure) &&
+			FindStartEndCode(start, codePointersTO, compiledScript._codeSections, section))
+		{
+			function.read = ReadFunctionCode(lookups, &bytes[section.begin], &bytes[section.end], pEndScript, function.offset, function.code, function.returnsValue);
+		}
+	};
+	for (const auto &object : compiledScript._objects)
+	{
+		const vector<uint16_t> &selectors = object->GetMethods();
+		const vector<uint16_t> &offsets = object->GetMethodCodePointersTO();
+		for (size_t i = 0; (i < selectors.size()) && (i < offsets.size()); i++)
+		{
+			functions.emplace_back();
+			FunctionCode &function = functions.back();
+			function.method = true;
+			function.objectName = object->GetName();
+			function.objectKey = (object->HasMadeUpName() && !object->IsInstance()) ? fmt::format("class {0}", object->GetSpecies()) : object->GetName();
+			function.selector = selectors[i];
+			function.offset = offsets[i];
+			read(function);
+		}
+	}
+	for (size_t i = 0; i < compiledScript._exportsTO.size(); i++)
+	{
+		uint16_t offset = compiledScript._exportsTO[i];
+		if (compiledScript.IsExportAProcedure(offset) && (staleExportsTO.count(offset) == 0))
+		{
+			functions.emplace_back();
+			FunctionCode &function = functions.back();
+			function.exportIndex = (int)i;
+			function.offset = offset;
+			read(function);
+		}
+	}
+	for (uint16_t offset : internalProcOffsetsTO)
+	{
+		functions.emplace_back();
+		FunctionCode &function = functions.back();
+		function.offset = offset;
+		read(function);
+	}
+	return functions;
 }

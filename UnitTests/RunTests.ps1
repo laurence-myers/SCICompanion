@@ -111,9 +111,11 @@ Write-Host "Running: $vstest $($vstestArgs -join ' ')"
 $testExit = $LASTEXITCODE
 
 if ($UpdateSnapshots) {
+    # A changed snapshot fails its test, so the run fails when there is
+    # something to update: copy the actuals anyway, and keep the exit code
+    # for the other tests. Review the diff of the snapshots before a commit.
     if ($testExit -ne 0) {
-        Write-Host "Tests failed (exit $testExit); snapshots not updated."
-        exit $testExit
+        Write-Host "Tests failed (exit $testExit). The snapshots are updated from this run; review their diff, and the other failures."
     }
     # Copy the actuals into the committed snapshot folder.
     $committed = Join-Path $PSScriptRoot "Files\Decompile\Snapshots\SCI1.1"
@@ -140,7 +142,6 @@ if ($UpdateSnapshots) {
         Copy-Item -Path (Join-Path $bytecodeActuals "*.hex") -Destination $deployedBytecode -Force
         Write-Host "Updated bytecode snapshots in $committedBytecode"
     }
-    exit 0
 }
 
 exit $testExit

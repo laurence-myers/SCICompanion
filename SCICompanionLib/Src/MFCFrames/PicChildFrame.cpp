@@ -19,7 +19,6 @@
 #include "PicView.h"
 #include "ChooseColorDialog.h"
 #include "MainFrm.h"
-#include "AppState.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW

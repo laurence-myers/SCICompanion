@@ -40,6 +40,9 @@
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliHost.cpp">
       <Filter>Source Files\Cli</Filter>
     </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Cli\CliDevCommands.cpp">
+      <Filter>Source Files\Cli</Filter>
+    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliScriptCommands.cpp">
       <Filter>Source Files\Cli</Filter>
     </ClCompile>
@@ -68,15 +71,6 @@
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Compile\CompileWrite.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="..\SCICompanionLib\Src\Compile\ControlFlowGraph.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="..\SCICompanionLib\Src\Compile\ControlFlowGraphViz.cpp">
-      <Filter>Source Files\Compile</Filter>
-    </ClCompile>
-    <ClCompile Include="..\SCICompanionLib\Src\Compile\ControlFlowNode.cpp">
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Compile\DecompileBatch.cpp">
@@ -175,10 +169,28 @@
     <ClCompile Include="..\SCICompanionLib\Src\Compile\SyntaxContext.cpp">
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
-    <ClCompile Include="..\SCICompanionLib\Src\Compile\SyntaxParser.cpp">
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\StructuralCompare.cpp">
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
-    <ClCompile Include="..\SCICompanionLib\Src\Compile\TarjanAlgorithm.cpp">
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeParser.cpp">
+      <Filter>Source Files\Compile</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeVerify.cpp">
+      <Filter>Source Files\Compile</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeRegion.cpp">
+      <Filter>Source Files\Compile</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeCode.cpp">
+      <Filter>Source Files\Compile</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\ScopeValues.cpp">
+      <Filter>Source Files\Compile</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\MeaningCheck.cpp">
+      <Filter>Source Files\Compile</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Compile\SyntaxParser.cpp">
       <Filter>Source Files\Compile</Filter>
     </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Compile\Types.cpp">
@@ -422,15 +434,6 @@ $include
     <ClInclude Include="..\SCICompanionLib\Src\Compile\CompileWrite.h">
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
-    <ClInclude Include="..\SCICompanionLib\Src\Compile\ControlFlowGraph.h">
-      <Filter>Source Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="..\SCICompanionLib\Src\Compile\ControlFlowGraphViz.h">
-      <Filter>Source Files\Compile</Filter>
-    </ClInclude>
-    <ClInclude Include="..\SCICompanionLib\Src\Compile\ControlFlowNode.h">
-      <Filter>Source Files\Compile</Filter>
-    </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileBatch.h">
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
@@ -533,10 +536,31 @@ $include
     <ClInclude Include="..\SCICompanionLib\Src\Compile\SyntaxContext.h">
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
-    <ClInclude Include="..\SCICompanionLib\Src\Compile\SyntaxParser.h">
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\StructuralCompare.h">
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
-    <ClInclude Include="..\SCICompanionLib\Src\Compile\TarjanAlgorithm.h">
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ScopeParser.h">
+      <Filter>Source Files\Compile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ScopeVerify.h">
+      <Filter>Source Files\Compile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ScopeRegion.h">
+      <Filter>Source Files\Compile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ScopeCode.h">
+      <Filter>Source Files\Compile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ScopeValues.h">
+      <Filter>Source Files\Compile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\MeaningCheck.h">
+      <Filter>Source Files\Compile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\ConsumptionNode.h">
+      <Filter>Source Files\Compile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\SyntaxParser.h">
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Compile\Types.h">

@@ -1,0 +1,17 @@
+== s1SwitchValue
+code 000a
+switch 000c toss 0024
+  case bnt 0012 jmp 0016
+    value
+      code 000e-0011
+    body
+      code 0014
+  case bnt 001c jmp 0020
+    value
+      code 0018-001b
+    body
+      code 001e
+  case
+    body
+      code 0022
+code 0025-0027

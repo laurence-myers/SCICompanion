@@ -82,10 +82,10 @@ void DoToolTipParse(ScriptId scriptId, CCrystalScriptStream &stream, CScriptStre
 	};
 
 	Script script(scriptId);
-	SyntaxContext context(stream.begin(), script, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), false, false);
+	SyntaxContext context(stream.begin(), script, PreProcessorDefinesFromSCIVersion(AppVersion()), false, false);
 	CToolTipSyntaxParserCallback callback(context, result);
 	limiter.SetCallback(&callback);
-	SyntaxParser_Parse(script, stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), nullptr, false, &context);
+	SyntaxParser_Parse(script, stream, PreProcessorDefinesFromSCIVersion(AppVersion()), nullptr, false, &context);
 }
 
 // CScriptView
@@ -864,7 +864,7 @@ void CScriptView::OnContextMenu(CWnd *pWnd, CPoint point)
 					CPoint ptLeft = WordToLeft(ptText);
 					TCHAR szBuffer[MAX_PATH];
 					bool fDisableMenuOption = true;
-					if (appState->GetVersion().HasSaidVocab && (ptRight != ptLeft))
+					if (AppVersion().HasSaidVocab && (ptRight != ptLeft))
 					{
 						// This is a potential vocab string.
 						GetText(ptLeft, ptRight, _contextMenuText);
@@ -943,9 +943,9 @@ void CScriptView::OnContextMenu(CWnd *pWnd, CPoint point)
 				}
 			}
 
-			if ((int)possibleResourceNumber < appState->GetVersion().GetMaximumResourceNumber())
+			if ((int)possibleResourceNumber < AppVersion().GetMaximumResourceNumber())
 			{
-				if (appState->GetResourceMap().DoesResourceExist(ResourceType::View, (int)possibleResourceNumber))
+				if (AppResourceMap().DoesResourceExist(ResourceType::View, (int)possibleResourceNumber))
 				{
 					_gotoView = possibleResourceNumber;
 				}
@@ -1146,7 +1146,7 @@ void CScriptView::OnTimer(UINT nIDEvent)
 
 void CScriptView::_OnAddAs(WordClass dwClass)
 {
-	ResourceEntity *pResource = appState->GetResourceMap().GetVocabResourceToEdit();
+	ResourceEntity *pResource = AppResourceMap().GetVocabResourceToEdit();
 	if (pResource)
 	{
 		Vocab000 *pVocab000 = pResource->TryGetComponent<Vocab000>();
@@ -1155,7 +1155,7 @@ void CScriptView::_OnAddAs(WordClass dwClass)
 			VocabChangeHint hint = pVocab000->AddNewWord(_contextMenuText, dwClass, TRUE);
 			if (hint != VocabChangeHint::None)
 			{
-				appState->GetResourceMap().AppendResource(*pResource);
+				AppResourceMap().AppendResource(*pResource);
 			}
 		}
 	}
@@ -1336,7 +1336,7 @@ void CScriptView::OnAddAsSynonymOf()
 		CString strWord = dialog.GetWord();
 		CString strSynonym = dialog.GetSynonym();
 
-		ResourceEntity *resource = appState->GetResourceMap().GetVocabResourceToEdit();
+		ResourceEntity *resource = AppResourceMap().GetVocabResourceToEdit();
 		if (resource)
 		{
 			Vocab000 *pVocab000 = resource->TryGetComponent<Vocab000>();
@@ -1345,7 +1345,7 @@ void CScriptView::OnAddAsSynonymOf()
 				VocabChangeHint hint = pVocab000->AddSynonym(strWord, strSynonym);
 				if (hint != VocabChangeHint::None)
 				{
-					appState->GetResourceMap().AppendResource(*resource);
+					AppResourceMap().AppendResource(*resource);
 				}
 			}
 		}
@@ -1395,7 +1395,7 @@ void CScriptView::OnGotoDefinition()
 		else if (_vocabWordInfo != 0xffffffff)
 		{
 			// Open the vocab to the word requested
-			appState->OpenMostRecentResourceAt(ResourceType::Vocab, appState->GetVersion().MainVocabResource, _vocabWordInfo);
+			appState->OpenMostRecentResourceAt(ResourceType::Vocab, AppVersion().MainVocabResource, _vocabWordInfo);
 		}
 		else
 		{

@@ -1,0 +1,23 @@
+== f12BreakJoin
+code 000a-0012
+loop 0014 latch 0042
+  body
+    code 0014-0018
+    if 0019
+      then
+        code 001b-0021
+        if 0022
+          then
+            code 0024-0028
+            if 0029
+              then
+                code 002b-002d
+                continue 1 002f
+            code 0031-0033
+            break 1 0035
+        code 0037-003b
+        if 003c
+          then
+            code 003e-0040
+      else break 1
+code 0044-0046

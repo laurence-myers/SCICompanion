@@ -16,7 +16,8 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "ResourceEntity.h"
+#include "resource.h"
 #include "AnimateDialog.h"
 #include "Components.h"
 #include "RasterOperations.h"

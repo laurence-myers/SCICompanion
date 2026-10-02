@@ -601,7 +601,7 @@ void CGameExplorerView::OnUpdate(CView *pSender, LPARAM lHint, CObject *pHint)
 
 BOOL IsResourceFileName(PCTSTR pszFileName, int *piNumber, std::string &name)
 {
-	SCIVersion version = appState->GetVersion();
+	SCIVersion version = AppVersion();
 	std::smatch cm;
 	std::string filename = pszFileName;
 	return MatchesResourceFilenameFormat(filename, version, piNumber, name);
@@ -620,7 +620,7 @@ void DropResourceFiles(CArray<CString, CString&> *pDropFiles)
 	// Be sparing in our DeferAppends, since if they are just dropping one file,
 	// we'll be nice and highlight it in red.  If we Begin/End DeferAppend, then we'll lose
 	// this information (since we completely reload the resource map for that type)
-	DeferResourceAppend defer(appState->GetResourceMap(), pDropFiles->GetCount() > 1);
+	DeferResourceAppend defer(AppResourceMap(), pDropFiles->GetCount() > 1);
 
 	for (int i = 0; i < pDropFiles->GetCount(); i++)
 	{
@@ -630,21 +630,21 @@ void DropResourceFiles(CArray<CString, CString&> *pDropFiles)
 		if (_IsBitmapFile(pDropFiles->GetAt(i)))
 		{
 			// It's a bmp file... it might have a resource encoded in it.
-			std::unique_ptr<ResourceBlob> data = Load8BitBmp(appState->GetResourceMap().Helper(), appState->GetVersion(), (PCSTR)pDropFiles->GetAt(i));
+			std::unique_ptr<ResourceBlob> data = Load8BitBmp(AppResourceMap().Helper(), AppVersion(), (PCSTR)pDropFiles->GetAt(i));
 			if (data)
 			{
 				char szName[MAX_PATH];
 				StringCchCopy(szName, ARRAYSIZE(szName), PathFindFileName(pDropFiles->GetAt(i)));
 				*PathFindExtension(szName) = 0; // cut off extension.
 				data->SetName(szName);
-				appState->GetResourceMap().AppendResourceAskForNumber(*data, false);
+				AppResourceMap().AppendResourceAskForNumber(*data, false);
 			}
 			else
 			{
 				AfxMessageBox("There doesn't appear to be an SCI resource encoded in this .bmp file.", MB_ERRORFLAGS);
 			}
 		}
-		else if (IsWaveFile(pDropFiles->GetAt(i)) && (appState->GetVersion().SoundFormat == SoundFormat::SCI1))
+		else if (IsWaveFile(pDropFiles->GetAt(i)) && (AppVersion().SoundFormat == SoundFormat::SCI1))
 		{
 			// We can add wave files to SCI1+ games
 			try
@@ -659,7 +659,7 @@ void DropResourceFiles(CArray<CString, CString&> *pDropFiles)
 		else if (IsResourceFileName(PathFindFileName(pDropFiles->GetAt(i)), &iNumber, resNameFromFilename))
 		{
 			ResourceBlob data;
-			if (SUCCEEDED(data.CreateFromFile(nullptr, (PCSTR)pDropFiles->GetAt(i), appState->GetVersion(), appState->GetResourceMap().GetDefaultResourceSaveLocation(), appState->GetVersion().DefaultVolumeFile, iNumber)))
+			if (SUCCEEDED(data.CreateFromFile(nullptr, (PCSTR)pDropFiles->GetAt(i), AppVersion(), AppResourceMap().GetDefaultResourceSaveLocation(), AppVersion().DefaultVolumeFile, iNumber)))
 			{
 				// Before adding it, check to see if this resource number already exists.
 				bool askForNumber = (iNumber == -1);
@@ -674,7 +674,7 @@ void DropResourceFiles(CArray<CString, CString&> *pDropFiles)
 				std::string existingName;
 				if (iNumber != -1)
 				{
-					if (appState->GetResourceMap().DoesResourceExist(data.GetType(), iNumber, &existingName))
+					if (AppResourceMap().DoesResourceExist(data.GetType(), iNumber, &existingName))
 					{
 						if (resNameFromFilename.empty())
 						{
@@ -686,11 +686,11 @@ void DropResourceFiles(CArray<CString, CString&> *pDropFiles)
 
 				if (askForNumber)
 				{
-					appState->GetResourceMap().AppendResourceAskForNumber(data, true);
+					AppResourceMap().AppendResourceAskForNumber(data, true);
 				}
 				else
 				{
-					appState->GetResourceMap().AppendResource(data);
+					AppResourceMap().AppendResource(data);
 				}
 			}
 		}

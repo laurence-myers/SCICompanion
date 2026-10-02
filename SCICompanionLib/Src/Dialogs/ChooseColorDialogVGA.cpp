@@ -15,7 +15,7 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "resource.h"
 #include "ChooseColorDialogVGA.h"
 #include "PaletteOperations.h"
 

@@ -16,7 +16,6 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
 #include "ViewCelChooser.h"
 #include "ResourceDocument.h"
 #include "Components.h"

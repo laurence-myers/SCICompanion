@@ -1,0 +1,21 @@
+== f4BreakElseEdge
+code 000a
+loop 000c latch 0026
+  body
+    code 000c
+    or 000e
+      code 0010
+    if 0012
+      then
+        code 0014
+        if 0016
+          then
+            code 0018
+            if 001a
+              then
+                code 001c-001e
+                break 1 0020
+              else break 1
+          else break 1
+    code 0022-0024
+code 0028

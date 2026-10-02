@@ -295,6 +295,21 @@ public:
 		}
 		return false;
 	}
+	// The continue frames with no target yet (a for loop: its step comes
+	// after the body) among the innermost levels frames. Only such a frame
+	// has a branch block for its continues.
+	uint16_t count_forward_continue_frames(uint16_t levels) const
+	{
+		uint16_t count = 0;
+		for (size_t i = 0; (i < levels) && (i < _continueFrames.size()); i++)
+		{
+			if (_continueFrames[_continueFrames.size() - 1 - i] == _code.end())
+			{
+				count++;
+			}
+		}
+		return count;
+	}
 
 private:
 

@@ -14,7 +14,7 @@
 #include "stdafx.h"
 #include "CppUnitTest.h"
 #include "AstPassHelper.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceMap.h"
 #include "ScriptOMAll.h"
 #include "SyntaxParser.h"
@@ -49,7 +49,7 @@ std::unique_ptr<sci::Script> TryParseSierraScript(const std::string &text, std::
 {
     // Write the text to a script file in the temporary game, then parse it the
     // same way the compiler parses a header (see CompileContext.cpp).
-    std::string path = appState->GetResourceMap().Helper().GetScriptFileName("AstPassCase");
+    std::string path = AppResourceMap().Helper().GetScriptFileName("AstPassCase");
     {
         std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
         file << text;
@@ -72,7 +72,7 @@ std::unique_ptr<sci::Script> TryParseSierraScript(const std::string &text, std::
 
     CompileLog log;
     bool ok = SyntaxParser_Parse(*script, stream,
-        PreProcessorDefinesFromSCIVersion(appState->GetVersion()), &log);
+        PreProcessorDefinesFromSCIVersion(AppVersion()), &log);
     buffer.FreeAll();
 
     if (!ok)
@@ -108,32 +108,6 @@ std::string ScriptToText(const sci::Script &script)
     sci::SourceCodeWriter writer(ss, const_cast<sci::Script *>(&script));
     script.OutputSourceCode(writer);
     return ss.str();
-}
-
-std::string NormalizeWhitespace(const std::string &text)
-{
-    std::string out;
-    out.reserve(text.size());
-    bool inSpace = false;
-    for (char c : text)
-    {
-        if (c == '\r')
-        {
-            continue;
-        }
-        if (c == ' ' || c == '\t' || c == '\n')
-        {
-            inSpace = true;
-            continue;
-        }
-        if (inSpace && !out.empty())
-        {
-            out.push_back(' ');
-        }
-        inSpace = false;
-        out.push_back(c);
-    }
-    return out;
 }
 
 std::string ApplyAllPasses(const std::string &body)

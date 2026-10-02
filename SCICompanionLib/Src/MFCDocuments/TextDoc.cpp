@@ -16,7 +16,6 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
 #include "TextDoc.h"
 
 using namespace std;

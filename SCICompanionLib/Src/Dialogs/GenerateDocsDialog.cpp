@@ -86,7 +86,7 @@ void GenerateDocsDialog::DoDataExchange(CDataExchange* pDX)
 			char szError[1024];
 			szError[0] = 0;
 			pException->GetErrorMessage(szError, ARRAYSIZE(szError));
-			appState->LogInfo("%s", szError);
+			CoreLogFormat(LogLevel::Info, "%s", szError);
 			pException->Delete();
 		}
 
@@ -255,7 +255,7 @@ void GenerateDocsDialog::OnBnClickedGeneratedoc()
 				std::string fullPath = _helper.GetScriptFileName(scriptName);
 				CompileLog log;
 				ScriptId docScriptId(fullPath);
-				std::unique_ptr<sci::Script> script = SimpleCompile(appState->GetVersion(), log, docScriptId, true);
+				std::unique_ptr<sci::Script> script = SimpleCompile(AppVersion(), log, docScriptId, true);
 				if (script)
 				{
 					try
@@ -282,9 +282,9 @@ void GenerateDocsDialog::OnBnClickedGeneratekernels()
 	_GenerateDocHelper(
 		[&](const std::string &buildFolder, std::vector<std::string> &generatedFiles)
 	{
-		ScriptId scriptId(appState->GetResourceMap().GetIncludePath("kernels.scp"));
+		ScriptId scriptId(AppResourceMap().GetIncludePath("kernels.scp"));
 		CompileLog log;
-		std::unique_ptr<sci::Script> script = SimpleCompile(appState->GetVersion(), log, scriptId, true);
+		std::unique_ptr<sci::Script> script = SimpleCompile(AppVersion(), log, scriptId, true);
 		if (script)
 		{
 			DocScript docScript(*script);

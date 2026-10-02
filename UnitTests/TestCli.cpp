@@ -1,6 +1,5 @@
 #include "stdafx.h"
 #include "CppUnitTest.h"
-#include "AppState.h"
 #include "Cli.h"
 #include "CliCommands.h"
 #include "CliConsole.h"
@@ -133,6 +132,23 @@ namespace UnitTests
                 lines.push_back(line);
             }
             return lines;
+        }
+
+        // The fields of a line of a report, an empty last field too.
+        static std::vector<std::string> TabFields(const std::string &line)
+        {
+            std::vector<std::string> fields;
+            size_t start = 0;
+            for (;;)
+            {
+                size_t tab = line.find('\t', start);
+                fields.push_back(line.substr(start, (tab == std::string::npos) ? std::string::npos : tab - start));
+                if (tab == std::string::npos)
+                {
+                    return fields;
+                }
+                start = tab + 1;
+            }
         }
 
         // The names of the files in src with this extension.
@@ -795,6 +811,226 @@ namespace UnitTests
             Assert::IsTrue(console.err.find("Decompiled and wrote 1 of 2 scripts.") != std::string::npos, Wide(console.err).c_str());
         }
 
+        // An empty report file, and a report file that is not a function
+        // report, are usage errors.
+        TEST_METHOD(Decompile_FunctionReport_UsageErrors)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            cli::StringConsole empty = Expect(2, { "script", "decompile", _copyFolder, "974", "--stdout", "--function-report", "" });
+            Assert::IsTrue(empty.err.find("--function-report needs a file") != std::string::npos, Wide(empty.err).c_str());
+            std::string map = (fs::path(_copyFolder) / "resource.map").string();
+            auto before = ReadFileBytes(map);
+            cli::StringConsole notAReport = Expect(2, { "script", "decompile", _copyFolder, "974", "--stdout", "--function-report", map });
+            Assert::IsTrue(notAReport.err.find("which is not a function report") != std::string::npos, Wide(notAReport.err).c_str());
+            Assert::IsTrue(before == ReadFileBytes(map), L"resource.map does not change");
+        }
+
+        // --function-report: the header, then a line of 7 fields for each
+        // function, in the order of the offsets. A dry run writes it too, a
+        // second run writes over it, and a report that cannot be written is
+        // exit code 9.
+        TEST_METHOD(Decompile_FunctionReport)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            std::string report = (fs::path(_copyFolder) / "functions.tsv").string();
+            for (const char *dryRun : { "", "--dry-run" })
+            {
+                std::vector<std::string> args = { "script", "decompile", _copyFolder, "974", "--function-report", report };
+                if (*dryRun)
+                {
+                    args.push_back(dryRun);
+                }
+                // A report of another run: the run writes over it.
+                WriteFileText(report, std::string(cli::FunctionReportHeader) + "\n999\tx\ty\t0000\t1\tasm\t[scope:parse:old]\n");
+                Expect(0, args);
+                std::string text = ReadFileText(report);
+                Assert::IsTrue(text.find("999\t") == std::string::npos, Wide(text).c_str());
+                std::vector<std::string> lines = Lines(text);
+                Assert::IsTrue(lines.size() > 2, Wide(ReadFileText(report)).c_str());
+                Assert::AreEqual(std::string(cli::FunctionReportHeader), lines[0]);
+                int lastOffset = -1;
+                for (size_t i = 1; i < lines.size(); i++)
+                {
+                    std::vector<std::string> fields = TabFields(lines[i]);
+                    Assert::AreEqual((size_t)7, fields.size(), Wide(lines[i]).c_str());
+                    Assert::AreEqual(std::string("974"), fields[0], Wide(lines[i]).c_str());
+                    int offset = std::stoi(fields[3], nullptr, 16);
+                    Assert::IsTrue(offset > lastOffset, L"in the order of the offsets");
+                    lastOffset = offset;
+                    Assert::IsTrue(std::stoi(fields[4]) > 0, Wide(lines[i]).c_str());
+                    Assert::AreEqual(std::string("scope"), fields[5], Wide(lines[i]).c_str());
+                    Assert::AreEqual(std::string("ok"), fields[6], Wide(lines[i]).c_str());
+                }
+            }
+
+            MakeReadOnly(report);
+            cli::StringConsole readOnly = Expect(9, { "script", "decompile", _copyFolder, "974", "--stdout", "--function-report", report });
+            Assert::IsTrue(readOnly.err.find("the function report") != std::string::npos, Wide(readOnly.err).c_str());
+        }
+
+        // Two export slots of one procedure are two functions with one offset:
+        // two lines. Before the game opens, a report folder that does not
+        // exist stops the command; a usage error leaves the report as it is;
+        // a game that does not open leaves a report with no functions, not
+        // the old report.
+        TEST_METHOD(Decompile_FunctionReport_TwoSlotsAndEarlyWrite)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            WriteFileText((fs::path(_copyFolder) / "src" / "TwoSlots.sc").string(),
+                "(script# 950)\r\n(public\r\n\ttwoSlots 0\r\n\ttwoSlots 1\r\n)\r\n\r\n(procedure (twoSlots)\r\n\t(return 1)\r\n)\r\n");
+            Expect(0, { "script", "compile", _copyFolder, "950" });
+            std::string report = (fs::path(_copyFolder) / "functions.tsv").string();
+            Expect(0, { "script", "decompile", _copyFolder, "950", "--stdout", "--function-report", report });
+            std::vector<std::string> lines = Lines(ReadFileText(report));
+            Assert::AreEqual((size_t)3, lines.size(), Wide(ReadFileText(report)).c_str());
+            Assert::IsTrue(lines[1].rfind("950\t\ttwoSlots\t", 0) == 0, Wide(lines[1]).c_str());
+            Assert::IsTrue(lines[2].rfind("950\t\ttwoSlots\t", 0) == 0, Wide(lines[2]).c_str());
+
+            std::string noFolder = (fs::path(_copyFolder) / "none" / "functions.tsv").string();
+            cli::StringConsole missing = Expect(9, { "script", "decompile", _copyFolder, "950", "--stdout", "--function-report", noFolder });
+            Assert::IsTrue(missing.err.find("the function report") != std::string::npos, Wide(missing.err).c_str());
+            Assert::IsTrue(missing.out.empty(), L"no decompile");
+
+            // A usage error leaves the file as it is.
+            std::string before = ReadFileText(report);
+            Expect(2, { "script", "decompile", _copyFolder, "0", "950", "--stdout", "--function-report", report });
+            Assert::AreEqual(before, ReadFileText(report), L"a usage error keeps the report");
+
+            std::string noGame = (fs::path(_copyFolder) / "nogame").string();
+            Expect(3, { "script", "decompile", noGame, "950", "--stdout", "--function-report", report });
+            std::vector<std::string> empty = Lines(ReadFileText(report));
+            Assert::AreEqual((size_t)1, empty.size(), L"a report with no functions");
+            Assert::AreEqual(std::string(cli::FunctionReportHeader), empty[0]);
+        }
+
+        // scic dev compare-structure: the decompile of a template script
+        // against itself in a file of another name (paired by number), and
+        // as the baseline. It opens no game, and the help
+        // does not show dev.
+        TEST_METHOD(Dev_CompareStructure)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            fs::path root = fs::path(_copyFolder) / "compare";
+            fs::create_directories(root / "expected");
+            std::string source = Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout" }).out;
+            WriteFileText((root / "expected" / "other.sc").string(), source);
+            fs::create_directories(root / "actual");
+            WriteFileText((root / "actual" / "Door.sc").string(), source);
+
+            std::string table = (root / "table.tsv").string();
+            cli::StringConsole compared = Expect(0, { "dev", "compare-structure", (root / "expected").string(), (root / "actual").string(),
+                "--baseline", (root / "actual").string(), "--out", table });
+            std::vector<std::string> lines = Lines(ReadFileText(table));
+            Assert::IsTrue(lines.size() > 2, Wide(ReadFileText(table)).c_str());
+            Assert::AreEqual(std::string(cli::CompareStructureHeader), lines[0]);
+            for (size_t i = 1; i < lines.size(); i++)
+            {
+                Assert::IsTrue(lines[i].rfind("974\t", 0) == 0, Wide(lines[i]).c_str());
+                // The same text on both sides: SAME, and as the baseline.
+                Assert::IsTrue(lines[i].find("\tSAME\tSAME\t") != std::string::npos, Wide(lines[i]).c_str());
+                // The baseline is the actual folder: no change.
+                Assert::IsTrue(lines[i].back() == '\t', Wide(lines[i]).c_str());
+            }
+
+            // Another text of the actual side: the functions that changed are
+            // not SAME, and the change from the baseline is known.
+            fs::create_directories(root / "changed");
+            std::string changed = source;
+            size_t method = changed.find("(method (");
+            size_t bodyStart = (method != std::string::npos) ? changed.find('\n', method) : std::string::npos;
+            Assert::IsTrue(bodyStart != std::string::npos, Wide("setup: a method to change\n" + changed).c_str());
+            changed.insert(bodyStart + 1, "\t\t(if global1 (= global1 7))\r\n");
+            WriteFileText((root / "changed" / "Door.sc").string(), changed);
+            std::string changedTable = Expect(0, { "dev", "compare-structure", (root / "expected").string(), (root / "changed").string(),
+                "--baseline", (root / "actual").string() }).out;
+            Assert::IsTrue(changedTable.find("\tDIFF\tSAME\tCHANGED") != std::string::npos, Wide(changedTable).c_str());
+
+            // --scripts: only these scripts; another number gives no row.
+            std::vector<std::string> only = Lines(Expect(0, { "dev", "compare-structure", (root / "expected").string(), (root / "actual").string(), "--scripts", "974,1" }).out);
+            Assert::AreEqual(lines.size(), only.size());
+            std::vector<std::string> none = Lines(Expect(0, { "dev", "compare-structure", (root / "expected").string(), (root / "actual").string(), "--scripts", "1" }).out);
+            Assert::AreEqual((size_t)1, none.size(), L"the header only");
+
+            // It opens no game and reads no data folder.
+            {
+                ScopedEnvironmentVariable noData("SCIC_DATA_DIR", (root / "no-data").string().c_str());
+                cli::StringConsole noGame;
+                Assert::AreEqual(0, cli::RunCli({ "dev", "compare-structure", (root / "expected").string(), (root / "actual").string() }, noGame), Wide(noGame.err).c_str());
+            }
+            Assert::IsTrue(compared.err.find("Verdicts: ") != std::string::npos, Wide(compared.err).c_str());
+            Assert::IsTrue(compared.err.find("Changes from the baseline: none.") != std::string::npos, Wide(compared.err).c_str());
+
+            // To stdout; a file that does not parse is a warning and exit 6.
+            WriteFileText((root / "actual" / "broken.sc").string(), ";;; Sierra Script 1.0 - (do not remove this comment)\r\n(script# 975)\r\n(procedure (p)\r\n");
+            cli::StringConsole broken = Expect(6, { "dev", "compare-structure", (root / "expected").string(), (root / "actual").string() });
+            Assert::IsTrue(broken.out.rfind(cli::CompareStructureHeader, 0) == 0, Wide(broken.out).c_str());
+            Assert::IsTrue(broken.err.find("scic: warning: broken.sc (actual): ") != std::string::npos, Wide(broken.err).c_str());
+
+            Expect(3, { "dev", "compare-structure", (root / "none").string(), (root / "actual").string() });
+            Expect(3, { "dev", "compare-structure", "", (root / "actual").string() });
+            Expect(2, { "dev", "compare-structure", (root / "expected").string(), (root / "actual").string(), "--baseline", "" });
+            Expect(2, { "dev", "compare-structure", (root / "expected").string() });
+            // RunCli itself: Run adds --data-dir, which help takes as a topic.
+            cli::StringConsole help;
+            Assert::AreEqual(0, cli::RunCli({ "help" }, help));
+            Assert::IsTrue(help.out.find("Tools for the development") == std::string::npos, Wide(help.out).c_str());
+        }
+
+        // scic dev compare-meaning: a template script against the script that
+        // a compile of its decompiled text makes (--out-dir --raw); a text
+        // with another meaning gives DIFF, and a script with no compiled file
+        // gives UNCOMPARED.
+        TEST_METHOD(Dev_CompareMeaning)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            fs::path root = fs::path(_copyFolder) / "meaning";
+            fs::create_directories(root / "same");
+            Expect(0, { "script", "decompile", _copyFolder, "974" });
+            Expect(0, { "script", "compile", _copyFolder, "974", "--out-dir", (root / "same").string(), "--raw" });
+            std::string table = (root / "table.tsv").string();
+            cli::StringConsole compared = Expect(0, { "dev", "compare-meaning", _copyFolder, (root / "same").string(), "--scripts", "974", "--out", table });
+            std::vector<std::string> lines = Lines(ReadFileText(table));
+            Assert::IsTrue(lines.size() > 2, Wide(ReadFileText(table)).c_str());
+            Assert::AreEqual(std::string(cli::CompareMeaningHeader), lines[0]);
+            for (size_t i = 1; i < lines.size(); i++)
+            {
+                Assert::IsTrue(lines[i].rfind("974\t", 0) == 0, Wide(lines[i]).c_str());
+                Assert::IsTrue(lines[i].find("\tSAME\t") != std::string::npos, Wide(lines[i]).c_str());
+            }
+            Assert::IsTrue(compared.err.find("Verdicts: SAME") != std::string::npos, Wide(compared.err).c_str());
+
+            // Another meaning: a store to a property at the start of a method.
+            fs::path source = fs::path(_copyFolder) / "src" / "Door.sc";
+            std::string changed = ReadFileText(source.string());
+            size_t method = changed.find("(method (");
+            size_t bodyStart = (method != std::string::npos) ? changed.find('\n', method) : std::string::npos;
+            Assert::IsTrue(bodyStart != std::string::npos, Wide("setup: a method to change\n" + changed).c_str());
+            changed.insert(bodyStart + 1, "\t\t(= x 7)\r\n");
+            WriteFileText(source.string(), changed);
+            fs::create_directories(root / "changed");
+            Expect(0, { "script", "compile", _copyFolder, "974", "--out-dir", (root / "changed").string(), "--raw" });
+            std::string changedTable = Expect(0, { "dev", "compare-meaning", _copyFolder, (root / "changed").string(), "--scripts", "974" }).out;
+            Assert::IsTrue(changedTable.find("\tDIFF\t") != std::string::npos, Wide(changedTable).c_str());
+            Assert::IsTrue(changedTable.find("| store P") != std::string::npos, Wide(changedTable).c_str());
+
+            // No compiled file: each function is UNCOMPARED.
+            fs::create_directories(root / "empty");
+            std::vector<std::string> empty = Lines(Expect(0, { "dev", "compare-meaning", _copyFolder, (root / "empty").string(), "--scripts", "974" }).out);
+            Assert::AreEqual(lines.size(), empty.size());
+            for (size_t i = 1; i < empty.size(); i++)
+            {
+                Assert::IsTrue(empty[i].find("\tUNCOMPARED\tnot-recompiled") != std::string::npos, Wide(empty[i]).c_str());
+            }
+
+            // The scripts are the script resources: game.ini can be missing.
+            fs::remove(fs::path(_copyFolder) / "game.ini");
+            Assert::AreEqual(lines.size(), Lines(Expect(0, { "dev", "compare-meaning", _copyFolder, (root / "same").string(), "--scripts", "974" }).out).size());
+
+            Expect(3, { "dev", "compare-meaning", _copyFolder, (root / "none").string() });
+            Expect(2, { "dev", "compare-meaning", _copyFolder, (root / "same").string(), "--out", "" });
+            Expect(2, { "dev", "compare-meaning", _copyFolder });
+        }
+
         // Plan section 4.6: script sco makes the .sco files of both templates
         // from their sources. The SCI1.1 template's Main and DebugHandler
         // get a warning in the MSBuild format: their compiled scripts export
@@ -1161,7 +1397,7 @@ namespace UnitTests
                     args.push_back("-q");
                 }
                 cli::StringConsole console = Expect(0, args);
-                Assert::IsTrue(console.err.find("graph (raw):") != std::string::npos, Wide(console.err.substr(0, 2000)).c_str());
+                Assert::IsTrue(console.err.find("Scope: ") != std::string::npos, Wide(console.err.substr(0, 2000)).c_str());
                 Assert::IsTrue(console.err.find("scic: warning: ") == std::string::npos, quiet ? L"-q: a dump is not a warning" : L"a dump is not a warning");
             }
         }

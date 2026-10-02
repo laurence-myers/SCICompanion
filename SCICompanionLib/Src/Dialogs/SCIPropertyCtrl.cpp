@@ -21,7 +21,6 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
 #include "SCIPropertyCtrl.h"
 #include "SCIProps.h"
 #include "PropEditCtrl.h"
