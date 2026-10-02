@@ -1056,6 +1056,15 @@ bool GlobalClassTable::_Create(const SpeciesTable &speciesTable, const GameFolde
 			}
 		}
 	}
+	// An instance of a class of another script gets the name of its name slot.
+	for (auto &script : _scripts)
+	{
+		script->ResolveInstanceNames([this](uint16_t species, std::vector<uint16_t> &slots)
+		{
+			std::vector<CompiledVarValue> values;
+			return GetSpeciesPropertySelector(species, slots, values);
+		});
+	}
 	return true; // We're done when we run out of stuff to read... it's not failure.
 }
 
@@ -1361,8 +1370,13 @@ void SpeciesTable::_AlignToCompiledScripts(const GameFolderHelper &helper)
 	}
 }
 
-bool SpeciesTable::Load(const GameFolderHelper &helper, bool alignToCompiledScripts)
+bool SpeciesTable::Load(const GameFolderHelper &helper, bool alignToCompiledScripts, const SelectorTable *selectors)
 {
+	if (selectors)
+	{
+		_nameSelectorRead = true;
+		_hasNameSelector = selectors->ReverseLookup("name", _nameSelector);
+	}
 	bool fRet = false;
 	unique_ptr<ResourceBlob> blob(_GetVocabData(helper, VocabClassTable));
 	if (blob)

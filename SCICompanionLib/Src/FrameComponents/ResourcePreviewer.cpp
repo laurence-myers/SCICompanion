@@ -311,9 +311,12 @@ void ScriptPreviewer::SetResource(const ResourceBlob &blob)
 		//m_wndHeader.SetWindowText("");
 
 		// If that wasn't possible, spew info from the compiled script resource:
+		// The selector table only: the classes of the game (for an instance of a
+		// class of another script) would load every script for one preview.
 		CompiledScript compiledScript(0);
-		GlobalCompiledScriptLookups *lookups = appState->GetResourceMap().GetCompiledScriptLookups();
-		compiledScript.SetNameSelector(lookups->GetSelectorTable(), lookups);
+		SelectorTable selectors;
+		selectors.Load(appState->GetResourceMap().Helper());
+		compiledScript.SetNameSelector(selectors);
 		if (compiledScript.Load(appState->GetResourceMap().Helper(), appState->GetVersion(), blob.GetNumber(), blob.GetReadStream()))
 		{
 			// Write some crap.

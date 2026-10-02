@@ -97,29 +97,25 @@ void DecompileObject(const CompiledObject &object,
 			}
 		}
 	}
-	if (!object.GetOriginalName().empty() && !pClass->HasExplicitLayout())
-	{
-		// The object has another name in the text (FixDuplicateObjectNames): its name
-		// property keeps the original string. With &layout, the name slot gives it.
-		unique_ptr<ClassProperty> nameProperty = make_unique<ClassProperty>();
-		nameProperty->SetName("name");
-		PropertyValue nameValue;
-		nameValue.SetValue(object.GetOriginalName(), ValueType::String);
-		nameProperty->SetValue(nameValue);
-		pClass->AddProperty(move(nameProperty));
-	}
+	size_t numberOfProps = 0;
+	size_t firstProperty = 0;
+	// The name slot that the property loop writes, if any.
+	size_t nameSlotWritten = CompiledScript::NoNameSlot;
+	// The name slot of an instance that has the name of the instance: the
+	// compiler fills it, so the loop does not write it.
+	size_t ownNameSlot = CompiledScript::NoNameSlot;
 	if (fSuccess)
 	{
 		assert(propertySelectorList.size() == speciesPropertyValueList.size());
 		size_t size1 = propertySelectorList.size();
 		size_t size2 = object.GetPropertyValues().size();
-		size_t numberOfProps = min(size1, size2);
+		numberOfProps = min(size1, size2);
 		if (size1 != size2)
 		{
 			// TODO: Output a warning... mismatched prop sizes.
 		}
-		
-		size_t firstProperty = object.GetNumberOfDefaultSelectors(propertySelectorList, lookups.GetNameSelector());
+
+		firstProperty = object.GetNumberOfDefaultSelectors(propertySelectorList, lookups.GetNameSelector());
 		if (pClass->HasExplicitLayout())
 		{
 			firstProperty = firstSlotAfterInfo;
@@ -133,8 +129,49 @@ void DecompileObject(const CompiledObject &object,
 			// their text declares name, so the name property is written.
 			firstProperty--;
 		}
+		// A name slot that is not right after --info-- (a class with no
+		// superclass can have its name slot after other properties).
 		for (size_t i = firstProperty; i < numberOfProps; i++)
 		{
+			if (propertySelectorList[i] == lookups.GetNameSelector())
+			{
+				const CompiledVarValue &nameValue = object.GetPropertyValues()[i];
+				ICompiledScriptSpecificLookups::ObjectType type;
+				std::string nameString;
+				if (object.IsInstance() && object.GetOriginalName().empty() && nameValue.isObjectOrString &&
+					lookups.LookupScriptThing(nameValue.value, type, nameString) &&
+					(type == ICompiledScriptSpecificLookups::ObjectTypeString) && (nameString == object.GetName()))
+				{
+					ownNameSlot = i;
+				}
+				else if (!object.IsInstance() || (nameValue.value != speciesPropertyValueList[i].value))
+				{
+					nameSlotWritten = i;
+				}
+				break;
+			}
+		}
+	}
+	if (!object.GetOriginalName().empty() && !pClass->HasExplicitLayout() && (nameSlotWritten == CompiledScript::NoNameSlot))
+	{
+		// The object has another name in the text (FixDuplicateObjectNames): its name
+		// property keeps the original string. With &layout, or when the property loop
+		// writes the name slot, the name slot gives it.
+		unique_ptr<ClassProperty> nameProperty = make_unique<ClassProperty>();
+		nameProperty->SetName("name");
+		PropertyValue nameValue;
+		nameValue.SetValue(object.GetOriginalName(), ValueType::String);
+		nameProperty->SetValue(nameValue);
+		pClass->AddProperty(move(nameProperty));
+	}
+	if (fSuccess)
+	{
+		for (size_t i = firstProperty; i < numberOfProps; i++)
+		{
+			if (i == ownNameSlot)
+			{
+				continue;
+			}
 			const CompiledVarValue &propValue = object.GetPropertyValues()[i];
 			// If this is an instance, look up the species values, and only
 			// include those that are different.

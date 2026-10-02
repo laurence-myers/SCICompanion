@@ -66,3 +66,33 @@
 		y 9
 	)
 )
+
+; Objects that get another name in the text (two objects with one name): the
+; name slot after another property keeps the original string, once.
+(instance r3DupA of r3NameSecond
+	(properties
+		name "r3Dup"
+		y 1
+	)
+)
+
+(instance r3DupB of r3NameSecond
+	(properties
+		name "r3Dup"
+		y 2
+	)
+)
+
+(class r3Twin of r3NameSecond
+	(properties
+		name "r3Twin"
+		y 1
+	)
+)
+
+(class r3TwinB of r3NameSecond
+	(properties
+		name "r3Twin"
+		y 2
+	)
+)

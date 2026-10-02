@@ -238,6 +238,7 @@ namespace UnitTests
             ScriptId source = scriptId;
             std::unique_ptr<sci::Script> script = SimpleCompile(resourceMap.GetSCIVersion(), log, source);
             CompiledScript compiledScript(number);
+            compiledScript.SetNameSelector(lookups.GetSelectorTable());
             if (!written || !script || !compiledScript.Load(helper, helper.Version, number))
             {
                 return scriptId.GetTitle() + ": the .sco, the source or the compiled script did not load\n";

@@ -196,7 +196,17 @@ public:
 	bool IsPublic;
 
 private:
+	friend class CompiledScript;
+	// The value of the name slot when it points to a string, else 0.
+	uint16_t _NameValue(size_t slot) const;
+	// The name from the string of the name slot (empty: none): a made-up name
+	// when it has no letter.
+	void _SetName(const std::string &nameString, uint16_t scriptNumber);
+
 	uint16_t _wSpeciesIfClass = 0;
+	int _classIndex = 0;
+	// The reader found the name slot by the selector of name.
+	bool _nameSlotKnown = false;
 	uint16_t _wSuperClass = 0;
 	std::string _strName;
 	std::string _originalName;
@@ -241,14 +251,24 @@ public:
 	// slot: the slot of the selector "name" in the slots of its class (a class
 	// with no superclass can have that slot later, or not have it). classes
 	// gives the slots of a class of another script, for an instance. Without
-	// the selector (a caller with no selector table, or a table with no
-	// "name"), and for an instance whose class is not known, the name is the
-	// string of the slot after --info--.
+	// the selector, and for an instance whose class is not known, the name is
+	// the string of the slot after --info--. A reader whose names go into
+	// text, or must agree with the names of another reader, calls it.
+	// The overload with the table gives no selector when the table has no
+	// "name": a guessed number (NameSelectorOf) would take away the names of
+	// the objects of a game whose table does not load.
 	void SetNameSelector(uint16_t nameSelector, ICompiledScriptLookups *classes = nullptr);
 	void SetNameSelector(const SelectorTable &selectors, ICompiledScriptLookups *classes = nullptr);
+	// The slots of the class of a species; false when the class is not known.
+	using SpeciesSlots = std::function<bool(uint16_t species, std::vector<uint16_t> &slots)>;
+	// For a reader that reads the classes of the game with the instances (the
+	// class table): after Load, each instance whose class Load did not know
+	// gets the name of its name slot, from the slots of its class.
+	void ResolveInstanceNames(const SpeciesSlots &classes);
+	static constexpr size_t NoNameSlot = SIZE_MAX;
 	// The name slot of an object with these slots (selectors: the slots of a
-	// class; empty for an instance). False when it is not known; npos when the
-	// object has no name slot.
+	// class; empty for an instance). False when it is not known; NoNameSlot
+	// when the object has no name slot.
 	bool FindNameSlot(bool isInstance, uint16_t species, const std::vector<uint16_t> &selectors, size_t slotCount, size_t &slot) const;
 	bool Load(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber);
 	bool Load(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber, sci::istream &byteStream, sci::istream *heapStream = nullptr);
@@ -317,6 +337,7 @@ private:
 	bool _ReadStrings(sci::istream &stream, uint16_t wDataSize);
 	bool _ReadSaids(sci::istream &stream, uint16_t wDataSize);
 	CompiledObject *_FindObjectWithSpecies(uint16_t wIndex);
+	bool _FindNameSlotIn(const std::vector<uint16_t> &slots, size_t slotCount, size_t &slot) const;
 
 	uint16_t _wScript;
 	BOOL _fPreloadText;

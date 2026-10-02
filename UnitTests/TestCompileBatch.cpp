@@ -594,6 +594,7 @@ namespace UnitTests
                 "(instance s2Here of S2NameSecond\n    (properties)\n)\n";
             AssertSucceeded(Compile(session, { WriteScript(session, "S2Roots", 907, roots) }, ToPatchFiles()));
             std::string users = "(script# 908)\n(include sci.sh)\n(include game.sh)\n(use S2Roots)\n"
+                "(public\n    s2There 0\n)\n"
                 "(instance s2There of S2NameSecond\n    (properties\n        x \"other\"\n    )\n)\n";
             AssertSucceeded(Compile(session, { WriteScript(session, "S2Users", 908, users) }, ToPatchFiles()));
             GlobalCompiledScriptLookups lookups;
@@ -614,16 +615,58 @@ namespace UnitTests
             Assert::AreEqual((size_t)1, users908.GetObjects().size());
             Assert::AreEqual(std::string("s2There"), users908.GetObjects()[0]->GetName());
 
-            // Without the class of another script, an instance gets the string
-            // after --info--.
+            // Without the classes of the game, an instance gets the slots of its
+            // class from its own script, else the string after --info--; then
+            // ResolveInstanceNames gives it the name of its name slot.
+            CompiledScript rootsNoClasses(907);
+            rootsNoClasses.SetNameSelector(lookups.GetSelectorTable());
+            AssertOk(rootsNoClasses.TryLoad(session.Helper(), session.Helper().Version, 907), "the compiled script");
+            Assert::AreEqual(std::string("s2Here"), rootsNoClasses.GetObjects()[2]->GetName());
             CompiledScript noClasses(908);
             noClasses.SetNameSelector(lookups.GetSelectorTable());
             AssertOk(noClasses.TryLoad(session.Helper(), session.Helper().Version, 908), "the compiled script");
             Assert::AreEqual(std::string("other"), noClasses.GetObjects()[0]->GetName());
+            noClasses.ResolveInstanceNames([&lookups](uint16_t species, std::vector<uint16_t> &slots)
+            {
+                return lookups.LookupSpeciesPropertyList(species, slots);
+            });
+            Assert::AreEqual(std::string("s2There"), noClasses.GetObjects()[0]->GetName());
 
-            // The class table has the names of the name slots.
+            // The name slot of an instance: the slots of its class, only when
+            // they are as many as the slots of the instance.
+            const CompiledObject &nameSecond = *roots907.GetObjects()[0];
+            uint16_t nameSelector = 0;
+            Assert::IsTrue(lookups.GetSelectorTable().ReverseLookup("name", nameSelector), L"setup: name");
+            // --info--, x, then name.
+            size_t expectedSlot = session.Helper().Version.SeparateHeapResources ? 9 : 4;
+            Assert::AreEqual(nameSelector, nameSecond.GetProperties()[expectedSlot], L"setup: the name slot");
+            size_t slot = 0;
+            size_t slotCount = nameSecond.GetProperties().size();
+            Assert::IsTrue(rootsNoClasses.FindNameSlot(true, nameSecond.GetSpecies(), {}, slotCount, slot), L"the class of the same script");
+            Assert::AreEqual(expectedSlot, slot);
+            Assert::IsFalse(rootsNoClasses.FindNameSlot(true, nameSecond.GetSpecies(), {}, slotCount + 1, slot), L"other slots");
+            Assert::IsTrue(rootsNoClasses.FindNameSlot(false, nameSecond.GetSpecies(), nameSecond.GetProperties(), slotCount, slot));
+            Assert::AreEqual(expectedSlot, slot);
+            Assert::IsTrue(rootsNoClasses.FindNameSlot(false, 0, roots907.GetObjects()[1]->GetProperties(), roots907.GetObjects()[1]->GetProperties().size(), slot));
+            Assert::AreEqual(CompiledScript::NoNameSlot, slot, L"S2NoName has no name slot");
+
+            // The class table, and the names that scic script list derives,
+            // have the names of the name slots.
             uint16_t species = 0;
             Assert::IsTrue(lookups.GetGlobalClassTable().LookupSpeciesCompiledName("S2NameSecond", species), L"the class table has S2NameSecond");
+            bool found = false;
+            for (CompiledScript *script : lookups.GetGlobalClassTable().GetAllScripts())
+            {
+                if (script->GetScriptNumber() == 908)
+                {
+                    found = true;
+                    Assert::AreEqual(std::string("s2There"), script->GetObjects()[0]->GetName());
+                }
+            }
+            Assert::IsTrue(found, L"the class table has script 908");
+            sci::Result<std::map<uint16_t, std::string>> derived = DeriveScriptNames(session, true);
+            Assert::IsTrue(derived.has_value(), L"the derived names");
+            Assert::AreEqual(std::string("s2There"), (*derived)[908]);
         }
 
         TEST_METHOD(RootClass_TheReaderFindsTheNameSlotSci0)

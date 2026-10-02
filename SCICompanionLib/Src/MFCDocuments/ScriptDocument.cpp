@@ -205,16 +205,15 @@ void CScriptDocument::OnCompile()
 
 void DisassembleScript(WORD wScript)
 {
-	CompiledScript compiledScript(0);
-	GlobalCompiledScriptLookups *lookups = appState->GetResourceMap().GetCompiledScriptLookups();
-	compiledScript.SetNameSelector(lookups->GetSelectorTable(), lookups);
-	if (compiledScript.Load(appState->GetResourceMap().Helper(), appState->GetVersion(), wScript))
+	GlobalCompiledScriptLookups scriptLookups;
+	if (scriptLookups.Load(appState->GetResourceMap().Helper()))
 	{
-		// Write some crap.
-		GlobalCompiledScriptLookups scriptLookups;
-		ObjectFileScriptLookups objectFileLookups(appState->GetResourceMap().Helper(), appState->GetResourceMap().GetCompiledScriptLookups()->GetSelectorTable());
-		if (scriptLookups.Load(appState->GetResourceMap().Helper()))
+		CompiledScript compiledScript(0);
+		compiledScript.SetNameSelector(scriptLookups.GetSelectorTable(), &scriptLookups);
+		ObjectFileScriptLookups objectFileLookups(appState->GetResourceMap().Helper(), scriptLookups.GetSelectorTable());
+		if (compiledScript.Load(appState->GetResourceMap().Helper(), appState->GetVersion(), wScript))
 		{
+			// Write some crap.
 			std::stringstream out;
 			::DisassembleScript(compiledScript, out, &scriptLookups, &objectFileLookups, appState->GetResourceMap().GetVocab000());
 			ShowTextFile(out.str().c_str(), "script.sca.txt");

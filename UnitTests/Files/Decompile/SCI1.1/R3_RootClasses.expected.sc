@@ -56,7 +56,36 @@
 
 (instance r3SecondObj of r3NameSecond
 	(properties
-		name {r3SecondObj}
 		y 9
+	)
+)
+
+(instance r3Dup_a of r3NameSecond
+	(properties
+		name {r3Dup}
+		y 1
+	)
+)
+
+(instance r3Dup_b of r3NameSecond
+	(properties
+		name {r3Dup}
+		y 2
+	)
+)
+
+(class r3Twin of r3NameSecond
+	(properties
+		x 0
+		name {r3Twin}
+		y 1
+	)
+)
+
+(class r3Twin_a of r3NameSecond
+	(properties
+		x 0
+		name {r3Twin}
+		y 2
 	)
 )

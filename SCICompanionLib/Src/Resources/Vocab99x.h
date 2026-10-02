@@ -152,8 +152,9 @@ public:
 	SpeciesTable() { _wNewSpeciesIndex = 0; _fDirty = false; }
 	// alignToCompiledScripts: order each script's species as its compiled
 	// classes. The alignment loads every script, so a caller that needs
-	// only the script of each species passes false.
-	bool Load(const GameFolderHelper &helper, bool alignToCompiledScripts = true);
+	// only the script of each species passes false. selectors: the selector
+	// table of the caller (else the alignment reads the game's table).
+	bool Load(const GameFolderHelper &helper, bool alignToCompiledScripts = true, const SelectorTable *selectors = nullptr);
 	void Save(CResourceMap &resourceMap);
 	// True when the table changed. The compile writes MakeResourceData() to
 	// its destination.
@@ -187,7 +188,7 @@ private:
 	void _AlignToCompiledScripts(const GameFolderHelper &helper);
 	void _AlignScript(uint16_t wScript, const CompiledScript &compiledScript);
 	// Gives the script the selector of name, so that the class names are those of the
-	// decompiled text.
+	// decompiled text. Without the selector table of Load, it reads the game's table once.
 	void _SetNameSelector(const GameFolderHelper &helper, CompiledScript &compiledScript);
 	bool _nameSelectorRead = false;
 	bool _hasNameSelector = false;

@@ -831,10 +831,33 @@ bool _IsBlankObjectName(const std::string &name)
 	return true;
 }
 
+uint16_t CompiledObject::_NameValue(size_t slot) const
+{
+	return ((slot < _propertyValues.size()) && _propertyValues[slot].isObjectOrString) ? _propertyValues[slot].value : 0;
+}
+
+void CompiledObject::_SetName(const std::string &nameString, uint16_t scriptNumber)
+{
+	_strName = nameString;
+	if (_IsBlankObjectName(_strName))
+	{
+		// A missing or blank name (e.g. Control, or an object stripped of its
+		// name). Synthesize one so the decompiled text round-trips.
+		int index = _classIndex;
+		_strName = _fInstance ? _GenerateInstanceName(scriptNumber, index) : _GenerateClassName(scriptNumber, index);
+		_madeUpName = true;
+	}
+	else
+	{
+		_madeUpName = _IsMadeUpName(_strName, scriptNumber);
+	}
+}
+
 // Very important: scriptStream is passed by value. Heapstream is not.
 bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVersion version, sci::istream scriptStream, sci::istream &heapStream, uint16_t *pwOffset, int classIndex, uint16_t *endOfObjectInScript)
 {
 	uint16_t scriptNum = compiledScript.GetScriptNumber();
+	_classIndex = classIndex;
 	*pwOffset = heapStream.tellg();
 	// The object position is the offset of the object's 0x1234 magic word in the
 	// heap resource. Note the SCI0 path records the script offset just AFTER its
@@ -919,9 +942,10 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 		}
 	}
 	size_t nameSlot;
-	if (compiledScript.FindNameSlot(_fInstance, GetSpecies(), _propertySelectors, _propertyValues.size(), nameSlot))
+	_nameSlotKnown = compiledScript.FindNameSlot(_fInstance, GetSpecies(), _propertySelectors, _propertyValues.size(), nameSlot);
+	if (_nameSlotKnown)
 	{
-		wName = ((nameSlot < _propertyValues.size()) && _propertyValues[nameSlot].isObjectOrString) ? _propertyValues[nameSlot].value : 0;
+		wName = _NameValue(nameSlot);
 	}
 
 	// We need to read function selectors, and code
@@ -939,29 +963,19 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 	}
 
 	// Get the name
+	std::string nameString;
 	if (wName != 0)
 	{
 		// Don't modify heapstream, it's right where we need it. The name read
 		// stays tolerant in throw mode (TryLoad): script 990 of the SCI1.1
 		// template has a name value outside its heap, and the object then gets
-		// a made-up name below.
+		// a made-up name.
 		sci::istream temp = heapStream;
 		temp.setThrowExceptions(false);
 		temp.seekg(wName);
-		temp >> _strName;
+		temp >> nameString;
 	}
-	if (_IsBlankObjectName(_strName))
-	{
-		// A missing or blank name (e.g. Control, or an object stripped of its
-		// name). Synthesize one so the decompiled text round-trips.
-		_strName = _fInstance ? _GenerateInstanceName(scriptNum, classIndex)
-			: _GenerateClassName(scriptNum, classIndex);
-		_madeUpName = true;
-	}
-	else
-	{
-		_madeUpName = _IsMadeUpName(_strName, scriptNum);
-	}
+	_SetName(nameString, scriptNum);
 
 	*endOfObjectInScript = (uint16_t)scriptStream.tellg();
 
@@ -972,6 +986,7 @@ bool CompiledObject::Create_SCI1_1(const CompiledScript &compiledScript, SCIVers
 bool CompiledObject::Create_SCI0(const CompiledScript &compiledScript, SCIVersion version, sci::istream &stream, BOOL fClass, uint16_t *pwOffset, int classIndex)
 {
 	uint16_t scriptNum = compiledScript.GetScriptNumber();
+	_classIndex = classIndex;
 	_version = version;
 	*pwOffset = static_cast<uint16_t>(stream.tellg());
 	_fInstance = !fClass;
@@ -1040,9 +1055,10 @@ bool CompiledObject::Create_SCI0(const CompiledScript &compiledScript, SCIVersio
 			}
 		}
 		size_t nameSlot;
-		if (compiledScript.FindNameSlot(_fInstance, GetSpecies(), _propertySelectors, _propertyValues.size(), nameSlot))
+		_nameSlotKnown = compiledScript.FindNameSlot(_fInstance, GetSpecies(), _propertySelectors, _propertyValues.size(), nameSlot);
+		if (_nameSlotKnown)
 		{
-			wName = ((nameSlot < _propertyValues.size()) && _propertyValues[nameSlot].isObjectOrString) ? _propertyValues[nameSlot].value : 0;
+			wName = _NameValue(nameSlot);
 		}
 
 		// Now their function selectors, for both instances and classes.
@@ -1092,27 +1108,17 @@ bool CompiledObject::Create_SCI0(const CompiledScript &compiledScript, SCIVersio
 			}
 		}
 
+		std::string nameString;
 		if (stream.good() && (wName != 0))
 		{
 			// Retrieve the name of the object.  wName is a pointer.
 			DWORD dwSavePos = stream.tellg();
 			stream.seekg(wName);
-			stream >> _strName;
+			stream >> nameString;
 			// Restore
 			stream.seekg(dwSavePos);
 		}
-		if (_IsBlankObjectName(_strName))
-		{
-			// A missing or blank name (e.g. Control, or an object stripped of
-			// its name). Synthesize one so the decompiled text round-trips.
-			_strName = fClass ? _GenerateClassName(scriptNum, classIndex)
-				: _GenerateInstanceName(scriptNum, classIndex);
-			_madeUpName = true;
-		}
-		else
-		{
-			_madeUpName = _IsMadeUpName(_strName, scriptNum);
-		}
+		_SetName(nameString, scriptNum);
 
 		// The rest of the stuff we don't care about!
 	}
@@ -1534,21 +1540,52 @@ bool CompiledScript::FindNameSlot(bool isInstance, uint16_t species, const std::
 			return false;
 		}
 	}
-	if (slots->size() != slotCount)
+	return _FindNameSlotIn(*slots, slotCount, slot);
+}
+
+bool CompiledScript::_FindNameSlotIn(const std::vector<uint16_t> &slots, size_t slotCount, size_t &slot) const
+{
+	if (slots.size() != slotCount)
 	{
 		// The slots are not the slots of the object.
 		return false;
 	}
-	slot = std::string::npos;
-	for (size_t i = _version.SeparateHeapResources ? 8 : 3; i < slots->size(); i++)
+	slot = NoNameSlot;
+	for (size_t i = _version.SeparateHeapResources ? 8 : 3; i < slots.size(); i++)
 	{
-		if ((*slots)[i] == _nameSelector)
+		if (slots[i] == _nameSelector)
 		{
 			slot = i;
 			break;
 		}
 	}
 	return true;
+}
+
+void CompiledScript::ResolveInstanceNames(const SpeciesSlots &classes)
+{
+	if (!_hasNameSelector)
+	{
+		return;
+	}
+	for (auto &object : _objects)
+	{
+		std::vector<uint16_t> slots;
+		size_t slot;
+		if (object->IsInstance() && !object->_nameSlotKnown && classes(object->GetSpecies(), slots) &&
+			_FindNameSlotIn(slots, object->GetPropertyValues().size(), slot))
+		{
+			object->_nameSlotKnown = true;
+			std::string nameString;
+			ObjectType type;
+			uint16_t value = object->_NameValue(slot);
+			if ((value == 0) || !LookupObjectName(value, type, nameString) || (type != ObjectTypeString))
+			{
+				nameString.clear();
+			}
+			object->_SetName(nameString, _wScript);
+		}
+	}
 }
 
 std::string CompiledScript::LookupClassName(uint16_t wIndex)

@@ -87,7 +87,7 @@ bool CompileTables::Load(CResourceMap &resourceMap)
 	// REVIEW: this could be deleted while we're compiling.
 	_pVocab = resourceMap.GetVocab000();
 	const GameFolderHelper &helper = resourceMap.Helper();
-	return _kernels.Load(helper) && _species.Load(helper) && _selectors.Load(helper);
+	return _kernels.Load(helper) && _selectors.Load(helper) && _species.Load(helper, true, &_selectors);
 }
 
 sci::Status CompileTables::TryLoad(CResourceMap &resourceMap)
@@ -107,15 +107,16 @@ sci::Status CompileTables::TryLoad(CResourceMap &resourceMap)
 			where.resource = DescribeResource(ResourceType::Vocab, 999);
 			return sci::Fail(sci::ErrorCode::Format, "the kernel table is not valid", where);
 		}
-		if (!_species.Load(helper))
-		{
-			where.resource = DescribeResource(ResourceType::Vocab, 996);
-			return sci::Fail(sci::ErrorCode::Format, "the class table is not valid", where);
-		}
 		if (!_selectors.Load(helper))
 		{
 			where.resource = DescribeResource(ResourceType::Vocab, 997);
 			return sci::Fail(sci::ErrorCode::Format, "the selector table is not valid", where);
+		}
+		// The species table names the compiled classes with the selector of name.
+		if (!_species.Load(helper, true, &_selectors))
+		{
+			where.resource = DescribeResource(ResourceType::Vocab, 996);
+			return sci::Fail(sci::ErrorCode::Format, "the class table is not valid", where);
 		}
 		return sci::Ok();
 	});
