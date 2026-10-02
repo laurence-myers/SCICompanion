@@ -71,9 +71,7 @@
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(IntDir);$(SolutionDir)Prof-UIS.2.92\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ResourceOutputFileName />
-    </ResourceCompile>    <Lib>
-      <AdditionalOptions>/VERBOSE %(AdditionalOptions)</AdditionalOptions>
-    </Lib>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -105,9 +103,7 @@
       <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(IntDir);$(SolutionDir)Prof-UIS.2.92\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ResourceOutputFileName />
-    </ResourceCompile>    <Lib>
-      <AdditionalOptions>/VERBOSE %(AdditionalOptions)</AdditionalOptions>
-    </Lib>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Src\Dialogs\ResourceMapGui.cpp" />

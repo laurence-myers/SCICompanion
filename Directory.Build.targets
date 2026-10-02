@@ -39,4 +39,15 @@
                       Overwrite="true" />
   </Target>
 
+  <!--
+    The vendored Prof-UIS compiles its files in parallel (/MP). Its project
+    does not set it, and this file comes after the project's own settings,
+    so the vendored file stays unchanged.
+  -->
+  <ItemDefinitionGroup Condition="$(MSBuildProjectName.StartsWith('ProfUISLIB'))">
+    <ClCompile>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
 </Project>
