@@ -1,0 +1,88 @@
+name: Set up the MSVC build
+description: >
+  MSBuild on PATH, the vcpkg registry and cache, and MFC and ATL for the
+  14.44 (v143) toolset. Each job of build.yaml runs it after the checkout.
+
+runs:
+  using: composite
+  steps:
+  - name: Add MSBuild to PATH
+    uses: microsoft/setup-msbuild@v3
+
+  # The build installs the packages of vcpkg.json with the runner's vcpkg
+  # (VCPKG_INSTALLATION_ROOT; see Directory.Build.props). vcpkg.json pins a
+  # registry baseline and package versions, so the vcpkg clone needs those
+  # commits: fetch them, with all the history when the clone is shallow.
+  - name: Fetch the vcpkg registry
+    shell: pwsh
+    run: |
+      # The vcpkg of the build: VCPKG_ROOT, else VCPKG_INSTALLATION_ROOT
+      # (Directory.Build.props).
+      $root = $env:VCPKG_ROOT
+      if (-not $root) { $root = $env:VCPKG_INSTALLATION_ROOT }
+      if (-not $root) { throw "Neither VCPKG_ROOT nor VCPKG_INSTALLATION_ROOT is set." }
+      if ((git -C $root rev-parse --is-shallow-repository) -eq 'true') {
+        git -C $root fetch --quiet --unshallow origin
+      } else {
+        git -C $root fetch --quiet origin
+      }
+      if ($LASTEXITCODE -ne 0) { throw "git fetch of the vcpkg registry failed ($LASTEXITCODE)." }
+
+  # vcpkg keeps its downloads (its tools and the sources) and the packages
+  # that it builds in these folders. The cache restores them, so a job
+  # downloads them only when vcpkg.json changes.
+  - name: Set the vcpkg cache folders
+    shell: pwsh
+    run: |
+      $downloads = Join-Path $env:RUNNER_TEMP 'vcpkg-downloads'
+      $archives = Join-Path $env:RUNNER_TEMP 'vcpkg-archives'
+      New-Item -ItemType Directory -Force $downloads, $archives | Out-Null
+      "VCPKG_DOWNLOADS=$downloads" >> $env:GITHUB_ENV
+      "VCPKG_DEFAULT_BINARY_CACHE=$archives" >> $env:GITHUB_ENV
+      "VCPKG_CACHE_IMAGE=$env:ImageVersion" >> $env:GITHUB_ENV
+
+  - name: Cache vcpkg
+    uses: actions/cache@v4
+    with:
+      path: |
+        ${{ runner.temp }}\vcpkg-downloads
+        ${{ runner.temp }}\vcpkg-archives
+      # The image version: a new image can have another compiler, so the
+      # packages need another build.
+      key: vcpkg-${{ runner.os }}-${{ env.VCPKG_CACHE_IMAGE }}-${{ hashFiles('vcpkg.json') }}
+
+  # The projects use the v143 toolset (MSVC 14.44) with MFC and ATL. MFC is
+  # installed per toolset version. The windows-2022 image has MFC and ATL
+  # for 14.44, its default toolset, so this step only checks. An image that
+  # has MFC only for a later toolset (windows-2025-vs2026) gets MFC and ATL
+  # for 14.44 here, which takes about 4 minutes.
+  - name: Install MFC and ATL for the 14.44 toolset
+    shell: pwsh
+    run: |
+      $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+      $installPath = & $vswhere -latest -products '*' -property installationPath
+      if (-not $installPath) { throw "Visual Studio not found." }
+      $mfcLib = "$installPath\VC\Tools\MSVC\14.44.*\atlmfc\lib\x86\mfc140.lib"
+      $mfc = Get-ChildItem -ErrorAction SilentlyContinue -Path $mfcLib
+      if ($mfc) {
+        Write-Host "MFC for the 14.44 toolset is installed: $($mfc[0].FullName)"
+        exit 0
+      }
+
+      # setup.exe is the installer engine, so -Wait waits for the real work.
+      # Do not pass --wait. The installed engine rejects it (exit code 87).
+      $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+      # The C++ unit test framework (VC\Auxiliary\VS\UnitTest) ships with the
+      # Desktop C++ workload (VC.CoreIde), already on the image, so it needs
+      # no --add here.
+      $vsArgs = "modify --installPath `"$installPath`"" +
+        " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL" +
+        " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.MFC" +
+        " --quiet --norestart --force --nocache"
+      $proc = Start-Process -FilePath $setup -ArgumentList $vsArgs -Wait -PassThru -NoNewWindow
+      # 0 = done. 3010 = done, reboot pending.
+      if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) { throw "Install failed ($($proc.ExitCode))." }
+
+      # Stop here if MFC did not land for 14.44.
+      $mfc = Get-ChildItem -ErrorAction SilentlyContinue -Path $mfcLib
+      if (-not $mfc) { throw "MFC for the 14.44 toolset was not found after the install." }

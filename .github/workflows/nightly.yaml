@@ -10,7 +10,8 @@ jobs:
   # Only execute if the current commit does _not_ have a tag that starts with "nightly/".
   # This is intended to avoid creating a nightly build if there's no changes.
   check-should-execute:
-    runs-on: windows-latest
+    # Only git and bash: a Linux runner starts faster than a Windows one.
+    runs-on: ubuntu-latest
     outputs:
       should_execute: ${{ steps.should_execute_step.outputs.should_execute }}
     steps:
