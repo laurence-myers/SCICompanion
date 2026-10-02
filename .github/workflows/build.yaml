@@ -3,9 +3,12 @@ name: Build SCI Companion
 on:
   workflow_call:
 
+# The jobs run on windows-2022: its Visual Studio 2022 has MFC and ATL for
+# the 14.44 (v143) toolset. The setup-msvc action installs them on an image
+# that does not have them.
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     strategy:
       matrix:
@@ -15,79 +18,8 @@ jobs:
     steps:
     - uses: actions/checkout@v5
 
-    - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v3
-
-    # The build installs the packages of vcpkg.json with the runner's vcpkg
-    # (VCPKG_INSTALLATION_ROOT; see Directory.Build.props). vcpkg.json pins a
-    # registry baseline and package versions, so the vcpkg clone needs those
-    # commits: fetch them, with all the history when the clone is shallow.
-    - name: Fetch the vcpkg registry
-      shell: pwsh
-      run: |
-        # The vcpkg of the build: VCPKG_ROOT, else VCPKG_INSTALLATION_ROOT
-        # (Directory.Build.props).
-        $root = $env:VCPKG_ROOT
-        if (-not $root) { $root = $env:VCPKG_INSTALLATION_ROOT }
-        if (-not $root) { throw "Neither VCPKG_ROOT nor VCPKG_INSTALLATION_ROOT is set." }
-        if ((git -C $root rev-parse --is-shallow-repository) -eq 'true') {
-          git -C $root fetch --quiet --unshallow origin
-        } else {
-          git -C $root fetch --quiet origin
-        }
-        if ($LASTEXITCODE -ne 0) { throw "git fetch of the vcpkg registry failed ($LASTEXITCODE)." }
-
-    # vcpkg keeps its downloads (its tools and the sources) and the packages
-    # that it builds in these folders. The cache restores them, so a job
-    # downloads them only when vcpkg.json changes.
-    - name: Set the vcpkg cache folders
-      shell: pwsh
-      run: |
-        $downloads = Join-Path $env:RUNNER_TEMP 'vcpkg-downloads'
-        $archives = Join-Path $env:RUNNER_TEMP 'vcpkg-archives'
-        New-Item -ItemType Directory -Force $downloads, $archives | Out-Null
-        "VCPKG_DOWNLOADS=$downloads" >> $env:GITHUB_ENV
-        "VCPKG_DEFAULT_BINARY_CACHE=$archives" >> $env:GITHUB_ENV
-        "VCPKG_CACHE_IMAGE=$env:ImageVersion" >> $env:GITHUB_ENV
-
-    - name: Cache vcpkg
-      uses: actions/cache@v4
-      with:
-        path: |
-          ${{ runner.temp }}\vcpkg-downloads
-          ${{ runner.temp }}\vcpkg-archives
-        # The image version: a new image can have another compiler, so the
-        # packages need another build.
-        key: vcpkg-${{ runner.os }}-${{ env.VCPKG_CACHE_IMAGE }}-${{ hashFiles('vcpkg.json') }}
-
-    # The image ships the v143 toolset (MSVC 14.44) and the Windows 11 SDK.
-    # MFC is installed per toolset version, and the image only has MFC for
-    # its latest toolset. Add MFC and ATL for 14.44. This is a small install.
-    - name: Install MFC and ATL for the 14.44 toolset
-      shell: pwsh
-      run: |
-        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-        $installPath = & $vswhere -latest -products '*' -property installationPath
-        if (-not $installPath) { throw "Visual Studio not found." }
-
-        # setup.exe is the installer engine, so -Wait waits for the real work.
-        # Do not pass --wait. The installed engine rejects it (exit code 87).
-        $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
-        # The C++ unit test framework (VC\Auxiliary\VS\UnitTest) ships with the
-        # Desktop C++ workload (VC.CoreIde), already on the image, so it needs
-        # no --add here.
-        $vsArgs = "modify --installPath `"$installPath`"" +
-          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL" +
-          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.MFC" +
-          " --quiet --norestart --force --nocache"
-        $proc = Start-Process -FilePath $setup -ArgumentList $vsArgs -Wait -PassThru -NoNewWindow
-        # 0 = done. 3010 = done, reboot pending.
-        if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) { throw "Install failed ($($proc.ExitCode))." }
-
-        # Stop here if MFC did not land for 14.44.
-        $mfc = Get-ChildItem -ErrorAction SilentlyContinue `
-          -Path "$installPath\VC\Tools\MSVC\14.44.*\atlmfc\lib\x86\mfc140.lib"
-        if (-not $mfc) { throw "MFC for the 14.44 toolset was not found after the install." }
+    - name: Set up the MSVC build
+      uses: ./.github/actions/setup-msvc
 
     # The toolset and SDK come from the project files.
     - name: Build
@@ -217,75 +149,13 @@ jobs:
   # use-after-free) faults the build instead of passing unnoticed in a plain
   # Release build. Runs in parallel with the fast `build` job above.
   asan:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
-    - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v2
-
-    # The build installs the packages of vcpkg.json with the runner's vcpkg
-    # (VCPKG_INSTALLATION_ROOT; see Directory.Build.props). vcpkg.json pins a
-    # registry baseline and package versions, so the vcpkg clone needs those
-    # commits: fetch them, with all the history when the clone is shallow.
-    - name: Fetch the vcpkg registry
-      shell: pwsh
-      run: |
-        # The vcpkg of the build: VCPKG_ROOT, else VCPKG_INSTALLATION_ROOT
-        # (Directory.Build.props).
-        $root = $env:VCPKG_ROOT
-        if (-not $root) { $root = $env:VCPKG_INSTALLATION_ROOT }
-        if (-not $root) { throw "Neither VCPKG_ROOT nor VCPKG_INSTALLATION_ROOT is set." }
-        if ((git -C $root rev-parse --is-shallow-repository) -eq 'true') {
-          git -C $root fetch --quiet --unshallow origin
-        } else {
-          git -C $root fetch --quiet origin
-        }
-        if ($LASTEXITCODE -ne 0) { throw "git fetch of the vcpkg registry failed ($LASTEXITCODE)." }
-
-    # vcpkg keeps its downloads (its tools and the sources) and the packages
-    # that it builds in these folders. The cache restores them, so a job
-    # downloads them only when vcpkg.json changes.
-    - name: Set the vcpkg cache folders
-      shell: pwsh
-      run: |
-        $downloads = Join-Path $env:RUNNER_TEMP 'vcpkg-downloads'
-        $archives = Join-Path $env:RUNNER_TEMP 'vcpkg-archives'
-        New-Item -ItemType Directory -Force $downloads, $archives | Out-Null
-        "VCPKG_DOWNLOADS=$downloads" >> $env:GITHUB_ENV
-        "VCPKG_DEFAULT_BINARY_CACHE=$archives" >> $env:GITHUB_ENV
-        "VCPKG_CACHE_IMAGE=$env:ImageVersion" >> $env:GITHUB_ENV
-
-    - name: Cache vcpkg
-      uses: actions/cache@v4
-      with:
-        path: |
-          ${{ runner.temp }}\vcpkg-downloads
-          ${{ runner.temp }}\vcpkg-archives
-        # The image version: a new image can have another compiler, so the
-        # packages need another build.
-        key: vcpkg-${{ runner.os }}-${{ env.VCPKG_CACHE_IMAGE }}-${{ hashFiles('vcpkg.json') }}
-
-    # Same MFC/ATL install as the build job (a separate job gets a clean runner).
-    - name: Install MFC and ATL for the 14.44 toolset
-      shell: pwsh
-      run: |
-        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-        $installPath = & $vswhere -latest -products '*' -property installationPath
-        if (-not $installPath) { throw "Visual Studio not found." }
-
-        $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
-        $vsArgs = "modify --installPath `"$installPath`"" +
-          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL" +
-          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.MFC" +
-          " --quiet --norestart --force --nocache"
-        $proc = Start-Process -FilePath $setup -ArgumentList $vsArgs -Wait -PassThru -NoNewWindow
-        if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) { throw "Install failed ($($proc.ExitCode))." }
-
-        $mfc = Get-ChildItem -ErrorAction SilentlyContinue `
-          -Path "$installPath\VC\Tools\MSVC\14.44.*\atlmfc\lib\x86\mfc140.lib"
-        if (-not $mfc) { throw "MFC for the 14.44 toolset was not found after the install." }
+    - name: Set up the MSVC build
+      uses: ./.github/actions/setup-msvc
 
     # Build only the UnitTests project and its dependencies with ASan. /MT links
     # the ASan runtime statically, so no extra DLL is needed to run the tests.
@@ -386,10 +256,10 @@ jobs:
   # few warnings to errors after a clean-up pass; clang-tidy; [[nodiscard]] on
   # context.code().inst via #59; SARIF to code scanning) are tracked separately.
   static-analysis:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     # Failure-handling rules (docs/scic-cli/plan.md, section 6.8): no new empty
     # "catch (...)", no new "throw std::exception(...)", no new AfxMessageBox
@@ -400,69 +270,8 @@ jobs:
       shell: pwsh
       run: .\UnitTests\Tools\CheckFailureHandling.ps1
 
-    - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v2
-
-    # The build installs the packages of vcpkg.json with the runner's vcpkg
-    # (VCPKG_INSTALLATION_ROOT; see Directory.Build.props). vcpkg.json pins a
-    # registry baseline and package versions, so the vcpkg clone needs those
-    # commits: fetch them, with all the history when the clone is shallow.
-    - name: Fetch the vcpkg registry
-      shell: pwsh
-      run: |
-        # The vcpkg of the build: VCPKG_ROOT, else VCPKG_INSTALLATION_ROOT
-        # (Directory.Build.props).
-        $root = $env:VCPKG_ROOT
-        if (-not $root) { $root = $env:VCPKG_INSTALLATION_ROOT }
-        if (-not $root) { throw "Neither VCPKG_ROOT nor VCPKG_INSTALLATION_ROOT is set." }
-        if ((git -C $root rev-parse --is-shallow-repository) -eq 'true') {
-          git -C $root fetch --quiet --unshallow origin
-        } else {
-          git -C $root fetch --quiet origin
-        }
-        if ($LASTEXITCODE -ne 0) { throw "git fetch of the vcpkg registry failed ($LASTEXITCODE)." }
-
-    # vcpkg keeps its downloads (its tools and the sources) and the packages
-    # that it builds in these folders. The cache restores them, so a job
-    # downloads them only when vcpkg.json changes.
-    - name: Set the vcpkg cache folders
-      shell: pwsh
-      run: |
-        $downloads = Join-Path $env:RUNNER_TEMP 'vcpkg-downloads'
-        $archives = Join-Path $env:RUNNER_TEMP 'vcpkg-archives'
-        New-Item -ItemType Directory -Force $downloads, $archives | Out-Null
-        "VCPKG_DOWNLOADS=$downloads" >> $env:GITHUB_ENV
-        "VCPKG_DEFAULT_BINARY_CACHE=$archives" >> $env:GITHUB_ENV
-        "VCPKG_CACHE_IMAGE=$env:ImageVersion" >> $env:GITHUB_ENV
-
-    - name: Cache vcpkg
-      uses: actions/cache@v4
-      with:
-        path: |
-          ${{ runner.temp }}\vcpkg-downloads
-          ${{ runner.temp }}\vcpkg-archives
-        # The image version: a new image can have another compiler, so the
-        # packages need another build.
-        key: vcpkg-${{ runner.os }}-${{ env.VCPKG_CACHE_IMAGE }}-${{ hashFiles('vcpkg.json') }}
-
-    - name: Install MFC and ATL for the 14.44 toolset
-      shell: pwsh
-      run: |
-        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-        $installPath = & $vswhere -latest -products '*' -property installationPath
-        if (-not $installPath) { throw "Visual Studio not found." }
-
-        $setup = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
-        $vsArgs = "modify --installPath `"$installPath`"" +
-          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL" +
-          " --add Microsoft.VisualStudio.Component.VC.14.44.17.14.MFC" +
-          " --quiet --norestart --force --nocache"
-        $proc = Start-Process -FilePath $setup -ArgumentList $vsArgs -Wait -PassThru -NoNewWindow
-        if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) { throw "Install failed ($($proc.ExitCode))." }
-
-        $mfc = Get-ChildItem -ErrorAction SilentlyContinue `
-          -Path "$installPath\VC\Tools\MSVC\14.44.*\atlmfc\lib\x86\mfc140.lib"
-        if (-not $mfc) { throw "MFC for the 14.44 toolset was not found after the install." }
+    - name: Set up the MSVC build
+      uses: ./.github/actions/setup-msvc
 
     # Build the first-party libraries with Code Analysis on. continue-on-error: the
     # analysis reports a backlog today, so it must not fail the build. A clean-up

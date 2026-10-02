@@ -136,6 +136,7 @@ modernizing the build. Broad highlights since the previous release:
   name and `(use ...)` name. An export that Sierra left pointing into the
   middle of another function (for example in Quest for Glory III) is left
   out with a warning, as in sluicebox's tools; it gave wrong text before.
+  A variable named from an object is a valid name too (`gGame_opt` from the object `game.opt`).
 * **More accurate compile messages.** Every compile message gives the right
   line (some parser messages were one line early), the error and warning
   counts are exact, and a script file that cannot be read gives an error. A
