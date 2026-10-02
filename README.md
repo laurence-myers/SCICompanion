@@ -82,7 +82,8 @@ modernizing the build. Broad highlights since the previous release:
   classes with one name, get another name and keep their name string, a
   class with no superclass keeps the order of its properties, a class whose
   properties are not those of its superclass keeps them (with the new
-  `&layout`, see "Language extensions"), selectors
+  `&layout`, see "Language extensions"), an object gets the name of its
+  `name` property also when that is not its first property, selectors
   and kernels with no name of their own read back as their numbers,
   `&rest` keeps its place among the arguments, and SQ4 EGA's objects
   resolve. Code that the text cannot have (a property past the end of its
