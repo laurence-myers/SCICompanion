@@ -22,7 +22,8 @@
 #include <codecvt>
 #include "SoundUtil.h"
 #include "CoreLog.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
 #include <regex>
 
 // 60 ticks per second
@@ -223,7 +224,7 @@ std::unique_ptr<SyncComponent> CreateLipSyncComponentFromAudioAndPhonemes(const 
 	std::unique_ptr<SyncComponent> result;
 
 	char szTempFilename[MAX_PATH];
-	if (GetTempFileName(appState->GetResourceMap().Helper().GameFolder.c_str(), "LIP", 0, szTempFilename))
+	if (GetTempFileName(AppResourceMap().Helper().GameFolder.c_str(), "LIP", 0, szTempFilename))
 	{
 		std::string tempWaveFilename = szTempFilename;
 		WriteWaveFile(tempWaveFilename, audio);

@@ -1,0 +1,24 @@
+== r1IfReturns
+code 000e
+if 0010
+  then
+    code 0012-0014
+  else 0015
+    code 0017-0019
+code 001a
+== r1ValueIf
+code 001b
+if 001d
+  then
+    code 001f
+  else 0021
+    code 0023-0029
+code 002b
+== r1Increment
+code 002c-002e
+if 0030
+  then
+    code 0032-0038
+  else 003a
+    code 003c
+code 003e

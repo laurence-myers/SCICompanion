@@ -105,7 +105,7 @@ void SelectDeviceInComboHelper(SCIVersion version, CComboBox &combo, DeviceType 
 
 std::unique_ptr<ResourceEntity> WaveResourceFromFilename(const std::string &filename)
 {
-	std::unique_ptr<ResourceEntity> resource(CreateDefaultAudioResource(appState->GetVersion()));
+	std::unique_ptr<ResourceEntity> resource(CreateDefaultAudioResource(AppVersion()));
 	ScopedFile scopedFile(filename, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
 	sci::streamOwner owner(scopedFile.hFile);
 	std::vector<CompileResult> conversionNotes;
@@ -121,5 +121,5 @@ std::unique_ptr<ResourceEntity> WaveResourceFromFilename(const std::string &file
 void AddWaveFileToGame(const std::string &filename)
 {
 	std::unique_ptr<ResourceEntity> resource = WaveResourceFromFilename(filename);
-	appState->GetResourceMap().AppendResourceAskForNumber(*resource, _NameFromFilename(filename.c_str()));
+	AppResourceMap().AppendResourceAskForNumber(*resource, _NameFromFilename(filename.c_str()));
 }

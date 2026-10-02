@@ -99,6 +99,16 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
   --all` and `script compile --all` on copies of the SCI1.1 template.
   `UnitTests\Tools\CliCorpusSweep.ps1` runs the same commands on copies of
   a local game library (local use only). See `UnitTests\README.md`.
+- The decompiler corpus gate: `UnitTests\Tools\DecompileGate.ps1` (local use
+  only; the games are not in CI) decompiles a sample of each game of a
+  local library (or every script, with `-Full`), and compares it with
+  sluicebox's Snuffer output. With `-Meaning` it also recompiles the
+  decompiled text and compares the meaning of each function with the
+  original (`scic dev compare-meaning`, plan section 3.6). Run the sample
+  after a control-flow or value change of the decompiler; the full run is
+  for the decision points of `docs\decompiler-scope-parser\plan.md` (steps
+  8 and 13). The fixtures of `TestDecompile` check the meaning too:
+  that is the check that CI runs.
 - Read pass/fail counts from `TestResults\UnitTests.trx` (or
   `IntegrationTests.trx`) — the `<Counters>` element under
   `TestRun/ResultSummary`. The full unit suite takes a few minutes.
@@ -161,8 +171,10 @@ The engine and the command-line tool follow the failure-handling model of
   `sci::DataError`, or return a `Result`). In `Src\Core`, `Src\Compile` and
   `Src\Resources`, do not add an `AfxMessageBox` (a core file does not
   compile with it); in those folders and in `Src\Util`, do not use the GUI
-  object `appState` (take the session, the
-  resource map or the helper as a parameter). The CI check
+  object `appState`, or the functions of `AppSession.h` (`AppSession`,
+  `AppResourceMap`, `AppVersion`): take the session, the
+  resource map or the helper as a parameter. A GUI file that needs only
+  the open game includes `AppSession.h`, not `AppState.h`. The CI check
   `UnitTests\Tools\CheckFailureHandling.ps1` fails on a new site. Its
   allowlist holds the old sites; when you remove old sites, run the check
   with `-Update` and commit the allowlist.

@@ -41,16 +41,12 @@ struct Consumption
 		cStackConsume = 0;
 		cAccGenerate = 0;
 		cStackGenerate = 0;
-		cPrevConsume = 0;
-		cPrevGenerate = 0;
 	}
 
 	int cAccConsume;
 	int cStackConsume;
 	int cAccGenerate;
 	int cStackGenerate;
-	int cPrevConsume;
-	int cPrevGenerate;
 };
 
 Consumption _GetInstructionConsumption(scii &inst, DecompileLookups *lookups = nullptr);
@@ -71,8 +67,6 @@ enum class VarScope : std::uint8_t
 	Temp = 0x02,
 	Param = 0x03
 };
-
-class CodeNode;
 
 struct FunctionDecompileHints
 {
@@ -161,7 +155,6 @@ public:
 	const sci::ClassDefinition *DecompileLookups::GetClassContext() const;
 
 	bool PreferLValue;
-	std::vector<std::unique_ptr<CodeNode>>::iterator BreakExit;
 
 	bool IsPropertySelectorOnly(uint16_t selector) const;
 
@@ -178,6 +171,8 @@ public:
 	bool DecompileAsm = false;
 	bool SubstituteTextTuples = false;
 	PCSTR pszDebugFilter = nullptr;
+	// The count of the functions that DecompileRaw began in this script.
+	int FunctionCount = 0;
 
 	const SelectorTable& GetSelectorTable() const;
 
@@ -223,11 +218,17 @@ private:
 
 void DecompileRaw(sci::FunctionBase &func, DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEnd, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset);
 
-// Repoint the branch targets of `copy` (a positional duplicate of `source`) so
-// they refer to nodes inside `copy` instead of the shared nodes in `source`.
-// After this, `source` can be edited or have nodes erased without leaving the
-// copy's branch iterators dangling. See #62.
-void RepointBranchTargetsIntoCopy(std::list<scii> &source, std::list<scii> &copy);
+// The instructions of one function, as DecompileRaw reads them: the decode
+// to the end of the script, else to pEstimatedMaxEnd. The placeholder
+// (Opcode::INDETERMINATE) comes first, and the branch targets point into
+// code. returnsValue gets the guess of the decompiler: a ret reads the
+// accumulator. False when no bound gives whole instructions.
+bool ReadFunctionCode(DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset, std::list<scii> &code, bool &returnsValue);
+
+// The bytes of the code of the function at pBegin, by the first decode of
+// DecompileRaw (to the end of the script: it ends at a ret that no branch
+// goes past); -1 when that decode fails.
+int FunctionCodeLength(DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset);
 
 struct VariableRange
 {
@@ -239,7 +240,6 @@ void AddLocalVariablesToScript(sci::Script &script, const CompiledScript &compil
 
 std::string _GetProcNameFromScriptOffset(uint16_t wOffset);
 sci::ValueType _ScriptObjectTypeToPropertyValueType(ICompiledScriptSpecificLookups::ObjectType type);
-bool _ObtainInstructionSequence(code_pos branchInstruction, code_pos beginning, code_pos &beginningOfBranchInstructionSequence, bool includeDebugOpcodes = false);
 
 
 

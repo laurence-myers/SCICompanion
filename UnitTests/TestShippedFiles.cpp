@@ -20,7 +20,7 @@
 //
 #include "stdafx.h"
 #include "CppUnitTest.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceMap.h"
 #include "ScriptOMAll.h"
 #include "SyntaxParser.h"
@@ -58,7 +58,7 @@ namespace UnitTests
 
         CompileLog log;
         bool ok = SyntaxParser_Parse(*script, stream,
-            PreProcessorDefinesFromSCIVersion(appState->GetVersion()), &log, addCommentsToOM, nullptr, addCommentsToOM);
+            PreProcessorDefinesFromSCIVersion(AppVersion()), &log, addCommentsToOM, nullptr, addCommentsToOM);
         buffer.FreeAll();
 
         if (!ok || log.HasErrors())
@@ -157,7 +157,7 @@ namespace UnitTests
             std::stringstream ss;
             SourceCodeWriter writer(ss, objects.get());
             objects->OutputSourceCode(writer);
-            std::string roundTripPath = appState->GetResourceMap().Helper().GetScriptFileName("ShippedRoundTrip");
+            std::string roundTripPath = AppResourceMap().Helper().GetScriptFileName("ShippedRoundTrip");
             {
                 std::ofstream file(roundTripPath.c_str(), std::ios::binary | std::ios::trunc);
                 file << ss.str();

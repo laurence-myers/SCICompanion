@@ -2,9 +2,9 @@
 (script# 922)
 (include sci.sh)
 
-; A mid-body continue in a loop. The extra jump to the loop head creates a
-; second back edge and a common latch; the structurer must recognize the
-; mid-body jump as a continue, not part of the natural back edge.
+; A mid-body continue in a loop: a second jump to the loop head. The
+; decompiler must give the mid-body jump as a continue, not as the end of
+; the loop body.
 (public
 	f10MidBodyContinue 0
 )

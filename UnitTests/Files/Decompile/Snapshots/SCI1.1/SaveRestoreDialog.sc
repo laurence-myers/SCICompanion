@@ -219,22 +219,23 @@
 					18
 				)
 			)
-			(if (== local1 changeDirI)
-				(self dispose:)
-				(if
-					(and
-						(GetDirectory gSaveDir)
-						(==
-							(= local2 (GetSaveFiles (gGame name?) @temp3 @temp364))
-							-1
+			(cond 
+				((== local1 changeDirI)
+					(self dispose:)
+					(if
+						(and
+							(GetDirectory gSaveDir)
+							(==
+								(= local2 (GetSaveFiles (gGame name?) @temp3 @temp364))
+								-1
+							)
 						)
+						(= temp1 -1)
+						(break)
 					)
-					(= temp1 -1)
-					(break)
+					(self init: param1 @temp3 @temp364)
 				)
-				(self init: param1 @temp3 @temp364)
-			else
-				(if (and (== local4 2) (== local1 okI))
+				((and (== local4 2) (== local1 okI))
 					(self dispose:)
 					(if
 					(GetReplaceName doit: (StrCpy param1 @[temp3 temp2]))
@@ -242,10 +243,9 @@
 						(break)
 					else
 						(self init: param1 @temp3 @temp364)
-						(continue)
 					)
 				)
-				(if
+				(
 					(and
 						(== local4 1)
 						(or (== local1 okI) (== local1 editI))
@@ -254,52 +254,51 @@
 						(self dispose:)
 						(localproc_0218)
 						(self init: param1 @temp3 @temp364)
-						(continue)
-					)
-					(= temp1 -1)
-					(= local1 0)
-					(while (< local1 local2)
-						(if
-						(not (= temp1 (StrCmp param1 @[temp3 (* local1 18)])))
-							(break)
-						else
-							(++ local1)
+					else
+						(= temp1 -1)
+						(= local1 0)
+						(while (< local1 local2)
+							(if
+							(not (= temp1 (StrCmp param1 @[temp3 (* local1 18)])))
+								(break)
+							else
+								(++ local1)
+							)
 						)
-					)
-					(cond 
-						((not temp1) (= temp1 [temp364 local1]))
-						((== local2 20) (= temp1 [temp364 local3]))
-						(else
-							(= temp1 0)
-							(repeat
-								(= local1 0)
-								(while (< local1 local2)
-									(if (== temp1 [temp364 local1])
-										(break)
-									else
-										(++ local1)
+						(cond 
+							((not temp1) (= temp1 [temp364 local1]))
+							((== local2 20) (= temp1 [temp364 local3]))
+							(else
+								(= temp1 0)
+								(repeat
+									(= local1 0)
+									(while (< local1 local2)
+										(if (== temp1 [temp364 local1])
+											(break)
+										else
+											(++ local1)
+										)
 									)
+									(if (== local1 local2) (break) else (++ temp1))
 								)
-								(if (== local1 local2) (break) else (++ temp1))
 							)
 						)
+						(break)
 					)
-					(break)
-				else
-					(if (== local1 deleteI)
-						(self dispose:)
-						(if
-							(not
-								(Print
-									addText: 12 0 0 1 0 0 990
-									addButton: 0 31 0 0 1 0 35 990
-									addButton: 1 32 0 0 1 50 35 990
-									init:
-								)
+				)
+				((== local1 deleteI)
+					(self dispose:)
+					(if
+						(not
+							(Print
+								addText: 12 0 0 1 0 0 990
+								addButton: 0 31 0 0 1 0 35 990
+								addButton: 1 32 0 0 1 50 35 990
+								init:
 							)
-							(self init: param1 @temp3 @temp364)
-							(continue)
 						)
+						(self init: param1 @temp3 @temp364)
+					else
 						((= newFile (File new:))
 							name: (DeviceInfo 7 @temp385 (gGame name?))
 							open: 2
@@ -319,17 +318,14 @@
 						(DeviceInfo 8 @temp385 (gGame name?) [temp364 local3])
 						(FileIO 4 @temp385)
 						(self init: param1 @temp3 @temp364)
-						(continue)
 					)
-					(cond 
-						((== local1 okI) (= temp1 [temp364 local3]) (break))
-						((or (== local1 -1) (== local1 cancelI)) (= temp1 -1) (break))
-						((== local4 1)
-							(editI
-								cursor: (StrLen (StrCpy param1 @[temp3 temp2]))
-								draw:
-							)
-						)
+				)
+				((== local1 okI) (= temp1 [temp364 local3]) (break))
+				((or (== local1 -1) (== local1 cancelI)) (= temp1 -1) (break))
+				((== local4 1)
+					(editI
+						cursor: (StrLen (StrCpy param1 @[temp3 temp2]))
+						draw:
 					)
 				)
 			)

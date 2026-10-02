@@ -112,60 +112,68 @@ expected file is missing, the test writes the actual to
 | `C2_IndexedMathAssign` | 920 | (compiler) | indexed `+=` compiles to Sierra's sequence; used as a value it gives the new value |
 | `C4_ClassDefRealClass` | 934 | (compiler) | a classdef with a real class's species keeps the selector check (must not compile) |
 | `C5_IndexerSideEffect` | 935 | (compiler) | an indexer with a side effect in an indexed `+=` gets a warning |
-| `C3_SierraIndexedMathAssign` | 932 | (chunk stage) | Sierra's own `lati; push` sequence for an indexed `+=` folds back |
+| `C3_SierraIndexedMathAssign` | 932 | (values) | Sierra's own `lati; push` sequence for an indexed `+=` folds back |
 | `F3_ValueIfReturn` | 909 | 3 | fixed; `(return (and a b))` |
 | `F3_OrThreeTerms` | 910 | 3 | fixed; n-ary or |
-| `F3_OrAndOr` | 911 | 3 | fixed; needs the branch deoptimizer |
+| `F3_OrAndOr` | 911 | 3 | fixed; Sierra's optimizer bypasses the join of the and |
 | `F3_AndOr` | 912 | 3 | fixed |
 | `F3_IfValueWithElse` | 913 | 3 | fixed; `(= x (if c 1 else 2))` |
 | `F3_AndAsArgument` | 914 | 3 | fixed; and as a call argument |
-| `F4_WhileAnd` | 915 | 4 | fixed; else-break folded into the test |
+| `F4_WhileAnd` | 915 | 4 | fixed; the and is the loop test |
 | `F4_WhileOr` | 916 | 4 | fixed; or as the loop test |
 | `P1_CompoundConditions` | 917 | (compiler) | SCI Companion dialect; text equals source |
-| `F8_AssignBeforeCondInRet` | 918 | 8 | fixed; statement lifts out of a value if |
+| `F8_AssignBeforeCondInRet` | 918 | 8 | fixed; the statement comes before the return |
 | `F8_DeadValueStatement` | 919 | 8 | fixed; dead value becomes a bare statement |
-| `F9_BreakInSwitchCase` | 921 | (structurer) | fixed; break out of a loop from a switch case |
-| `N1_ChainedCompare` | 923 | (n-ary) | fixed; `(< 0 x 19)` is built from its pprev at consumption, a send in the middle included |
-| `N2_SierraChainedCompare` | 933 | (n-ary) | fixed; Sierra's own chain shape with a variable last; the chain's `bnt` is neutralized only between two compares of the same operator |
-| `F10_MidBodyContinue` | 922 | (structurer) | fixed; a mid-body `jmp head` is a `(continue)`, written as an if-else by `IfContinueRefactor` |
-| `F11_LatchTrampoline` | 924 | (structurer) | fixed; a shared `jmp head` folds into the common latch |
+| `F9_BreakInSwitchCase` | 921 | (control flow) | fixed; break out of a loop from a switch case |
+| `N1_ChainedCompare` | 923 | (n-ary) | fixed; `(< 0 x 19)` is built from its pprev, a send in the middle included |
+| `N2_SierraChainedCompare` | 933 | (n-ary) | fixed; Sierra's own chain shape with a variable last |
+| `F10_MidBodyContinue` | 922 | (control flow) | fixed; a mid-body `jmp head` is a `(continue)`, written as an if-else by `IfContinueRefactor` |
+| `F11_LatchTrampoline` | 924 | (control flow) | fixed; a `jmp head` that several branches share |
 | `P2_CondInLoop` | 926 | (compiler) | SCI Companion dialect; nested conds in a loop round-trip stably |
-| `F12_BreakJoin` | 925 | (structurer) | fixed; a break edge into a shared statement moves to the if's follow |
+| `F12_BreakJoin` | 925 | (control flow) | fixed; the if does not hold a statement that a break of another branch also reaches |
 | `R1_ReturnShapes` | 927 | (returns) | fixed; an if whose branches return is not returned, a value if at the end is, a `++` is not a return value |
-| `A1_ReusedAcc` | 928 | (chunk stage) | fixed; a store whose value a later send reuses stays a statement |
-| `B1_DeadBranch` | 929 | (fixup) | fixed; a `bnt` right after a `bnt` to the same target is deleted (`_RemoveDeadBranches`) |
-| `A2_ReusedSelector` | 930 | (chunk stage) | fixed; a selector pushed as `push` after an `ldi` of its number, and a `dup` argument |
-| `F13_ValueIfArgument` | 931 | (chunk stage) | fixed; a send whose arguments are value ifs, with the selector and earlier arguments pushed before the if; an if test that reuses the accumulator hands those pushes to the send (`deferred`) |
-| `F14_BreakPastLatch` | 936 | (structurer) | fixed; a loop whose break jumps past its latch ends at its follow node, so the loop after its latch (in its else) is built first; King's Quest V script 755 |
-| `F15_SharedLoopHead` | 937 | (structurer) | fixed; a while that is the first statement of a repeat shares the repeat's head; when the two do not structure as one loop, a second analysis builds them as nested loops; King's Quest V script 755 |
-| `F16_SharedHeadOneLoop` | 938 | (structurer) | a while first in a repeat that structures as one loop keeps that text (a cond); no second analysis |
-| `F17_ThreadedOrJoin` | 939 | (structurer) | fixed; an or that ends where the and around it ends has its `bt` sent past that join; the structurer moves it back; no round trip (SCI Companion's compiler emits another shape); King's Quest VI script 850, Space Quest III script 255 |
-| `F18_SwitchHeadContinue` | 942 | (structurer) | fixed; a loop whose body starts with a switch: a `jmp` to the head that only branches reach folds into the common latch; `SRDialog::doit` (script 990) of many SCI0 games |
-| `F19_ValueIfInAnd` | 943 | (structurer) | fixed; an if with an else, used as a value in a compare inside an and (or first in an or), is built before the and (or the or); the compare takes the push before the if; a join that stores the value still gets its if (or its and) first; King's Quest I SCI scripts 21 and 22, Conquests of Camelot script 107, King's Quest IV script 49, The Island of Dr. Brain script 350 |
-| `F20_OrAndLoopHead` | 944 | (structurer) | fixed; an or with an and as its last operand is the test of an if that ends a loop body: the and's `bnt` goes past the if's `bnt` to the loop head, and moves back onto it; Quest for Glory II script 695, Conquests of the Longbow script 541 |
+| `A1_ReusedAcc` | 928 | (values) | fixed; a store whose value a later send reuses stays a statement |
+| `B1_DeadBranch` | 929 | (control flow) | fixed; a `bnt` right after a `bnt` to the same target is dead; the compare is one operand |
+| `A2_ReusedSelector` | 930 | (values) | fixed; a selector pushed as `push` after an `ldi` of its number, and a `dup` argument |
+| `F13_ValueIfArgument` | 931 | (values) | fixed; a send whose arguments are value ifs, with the selector and earlier arguments pushed before the if |
+| `F14_BreakPastLatch` | 936 | (control flow) | fixed; a loop whose break jumps past its latch, to the end of the loop, holds the loop after its latch; King's Quest V script 755 |
+| `F15_SharedLoopHead` | 937 | (control flow) | fixed; a while that is the first statement of a repeat shares the repeat's head; with a breakif in the while, they are nested loops; King's Quest V script 755 |
+| `F16_SharedHeadOneLoop` | 938 | (control flow) | a while first in a repeat, with no break in the while, is one loop (a cond in the repeat) |
+| `F17_ThreadedOrJoin` | 939 | (control flow) | fixed; an or that ends where the and around it ends has its `bt` sent past that join; no round trip (SCI Companion's compiler emits another shape); King's Quest VI script 850, Space Quest III script 255 |
+| `F18_SwitchHeadContinue` | 942 | (control flow) | fixed; a loop whose body starts with a switch, with a `jmp` to the head that only branches reach; `SRDialog::doit` (script 990) of many SCI0 games |
+| `F19_ValueIfInAnd` | 943 | (values) | fixed; an if with an else, used as a value in a compare inside an and (or first in an or): the compare takes the push before the if; also a join that stores the value; King's Quest I SCI scripts 21 and 22, Conquests of Camelot script 107, King's Quest IV script 49, The Island of Dr. Brain script 350 |
+| `F20_OrAndLoopHead` | 944 | (control flow) | fixed; an or with an and as its last operand is the test of an if that ends a loop body: the and's `bnt` goes past the if's `bnt` to the loop head; Quest for Glory II script 695, Conquests of the Longbow script 541 |
+| `S1_SwitchValue` | 945 | (switch) | a switch as a value |
+| `S2_CaseValueBranch` | 946 | (switch) | a case value with a branch |
+| `S3_EmptyLastCase` | 947 | (switch) | an empty last case |
+| `S4_EmptyLastCaseInLoop` | 948 | (switch) | an empty last case in a loop |
+| `S5_SwitchAllReturn` | 949 | (switch) | cases that all return |
+| `V1_ReuseAcrossBranch` | 953 | (values) | values that the optimizer reuses across a branch |
+| `L1_LoopLevels` | 954 | (control flow) | a break of level 2, and a continue in a do loop; no round trip |
+| `D1_DeadBreak` | 956 | (control flow) | dead breaks after the `jmp` of a then-part give no statement |
+| `D2_DeadCode` | 958 | (control flow) | dead code after a `jmp` and after a break gives no statement |
+| `L2_ContinueTwoInFor` | 962 | (control flow) | a continue of a for from an inner while |
+| `S6_NoOpCaseTest` | 963 | (switch) | a case whose test does nothing is the else case |
+| `X3_StaleExport` | 964 | (exports) | an export that points into the code of another function is left out |
+| `V2_SwappedOperands` | 965 | (values) | the operands of a mul that the optimizer swapped |
 
-`TemplateGame_FallbackBaseline` guards against new fallbacks. The template game
-started with 7 known fallbacks. The Family 1 and Family 6 fixes each removed
-one, the branch structurer removed one more (System's `InRect`), and the
-loop-body fixes (latch trampolines, tail breaks, ret-only loop exits) removed
-the last four. The baseline is 0: every template script decompiles.
+`TemplateGame_FallbackBaseline` guards against new fallbacks. The baseline
+is 0: every template script decompiles.
 
-### How Families 3 and 4 are fixed
+### How the decompiler builds control flow and values
 
-The decompiler structures branches from the immediate post-dominators
-(`ControlFlowGraph.cpp`, `_StructureAllBranches`): a `bnt` becomes an if whose
-follow is the post-dominator, a `bt` becomes an or, and an and is only made
-where an outer `bnt` shares an inner if's else. Nothing synthesizes a `not`.
-Two instruction fixups run first: `_UnchainBtToBnt` maps SCI Companion's
-`bt <then>` onto Sierra's `bt <join bnt>`, and `_DeoptimizeBtChains` restores
-the join that Sierra's optimizer bypasses in `(or P (and Q R))`. A `bnt` to the
-loop exit inside a loop body becomes an if with a synthesized else-break
-(`_SolveLoopBranches`). The chunk stage treats an if as a value. AST passes
-(`DecompilerAstPasses.cpp`) then give the idiomatic text: nested and
-value-position ifs become `and`/`or`, loop cleanup folds the breaks, double
-nots collapse in boolean context, and `(= a (+ a b))` becomes `(+= a b)`.
-`TestAstPasses` covers the passes on parsed source, with no game data.
-
+The scope parser (`ScopeParser.cpp`) reads the branches of a function in
+the order that the compiler wrote them, and gives a tree of regions: a
+`bnt` opens an if, a `bt` an or, a backward `jmp` a loop, and a jump to
+the end of a region is a break or a continue. `ScopeVerify.cpp` checks
+the tree against the branches of the bytecode. The value stage (`ScopeValues.cpp`)
+follows the values forwards through the tree (the accumulator, the stack,
+`prev`) and gives the statements. AST passes (`DecompilerAstPasses.cpp`)
+then give the idiomatic text: nested and value-position ifs become
+`and`/`or`, loop cleanup folds the breaks, double nots collapse in boolean
+context, and `(= a (+ a b))` becomes `(+= a b)`. `TestAstPasses` covers
+the passes on parsed source, with no game data. The design is in
+`docs\decompiler-scope-parser\plan.md`.
 Return values (`R1_ReturnShapes`): a function returns the accumulator, so
 whether a statement before a `ret` is the return value is a judgement. The
 `ReturnCleanup` pass (last in `DecompilerAstPasses.cpp`) follows the golden
@@ -178,13 +186,8 @@ a final bare `(return)` is dropped; `onMe`/`onTarget` always return a value;
 
 Reused accumulator (`A1_ReusedAcc`): Sierra's compiler drops the load of a
 send target or pushed argument when the accumulator already holds that
-variable from a store before the pushes. A send evaluates its target after
-its arguments, so at chunk enumeration (`EnumerateCodeChunks`,
-`ReusesAccumulator`) a generator met after all the stack operands is an
-earlier statement, and the send gets a `NeedsAccumulator` that resolves to a
-load of the variable. `aTop` joined the short-circuit set (a reused property
-store reads back as `pToa`).
-
+variable from a store before the pushes. The store is a statement of its
+own, and the send reads the variable.
 Value shapes (`TestAstPasses`, `CopyValue_*`, `IfToAnd_ValueContext*`,
 `Loop_*`): `CopyValue` gives a value if with an empty then the tested
 variable as its then (`(= x (if a a else b))`, `(= x (if (= t y) t else b))`,
@@ -195,20 +198,16 @@ one if becomes an and), never folds a cond case itself, keeps an assignment's
 own if, and leaves a branch with a return inside alone. In a loop,
 `IfContinueRefactor` turns an if whose then ends in a continue (body level)
 or a break or return (any depth) followed by more statements into an
-if-else, and `ContinueTrim` drops a continue at the end of the body. The
-chunk stage clones a reused plain load instead of stealing it, so a stray
-number before a send that reuses it stays a statement (`A1_ReusedAcc`).
+if-else, and `ContinueTrim` drops a continue at the end of the body.
 
 The structural compare keys exported procedures by export slot (from the
 public block, or a `proc<script>_<slot>` name) and local ones by ordinal,
 and skips golden procedures marked `; UNUSED` (dead code the decompiler
 never reaches).
 
-Family 2 is fixed but has no isolated fixture; the baseline test guards it.
-Family 8 (a statement before the test of an if that a `ret` consumes): the
-lift pass in `DecompilerNew.cpp` (`SkipGuaranteedExecutions`) now climbs out
-of the first operand of an instruction, because that operand runs before the
-instruction. The statement moves to before the return.
+Family 2 has no isolated fixture; the baseline test guards it. Family 8 (a
+statement before the test of an if that a `ret` consumes): the statement
+comes before the return.
 
 `DiagnosticDumps::Dump_FailingTemplateScripts` is not in the default filter.
 It decompiles named template scripts with the control-flow dump on, for
@@ -238,8 +237,8 @@ structural compare matches files by name. `<out>\_warnings.txt` lists every
 fallback. The golden tree is sluicebox's output for QfG4; it differs in
 variable names and formatting.
 
-`DiagnosticDumps::Compare_Structural` (`UnitTests\StructuralCompare.cpp`) is
-the structural compare. It parses both sides with the real parser, normalizes
+`DiagnosticDumps::Compare_Structural` (`SCICompanionLib\Src\Compile\StructuralCompare.cpp`,
+in the engine library) is the structural compare. It parses both sides with the real parser, normalizes
 each function with AST passes (`cond` to nested ifs, `for` to `while` with the
 step at the end, unsigned compares to signed, then the decompiler's own passes
 so nested ifs, `op=` and loop shapes converge, then every value, variable,
@@ -249,6 +248,18 @@ and compares the printed bodies per function. It writes
 `<file>.<function>.diff.txt` per difference with both normalized texts. Two
 unit tests in `TestAstPasses` pin it: golden style and SCI Companion style of
 one function compare equal, and a real difference is reported by name.
+
+The same compare gives a verdict for each function in `scic dev compare-structure`
+(a hidden command, `CompareScriptFolders`): the files pair by their
+`(script# N)` line, the local procedures pair in order (an alignment that
+allows a procedure that one side does not have), and an `(asm ...)` block is
+replaced by a marker before the parse. SAME: equal with the names; NAMES:
+equal with the names masked; SHAPE: the same control statements; DIFF: other
+control statements; ASM, SOURCE, BOTH-ASM when a side is asm; ONLY-EXPECTED,
+ONLY-ACTUAL and NEITHER (only the baseline has the function); UNPARSED (the
+expected script does not parse). With `--baseline` (an earlier decompile), each function also
+gets FIXED, CHANGED, REGRESSED, ADDED or REMOVED. `TestStructuralCompare`, and
+`TestCli::Dev_CompareStructure` for the command, cover it.
 `Tools\CompareDecompile.ps1` is now the exact text compare only, for
 reviewing a snapshot change.
 
@@ -301,6 +312,29 @@ game data other than the template games.
   error, or a timeout. It also exits with 1 when it could not run a game
   (a `sweep` row, for example a copy that failed), or when a row could
   not go into the CSV (it then goes into `sweep-unwritten.csv`).
+- `Tools\DecompileGate.ps1` (local use) is the corpus gate of the decompiler
+  (`docs\decompiler-scope-parser\plan.md`, section 6). For each game (one
+  folder for each MD5 of `resource.map`) it decompiles the scripts of the
+  sample (`Files\Corpus\gate-sample.json`: the scripts with asm fallbacks in
+  a sweep, and 5 random scripts) or of the whole game (`-Full`), and
+  compares them with sluicebox's Snuffer output
+  (`scic dev compare-structure`). `-Record` writes the counts into
+  `Files\Corpus\gate-baseline.json`; `-Check` applies the rules of the gate.
+  `-Meaning` also decompiles every script of each game copy, compiles the
+  text into a folder (`scic script compile --all --out-dir <folder> --raw`)
+  and compares the meaning of each function of the run with the original
+  (`scic dev compare-meaning`; plan section 3.6, gate rule 7). The
+  fixtures of `TestDecompile` compare the meaning of each recompiled
+  fixture in the same way (`AssertMeaningKept`), and `TestMeaningCheck`
+  tests the check on pairs of asm functions.
+  The cache keeps a copy of each game and the Snuffer output. `Corpus.Common.ps1`
+  has the functions that it shares with `CliCorpusSweep.ps1`.
+
+  ```
+  .\UnitTests\Tools\DecompileGate.ps1 -Library 'F:\Games\Sierra', 'F:\games\gog' -Exclude '_vgm*' -Snuffer <Snuffer.exe> -Work I:\tmp\scic-gate
+  .\UnitTests\Tools\DecompileGate.ps1 ... -BaselineRun <run folder> -Check
+  .\UnitTests\Tools\DecompileGate.ps1 ... -Meaning -Allowlist <allowlist> -Check
+  ```
 
 ## Other tests
 

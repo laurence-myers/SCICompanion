@@ -13,7 +13,7 @@ GNU General Public License for more details.
 ***************************************************************************/
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "resource.h"
 #include "EditCelDataDialog.h"
 #include "View.h"
 #include "format.h"

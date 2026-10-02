@@ -13,7 +13,6 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "CppUnitTest.h"
-#include "AppState.h"
 #include "Codec.h"
 #include "CodecAlt.h"
 #include <vector>
@@ -35,28 +34,7 @@ namespace UnitTests
 {
     TEST_CLASS(TestCodec)
     {
-        bool _createdAppState = false;
-
     public:
-        // Several error paths call appState->LogInfo, so a global is required.
-        TEST_METHOD_INITIALIZE(SetUpCodec)
-        {
-            if (appState == nullptr)
-            {
-                appState = new AppState(nullptr);
-                _createdAppState = true;
-            }
-        }
-
-        TEST_METHOD_CLEANUP(TearDownCodec)
-        {
-            if (_createdAppState)
-            {
-                delete appState;
-                appState = nullptr;
-                _createdAppState = false;
-            }
-        }
 
         // (d) LZW overflow branch used to advance destctr twice per loop,
         // dropping every other byte. Stream decodes to a run of 'A'; declaring

@@ -30,7 +30,7 @@ IMPLEMENT_DYNCREATE(CResourceListDoc, CDocument)
 CResourceListDoc::CResourceListDoc() : _shownResourceType(ResourceType::None)
 {
 	// Add ourselves as a sync
-	CResourceMap &map = appState->GetResourceMap();
+	CResourceMap &map = AppResourceMap();
 	map.AddSync(this);
 }
 
@@ -55,10 +55,10 @@ void CResourceListDoc::OnCloseDocument()
 {
 	std::string strEmpty;
 	appState->GetDependencyTracker().Clear();
-	appState->GetResourceMap().SetGameFolder(strEmpty);
+	AppResourceMap().SetGameFolder(strEmpty);
 
 	// Remove ourselves as a sync
-	CResourceMap &map = appState->GetResourceMap();
+	CResourceMap &map = AppResourceMap();
 	map.RemoveSync((IResourceMapEvents*)this);
 
 	appState->ResetClassBrowser();
@@ -185,12 +185,12 @@ void CResourceListDoc::Serialize(CArchive& ar)
 			path.SetAt(iFileOffset, 0); // Null terminate it
 
 			// Set this folder as our new game folder
-			CResourceMap &map = appState->GetResourceMap();
+			CResourceMap &map = AppResourceMap();
 			appState->GetDependencyTracker().Clear();
 			map.SetGameFolder((PCSTR)path);
 			appState->_fUseOriginalAspectRatioCached = map.Helper().GetUseSierraAspectRatio(!!appState->_fUseOriginalAspectRatioDefault);
 
-			appState->LogInfo(TEXT("Open game: %s"), (PCTSTR)path);
+			CoreLogFormat(LogLevel::Info, TEXT("Open game: %s"), (PCTSTR)path);
 
 			// Tell the user if the resource map is corrupt or truncated. Without
 			// this the game just appears empty, because the enumeration degrades

@@ -13,6 +13,11 @@
 ***************************************************************************/
 #pragma once
 
+#include <list>
+#include <string>
+#include <vector>
+#include "scii.h"
+
 namespace sci
 {
 	class Script;
@@ -50,5 +55,45 @@ class SelectorTable;
 // syntax. The resource map gives the game (its helper), the script's text
 // resource and vocab.000.
 std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, uint16_t wScript, CompiledScript &compiledScript, IDecompilerResults &results, bool debugControlFlow = false, bool debugInstConsumption = false, PCSTR pszDebugFilter = nullptr, bool decompileAsm = false, bool substituteTextTuples = false);
-// Gives objects that share a name distinct names (name_a, name_b, ...), keeping the original as the name property.
-void FixDuplicateObjectNames(CompiledScript &compiledScript, const SelectorTable &selectorTable);
+// Gives objects that share a name, an instance (not public) with the name of a property of an object of the
+// script, and an instance with the name of a keyword, distinct names (name_a, name_b, ...); the text keeps the original as the name property.
+void FixDuplicateObjectNames(CompiledScript &compiledScript, GlobalCompiledScriptLookups &lookups);
+
+// The code of one function of a compiled script (ReadScriptFunctions).
+struct FunctionCode
+{
+	FunctionCode() = default;
+	FunctionCode(FunctionCode &&) = default;
+	FunctionCode &operator=(FunctionCode &&) = default;
+	// A copy of the code keeps its branch targets in the code of the source.
+	FunctionCode(const FunctionCode &) = delete;
+	FunctionCode &operator=(const FunctionCode &) = delete;
+
+	// A method: the name of its object, and its selector.
+	bool method = false;
+	std::string objectName;
+	// The key of the object for the meaning check: its name, or its species
+	// for a class with a made-up name (CompiledObject::HasMadeUpName: the
+	// position of a class in the script can change when it compiles again).
+	std::string objectKey;
+	uint16_t selector = 0;
+	// A procedure: the index of its export; -1 for an internal procedure
+	// (and for a method).
+	int exportIndex = -1;
+	// The address of the code.
+	uint16_t offset = 0;
+	// The decode found whole instructions.
+	bool read = false;
+	// A procedure whose address is not code of the script (past its end, or
+	// a known bad export).
+	bool badAddress = false;
+	// The instructions (ReadFunctionCode), and the guess that a ret reads
+	// the accumulator.
+	std::list<scii> code;
+	bool returnsValue = false;
+};
+
+// The functions of the script, as the decompiler finds them: the methods of
+// each object, the exported procedures, then the internal procedures (in
+// address order). pWords gives the text of the said strings.
+std::vector<FunctionCode> ReadScriptFunctions(const CompiledScript &compiledScript, DecompileLookups &lookups, const Vocab000 *pWords);

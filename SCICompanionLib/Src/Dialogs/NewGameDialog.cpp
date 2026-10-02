@@ -38,7 +38,7 @@ PCSTR ConfigSectionName = "Config";
 
 void NewGameDialog::_PopulateTemplates()
 {
-	std::string templateFolder = appState->GetResourceMap().GetTemplateFolder() + "\\";
+	std::string templateFolder = AppResourceMap().GetTemplateFolder() + "\\";
 	std::string findFirstString = templateFolder + "SCI*";
 	// Find top-level folders that start with SCI
 	WIN32_FIND_DATA findData = { 0 };
@@ -181,7 +181,7 @@ void NewGameDialog::OnBnClickedOk()
 	if (fContinue)
 	{
 		// 2) Copy the files over
-		std::string templateCoreFolder = appState->GetResourceMap().GetTemplateFolder();
+		std::string templateCoreFolder = AppResourceMap().GetTemplateFolder();
 		CString strText;
 		m_wndComboTemplate.GetWindowTextA(strText);
 		std::string templateSubFolder = (PCSTR)strText;

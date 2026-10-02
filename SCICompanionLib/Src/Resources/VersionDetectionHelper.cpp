@@ -519,7 +519,7 @@ bool _DetectLofsaFormat(GameFolderHelper &helper)
 				if ((opcode == Opcode::LOFSA) || (opcode == Opcode::LOFSS))
 				{
 					uint16_t absoluteOffset = operands[0];
-					int16_t finalRelativeOffset = (int16_t)currentPCOffset + (int16_t)operands[0];
+					int finalRelativeOffset = (int)currentPCOffset + (int16_t)operands[0];
 
 					if (absoluteOffset > (uint16_t)(compiledScript.GetRawBytes().size()))
 					{
@@ -529,7 +529,7 @@ bool _DetectLofsaFormat(GameFolderHelper &helper)
 					}
 					else
 					{
-						if ((finalRelativeOffset < 0) || (finalRelativeOffset >= (int16_t)(compiledScript.GetRawBytes().size())))
+						if ((finalRelativeOffset < 0) || (finalRelativeOffset >= (int)compiledScript.GetRawBytes().size()))
 						{
 							// Interpreting it as a relative signed offset put us outside the script.
 							lofsaType = LofsaType::Absolute;
@@ -802,20 +802,16 @@ void SniffSCIVersion(GameFolderHelper &helper)
 		}
 	}
 
-	// This is a big assumptino for now, it mighjt fall apart in some cases. But from what I've noticed,
-	// lofsa changed behavior after SCI0. There may be some SCI0s with new script interpreter though,
-	// or SCI1 resource map games with the old?
-	// Yup, we midjudge SQ4 here. It should use the new lofsa, but because it uses SCI0 resmap, we say old.
-	// ScummVM analyzes the script, which is the correct thing to do.
-	// We can short circuit if ResourceMapFormat is SCI11 or higher. Or if it's SCI0 and not VGA?
-	// Otherwise, load up script 0, and start poking through the opcodes of the Game subclass.
-	// TODO
-	if ((helper.Version.MapFormat <= ResourceMapFormat::SCI0) && (helper.Version.ViewFormat == ViewFormat::EGA))
+	// The header of the scripts: the lofsa detection loads the scripts with it.
+	if (helper.Version.MapFormat == ResourceMapFormat::SCI0)
 	{
-		// "early" SCI0
-		helper.Version.lofsaOpcodeIsAbsolute = false;
+		helper.Version.HasOldSCI0ScriptHeader = _HasEarlySCI0Scripts(helper);
 	}
-	else if (helper.Version.MapFormat >= ResourceMapFormat::SCI11)
+
+	// The lofsa of SCI1.1 is absolute. Before that, the code of the scripts tells (as ScummVM
+	// does): an SCI0 resource map with EGA views can have either (SQ4 EGA has absolute lofsa),
+	// and the guess for code that does not tell is relative.
+	if (helper.Version.MapFormat >= ResourceMapFormat::SCI11)
 	{
 		helper.Version.lofsaOpcodeIsAbsolute = true;
 	}
@@ -830,10 +826,6 @@ void SniffSCIVersion(GameFolderHelper &helper)
 	helper.Version.MainVocabResource = (helper.MostRecentResource(ResourceType::Vocab, 0, ResourceEnumFlags::AddInDefaultEnumFlags)) ? 0 : 900;
 	helper.Version.HasSaidVocab = helper.DoesResourceExist(ResourceType::Vocab, helper.Version.MainVocabResource, nullptr, ResourceSaveLocation::Package);
 
-	if (helper.Version.MapFormat == ResourceMapFormat::SCI0)
-	{
-		helper.Version.HasOldSCI0ScriptHeader = _HasEarlySCI0Scripts(helper);
-	}
 
 	// Not sure about this, but it seems reasonable. Another clue, I think, is if there is more than just one global palette.
 	helper.Version.sci11Palettes = (helper.Version.ViewFormat == ViewFormat::VGA1_1);

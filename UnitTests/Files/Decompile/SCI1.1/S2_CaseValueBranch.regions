@@ -1,0 +1,20 @@
+== s2CaseValueBranch
+code 000a
+switch 000c toss 002c
+  case bnt 001a jmp 0020
+    value
+      code 000e-000f
+      if 0011
+        then
+          code 0013
+        else 0015
+          code 0017
+      code 0019
+    body
+      code 001c-001e
+  case bnt 0026
+    value
+      code 0022-0025
+    body
+      code 0028-002a
+code 002d

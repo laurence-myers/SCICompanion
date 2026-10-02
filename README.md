@@ -62,9 +62,37 @@ modernizing the build. Broad highlights since the previous release:
   the exit code tells a build script what happened. It refuses a game whose
   `resource.map` is damaged or empty, and names the volume files when they
   are missing. A compile of named scripts prints each error when its script
-  is done, and a decompile warning names its script. A console shows names
+  is done, and a decompile warning names its script. `--function-report`
+  writes a line for each decompiled function: whether it became source or
+  `asm`, and why the decompiler could not do it. A console shows names
   with their own characters. It has none of the GUI code in it: the engine
   is now a library of its own, with no MFC.
+* **A new decompiler engine.** The decompiler now reads the control flow of
+  each function in the order that the compiler wrote it (a scope parser), and
+  follows the values forwards through it, instead of matching shapes in a
+  graph. On a sample of 92 game copies, 17 functions fall back to `asm`
+  (343 with the old engine). Its tests compile the decompiled text again
+  and check that each function does the same as the original bytecode (the
+  same calls, stores and tests, with the same values).
+* **Decompiled text that compiles to the same game.** Over a library of 93
+  game copies, the decompiled text is compiled again and each function is
+  compared with the original. More of it now compiles, and means the same:
+  classes keep their species (also a copy of a class in another script),
+  objects with the name of a property, a keyword or a class, and two
+  classes with one name, get another name and keep their name string, a
+  class with no superclass keeps the order of its properties, a class whose
+  properties are not those of its superclass keeps them (with the new
+  `&layout`, see "Language extensions"), an object gets the name of its
+  `name` property also when that is not its first property, selectors
+  and kernels with no name of their own read back as their numbers,
+  `&rest` keeps its place among the arguments, and SQ4 EGA's objects
+  resolve. Code that the text cannot have (a property past the end of its
+  object, a `super` in a procedure) is `asm`, so the rest of the script
+  compiles. More of Sierra's control flow decompiles (for example a loop
+  used as a value, or values that a case leaves on the stack). Three
+  compiler errors are now warnings: a `&rest` in the parameters of a send
+  whose target calls, a selector that the object does not have, and a
+  property sent with more than one value (Sierra's compiler gives them).
 * **Eliminated most `asm` fallbacks in the decompiler.** When the decompiler
   could not reconstruct a function's control flow it used to give up and emit
   raw `asm` disassembly. It now rebuilds the control flow into real source, so
@@ -86,7 +114,9 @@ modernizing the build. Broad highlights since the previous release:
   call with no warning. The compiler now also reports an
   error instead of silently emitting bad bytecode when it cannot resolve a
   branch, corrects the SCI0 public-export order, and rejects assembly opcodes
-  that the target SCI interpreter cannot run.
+  that the target SCI interpreter cannot run. A `(continue 2)` (or a higher
+  level) from a loop inside a `for` loop now goes to the step of the `for`;
+  it gave no code before.
 * **Faster whole-game decompiles.** Naming the global variables used to mean
   decompiling every script again, several times over, until no more names
   changed. The decompiler now decompiles and writes each script once, keeps
@@ -103,8 +133,10 @@ modernizing the build. Broad highlights since the previous release:
   `#` as the game has it (for example `river#1`, before `river_1`). The
   Decompile dialog names new scripts in script-number order, so the `_N`
   suffix of a duplicate name is stable, and a name is always a valid file
-  name and `(use ...)` name. A variable named from an object is a valid
-  name too (`gGame_opt` from the object `game.opt`).
+  name and `(use ...)` name. An export that Sierra left pointing into the
+  middle of another function (for example in Quest for Glory III) is left
+  out with a warning, as in sluicebox's tools; it gave wrong text before.
+  A variable named from an object is a valid name too (`gGame_opt` from the object `game.opt`).
 * **More accurate compile messages.** Every compile message gives the right
   line (some parser messages were one line early), the error and warning
   counts are exact, and a script file that cannot be read gives an error. A
@@ -169,6 +201,7 @@ are no build-time feature switches.
 * `&exists` - clearer optional-argument checks, as in `(if (&exists theX) ...)` instead of `(if (>= argc 1) ...)`.
 * `foreach` - iterate an array or a Node-based collection (anything using the Node kernel calls and exposing `elements`): `(foreach val anArray ...)`. `val` need not be declared beforehand. `foreach` is a reserved word.
 * `verbs` - a terse block that expands into a standard `doVerb` method. `verbs` is a reserved word.
+* `&layout` - `(properties &layout ...)` in a class gives all the property slots of the class after `--info--`: the properties of the text, in the order of the text. The class then has no other property of its superclass, and it has a `name` property only when its text has one (usually as the first property). Without `&layout`, a class has the properties of its superclass, then its new properties. Some classes of Sierra's games have properties that are not those of their superclass (Sierra probably changed the superclass and did not compile the class again). The decompiler writes `&layout` for such a class, so that its methods read the same slots when the text compiles again. A subclass or an instance of the class gets its layout. `&layout` is not for an instance.
 * `&getpoly` - `(gRoom addObstacle: (&getpoly "Foo"))`, where `Foo` is a named polygon from the picture editor, expands into the `((Polygon new:) type: ... init: ... yourself:)` bytecode you would see when decompiling a Sierra original. Remove the room's `(include ___.shp)` line and add `(use Polygon)`.
 
 Check out [the examples](examples.md) for a somewhat better explanation of the keywords.

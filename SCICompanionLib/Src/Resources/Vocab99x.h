@@ -61,6 +61,9 @@ public:
 	std::vector<std::string> GetNamesForDisplay() const;
 	bool ReverseLookup(std::string name, uint16_t &wIndex) const;
 	bool IsSelectorName(const std::string &name) const;
+	// When the name is sel_<number> and the selector has no name: it gets the name, so
+	// that Add gives a new selector another number.
+	void ReserveNumberedName(const std::string &name, uint16_t wIndex);
 	const std::vector<std::string> &GetNames() const { return _names; }
 
 	bool Load(const GameFolderHelper &helpern);
@@ -113,7 +116,9 @@ class SpeciesTable;
 class GlobalClassTable : public ILookupNames
 {
 public:
-	bool Load(const GameFolderHelper &helper);
+	// selectors: a class that gets another name (two classes with one name) does not
+	// get the name of a selector.
+	bool Load(const GameFolderHelper &helper, const SelectorTable *selectors = nullptr);
 	const std::vector<uint16_t> &GetScriptNums() { return _scriptNums; } // REVIEW: remove this
 
 	bool LookupSpeciesCompiledName(const std::string &className, uint16_t &species);
@@ -128,7 +133,8 @@ public:
 	bool GetSpeciesScriptNumber(uint16_t species, uint16_t &scriptNumber);
 
 private:
-	bool _Create(const SpeciesTable &speciesTable, const GameFolderHelper &helper);
+	bool _Create(const SpeciesTable &speciesTable, const GameFolderHelper &helper, const SelectorTable *selectors);
+	void _GiveUniqueNames(const SelectorTable *selectors);
 
 	std::unordered_map<std::string, uint16_t> _nameToSpecies;
 	std::unordered_map<uint16_t, uint16_t> _speciesToScriptNumber;
@@ -146,8 +152,9 @@ public:
 	SpeciesTable() { _wNewSpeciesIndex = 0; _fDirty = false; }
 	// alignToCompiledScripts: order each script's species as its compiled
 	// classes. The alignment loads every script, so a caller that needs
-	// only the script of each species passes false.
-	bool Load(const GameFolderHelper &helper, bool alignToCompiledScripts = true);
+	// only the script of each species passes false. selectors: the selector
+	// table of the caller (else the alignment reads the game's table).
+	bool Load(const GameFolderHelper &helper, bool alignToCompiledScripts = true, const SelectorTable *selectors = nullptr);
 	void Save(CResourceMap &resourceMap);
 	// True when the table changed. The compile writes MakeResourceData() to
 	// its destination.
@@ -156,6 +163,22 @@ public:
 	bool GetSpeciesIndex(uint16_t wScript, uint16_t wClassIndexInScript, SpeciesIndex &wSpeciesIndex) const;
 	bool GetSpeciesLocation(SpeciesIndex wSpeciesIndex, uint16_t &wScript, uint16_t &wClassIndexInScript) const;
 	SpeciesIndex MaybeAddSpeciesIndex(uint16_t wScript, uint16_t wClassIndexInScript);
+	// Orders the species of the script as the classes of its compiled
+	// script, and keeps their names (once for each script; Load aligns the
+	// scripts of the table). The compile calls it before it gives the
+	// classes of the script their species.
+	void AlignScript(const GameFolderHelper &helper, uint16_t wScript);
+	// The species of the compiled class of the script with the name, when
+	// the compile has not used it (also a species that the table gives another
+	// script: a leftover class).
+	bool CompiledClassSpecies(uint16_t wScript, const std::string &className, const std::unordered_set<uint16_t> &used, SpeciesIndex &species) const;
+	// The script's first own species that the compile has not used, else a
+	// new species.
+	SpeciesIndex UnusedSpecies(uint16_t wScript, const std::unordered_set<uint16_t> &used);
+	// The order of the classes of the source: the script's list starts with
+	// their species, so a class's place in the list is its place in the
+	// compiled script.
+	void SetScriptOrder(uint16_t wScript, const std::vector<uint16_t> &species);
 	std::vector<std::string> GetNames() const;
 
 	void PurgeOldClasses(CResourceMap &resourceMap);
@@ -163,6 +186,17 @@ public:
 private:
 	bool _Create(sci::istream &byteStream);
 	void _AlignToCompiledScripts(const GameFolderHelper &helper);
+	void _AlignScript(uint16_t wScript, const CompiledScript &compiledScript);
+	// Gives the script the selector of name, so that the class names are those of the
+	// decompiled text. Without the selector table of Load, it reads the game's table once.
+	void _SetNameSelector(const GameFolderHelper &helper, CompiledScript &compiledScript);
+	bool _nameSelectorRead = false;
+	bool _hasNameSelector = false;
+	uint16_t _nameSelector = 0;
+	std::unordered_set<uint16_t> _aligned;
+	// The classes of each aligned script's compiled script: name and
+	// species, in order.
+	std::unordered_map<uint16_t, std::vector<std::pair<std::string, uint16_t>>> _compiledClasses;
 
 	typedef std::unordered_map<uint16_t, std::vector<uint16_t> > species_map;
 

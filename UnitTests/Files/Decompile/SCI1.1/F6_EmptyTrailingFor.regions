@@ -1,0 +1,17 @@
+== f6EmptyTrailingFor
+code 000a
+loop 000c latch 0027
+  body
+    code 000c-0010
+    if 0011
+      then
+        code 0013-0015
+        loop 0017 latch 0025
+          body
+            code 0017-001b
+            if 001c
+              then
+                code 001e-0023
+              else break 1
+      else break 1
+code 0029

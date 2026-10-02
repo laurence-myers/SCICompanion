@@ -16,7 +16,7 @@
 #include "View.h"
 #include "ResourceEntity.h"
 #include "ResourceMap.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceContainer.h"
 #include "RasterOperations.h"
 #include "Helper.h"
@@ -63,7 +63,7 @@ namespace UnitTests
         TEST_METHOD(LoosePatchV16_EgaViewIsLoaded)
         {
             _gameFolder = SetUpGameSCI0(); // an EGA game
-            CResourceMap &map = appState->GetResourceMap();
+            CResourceMap &map = AppResourceMap();
 
             // Take an existing view from the template to re-save under a new number.
             std::unique_ptr<ResourceBlob> source;
@@ -106,7 +106,7 @@ namespace UnitTests
 
         void _DoIt()
         {
-            auto container = appState->GetResourceMap().Resources(ResourceTypeFlags::View, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+            auto container = AppResourceMap().Resources(ResourceTypeFlags::View, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
             for (auto &blob : *container)
             {
                 try

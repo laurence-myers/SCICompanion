@@ -13,7 +13,8 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "PhonemeEditor.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
 #include "GdiRaii.h"
 #include "RasterOperations.h"
 #include "View.h"
@@ -385,7 +386,7 @@ void PhonemeEditor::_EnsureSCIBitmap(CSize size)
 
 	if (!_sciBitmap && _viewResource)
 	{
-		std::unique_ptr<PaletteComponent> palette = appState->GetResourceMap().GetMergedPalette(*_viewResource, 999);
+		std::unique_ptr<PaletteComponent> palette = AppResourceMap().GetMergedPalette(*_viewResource, 999);
 		SCIBitmapInfo bmi(size.cx, -size.cy, palette ? palette->Colors : nullptr, palette ? ARRAYSIZE(palette->Colors) : 0);
 		_sciBitmap = make_unique<CBitmap>();
 		_sciBitmap->Attach(CreateDIBSection(nullptr, &bmi, DIB_RGB_COLORS, reinterpret_cast<void**>(&_dibBits), nullptr, 0));

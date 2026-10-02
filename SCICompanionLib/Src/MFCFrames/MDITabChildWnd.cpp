@@ -15,7 +15,6 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
 #include "MDITabChildWnd.h"
 #include "MainFrm.h"
 

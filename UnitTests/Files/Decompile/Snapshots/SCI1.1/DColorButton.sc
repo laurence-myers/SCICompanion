@@ -62,7 +62,7 @@
 					(= temp1 temp0)
 				)
 				(param1 dispose:)
-				(breakif(not (MouseStillDown)))
+				(breakif (not (MouseStillDown)))
 			)
 			(if temp0
 				(if (& state $0008)

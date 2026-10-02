@@ -12,7 +12,9 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
+#include "resource.h"
 #include "ConvertFromToPaletteDialog.h"
 #include "format.h"
 
@@ -39,7 +41,7 @@ BOOL ConvertFromToPaletteDialog::OnInitDialog()
 {
 	__super::OnInitDialog();
 
-	_paletteChoices = appState->GetResourceMap().GetPaletteList();
+	_paletteChoices = AppResourceMap().GetPaletteList();
 	for (int choice : _paletteChoices)
 	{
 		string paletteNumber = fmt::format("{0}", choice);

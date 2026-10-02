@@ -15,7 +15,7 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "resource.h"
 #include "SoundView.h"
 #include "SoundDoc.h"
 #include "MidiPlayer.h"

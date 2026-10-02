@@ -17,7 +17,9 @@
 // Contains implementations of all the resource previewers.
 //
 #include "stdafx.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
+#include "resource.h"
 #include "ResourcePreviewer.h"
 #include "CompiledScript.h"
 #include "Vocab99x.h"
@@ -144,7 +146,7 @@ void PicPreviewer::_ResetVisualBitmap(const PicComponent &pic, PicDrawManager &p
 	CRect rc;
 	m_wndVisual.GetClientRect(&rc);
 	CBitmap bitmap;
-	AdjustPicRectBasedOnDefaultResolution(appState->GetVersion().DefaultResolution, rc);
+	AdjustPicRectBasedOnDefaultResolution(AppVersion().DefaultResolution, rc);
 	bitmap.Attach(pdm.CreateBitmap(PicScreen::Visual, PicPosition::Final, pic.Size, rc.Width(), rc.Height()));
 	m_wndVisual.FromBitmap((HBITMAP)bitmap, rc.Width(), rc.Height(), true);
 }
@@ -171,7 +173,7 @@ void PicPreviewer::SetResource(const ResourceBlob &blob)
 	// Do the priority and controls too.
 	CRect rc;
 	m_wndVisual.GetClientRect(&rc);
-	AdjustPicRectBasedOnDefaultResolution(appState->GetVersion().DefaultResolution, rc);
+	AdjustPicRectBasedOnDefaultResolution(AppVersion().DefaultResolution, rc);
 	CBitmap bitmapP;
 	bitmapP.Attach(pdm.CreateBitmap(PicScreen::Priority, PicPosition::Final, pic.Size, rc.Width(), rc.Height()));
 	m_wndPriority.FromBitmap((HBITMAP)bitmapP, rc.Width(), rc.Height(), true);
@@ -203,7 +205,7 @@ void ViewPreviewer::SetResource(const ResourceBlob &blob)
 	std::unique_ptr<PaletteComponent> optionalPalette;
 	if (_view->GetComponent<RasterComponent>().Traits.PaletteType == PaletteType::VGA_256)
 	{
-		optionalPalette = appState->GetResourceMap().GetMergedPalette(*_view, 999);
+		optionalPalette = AppResourceMap().GetMergedPalette(*_view, 999);
 	}
 	bitmap.Attach(CreateBitmapFromResource(*_view, optionalPalette.get(), &bmi, &pBitsDest));
 	m_wndView.FromBitmap((HBITMAP)bitmap, bmi.bmiHeader.biWidth, abs(bmi.bmiHeader.biHeight), true);
@@ -290,7 +292,7 @@ ScriptPreviewer::~ScriptPreviewer() {}
 void ScriptPreviewer::SetResource(const ResourceBlob &blob)
 {
 	// Try to find a source file.
-	std::string scriptFileName = appState->GetResourceMap().Helper().GetScriptFileName(blob.GetName());
+	std::string scriptFileName = AppResourceMap().Helper().GetScriptFileName(blob.GetName());
 
 	std::ifstream scriptFile(scriptFileName.c_str());
 	if (scriptFile.is_open())
@@ -311,8 +313,13 @@ void ScriptPreviewer::SetResource(const ResourceBlob &blob)
 		//m_wndHeader.SetWindowText("");
 
 		// If that wasn't possible, spew info from the compiled script resource:
+		// The selector table only: the classes of the game (for an instance of a
+		// class of another script) would load every script for one preview.
 		CompiledScript compiledScript(0);
-		if (compiledScript.Load(appState->GetResourceMap().Helper(), appState->GetVersion(), blob.GetNumber(), blob.GetReadStream()))
+		SelectorTable selectors;
+		selectors.Load(AppResourceMap().Helper());
+		compiledScript.SetNameSelector(selectors);
+		if (compiledScript.Load(AppResourceMap().Helper(), AppVersion(), blob.GetNumber(), blob.GetReadStream()))
 		{
 			// Write some crap.
 			std::stringstream out;
@@ -357,7 +364,7 @@ void TextPreviewer::SetResource(const ResourceBlob &blob)
 	}
 	else
 	{
-		if (appState->GetVersion().SupportsMessages)
+		if (AppVersion().SupportsMessages)
 		{
 			m_wndTitle.SetWindowText("Text resources can be used for displaying text in-game. Message resources have generally replaced Text resources for SCI1 and above.");
 		}
@@ -464,7 +471,7 @@ void VocabPreviewer::SetResource(const ResourceBlob &blob)
 	int iNumber = blob.GetNumber();
 	bool fSuccess = false;
 
-	if (iNumber == appState->GetVersion().MainVocabResource)
+	if (iNumber == AppVersion().MainVocabResource)
 	{
 		CPrecisionTimer timer;
 		timer.Start();
@@ -529,7 +536,7 @@ void VocabPreviewer::SetResource(const ResourceBlob &blob)
 			SpeciesTable species;
 			// The preview shows only the script of each species, so the
 			// table needs no alignment to the compiled scripts.
-			if (species.Load(appState->GetResourceMap().Helper(), false))
+			if (species.Load(AppResourceMap().Helper(), false))
 			{
 				_Populate(species.GetNames());
 				fSuccess = true;
@@ -539,7 +546,7 @@ void VocabPreviewer::SetResource(const ResourceBlob &blob)
 		case 997: // selector table
 		{
 			SelectorTable selectors;
-			if (selectors.Load(appState->GetResourceMap().Helper()))
+			if (selectors.Load(AppResourceMap().Helper()))
 			{
 				_Populate(selectors.GetNamesForDisplay(), false);
 				fSuccess = true;
@@ -568,7 +575,7 @@ void VocabPreviewer::SetResource(const ResourceBlob &blob)
 		case 999: // kernel functions
 		{
 			KernelTable kernels;
-			if (kernels.Load(appState->GetResourceMap().Helper()))
+			if (kernels.Load(AppResourceMap().Helper()))
 			{
 				_Populate(kernels.GetNames(), true);
 				fSuccess = true;
@@ -800,7 +807,7 @@ std::string SoundPreviewer::_FillChannelString(BYTE bChannel, bool fHeader)
 void SoundPreviewer::OnSynthChoiceChange()
 {
 	// Recalculate the mask.
-	_device = GetDeviceFromComboHelper(appState->GetVersion(), m_wndSynths);
+	_device = GetDeviceFromComboHelper(AppVersion(), m_wndSynths);
 	if (_sound)
 	{
 		SoundComponent *soundComp = _sound->TryGetComponent<SoundComponent>();
@@ -816,7 +823,7 @@ void SoundPreviewer::OnSynthChoiceChange()
 		}
 		//g_midiPlayer.SetDevice(_device);
 		//KAWA: I'm not sure if this helper is needed, but it seems to work :shrug:
-		g_midiPlayer.SetDevice(GetDeviceFromComboHelper(appState->GetVersion(), m_wndSynths));
+		g_midiPlayer.SetDevice(GetDeviceFromComboHelper(AppVersion(), m_wndSynths));
 		//KAWA: Reload the sound since MIDIPlayer keeps and plays a copy with the (initially MT32) tracks only.
 		g_midiPlayer.SetSound(*soundComp, StandardTempo);
 	}
@@ -884,7 +891,7 @@ void AudioPreviewer::SetResource(const ResourceBlob &blob)
 void AudioPreviewer::OnNewResourceCreated(std::unique_ptr<ResourceEntity> audioResource, const std::string &name, bool isRecording)
 {
 	assert(audioResource->SourceFlags == ResourceSourceFlags::AudioCache);
-	appState->GetResourceMap().AppendResourceAskForNumber(*audioResource, name);
+	AppResourceMap().AppendResourceAskForNumber(*audioResource, name);
 }
 
 void AudioPreviewer::OnPreviewerHidden()

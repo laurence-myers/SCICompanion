@@ -135,7 +135,7 @@ bool IsUnimplementedKeyword(const std::string &word)
 bool IsSCIKeyword(const std::string &word)
 {
 	return (IsValueKeyword(word) || IsCodeLevelKeyword(word) || IsTopLevelKeyword(word) || IsClassLevelKeyword(word) ||
-		IsUnimplementedKeyword(word) || (word == "&tmp"));
+		IsUnimplementedKeyword(word) || (word == "&tmp") || (word == "&layout"));
 }
 
 const std::vector<std::string> &GetValueKeywords()

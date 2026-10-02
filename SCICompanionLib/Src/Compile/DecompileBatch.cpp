@@ -259,7 +259,9 @@ namespace
 {
 	// Passes the results through, except that in quiet mode it drops the
 	// progress lines and function statistics: the second decompile of a script
-	// would otherwise report every function twice. Errors always go through.
+	// would otherwise report every function twice. Errors always go through,
+	// and so does the line of each function: a report keeps the line of the
+	// last decompile of the function.
 	class PassThroughResults : public IDecompilerResults
 	{
 	public:
@@ -278,6 +280,10 @@ namespace
 			{
 				_inner.InformStats(functionSuccessful, byteCount);
 			}
+		}
+		void InformFunction(const DecompiledFunction &function) override
+		{
+			_inner.InformFunction(function);
 		}
 		void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override
 		{
@@ -308,6 +314,7 @@ namespace
 		}
 		bool IsAborted() override { return _inner.IsAborted(); }
 		void InformStats(bool functionSuccessful, int byteCount) override { _inner.InformStats(functionSuccessful, byteCount); }
+		void InformFunction(const DecompiledFunction &function) override { _inner.InformFunction(function); }
 		void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override { _inner.SetGlobalVarsUpdated(renames); }
 	private:
 		IDecompilerResults &_inner;
@@ -318,10 +325,11 @@ namespace
 	// in use. DecompileLookups points at the other members.
 	struct DecompileState
 	{
-		DecompileState(const GameFolderHelper &helper, const SelectorTable &selectorTable) :
+		DecompileState(const GameFolderHelper &helper, GlobalCompiledScriptLookups &scriptLookups) :
 			compiledScript(0, CompiledScriptFlags::RemoveBadExports),
-			objectFileLookups(helper, selectorTable)
+			objectFileLookups(helper, scriptLookups.GetSelectorTable())
 		{
+			compiledScript.SetNameSelector(scriptLookups.GetSelectorTable(), &scriptLookups);
 		}
 		CompiledScript compiledScript;
 		ObjectFileScriptLookups objectFileLookups;
@@ -381,7 +389,7 @@ public:
 		_wrote = false;
 		_objectFileChanged = false;
 		_lastRenames.clear();
-		DecompileState state(_helper, _scriptLookups.GetSelectorTable());
+		DecompileState state(_helper, _scriptLookups);
 		SCI_TRY(state.compiledScript.TryLoad(_helper, _helper.Version, _number));
 		_Decompile(state, _results);
 		if (_results.IsAborted())
@@ -391,7 +399,7 @@ public:
 		}
 		if ((_number == 0) && !mainSCO)
 		{
-			mainSCO = SCOFromScriptAndCompiledScript(*state.script, state.compiledScript);
+			mainSCO = SCOFromScriptAndCompiledScript(*state.script, state.compiledScript, NameSelectorOf(_scriptLookups.GetSelectorTable(), _helper.Version.SeparateHeapResources));
 		}
 
 		// The skeleton comes from the tree before it is named, so that the
@@ -468,7 +476,7 @@ public:
 		_objectFileChanged = false;
 		_lastRenames.clear();
 
-		DecompileState state(_helper, _scriptLookups.GetSelectorTable());
+		DecompileState state(_helper, _scriptLookups);
 		sci::Status loaded = state.compiledScript.TryLoad(_helper, _helper.Version, _number);
 		if (!loaded)
 		{
@@ -492,7 +500,7 @@ private:
 		state.textResource = _resourceMap.CreateResourceFromNumber(ResourceType::Text, _number);
 		TextComponent *pText = state.textResource ? state.textResource->TryGetComponent<TextComponent>() : nullptr;
 
-		FixDuplicateObjectNames(state.compiledScript, _config->GetSelectorTable());
+		FixDuplicateObjectNames(state.compiledScript, _scriptLookups);
 
 		state.lookups = make_unique<DecompileLookups>(_config, _helper, _number, &_scriptLookups, &state.objectFileLookups, &state.compiledScript, pText, &state.compiledScript, results);
 		state.lookups->DebugControlFlow = _options.DebugControlFlow;
@@ -541,7 +549,7 @@ private:
 
 		// Decompiling always generates an SCO. Any pertinent info from the old SCO should be transfered
 		// to the new one based extracting info from the script.
-		unique_ptr<CSCOFile> scoFile = SCOFromScriptAndCompiledScript(*state.script, state.compiledScript);
+		unique_ptr<CSCOFile> scoFile = SCOFromScriptAndCompiledScript(*state.script, state.compiledScript, NameSelectorOf(_scriptLookups.GetSelectorTable(), _helper.Version.SeparateHeapResources));
 		ScriptId objectFileScript = _ObjectFileScript(_helper, *scoFile);
 		string sourceFilename = _helper.GetScriptFileName(_number);
 		sci::Status objectFile;

@@ -83,6 +83,7 @@ namespace
         }
         bool IsAborted() override { return ((abortAfter >= 0) && (started > abortAfter)) || abortSeen; }
         void InformStats(bool functionSuccessful, int byteCount) override {}
+        void InformFunction(const DecompiledFunction &) override {}
         void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override {}
 
         std::vector<std::string> problems;

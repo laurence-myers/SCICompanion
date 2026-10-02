@@ -213,7 +213,7 @@
 				(temp0 type: 24576 message: (helpIconItem message?))
 			)
 			(MapKeyToDir temp0)
-			(if (self dispatchEvent: temp0) (break))
+			(breakif (self dispatchEvent: temp0))
 		)
 	)
 	

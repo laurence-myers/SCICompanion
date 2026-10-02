@@ -1,0 +1,47 @@
+== c1
+code 000a-000c
+or 000e
+  code 0010
+code 0012-0014
+if 0016
+  then
+    code 0018
+code 001a-001c
+or 001e
+  code 0020
+  if 0022
+    then
+      code 0024
+code 0026-0028
+if 002a
+  then
+    code 002c
+    or 002e
+      code 0030
+code 0032-0034
+if 0036
+  then
+    code 0038
+    if 003a
+      then
+        code 003c
+code 003e-0040
+if 0042
+  then
+    code 0044
+code 0046-004b
+or 004d
+  code 004f
+code 0051-0059
+if 005b
+  then
+    code 005d
+code 005f-0062
+if 0063
+  then
+    code 0065-0067
+code 0069
+if 006b
+  then
+    code 006d
+code 006f

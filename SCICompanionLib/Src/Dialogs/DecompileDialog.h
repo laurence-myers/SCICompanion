@@ -28,6 +28,7 @@ public:
 	void AddResult(DecompilerResultType type, const std::string &message) override;
 	// The run counts the statistics (DecompileReport::stats).
 	void InformStats(bool functionSuccessful, int byteCount) override {}
+	void InformFunction(const DecompiledFunction &function) override {}
 	bool IsAborted() override { return _aborted; }
 	void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &mainDirtyRenames) { _globalsUpdated = mainDirtyRenames; };
 

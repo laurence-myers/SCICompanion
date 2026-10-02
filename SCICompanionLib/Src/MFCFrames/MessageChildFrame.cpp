@@ -12,7 +12,8 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
-#include "AppState.h"
+#include "ResourceEntity.h"
+#include "resource.h"
 #include "MessageChildFrame.h"
 
 IMPLEMENT_DYNCREATE(CMessageChildFrame, CMDITabChildWnd)

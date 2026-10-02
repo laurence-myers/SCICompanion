@@ -14,7 +14,7 @@ GNU General Public License for more details.
 #include "stdafx.h"
 #include "CppUnitTest.h"
 #include "ResourceMap.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ScriptOM.h"
 #include "CompileContext.h"
 #include "Helper.h"
@@ -58,7 +58,7 @@ namespace UnitTests
             std::unique_ptr<ResourceBlob> retrieve;
             count = 0;
             // Only include a subset of resource types, since things like audio/sync are dealt with differently.
-            auto resourceContainer1 = appState->GetResourceMap().Resources(ResourceTypeFlags::View | ResourceTypeFlags::Pic | ResourceTypeFlags::Sound, ResourceEnumFlags::None | ResourceEnumFlags::AddInDefaultEnumFlags);
+            auto resourceContainer1 = AppResourceMap().Resources(ResourceTypeFlags::View | ResourceTypeFlags::Pic | ResourceTypeFlags::Sound, ResourceEnumFlags::None | ResourceEnumFlags::AddInDefaultEnumFlags);
             for (auto &blob : *resourceContainer1)
             {
                 if ((count == retrieveNth) || (retrieveNth == -1))
@@ -77,7 +77,7 @@ namespace UnitTests
             Assert::IsNotNull(first.get());
 
             // Delete first guy
-            appState->GetResourceMap().DeleteResource(first.get());
+            AppResourceMap().DeleteResource(first.get());
 
             // Count again, and this time retrieve the second item
             int count2;
@@ -86,7 +86,7 @@ namespace UnitTests
             Assert::AreEqual(count - 1, count2);
 
             // Delete second guy
-            appState->GetResourceMap().DeleteResource(second.get());
+            AppResourceMap().DeleteResource(second.get());
 
             // Count again, and this time retrieve the last item
             int count3;
@@ -95,7 +95,7 @@ namespace UnitTests
             Assert::AreEqual(count - 2, count3);
 
             // Delete last item
-            appState->GetResourceMap().DeleteResource(last.get());
+            AppResourceMap().DeleteResource(last.get());
 
             // Count again
             int count4;

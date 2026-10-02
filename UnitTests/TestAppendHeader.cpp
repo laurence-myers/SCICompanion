@@ -13,7 +13,7 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "CppUnitTest.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceMap.h"
 #include "ResourceBlob.h"
 #include "GameFolderHelper.h"
@@ -57,7 +57,7 @@ namespace UnitTests
 
         TEST_METHOD(AppendBlobWithStaleCompressedHeader_ReadsBackUncompressed)
         {
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
             const GameFolderHelper &helper = rm.Helper();
             const int number = 900;
 

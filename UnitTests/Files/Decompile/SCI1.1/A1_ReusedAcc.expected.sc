@@ -15,7 +15,7 @@
 		(= theX_2 theX)
 		(temp1 perform: theX_2)
 		(= x theX)
-		(temp1 perform: x)
+		(temp1 perform: theX)
 		(= theX_2 theX)
 		((= x theX_2) init: self &rest)
 		6

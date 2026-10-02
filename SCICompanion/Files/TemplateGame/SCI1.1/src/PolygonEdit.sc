@@ -210,6 +210,7 @@
 ; nodoc
 (class Class_943_3
 	(properties
+		name {Class\_943\_3}
 		x 0
 		y 0
 		underBits 0

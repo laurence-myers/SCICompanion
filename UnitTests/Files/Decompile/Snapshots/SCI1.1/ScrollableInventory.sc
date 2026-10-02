@@ -99,109 +99,103 @@
 			(= temp2 (temp1 type?))
 			(= temp3 (temp1 message?))
 			(if gCuees (gCuees eachElementDo: 57))
-			(if gFastCast
-				(gFastCast handleEvent: temp1)
-			else
-				(if (and (== temp2 1) temp4)
-					(self advanceCurIcon:)
-					(temp1 claimed: 1)
-					(continue)
-				)
-				(if
+			(cond 
+				(gFastCast (gFastCast handleEvent: temp1))
+				((and (== temp2 1) temp4) (self advanceCurIcon:) (temp1 claimed: 1))
+				(
 					(and
 						(== temp2 0)
 						(= theCurIcon (self firstTrue: 226 temp1))
 						(!= theCurIcon highlightedIcon)
 					)
 					(self highlight: theCurIcon)
-					(continue)
 				)
-				(cond 
-					(
-						(or
-							(== temp2 1)
-							(and (== temp2 4) (== temp3 13))
-							(== temp2 256)
-						)
-						(if
-							(and
-								(IsObject highlightedIcon)
-								(self select: highlightedIcon (== temp2 1))
-							)
-							(cond 
-								((== highlightedIcon okButton) (break))
-								((== highlightedIcon helpIconItem)
-									(if (!= (highlightedIcon cursor?) -1)
-										(gGame setCursor: (helpIconItem cursor?))
-									)
-									(if (& state $0800) (self noClickHelp:) (continue))
-									(if helpIconItem
-										(helpIconItem signal: (| (helpIconItem signal?) $0010))
-									)
-								)
-								(else
-									(= curIcon highlightedIcon)
-									(gGame setCursor: (curIcon cursor?))
-								)
-							)
-						)
+				(
+					(or
+						(== temp2 1)
+						(and (== temp2 4) (== temp3 13))
+						(== temp2 256)
 					)
-					((& temp2 $0040)
-						(switch temp3
-							(3 (self advance:))
-							(7 (self retreat:))
-							(1
-								(if
-									(and
-										highlightedIcon
-										(= theCurIcon
-											(localproc_00de
-												highlightedIcon
-												(- (highlightedIcon nsTop?) 1)
-												0
-											)
-										)
-									)
-									(self highlight: theCurIcon 1)
-								else
-									(self retreat:)
-								)
-							)
-							(5
-								(if
-									(and
-										highlightedIcon
-										(= theCurIcon
-											(localproc_00de
-												highlightedIcon
-												(+ (highlightedIcon nsBottom?) 1)
-												(window bottom?)
-											)
-										)
-									)
-									(self highlight: theCurIcon 1)
-								else
-									(self advance:)
-								)
-							)
-							(0
-								(if (& temp2 $0004) (self advanceCurIcon:))
-							)
-						)
-					)
-					((== temp2 4)
-						(switch temp3
-							(9 (self advance:))
-							(3840 (self retreat:))
-							(27 (break))
-						)
-					)
-					(
+					(if
 						(and
-							(& temp2 $4000)
-							(= theCurIcon (self firstTrue: 226 temp1))
+							(IsObject highlightedIcon)
+							(self select: highlightedIcon (== temp2 1))
 						)
-						(if (& temp2 $2000)
+						(cond 
+							((== highlightedIcon okButton) (break))
+							((== highlightedIcon helpIconItem)
+								(if (!= (highlightedIcon cursor?) -1)
+									(gGame setCursor: (helpIconItem cursor?))
+								)
+								(cond 
+									((& state $0800) (self noClickHelp:))
+									(helpIconItem (helpIconItem signal: (| (helpIconItem signal?) $0010)))
+								)
+							)
+							(else
+								(= curIcon highlightedIcon)
+								(gGame setCursor: (curIcon cursor?))
+							)
+						)
+					)
+				)
+				((& temp2 $0040)
+					(switch temp3
+						(3 (self advance:))
+						(7 (self retreat:))
+						(1
+							(if
+								(and
+									highlightedIcon
+									(= theCurIcon
+										(localproc_00de
+											highlightedIcon
+											(- (highlightedIcon nsTop?) 1)
+											0
+										)
+									)
+								)
+								(self highlight: theCurIcon 1)
+							else
+								(self retreat:)
+							)
+						)
+						(5
+							(if
+								(and
+									highlightedIcon
+									(= theCurIcon
+										(localproc_00de
+											highlightedIcon
+											(+ (highlightedIcon nsBottom?) 1)
+											(window bottom?)
+										)
+									)
+								)
+								(self highlight: theCurIcon 1)
+							else
+								(self advance:)
+							)
+						)
+						(0
+							(if (& temp2 $0004) (self advanceCurIcon:))
+						)
+					)
+				)
+				((== temp2 4)
+					(switch temp3
+						(9 (self advance:))
+						(3840 (self retreat:))
+						(27 (break))
+					)
+				)
+				(
+					(and
+						(& temp2 $4000)
+						(= theCurIcon (self firstTrue: 226 temp1))
+					)
+					(cond 
+						((& temp2 $2000)
 							(if
 								(and
 									theCurIcon
@@ -227,33 +221,33 @@
 							)
 							(helpIconItem signal: (& (helpIconItem signal?) $ffef))
 							(gGame setCursor: 999)
-							(continue)
 						)
-						(cond 
-							((== theCurIcon okButton) (break))
-							((not (theCurIcon isKindOf: InventoryItem))
-								(if (self select: theCurIcon (not temp9))
-									(= curIcon theCurIcon)
-									(gGame setCursor: (curIcon cursor?))
-									(if (== theCurIcon helpIconItem)
-										(if (& state $0800) (self noClickHelp:) (continue))
+						((== theCurIcon okButton) (break))
+						((not (theCurIcon isKindOf: InventoryItem))
+							(if (self select: theCurIcon (not temp9))
+								(= curIcon theCurIcon)
+								(gGame setCursor: (curIcon cursor?))
+								(if (== theCurIcon helpIconItem)
+									(if (& state $0800)
+										(self noClickHelp:)
+									else
 										(helpIconItem signal: (| (helpIconItem signal?) $0010))
 									)
 								)
 							)
-							(curIcon
-								(if (gWindow respondsTo: 244)
-									(= gWindowEraseOnly (gWindow eraseOnly?))
-									(gWindow eraseOnly: 1)
-								)
-								(if (curIcon isKindOf: InventoryItem)
-									(theCurIcon doVerb: (curIcon message?))
-								else
-									(theCurIcon doVerb: (temp1 message?))
-								)
-								(if (gWindow respondsTo: 244)
-									(gWindow eraseOnly: gWindowEraseOnly)
-								)
+						)
+						(curIcon
+							(if (gWindow respondsTo: 244)
+								(= gWindowEraseOnly (gWindow eraseOnly?))
+								(gWindow eraseOnly: 1)
+							)
+							(if (curIcon isKindOf: InventoryItem)
+								(theCurIcon doVerb: (curIcon message?))
+							else
+								(theCurIcon doVerb: (temp1 message?))
+							)
+							(if (gWindow respondsTo: 244)
+								(gWindow eraseOnly: gWindowEraseOnly)
 							)
 						)
 					)
@@ -602,7 +596,7 @@
 		(= temp3 (mod (+ temp1 temp2) size))
 		(repeat
 			(= temp0 (self at: temp3))
-			(if
+			(breakif
 				(and
 					(IsObject temp0)
 					(not (& (temp0 signal?) $0004))
@@ -611,7 +605,6 @@
 						(not (temp0 isKindOf: InventoryItem))
 					)
 				)
-				(break)
 			)
 			(= temp3 (mod (+ temp3 1) size))
 		)
@@ -631,18 +624,20 @@
 		)
 		(repeat
 			(= temp0 (self at: temp3))
-			(if
-				(and
-					(IsObject temp0)
-					(not (& (temp0 signal?) $0004))
-					(or
-						(> (temp0 nsLeft?) -1)
-						(not (temp0 isKindOf: InventoryItem))
+			(cond 
+				(
+					(and
+						(IsObject temp0)
+						(not (& (temp0 signal?) $0004))
+						(or
+							(> (temp0 nsLeft?) -1)
+							(not (temp0 isKindOf: InventoryItem))
+						)
 					)
+					(break)
 				)
-				(break)
+				((< (-- temp3) 0) (= temp3 (- size 1)))
 			)
-			(if (< (-- temp3) 0) (= temp3 (- size 1)))
 		)
 		(self highlight: temp0 1)
 	)

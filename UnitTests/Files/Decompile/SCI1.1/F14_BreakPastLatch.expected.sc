@@ -9,7 +9,7 @@
 (procedure (f14BreakPastLatch param1 &tmp temp0 temp1 temp2)
 	(repeat
 		(if param1
-			(if temp0 (break))
+			(if temp0 (break) else (= temp0 1))
 		else
 			(= temp1 0)
 			(repeat
@@ -22,6 +22,5 @@
 			)
 			(break)
 		)
-		(= temp0 1)
 	)
 )

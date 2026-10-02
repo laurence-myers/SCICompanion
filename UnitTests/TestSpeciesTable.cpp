@@ -114,6 +114,81 @@ namespace UnitTests
             Assert::AreEqual(0, (int)placeInScript);
         }
 
+        // A compiled class whose species the table gives another script (a
+        // leftover class: KQ5 script 992 has Rev, species 24 of script 978)
+        // keeps its species and its place, so the class after it keeps its
+        // species too; the table does not change. Load aligns the script, and
+        // so does AlignScript (the compile calls it for each script).
+        TEST_METHOD(SpeciesOrder_KeepsALeftoverClass)
+        {
+            GameSession &session = _game.OpenCopy(TemplateSci0, false, SessionOptions());
+            const GameFolderHelper &helper = session.Helper();
+
+            int scriptNumber = -1;
+            std::unique_ptr<CompiledScript> compiled;
+            uint16_t other = 0;
+            bool foundOther = false;
+            auto container = helper.Resources(ResourceTypeFlags::Script, ResourceEnumFlags::MostRecentOnly);
+            for (auto &blob : *container)
+            {
+                auto candidate = std::make_unique<CompiledScript>((uint16_t)blob->GetNumber());
+                if (!candidate->TryLoad(helper, helper.Version, blob->GetNumber()))
+                {
+                    continue;
+                }
+                std::vector<uint16_t> species = ClassSpeciesInOrder(*candidate);
+                if ((scriptNumber < 0) && (species.size() >= 2))
+                {
+                    scriptNumber = blob->GetNumber();
+                    compiled = std::move(candidate);
+                }
+                else if (!foundOther && !species.empty())
+                {
+                    other = species[0];
+                    foundOther = true;
+                }
+            }
+            Assert::IsTrue((scriptNumber >= 0) && foundOther, L"setup: the SCI0 template has a script with two classes, and another script with a class");
+
+            std::vector<const CompiledObject *> classes;
+            for (const auto &object : compiled->GetObjects())
+            {
+                if (!object->IsInstance())
+                {
+                    classes.push_back(object.get());
+                }
+            }
+            uint16_t first = classes[0]->GetSpecies();
+            uint16_t second = classes[1]->GetSpecies();
+            std::unique_ptr<ResourceBlob> original = helper.MostRecentResource(ResourceType::Script, scriptNumber, ResourceEnumFlags::None);
+            std::vector<uint8_t> data(original->GetData(), original->GetData() + original->GetLength());
+            size_t firstAt = classes[0]->GetPosInResource() + 6;
+            Assert::IsTrue((data[firstAt] | (data[firstAt + 1] << 8)) == first, L"setup: the first species is where the SCI0 format puts it");
+            data[firstAt] = (uint8_t)(other & 0xff);
+            data[firstAt + 1] = (uint8_t)(other >> 8);
+            ResourceBlob patched(helper, nullptr, ResourceType::Script, data, helper.Version.DefaultVolumeFile, scriptNumber, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags());
+            AssertOk(session.ResourceMap().WriteResource(patched));
+
+            for (bool alignOnLoad : { true, false })
+            {
+                SpeciesTable table;
+                Assert::IsTrue(table.Load(helper, alignOnLoad));
+                table.AlignScript(helper, (uint16_t)scriptNumber);
+                SpeciesIndex atFirst;
+                SpeciesIndex atSecond;
+                Assert::IsTrue(table.GetSpeciesIndex((uint16_t)scriptNumber, 0, atFirst));
+                Assert::IsTrue(table.GetSpeciesIndex((uint16_t)scriptNumber, 1, atSecond));
+                Assert::AreEqual((int)other, (int)atFirst.Type(), L"the leftover class keeps its species");
+                Assert::AreEqual((int)second, (int)atSecond.Type(), L"the class after it keeps its species");
+                // The table still gives the species to the other script.
+                uint16_t scriptOfSpecies = 0;
+                uint16_t placeInScript = 0;
+                Assert::IsTrue(table.GetSpeciesLocation(SpeciesIndex(other), scriptOfSpecies, placeInScript));
+                Assert::AreNotEqual(scriptNumber, (int)scriptOfSpecies);
+                Assert::IsFalse(table.IsDirty());
+            }
+        }
+
         // Real games (LB2, "The Dagger of Amon Ra", has the case): each class of
         // each script keeps its species. Opt-in: set SCICOMP_SPECIES_GAME to one
         // game folder, or to several separated by ';'. The test only reads the

@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 #include "DecompilerResults.h"
+#include "MeaningCheck.h"
 
 // Result of a decompile: the source text, the warning/error messages, and the
 // count of functions that fell back to assembly.
@@ -24,6 +25,8 @@ struct DecompileOutput
     std::string text;
     std::vector<std::string> warnings;
     int fallbacks = 0;
+    // The function report, in the order of the functions.
+    std::vector<DecompiledFunction> functions;
 
     bool HasWarningContaining(const std::string &needle) const;
     bool ContainsAsm() const;
@@ -36,10 +39,12 @@ public:
     void AddResult(DecompilerResultType type, const std::string &message) override;
     bool IsAborted() override { return false; }
     void InformStats(bool functionSuccessful, int byteCount) override;
+    void InformFunction(const DecompiledFunction &function) override { functions.push_back(function); }
     void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &) override {}
 
     std::vector<std::string> warnings;
     int fallbacks = 0;
+    std::vector<DecompiledFunction> functions;
 };
 
 // Copies a fixture "<name>.sc" from TestFiles\Decompile\SCI1.1 into the game
@@ -54,19 +59,28 @@ bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::
     std::vector<std::string> *outErrors = nullptr);
 
 // Decompiles the compiled script resource to source text plus diagnostics.
-// debugControlFlow adds a text dump of the control-flow graph to the warnings
-// when a function's analysis fails.
+// debugControlFlow adds the scope region tree and the code of each function
+// to the debug output.
 DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks = false, bool debugControlFlow = false);
 
 // Decompiles a template script by its title (e.g. "PolygonEdit"), with the
-// control-flow dump on. For diagnosing a failure. Returns false if not found.
+// dumps that SCICOMP_DEBUG_CHUNKS and SCICOMP_DEBUG_CONTROL_FLOW turn on. For
+// diagnosing a failure. Returns false if not found.
 bool DecompileTemplateScriptByTitle(const std::string &title, DecompileOutput &out);
 
+// The functions of the compiled script, for the meaning check. Asserts that
+// the script loads.
+std::vector<meaning::Function> ReadMeaningFunctions(uint16_t scriptNumber);
+
+// Asserts that each function of the compiled script means what the function
+// of the original means (meaning::CompareFunctions gives SAME).
+void AssertMeaningKept(const std::string &fixtureName, const std::vector<meaning::Function> &original, uint16_t scriptNumber);
+
 // Compiles the fixture, decompiles it, recompiles the decompiled text, and
-// decompiles again. Asserts the second decompile matches the first, so the
-// script survives a decompile, recompile, decompile round trip. This proves
-// the round trip is stable. It does not prove the source is faithful to the
-// original. Returns the first decompile.
+// decompiles again. Asserts that each function of the recompiled script means
+// what the function of the fixture means (AssertMeaningKept), and that the
+// second decompile matches the first, so the script survives a decompile,
+// recompile, decompile round trip. Returns the first decompile.
 DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t scriptNumber);
 
 // Decompiles every script in the game. Returns the total number of functions
@@ -90,9 +104,18 @@ int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
 // fallback, no asm, an exact match after whitespace normalization, and a stable
 // round trip. On mismatch it writes the actual text to TestResults so a diff is
 // easy. This tests fidelity, not just round-trip stability. Returns the first
-// decompile. With roundTrip false, it does not recompile the decompiled text:
-// for a fixture whose recompiled bytecode has another shape.
+// decompile. With roundTrip false, it recompiles the decompiled text for the
+// meaning check only: for a fixture whose recompiled bytecode has another
+// shape.
 DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, uint16_t scriptNumber, bool roundTrip = true);
+
+// Compiles a fixture, decompiles it with the debug dumps of the control
+// flow, and compares the region trees of the scope parser with the expected
+// file "<name>.regions" in TestFiles\Decompile\SCI1.1: for each function, a
+// line "== <class>::<name>" (or "== <name>"), then its tree or the error of
+// the scope stage that failed. On a mismatch it writes the actual text to
+// SnapshotActuals\Regions next to the test module.
+void AssertRegionsMatchExpected(const std::string &fixtureName, uint16_t scriptNumber);
 
 // Every selector number and name of the current game, one per line.
 std::string DumpSelectorTable();

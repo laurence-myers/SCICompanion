@@ -78,6 +78,22 @@ void RemoveFolder(const std::string &folder);
 // The text for an assert message: each byte is one wide character.
 std::wstring Wide(const std::string &text);
 
+// Sets an environment variable for its life (null: removes it), and then
+// gives it back its value from before.
+class ScopedEnvironmentVariable
+{
+public:
+    ScopedEnvironmentVariable(const char *name, const char *value);
+    ~ScopedEnvironmentVariable();
+    ScopedEnvironmentVariable(const ScopedEnvironmentVariable &) = delete;
+    ScopedEnvironmentVariable &operator=(const ScopedEnvironmentVariable &) = delete;
+
+private:
+    std::string _name;
+    std::string _saved;
+    bool _wasSet;
+};
+
 // The file as text or as bytes: empty when it cannot be read.
 std::string ReadFileText(const std::string &path);
 std::vector<uint8_t> ReadFileBytes(const std::string &path);

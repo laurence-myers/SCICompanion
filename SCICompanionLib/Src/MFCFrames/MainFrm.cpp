@@ -686,9 +686,9 @@ void CMainFrame::RefreshExplorerTools()
 	// Reload the toolbar from scratch, since we need to refresh all the buttons.
 	m_wndExplorerTools.LoadToolBar(IDR_TOOLBARVIEWS);
 
-	if (!appState->GetResourceMap().GetGameFolder().empty())
+	if (!AppResourceMap().GetGameFolder().empty())
 	{
-		SCIVersion version = appState->GetVersion();
+		SCIVersion version = AppVersion();
 		m_wndExplorerTools.InsertButton(-1, ID_SHOW_VIEWS);
 		m_wndExplorerTools.InsertButton(-1, ID_SHOW_PICS);
 		m_wndExplorerTools.InsertButton(-1, ID_SHOW_SCRIPTS);
@@ -733,7 +733,7 @@ void CMainFrame::OnRunPlugin(UINT nID)
 	if (index < _pluginExes.size())
 	{
 		std::string exePath = _pluginExes[index];
-		std::string gameFolderQuoted = fmt::format("\"{}\"", appState->GetResourceMap().GetGameFolder());
+		std::string gameFolderQuoted = fmt::format("\"{}\"", AppResourceMap().GetGameFolder());
 		ShellExecute(nullptr, "open", exePath.c_str(), gameFolderQuoted.c_str(), "", SW_SHOWNORMAL);
 	}
 }
@@ -891,7 +891,7 @@ LRESULT CMainFrame::OnExtMenuPrepare(WPARAM wParam, LPARAM)
 			// Get a bitmap for it and assign it to the command.
 			try
 			{
-				std::unique_ptr<ResourceBlob> blob = appState->GetResourceMap().MostRecentResource(ResourceType::View, viewNumber, true);
+				std::unique_ptr<ResourceBlob> blob = AppResourceMap().MostRecentResource(ResourceType::View, viewNumber, true);
 				if (blob)
 				{
 					text = blob->GetName();
@@ -904,7 +904,7 @@ LRESULT CMainFrame::OnExtMenuPrepare(WPARAM wParam, LPARAM)
 					std::unique_ptr<PaletteComponent> temp;
 					if (raster.Traits.PaletteType == PaletteType::VGA_256)
 					{
-						temp = appState->GetResourceMap().GetMergedPalette(*resource, 999);
+						temp = AppResourceMap().GetMergedPalette(*resource, 999);
 						palette = temp.get();
 					}
 
@@ -1509,11 +1509,11 @@ void CMainFrame::OnFileNewPic()
 		CPicDoc *pDocument = (CPicDoc*)pDocTemplate->OpenDocumentFile(nullptr, TRUE);
 		if (pDocument)
 		{
-			unique_ptr<ResourceEntity> pEditPic(CreateDefaultPicResource(appState->GetVersion()));
-			if (appState->GetVersion().PicFormat >= PicFormat::VGA1_1)
+			unique_ptr<ResourceEntity> pEditPic(CreateDefaultPicResource(AppVersion()));
+			if (AppVersion().PicFormat >= PicFormat::VGA1_1)
 			{
 				// Let's add a palette.
-				const PaletteComponent *globalPalette = appState->GetResourceMap().GetPalette999();
+				const PaletteComponent *globalPalette = AppResourceMap().GetPalette999();
 				if (globalPalette)
 				{
 					pEditPic->AddComponent<PaletteComponent>(make_unique<PaletteComponent>(*globalPalette));
@@ -1521,9 +1521,9 @@ void CMainFrame::OnFileNewPic()
 				else
 				{
 					// No global palette, use the default one
-					std::string palettePath = appState->GetResourceMap().GetSamplesFolder() + c_szDefaultPaletteSample;
+					std::string palettePath = AppResourceMap().GetSamplesFolder() + c_szDefaultPaletteSample;
 					ResourceBlob blob;
-					if (SUCCEEDED(blob.CreateFromFile(nullptr, palettePath.c_str(), appState->GetVersion(), appState->GetResourceMap().GetDefaultResourceSaveLocation(), - 1, -1)))
+					if (SUCCEEDED(blob.CreateFromFile(nullptr, palettePath.c_str(), AppVersion(), AppResourceMap().GetDefaultResourceSaveLocation(), - 1, -1)))
 					{
 						unique_ptr<ResourceEntity> paletteEntity = CreateResourceFromResourceData(blob);
 						if (paletteEntity)
@@ -1555,7 +1555,7 @@ void CMainFrame::OnFileNewGame()
 		__documentClass *pDocument = (__documentClass*)pDocTemplate->OpenDocumentFile(nullptr, TRUE); \
 		if (pDocument) \
 						{ \
-			std::unique_ptr<__resourceClass> pEVR(__resourceCreate(appState->GetVersion())); \
+			std::unique_ptr<__resourceClass> pEVR(__resourceCreate(AppVersion())); \
 			if (SUCCEEDED(hr) && pEVR) \
 									{ \
 				pDocument->__resourceSetter(std::move(pEVR)); \
@@ -1591,9 +1591,9 @@ void CMainFrame::OnFileNewText()
 void CMainFrame::OnFileNewPalette()
 {
 	// A little bit different. We need interesting data to populate the default palette, so use a sample.
-	std::string palettePath = appState->GetResourceMap().GetSamplesFolder() + c_szDefaultPaletteSample;
+	std::string palettePath = AppResourceMap().GetSamplesFolder() + c_szDefaultPaletteSample;
 	ResourceBlob blob;
-	if (SUCCEEDED(blob.CreateFromFile(nullptr, palettePath.c_str(), appState->GetVersion(), appState->GetResourceMap().GetDefaultResourceSaveLocation(), - 1, -1)))
+	if (SUCCEEDED(blob.CreateFromFile(nullptr, palettePath.c_str(), AppVersion(), AppResourceMap().GetDefaultResourceSaveLocation(), - 1, -1)))
 	{
 		OpenResource(&blob, true);
 	}
@@ -1602,7 +1602,7 @@ void CMainFrame::OnFileNewPalette()
 void CMainFrame::OnFileNewMessage()
 {
 	// Grok the current messages to figure out a message version.
-	auto messageContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::Message, ResourceEnumFlags::AddInDefaultEnumFlags);
+	auto messageContainer = AppResourceMap().Resources(ResourceTypeFlags::Message, ResourceEnumFlags::AddInDefaultEnumFlags);
 	uint16_t maxMessageVersion = 0;
 	vector<int> existingResources;
 	for (auto &messageBlob : *messageContainer)
@@ -1615,8 +1615,8 @@ void CMainFrame::OnFileNewMessage()
 
 	// Ask the user for resource number. We need this so we can support adding nouns and such.
 	SaveResourceDialog saveResourceDialog(false, ResourceType::Message);
-	int suggestedNumber = appState->GetResourceMap().SuggestResourceNumber(ResourceType::Message);
-	saveResourceDialog.Init(appState->GetVersion().DefaultVolumeFile, suggestedNumber);
+	int suggestedNumber = AppResourceMap().SuggestResourceNumber(ResourceType::Message);
+	saveResourceDialog.Init(AppVersion().DefaultVolumeFile, suggestedNumber);
 	if (IDOK == saveResourceDialog.DoModal())
 	{
 		bool goAhead = true;
@@ -1627,7 +1627,7 @@ void CMainFrame::OnFileNewMessage()
 
 		if (goAhead)
 		{
-			std::unique_ptr<ResourceEntity> resource(CreateNewMessageResource(appState->GetVersion(), maxMessageVersion));
+			std::unique_ptr<ResourceEntity> resource(CreateNewMessageResource(AppVersion(), maxMessageVersion));
 			if (resource)
 			{
 				resource->ResourceNumber = saveResourceDialog.GetResourceNumber();
@@ -1650,12 +1650,12 @@ void CMainFrame::OnFileNewMessage()
 void CMainFrame::OnFileNewSound()
 {
 	DeviceType device = DeviceType::NewGM;
-	if (appState->GetVersion().SoundFormat == SoundFormat::SCI1)
+	if (AppVersion().SoundFormat == SoundFormat::SCI1)
 	{
 		device = DeviceType::SCI1_GM;
 	}
 
-	std::unique_ptr<ResourceEntity> pSound(CreateSoundResource(appState->GetVersion()));
+	std::unique_ptr<ResourceEntity> pSound(CreateSoundResource(AppVersion()));
 	if (pSound)
 	{
 		CDocTemplate *pDocTemplate = appState->GetSoundTemplate();
@@ -1707,7 +1707,7 @@ void CMainFrame::OnFileOpenResource()
 	{
 		CString strFileName = fileDialog.GetPathName();
 		ResourceBlob data;
-		HRESULT hr = data.CreateFromFile(nullptr, (PCSTR)strFileName, appState->GetVersion(), appState->GetResourceMap().GetDefaultResourceSaveLocation(), appState->GetVersion().DefaultVolumeFile);
+		HRESULT hr = data.CreateFromFile(nullptr, (PCSTR)strFileName, AppVersion(), AppResourceMap().GetDefaultResourceSaveLocation(), AppVersion().DefaultVolumeFile);
 		if (SUCCEEDED(hr))
 		{
 			OpenResource(&data);
@@ -1746,17 +1746,17 @@ void CMainFrame::OnFileAddResource()
 
 			int number = -1;
 			std::string resNameFromFilename;
-			MatchesResourceFilenameFormat((PCSTR)strFileName, appState->GetVersion(), &number, resNameFromFilename);
+			MatchesResourceFilenameFormat((PCSTR)strFileName, AppVersion(), &number, resNameFromFilename);
 
 			// Get a resource number and package
 			SaveResourceDialog srd(false, ResourceType::None);
-			srd.Init(appState->GetVersion().DefaultVolumeFile, number, resNameFromFilename);
+			srd.Init(AppVersion().DefaultVolumeFile, number, resNameFromFilename);
 			if (IDOK == srd.DoModal())
 			{
 				int iResourceNumber = srd.GetResourceNumber();
 				int iPackageNumber = srd.GetPackageNumber();
 				ResourceBlob data;
-				HRESULT hr = data.CreateFromFile(nullptr, (PCSTR)strFileName, appState->GetVersion(), appState->GetResourceMap().GetDefaultResourceSaveLocation(), iPackageNumber, iResourceNumber);
+				HRESULT hr = data.CreateFromFile(nullptr, (PCSTR)strFileName, AppVersion(), AppResourceMap().GetDefaultResourceSaveLocation(), iPackageNumber, iResourceNumber);
 				if (!srd.GetName().empty())
 				{
 					data.SetName(srd.GetName().c_str());
@@ -1767,7 +1767,7 @@ void CMainFrame::OnFileAddResource()
 				}
 				if (SUCCEEDED(hr))
 				{
-					appState->GetResourceMap().AppendResource(data);
+					AppResourceMap().AppendResource(data);
 				}
 				else
 				{
@@ -1786,7 +1786,7 @@ void CMainFrame::OnFileAddResource()
 
 				int number = -1;
 				std::string resNameFromFilename;
-				MatchesResourceFilenameFormat((PCSTR)strFileName, appState->GetVersion(), &number, resNameFromFilename);
+				MatchesResourceFilenameFormat((PCSTR)strFileName, AppVersion(), &number, resNameFromFilename);
 
 				if (number == -1)
 				{
@@ -1795,11 +1795,11 @@ void CMainFrame::OnFileAddResource()
 				}
 
 				ResourceBlob data;
-				HRESULT hr = data.CreateFromFile(nullptr, (PCSTR)strFileName, appState->GetVersion(), appState->GetResourceMap().GetDefaultResourceSaveLocation(), appState->GetVersion().DefaultVolumeFile, number);
+				HRESULT hr = data.CreateFromFile(nullptr, (PCSTR)strFileName, AppVersion(), AppResourceMap().GetDefaultResourceSaveLocation(), AppVersion().DefaultVolumeFile, number);
 				data.SetName(nullptr);
 				if (SUCCEEDED(hr))
 				{
-					appState->GetResourceMap().AppendResource(data);
+					AppResourceMap().AppendResource(data);
 					//statResults.emplace_back(fmt::format("Multi-file import: imported \"{0}\" as {1} #{2}.", strFileName, ResourceDisplayNameFromType(data.GetType()), number), CompileResult::CompileResultType::CRT_Message);
 				}
 				else
@@ -1824,22 +1824,22 @@ void CMainFrame::OnUpdateNewPic(CCmdUI *pCmdUI)
 
 void CMainFrame::OnUpdateNewMessage(CCmdUI *pCmdUI)
 {
-	pCmdUI->Enable(appState->GetResourceMap().IsGameLoaded() && appState->GetVersion().SupportsMessages);
+	pCmdUI->Enable(AppResourceMap().IsGameLoaded() && AppVersion().SupportsMessages);
 }
 
 void CMainFrame::OnUpdateNewPalette(CCmdUI *pCmdUI)
 {
-	pCmdUI->Enable(appState->GetResourceMap().IsGameLoaded() && appState->GetVersion().HasPalette);
+	pCmdUI->Enable(AppResourceMap().IsGameLoaded() && AppVersion().HasPalette);
 }
 
 void CMainFrame::OnUpdateShowIfGameLoaded(CCmdUI *pCmdUI)
 {
-	pCmdUI->Enable(appState->GetResourceMap().IsGameLoaded());
+	pCmdUI->Enable(AppResourceMap().IsGameLoaded());
 }
 
 void CMainFrame::OnUpdateShowIfSupportsAudio(CCmdUI *pCmdUI)
 {
-	pCmdUI->Enable(appState->GetVersion().MainAudioMapVersion != AudioMapVersion::None);
+	pCmdUI->Enable(AppVersion().MainAudioMapVersion != AudioMapVersion::None);
 }
 
 void CMainFrame::_HideTabIfNot(MDITabType iTabTypeCurrent, MDITabType iTabTypeCompare, CExtControlBar &bar)
@@ -1895,8 +1895,8 @@ HRESULT RebuildResources(CResourceMap &resourceMap, const GameFolderHelper &help
 void PurgeUnnecessaryResources()
 {
 	std::map<ResourceType, RebuildStats> stats;
-	const GameFolderHelper &helper = appState->GetResourceMap().Helper();
-	HRESULT hr = RebuildResources(appState->GetResourceMap(), helper, helper.Version, TRUE, helper.GetResourceSaveLocation(ResourceSaveLocation::Default), stats);
+	const GameFolderHelper &helper = AppResourceMap().Helper();
+	HRESULT hr = RebuildResources(AppResourceMap(), helper, helper.Version, TRUE, helper.GetResourceSaveLocation(ResourceSaveLocation::Default), stats);
 	if (SUCCEEDED(hr))
 	{
 		size_t totalSize = 0;
@@ -1920,7 +1920,7 @@ void PurgeUnnecessaryResources()
 		appState->OutputResults(OutputPaneType::Compile, statResults);
 
 		appState->StartPostBuildThread();
-		appState->GetResourceMap().PokeResourceMapReloaded();
+		AppResourceMap().PokeResourceMapReloaded();
 	}
 }
 
@@ -1931,7 +1931,7 @@ void CMainFrame::OnRebuildResources()
 
 void CMainFrame::OnRepackageAudio()
 {
-	appState->GetResourceMap().RepackageAudio();
+	AppResourceMap().RepackageAudio();
 }
 
 void CMainFrame::OnRebuildClassTable()
@@ -1940,9 +1940,9 @@ void CMainFrame::OnRebuildClassTable()
 	{
 		SpeciesTable speciesTable;
 		// The purge reads only the script of each species.
-		if (speciesTable.Load(appState->GetResourceMap().Helper(), false))
+		if (speciesTable.Load(AppResourceMap().Helper(), false))
 		{
-			speciesTable.PurgeOldClasses(appState->GetResourceMap());
+			speciesTable.PurgeOldClasses(AppResourceMap());
 		}
 	}
 }
@@ -1989,7 +1989,7 @@ void CMainFrame::OnNewScript()
 }
 
 // If dependencyTracker is null, all are compiled.
-bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTracker)
+bool CompileABunchOfScripts(DependencyTracker *dependencyTracker)
 {
 	std::unordered_set<std::string> scriptsToRecompile;
 	if (dependencyTracker)
@@ -2019,7 +2019,7 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 	appState->OutputClearResults(OutputPaneType::Compile);
 
 	CompileLog log;
-	std::vector<ScriptId> scripts = ScriptsToCompile(appState->GetResourceMap(), scriptsToRecompile);
+	std::vector<ScriptId> scripts = ScriptsToCompile(AppResourceMap(), scriptsToRecompile);
 	if (!scripts.empty())
 	{
 		// One batch for the scripts. It saves the tables when a script
@@ -2027,7 +2027,7 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 		// Cancel. It asks before a package save that a patch file would hide.
 		CompileOptions options;
 		options.askShadows = AskAboutShadowingPatches;
-		sci::Result<std::unique_ptr<CompileBatch>> batch = CompileBatch::Start(appState->GetSession(), scripts, options);
+		sci::Result<std::unique_ptr<CompileBatch>> batch = CompileBatch::Start(AppSession(), scripts, options);
 		if (batch)
 		{
 			CNewCompileDialog dialog(**batch);
@@ -2079,7 +2079,7 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 
 	// Even if we weren't completely successful, update the script resource view, since some
 	// scripts may have been successful.
-	appState->GetResourceMap().NotifyToReloadResourceType(ResourceType::Script);
+	AppResourceMap().NotifyToReloadResourceType(ResourceType::Script);
 
 	// Get the final success/fail message up there:
 	appState->OutputAddBatch(OutputPaneType::Compile, log.Results());
@@ -2090,7 +2090,7 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 
 void CMainFrame::OnCompileAll()
 {
-	CompileABunchOfScripts(appState, nullptr);
+	CompileABunchOfScripts(nullptr);
 }
 
 // TODO: Attempt at making Find in Files faster. regex was way too slow. Just need to mimic line endings of crystal text buffer.
@@ -2208,18 +2208,18 @@ void CMainFrame::_FindInTexts(ICompileLog &log, PCTSTR pszWhat, BOOL fMatchCase,
 {
 	std::unordered_set<uint8_t> matchingTalkerNumbers;
 	std::unordered_set<uint8_t> matchingVerbNumbers;
-	MessageSource *verbsMessageSource = appState->GetResourceMap().GetVerbsMessageSource(false);
+	MessageSource *verbsMessageSource = AppResourceMap().GetVerbsMessageSource(false);
 	if (verbsMessageSource)
 	{
 		matchingVerbNumbers = _GetSetOfMatchingNumbers(verbsMessageSource->GetDefines(), pszWhat, fMatchCase, fWholeWord);
 	}
-	MessageSource *talkers = appState->GetResourceMap().GetTalkersMessageSource();
+	MessageSource *talkers = AppResourceMap().GetTalkersMessageSource();
 	if (talkers)
 	{
 		matchingTalkerNumbers = _GetSetOfMatchingNumbers(talkers->GetDefines(), pszWhat, fMatchCase, fWholeWord);
 	}
 
-	auto container = appState->GetResourceMap().Resources(ResourceTypeFlags::Text | ResourceTypeFlags::Message, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+	auto container = AppResourceMap().Resources(ResourceTypeFlags::Text | ResourceTypeFlags::Message, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
 	for (auto &blob : *container)
 	{
 		auto resource = CreateResourceFromResourceData(*blob);
@@ -2271,7 +2271,7 @@ void CMainFrame::_FindInTexts(ICompileLog &log, PCTSTR pszWhat, BOOL fMatchCase,
 
 void CMainFrame::_FindInVocab000(ICompileLog &log, PCTSTR pszWhat, BOOL fMatchCase, BOOL fWholeWord)
 {
-	const Vocab000 *pVocab = appState->GetResourceMap().GetVocab000();
+	const Vocab000 *pVocab = AppResourceMap().GetVocab000();
 	if (pVocab)
 	{
 		int iItem = 0;
@@ -2328,10 +2328,10 @@ void CMainFrame::OnFindInFiles()
 
 		if (_fFindInAll)
 		{
-			std::string srcFolder = appState->GetResourceMap().Helper().GetSrcFolder();
-			std::string polyFolder = appState->GetResourceMap().Helper().GetPolyFolder();
-			std::string messageFolder = appState->GetResourceMap().Helper().GetMsgFolder();
-			std::string includeFolder = appState->GetResourceMap().Helper().GetIncludeFolder();
+			std::string srcFolder = AppResourceMap().Helper().GetSrcFolder();
+			std::string polyFolder = AppResourceMap().Helper().GetPolyFolder();
+			std::string messageFolder = AppResourceMap().Helper().GetMsgFolder();
+			std::string includeFolder = AppResourceMap().Helper().GetIncludeFolder();
 
 			_FindInFilesOfType(log, srcFolder, TEXT("\\*.sc"), strFindWhat, (_fMatchCase != 0), (_fMatchWholeWord != 0));
 			_FindInFilesOfType(log, srcFolder, TEXT("\\*.sh"), strFindWhat, (_fMatchCase != 0), (_fMatchWholeWord != 0));
@@ -2660,9 +2660,9 @@ void CMainFrame::_RefreshToolboxPanel(CFrameWnd *pWnd)
 				m_dlgForPanelDialogCursor.SetDocument(pDoc);
 				break;
 			case TAB_PIC:
-				if (appState->GetVersion().PicFormat == PicFormat::EGA)
+				if (AppVersion().PicFormat == PicFormat::EGA)
 				{
-					if (appState->GetVersion().UsesPolygons)
+					if (AppVersion().UsesPolygons)
 					{
 						pWndToShow = &m_dlgForPanelDialogPicEGAPoly;
 						m_dlgForPanelDialogPicEGAPoly.SetDocument(pDoc);
@@ -2774,7 +2774,7 @@ void CMainFrame::OnClassBrowser()
 #ifdef DOCSUPPORT
 void CMainFrame::OnGenerateDocs()
 {
-	_docsDialog = std::make_unique<GenerateDocsDialog>(appState->GetResourceMap().Helper());
+	_docsDialog = std::make_unique<GenerateDocsDialog>(AppResourceMap().Helper());
 	_docsDialog->Create(GenerateDocsDialog::IDD);
 	_docsDialog->ShowWindow(SW_SHOW);
 }
@@ -2784,7 +2784,7 @@ void CMainFrame::OnManageDecompilation()
 {
 	unique_ptr<DecompileDialog> decompileDialog = make_unique<DecompileDialog>();
 	decompileDialog->DoModal();
-	appState->GetResourceMap().NotifyToReloadResourceType(ResourceType::Script);
+	AppResourceMap().NotifyToReloadResourceType(ResourceType::Script);
 }
 
 void CMainFrame::OnUpdateClassBrowser(CCmdUI *pCmdUI)
@@ -2804,16 +2804,16 @@ void CMainFrame::OnUpdateClassBrowser(CCmdUI *pCmdUI)
 
 void CMainFrame::OnUpdateValidateAllSaids(CCmdUI *pCmdUI)
 {
-	pCmdUI->Enable(appState->GetVersion().HasSaidVocab);
+	pCmdUI->Enable(AppVersion().HasSaidVocab);
 }
 
 void CMainFrame::OnValidateAllSaids()
 {
-	const Vocab000 *vocab = appState->GetResourceMap().GetVocab000();
+	const Vocab000 *vocab = AppResourceMap().GetVocab000();
 	if (vocab)
 	{
 		CompileLog log;
-		ValidateSaids(appState->GetResourceMap(), log, *vocab);
+		ValidateSaids(AppResourceMap(), log, *vocab);
 		appState->OutputResults(OutputPaneType::Compile, log.Results());
 	}
 }
@@ -2821,12 +2821,12 @@ void CMainFrame::OnValidateAllSaids()
 void CMainFrame::ExtractAllText()
 {
 	std::vector<ScriptId> scripts;
-	appState->GetResourceMap().GetAllScripts(scripts);
+	AppResourceMap().GetAllScripts(scripts);
 	CompileLog log;
 	std::vector<std::string> allStrings;
 	for (ScriptId &script : scripts)
 	{
-		ExtractScriptStrings(appState->GetVersion(), log, script, allStrings);
+		ExtractScriptStrings(AppVersion(), log, script, allStrings);
 	}
 	// TODO: show compile errors
 	std::stringstream ss;
@@ -2837,7 +2837,7 @@ void CMainFrame::ExtractAllText()
 	}
 
 	//KAWA: include all text and message resources. Adapted from _FindInTexts
-	auto container = appState->GetResourceMap().Resources(ResourceTypeFlags::Text | ResourceTypeFlags::Message, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+	auto container = AppResourceMap().Resources(ResourceTypeFlags::Text | ResourceTypeFlags::Message, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
 	for (auto &blob : *container)
 	{
 		auto resource = CreateResourceFromResourceData(*blob);

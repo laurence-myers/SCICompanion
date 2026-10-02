@@ -17,7 +17,7 @@
 #include "View.h"
 #include "ResourceEntity.h"
 #include "ResourceMap.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceContainer.h"
 #include "ResourceBlob.h"
 #include "GameFolderHelper.h"
@@ -609,7 +609,7 @@ namespace UnitTests
         TEST_METHOD(GetReadStream_DelayedBlob_RealizesBeforeReading)
         {
             _gameFolder = SetUpGameSCI11();
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
 
             int compressedExercised = 0;
             auto container = rm.Resources(ResourceTypeFlags::All, ResourceEnumFlags::AddInDefaultEnumFlags);
@@ -672,7 +672,7 @@ namespace UnitTests
             namespace fs = std::filesystem;
             _gameFolder = SetUpGameSCI11();
             // The template keeps both volumes in the root.
-            Assert::IsTrue(appState->GetVersion().AudioVolumeName == AudioVolumeName::Both,
+            Assert::IsTrue(AppVersion().AudioVolumeName == AudioVolumeName::Both,
                 L"the SCI1.1 template has resource.aud and resource.sfx in its root");
 
             // Move the .aud under the subfolder and re-open the game.
@@ -681,9 +681,9 @@ namespace UnitTests
             fs::create_directories(root / subfolder, ec);
             fs::rename(root / L"resource.aud", root / subfolder / L"resource.aud", ec);
             Assert::IsFalse(static_cast<bool>(ec), L"moving resource.aud under the subfolder failed");
-            appState->GetResourceMap().SetGameFolder(_gameFolder);
+            AppResourceMap().SetGameFolder(_gameFolder);
 
-            Assert::IsTrue(appState->GetVersion().AudioVolumeName == AudioVolumeName::Both,
+            Assert::IsTrue(AppVersion().AudioVolumeName == AudioVolumeName::Both,
                 (std::wstring(L"a resource.aud in the ") + subfolder + L" subfolder must count, with the .sfx in the root").c_str());
         }
 

@@ -350,13 +350,13 @@ void CGameVersionDialog::OnViewResourceMap()
 {
 	// REVIEW: Not sure if we need to call data exchage???
 	SCIVersion versionTest = _ReverseSync();
-	FileDescriptorResourceMap resourceMapFileDescriptor(appState->GetResourceMap().GetGameFolder());
-	_OnViewResourceMap(resourceMapFileDescriptor, versionTest, appState->GetResourceMap().GetGameFolder());
+	FileDescriptorResourceMap resourceMapFileDescriptor(AppResourceMap().GetGameFolder());
+	_OnViewResourceMap(resourceMapFileDescriptor, versionTest, AppResourceMap().GetGameFolder());
 }
 
 void CGameVersionDialog::OnViewMessageMap()
 {
 	SCIVersion versionTest = _ReverseSync();
-	FileDescriptorMessageMap messageMapFileDescriptor(appState->GetResourceMap().GetGameFolder());
-	_OnViewResourceMap(messageMapFileDescriptor, versionTest, appState->GetResourceMap().GetGameFolder());
+	FileDescriptorMessageMap messageMapFileDescriptor(AppResourceMap().GetGameFolder());
+	_OnViewResourceMap(messageMapFileDescriptor, versionTest, AppResourceMap().GetGameFolder());
 }

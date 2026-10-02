@@ -1,0 +1,27 @@
+== f9BreakInSwitchCase
+code 000a-0012
+loop 0014 latch 0044
+  body
+    code 0014-0018
+    if 0019
+      then
+        code 001b-001f
+        switch 0020 toss 0041
+          case bnt 0025 jmp 002b
+            value
+              code 0021-0024
+            body
+              code 0027-0029
+          case bnt 0031 jmp 0037
+            value
+              code 002d-0030
+            body
+              code 0033-0035
+          case bnt 003d
+            value
+              code 0039-003c
+            body
+              break 1 003f
+        code 0042
+      else break 1
+code 0046-0048

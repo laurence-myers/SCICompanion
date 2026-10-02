@@ -224,6 +224,17 @@ namespace
         }
         std::map<PatchKey, std::vector<std::string>> patchFiles = PatchFilesOf(helper, patchTypes);
         std::map<uint16_t, CompiledInfo> scripts;
+        // The names of the objects come from their name slots. The slots of
+        // the class of an instance can be in another script: the scripts stay
+        // loaded until each one has its names.
+        SelectorTable selectors;
+        SpeciesTable speciesTable;
+        if (readObjects)
+        {
+            selectors.Load(helper);
+            speciesTable.Load(helper, false);
+        }
+        std::map<uint16_t, std::unique_ptr<CompiledScript>> loadedScripts;
         for (auto &script : scriptBlobs)
         {
             CompiledInfo &info = scripts[script.first];
@@ -242,21 +253,53 @@ namespace
             if (readObjects)
             {
                 auto heap = heapBlobs.find(script.first);
-                CompiledScript compiled(script.first);
-                sci::Status loaded = compiled.TryLoad(helper, helper.Version, script.first, blob, (heap != heapBlobs.end()) ? heap->second.get() : nullptr);
+                auto compiled = std::make_unique<CompiledScript>(script.first);
+                compiled->SetNameSelector(selectors);
+                sci::Status loaded = compiled->TryLoad(helper, helper.Version, script.first, blob, (heap != heapBlobs.end()) ? heap->second.get() : nullptr);
                 if (loaded)
                 {
                     info.loaded = true;
                     info.objects.number = script.first;
-                    for (const auto &object : compiled.GetObjects())
-                    {
-                        info.objects.objects.push_back({ object->GetName(), !object->IsInstance(), object->IsPublic });
-                    }
+                    loadedScripts[script.first] = std::move(compiled);
                 }
                 else
                 {
                     info.error = loaded.error().ToString();
                 }
+            }
+        }
+
+        // The class of each species: the first class of the species in the
+        // script that the class table gives.
+        std::unordered_map<uint16_t, const CompiledObject *> classes;
+        for (const auto &loaded : loadedScripts)
+        {
+            for (const auto &object : loaded.second->GetObjects())
+            {
+                uint16_t statedScript, position;
+                if (!object->IsInstance() && speciesTable.GetSpeciesLocation(object->GetSpecies(), statedScript, position) &&
+                    (statedScript == loaded.first) && !classes.count(object->GetSpecies()))
+                {
+                    classes[object->GetSpecies()] = object.get();
+                }
+            }
+        }
+        for (auto &loaded : loadedScripts)
+        {
+            loaded.second->ResolveInstanceNames([&classes](uint16_t species, std::vector<uint16_t> &slots)
+            {
+                auto found = classes.find(species);
+                if (found == classes.end())
+                {
+                    return false;
+                }
+                slots = found->second->GetProperties();
+                return true;
+            });
+            CompiledInfo &info = scripts[loaded.first];
+            for (const auto &object : loaded.second->GetObjects())
+            {
+                info.objects.objects.push_back({ object->GetName(), !object->IsInstance(), object->IsPublic });
             }
         }
         return scripts;

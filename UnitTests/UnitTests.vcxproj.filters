@@ -33,18 +33,42 @@
     <ClInclude Include="DecompileHelper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ScopeShapes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ScopeAsm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="OracleHelper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="AstPassHelper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="StructuralCompare.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="TestCliIntegration.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestStructuralCompare.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestScopeParser.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestScopeVerify.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestScopeCode.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestScopeValues.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestMeaningCheck.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ScopeAsm.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestCli.cpp">
@@ -66,6 +90,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestSpeciesTable.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestVocabNames.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestEngineErrors.cpp">
@@ -114,12 +141,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestMergeScripts.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="TestDecompilerDangling.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="TestDecompilerDroppedBlock.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestCompileAllPumpIntegration.cpp">
@@ -228,9 +249,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="AstPassHelper.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="StructuralCompare.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestAstPasses.cpp">

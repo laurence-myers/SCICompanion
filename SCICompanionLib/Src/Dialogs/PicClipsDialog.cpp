@@ -13,7 +13,9 @@ GNU General Public License for more details.
 ***************************************************************************/
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
+#include "resource.h"
 #include "PicClipsDialog.h"
 #include "Components.h"
 #include "PicCommands.h"
@@ -166,7 +168,7 @@ void PicClipsDialog::_PopulateFilesList()
 
 	m_wndFiles.SetRedraw(FALSE);
 
-	path enumPath = appState->GetResourceMap().Helper().GetPicClipsFolder();
+	path enumPath = AppResourceMap().Helper().GetPicClipsFolder();
 	string regexString = "(\\w+)\\";
 	regexString += PicClipsExtension;
 	auto matchRSTRegex = std::regex(regexString);
@@ -188,7 +190,7 @@ void PicClipsDialog::_PopulateFilesList()
 
 void PicClipsDialog::OnBnClickedSave()
 {
-	string picClipsFolder = appState->GetResourceMap().Helper().GetPicClipsFolder();
+	string picClipsFolder = AppResourceMap().Helper().GetPicClipsFolder();
 
 	EnsureFolderExists(picClipsFolder, false);
 

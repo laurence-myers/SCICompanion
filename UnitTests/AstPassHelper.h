@@ -15,6 +15,7 @@
 
 #include <string>
 #include <memory>
+#include "StructuralCompare.h" // NormalizeWhitespace
 
 namespace sci
 {
@@ -39,10 +40,6 @@ std::unique_ptr<sci::Script> TryParseSierraScript(const std::string &text, std::
 
 // Prints a Script back to Sierra-syntax text.
 std::string ScriptToText(const sci::Script &script);
-
-// Collapses runs of whitespace to a single space and trims, so a comparison
-// ignores indentation and line breaks. Strips carriage returns.
-std::string NormalizeWhitespace(const std::string &text);
 
 // Parses a wrapped procedure body, runs every decompiler AST pass on the one
 // procedure, prints it, and returns the normalized text of the procedure.

@@ -15,7 +15,8 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
 #include "NewRoomDialog.h"
 #include "resource.h"
 #include "ScriptOMAll.h"
@@ -78,7 +79,7 @@ const TCHAR* g_UsedByDefaultSCI11[] =
 bool IsDefaultUse(PCTSTR pszName)
 {
 	bool fRet = false;
-	if (GetProfile(appState->GetVersion()) == NewRoomProfile::SCI11)
+	if (GetProfile(AppVersion()) == NewRoomProfile::SCI11)
 	{
 		for (int i = 0; !fRet && (i < ARRAYSIZE(g_UsedByDefaultSCI11)); i++)
 		{
@@ -137,7 +138,7 @@ void CNewRoomDialog::_AttachControls(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_LISTUSES, m_wndListBox);
 	DDX_Control(pDX, IDC_CHECKMESSAGE, m_wndCheckMessage);
 	DDX_Control(pDX, IDC_CHECKPOLYS, m_wndCheckPolys);
-	if (!appState->GetVersion().SupportsMessages)
+	if (!AppVersion().SupportsMessages)
 	{
 		m_wndCheckMessage.ShowWindow(SW_HIDE);
 	}
@@ -147,7 +148,7 @@ void CNewRoomDialog::_AttachControls(CDataExchange* pDX)
 	}
 
 	// Enable polygons for VGA
-	if (!appState->GetVersion().UsesPolygons)
+	if (!AppVersion().UsesPolygons)
 	{
 		m_wndCheckPolys.ShowWindow(SW_HIDE);
 	}
@@ -230,7 +231,7 @@ void _AddPrevRoomNumSwitch(MethodDefinition &method, NewRoomProfile profile)
 void _CreateMessageFile(int scriptNumber)
 {
 	// Create the message file. If it already exists, that's fine.
-	std::unique_ptr<MessageHeaderFile> messageHeaderFile = GetMessageFile(appState->GetResourceMap().Helper().GetMsgFolder(), scriptNumber);
+	std::unique_ptr<MessageHeaderFile> messageHeaderFile = GetMessageFile(AppResourceMap().Helper().GetMsgFolder(), scriptNumber);
 	// By default, add a "room" noun (assuming there isn't one already)
 	MessageSource *nounSource = messageHeaderFile->GetMessageSource("NOUNS");
 	if (nounSource->GetDefines().empty())
@@ -240,16 +241,16 @@ void _CreateMessageFile(int scriptNumber)
 	ShowWriteError(messageHeaderFile->Commit());
 
 	// And a message resource.
-	std::unique_ptr<ResourceBlob> messageResource = appState->GetResourceMap().MostRecentResource(ResourceType::Message, scriptNumber, false);
+	std::unique_ptr<ResourceBlob> messageResource = AppResourceMap().MostRecentResource(ResourceType::Message, scriptNumber, false);
 	if (!messageResource)
 	{
 		// Look at 0.msg to see the version we should use
-		std::unique_ptr<ResourceBlob> mainMessageResource = appState->GetResourceMap().MostRecentResource(ResourceType::Message, 0, false);
+		std::unique_ptr<ResourceBlob> mainMessageResource = AppResourceMap().MostRecentResource(ResourceType::Message, 0, false);
 		if (mainMessageResource)
 		{
 			sci::istream byteStream = mainMessageResource->GetReadStream();
 			uint16_t msgVersion = CheckMessageVersion(byteStream);
-			std::unique_ptr<ResourceEntity> newMessageResource(CreateNewMessageResource(appState->GetVersion(), msgVersion));
+			std::unique_ptr<ResourceEntity> newMessageResource(CreateNewMessageResource(AppVersion(), msgVersion));
 			// Add a description for the room background
 			TextComponent &text = newMessageResource->GetComponent<TextComponent>();
 			TextEntry entry = { 0 };
@@ -259,7 +260,7 @@ void _CreateMessageFile(int scriptNumber)
 			entry.Sequence = 1; 
 			entry.Text = "This is the room description";
 			text.Texts.push_back(entry);
-			appState->GetResourceMap().AppendResource(*newMessageResource, appState->GetVersion().DefaultVolumeFile, scriptNumber, "", NoBase36);
+			AppResourceMap().AppendResource(*newMessageResource, AppVersion().DefaultVolumeFile, scriptNumber, "", NoBase36);
 		}
 	}
 }
@@ -267,19 +268,19 @@ void _CreateMessageFile(int scriptNumber)
 int CNewRoomDialog::_GetMinSuggestedScriptNumber()
 {
 	// Rooms start from 100 in SCI1.1 (convention)
-	return appState->GetVersion().SeparateHeapResources ? 100 : 0;
+	return AppVersion().SeparateHeapResources ? 100 : 0;
 }
 
 void CNewRoomDialog::_PrepareBuffer()
 {
-	NewRoomProfile profile = GetProfile(appState->GetVersion());
+	NewRoomProfile profile = GetProfile(AppVersion());
 	std::string roomName = (profile == NewRoomProfile::SCI11) ? "Room" : "Rm";
 	sci::Script script(_scriptId);
-	bool includePolys = (appState->GetVersion().UsesPolygons) && (m_wndCheckPolys.GetCheck() == BST_CHECKED);
+	bool includePolys = (AppVersion().UsesPolygons) && (m_wndCheckPolys.GetCheck() == BST_CHECKED);
 
 	script.AddInclude("sci.sh");
 	script.AddInclude("game.sh");
-	if (appState->GetVersion().SupportsMessages && (m_wndCheckMessage.GetCheck() == BST_CHECKED))
+	if (AppVersion().SupportsMessages && (m_wndCheckMessage.GetCheck() == BST_CHECKED))
 	{
 		string messagefileInclude = fmt::format("{0}.shm", _scriptId.GetResourceNumber());
 		script.AddInclude(messagefileInclude);
@@ -327,7 +328,7 @@ void CNewRoomDialog::_PrepareBuffer()
 		pClass->AddProperty(make_unique<ClassProperty>("south", 0));
 		pClass->AddProperty(make_unique<ClassProperty>("west", 0));
 
-		if (appState->GetVersion().SupportsMessages)
+		if (AppVersion().SupportsMessages)
 		{
 			pClass->AddProperty(make_unique<ClassProperty>("noun", "N_ROOM"));
 		}
@@ -475,8 +476,8 @@ void CNewRoomDialog::OnOK()
 		_nPicScript = StrToInt(strNumber);
 	}
 
-	ASSERT(_scriptId.GetResourceNumber() <= appState->GetVersion().GetMaximumResourceNumber());
-	ASSERT((_nPicScript >= 0) && (_nPicScript <= appState->GetVersion().GetMaximumResourceNumber()));
+	ASSERT(_scriptId.GetResourceNumber() <= AppVersion().GetMaximumResourceNumber());
+	ASSERT((_nPicScript >= 0) && (_nPicScript <= AppVersion().GetMaximumResourceNumber()));
 
 	if (fClose)
 	{
@@ -504,21 +505,21 @@ void CNewRoomDialog::OnOK()
 		// Prepare the script name.
 		// (Without the .sc extension)
 		StringCchPrintf(_szScriptName, ARRAYSIZE(_szScriptName), TEXT("rm%03d"), _scriptId.GetResourceNumber());
-		_scriptId.SetFullPath(appState->GetResourceMap().Helper().GetScriptFileName(_szScriptName));
+		_scriptId.SetFullPath(AppResourceMap().Helper().GetScriptFileName(_szScriptName));
 	}
 
 	if (fClose)
 	{
 		_PrepareBuffer();
 		// Make message header?
-		if (appState->GetVersion().SupportsMessages && (m_wndCheckMessage.GetCheck() == BST_CHECKED))
+		if (AppVersion().SupportsMessages && (m_wndCheckMessage.GetCheck() == BST_CHECKED))
 		{
 			_CreateMessageFile(_scriptId.GetResourceNumber());
 		}
 		// Make poly header?
-		if (appState->GetVersion().UsesPolygons && (m_wndCheckPolys.GetCheck() == BST_CHECKED))
+		if (AppVersion().UsesPolygons && (m_wndCheckPolys.GetCheck() == BST_CHECKED))
 		{
-			unique_ptr<PolygonComponent> polyComponent = CreatePolygonComponent(appState->GetResourceMap().Helper().GetPolyFolder(), _nPicScript);
+			unique_ptr<PolygonComponent> polyComponent = CreatePolygonComponent(AppResourceMap().Helper().GetPolyFolder(), _nPicScript);
 			if (polyComponent->Polygons().empty())
 			{
 				// This means it doesn't already exist (or is empty). Commit it so it exists.

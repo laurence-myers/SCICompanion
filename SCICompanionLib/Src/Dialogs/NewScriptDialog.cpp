@@ -15,7 +15,8 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
 #include "NewScriptDialog.h"
 #include "resource.h"
 #include "ScriptOM.h"
@@ -64,7 +65,7 @@ void CNewScriptDialog::_PrepareDialog()
 	TCHAR *pszNameValues = new TCHAR[nSize];
 	if (pszNameValues)
 	{
-		std::string iniFileName = appState->GetResourceMap().Helper().GetGameIniFileName();
+		std::string iniFileName = AppResourceMap().Helper().GetGameIniFileName();
 		if (!iniFileName.empty())
 		{
 			DWORD nLength =  GetPrivateProfileSection(TEXT("Script"), pszNameValues, nSize, iniFileName.c_str());
@@ -90,7 +91,7 @@ void CNewScriptDialog::_PrepareDialog()
 					if (iScript >= 0)
 					{
 						// We can end up with turd entries lying around in game.ini, so check that the file actually exists:
-						std::string filename = appState->GetResourceMap().Helper().GetScriptFileName((uint16_t)iScript);
+						std::string filename = AppResourceMap().Helper().GetScriptFileName((uint16_t)iScript);
 						if (PathFileExists(filename.c_str()))
 						{
 							_usedScriptNumbers.insert(iScript);
@@ -191,7 +192,7 @@ void CNewScriptDialog::OnOK()
 		if (!strName.IsEmpty())
 		{
 			StringCchCopy(_szScriptName, ARRAYSIZE(_szScriptName), (PCTSTR)strName);
-			_scriptId.SetFullPath(appState->GetResourceMap().Helper().GetScriptFileName(_szScriptName));
+			_scriptId.SetFullPath(AppResourceMap().Helper().GetScriptFileName(_szScriptName));
 		}
 		else
 		{

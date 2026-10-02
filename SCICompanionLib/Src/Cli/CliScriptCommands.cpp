@@ -12,10 +12,14 @@
 #include "ResourceUtil.h"
 #include "DecompileRun.h"
 #include "DecompilerResults.h"
+#include "FileWrite.h"
 #include "format.h"
 #include <algorithm>
 #include <atomic>
 #include <filesystem>
+#include <tuple>
+#include <fstream>
+#include <map>
 #include <regex>
 #include <set>
 
@@ -170,6 +174,10 @@ namespace cli
 
     namespace
     {
+        // The lines of the function report, by script, offset, and order in
+        // the decompile of the script.
+        using FunctionLines = std::map<std::tuple<uint16_t, uint16_t, int>, DecompiledFunction>;
+
         // "110 (rm110)".
         std::string ScriptText(uint16_t number, const std::string &name)
         {
@@ -295,10 +303,19 @@ namespace cli
             }
             bool IsAborted() override { return CancelFlag().load(); }
             void InformStats(bool functionSuccessful, int byteCount) override {}
+            void InformFunction(const DecompiledFunction &function) override
+            {
+                // A later decompile of the script replaces the line. Two
+                // export slots of one procedure are two functions with one
+                // offset: two lines.
+                _functions[std::make_tuple(function.script, function.offset, function.index)] = function;
+            }
             void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override {}
 
             // The errors that the decompiler reported.
             size_t Errors() const { return _errors.load(); }
+            // The functions, by script and offset.
+            const FunctionLines &Functions() const { return _functions; }
 
         private:
             // The start of a message, and the item of the crash line ("":
@@ -317,7 +334,28 @@ namespace cli
 
             CliOutput &_output;
             std::atomic<size_t> _errors{ 0 };
+            FunctionLines _functions;
         };
+
+        // A field of the function report: a tab or a line break becomes a
+        // space.
+        std::string ReportField(std::string text)
+        {
+            std::replace_if(text.begin(), text.end(), [](char ch) { return (ch == '\t') || (ch == '\r') || (ch == '\n'); }, ' ');
+            return text;
+        }
+
+        std::string FunctionReportText(const FunctionLines &functions)
+        {
+            std::string text = std::string(FunctionReportHeader) + "\n";
+            for (const auto &entry : functions)
+            {
+                const DecompiledFunction &function = entry.second;
+                text += fmt::format("{0}\t{1}\t{2}\t{3:04x}\t{4}\t{5}\t{6}\n", function.script, ReportField(function.className), ReportField(function.name),
+                    function.offset, function.byteCount, function.output, ReportField(function.scope));
+            }
+            return text;
+        }
 
         // --stdout: the source of the script to stdout.
         class CliDecompileOutput : public IDecompileOutput
@@ -453,6 +491,16 @@ namespace cli
         if (numbers.empty())
         {
             output.Message("No script to decompile.");
+            if (!options.functionReport.empty())
+            {
+                // No old report stays.
+                sci::Status written = WriteEmptyFunctionReport(options.functionReport);
+                if (!written)
+                {
+                    output.Error("the function report: " + written.error().ToString());
+                    return ExitCode::WriteFailed;
+                }
+            }
             return ExitCode::Success;
         }
 
@@ -471,10 +519,86 @@ namespace cli
         run.dryRun = common.dryRun && !options.toStdout;
         CliDecompileResults results(output);
         CliDecompileOutput sources(output);
-        SCI_TRY_ASSIGN(DecompileReport report, RunDecompile(session, numbers, run, results, options.toStdout ? &sources : nullptr));
+        sci::Result<DecompileReport> ran = RunDecompile(session, numbers, run, results, options.toStdout ? &sources : nullptr);
+        if (!ran)
+        {
+            // The lines of the functions that the run decompiled.
+            if (!options.functionReport.empty())
+            {
+                sci::Status written = WriteTextToFile(options.functionReport, FunctionReportText(results.Functions()));
+                if (!written)
+                {
+                    output.Error("the function report: " + written.error().ToString());
+                }
+            }
+            return tl::unexpected<sci::Error>(ran.error());
+        }
+        DecompileReport report = std::move(*ran);
         SetCurrentItem("printing the report");
         PrintDecompileReport(report, session.Helper(), run.dryRun, options.toStdout, options.updateStale, output);
-        return ExitCodeForReport(report, results.Errors());
+        ExitCode code = ExitCodeForReport(report, results.Errors());
+        if (!options.functionReport.empty())
+        {
+            SetCurrentItem("writing the function report");
+            sci::Status written = WriteTextToFile(options.functionReport, FunctionReportText(results.Functions()));
+            if (!written)
+            {
+                output.Error("the function report: " + written.error().ToString());
+                if (code != ExitCode::Internal)
+                {
+                    code = ExitCode::WriteFailed;
+                }
+            }
+            else
+            {
+                output.Detail(fmt::format("wrote the function report {0} ({1} functions)", options.functionReport, results.Functions().size()));
+            }
+        }
+        return code;
+    }
+
+    const char *const FunctionReportHeader = "script\tclass\tfunction\toffset\tbytes\toutput\tscope";
+
+    sci::Status CheckFunctionReportFile(const std::string &path)
+    {
+        std::error_code ec;
+        std::filesystem::path file(path);
+        std::filesystem::path folder = file.parent_path();
+        if (!folder.empty() && !std::filesystem::is_directory(folder, ec))
+        {
+            return sci::Fail(sci::ErrorCode::Io, "the folder of " + path + " does not exist");
+        }
+        if (std::filesystem::exists(file, ec))
+        {
+            std::ofstream stream(path, std::ios::binary | std::ios::app);
+            if (!stream)
+            {
+                return sci::Fail(sci::ErrorCode::Io, "cannot write " + path);
+            }
+        }
+        return sci::Ok();
+    }
+
+    sci::Status WriteEmptyFunctionReport(const std::string &path)
+    {
+        return WriteTextToFile(path, std::string(FunctionReportHeader) + "\n");
+    }
+
+    bool MayOverwriteFunctionReport(const std::string &path)
+    {
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(path, ec) || (std::filesystem::file_size(path, ec) == 0))
+        {
+            return true;
+        }
+        std::ifstream file(path, std::ios::binary);
+        std::string line;
+        std::getline(file, line);
+        if (!line.empty() && (line.back() == '\r'))
+        {
+            line.pop_back();
+        }
+        return line == FunctionReportHeader;
     }
 
     sci::Result<ExitCode> RunScriptSco(GameSession &session, const ScriptScoOptions &options, const CommonOptions &common, CliOutput &output)

@@ -240,19 +240,6 @@ namespace UnitTests
             Assert::AreEqual(longText, sink.lines[0].second);
         }
 
-        TEST_METHOD(LogInfo_GoesToTheCoreLogInFull)
-        {
-            _gameFolder = SetUpGameSCI0();
-            CaptureLogSink sink;
-            ScopedCoreLogSink scoped(sink);
-            std::string longText(600, 'z');
-
-            appState->LogInfo("%s!", longText.c_str());
-
-            Assert::AreEqual(size_t(1), sink.lines.size());
-            Assert::AreEqual(longText + "!", sink.lines[0].second);
-        }
-
         TEST_METHOD(Codec_BadData_LogsWithNoAppState)
         {
             NoAppState noAppState;
@@ -621,6 +608,7 @@ namespace UnitTests
                 for (uint16_t scriptNumber : scriptNumbers)
                 {
                     CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+                    compiled.SetNameSelector(lookups.GetSelectorTable(), &lookups);
                     Assert::IsTrue(compiled.Load(session.Helper(), session.Version(), scriptNumber), Wide(name).c_str());
                     TestDecompilerResults results;
                     std::unique_ptr<sci::Script> script = DecompileScript(&config, lookups, session.ResourceMap(), scriptNumber, compiled, results,
@@ -654,6 +642,7 @@ namespace UnitTests
             Assert::IsTrue(config->error.empty(), Wide(config->error).c_str());
 
             CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+            compiled.SetNameSelector(lookups.GetSelectorTable(), &lookups);
             Assert::IsTrue(compiled.Load(session.Helper(), session.Version(), 12), L"script 12 must load");
             TestDecompilerResults results;
             std::unique_ptr<sci::Script> script = DecompileScript(config.get(), lookups, session.ResourceMap(), 12, compiled, results);

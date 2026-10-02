@@ -166,7 +166,7 @@ public:
 
 		DDX_Control(pDX, IDC_CHECK2, m_wndFixedCheck);
 		m_wndFixedCheck.EnableWindow(FALSE);
-		m_wndFixedCheck.ShowWindow(appState->GetVersion().sci11Palettes ? SW_SHOW : SW_HIDE);
+		m_wndFixedCheck.ShowWindow(AppVersion().sci11Palettes ? SW_SHOW : SW_HIDE);
 
 		DDX_Control(pDX, IDC_BUTTONEDITCOLOR, m_wndButtonChooseColor);
 		m_wndButtonChooseColor.EnableWindow(FALSE);

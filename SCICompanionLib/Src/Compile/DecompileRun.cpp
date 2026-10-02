@@ -51,6 +51,10 @@ namespace
             }
             _inner.InformStats(functionSuccessful, byteCount);
         }
+        void InformFunction(const DecompiledFunction &function) override
+        {
+            _inner.InformFunction(function);
+        }
         void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override
         {
             _inner.SetGlobalVarsUpdated(renames);
@@ -754,6 +758,10 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
     return sci::Guard("making the .sco files", [&]() -> sci::Result<std::vector<ObjectFileOutcome>>
     {
         const GameFolderHelper &helper = session.Helper();
+        // A table that does not load gives the name selector of the templates.
+        SelectorTable selectors;
+        selectors.Load(helper);
+        uint16_t nameSelector = NameSelectorOf(selectors, helper.Version.SeparateHeapResources);
         std::vector<ObjectFileOutcome> outcomes;
         for (const ScriptId &script : scripts)
         {
@@ -780,6 +788,7 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
                     return sci::Ok();
                 }
                 CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+                compiled.SetNameSelector(selectors);
                 sci::Status loaded = compiled.TryLoad(helper, helper.Version, outcome.number);
                 if (!loaded && (loaded.error().code == sci::ErrorCode::NotFound))
                 {
@@ -812,7 +821,7 @@ sci::Result<std::vector<ObjectFileOutcome>> GenerateObjectFiles(GameSession &ses
                 }
                 SCI_TRY(CheckPublicBlock(parsed, script, outcome.number, compiled, outcome.diagnostics));
 
-                std::unique_ptr<CSCOFile> objectFile = SCOFromScriptAndCompiledScript(parsed, compiled);
+                std::unique_ptr<CSCOFile> objectFile = SCOFromScriptAndCompiledScript(parsed, compiled, nameSelector);
                 // The pair must agree: the .sco describes the compiled script.
                 objectFile->SetScriptNumber(outcome.number);
                 // The class names of the source, as the compiler writes them:

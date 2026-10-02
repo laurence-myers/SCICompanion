@@ -2,10 +2,9 @@
 (script# 906)
 (include sci.sh)
 
-; Family 6: an empty for loop ends a while body.
-; The inner exit folds to the outer head. A dead back-jump follows the inner
-; latch. The decompiler prunes the dead jump. The follow-node search then
-; targets an address with no node.
+; Family 6: an empty for loop ends a while body. The exit of the inner loop
+; goes to the head of the outer loop, and a dead back-jump follows the latch
+; of the inner loop.
 (public
 	f6EmptyTrailingFor 0
 )

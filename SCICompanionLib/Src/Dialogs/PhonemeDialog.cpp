@@ -17,7 +17,9 @@
 #include <sphelper.h>
 #include "sapi_lipsync.h"
 #include "LipSyncUtil.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
+#include "resource.h"
 #include "CoreLog.h"
 #include "Audio.h"
 #include "SoundUtil.h"
@@ -40,7 +42,7 @@ LRESULT PhonemeDialog::_OnLipSyncDone(WPARAM wParam, LPARAM lParam)
 
 PhonemeDialog::PhonemeDialog(int nView, int nLoop, PhonemeMap &map, CWnd* pParent)
 	: AudioPlaybackUI<CExtResizableDialog>(PhonemeDialog::IDD, pParent),
-	_viewResource(appState->GetResourceMap().CreateResourceFromNumber(ResourceType::View, nView)),
+	_viewResource(AppResourceMap().CreateResourceFromNumber(ResourceType::View, nView)),
 	_nView(nView),
 	_nLoop(nLoop),
 	m_wndMap(this, _viewResource.get(), nView, nLoop, map),
@@ -59,10 +61,10 @@ BOOL PhonemeDialog::OnInitDialog()
 
 		try
 		{
-			std::string wavePath = appState->GetResourceMap().GetTopLevelSamplesFolder() + "\\PhonemeSentence.wav";
+			std::string wavePath = AppResourceMap().GetTopLevelSamplesFolder() + "\\PhonemeSentence.wav";
 			g_samplePhonemeSentenceAudio = WaveResourceFromFilename(wavePath);
 
-			std::string txtPath = appState->GetResourceMap().GetTopLevelSamplesFolder() + "\\PhonemeSentence.txt";
+			std::string txtPath = AppResourceMap().GetTopLevelSamplesFolder() + "\\PhonemeSentence.txt";
 			std::ifstream file(txtPath);
 			if (file.is_open())
 			{

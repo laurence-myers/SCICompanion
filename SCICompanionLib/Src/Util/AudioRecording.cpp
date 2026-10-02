@@ -195,7 +195,7 @@ std::unique_ptr<ResourceEntity> AudioRecording::Stop()
 	// If we're just monitoring, don't stop...
 	if (_state == RecordState::Recording)
 	{
-		resource.reset(CreateDefaultAudioResource(appState->GetVersion()));
+		resource.reset(CreateDefaultAudioResource(AppVersion()));
 		resource->AddComponent<AudioNegativeComponent>(std::make_unique<AudioNegativeComponent>());
 		resource->SourceFlags = ResourceSourceFlags::AudioCache;
 		Cleanup(resource->TryGetComponent<AudioComponent>(), resource->TryGetComponent<AudioNegativeComponent>());

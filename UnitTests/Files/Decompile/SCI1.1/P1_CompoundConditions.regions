@@ -1,0 +1,67 @@
+== p1CompoundConditions
+code 000a-000c
+if 000e
+  then
+    code 0010
+    if 0012
+      then
+        code 0014-0016
+code 0018
+or 001a
+  code 001c
+  if 001e
+    then
+      code 0020
+if 0022
+  then
+    code 0024-0026
+code 0028
+if 002a
+  then
+    code 002c
+    or 002e
+      code 0030
+    if 0032
+      then
+        code 0034-0036
+code 0038
+or 003a
+  code 003c
+  or 003e
+    code 0040
+if 0042
+  then
+    code 0044-0046
+code 0048
+if 004a
+  then
+    code 004c
+code 004e
+if 004f
+  then
+    code 0051-0053
+loop 0055 latch 0061
+  body
+    code 0055
+    if 0057
+      then
+        code 0059
+        if 005b
+          then
+            code 005d-005f
+          else break 1
+      else break 1
+loop 0063 latch 006f
+  body
+    code 0063
+    or 0065
+      code 0067
+    if 0069
+      then
+        code 006b-006d
+      else break 1
+code 0071
+if 0073
+  then
+    code 0075
+code 0077

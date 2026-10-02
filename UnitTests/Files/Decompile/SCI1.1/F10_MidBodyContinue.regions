@@ -1,0 +1,14 @@
+== f10MidBodyContinue
+code 000a-0012
+loop 0014 latch 002d
+  body
+    code 0014-0018
+    if 0019
+      then
+        code 001b-0021
+        if 0022
+          then
+          else 0024
+            code 0026-002b
+      else break 1
+code 002f-0031

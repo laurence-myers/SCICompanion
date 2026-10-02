@@ -135,6 +135,12 @@ private:
 	const SelectorTable &_selectors;
 };
 
+// The name that a property with no name gets: past the end of the object, or read in a
+// procedure of no class. The text cannot have it.
+extern const char UnknownPropertyName[];
+extern const char PropertyInNonMethodName[];
+bool IsPlaceholderPropertyName(const std::string &name);
+
 class ILookupPropertyName
 {
 public:
@@ -149,7 +155,7 @@ class CompiledObject : public ILookupPropertyName
 public:
 	CompiledObject() { _fInstance = false; IsPublic = false; }
 	bool IsInstance() const { return _fInstance; }
-	bool Create_SCI0(const std::vector<uint16_t> &saidOffsets, const std::vector<uint16_t> &stringOffsets, uint16_t scriptNumber, SCIVersion version, sci::istream &stream, BOOL fClass, uint16_t *pwOffset, int classIndex);
+	bool Create_SCI0(const CompiledScript &compiledScript, SCIVersion version, sci::istream &stream, BOOL fClass, uint16_t *pwOffset, int classIndex);
 	bool Create_SCI1_1(const CompiledScript &compiledScript, SCIVersion version, sci::istream scriptStream, sci::istream &heapStream, uint16_t *pwOffset, int classIndex, uint16_t *endOfObjectInScript);
 	std::string GetName() const { return _strName; }
 	void SetName(PCTSTR pszName) { _strName = pszName; }
@@ -164,7 +170,14 @@ public:
 	uint16_t GetSpeciesIfClass() const { return _wSpeciesIfClass; }
 	uint16_t GetInfo() const { return _wInfo; }
 
-	void AdjustName(const std::string &newCodeName) { _strName = newCodeName; }
+	// The name of the object in the text; the original name stays the string of its
+	// name property (GetOriginalName).
+	void AdjustName(const std::string &newCodeName) { if (_originalName.empty()) { _originalName = _strName; } _strName = newCodeName; }
+	// The name before AdjustName; empty when the name was not adjusted.
+	const std::string &GetOriginalName() const { return _originalName; }
+	// The name is made up from the script and the position of the object: it has no
+	// name string, or its string is such a name (the text of a decompile, compiled).
+	bool HasMadeUpName() const { return _madeUpName; }
 	const std::vector<uint16_t> &GetProperties() const { return _propertySelectors; }
 	const std::vector<uint16_t> &GetMethods() const { return _functionSelectors; }
 	const std::vector<CompiledVarValue> &GetPropertyValues() const{ return _propertyValues; }
@@ -183,9 +196,21 @@ public:
 	bool IsPublic;
 
 private:
+	friend class CompiledScript;
+	// The value of the name slot when it points to a string, else 0.
+	uint16_t _NameValue(size_t slot) const;
+	// The name from the string of the name slot (empty: none): a made-up name
+	// when it has no letter.
+	void _SetName(const std::string &nameString, uint16_t scriptNumber);
+
 	uint16_t _wSpeciesIfClass = 0;
+	int _classIndex = 0;
+	// The reader found the name slot by the selector of name.
+	bool _nameSlotKnown = false;
 	uint16_t _wSuperClass = 0;
 	std::string _strName;
+	std::string _originalName;
+	bool _madeUpName = false;
 	uint16_t _wInfo = 0;
 	// These start from the 4th position (e.g. leave out species, superclass, --info-- and name)
 	std::vector<uint16_t> _propertySelectors;
@@ -222,6 +247,29 @@ class CompiledScript : public IPrivateSpeciesLookups, public ICompiledScriptSpec
 public:
 	CompiledScript(const CompiledScript &src) = delete;
 	CompiledScript(uint16_t wScript, CompiledScriptFlags flags = CompiledScriptFlags::None) { _wScript = wScript; _flags = flags; }
+	// Call these before Load. The name of an object is the string of its name
+	// slot: the slot of the selector "name" in the slots of its class (a class
+	// with no superclass can have that slot later, or not have it). classes
+	// gives the slots of a class of another script, for an instance. Without
+	// the selector, and for an instance whose class is not known, the name is
+	// the string of the slot after --info--. A reader whose names go into
+	// text, or must agree with the names of another reader, calls it.
+	// The overload with the table gives no selector when the table has no
+	// "name": a guessed number (NameSelectorOf) would take away the names of
+	// the objects of a game whose table does not load.
+	void SetNameSelector(uint16_t nameSelector, ICompiledScriptLookups *classes = nullptr);
+	void SetNameSelector(const SelectorTable &selectors, ICompiledScriptLookups *classes = nullptr);
+	// The slots of the class of a species; false when the class is not known.
+	using SpeciesSlots = std::function<bool(uint16_t species, std::vector<uint16_t> &slots)>;
+	// For a reader that reads the classes of the game with the instances (the
+	// class table): after Load, each instance whose class Load did not know
+	// gets the name of its name slot, from the slots of its class.
+	void ResolveInstanceNames(const SpeciesSlots &classes);
+	static constexpr size_t NoNameSlot = SIZE_MAX;
+	// The name slot of an object with these slots (selectors: the slots of a
+	// class; empty for an instance). False when it is not known; NoNameSlot
+	// when the object has no name slot.
+	bool FindNameSlot(bool isInstance, uint16_t species, const std::vector<uint16_t> &selectors, size_t slotCount, size_t &slot) const;
 	bool Load(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber);
 	bool Load(const GameFolderHelper &helper, SCIVersion version, int iScriptNumber, sci::istream &byteStream, sci::istream *heapStream = nullptr);
 	// Loads the most recent script resource (and in SCI1.1 its heap) of the
@@ -284,10 +332,12 @@ private:
 	bool _LoadSCI0_SCI1(sci::istream &byteStream);
 	bool _LoadSCI1_1(const GameFolderHelper &helper, int iScriptNumber, sci::istream &byteStream, sci::istream *heapStream);
 	void _LoadStringOffsetsSCI1_1(uint16_t offset, sci::istream heapStream);
-	bool _ReadExports(sci::istream &stream);
+	// sectionSize: the size of an SCI0 export section; 0 when it is not known.
+	bool _ReadExports(sci::istream &stream, uint16_t sectionSize = 0);
 	bool _ReadStrings(sci::istream &stream, uint16_t wDataSize);
 	bool _ReadSaids(sci::istream &stream, uint16_t wDataSize);
 	CompiledObject *_FindObjectWithSpecies(uint16_t wIndex);
+	bool _FindNameSlotIn(const std::vector<uint16_t> &slots, size_t slotCount, size_t &slot) const;
 
 	uint16_t _wScript;
 	BOOL _fPreloadText;
@@ -295,6 +345,9 @@ private:
 	std::vector<uint16_t> _stringPointerOffsetsSCI1_1;
 	SCIVersion _version;
 	CompiledScriptFlags _flags;
+	bool _hasNameSelector = false;
+	uint16_t _nameSelector = 0;
+	ICompiledScriptLookups *_nameSlotClasses = nullptr;
 };
 
 int GetOperandSize(BYTE bOpcode, OperandType operandType, const uint8_t *pNext, const uint8_t *pEnd);

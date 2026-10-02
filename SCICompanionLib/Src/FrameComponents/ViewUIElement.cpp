@@ -157,7 +157,7 @@ void ViewUIElement::SetResource(const ResourceEntity *view, const PaletteCompone
 	_optionalPalette = optionalPalette;
 	if (!_optionalPalette && (view->GetComponent<RasterComponent>().Traits.PaletteType == PaletteType::VGA_256))
 	{
-		_paletteHolder = appState->GetResourceMap().GetMergedPalette(*view, 999);
+		_paletteHolder = AppResourceMap().GetMergedPalette(*view, 999);
 		_optionalPalette = _paletteHolder.get();
 	}
 	_sizeWeDrawIn = _RecalcSizeNeeded();

@@ -194,7 +194,7 @@ VIEWWORKRESULT *VIEWWORKRESULT::CreateFromWorkItem(VIEWWORKITEM *pWorkItem)
 			// item, using the thread-safe overload. Reading the shared resource map
 			// here (as the plain GetMergedPalette(entity, 999) did) races the UI
 			// thread (#97).
-			palette = appState->GetResourceMap().GetMergedPalette(*pEntity, pWorkItem->palette999.get());
+			palette = AppResourceMap().GetMergedPalette(*pEntity, pWorkItem->palette999.get());
 		}
 		CelIndex previewCel = CelIndex(0, raster.Traits.PreviewCel);
 		if (raster.Traits.PreviewCel == 0)
@@ -261,7 +261,7 @@ void CRasterResourceListCtrl::OnGetDispInfo(NMHDR* pNMHDR, LRESULT* pResult)
 				// Precompute the global palette here on the UI thread so the worker
 				// never reads the shared resource map (#97). GetPalette999 returns a
 				// pointer into a cached map member; copy it into the work item.
-				const PaletteComponent *global999 = appState->GetResourceMap().GetPalette999();
+				const PaletteComponent *global999 = AppResourceMap().GetPalette999();
 				if (global999)
 				{
 					pWorkItem->palette999 = std::make_shared<PaletteComponent>(*global999);

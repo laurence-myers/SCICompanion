@@ -13,7 +13,7 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "CppUnitTest.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceMap.h"
 #include "ResourceContainer.h"
 #include "ResourceBlob.h"
@@ -65,14 +65,14 @@ namespace UnitTests
         TEST_METHOD(MismatchedAst_UnknownClassAndExtraProcExports_DoNotOverread)
         {
             // Find a compiled template script that exports at least one procedure.
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
             auto container = rm.Resources(ResourceTypeFlags::Script, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
             std::unique_ptr<CompiledScript> compiled;
             for (auto &blob : *container)
             {
                 auto candidate = std::make_unique<CompiledScript>(blob->GetNumber());
                 sci::istream byteStream = blob->GetReadStream();
-                if (!candidate->Load(rm.Helper(), appState->GetVersion(), blob->GetNumber(), byteStream))
+                if (!candidate->Load(rm.Helper(), AppVersion(), blob->GetNumber(), byteStream))
                 {
                     continue;
                 }
@@ -102,7 +102,7 @@ namespace UnitTests
 
             // Before the fix: a null dereference on the unknown class and a read
             // past the end of the (empty) public-procedure name list.
-            std::unique_ptr<CSCOFile> sco = SCOFromScriptAndCompiledScript(script, *compiled);
+            std::unique_ptr<CSCOFile> sco = SCOFromScriptAndCompiledScript(script, *compiled, NameSelectorOf(SelectorTable(), false));
 
             Assert::IsTrue(sco != nullptr);
 
@@ -133,7 +133,7 @@ namespace UnitTests
         // (KQ5 Interface.sc).
         TEST_METHOD(PublicBlock_ProceduresDefinedOutOfSlotOrder_KeepTheirSlots)
         {
-            CResourceMap &resourceMap = appState->GetResourceMap();
+            CResourceMap &resourceMap = AppResourceMap();
             const std::string name = "SlotOrder";
             const char *source =
                 "(script# 950)\n"
@@ -164,7 +164,7 @@ namespace UnitTests
             CompiledScript compiled(950);
             Assert::IsTrue(compiled.Load(resourceMap.Helper(), resourceMap.Helper().Version, 950), L"the compiled script must load");
 
-            std::unique_ptr<CSCOFile> sco = SCOFromScriptAndCompiledScript(*script, compiled);
+            std::unique_ptr<CSCOFile> sco = SCOFromScriptAndCompiledScript(*script, compiled, NameSelectorOf(SelectorTable(), resourceMap.Helper().Version.SeparateHeapResources));
 
             std::map<std::string, int> slots;
             for (const CSCOPublicExport &publicExport : sco->GetExports())
@@ -230,7 +230,7 @@ namespace UnitTests
         // from the source and the compiled script. Empty when they are equal.
         static std::string CompareWithTheCompilersSco(const ScriptId &scriptId, const GlobalCompiledScriptLookups &lookups)
         {
-            CResourceMap &resourceMap = appState->GetResourceMap();
+            CResourceMap &resourceMap = AppResourceMap();
             const GameFolderHelper &helper = resourceMap.Helper();
             uint16_t number = scriptId.GetResourceNumber();
             std::unique_ptr<CSCOFile> written = GetExistingSCOFromScriptNumber(helper, number, lookups.GetSelectorTable());
@@ -238,11 +238,12 @@ namespace UnitTests
             ScriptId source = scriptId;
             std::unique_ptr<sci::Script> script = SimpleCompile(resourceMap.GetSCIVersion(), log, source);
             CompiledScript compiledScript(number);
+            compiledScript.SetNameSelector(lookups.GetSelectorTable());
             if (!written || !script || !compiledScript.Load(helper, helper.Version, number))
             {
                 return scriptId.GetTitle() + ": the .sco, the source or the compiled script did not load\n";
             }
-            std::unique_ptr<CSCOFile> built = SCOFromScriptAndCompiledScript(*script, compiledScript);
+            std::unique_ptr<CSCOFile> built = SCOFromScriptAndCompiledScript(*script, compiledScript, NameSelectorOf(lookups.GetSelectorTable(), helper.Version.SeparateHeapResources));
             std::string writtenText = ExportsText(*written);
             std::string builtText = ExportsText(*built);
             if (writtenText == builtText)
@@ -254,7 +255,7 @@ namespace UnitTests
 
         static std::string CompareScoExports(uint16_t number, const std::string &name, const std::string &source)
         {
-            CResourceMap &resourceMap = appState->GetResourceMap();
+            CResourceMap &resourceMap = AppResourceMap();
             std::string path = resourceMap.Helper().GetScriptFileName(name);
             WriteFileText(path, source);
             std::string error;
@@ -272,7 +273,7 @@ namespace UnitTests
 
         void CompareScoExportsOfEveryScript(const std::string &templateName)
         {
-            CResourceMap &resourceMap = appState->GetResourceMap();
+            CResourceMap &resourceMap = AppResourceMap();
             std::vector<ScriptId> scripts;
             resourceMap.GetAllScripts(scripts);
 

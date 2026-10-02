@@ -1173,8 +1173,11 @@ void SCISyntaxParser::Load()
 		// >> // Todo, allow for temp vars I guess. Not sure how though.
 		>> *verb_clause[FunctionStatementA]; 
 
-	// The properties thing in a class or instance
-	properties_decl = oppar >> keyword_p("properties")[{nullptr, ParseAutoCompleteContext::ClassLevelKeyword}] >> *property_decl >> clpar;
+	// The properties thing in a class or instance. &layout: the properties of the
+	// text are all the slots after --info--, in the order of the text.
+	properties_decl = oppar >> keyword_p("properties")[{nullptr, ParseAutoCompleteContext::ClassLevelKeyword}]
+		>> -keyword_p("&layout")[ClassLayoutA]
+		>> *property_decl >> clpar;
 
 	classbase_decl =
 		alphanumNK_p[ClassNameA]

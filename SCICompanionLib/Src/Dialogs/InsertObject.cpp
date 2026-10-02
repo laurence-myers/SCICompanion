@@ -67,7 +67,7 @@ class DummyLog : public ICompileLog
 
 AvailableMethods::AvailableMethods()
 {
-	string fullPath = appState->GetResourceMap().GetObjectsFolder() + "\\Methods.sc";
+	string fullPath = AppResourceMap().GetObjectsFolder() + "\\Methods.sc";
 	DummyLog log;
 	// Make a new buffer.
 	CCrystalTextBuffer buffer;
@@ -76,7 +76,7 @@ AvailableMethods::AvailableMethods()
 		CScriptStreamLimiter limiter(&buffer);
 		CCrystalScriptStream stream(&limiter);
 		_script = std::make_unique<sci::Script>(ScriptId(fullPath));
-		if (SyntaxParser_Parse(*_script, stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), &log, false, nullptr, true))
+		if (SyntaxParser_Parse(*_script, stream, PreProcessorDefinesFromSCIVersion(AppVersion()), &log, false, nullptr, true))
 		{
 			for (const auto &theClass : _script->GetClassesNC())
 			{
@@ -91,7 +91,7 @@ AvailableMethods::AvailableMethods()
 
 void AvailableMethods::PrepareBuffer(const sci::MethodDefinition *methodDef, CString &buffer)
 {
-	ConvertToSCISyntaxHelper(*_script, appState->GetResourceMap().Helper());
+	ConvertToSCISyntaxHelper(*_script, AppResourceMap().Helper());
 	std::stringstream ss;
 	//sci::SourceCodeWriter out(ss, _objectToScript[theClass]);
 	// Providing the script lets us sync comments, but it is not working properly. They merge with newlines, and comments in
@@ -110,7 +110,7 @@ AvailableObjects::AvailableObjects()
 	vector<string> filenames;
 
 	/*
-	std::string objFolder = appState->GetResourceMap().GetObjectsFolder();
+	std::string objFolder = AppResourceMap().GetObjectsFolder();
 	objFolder += "\\*.sc";
 	WIN32_FIND_DATA findData = { 0 };
 	HANDLE hFFF = FindFirstFile(objFolder.c_str(), &findData);
@@ -131,7 +131,7 @@ AvailableObjects::AvailableObjects()
 	// Now compile them.
 	for (string filename : filenames)
 	{
-		string fullPath = appState->GetResourceMap().GetObjectsFolder() + "\\" + filename;
+		string fullPath = AppResourceMap().GetObjectsFolder() + "\\" + filename;
 		DummyLog log;
 		// Make a new buffer.
 		CCrystalTextBuffer buffer;
@@ -140,7 +140,7 @@ AvailableObjects::AvailableObjects()
 			CScriptStreamLimiter limiter(&buffer);
 			CCrystalScriptStream stream(&limiter);
 			std::unique_ptr<sci::Script> pScript = std::make_unique<sci::Script>(ScriptId(fullPath));
-			if (SyntaxParser_Parse(*pScript, stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), &log, false, nullptr, true))
+			if (SyntaxParser_Parse(*pScript, stream, PreProcessorDefinesFromSCIVersion(AppVersion()), &log, false, nullptr, true))
 			{
 				transform(pScript->GetClassesNC().begin(), pScript->GetClassesNC().end(), back_inserter(_objects),
 					[](unique_ptr<ClassDefinition> &theClass) { return theClass.get(); }
@@ -162,7 +162,7 @@ void AvailableObjects::PrepareBuffer(sci::ClassDefinition *theClass, CString &bu
 {
 	for (auto &script : _scripts)
 	{
-		ConvertToSCISyntaxHelper(*script, appState->GetResourceMap().Helper());
+		ConvertToSCISyntaxHelper(*script, AppResourceMap().Helper());
 	}
 
 	// Grab any properties from the "fake ego"

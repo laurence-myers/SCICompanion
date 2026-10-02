@@ -462,7 +462,7 @@ void CRoomExplorerNode::Init(const CRoomExplorerView::CRoomExplorerGrid *pGrid, 
 	_pGrid = pGrid;
 	assert(_pWorkItem.get() == nullptr);
 	_pWorkItem = make_unique<CRoomExplorerWorkItem>(compiledScript.GetScriptNumber());
-	_pWorkItem->version = appState->GetVersion();   // captured on the UI thread (#131)
+	_pWorkItem->version = AppVersion();   // captured on the UI thread (#131)
 	ScriptNum = compiledScript.GetScriptNumber();
 	const vector<CompiledVarValue> &propValues = classDefinition.GetPropertyValues();
 	vector<uint16_t> props = classDefinition.GetProperties();
@@ -572,7 +572,7 @@ void CRoomExplorerView::CRoomExplorerGrid::AddRoom(GlobalCompiledScriptLookups &
 
 void CRoomExplorerView::CRoomExplorerGrid::LoadResources()
 {
-	auto resourceContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::Pic | ResourceTypeFlags::View, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+	auto resourceContainer = AppResourceMap().Resources(ResourceTypeFlags::Pic | ResourceTypeFlags::View, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
 	for (auto &pBlob : *resourceContainer)
 	{
 		if (pBlob->GetType() == ResourceType::Pic)
@@ -1283,7 +1283,7 @@ void CRoomExplorerView::_RecalcHeight()
 	{
 		_grid.LoadResources();
 		GlobalCompiledScriptLookups globalLookups;
-		globalLookups.Load(appState->GetResourceMap().Helper());
+		globalLookups.Load(AppResourceMap().Helper());
 		SelectorTable &selectorTable = globalLookups.GetSelectorTable();
 		GlobalClassTable &globalClassTable = globalLookups.GetGlobalClassTable();
 		uint16_t viewSpeciesIndex, roomSpeciesIndex;
@@ -1310,12 +1310,13 @@ void CRoomExplorerView::_RecalcHeight()
 			}
 
 			// We found the pre-requisites, now look for scripts with room instances.
-			auto resourceContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::Script, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+			auto resourceContainer = AppResourceMap().Resources(ResourceTypeFlags::Script, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
 			for (auto &blob : *resourceContainer)
 			{
 				sci::istream byteStream = blob->GetReadStream();
 				CompiledScript compiledScript(blob->GetNumber());
-				if (compiledScript.Load(appState->GetResourceMap().Helper(), appState->GetVersion(), blob->GetNumber(), byteStream))
+				compiledScript.SetNameSelector(selectorTable, &globalLookups);
+				if (compiledScript.Load(AppResourceMap().Helper(), AppVersion(), blob->GetNumber(), byteStream))
 				{
 					for (auto &classDefinition : compiledScript.GetObjects())
 					{

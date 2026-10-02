@@ -13,7 +13,7 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "CppUnitTest.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceMap.h"
 #include "ResourceContainer.h"
 #include "ResourceBlob.h"
@@ -63,7 +63,7 @@ namespace UnitTests
         TEST_METHOD(SCI11_PosInResource_IsTheHeapOffsetOfTheObject)
         {
             _gameFolder = SetUpGameSCI11();
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
 
             auto container = rm.Resources(ResourceTypeFlags::Script, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
             int checked = 0;
@@ -71,7 +71,7 @@ namespace UnitTests
             {
                 CompiledScript compiledScript(blob->GetNumber());
                 sci::istream scriptStream = blob->GetReadStream();
-                if (!compiledScript.Load(rm.Helper(), appState->GetVersion(), blob->GetNumber(), scriptStream))
+                if (!compiledScript.Load(rm.Helper(), AppVersion(), blob->GetNumber(), scriptStream))
                 {
                     continue;
                 }

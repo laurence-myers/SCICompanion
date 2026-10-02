@@ -25,6 +25,7 @@
 #include "DecompileScript.h"
 #include "DecompilerConfig.h"
 #include "ResourceContainer.h"
+#include "MeaningCheck.h"
 #include "format.h"
 #include <filesystem>
 #include <map>
@@ -126,14 +127,14 @@ static std::string Normalize(const std::string &text)
 void AddFixtureScript(const std::string &fixtureName)
 {
     std::string src = GetTestFileDirectory("Decompile\\SCI1.1") + "\\" + fixtureName + ".sc";
-    std::string dst = appState->GetResourceMap().Helper().GetScriptFileName(fixtureName);
+    std::string dst = AppResourceMap().Helper().GetScriptFileName(fixtureName);
     Assert::IsTrue(CopyFile(src.c_str(), dst.c_str(), FALSE) != 0,
         ToWString("Could not copy fixture: " + src).c_str());
 }
 
 bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::string *outError, std::vector<std::string> *outWarnings, std::vector<std::string> *outErrors)
 {
-    CResourceMap &rm = appState->GetResourceMap();
+    CResourceMap &rm = AppResourceMap();
     rm.AssignName(ResourceType::Script, scriptNumber, NoBase36, fixtureName.c_str());
 
     ScriptId scriptId(rm.Helper().GetScriptFileName(fixtureName).c_str());
@@ -144,7 +145,7 @@ bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::
     CompileTables tables;
     tables.Load(rm);
     PrecompiledHeaders headers(rm);
-    GameSession &session = appState->GetSession();
+    GameSession &session = AppSession();
     CompileResults results(log, session.Version());
     bool ok = false;
     {
@@ -208,7 +209,7 @@ bool CompileFixture(uint16_t scriptNumber, const std::string &fixtureName, std::
 
 DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks, bool debugControlFlow)
 {
-    CResourceMap &rm = appState->GetResourceMap();
+    CResourceMap &rm = AppResourceMap();
     const GameFolderHelper &helper = rm.Helper();
 
     GlobalCompiledScriptLookups lookups;
@@ -220,6 +221,7 @@ DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks, bool de
 
     DecompileOutput out;
     CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+    compiled.SetNameSelector(lookups.GetSelectorTable(), &lookups);
     if (!compiled.Load(helper, helper.Version, scriptNumber))
     {
         out.text = "<<compiled script load failed>>";
@@ -238,29 +240,63 @@ DecompileOutput DecompileToText(uint16_t scriptNumber, bool debugChunks, bool de
     out.text = ss.str();
     out.warnings = results.warnings;
     out.fallbacks = results.fallbacks;
+    out.functions = results.functions;
     return out;
 }
 
 bool DecompileTemplateScriptByTitle(const std::string &title, DecompileOutput &out)
 {
     std::vector<ScriptId> scripts;
-    appState->GetResourceMap().GetAllScripts(scripts);
+    AppResourceMap().GetAllScripts(scripts);
     for (ScriptId &scriptId : scripts)
     {
         if (scriptId.GetTitle() == title)
         {
             bool debugChunks = (getenv("SCICOMP_DEBUG_CHUNKS") != nullptr);
-            // The control-flow-graph "digraph code" dump is a developer aid, not
-            // routine output. It used to be on unconditionally here, so every run
-            // logged a graphviz block per function -- pure noise on a passing
-            // test. Gate it behind SCICOMP_DEBUG_CFG (matching SCICOMP_DEBUG_CHUNKS)
-            // so it is off by default and opt-in when diagnosing a failure.
-            bool debugCfg = (getenv("SCICOMP_DEBUG_CFG") != nullptr);
+            // SCICOMP_DEBUG_CONTROL_FLOW turns on the control-flow dump (the
+            // scope region tree).
+            bool debugCfg = (getenv("SCICOMP_DEBUG_CONTROL_FLOW") != nullptr);
             out = DecompileToText(scriptId.GetResourceNumber(), debugChunks, debugCfg);
             return true;
         }
     }
     return false;
+}
+
+std::vector<meaning::Function> ReadMeaningFunctions(uint16_t scriptNumber)
+{
+    CResourceMap &rm = AppResourceMap();
+    GlobalCompiledScriptLookups lookups;
+    lookups.Load(rm.Helper());
+    sci::Result<std::vector<meaning::Function>> functions = meaning::ReadScript(rm.Helper(), lookups, rm.GetVocab000(), scriptNumber);
+    Assert::IsTrue(functions.has_value(), ToWString(fmt::format("cannot read script {0} for the meaning check", scriptNumber)).c_str());
+    return *functions;
+}
+
+void AssertMeaningKept(const std::string &fixtureName, const std::vector<meaning::Function> &original, uint16_t scriptNumber)
+{
+    std::string failures;
+    for (const meaning::FunctionOutcome &row : meaning::CompareFunctions(original, ReadMeaningFunctions(scriptNumber)))
+    {
+        if (row.outcome.verdict != meaning::Verdict::Same)
+        {
+            failures += fmt::format("\n  {0}: {1} {2}", row.display, meaning::VerdictName(row.outcome.verdict), row.outcome.detail);
+        }
+    }
+    Assert::IsTrue(failures.empty(), ToWString(fixtureName + ": the recompiled functions do not mean the same:" + failures).c_str());
+}
+
+// Writes the decompiled text into the source of the fixture, and compiles it.
+static void RecompileDecompiledText(const std::string &fixtureName, uint16_t scriptNumber, const std::string &text)
+{
+    std::string path = AppResourceMap().Helper().GetScriptFileName(fixtureName);
+    WriteTextFile(path, text);
+    std::string compileError;
+    if (!CompileFixture(scriptNumber, fixtureName, &compileError))
+    {
+        Logger::WriteMessage(ToWString("Decompiled text:\n" + text).c_str());
+        Assert::Fail(ToWString("Recompile of decompiled text failed: " + fixtureName + ": " + compileError).c_str());
+    }
 }
 
 DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t scriptNumber)
@@ -270,25 +306,16 @@ DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t s
     std::string compileError;
     bool compiled = CompileFixture(scriptNumber, fixtureName, &compileError);
     Assert::IsTrue(compiled, ToWString("Initial compile failed: " + fixtureName + ": " + compileError).c_str());
+    std::vector<meaning::Function> original = ReadMeaningFunctions(scriptNumber);
 
-    // The control-flow-graph "digraph code" dump is a developer aid. It was on
-    // unconditionally here, so every round-trip test logged a graphviz block per
-    // function even when it passed -- pure noise. Gate it behind SCICOMP_DEBUG_CFG
-    // (like SCICOMP_DEBUG_CHUNKS for the chunk-tree dump) so it is off by default
-    // and opt-in when diagnosing a failure. A failing round trip already logs the
-    // decompiled text and the assertion.
+    // SCICOMP_DEBUG_CHUNKS and SCICOMP_DEBUG_CONTROL_FLOW turn on the dumps,
+    // for diagnosing a failure.
     bool debugChunks = (getenv("SCICOMP_DEBUG_CHUNKS") != nullptr);
-    bool debugCfg = (getenv("SCICOMP_DEBUG_CFG") != nullptr);
+    bool debugCfg = (getenv("SCICOMP_DEBUG_CONTROL_FLOW") != nullptr);
     DecompileOutput first = DecompileToText(scriptNumber, debugChunks, debugCfg);
 
-    std::string path = appState->GetResourceMap().Helper().GetScriptFileName(fixtureName);
-    WriteTextFile(path, first.text);
-    compileError.clear();
-    if (!CompileFixture(scriptNumber, fixtureName, &compileError))
-    {
-        Logger::WriteMessage(ToWString("Decompiled text:\n" + first.text).c_str());
-        Assert::Fail(ToWString("Recompile of decompiled text failed: " + fixtureName + ": " + compileError).c_str());
-    }
+    RecompileDecompiledText(fixtureName, scriptNumber, first.text);
+    AssertMeaningKept(fixtureName, original, scriptNumber);
 
     DecompileOutput second = DecompileToText(scriptNumber);
     Assert::AreEqual(Normalize(first.text), Normalize(second.text),
@@ -299,7 +326,7 @@ DecompileOutput DecompileAndRoundTrip(const std::string &fixtureName, uint16_t s
 
 int CountFallbacksAllScripts(std::vector<std::string> *outFailedScripts, int *outProcessed, std::vector<std::string> *outWarnings)
 {
-    CResourceMap &rm = appState->GetResourceMap();
+    CResourceMap &rm = AppResourceMap();
     const GameFolderHelper &helper = rm.Helper();
 
     GlobalCompiledScriptLookups lookups;
@@ -317,6 +344,7 @@ int CountFallbacksAllScripts(std::vector<std::string> *outFailedScripts, int *ou
     {
         uint16_t number = scriptId.GetResourceNumber();
         CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+        compiled.SetNameSelector(lookups.GetSelectorTable(), &lookups);
         if (!compiled.Load(helper, helper.Version, number))
         {
             continue;
@@ -385,7 +413,7 @@ static std::map<int, std::string> ReadScriptNameMap(const std::string &dir)
 int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
     std::vector<std::string> *outWarnings, int *outProcessed)
 {
-    CResourceMap &rm = appState->GetResourceMap();
+    CResourceMap &rm = AppResourceMap();
     const GameFolderHelper &helper = rm.Helper();
 
     GlobalCompiledScriptLookups lookups;
@@ -408,6 +436,7 @@ int DumpAllScripts(const std::string &outDir, const std::string &nameMapDir,
     {
         int number = blob->GetNumber();
         CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+        compiled.SetNameSelector(lookups.GetSelectorTable(), &lookups);
         if (!compiled.Load(helper, helper.Version, static_cast<uint16_t>(number)))
         {
             continue;
@@ -482,7 +511,12 @@ DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, u
         std::string compileError;
         bool compiled = CompileFixture(scriptNumber, fixtureName, &compileError);
         Assert::IsTrue(compiled, ToWString("Compile failed: " + fixtureName + ": " + compileError).c_str());
+        std::vector<meaning::Function> original = ReadMeaningFunctions(scriptNumber);
         first = DecompileToText(scriptNumber);
+        // The text has another layout after a recompile, but the same
+        // meaning.
+        RecompileDecompiledText(fixtureName, scriptNumber, first.text);
+        AssertMeaningKept(fixtureName, original, scriptNumber);
     }
     if (first.fallbacks != 0)
     {
@@ -522,7 +556,7 @@ DecompileOutput AssertDecompileMatchesExpected(const std::string &fixtureName, u
 
 SnapshotResult CompareTemplateSnapshots()
 {
-    CResourceMap &rm = appState->GetResourceMap();
+    CResourceMap &rm = AppResourceMap();
     const GameFolderHelper &helper = rm.Helper();
 
     GlobalCompiledScriptLookups lookups;
@@ -543,6 +577,7 @@ SnapshotResult CompareTemplateSnapshots()
     {
         uint16_t number = scriptId.GetResourceNumber();
         CompiledScript compiled(0, CompiledScriptFlags::RemoveBadExports);
+        compiled.SetNameSelector(lookups.GetSelectorTable(), &lookups);
         if (!compiled.Load(helper, helper.Version, number))
         {
             continue;
@@ -576,7 +611,7 @@ SnapshotResult CompareTemplateSnapshots()
 
 int RecompileAllDecompiledScripts(std::vector<std::string> *outFailed, int *outProcessed)
 {
-    CResourceMap &rm = appState->GetResourceMap();
+    CResourceMap &rm = AppResourceMap();
     const GameFolderHelper &helper = rm.Helper();
 
     std::vector<ScriptId> scripts;
@@ -625,10 +660,36 @@ int RecompileAllDecompiledScripts(std::vector<std::string> *outFailed, int *outP
     return processed;
 }
 
+void AssertRegionsMatchExpected(const std::string &fixtureName, uint16_t scriptNumber)
+{
+    AddFixtureScript(fixtureName);
+    std::string error;
+    Assert::IsTrue(CompileFixture(scriptNumber, fixtureName, &error), ToWString("compile failed: " + fixtureName + ": " + error).c_str());
+    DecompileOutput out = DecompileToText(scriptNumber, false, true);
+    std::string actual;
+    for (const DecompiledFunction &function : out.functions)
+    {
+        actual += "== " + (function.className.empty() ? function.name : (function.className + "::" + function.name)) + "\n";
+        actual += function.scopeTree;
+    }
+
+    std::string expectedPath = GetTestFileDirectory("Decompile\\SCI1.1") + "\\" + fixtureName + ".regions";
+    std::string expected;
+    bool haveExpected = ReadTextFile(expectedPath, expected);
+    if (!haveExpected || (Normalize(expected) != Normalize(actual)))
+    {
+        std::string outDir = GetTestModuleDirectory() + "\\SnapshotActuals\\Regions";
+        MakeDirs(outDir);
+        WriteTextFile(outDir + "\\" + fixtureName + ".regions", actual);
+    }
+    Assert::IsTrue(haveExpected, ToWString(fixtureName + ": no expected file " + expectedPath + "\n" + actual).c_str());
+    Assert::AreEqual(Normalize(expected), Normalize(actual), ToWString(fixtureName + ": the region trees differ").c_str());
+}
+
 std::string DumpSelectorTable()
 {
     GlobalCompiledScriptLookups lookups;
-    lookups.Load(appState->GetResourceMap().Helper());
+    lookups.Load(AppResourceMap().Helper());
     const std::vector<std::string> &names = lookups.GetSelectorTable().GetNames();
     std::string out = fmt::format("names: {0}\n", names.size());
     for (size_t i = 0; i < names.size(); i++)

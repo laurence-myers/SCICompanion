@@ -12,7 +12,9 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
+#include "resource.h"
 #include "MessageView.h"
 #include "MessageDoc.h"
 #include "MessageSource.h"
@@ -312,7 +314,7 @@ void CMessageView::_SetItem(int itemIndex, int visualIndex, PCTSTR pszString, co
 				_GetDefineFromValue(szBuf, ARRAYSIZE(szBuf), &nounsAndCases.GetNouns(), text->Texts[itemIndex].Noun, true);
 				break;
 			case COL_VERB:
-				_GetDefineFromValue(szBuf, ARRAYSIZE(szBuf), appState->GetResourceMap().GetVerbsMessageSource(), text->Texts[itemIndex].Verb, true);
+				_GetDefineFromValue(szBuf, ARRAYSIZE(szBuf), AppResourceMap().GetVerbsMessageSource(), text->Texts[itemIndex].Verb, true);
 				break;
 			case COL_CONDITION:
 				_GetDefineFromValue(szBuf, ARRAYSIZE(szBuf), &nounsAndCases.GetCases(), text->Texts[itemIndex].Condition, true);
@@ -321,7 +323,7 @@ void CMessageView::_SetItem(int itemIndex, int visualIndex, PCTSTR pszString, co
 				StringCchPrintf(szBuf, ARRAYSIZE(szBuf), TEXT("%d"), text->Texts[itemIndex].Sequence);
 				break;
 			case COL_TALKER:
-				_GetDefineFromValue(szBuf, ARRAYSIZE(szBuf), appState->GetResourceMap().GetTalkersMessageSource(), text->Texts[itemIndex].Talker, false);
+				_GetDefineFromValue(szBuf, ARRAYSIZE(szBuf), AppResourceMap().GetTalkersMessageSource(), text->Texts[itemIndex].Talker, false);
 				// Temporary code for message investigation
 				// StringCchPrintf(szBuf, ARRAYSIZE(szBuf), TEXT("%x"), text->Texts[iItem].Style);
 				break;
@@ -524,10 +526,10 @@ const MessageSource *CMessageView::_GetMessageSource(int column)
 			messageSource = &nounsAndCases.GetCases();
 			break;
 		case COL_TALKER:
-			messageSource = appState->GetResourceMap().GetTalkersMessageSource();
+			messageSource = AppResourceMap().GetTalkersMessageSource();
 			break;
 		case COL_VERB:
-			messageSource = appState->GetResourceMap().GetVerbsMessageSource();
+			messageSource = AppResourceMap().GetVerbsMessageSource();
 			break;
 		default:
 			break;
@@ -686,7 +688,7 @@ const TextComponent* CMessageView::GetTextComponent() const
 void CMessageView::OnCommandAudioSize(CCmdUI *pCmdUI)
 {
 	CMessageDoc *pDoc = GetDocument();
-	if (pDoc && appState->GetVersion().HasSyncResources)
+	if (pDoc && AppVersion().HasSyncResources)
 	{
 		pCmdUI->SetText(fmt::format("{:2f} MB (max 16 MB)", ((double)pDoc->GetEstimatedAudioSize() / 1048576.0)).c_str());
 	}

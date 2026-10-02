@@ -253,4 +253,4 @@ private:
 	std::vector<std::string> _pluginExes;
 };
 
-bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTracker);
+bool CompileABunchOfScripts(DependencyTracker *dependencyTracker);

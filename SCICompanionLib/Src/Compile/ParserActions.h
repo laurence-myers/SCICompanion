@@ -710,6 +710,15 @@ void ClassSuperA(MatchResult &match, const _TParser *pParser, SyntaxContext *pCo
 }
 
 template<typename _TParser>
+void ClassLayoutA(MatchResult &match, const _TParser *pParser, SyntaxContext *pContext, const streamIt &stream)
+{
+	if (match.Result())
+	{
+		pContext->ClassPtr->SetExplicitLayout(true);
+	}
+}
+
+template<typename _TParser>
 void ClassCloseA(MatchResult &match, const _TParser *pParser, SyntaxContext *pContext, const streamIt &stream)
 {
 	pContext->ClassPtr->SetEndPosition(stream.GetPosition()); // set the closing position no matter what

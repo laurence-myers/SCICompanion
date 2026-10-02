@@ -259,6 +259,21 @@ void AppState::SetExportFolder(LPITEMIDLIST pidl)
 // The one and only AppState object
 AppState *appState;
 
+GameSession &AppSession()
+{
+	return appState->GetSession();
+}
+
+CResourceMap &AppResourceMap()
+{
+	return appState->GetResourceMap();
+}
+
+const SCIVersion &AppVersion()
+{
+	return appState->GetVersion();
+}
+
 // AppState initialization
 BOOL AppState::InitInstance()
 {
@@ -361,7 +376,7 @@ void AppState::OpenScript(std::string strName, const ResourceBlob *pData, WORD w
 				{
 					if (FAILED(GetResourceMap().GetScriptNumber(scriptId, wScriptNum)))
 					{
-						LogInfo("Couldn't get script number for %s", scriptId.GetFullPath().c_str());
+						CoreLogFormat(LogLevel::Info, "Couldn't get script number for %s", scriptId.GetFullPath().c_str());
 					}
 				}
 			}
@@ -761,7 +776,7 @@ void AppState::RunGame(bool debug, int optionalResourceNumber)
 		bool goAhead = true;
 		if (_fCompileDirtyScriptsBeforeRun)
 		{
-			if (!CompileABunchOfScripts(this, &GetDependencyTracker()))
+			if (!CompileABunchOfScripts(&GetDependencyTracker()))
 			{
 				goAhead = (IDYES == AfxMessageBox("The scripts were not all compiled and written (see the compile output). Run the game anyway?", MB_ICONWARNING | MB_YESNO));
 			}
@@ -911,14 +926,6 @@ int AppState::GetSelectedViewResourceNumber()
 }
 
 std::vector<int> &AppState::GetRecentViews() { return _recentViews; }
-
-void AppState::LogInfo(const TCHAR *pszFormat, ...)
-{
-	va_list argList;
-	va_start(argList, pszFormat);
-	CoreLogFormatV(LogLevel::Info, pszFormat, argList);
-	va_end(argList);
-}
 
 void AppState::Write(LogLevel level, const std::string &text)
 {

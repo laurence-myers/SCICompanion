@@ -16,7 +16,7 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "MessageDoc.h"
 #include "Text.h"
 #include "Message.h"
@@ -60,16 +60,16 @@ void CMessageDoc::_PreloadAudio()
 	_audioModified.clear();
 	_originalTuplesWithAudio.clear();
 	_originalResourceNumber = GetResource()->ResourceNumber;
-	CResourceMap &map = appState->GetResourceMap();
+	CResourceMap &map = AppResourceMap();
 
 	std::unordered_map<uint32_t, std::unique_ptr<ResourceEntity>> _temporaryMap;
-	if (appState->GetVersion().HasSyncResources)
+	if (AppVersion().HasSyncResources)
 	{
 		// If we're sourced from the cache files, we want to *only* include entries from the cached audiomap (i.e. not 
 		// combine them with audio resources enumerated from resource.aud). Otherwise, you could delete an audio resource from
 		// a message entry, and it would keeping "returning" when you re-opened the message resource (until you rebuilt audio files)
 		std::unique_ptr<std::unordered_set<uint32_t>> restrictToTheseTuples;
-		unique_ptr<ResourceBlob> amBlob = appState->GetResourceMap().Helper().MostRecentResource(ResourceType::AudioMap, GetResource()->ResourceNumber, ResourceEnumFlags::IncludeCacheFiles);
+		unique_ptr<ResourceBlob> amBlob = AppResourceMap().Helper().MostRecentResource(ResourceType::AudioMap, GetResource()->ResourceNumber, ResourceEnumFlags::IncludeCacheFiles);
 		if (amBlob && (amBlob->GetSourceFlags() == ResourceSourceFlags::AudioMapCache))
 		{
 			std::unique_ptr<ResourceEntity> amResource = CreateResourceFromResourceData(*amBlob);
@@ -85,7 +85,7 @@ void CMessageDoc::_PreloadAudio()
 
 		// Get all the resources from the audio map
 		int mapResourceNumber = GetResource()->ResourceNumber;
-		auto resourceContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::Audio, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::IncludeCacheFiles | ResourceEnumFlags::AddInDefaultEnumFlags, mapResourceNumber);
+		auto resourceContainer = AppResourceMap().Resources(ResourceTypeFlags::Audio, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::IncludeCacheFiles | ResourceEnumFlags::AddInDefaultEnumFlags, mapResourceNumber);
 		for (auto resource : *resourceContainer)
 		{
 			// Again, as mentioned above, we only want to take our audio resources from a single source: the cache files, or the actual game resources.
@@ -147,7 +147,7 @@ bool CMessageDoc::v_DoPreResourceSave()
 
 void CMessageDoc::PostSuccessfulSave(const ResourceEntity *pResource)
 {
-	if (appState->GetVersion().HasSyncResources)
+	if (AppVersion().HasSyncResources)
 	{
 		if (pResource->ResourceNumber != _originalResourceNumber)
 		{
@@ -155,12 +155,12 @@ void CMessageDoc::PostSuccessfulSave(const ResourceEntity *pResource)
 			int newNumber = pResource->ResourceNumber;
 
 			// First get the original audiomap and save it under the number, just sowe have something in the right place.
-			unique_ptr<ResourceBlob> amBlob = appState->GetResourceMap().Helper().MostRecentResource(ResourceType::AudioMap, _originalResourceNumber, ResourceEnumFlags::IncludeCacheFiles);
+			unique_ptr<ResourceBlob> amBlob = AppResourceMap().Helper().MostRecentResource(ResourceType::AudioMap, _originalResourceNumber, ResourceEnumFlags::IncludeCacheFiles);
 			if (amBlob)
 			{
 				amBlob->SetNumber(newNumber);
 				amBlob->SetSourceFlags(ResourceSourceFlags::AudioMapCache);
-				appState->GetResourceMap().AppendResource(*amBlob);
+				AppResourceMap().AppendResource(*amBlob);
 			}
 
 			// Now, update this:
@@ -182,7 +182,7 @@ void CMessageDoc::PostSuccessfulSave(const ResourceEntity *pResource)
 		// Save any modified or new audio resources
 		std::set<uint32_t> currentTextEntryTuplesWithAudio;
 		const TextComponent &text = pResource->GetComponent<TextComponent>();
-		CResourceMap &map = appState->GetResourceMap();
+		CResourceMap &map = AppResourceMap();
 		DeferResourceAppend defer(map);
 		for (size_t i = 0; i < text.Texts.size(); i++)
 		{
@@ -436,7 +436,7 @@ void CMessageDoc::SetMessageResource(std::unique_ptr<ResourceEntity> pMessage, i
 	{
 		// Add a nouns/cases component
 		pMessage->AddComponent<NounsAndCasesComponent>(
-			std::make_unique<NounsAndCasesComponent>(appState->GetResourceMap().Helper().GetMsgFolder(), pMessage->ResourceNumber)
+			std::make_unique<NounsAndCasesComponent>(AppResourceMap().Helper().GetMsgFolder(), pMessage->ResourceNumber)
 			);
 	}
 
@@ -466,9 +466,9 @@ const MessageSource *GetMessageSourceFromType(CMessageDoc *pDoc, MessageSourceTy
 			case MessageSourceType::Conditions:
 				return resource ? &resource->GetComponent<NounsAndCasesComponent>().GetCases() : nullptr;
 			case MessageSourceType::Verbs:
-				return appState->GetResourceMap().GetVerbsMessageSource(reload);
+				return AppResourceMap().GetVerbsMessageSource(reload);
 			case MessageSourceType::Talkers:
-				return appState->GetResourceMap().GetTalkersMessageSource(reload);
+				return AppResourceMap().GetTalkersMessageSource(reload);
 			case MessageSourceType::Nouns:
 				return resource ? &resource->GetComponent<NounsAndCasesComponent>().GetNouns() : nullptr;
 		}
@@ -479,7 +479,7 @@ const MessageSource *GetMessageSourceFromType(CMessageDoc *pDoc, MessageSourceTy
 // Since we modify audio resources in a significant way, we prevent undos if audio is supported for messages.
 bool CMessageDoc::v_PreventUndos() const
 {
-	return appState->GetVersion().HasSyncResources;
+	return AppVersion().HasSyncResources;
 }
 
 

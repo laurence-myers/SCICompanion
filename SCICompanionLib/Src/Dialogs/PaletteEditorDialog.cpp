@@ -238,9 +238,9 @@ void PaletteEditorDialog::OnBnClickedButtoncycleright()
 
 void PaletteEditorDialog::OnSaveAsResource()
 {
-	std::unique_ptr<ResourceEntity> newPalette(CreatePaletteResource(appState->GetVersion()));
+	std::unique_ptr<ResourceEntity> newPalette(CreatePaletteResource(AppVersion()));
 	newPalette->GetComponent<PaletteComponent>() = *this->_palette;
-	appState->GetResourceMap().AppendResourceAskForNumber(*newPalette, "", true);
+	AppResourceMap().AppendResourceAskForNumber(*newPalette, "", true);
 }
 
 BOOL PaletteEditorDialog::PreTranslateMessage(MSG* pMsg)

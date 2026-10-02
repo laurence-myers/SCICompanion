@@ -67,7 +67,7 @@ namespace UnitTests
         {
             _gameFolder = SetUpGameSCI0();
 
-            std::string includeFolder = appState->GetResourceMap().GetIncludeFolder();
+            std::string includeFolder = AppResourceMap().GetIncludeFolder();
             std::error_code mkec;
             std::filesystem::create_directories(includeFolder, mkec);
             std::string includePath = includeFolder + "\\merge_uaf_include.sc";
@@ -103,12 +103,12 @@ namespace UnitTests
 
             CompileLog log;
             CompileTables tables;
-            tables.Load(appState->GetResourceMap());
-            PrecompiledHeaders headers(appState->GetResourceMap());
-            CompileResults results(log, appState->GetVersion());
+            tables.Load(AppResourceMap());
+            PrecompiledHeaders headers(AppResourceMap());
+            CompileResults results(log, AppVersion());
 
             // Runs MergeScripts, then script.PreScan() (the use-after-free site).
-            GenerateScriptResource(appState->GetSession(), *mainScript, headers, tables, results, false);
+            GenerateScriptResource(AppSession(), *mainScript, headers, tables, results, false);
             log.CalculateErrors();
 
             bool hasErrors = log.HasErrors();
@@ -167,7 +167,7 @@ namespace UnitTests
                 "    (properties)\n"
                 ")\n";
 
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
             std::string path = rm.Helper().GetScriptFileName(name);
             {
                 std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
@@ -200,20 +200,20 @@ namespace UnitTests
         void _DoItHelper()
         {
             std::vector<ScriptId> scripts;
-            appState->GetResourceMap().GetAllScripts(scripts);
+            AppResourceMap().GetAllScripts(scripts);
             CompileLog log;
             // TODO: Clear errors?
             CompileTables tables;
-            tables.Load(appState->GetResourceMap());
-            PrecompiledHeaders headers(appState->GetResourceMap());
+            tables.Load(AppResourceMap());
+            PrecompiledHeaders headers(AppResourceMap());
             for (auto &script : scripts)
             {
-                CompileResults results(log, appState->GetVersion());
+                CompileResults results(log, AppVersion());
                 // As the GUI does: the class browser's background reload must not
                 // run during the compile.
                 ClassBrowserLock lock(appState->GetClassBrowser());
                 lock.Lock();
-                NewCompileScript(appState->GetSession(), results, log, tables, headers, script);
+                NewCompileScript(AppSession(), results, log, tables, headers, script);
             }
             Assert::IsFalse(log.HasErrors());
             // A polygon that the compile cannot find is only a message, so look
