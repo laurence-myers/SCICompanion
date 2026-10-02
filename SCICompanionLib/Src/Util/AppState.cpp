@@ -776,7 +776,7 @@ void AppState::RunGame(bool debug, int optionalResourceNumber)
 		bool goAhead = true;
 		if (_fCompileDirtyScriptsBeforeRun)
 		{
-			if (!CompileABunchOfScripts(this, &GetDependencyTracker()))
+			if (!CompileABunchOfScripts(&GetDependencyTracker()))
 			{
 				goAhead = (IDYES == AfxMessageBox("The scripts were not all compiled and written (see the compile output). Run the game anyway?", MB_ICONWARNING | MB_YESNO));
 			}

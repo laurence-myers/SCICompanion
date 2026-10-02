@@ -1989,7 +1989,7 @@ void CMainFrame::OnNewScript()
 }
 
 // If dependencyTracker is null, all are compiled.
-bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTracker)
+bool CompileABunchOfScripts(DependencyTracker *dependencyTracker)
 {
 	std::unordered_set<std::string> scriptsToRecompile;
 	if (dependencyTracker)
@@ -2090,7 +2090,7 @@ bool CompileABunchOfScripts(AppState *appState, DependencyTracker *dependencyTra
 
 void CMainFrame::OnCompileAll()
 {
-	CompileABunchOfScripts(appState, nullptr);
+	CompileABunchOfScripts(nullptr);
 }
 
 // TODO: Attempt at making Find in Files faster. regex was way too slow. Just need to mimic line endings of crystal text buffer.

@@ -171,8 +171,10 @@ The engine and the command-line tool follow the failure-handling model of
   `sci::DataError`, or return a `Result`). In `Src\Core`, `Src\Compile` and
   `Src\Resources`, do not add an `AfxMessageBox` (a core file does not
   compile with it); in those folders and in `Src\Util`, do not use the GUI
-  object `appState` (take the session, the
-  resource map or the helper as a parameter). The CI check
+  object `appState`, or the functions of `AppSession.h` (`AppSession`,
+  `AppResourceMap`, `AppVersion`): take the session, the
+  resource map or the helper as a parameter. A GUI file that needs only
+  the open game includes `AppSession.h`, not `AppState.h`. The CI check
   `UnitTests\Tools\CheckFailureHandling.ps1` fails on a new site. Its
   allowlist holds the old sites; when you remove old sites, run the check
   with `-Update` and commit the allowlist.
