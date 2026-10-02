@@ -35,7 +35,7 @@ IMPLEMENT_DYNCREATE(CSoundDoc, CResourceDocument)
 CSoundDoc::CSoundDoc() : _selectedChannelId(-1)
 {
 	_cueIndex = -1;
-	_device = (appState->GetVersion().SoundFormat == SoundFormat::SCI1) ?  s_defaultDeviceSCI1 : s_defaultDeviceSCI0;
+	_device = (AppVersion().SoundFormat == SoundFormat::SCI1) ?  s_defaultDeviceSCI1 : s_defaultDeviceSCI0;
 }
 
 
@@ -93,7 +93,7 @@ void CSoundDoc::SetDevice(DeviceType device, bool fNotify)
 	if (_device != device)
 	{
 		_device = device;
-		if (appState->GetVersion().SoundFormat == SoundFormat::SCI1)
+		if (AppVersion().SoundFormat == SoundFormat::SCI1)
 		{
 			s_defaultDeviceSCI1 = _device;
 		}
@@ -141,7 +141,7 @@ const DeviceType DefaultSCI1DigitalTracks[] =
 void CSoundDoc::_OnImportWav()
 {
 	const ResourceEntity *resource = GetResource();
-	if (resource && (appState->GetVersion().SoundFormat == SoundFormat::SCI1))
+	if (resource && (AppVersion().SoundFormat == SoundFormat::SCI1))
 	{
 		CFileDialog fileDialog(TRUE, nullptr, nullptr, 0, "WAV files (*.wav)|*.wav|All Files|*.*|");
 		fileDialog.m_ofn.lpstrTitle = "Add wav to game";
@@ -191,7 +191,7 @@ void CSoundDoc::_OnUpdateImportWav(CCmdUI *cmdUI)
 	// Enabled if:
 	//  - sound format is SCI1
 	//  - there are no audio volumes (so digital fx need to be put into sound resources)
-	cmdUI->Enable(sound && (appState->GetVersion().SoundFormat == SoundFormat::SCI1) && (appState->GetVersion().AudioVolumeName == AudioVolumeName::None));
+	cmdUI->Enable(sound && (AppVersion().SoundFormat == SoundFormat::SCI1) && (AppVersion().AudioVolumeName == AudioVolumeName::None));
 }
 
 
@@ -201,7 +201,7 @@ void CSoundDoc::_OnImportMidi()
 
 	// Import to devices (tracks) that are standard by default.
 	std::vector<DeviceType> devices;
-	if (appState->GetVersion().SoundFormat == SoundFormat::SCI1)
+	if (AppVersion().SoundFormat == SoundFormat::SCI1)
 	{
 		// REVIEW: Sounds appear not to play properly if these three devices don't appear in the sound resource.
 		devices.insert(devices.end(), { DeviceType::SCI1_Adlib, DeviceType::SCI1_GM, DeviceType::SCI1_RolandGM });
@@ -284,7 +284,7 @@ bool ImportMidi(std::vector<DeviceType> devices, ResourceEntity *resourceEntity)
 	{
 		CString fileName = fileDialog.GetPathName();
 		SoundComponent &sound = resourceEntity->GetComponent<SoundComponent>();
-		if (InitializeFromMidi(appState->GetVersion(), devices, sound, (PCSTR)fileName) != SoundChangeHint::None)
+		if (InitializeFromMidi(AppVersion(), devices, sound, (PCSTR)fileName) != SoundChangeHint::None)
 		{
 			success = true;
 		}
@@ -294,7 +294,7 @@ bool ImportMidi(std::vector<DeviceType> devices, ResourceEntity *resourceEntity)
 
 std::unique_ptr<ResourceEntity> ImportMidi(std::vector<DeviceType> devices)
 {
-	std::unique_ptr<ResourceEntity> pResource(CreateSoundResource(appState->GetVersion()));
+	std::unique_ptr<ResourceEntity> pResource(CreateSoundResource(AppVersion()));
 
 	if (!ImportMidi(devices, pResource.get()))
 	{

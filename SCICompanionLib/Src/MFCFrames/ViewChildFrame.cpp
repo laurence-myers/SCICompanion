@@ -15,7 +15,6 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
 #include "ViewChildFrame.h"
 #include "RasterView.h"
 #include "ViewCelChooser.h"

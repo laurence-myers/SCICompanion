@@ -16,7 +16,6 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
 #include "ChooseColorStatic.h"
 #include "ChooseColorDialog.h"
 #include "format.h"

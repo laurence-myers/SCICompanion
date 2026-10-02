@@ -1,6 +1,5 @@
 #include "stdafx.h"
 #include "CppUnitTest.h"
-#include "AppState.h"
 #include "Cli.h"
 #include "CliCommands.h"
 #include "CliConsole.h"

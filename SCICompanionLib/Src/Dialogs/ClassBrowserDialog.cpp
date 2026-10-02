@@ -15,7 +15,8 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "CoreLog.h"
+#include "resource.h"
 #include "ClassBrowserDialog.h"
 #include "ScriptOM.h"
 #include "ResourceMap.h"
@@ -98,7 +99,7 @@ void CClassBrowserDialog::DoDataExchange(CDataExchange* pDX)
 			char szError[1024];
 			szError[0] = 0;
 			pException->GetErrorMessage(szError, ARRAYSIZE(szError));
-			appState->LogInfo("%s", szError);
+			CoreLogFormat(LogLevel::Info, "%s", szError);
 			pException->Delete();
 		}
 	}

@@ -159,7 +159,7 @@ void SCIClassBrowser::OnOpenGame(SCIVersion version)
 	}
 	std::lock_guard<std::recursive_mutex> lock(_mutexClassBrowser);
 	_version = version;
-	if (IsBrowseInfoEnabled() && appState->GetResourceMap().IsGameLoaded())
+	if (IsBrowseInfoEnabled() && AppResourceMap().IsGameLoaded())
 	{
 		ExitSchedulerAndReset();
 		_scheduler->SubmitTask(
@@ -230,7 +230,7 @@ void SCIClassBrowser::_AddInstanceToMap(Script& script, ClassDefinition *pClass)
 	WORD wScript = GetScriptNumberHelper(&script);
 	if (wScript == InvalidResourceNumber)
 	{
-		appState->LogInfo(TEXT("Class browser: Invalid script number in %s."), script.GetPath().c_str());
+		CoreLogFormat(LogLevel::Info, TEXT("Class browser: Invalid script number in %s."), script.GetPath().c_str());
 	}
 
 	// As always, the script owns the class
@@ -288,7 +288,7 @@ void SCIClassBrowser::_AddToClassTree(Script& script)
 						// it can handle it.  The name is just an artifact of the compiler. I'm not sure what would happen
 						// if you "included" two different scripts that had the same class, thus generating an ambiguity.
 						// I've not tried that.
-						appState->LogInfo(TEXT("Encountered second class named %s.  Not adding to tree"), pTheClass->GetName().c_str());
+						CoreLogFormat(LogLevel::Info, TEXT("Encountered second class named %s.  Not adding to tree"), pTheClass->GetName().c_str());
 						// Set this to null so we bail out of the rest of the function.
 						pBrowserInfo = nullptr;
 					}
@@ -349,8 +349,8 @@ bool SCIClassBrowser::ReLoadFromSources(ITaskStatus &task)
 	if (IsBrowseInfoEnabled())
 	{
 		// Load the kernel and selector names
-		_kernelNamesResource.Load(appState->GetResourceMap().Helper());
-		_selectorNames.Load(appState->GetResourceMap().Helper());
+		_kernelNamesResource.Load(AppResourceMap().Helper());
+		_selectorNames.Load(AppResourceMap().Helper());
 
 		// Add headers first, since they have defines that are needed by the other scripts.
 		_AddHeaders();
@@ -464,11 +464,11 @@ void SCIClassBrowser::ReLoadFromCompiled(ITaskStatus &task)
 #ifdef REENABLE_COMPILEDSCRIPTS
 
 	// Load the kernel and selector names
-	_kernelNamesResource.Load(appState->GetResourceMap().Helper());
-	_selectorNames.Load(appState->GetResourceMap().Helper());
+	_kernelNamesResource.Load(AppResourceMap().Helper());
+	_selectorNames.Load(AppResourceMap().Helper());
 
 	GlobalClassTable classTable;
-	if (!classTable.Load(appState->GetResourceMap().Helper(), &_selectorNames))
+	if (!classTable.Load(AppResourceMap().Helper(), &_selectorNames))
 	{
 		return;
 	}
@@ -489,7 +489,7 @@ void SCIClassBrowser::ReLoadFromCompiled(ITaskStatus &task)
 	}
 
 	unordered_map<int, pair<unique_ptr<ResourceBlob>, unique_ptr<ResourceBlob>>> heapScriptPairs;
-	auto resourceContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::Script | ResourceTypeFlags::Heap, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+	auto resourceContainer = AppResourceMap().Resources(ResourceTypeFlags::Script | ResourceTypeFlags::Heap, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
 	for (auto &scriptBlob : *resourceContainer)
 	{
 		pair<unique_ptr<ResourceBlob>, unique_ptr<ResourceBlob>> &entry = heapScriptPairs[scriptBlob->GetNumber()];
@@ -519,7 +519,7 @@ void SCIClassBrowser::ReLoadFromCompiled(ITaskStatus &task)
 			}
 			std::unique_ptr<CompiledScript> pCompiledScript = std::make_unique<CompiledScript>(scriptNumber);
 			pCompiledScript->SetNameSelector(_selectorNames);
-			if (pCompiledScript->Load(appState->GetResourceMap().Helper(), appState->GetVersion(), scriptNumber, *scriptStream, heapStream.get()))
+			if (pCompiledScript->Load(AppResourceMap().Helper(), AppVersion(), scriptNumber, *scriptStream, heapStream.get()))
 			{
 				compiledScriptsMap[scriptNumber] = move(pCompiledScript);
 			}
@@ -788,7 +788,7 @@ bool SCIClassBrowser::_AddFileName(std::string fullPath, bool fReplace)
 		CScriptStreamLimiter limiter(&buffer);
 		CCrystalScriptStream stream(&limiter);
 		std::unique_ptr<Script> pScript = std::make_unique<Script>(fullPath.c_str());
-		if (SyntaxParser_Parse(*pScript, stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), this))
+		if (SyntaxParser_Parse(*pScript, stream, PreProcessorDefinesFromSCIVersion(AppVersion()), this))
 		{
 			Script *pWeakRef = pScript.get();
 
@@ -973,7 +973,7 @@ void SCIClassBrowser::TriggerCustomIncludeCompile(std::string name)
 		lock = nullptr;
 
 		// Get time stamp
-		std::string path = appState->GetResourceMap().GetIncludePath(name);
+		std::string path = AppResourceMap().GetIncludePath(name);
 		HANDLE hFile = CreateFile(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 		if (hFile != INVALID_HANDLE_VALUE)
 		{
@@ -999,7 +999,7 @@ void SCIClassBrowser::TriggerCustomIncludeCompile(std::string name)
 						CScriptStreamLimiter limiter(&buffer);
 						CCrystalScriptStream stream(&limiter);
 						unique_ptr<Script> pNewHeader = std::make_unique<Script>(scriptId);
-						if (SyntaxParser_Parse(*pNewHeader, stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), nullptr))
+						if (SyntaxParser_Parse(*pNewHeader, stream, PreProcessorDefinesFromSCIVersion(AppVersion()), nullptr))
 						{
 							// For performance, let's pre-sort the defines.
 							std::sort(pNewHeader->GetDefines().begin(), pNewHeader->GetDefines().end(), 
@@ -1047,7 +1047,7 @@ bool SCIClassBrowser::_CreateClassTree(ITaskStatus &task)
 		_pEvents->NotifyClassBrowserStatus(IClassBrowserEvents::InProgress, 0);
 	}
 	std::vector<ScriptId> scripts;
-	appState->GetResourceMap().GetAllScripts(scripts);
+	AppResourceMap().GetAllScripts(scripts);
 	bool fRet = false;
 	std::vector<ScriptId>::iterator scriptIt = scripts.begin();
 	int cItems = (int)scripts.size();
@@ -1100,7 +1100,7 @@ std::unique_ptr<sci::Script> SCIClassBrowser::_LoadScript(PCTSTR pszPath)
 		CScriptStreamLimiter limiter(&buffer);
 		CCrystalScriptStream stream(&limiter);
 		std::unique_ptr<Script> pScriptT = std::make_unique<Script>(pszPath);
-		if (SyntaxParser_Parse(*pScriptT, stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), this))
+		if (SyntaxParser_Parse(*pScriptT, stream, PreProcessorDefinesFromSCIVersion(AppVersion()), this))
 		{
 			pScript = move(pScriptT);
 		}
@@ -1126,22 +1126,22 @@ void SCIClassBrowser::_AddHeaders()
 
 	// game.sh
 	TCHAR szHeaderPath[MAX_PATH];
-	if (SUCCEEDED(StringCchPrintf(szHeaderPath, ARRAYSIZE(szHeaderPath), TEXT("%s\\game.sh"), appState->GetResourceMap().Helper().GetSrcFolder().c_str())))
+	if (SUCCEEDED(StringCchPrintf(szHeaderPath, ARRAYSIZE(szHeaderPath), TEXT("%s\\game.sh"), AppResourceMap().Helper().GetSrcFolder().c_str())))
 	{
 		_AddHeader(szHeaderPath);
 	}
 	// SCI1.1 games have Verbs.sh and Talkers.sh
-	if (SUCCEEDED(StringCchPrintf(szHeaderPath, ARRAYSIZE(szHeaderPath), TEXT("%s\\Verbs.sh"), appState->GetResourceMap().Helper().GetSrcFolder().c_str())))
+	if (SUCCEEDED(StringCchPrintf(szHeaderPath, ARRAYSIZE(szHeaderPath), TEXT("%s\\Verbs.sh"), AppResourceMap().Helper().GetSrcFolder().c_str())))
 	{
 		_AddHeader(szHeaderPath);
 	}
-	if (SUCCEEDED(StringCchPrintf(szHeaderPath, ARRAYSIZE(szHeaderPath), TEXT("%s\\Talkers.sh"), appState->GetResourceMap().Helper().GetSrcFolder().c_str())))
+	if (SUCCEEDED(StringCchPrintf(szHeaderPath, ARRAYSIZE(szHeaderPath), TEXT("%s\\Talkers.sh"), AppResourceMap().Helper().GetSrcFolder().c_str())))
 	{
 		_AddHeader(szHeaderPath);
 	}
 
 	// sci.sh
-	std::string includeFolder = appState->GetResourceMap().GetIncludeFolder();
+	std::string includeFolder = AppResourceMap().GetIncludeFolder();
 	if (!includeFolder.empty())
 	{
 		TCHAR szHeaderPath[MAX_PATH];

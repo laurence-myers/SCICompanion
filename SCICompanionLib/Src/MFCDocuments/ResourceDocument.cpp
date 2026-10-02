@@ -149,9 +149,9 @@ void _ShowCantSaveMessage()
 BOOL CResourceDocument::DoPreResourceSave(BOOL fSaveAs)
 {
 	BOOL fRet = FALSE;
-	if (appState->GetResourceMap().IsGameLoaded())
+	if (AppResourceMap().IsGameLoaded())
 	{
-		if (!appState->GetResourceMap().CanSaveResourcesToMap())
+		if (!AppResourceMap().CanSaveResourcesToMap())
 		{
 			AfxMessageBox("Can't save to the version of the resource.map used by this game.", MB_ERRORFLAGS);
 		}
@@ -180,7 +180,7 @@ BOOL CResourceDocument::DoPreResourceSave(BOOL fSaveAs)
 						{
 							if (iResourceNumber == -1)
 							{
-								iResourceNumber = appState->GetResourceMap().SuggestResourceNumber(pResource->GetType());
+								iResourceNumber = AppResourceMap().SuggestResourceNumber(pResource->GetType());
 							}
 							// Invoke dialog.
 							SaveResourceDialog srd(true, pResource->GetType());
@@ -228,7 +228,7 @@ BOOL CResourceDocument::_DoResourceSave(int iPackageNumber, int iResourceNumber,
 	int checksum = 0;
 	if (pResource)
 	{
-		saved = appState->GetResourceMap().AppendResource(*pResource, iPackageNumber, iResourceNumber, name, NoBase36, &checksum);
+		saved = AppResourceMap().AppendResource(*pResource, iPackageNumber, iResourceNumber, name, NoBase36, &checksum);
 	}
 
 	if (saved)
@@ -274,7 +274,7 @@ void ExportResourceAsBitmap(const ResourceEntity &resourceEntity)
 	}
 
 	sci::istream readStream = istream_from_ostream(serial);
-	data.CreateFromBits(appState->GetResourceMap().Helper(), nullptr, resourceEntity.Traits.Type, &readStream, resourceEntity.PackageNumber, iNumber, resourceEntity.Base36Number, appState->GetVersion(), ResourceSourceFlags::PatchFile);
+	data.CreateFromBits(AppResourceMap().Helper(), nullptr, resourceEntity.Traits.Type, &readStream, resourceEntity.PackageNumber, iNumber, resourceEntity.Base36Number, AppVersion(), ResourceSourceFlags::PatchFile);
 	CBitmap bitmap;
 	SCIBitmapInfo bmi;
 	BYTE *pBitsDest;
@@ -326,7 +326,7 @@ void CResourceDocument::OnExportAsResource()
 				iNumber = 0;
 			}
 
-			std::string filename = GetFileNameFor(GetType(), iNumber, pResource->Base36Number, appState->GetVersion());
+			std::string filename = GetFileNameFor(GetType(), iNumber, pResource->Base36Number, AppVersion());
 			std::string filter = _GetFileDialogFilter();
 			CFileDialog fileDialog(FALSE, nullptr, filename.c_str(), OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR, filter.c_str());
 			if (IDOK == fileDialog.DoModal())
@@ -335,7 +335,7 @@ void CResourceDocument::OnExportAsResource()
 				ResourceBlob data;
 
 				sci::istream readStream = istream_from_ostream(serial);
-				if (SUCCEEDED(data.CreateFromBits(appState->GetResourceMap().Helper(), nullptr, _GetType(), &readStream, pResource->PackageNumber, iNumber, NoBase36, appState->GetVersion(), ResourceSourceFlags::PatchFile)))
+				if (SUCCEEDED(data.CreateFromBits(AppResourceMap().Helper(), nullptr, _GetType(), &readStream, pResource->PackageNumber, iNumber, NoBase36, AppVersion(), ResourceSourceFlags::PatchFile)))
 				{
 					HRESULT hr = data.SaveToFile((PCSTR)strFileName);
 					if (FAILED(hr))
@@ -410,7 +410,7 @@ ResourceType CResourceDocument::GetType() const
 
 std::string CResourceDocument::_GetFileDialogFilter()
 {
-	return GetFileDialogFilterFor(_GetType(), appState->GetVersion());
+	return GetFileDialogFilterFor(_GetType(), AppVersion());
 }
 
 

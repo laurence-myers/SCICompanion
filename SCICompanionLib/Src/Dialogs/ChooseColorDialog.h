@@ -13,6 +13,7 @@
 ***************************************************************************/
 #pragma once
 
+#include "resource.h"
 #include "BaseColorDialog.h"
 #include "ChooseColorStatic.h"
 #include "ColorDialogCallback.h"

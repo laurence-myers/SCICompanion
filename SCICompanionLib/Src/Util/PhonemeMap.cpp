@@ -13,7 +13,7 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "PhonemeMap.h"
-#include "AppState.h"
+#include "GameFolderHelper.h"
 #include "cpptoml.h"
 #include "format.h"
 
@@ -22,22 +22,22 @@ using namespace cpptoml;
 
 std::unordered_map<std::string, std::string> CreatePhonemeToExampleMap();
 
-std::string GetPhonemeMapFilespec(AppState *appState, int view, int loop)
+std::string GetPhonemeMapFilespec(int view, int loop)
 {
 	return fmt::format("phoneme_{0}_{1}.ini", view, loop);
 }
 
-std::string GetPhonemeMapPath(AppState *appState, int view, int loop)
+std::string GetPhonemeMapPath(const GameFolderHelper &helper, int view, int loop)
 {
-	std::string folder = appState->GetResourceMap().Helper().GetLipSyncFolder();
+	std::string folder = helper.GetLipSyncFolder();
 	folder += "\\";
-	folder += GetPhonemeMapFilespec(appState, view, loop);
+	folder += GetPhonemeMapFilespec(view, loop);
 	return folder;
 }
 
-std::unique_ptr<PhonemeMap> LoadPhonemeMapForViewLoop(AppState *appState, int view, int loop)
+std::unique_ptr<PhonemeMap> LoadPhonemeMapForViewLoop(const GameFolderHelper &helper, int view, int loop)
 {
-	std::string fullPath = GetPhonemeMapPath(appState, view, loop);
+	std::string fullPath = GetPhonemeMapPath(helper, view, loop);
 	return std::make_unique<PhonemeMap>(fullPath);
 }
 
@@ -126,9 +126,9 @@ void SaveToStream(std::ofstream &file, const PhonemeMap &map)
 	}
 }
 
-bool SaveForViewLoop(const PhonemeMap &map, AppState *appState, int view, int loop, std::string &errors)
+bool SaveForViewLoop(const PhonemeMap &map, const GameFolderHelper &helper, int view, int loop, std::string &errors)
 {
-	std::string fullPath = GetPhonemeMapPath(appState, view, loop);
+	std::string fullPath = GetPhonemeMapPath(helper, view, loop);
 	std::string fullPathBak = fullPath + ".bak";
 
 	std::ofstream fileBak;

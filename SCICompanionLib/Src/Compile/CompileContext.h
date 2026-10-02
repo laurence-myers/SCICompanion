@@ -19,6 +19,7 @@
 #include "Vocab99x.h"
 #include "ScriptOMSmall.h"
 #include "CompileWrite.h"
+#include "CompileInterfaces.h"
 
 class ResourceEntity;
 class ILookupSaids;

@@ -14,7 +14,7 @@
 #include "stdafx.h"
 #include "CppUnitTest.h"
 #include "AstPassHelper.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceMap.h"
 #include "ScriptOMAll.h"
 #include "SyntaxParser.h"
@@ -49,7 +49,7 @@ std::unique_ptr<sci::Script> TryParseSierraScript(const std::string &text, std::
 {
     // Write the text to a script file in the temporary game, then parse it the
     // same way the compiler parses a header (see CompileContext.cpp).
-    std::string path = appState->GetResourceMap().Helper().GetScriptFileName("AstPassCase");
+    std::string path = AppResourceMap().Helper().GetScriptFileName("AstPassCase");
     {
         std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
         file << text;
@@ -72,7 +72,7 @@ std::unique_ptr<sci::Script> TryParseSierraScript(const std::string &text, std::
 
     CompileLog log;
     bool ok = SyntaxParser_Parse(*script, stream,
-        PreProcessorDefinesFromSCIVersion(appState->GetVersion()), &log);
+        PreProcessorDefinesFromSCIVersion(AppVersion()), &log);
     buffer.FreeAll();
 
     if (!ok)

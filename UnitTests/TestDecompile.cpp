@@ -117,7 +117,7 @@ namespace UnitTests
             AddFixtureScript("X3_StaleExport");
             std::string error;
             Assert::IsTrue(CompileFixture(964, "X3_StaleExport", &error), Wide(error).c_str());
-            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            const GameFolderHelper &helper = AppResourceMap().Helper();
             CompiledScript compiled(964, CompiledScriptFlags::RemoveBadExports);
             Assert::IsTrue(compiled.Load(helper, helper.Version, 964), L"setup: the script loads");
             std::vector<uint8_t> script = compiled.GetRawBytes();
@@ -136,7 +136,7 @@ namespace UnitTests
             // The meaning check reads no function at the stale export.
             GlobalCompiledScriptLookups lookups;
             lookups.Load(helper);
-            sci::Result<std::vector<meaning::Function>> functions = meaning::ReadScriptData(helper, lookups, appState->GetResourceMap().GetVocab000(), 964, script, &heap);
+            sci::Result<std::vector<meaning::Function>> functions = meaning::ReadScriptData(helper, lookups, AppResourceMap().GetVocab000(), 964, script, &heap);
             Assert::IsTrue(functions.has_value(), L"the patched script reads");
             for (const meaning::Function &function : *functions)
             {
@@ -148,9 +148,9 @@ namespace UnitTests
             sci::istream scriptStream(script.data(), (uint32_t)script.size());
             sci::istream heapStream(heap.data(), (uint32_t)heap.size());
             Assert::IsTrue(patched.Load(helper, helper.Version, 964, scriptStream, &heapStream), L"the patched script loads");
-            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(AppResourceMap(), lookups.GetSelectorTable());
             TestDecompilerResults results;
-            std::unique_ptr<sci::Script> decompiled = DecompileScript(config.get(), lookups, appState->GetResourceMap(), 964, patched, results);
+            std::unique_ptr<sci::Script> decompiled = DecompileScript(config.get(), lookups, AppResourceMap(), 964, patched, results);
             std::stringstream text;
             sci::SourceCodeWriter writer(text, decompiled.get());
             decompiled->OutputSourceCode(writer);
@@ -184,7 +184,7 @@ namespace UnitTests
             Assert::IsTrue(CompileFixture(952, "StaleScoProcs", &error),
                 std::wstring(error.begin(), error.end()).c_str());
 
-            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            const GameFolderHelper &helper = AppResourceMap().Helper();
             GlobalCompiledScriptLookups lookups;
             lookups.Load(helper);
             std::unique_ptr<CSCOFile> sco = GetExistingSCOFromScriptNumber(helper, 952, lookups.GetSelectorTable());
@@ -478,7 +478,7 @@ namespace UnitTests
             AddFixtureScript("O2_ClassNames");
             std::string error;
             Assert::IsTrue(CompileFixture(973, "O2_ClassNames", &error), Wide(error).c_str());
-            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            const GameFolderHelper &helper = AppResourceMap().Helper();
             CompiledScript compiled(973);
             Assert::IsTrue(compiled.Load(helper, helper.Version, 973), L"setup: the script loads");
             std::vector<uint8_t> script = compiled.GetRawBytes();
@@ -508,9 +508,9 @@ namespace UnitTests
             sci::istream heapStream(heap.data(), (uint32_t)heap.size());
             Assert::IsTrue(patched.Load(helper, helper.Version, 973, scriptStream, &heapStream), L"the patched script loads");
             Assert::AreEqual(patched.GetObjects()[0]->GetSpecies(), patched.GetObjects()[1]->GetSpecies(), L"setup: one species");
-            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(AppResourceMap(), lookups.GetSelectorTable());
             TestDecompilerResults results;
-            std::unique_ptr<sci::Script> decompiled = DecompileScript(config.get(), lookups, appState->GetResourceMap(), 973, patched, results);
+            std::unique_ptr<sci::Script> decompiled = DecompileScript(config.get(), lookups, AppResourceMap(), 973, patched, results);
             std::stringstream text;
             sci::SourceCodeWriter writer(text, decompiled.get());
             decompiled->OutputSourceCode(writer);
@@ -768,7 +768,7 @@ namespace UnitTests
                 return;
             }
             _gameFolder = SetUpGameSCI11();
-            StructuralCompareResult result = CompareStructural(expected, actual, out ? out : "", appState->GetVersion());
+            StructuralCompareResult result = CompareStructural(expected, actual, out ? out : "", AppVersion());
             std::string report = result.Report();
             Logger::WriteMessage(std::wstring(report.begin(), report.end()).c_str());
         }

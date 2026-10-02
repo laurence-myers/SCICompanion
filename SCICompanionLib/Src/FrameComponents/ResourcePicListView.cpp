@@ -52,7 +52,7 @@ const static int DefaultPicWidth = 320 / 2;
 
 int _GetPicBitmapHeight()
 {
-	int defaultPicHeight = (appState->GetVersion().DefaultResolution == NativeResolution::Res640x480) ? 120 : 100;
+	int defaultPicHeight = (AppVersion().DefaultResolution == NativeResolution::Res640x480) ? 120 : 100;
 	return appState->AspectRatioY(defaultPicHeight);
 }
 

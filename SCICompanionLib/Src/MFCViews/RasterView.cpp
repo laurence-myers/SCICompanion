@@ -3758,8 +3758,8 @@ void CRasterView::RemapPalette()
 			ConvertFromToPaletteDialog remapPaletteDialog;
 			if (IDOK == remapPaletteDialog.DoModal())
 			{
-				std::unique_ptr<ResourceEntity> fromPalette = appState->GetResourceMap().CreateResourceFromNumber(ResourceType::Palette, remapPaletteDialog.From);
-				std::unique_ptr<ResourceEntity> toPalette = appState->GetResourceMap().CreateResourceFromNumber(ResourceType::Palette, remapPaletteDialog.To);
+				std::unique_ptr<ResourceEntity> fromPalette = AppResourceMap().CreateResourceFromNumber(ResourceType::Palette, remapPaletteDialog.From);
+				std::unique_ptr<ResourceEntity> toPalette = AppResourceMap().CreateResourceFromNumber(ResourceType::Palette, remapPaletteDialog.To);
 				_RemapPaletteWorker(raster, fromPalette->GetComponent<PaletteComponent>(), toPalette->GetComponent<PaletteComponent>());
 				hint |= RasterChangeHint::NewView;
 			}

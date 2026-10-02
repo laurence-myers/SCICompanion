@@ -14,7 +14,7 @@
 #include "stdafx.h"
 #include "CppUnitTest.h"
 #include "Helper.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceMap.h"
 #include "ResourceContainer.h"
 #include "ResourceEntity.h"
@@ -57,7 +57,7 @@ namespace UnitTests
         TEST_METHOD(MergedPalette_ThreadSafeOverload_MergesByReservedPriority)
         {
             _gameFolder = SetUpGameSCI11();
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
 
             std::unique_ptr<ResourceEntity> view = _FirstView(rm);
             Assert::IsNotNull(view.get(), L"the SCI1.1 template must contain a view resource");
@@ -81,7 +81,7 @@ namespace UnitTests
         TEST_METHOD(MergedPalette_NullGlobal_LeavesEmbeddedUnchanged)
         {
             _gameFolder = SetUpGameSCI11();
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
 
             std::unique_ptr<ResourceEntity> view = _FirstView(rm);
             Assert::IsNotNull(view.get(), L"the SCI1.1 template must contain a view resource");

@@ -13,7 +13,7 @@
 ***************************************************************************/
 #pragma once
 
-class AppState;
+class GameFolderHelper;
 
 class PhonemeMap
 {
@@ -39,7 +39,7 @@ private:
 	std::string _fileContents;
 };
 
-bool SaveForViewLoop(const PhonemeMap &map, AppState *appState, int view, int loop, std::string &errors);
-std::unique_ptr<PhonemeMap> LoadPhonemeMapForViewLoop(AppState *appState, int view, int loop);
-std::string GetPhonemeMapPath(AppState *appState, int view, int loop);
-std::string GetPhonemeMapFilespec(AppState *appState, int view, int loop);
+bool SaveForViewLoop(const PhonemeMap &map, const GameFolderHelper &helper, int view, int loop, std::string &errors);
+std::unique_ptr<PhonemeMap> LoadPhonemeMapForViewLoop(const GameFolderHelper &helper, int view, int loop);
+std::string GetPhonemeMapPath(const GameFolderHelper &helper, int view, int loop);
+std::string GetPhonemeMapFilespec(int view, int loop);

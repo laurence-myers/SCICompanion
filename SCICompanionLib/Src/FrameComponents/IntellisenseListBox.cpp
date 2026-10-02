@@ -21,7 +21,7 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "resource.h"
 #include "IntellisenseListBox.h"
 #include "ScriptView.h"
 #include "AutoCompleteSourceTypes.h"

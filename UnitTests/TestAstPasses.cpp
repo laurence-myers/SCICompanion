@@ -554,7 +554,7 @@ namespace UnitTests
                 ")\n"
                 "(procedure (proc990_1)\n\t(return 1)\n)\n";
             std::string detail;
-            std::vector<std::string> differences = CompareScriptTexts(golden, companion, appState->GetVersion(), &detail);
+            std::vector<std::string> differences = CompareScriptTexts(golden, companion, AppVersion(), &detail);
             std::string msg = "differences: " + std::to_string(differences.size()) + "\n" + detail;
             for (const std::string &d : differences)
             {
@@ -576,7 +576,7 @@ namespace UnitTests
                 "(script# 990)\n(include sci.sh)\n"
                 "(procedure (theProc a)\n\t(if a (return 1))\n\t(= a 0)\n\t(return 0)\n)\n"
                 "(procedure (other)\n\t(return 2)\n)\n";
-            std::vector<std::string> differences = CompareScriptTexts(golden, actual, appState->GetVersion());
+            std::vector<std::string> differences = CompareScriptTexts(golden, actual, AppVersion());
             Assert::AreEqual(size_t(1), differences.size(), L"one function differs");
             Assert::AreEqual(std::string("theProc"), differences[0], L"the differing function is named");
         }

@@ -467,6 +467,7 @@
     <ClInclude Include="Src\MFCViews\VocabView.h" />
     <ClInclude Include="Src\Resources\FontOperations.h" />
     <ClInclude Include="Src\Resources\PicDrawManager.h" />
+    <ClInclude Include="Src\Util\AppSession.h" />
     <ClInclude Include="Src\Util\AppState.h" />
     <ClInclude Include="Src\Util\ClassBrowser.h" />
     <ClInclude Include="Src\Util\ClassBrowserInfo.h" />

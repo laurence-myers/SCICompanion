@@ -12,7 +12,9 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
+#include "resource.h"
 #include "MessageEditPane.h"
 #include "MessageDoc.h"
 #include "Text.h"
@@ -259,11 +261,11 @@ void MessageEditPane::_UpdateCombos(MessageChangeHint hint)
 		}
 		if (IsFlagSet(hint, MessageChangeHint::VerbsChanged))
 		{
-			_PopulateComboFromMessageSource(m_wndComboVerb, appState->GetResourceMap().GetVerbsMessageSource(), true);
+			_PopulateComboFromMessageSource(m_wndComboVerb, AppResourceMap().GetVerbsMessageSource(), true);
 		}
 		if (IsFlagSet(hint, MessageChangeHint::TalkersChanged))
 		{
-			_PopulateComboFromMessageSource(m_wndComboTalker, appState->GetResourceMap().GetTalkersMessageSource(), false);
+			_PopulateComboFromMessageSource(m_wndComboTalker, AppResourceMap().GetTalkersMessageSource(), false);
 		}
 		if (IsFlagSet(hint, MessageChangeHint::ConditionsChanged))
 		{
@@ -332,7 +334,7 @@ void MessageEditPane::_UpdateSequence(int sequence)
 bool MessageEditPane::_UpdateAudio(const TextEntry &messageEntry)
 {
 	bool hasAudio = false;
-	if (appState->GetVersion().HasSyncResources)
+	if (AppVersion().HasSyncResources)
 	{
 		uint32_t tuple = GetMessageTuple(messageEntry);
 		_audioPlayback.Stop();
@@ -345,11 +347,11 @@ bool MessageEditPane::_UpdateAudio(const TextEntry &messageEntry)
 		// TODO: Optimize all this resource loading.
 		uint16_t view, loop;
 		int currentMouthView = _mouthView ? _mouthView->ResourceNumber : -1;
-		if (appState->GetResourceMap().GetTalkerToViewMap().TalkerToViewLoop(messageEntry.Talker, view, loop))
+		if (AppResourceMap().GetTalkerToViewMap().TalkerToViewLoop(messageEntry.Talker, view, loop))
 		{
 			if (view != currentMouthView)
 			{
-				_mouthView = appState->GetResourceMap().CreateResourceFromNumber(ResourceType::View, view);
+				_mouthView = AppResourceMap().CreateResourceFromNumber(ResourceType::View, view);
 			}
 		}
 		else
@@ -362,9 +364,9 @@ bool MessageEditPane::_UpdateAudio(const TextEntry &messageEntry)
 		}
 		if (!_mouthView)
 		{
-			std::string mouthSampleFilename = appState->GetResourceMap().GetSamplesFolder() + "\\views\\MouthShapes.bin";
+			std::string mouthSampleFilename = AppResourceMap().GetSamplesFolder() + "\\views\\MouthShapes.bin";
 			ResourceBlob blob;
-			if (SUCCEEDED(blob.CreateFromFile("it's a mouth", mouthSampleFilename, sciVersion1_1, appState->GetResourceMap().GetDefaultResourceSaveLocation(), - 1, -1)))
+			if (SUCCEEDED(blob.CreateFromFile("it's a mouth", mouthSampleFilename, sciVersion1_1, AppResourceMap().GetDefaultResourceSaveLocation(), - 1, -1)))
 			{
 				_mouthView = CreateResourceFromResourceData(blob);
 			}
@@ -434,8 +436,8 @@ void MessageEditPane::_Update()
 			_UpdateSequence(entry->Sequence);
 			
 			const NounsAndCasesComponent &nounsAndCases = _pDoc->GetResource()->GetComponent<NounsAndCasesComponent>();
-			_UpdateComboFromValue(m_wndComboVerb, entry->Verb, appState->GetResourceMap().GetVerbsMessageSource());
-			_UpdateComboFromValue(m_wndComboTalker, entry->Talker, appState->GetResourceMap().GetTalkersMessageSource());
+			_UpdateComboFromValue(m_wndComboVerb, entry->Verb, AppResourceMap().GetVerbsMessageSource());
+			_UpdateComboFromValue(m_wndComboTalker, entry->Talker, AppResourceMap().GetTalkersMessageSource());
 			_UpdateComboFromValue(m_wndComboNoun, entry->Noun, &nounsAndCases.GetNouns());
 			_UpdateComboFromValue(m_wndComboCondition, entry->Condition, &nounsAndCases.GetCases());
 
@@ -456,7 +458,7 @@ void MessageEditPane::_Update()
 	}
 
 	// Hide/show audio controls when appropriate.
-	int cmdShowSupportsSync = appState->GetVersion().HasSyncResources ? SW_SHOW : SW_HIDE;
+	int cmdShowSupportsSync = AppVersion().HasSyncResources ? SW_SHOW : SW_HIDE;
 	int cmdShowHasAudio = hasAudio ? SW_SHOW : SW_HIDE;
 
 	m_wndInfo.ShowWindow(cmdShowHasAudio);
@@ -744,9 +746,9 @@ void MessageEditPane::OnBnClickedButtonlipsync()
 
 		uint16_t view, loop;
 		std::unique_ptr<PhonemeMap> phonemeMap;
-		if (appState->GetResourceMap().GetTalkerToViewMap().TalkerToViewLoop(entry->Talker, view, loop))
+		if (AppResourceMap().GetTalkerToViewMap().TalkerToViewLoop(entry->Talker, view, loop))
 		{
-			phonemeMap = LoadPhonemeMapForViewLoop(appState, view, loop);
+			phonemeMap = LoadPhonemeMapForViewLoop(AppResourceMap().Helper(), view, loop);
 		}
 		if (!phonemeMap || phonemeMap->HasErrors())
 		{
@@ -791,7 +793,7 @@ void MessageEditPane::OnBnClickedButtonlipsyncDialog()
 		AutomaticStop();
 
 		std::string talkerName;
-		MessageSource *talkersSource = appState->GetResourceMap().GetTalkersMessageSource();
+		MessageSource *talkersSource = AppResourceMap().GetTalkersMessageSource();
 		if (talkersSource)
 		{
 			talkerName = talkersSource->ValueToName(entry->Talker);

@@ -23,6 +23,7 @@
 #include "ColoredToolTip.h"
 #include "CompileInterfaces.h"
 #include "RunLogic.h"
+#include "AppSession.h"
 
 class AutoCompleteThread2;
 class CScriptView;
@@ -162,9 +163,6 @@ public:
 	void OnGameFolderUpdate() override;
 	void SetRecentlyInteractedView(int resourceNumber) override;
 	void OnLastScriptDeleted(CResourceMap &resourceMap, const ResourceBlob &script) override;
-
-	// Sends the text to the core log (CoreLog), at the Info level.
-	void LogInfo(_Printf_format_string_ const TCHAR *pszFormat, ...);
 
 	// ILogSink
 	void Write(LogLevel level, const std::string &text) override;

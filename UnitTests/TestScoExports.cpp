@@ -13,7 +13,7 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "CppUnitTest.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceMap.h"
 #include "ResourceContainer.h"
 #include "ResourceBlob.h"
@@ -65,14 +65,14 @@ namespace UnitTests
         TEST_METHOD(MismatchedAst_UnknownClassAndExtraProcExports_DoNotOverread)
         {
             // Find a compiled template script that exports at least one procedure.
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
             auto container = rm.Resources(ResourceTypeFlags::Script, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
             std::unique_ptr<CompiledScript> compiled;
             for (auto &blob : *container)
             {
                 auto candidate = std::make_unique<CompiledScript>(blob->GetNumber());
                 sci::istream byteStream = blob->GetReadStream();
-                if (!candidate->Load(rm.Helper(), appState->GetVersion(), blob->GetNumber(), byteStream))
+                if (!candidate->Load(rm.Helper(), AppVersion(), blob->GetNumber(), byteStream))
                 {
                     continue;
                 }
@@ -133,7 +133,7 @@ namespace UnitTests
         // (KQ5 Interface.sc).
         TEST_METHOD(PublicBlock_ProceduresDefinedOutOfSlotOrder_KeepTheirSlots)
         {
-            CResourceMap &resourceMap = appState->GetResourceMap();
+            CResourceMap &resourceMap = AppResourceMap();
             const std::string name = "SlotOrder";
             const char *source =
                 "(script# 950)\n"
@@ -230,7 +230,7 @@ namespace UnitTests
         // from the source and the compiled script. Empty when they are equal.
         static std::string CompareWithTheCompilersSco(const ScriptId &scriptId, const GlobalCompiledScriptLookups &lookups)
         {
-            CResourceMap &resourceMap = appState->GetResourceMap();
+            CResourceMap &resourceMap = AppResourceMap();
             const GameFolderHelper &helper = resourceMap.Helper();
             uint16_t number = scriptId.GetResourceNumber();
             std::unique_ptr<CSCOFile> written = GetExistingSCOFromScriptNumber(helper, number, lookups.GetSelectorTable());
@@ -255,7 +255,7 @@ namespace UnitTests
 
         static std::string CompareScoExports(uint16_t number, const std::string &name, const std::string &source)
         {
-            CResourceMap &resourceMap = appState->GetResourceMap();
+            CResourceMap &resourceMap = AppResourceMap();
             std::string path = resourceMap.Helper().GetScriptFileName(name);
             WriteFileText(path, source);
             std::string error;
@@ -273,7 +273,7 @@ namespace UnitTests
 
         void CompareScoExportsOfEveryScript(const std::string &templateName)
         {
-            CResourceMap &resourceMap = appState->GetResourceMap();
+            CResourceMap &resourceMap = AppResourceMap();
             std::vector<ScriptId> scripts;
             resourceMap.GetAllScripts(scripts);
 

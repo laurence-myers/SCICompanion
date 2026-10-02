@@ -15,7 +15,8 @@
 #include "resource.h"
 #include "BitmapToVGADialog.h"
 #include "PaletteOperations.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
 #include "format.h"
 #include "ColorQuantization.h"
 #include "Components.h"
@@ -78,7 +79,7 @@ CBitmapToVGADialog::CBitmapToVGADialog(
 	else
 	{
 		assert(_paletteSize == 256);
-		const PaletteComponent *globalPalette = appState->GetResourceMap().GetPalette999();
+		const PaletteComponent *globalPalette = AppResourceMap().GetPalette999();
 		_numUnusedPaletteEntriesInGlobalPalette = 256;
 		if (globalPalette)
 		{

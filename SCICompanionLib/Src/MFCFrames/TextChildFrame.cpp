@@ -12,7 +12,6 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
-#include "AppState.h"
 #include "TextChildFrame.h"
 
 IMPLEMENT_DYNCREATE(CTextChildFrame, CMDITabChildWnd)

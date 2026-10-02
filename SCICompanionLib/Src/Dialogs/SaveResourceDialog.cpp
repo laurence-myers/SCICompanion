@@ -15,7 +15,9 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
+#include "resource.h"
 #include "SaveResourceDialog.h"
 
 using namespace std;
@@ -33,7 +35,7 @@ SaveResourceDialog::~SaveResourceDialog()
 
 int _GetValidResource(int iResource)
 {
-	return max(min(iResource, appState->GetVersion().GetMaximumResourceNumber()), 0);
+	return max(min(iResource, AppVersion().GetMaximumResourceNumber()), 0);
 }
 
 int _GetValidPackage(int iPackage)
@@ -49,7 +51,7 @@ void SaveResourceDialog::DoDataExchange(CDataExchange* pDX)
 	TCHAR sz[10];
 	if (_iPackageNumber == -1)
 	{
-		_iPackageNumber = appState->GetVersion().DefaultVolumeFile;
+		_iPackageNumber = AppVersion().DefaultVolumeFile;
 	}
 	_iPackageNumber = _GetValidPackage(_iPackageNumber);
 	
@@ -58,7 +60,7 @@ void SaveResourceDialog::DoDataExchange(CDataExchange* pDX)
 	StringCchPrintf(sz, ARRAYSIZE(sz), TEXT("%d"), _iPackageNumber);
 	m_wndEditPackage.SetWindowText(sz);
 	// In SCI11, resources always go in the same package file. So disable being able to edit this.
-	if (appState->GetVersion().MapFormat >= ResourceMapFormat::SCI11)
+	if (AppVersion().MapFormat >= ResourceMapFormat::SCI11)
 	{
 		m_wndEditPackage.EnableWindow(FALSE);
 	}
@@ -91,19 +93,19 @@ BOOL SaveResourceDialog::_ValidateData()
 {
 	BOOL fRet = TRUE;
 	// The audio map is resource 65535, so allow that through.
-	if ((_iResourceNumber < 0) || (_iResourceNumber > appState->GetVersion().GetMaximumResourceNumber() && _iResourceNumber != 0xFFFF))
+	if ((_iResourceNumber < 0) || (_iResourceNumber > AppVersion().GetMaximumResourceNumber() && _iResourceNumber != 0xFFFF))
 	{
-		if (appState->GetVersion().PackageFormat >= ResourcePackageFormat::SCI2)
+		if (AppVersion().PackageFormat >= ResourcePackageFormat::SCI2)
 			AfxMessageBox(TEXT("Please specify a resource number between 0 and 64999."), MB_OK | MB_APPLMODAL | MB_ICONSTOP);
-		else if (appState->GetVersion().PackageFormat >= ResourcePackageFormat::SCI1)
+		else if (AppVersion().PackageFormat >= ResourcePackageFormat::SCI1)
 			AfxMessageBox(TEXT("Please specify a resource number between 0 and 16384."), MB_OK | MB_APPLMODAL | MB_ICONSTOP);
 		else 
 			AfxMessageBox(TEXT("Please specify a resource number between 0 and 999."), MB_OK | MB_APPLMODAL | MB_ICONSTOP);
 		fRet = FALSE;
 	}
-	else if ((_iPackageNumber < appState->GetVersion().DefaultVolumeFile) || (_iPackageNumber > 63))
+	else if ((_iPackageNumber < AppVersion().DefaultVolumeFile) || (_iPackageNumber > 63))
 	{
-		if (appState->GetResourceMap().GetDefaultResourceSaveLocation() == ResourceSaveLocation::Package)
+		if (AppResourceMap().GetDefaultResourceSaveLocation() == ResourceSaveLocation::Package)
 		{
 			AfxMessageBox(TEXT("Please specify a package number between 1 and 63.  Unless this is being distributed on floppy disks, use 1."),
 				MB_OK | MB_APPLMODAL | MB_ICONSTOP);
@@ -113,7 +115,7 @@ BOOL SaveResourceDialog::_ValidateData()
 
 	if (fRet && _warnOnOverwrite)
 	{
-		if (appState->GetResourceMap().DoesResourceExist(_type, _iResourceNumber))
+		if (AppResourceMap().DoesResourceExist(_type, _iResourceNumber))
 		{
 			fRet = (IDYES == AfxMessageBox("A resource already exists for this number. Overwrite?", MB_YESNO | MB_ICONWARNING));
 		}

@@ -17,6 +17,8 @@
 #include "ChooseColorStatic.h"
 #include "ColorDialogCallback.h"
 
+struct PaletteComponent;
+
 class CChooseColorDialogVGA : public CBaseColorDialog, public IColorDialogCallback
 {
 public:

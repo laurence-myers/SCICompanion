@@ -164,7 +164,7 @@ void QuickScriptsSidePane::_PrepareViewCommands(int iIndex, const ResourceEntity
 		CExtBitmap extBitmap;
 		extBitmap.FromBitmap((HBITMAP)bitmap);
 		g_CmdManager->CmdSetIcon(appState->_pszCommandProfile, nID, extBitmap, RGB(255, 255, 255), CRect(0, 0, 24, 24));
-		std::string name = appState->GetResourceMap().Helper().FigureOutName(ResourceType::View, view.ResourceNumber, NoBase36);
+		std::string name = AppResourceMap().Helper().FigureOutName(ResourceType::View, view.ResourceNumber, NoBase36);
 		pCmdItem->m_sMenuText = name.c_str();
 		pCmdItem->m_sTipTool = pCmdItem->m_sMenuText;
 	}
@@ -185,7 +185,7 @@ void QuickScriptsSidePane::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_STATICPIC, m_wndPic);
 
 	DDX_Control(pDX, IDC_GOTOMESSAGE, m_wndGotoMessage);
-	if (!appState->GetVersion().SupportsMessages)
+	if (!AppVersion().SupportsMessages)
 	{
 		m_wndGotoMessage.ShowWindow(SW_HIDE);
 	}
@@ -296,7 +296,7 @@ void QuickScriptsSidePane::_InitColumns()
 void QuickScriptsSidePane::_AddFilesOfType(int &iItem, PCTSTR pszWildcard)
 {
 	// REVIEW: Could we just ask for the list of scripts instead?
-	std::string srcFolder = appState->GetResourceMap().Helper().GetSrcFolder();
+	std::string srcFolder = AppResourceMap().Helper().GetSrcFolder();
 	srcFolder += pszWildcard;
 	WIN32_FIND_DATA findData = { 0 };
 	HANDLE hFFF = FindFirstFile(srcFolder.c_str(), &findData);
@@ -369,7 +369,7 @@ void QuickScriptsSidePane::_UpdateEntries()
 	_nFirstScript = iItem;
 
 	std::vector<ScriptId> scripts;
-	appState->GetResourceMap().GetAllScripts(scripts);
+	AppResourceMap().GetAllScripts(scripts);
 	sort(scripts.begin(), scripts.end(), SortScriptsIntelligently);
 	for (size_t i = 0; i < scripts.size(); ++i)
 	{
@@ -383,7 +383,7 @@ void _EnableDirection(std::string direction, CWnd &wnd, WORD wNumber)
 {
 	if (wNumber)
 	{
-		direction += appState->GetResourceMap().Helper().FigureOutName(ResourceType::Script, wNumber, NoBase36);
+		direction += AppResourceMap().Helper().FigureOutName(ResourceType::Script, wNumber, NoBase36);
 		wnd.SetWindowText(direction.c_str());
 		wnd.EnableWindow(TRUE);
 	}
@@ -419,7 +419,7 @@ void QuickScriptsSidePane::_ResetUI()
 	}
 	m_wndScriptNum.SetWindowText(ss.str().c_str());
 
-	bool msgEnabled = (appState->GetVersion().SupportsMessages && appState->GetResourceMap().DoesResourceExist(ResourceType::Message, wNum));
+	bool msgEnabled = (AppVersion().SupportsMessages && AppResourceMap().DoesResourceExist(ResourceType::Message, wNum));
 	m_wndGotoMessage.ShowWindow(msgEnabled ? SW_SHOW : SW_HIDE);
 	if (msgEnabled)
 	{
@@ -453,7 +453,7 @@ void QuickScriptsSidePane::_ResetUI()
 							if (browser.GetPropertyValue("picture", classDef.get(), &_wPic))
 							{
 								// Create the pic resource
-								unique_ptr<ResourceEntity> pic = appState->GetResourceMap().CreateResourceFromNumber(ResourceType::Pic, _wPic);
+								unique_ptr<ResourceEntity> pic = AppResourceMap().CreateResourceFromNumber(ResourceType::Pic, _wPic);
 								if (pic)
 								{
 									CRect rc;
@@ -497,7 +497,7 @@ void QuickScriptsSidePane::_ResetUI()
 							browser.GetPropertyValue("cel", classDef.get(), &wCel);
 
 							// Create the view resource
-							unique_ptr<ResourceEntity> view = appState->GetResourceMap().CreateResourceFromNumber(ResourceType::View, wView);
+							unique_ptr<ResourceEntity> view = AppResourceMap().CreateResourceFromNumber(ResourceType::View, wView);
 							if (view)
 							{
 								_PrepareViewCommands(iViewIndex, *view, wLoop, wCel);
@@ -576,7 +576,7 @@ void QuickScriptsSidePane::SetDocument(CDocument *pDoc)
 		_ResetUI();
 
 		// See if we should update the script list.
-		std::string newSrcFolder = appState->GetResourceMap().Helper().GetSrcFolder();
+		std::string newSrcFolder = AppResourceMap().Helper().GetSrcFolder();
 		if (0 != _srcFolder.compare(newSrcFolder))
 		{
 			// The game has been reloaded.

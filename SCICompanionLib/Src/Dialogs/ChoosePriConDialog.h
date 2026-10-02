@@ -16,6 +16,9 @@
 #include "ChooseColorStatic.h"
 #include "BaseColorDialog.h"
 #include "ColorDialogCallback.h"
+
+struct PaletteComponent;
+
 // CChoosePriConDialog dialog
 
 class CChoosePriConDialog : public CBaseColorDialog, public IColorDialogCallback

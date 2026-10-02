@@ -41,7 +41,7 @@ using namespace std;
 #define SELECTION_TIMER 4567	 
 
 DecompileDialog::DecompileDialog(CWnd* pParent /*=NULL*/)
-	: CExtResizableDialog(DecompileDialog::IDD, pParent), previousSelection(-1), _inScriptListLabelEdit(false), _inSCOLabelEdit(false), initialized(false), _helper(appState->GetResourceMap().Helper()), _syncSelection(false)
+	: CExtResizableDialog(DecompileDialog::IDD, pParent), previousSelection(-1), _inScriptListLabelEdit(false), _inSCOLabelEdit(false), initialized(false), _helper(AppResourceMap().Helper()), _syncSelection(false)
 {
 }
 
@@ -124,7 +124,7 @@ void DecompileDialog::DoDataExchange(CDataExchange* pDX)
 		// The src folder, and the files of the Decompiler folder when
 		// src\Decompiler.ini does not exist: a plain copy that never
 		// overwrites a file of the game, and asks nothing.
-		sci::Status prepared = PrepareDecompileFolder(_helper, appState->GetResourceMap().GetDecompilerFolder());
+		sci::Status prepared = PrepareDecompileFolder(_helper, AppResourceMap().GetDecompilerFolder());
 		if (!prepared)
 		{
 			AfxMessageBox(prepared.error().ToString().c_str(), MB_OK | MB_APPLMODAL);
@@ -355,13 +355,13 @@ void DecompileDialog::_SyncSelection(bool force)
 			// Load the .sco file
 			_sco.reset(nullptr);
 			_scoPublicProcIndices.clear();
-			_sco = GetExistingSCOFromScriptNumber(_helper, (uint16_t)param, appState->GetResourceMap().GetCompiledScriptLookups()->GetSelectorTable());
+			_sco = GetExistingSCOFromScriptNumber(_helper, (uint16_t)param, AppResourceMap().GetCompiledScriptLookups()->GetSelectorTable());
 			if (_sco)
 			{
 				// Detect which exports are not procedures by seeing if its name
 				// matches a public instance in the compiled script (which should be sync'd with the SCO)
 				CompiledScript compiledScript((uint16_t)param);
-				GlobalCompiledScriptLookups *lookups = appState->GetResourceMap().GetCompiledScriptLookups();
+				GlobalCompiledScriptLookups *lookups = AppResourceMap().GetCompiledScriptLookups();
 				compiledScript.SetNameSelector(lookups->GetSelectorTable(), lookups);
 				compiledScript.Load(_helper, _helper.Version, param);
 				int exportIndex = 0;
@@ -552,7 +552,7 @@ void DecompileDialog::OnLvnEndlabeleditListscripts(NMHDR *pNMHDR, LRESULT *pResu
 		// Rename the .sco and .sc files
 		string scOld = _helper.GetScriptFileName(scriptNumber);
 		string scoOld = _helper.GetScriptObjectFileName(scriptNumber);
-		appState->GetResourceMap().AssignName(ResourceType::Script, scriptNumber, NoBase36, pDispInfo->item.pszText);
+		AppResourceMap().AssignName(ResourceType::Script, scriptNumber, NoBase36, pDispInfo->item.pszText);
 		
 		// And move them.
 		try
@@ -685,7 +685,7 @@ void DecompileDialog::OnBnClickedDecompile()
 		{
 			_decompileResults = make_unique<DecompilerDialogResults>(this->GetSafeHwnd());
 			_SyncButtonState();
-			_session = &appState->GetSession();
+			_session = &AppSession();
 			try
 			{
 				_future = std::make_unique<std::future<void>>(std::async(std::launch::async, s_DecompileThreadWorker, this));
@@ -723,7 +723,7 @@ void DecompileDialog::OnBnClickedAssignfilenames()
 
 void DecompileDialog::_AssignFilenames()
 {
-	GlobalCompiledScriptLookups *lookups = appState->GetResourceMap().GetCompiledScriptLookups();
+	GlobalCompiledScriptLookups *lookups = AppResourceMap().GetCompiledScriptLookups();
 	if (lookups)
 	{
 		// The naming rule of the command line too: the scripts go in number
@@ -741,7 +741,7 @@ void DecompileDialog::_AssignFilenames()
 		}
 		for (const auto &name : SuggestScriptNames(std::move(scripts)))
 		{
-			appState->GetResourceMap().AssignName(ResourceType::Script, name.first, NoBase36, name.second.c_str());
+			AppResourceMap().AssignName(ResourceType::Script, name.first, NoBase36, name.second.c_str());
 		}
 
 		_PopulateScripts();

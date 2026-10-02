@@ -15,7 +15,8 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
+#include "AppSession.h"
+#include "ResourceMap.h"
 #include "VocabDoc.h"
 #include "Vocab000.h"
 
@@ -63,7 +64,7 @@ const Vocab000 *CVocabDoc::GetVocab() const
 
 void CVocabDoc::PostSuccessfulSave(const ResourceEntity *pResource)
 {
-	appState->GetResourceMap().ClearVocab000();
+	AppResourceMap().ClearVocab000();
 }
 
 BEGIN_MESSAGE_MAP(CVocabDoc, TCLASS_2(CUndoResource, CResourceDocument, ResourceEntity))

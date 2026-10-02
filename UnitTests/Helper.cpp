@@ -92,12 +92,12 @@ void SetUpExistingGame(const std::string &gameFolder)
 {
     // AppState's GameSession loads the compiler's grammars.
     appState = new AppState(nullptr);
-    appState->GetResourceMap().SetGameFolder(gameFolder);
+    AppResourceMap().SetGameFolder(gameFolder);
 
     // Point the data folder at the module folder. The app post-build put the
     // "include" folder (sci.sh, keys.sh) there.
     std::string exeFolder = GetModuleDirectory() + "\\";
-    appState->GetResourceMap().SetDataFolder(exeFolder);
+    AppResourceMap().SetDataFolder(exeFolder);
 }
 
 void CleanUpExistingGame()

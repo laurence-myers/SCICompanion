@@ -14,7 +14,6 @@
 #include "stdafx.h"
 #include "PostBuildThread.h"
 #include "format.h"
-#include "AppState.h"
 #include "MainFrm.h"
 
 using namespace std;

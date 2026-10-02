@@ -240,19 +240,6 @@ namespace UnitTests
             Assert::AreEqual(longText, sink.lines[0].second);
         }
 
-        TEST_METHOD(LogInfo_GoesToTheCoreLogInFull)
-        {
-            _gameFolder = SetUpGameSCI0();
-            CaptureLogSink sink;
-            ScopedCoreLogSink scoped(sink);
-            std::string longText(600, 'z');
-
-            appState->LogInfo("%s!", longText.c_str());
-
-            Assert::AreEqual(size_t(1), sink.lines.size());
-            Assert::AreEqual(longText + "!", sink.lines[0].second);
-        }
-
         TEST_METHOD(Codec_BadData_LogsWithNoAppState)
         {
             NoAppState noAppState;

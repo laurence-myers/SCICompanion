@@ -132,7 +132,7 @@ namespace UnitTests
         // write the buffer on failure.
         TEST_METHOD(GetGameName_NoGameLoaded_ReturnsEmpty)
         {
-            Assert::IsFalse(appState->GetResourceMap().IsGameLoaded(), L"setup: no game loaded");
+            Assert::IsFalse(AppResourceMap().IsGameLoaded(), L"setup: no game loaded");
             std::string name = appState->GetGameName();
             Assert::IsTrue(name.empty(), L"with no game loaded the name must be empty, not stack garbage");
         }

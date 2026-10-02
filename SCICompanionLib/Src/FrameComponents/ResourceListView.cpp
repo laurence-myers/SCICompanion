@@ -249,7 +249,7 @@ void CResourceListCtrl::OnEndLabelEdit(NMHDR* pNMHDR, LRESULT* pResult)
 			// Put the name in game.ini
 			std::string oldName = pData->GetName();
 			pData->SetName(plvdi->item.pszText);
-			appState->GetResourceMap().AssignName(*pData);
+			AppResourceMap().AssignName(*pData);
 
 			// Change the name in the view:
 			*pResult = TRUE; // This doesn't seem to work.
@@ -258,7 +258,7 @@ void CResourceListCtrl::OnEndLabelEdit(NMHDR* pNMHDR, LRESULT* pResult)
 			if (pData->GetType() == ResourceType::Script)
 			{
 				// Rename the actual things.
-				const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+				const GameFolderHelper &helper = AppResourceMap().Helper();
 				
 				std::string oldScriptFilename = helper.GetScriptFileName(oldName);
 				std::string oldObjectFilename = helper.GetScriptObjectFileName(oldName);
@@ -670,7 +670,7 @@ void CResourceListCtrl::OnDelete()
 	}
 
 	bool deleteCompanionAudio = false;
-	if ((this->GetType() == ResourceType::Message) && appState->GetVersion().HasSyncResources)
+	if ((this->GetType() == ResourceType::Message) && AppVersion().HasSyncResources)
 	{
 		deleteCompanionAudio = (IDYES == AfxMessageBox("Do you also want to delete any audio resources associated with this message resource(s)?", MB_YESNO | MB_ICONWARNING));
 	}
@@ -698,7 +698,7 @@ void CResourceListCtrl::OnDelete()
 				deletedResourceNumbers.insert(pData->GetNumber());
 				assert(pData);
 				// We'll get updated a lot here.
-				appState->GetResourceMap().DeleteResource(pData);
+				AppResourceMap().DeleteResource(pData);
 				// We don't need to free the pData right here.  It will happen when
 				// we tell the resource map to delete the resource - upon which we'll get notified that
 				// a resource has been deleted.
@@ -717,7 +717,7 @@ void CResourceListCtrl::OnDelete()
 			if (IDYES == AfxMessageBox(szBuffer, MB_YESNO | MB_APPLMODAL | MB_ICONEXCLAMATION))
 			{
 				deletedResourceNumbers.insert(pData->GetNumber());
-				appState->GetResourceMap().DeleteResource(pData);
+				AppResourceMap().DeleteResource(pData);
 			}
 		}
 	}
@@ -726,7 +726,7 @@ void CResourceListCtrl::OnDelete()
 	{
 		std::vector<std::unique_ptr<ResourceBlob>> audioResourcesToDelete;
 		{
-			auto resourceContainer = appState->GetResourceMap().Resources(ResourceTypeFlags::AudioMap, ResourceEnumFlags::IncludeCacheFiles | ResourceEnumFlags::AddInDefaultEnumFlags);
+			auto resourceContainer = AppResourceMap().Resources(ResourceTypeFlags::AudioMap, ResourceEnumFlags::IncludeCacheFiles | ResourceEnumFlags::AddInDefaultEnumFlags);
 			for (auto &blob : *resourceContainer)
 			{
 				if (deletedResourceNumbers.find(blob->GetNumber()) != deletedResourceNumbers.end())
@@ -738,7 +738,7 @@ void CResourceListCtrl::OnDelete()
 
 		for (auto &blob : audioResourcesToDelete)
 		{
-			appState->GetResourceMap().DeleteResource(blob.get());
+			AppResourceMap().DeleteResource(blob.get());
 		}
 	}
 }
@@ -855,7 +855,7 @@ LPARAM CResourceListCtrl::_InsertItem(std::unique_ptr<ResourceBlob> pData)
 
 	if (iIndex == -1)
 	{
-		appState->LogInfo(TEXT("Failed to insert item in listview: %s"), szName);	
+		CoreLogFormat(LogLevel::Info, TEXT("Failed to insert item in listview: %s"), szName);	
 	}
 
 	// Now the columns
@@ -1098,7 +1098,7 @@ HRESULT CResourceListCtrl::_UpdateEntries()
 
 	try
 	{
-		if (!appState->GetResourceMap().GetGameFolder().empty()) // else no game loaded. We get here during initialization, as frames are created prior to the document.
+		if (!AppResourceMap().GetGameFolder().empty()) // else no game loaded. We get here during initialization, as frames are created prior to the document.
 		{
 
 			// Temporary cache of ResourceBlob's from the resource map enumerator
@@ -1112,7 +1112,7 @@ HRESULT CResourceListCtrl::_UpdateEntries()
 				// And we don't need to bother calculating recency.
 				// enumFlags &= ~ResourceEnumFlags::CalculateRecency;
 			}
-			auto resourceContainer = appState->GetResourceMap().Resources(ResourceTypeToFlag(GetType()), enumFlags | ResourceEnumFlags::AddInDefaultEnumFlags);
+			auto resourceContainer = AppResourceMap().Resources(ResourceTypeToFlag(GetType()), enumFlags | ResourceEnumFlags::AddInDefaultEnumFlags);
 			// Copy the ResourceBlobs into resources, but delay decompression (for performance)
 			// REVIEW: We might want to have a wrapper.
 			for (auto it = resourceContainer->begin(); it != resourceContainer->end(); )
@@ -1130,7 +1130,7 @@ HRESULT CResourceListCtrl::_UpdateEntries()
 					// rather than let one bad entry abort the whole list. Without this
 					// the catch below showed an "Error enumerating items" dialog and
 					// left the list empty, so none of the good resources appeared. (#182)
-					appState->LogInfo("Skipping unreadable resource: number %d - %s", it.GetResourceNumber(), e.what());
+					CoreLogFormat(LogLevel::Info, "Skipping unreadable resource: number %d - %s", it.GetResourceNumber(), e.what());
 				}
 
 				if (blob != nullptr)
@@ -1142,7 +1142,7 @@ HRESULT CResourceListCtrl::_UpdateEntries()
 						// KQ4 "view" 1029) that cannot be decompressed or parsed; listing
 						// one shows a broken 0-byte entry and opening it fails. Warn so it
 						// is not silently dropped. (#182)
-						appState->LogInfo("Skipping empty resource: type %x number %d", (int)blob->GetType(), blob->GetNumber());
+						CoreLogFormat(LogLevel::Info, "Skipping empty resource: type %x number %d", (int)blob->GetType(), blob->GetNumber());
 					}
 					else
 					{
@@ -1161,14 +1161,14 @@ HRESULT CResourceListCtrl::_UpdateEntries()
 				}
 				catch (const std::exception &e)
 				{
-					appState->LogInfo("Stopping resource enumeration after a map error: %s", e.what());
+					CoreLogFormat(LogLevel::Info, "Stopping resource enumeration after a map error: %s", e.what());
 					break;
 				}
 			}
 
 			if (!resources.empty())
 			{
-				appState->LogInfo("Found %d resources for type %x", resources.size(), GetType());
+				CoreLogFormat(LogLevel::Info, "Found %d resources for type %x", resources.size(), GetType());
 				if (_bFirstTime)
 				{
 					_InitColumns();
@@ -1211,7 +1211,7 @@ HRESULT CResourceListCtrl::_UpdateEntries()
 			}
 			else
 			{
-				appState->LogInfo("Found zero resources for type %x", GetType());
+				CoreLogFormat(LogLevel::Info, "Found zero resources for type %x", GetType());
 			}
 		}
 	}

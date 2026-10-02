@@ -181,7 +181,7 @@ ToolTipResult GetToolTipResult(_TContext *pContext)
 
 		if (!fFound && !strText.empty() && containsV(acContexts, ParseAutoCompleteContext::ScriptName))
 		{
-			std::string filename =  appState->GetResourceMap().Helper().GetScriptFileName(strText);
+			std::string filename =  AppResourceMap().Helper().GetScriptFileName(strText);
 			const sci::Script *useScript = browser.GetLKGScript(filename);
 			if (useScript)
 			{
@@ -526,7 +526,7 @@ ToolTipResult GetToolTipResult(_TContext *pContext)
 							std::string saidWord = FindValidVocabStringFromRight(saidString.c_str());
 							if (!saidWord.empty())
 							{
-								const Vocab000 *pVocab000 = appState->GetResourceMap().GetVocab000();
+								const Vocab000 *pVocab000 = AppResourceMap().GetVocab000();
 								if (pVocab000)
 								{
 									Vocab000::WordGroup dwGroup;

@@ -111,7 +111,7 @@ void CScriptDocument::OnCompile()
 			OnFileSave();
 		}
 
-		GameSession &session = appState->GetSession();
+		GameSession &session = AppSession();
 		CompileLog log;
 		_ClearErrorCount();
 		// A batch of one script. It saves the tables when the script
@@ -206,16 +206,16 @@ void CScriptDocument::OnCompile()
 void DisassembleScript(WORD wScript)
 {
 	GlobalCompiledScriptLookups scriptLookups;
-	if (scriptLookups.Load(appState->GetResourceMap().Helper()))
+	if (scriptLookups.Load(AppResourceMap().Helper()))
 	{
 		CompiledScript compiledScript(0);
 		compiledScript.SetNameSelector(scriptLookups.GetSelectorTable(), &scriptLookups);
-		ObjectFileScriptLookups objectFileLookups(appState->GetResourceMap().Helper(), scriptLookups.GetSelectorTable());
-		if (compiledScript.Load(appState->GetResourceMap().Helper(), appState->GetVersion(), wScript))
+		ObjectFileScriptLookups objectFileLookups(AppResourceMap().Helper(), scriptLookups.GetSelectorTable());
+		if (compiledScript.Load(AppResourceMap().Helper(), AppVersion(), wScript))
 		{
 			// Write some crap.
 			std::stringstream out;
-			::DisassembleScript(compiledScript, out, &scriptLookups, &objectFileLookups, appState->GetResourceMap().GetVocab000());
+			::DisassembleScript(compiledScript, out, &scriptLookups, &objectFileLookups, AppResourceMap().GetVocab000());
 			ShowTextFile(out.str().c_str(), "script.sca.txt");
 		}
 	}
@@ -225,7 +225,7 @@ void CScriptDocument::OnDisassemble()
 {
 	WORD wScript;
 	// Make the compiled script...
-	if (SUCCEEDED(appState->GetResourceMap().GetScriptNumber(_scriptId, wScript)))
+	if (SUCCEEDED(AppResourceMap().GetScriptNumber(_scriptId, wScript)))
 	{
 		DisassembleScript(wScript);
 	}
@@ -238,7 +238,7 @@ void CScriptDocument::OnViewObjectFile()
 	if (!_scriptId.IsHeader())
 	{
 		// Need the script name.
-		string objectFileName = appState->GetResourceMap().Helper().GetScriptObjectFileName(_scriptId.GetTitle());
+		string objectFileName = AppResourceMap().Helper().GetScriptObjectFileName(_scriptId.GetTitle());
 		if (!objectFileName.empty())
 		{
 			HANDLE hFile = CreateFile(objectFileName.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
@@ -247,7 +247,7 @@ void CScriptDocument::OnViewObjectFile()
 				sci::streamOwner streamOwner(hFile);
 				CSCOFile scoFile;
 				SelectorTable selectorTable;
-				selectorTable.Load(appState->GetResourceMap().Helper());
+				selectorTable.Load(AppResourceMap().Helper());
 				if (scoFile.Load(streamOwner.getReader(), selectorTable))
 				{
 					stringstream out;
@@ -267,12 +267,12 @@ void CScriptDocument::OnViewScriptResource()
 	{
 		WORD wScript;
 		// Make the compiled script...
-		if (SUCCEEDED(appState->GetResourceMap().GetScriptNumber(_scriptId, wScript)))
+		if (SUCCEEDED(AppResourceMap().GetScriptNumber(_scriptId, wScript)))
 		{
 			CompiledScript compiledScript(0);
-			GlobalCompiledScriptLookups *lookups = appState->GetResourceMap().GetCompiledScriptLookups();
+			GlobalCompiledScriptLookups *lookups = AppResourceMap().GetCompiledScriptLookups();
 			compiledScript.SetNameSelector(lookups->GetSelectorTable(), lookups);
-			if (compiledScript.Load(appState->GetResourceMap().Helper(), appState->GetVersion(), wScript))
+			if (compiledScript.Load(AppResourceMap().Helper(), AppVersion(), wScript))
 			{
 				// Write some crap.
 				std::stringstream out;
@@ -293,7 +293,7 @@ unique_ptr<sci::Script> _ParseScript(ScriptId id)
 
 		std::unique_ptr<sci::Script> pScript = std::make_unique<sci::Script>(id);
 		CompileLog log;
-		bool result = SyntaxParser_Parse(*pScript, stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), &log);
+		bool result = SyntaxParser_Parse(*pScript, stream, PreProcessorDefinesFromSCIVersion(AppVersion()), &log);
 		if (result)
 		{
 			return pScript;
@@ -315,10 +315,10 @@ void CScriptDocument::OnViewSyntaxTree()
 	// 1)
 	sci::Script script(_scriptId);
 	CompileLog log;
-	bool fCompile = SyntaxParser_Parse(script, stream, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), &log);;
+	bool fCompile = SyntaxParser_Parse(script, stream, PreProcessorDefinesFromSCIVersion(AppVersion()), &log);;
 	if (fCompile)
 	{
-		ConvertToSCISyntaxHelper(script, appState->GetResourceMap().Helper());
+		ConvertToSCISyntaxHelper(script, AppResourceMap().Helper());
 
 		std::stringstream out;
 		sci::SourceCodeWriter theCode(out, &script);
@@ -351,7 +351,7 @@ void CScriptDocument::OnViewSyntaxTree()
 				ToUpper(USE);
 				if (complete.find(USE) == complete.end())
 				{
-					toProcess.push(appState->GetResourceMap().Helper().GetScriptId(use));
+					toProcess.push(AppResourceMap().Helper().GetScriptId(use));
 				}
 			}
 		}
@@ -475,7 +475,7 @@ void CScriptDocument::SetNameAndContent(ScriptId scriptId, int iResourceNumber, 
 	int nEndChar = 0;
 	_buffer.InsertText(NULL, 0, 0, text.c_str(), nEndLine, nEndChar);
 	_buffer.SetModified();
-	appState->GetResourceMap().AssignName(ResourceType::Script, iResourceNumber, NoBase36, scriptId.GetTitle().c_str());
+	AppResourceMap().AssignName(ResourceType::Script, iResourceNumber, NoBase36, scriptId.GetTitle().c_str());
 	// Since we're assigning a name, we'd better save it too.
 	OnFileSave();
 }

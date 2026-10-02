@@ -604,7 +604,7 @@ void AutoCompleteThread2::_DoWork()
 				sci::Script script(scriptId);
 				// Needed to get the language right.
 				CCrystalScriptStream::const_iterator it(limiter.get());
-				SyntaxContext context(it, script, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), false, false);
+				SyntaxContext context(it, script, PreProcessorDefinesFromSCIVersion(AppVersion()), false, false);
 #ifdef PARSE_DEBUG
 				context.ParseDebug = true;
 #endif
@@ -612,7 +612,7 @@ void AutoCompleteThread2::_DoWork()
 				AutoCompleteParseCallback callback(scriptNumber, context, *this, *limiter, id);
 				limiter->SetCallback(&callback);
 
-				bool result = SyntaxParser_ParseAC(script, it, PreProcessorDefinesFromSCIVersion(appState->GetVersion()), &context);
+				bool result = SyntaxParser_ParseAC(script, it, PreProcessorDefinesFromSCIVersion(AppVersion()), &context);
 			}
 			else
 			{

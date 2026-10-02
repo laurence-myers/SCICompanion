@@ -13,6 +13,8 @@
 ***************************************************************************/
 #pragma once
 
+#include "resource.h"
+
 // fwd decl
 class ScriptId;
 

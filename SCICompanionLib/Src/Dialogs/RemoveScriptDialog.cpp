@@ -49,7 +49,7 @@ BOOL CRemoveScriptDialog::OnInitDialog()
 	BOOL fRet = __super::OnInitDialog();
 	
 	// Ask the question
-	CResourceMap &rm = appState->GetResourceMap();
+	CResourceMap &rm = AppResourceMap();
 	std::string scriptTitle = rm.Helper().GetIniString("Script", default_reskey(_wScript, NoBase36));
 	ScriptId script = rm.Helper().GetScriptId(scriptTitle);
 	std::stringstream ss;

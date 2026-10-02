@@ -16,7 +16,6 @@
 #include "ScriptOMAll.h"
 #include "SyntaxParser.h"
 #include "CodeToolTips.h"
-#include "AppState.h"
 #include <string>
 #include "OutputCodeHelper.h"
 

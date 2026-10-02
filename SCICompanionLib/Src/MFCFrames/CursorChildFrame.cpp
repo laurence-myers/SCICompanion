@@ -15,7 +15,6 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
 #include "CursorChildFrame.h"
 #include "RasterView.h"
 

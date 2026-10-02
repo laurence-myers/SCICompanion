@@ -15,7 +15,6 @@
 //
 
 #include "stdafx.h"
-#include "AppState.h"
 #include "PicDoc.h"
 #include "SliderDialogBar.h"
 #include "PicOperations.h"

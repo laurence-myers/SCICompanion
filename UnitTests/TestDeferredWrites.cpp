@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include "CppUnitTest.h"
-#include "AppState.h"
+#include "AppSession.h"
 #include "ResourceMap.h"
 #include "ResourceBlob.h"
 #include "ResourceContainer.h"
@@ -112,7 +112,7 @@ namespace UnitTests
             {
                 Logger::WriteMessage(sci11 ? "template: SCI1.1\n" : "template: SCI0\n");
                 _gameFolder = sci11 ? SetUpGameSCI11() : SetUpGameSCI0();
-                body(appState->GetResourceMap());
+                body(AppResourceMap());
                 CleanUpGameCopy();
             }
         }
@@ -319,7 +319,7 @@ namespace UnitTests
         TEST_METHOD(RepackageAudio_FailedMapSave_KeepsTheAudioVolumes)
         {
             auto [aud, sfx] = SetUpAudioVolumes();
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
             std::vector<uint8_t> audBefore = ReadFileBytes(aud);
             std::vector<uint8_t> sfxBefore = ReadFileBytes(sfx);
             std::vector<uint8_t> mapBefore = ReadFileBytes(MapPath());
@@ -344,7 +344,7 @@ namespace UnitTests
             // In a batch, the audio maps would only be queued while the
             // volumes are replaced at once.
             auto [aud, sfx] = SetUpAudioVolumes();
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
             std::vector<uint8_t> audBefore = ReadFileBytes(aud);
             std::vector<uint8_t> sfxBefore = ReadFileBytes(sfx);
             std::vector<uint8_t> mapBefore = ReadFileBytes(MapPath());

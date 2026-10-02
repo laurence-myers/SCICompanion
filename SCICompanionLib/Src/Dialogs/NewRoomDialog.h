@@ -13,6 +13,7 @@
 ***************************************************************************/
 #pragma once
 
+#include "resource.h"
 #include "NewScriptDialog.h"
 
 // fwd decl

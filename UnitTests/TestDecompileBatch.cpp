@@ -71,7 +71,7 @@ namespace UnitTests
         // what the decompiler reads global names from, so Main.sc is left alone.
         void PrepareBatchFixtures()
         {
-            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            const GameFolderHelper &helper = AppResourceMap().Helper();
             {
                 GlobalCompiledScriptLookups lookups;
                 Assert::IsTrue(lookups.Load(helper), L"lookups should load");
@@ -113,15 +113,15 @@ namespace UnitTests
             _gameFolder = SetUpGameSCI11();
             PrepareBatchFixtures();
 
-            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            const GameFolderHelper &helper = AppResourceMap().Helper();
             GlobalCompiledScriptLookups lookups;
             Assert::IsTrue(lookups.Load(helper), L"lookups should load");
             uint16_t dummy;
             lookups.GetSelectorTable().ReverseLookup("", dummy);
-            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(AppResourceMap(), lookups.GetSelectorTable());
 
             TestDecompilerResults results;
-            DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
+            DecompileBatch batch(config.get(), lookups, AppResourceMap(), results);
             Assert::IsTrue(batch.Run({ 950, 951 }).has_value());
 
             Assert::AreEqual(2, (int)batch.GetWrittenScripts().size(), L"both scripts should be written");
@@ -174,16 +174,16 @@ namespace UnitTests
             _gameFolder = SetUpGameSCI11();
             PrepareBatchFixtures();
 
-            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            const GameFolderHelper &helper = AppResourceMap().Helper();
             GlobalCompiledScriptLookups lookups;
             Assert::IsTrue(lookups.Load(helper), L"lookups should load");
             uint16_t dummy;
             lookups.GetSelectorTable().ReverseLookup("", dummy);
-            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(AppResourceMap(), lookups.GetSelectorTable());
 
             TestDecompilerResults results;
             {
-                DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
+                DecompileBatch batch(config.get(), lookups, AppResourceMap(), results);
                 Assert::IsTrue(batch.Run({ 950, 951 }).has_value());
                 Assert::IsFalse(batch.GetGlobalRenames().empty(), L"the first run should name globals");
             }
@@ -191,7 +191,7 @@ namespace UnitTests
             std::string firstB = ReadTextFile(helper.GetScriptFileName(951));
 
             {
-                DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
+                DecompileBatch batch(config.get(), lookups, AppResourceMap(), results);
                 Assert::IsTrue(batch.Run({ 950, 951 }).has_value());
                 Assert::IsTrue(batch.GetGlobalRenames().empty(), L"the second run should find every global already named");
             }
@@ -206,7 +206,7 @@ namespace UnitTests
             _gameFolder = SetUpGameSCI11();
             AddFixtureScript("BatchGlobalsA"); // uses global3 and global5
             AddFixtureScript("BatchGlobalsB"); // uses global5
-            CResourceMap &rm = appState->GetResourceMap();
+            CResourceMap &rm = AppResourceMap();
             rm.AssignName(ResourceType::Script, 950, NoBase36, "BatchGlobalsA");
             rm.AssignName(ResourceType::Script, 951, NoBase36, "BatchGlobalsB");
             const GameFolderHelper &helper = rm.Helper();
@@ -236,12 +236,12 @@ namespace UnitTests
             _gameFolder = SetUpGameSCI11();
             PrepareBatchFixtures();
 
-            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            const GameFolderHelper &helper = AppResourceMap().Helper();
             GlobalCompiledScriptLookups lookups;
             Assert::IsTrue(lookups.Load(helper), L"lookups should load");
             uint16_t dummy;
             lookups.GetSelectorTable().ReverseLookup("", dummy);
-            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(AppResourceMap(), lookups.GetSelectorTable());
 
             for (uint16_t number : { (uint16_t)951, (uint16_t)950 })
             {
@@ -252,7 +252,7 @@ namespace UnitTests
                 ObjectFileScriptLookups objectFileLookups(helper, lookups.GetSelectorTable());
                 TestDecompilerResults results;
                 DecompileLookups decompileLookups(config.get(), helper, number, &lookups, &objectFileLookups, &compiled, nullptr, &compiled, results);
-                std::unique_ptr<sci::Script> full = DecompileToAst(helper, compiled, decompileLookups, appState->GetResourceMap().GetVocab000());
+                std::unique_ptr<sci::Script> full = DecompileToAst(helper, compiled, decompileLookups, AppResourceMap().GetVocab000());
                 std::unique_ptr<sci::Script> skeleton = BuildNamingSkeleton(*full);
 
                 std::unique_ptr<CSCOFile> mainForFull = GetExistingSCOFromScriptNumber(helper, 0, lookups.GetSelectorTable());
@@ -295,16 +295,16 @@ namespace UnitTests
             Assert::IsTrue(game && outPath, L"set SCICOMP_BATCH_GAME and SCICOMP_BATCH_OUT");
             SetUpExistingGame(game);
 
-            const GameFolderHelper &helper = appState->GetResourceMap().Helper();
+            const GameFolderHelper &helper = AppResourceMap().Helper();
             GlobalCompiledScriptLookups lookups;
             Assert::IsTrue(lookups.Load(helper), L"lookups should load");
             uint16_t dummy;
             lookups.GetSelectorTable().ReverseLookup("", dummy);
-            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(appState->GetResourceMap(), lookups.GetSelectorTable());
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(AppResourceMap(), lookups.GetSelectorTable());
 
             std::set<uint16_t> numbers;
             {
-                auto container = appState->GetResourceMap().Resources(ResourceTypeFlags::Script, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+                auto container = AppResourceMap().Resources(ResourceTypeFlags::Script, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
                 for (auto &blob : *container)
                 {
                     numbers.insert((uint16_t)blob->GetNumber());
@@ -327,7 +327,7 @@ namespace UnitTests
 
             ULONGLONG start = GetTickCount64();
             {
-                DecompileBatch batch(config.get(), lookups, appState->GetResourceMap(), results);
+                DecompileBatch batch(config.get(), lookups, AppResourceMap(), results);
                 Assert::IsTrue(batch.Run(numbers).has_value());
                 results.lines.push_back(fmt::format("Wrote {0} of {1} scripts, {2} of them twice; {3} globals named", batch.GetWrittenScripts().size(), numbers.size(), batch.GetRewrittenScripts().size(), batch.GetGlobalRenames().size()));
             }
