@@ -13,9 +13,6 @@
     <Filter Include="Source Files\CppFormat">
       <UniqueIdentifier>{f8841aba-4b88-4974-ba28-490576005f28}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source Files\cpptoml">
-      <UniqueIdentifier>{ae491ed0-f9c4-4fbe-8311-53ce2242000e}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Source Files\CRC32">
       <UniqueIdentifier>{852b604d-ac09-4708-8c4b-c2cf84db6f42}</UniqueIdentifier>
     </Filter>
@@ -367,6 +364,9 @@
     <ClCompile Include="..\SCICompanionLib\Src\Util\ScriptText.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Util\TomlFile.cpp">
+      <Filter>Source Files\Util</Filter>
+    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Util\SoundUtil.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
@@ -590,9 +590,6 @@ $include
     <ClInclude Include="..\SCICompanionLib\Src\CppFormat\format.h">
       <Filter>Source Files\CppFormat</Filter>
     </ClInclude>
-    <ClInclude Include="..\SCICompanionLib\Src\cpptoml\cpptoml.h">
-      <Filter>Source Files\cpptoml</Filter>
-    </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\CRC32\crc.h">
       <Filter>Source Files\CRC32</Filter>
     </ClInclude>
@@ -786,6 +783,9 @@ $include
       <Filter>Source Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Util\ScriptText.h">
+      <Filter>Source Files\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Util\TomlFile.h">
       <Filter>Source Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Util\SortedVector.h">

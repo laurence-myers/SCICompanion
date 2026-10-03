@@ -86,3 +86,20 @@ runs:
       # Stop here if MFC did not land for 14.44.
       $mfc = Get-ChildItem -ErrorAction SilentlyContinue -Path $mfcLib
       if (-not $mfc) { throw "MFC for the 14.44 toolset was not found after the install." }
+
+  # Installs the packages of vcpkg.json before the build, with the arguments
+  # of the vcpkg MSBuild integration (the triplet of Directory.Build.props,
+  # the install folder vcpkg_installed\<triplet>\). The build then finds
+  # them installed. In the build, the Exec task of the integration fails
+  # when vcpkg writes a line with "error:", also when vcpkg recovers: for
+  # example, a download from mirror.msys2.org that fails and then comes from
+  # another mirror. Here, only the exit code of vcpkg counts.
+  - name: Install the vcpkg packages
+    shell: pwsh
+    run: |
+      $root = $env:VCPKG_ROOT
+      if (-not $root) { $root = $env:VCPKG_INSTALLATION_ROOT }
+      $triplet = 'x86-windows-static-v143'
+      $installRoot = Join-Path $env:GITHUB_WORKSPACE "vcpkg_installed\$triplet"
+      & "$root\vcpkg.exe" install --triplet $triplet --vcpkg-root $root "--x-manifest-root=$env:GITHUB_WORKSPACE" "--x-install-root=$installRoot"
+      if ($LASTEXITCODE -ne 0) { throw "vcpkg install failed ($LASTEXITCODE)." }

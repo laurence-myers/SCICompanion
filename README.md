@@ -84,7 +84,7 @@ toolset. You need:
 * the **Windows 10 SDK** (10.0.26100 or later), and
 * **vcpkg**: the vcpkg component of Visual Studio, or a vcpkg folder in the
   `VCPKG_ROOT` environment variable. The first build downloads the
-  libraries of `vcpkg.json` (tl::expected and CLI11).
+  libraries of `vcpkg.json` (tl::expected, CLI11 and toml++).
 
 Open `SCICompanion.sln` and build the **Release / Win32** configuration, or
 build from a command prompt:

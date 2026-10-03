@@ -73,9 +73,6 @@
     <Filter Include="Header Files\CppFormat">
       <UniqueIdentifier>{882030f8-0ad5-4c21-928a-9f330914b5b7}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files\cpptoml">
-      <UniqueIdentifier>{c8fff20f-8566-4e55-8f60-7e91ea2624a7}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Header Files\CRC32">
       <UniqueIdentifier>{09536737-592f-4499-9ac5-4f8bb966e626}</UniqueIdentifier>
     </Filter>
@@ -1270,9 +1267,6 @@
     </None>
     <None Include="Src\r8brain\README.md">
       <Filter>Header Files\r8brain</Filter>
-    </None>
-    <None Include="Src\cpptoml\LICENSE">
-      <Filter>Header Files\cpptoml</Filter>
     </None>
     <None Include="Src\GIFLIB\COPYING">
       <Filter>Header Files\GIFLIB</Filter>

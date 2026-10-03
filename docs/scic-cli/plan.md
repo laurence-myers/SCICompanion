@@ -1119,7 +1119,7 @@ These stay as they are, inside an exception boundary:
   (`ResourceEntity.cpp:77`). The boundary is `CreateResourceFromResourceData`,
   which gets a `Result` form in PR F2. The GUI can still use the
   default-resource fallback, but as an explicit choice.
-- Third-party code that throws (cpptoml, CppFormat, the STL). The exception
+- Third-party code that throws (toml++, CppFormat, the STL). The exception
   boundary contains it.
 
 These go away on the script paths (PR F2): the Microsoft-only

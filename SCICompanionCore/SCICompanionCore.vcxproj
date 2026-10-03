@@ -50,7 +50,7 @@
       <PreprocessorDefinitions>WIN32;_WINDOWS;_LIB;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)SCICompanionLib\Src\Core;$(SolutionDir)SCICompanionLib\Src\Util;$(SolutionDir)SCICompanionLib\Src\Resources;$(SolutionDir)SCICompanionLib\Src\Compile;$(SolutionDir)SCICompanionLib\Src\Cli;$(SolutionDir)SCICompanionLib\Src\CRC32;$(SolutionDir)SCICompanionLib\Src\CppFormat;$(SolutionDir)SCICompanionLib\Src\cpptoml;$(SolutionDir)SCICompanionLib\Src\r8brain;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)SCICompanionLib\Src\Core;$(SolutionDir)SCICompanionLib\Src\Util;$(SolutionDir)SCICompanionLib\Src\Resources;$(SolutionDir)SCICompanionLib\Src\Compile;$(SolutionDir)SCICompanionLib\Src\Cli;$(SolutionDir)SCICompanionLib\Src\CRC32;$(SolutionDir)SCICompanionLib\Src\CppFormat;$(SolutionDir)SCICompanionLib\Src\r8brain;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
   </ItemDefinitionGroup>
@@ -65,7 +65,7 @@
       <PreprocessorDefinitions>WIN32;_WINDOWS;_LIB;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)SCICompanionLib\Src\Core;$(SolutionDir)SCICompanionLib\Src\Util;$(SolutionDir)SCICompanionLib\Src\Resources;$(SolutionDir)SCICompanionLib\Src\Compile;$(SolutionDir)SCICompanionLib\Src\Cli;$(SolutionDir)SCICompanionLib\Src\CRC32;$(SolutionDir)SCICompanionLib\Src\CppFormat;$(SolutionDir)SCICompanionLib\Src\cpptoml;$(SolutionDir)SCICompanionLib\Src\r8brain;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)SCICompanionLib\Src\Core;$(SolutionDir)SCICompanionLib\Src\Util;$(SolutionDir)SCICompanionLib\Src\Resources;$(SolutionDir)SCICompanionLib\Src\Compile;$(SolutionDir)SCICompanionLib\Src\Cli;$(SolutionDir)SCICompanionLib\Src\CRC32;$(SolutionDir)SCICompanionLib\Src\CppFormat;$(SolutionDir)SCICompanionLib\Src\r8brain;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
   </ItemDefinitionGroup>
@@ -139,7 +139,6 @@
     <ClInclude Include="..\SCICompanionLib\Src\Core\GameSession.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Core\Result.h" />
     <ClInclude Include="..\SCICompanionLib\Src\CppFormat\format.h" />
-    <ClInclude Include="..\SCICompanionLib\Src\cpptoml\cpptoml.h" />
     <ClInclude Include="..\SCICompanionLib\Src\CRC32\crc.h" />
     <ClInclude Include="..\SCICompanionLib\Src\r8brain\CDSPBlockConvolver.h" />
     <ClInclude Include="..\SCICompanionLib\Src\r8brain\CDSPFIRFilter.h" />
@@ -211,6 +210,7 @@
     <ClInclude Include="..\SCICompanionLib\Src\Util\Stream.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Util\StringUtil.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Util\TalkerToViewMap.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\TomlFile.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Util\Version.h" />
   </ItemGroup>
   <ItemGroup>
@@ -332,6 +332,7 @@
     <ClCompile Include="..\SCICompanionLib\Src\Util\SoundUtil.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Util\Stream.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Util\TalkerToViewMap.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\TomlFile.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Util\util.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Util\Version.cpp" />
   </ItemGroup>

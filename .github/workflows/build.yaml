@@ -189,6 +189,7 @@ jobs:
           @{ src = "SCICompanion\Files\CompileInclude"; dst = "Release\include" },
           @{ src = "SCICompanion\Files\Decompiler";     dst = "Release\Decompiler" },
           @{ src = "SCICompanion\Files\Objects";        dst = "Release\Objects" },
+          @{ src = "SCICompanion\Files\Samples";        dst = "Release\Samples" },
           @{ src = "SCICompanion\Tools";                dst = "Release\Tools" }
         )
         foreach ($p in $pairs) {

@@ -13,8 +13,8 @@ in two static libraries:
   in `SCICompanionLib\Src`): the engine, with no MFC. `Src\Core`,
   `Src\Compile`, `Src\Resources` and `Src\Cli`, except the GUI files
   `FontOperations.cpp`, `PicDrawManager.cpp` and `PicOperations.cpp`; the
-  engine files of `Src\Util`; and the vendored `CppFormat`, `CRC32`,
-  `cpptoml` and `r8brain`. `SCICompanionCore.vcxproj` lists them. Its
+  engine files of `Src\Util`; and the vendored `CppFormat`, `CRC32` and
+  `r8brain`. `SCICompanionCore.vcxproj` lists them. Its
   precompiled header (`SCICompanionCore\stdafx.h`) has Windows, ATL's
   `CPoint`, `CSize` and `CRect`, and the STL; an MFC header stops the
   compile. Add a new engine file to `SCICompanionCore.vcxproj` and its
@@ -44,7 +44,7 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
 - **Debug | Win32 does not build locally** (a vendored dependency has no
   Debug|Win32 configuration, among other issues). Use Release for local builds
   and CI.
-- **vcpkg gives the libraries tl::expected and CLI11** (manifest mode:
+- **vcpkg gives the libraries tl::expected, CLI11 and toml++** (manifest mode:
   `vcpkg.json` in the repository root, with pinned versions; the MSBuild
   integration is in `Directory.Build.props` and `Directory.Build.targets`).
   The build uses the vcpkg of `VCPKG_ROOT`, else `VCPKG_INSTALLATION_ROOT`
@@ -53,8 +53,10 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
   first build downloads the packages and the tools of vcpkg, into
   `vcpkg_installed\` (git ignores it) and `%LOCALAPPDATA%\vcpkg`. Do not
   copy a new library into the repository: add it to `vcpkg.json`.
-  tl::expected is header-only; vcpkg compiles CLI11 into `CLI11.lib`, and
-  links it into each program. The projects link the C runtime statically
+  tl::expected is header-only; vcpkg compiles CLI11 into `CLI11.lib` and
+  toml++ into `tomlplusplus.lib`, and links them into each program.
+  Include toml++ through `Src\Util\TomlFile.h` (it sets
+  `TOML_HEADER_ONLY` to 0 for the compiled library). The projects link the C runtime statically
   (static MFC; `SCICompanionCore` and `SCICompanionCli` set `/MT`) with the
   v143 toolset, so the triplet is the overlay
   `triplets\x86-windows-static-v143.cmake` (static C runtime, static

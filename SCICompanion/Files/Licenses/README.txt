@@ -13,13 +13,13 @@ uses:
   - cppformat_README.rst      - the C++ Format (fmt) library
   - giflib-AUTHORS.txt        - giflib
   - r8brain-License.txt       - the r8brain sample-rate converter
-  - cpptoml-LICENSE.txt       - cpptoml (MIT)
   - CRC32-notice.txt          - CRC32 routines (public domain)
   - Annosoft-LipSync-license.txt - the Annosoft LipSync SDK
   - CrystalEdit-notice.txt    - the Crystal Edit text editor component
   - Prof-UIS-license.txt      - the Prof-UIS UI framework (freeware EULA)
   - tl-expected-COPYING.txt   - tl::expected (CC0 1.0, public domain dedication)
   - CLI11-LICENSE.txt         - CLI11 2.6.2, the command-line parser of scic.exe (BSD-3-Clause)
+  - tomlplusplus-LICENSE.txt  - toml++ 3.4.0, the parser of Decompiler.ini and the phoneme maps (MIT)
 
 Prof-UIS is freeware for non-commercial use and its notices must not be
 removed; see Prof-UIS-license.txt for the full terms.
