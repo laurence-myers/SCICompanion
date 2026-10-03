@@ -20,6 +20,7 @@
 
 (public
 	debugHandler 0
+	dInvD 1
 )
 
 (local

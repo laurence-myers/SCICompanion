@@ -233,8 +233,8 @@
 	
 	(method (setScale param1 &tmp temp0 temp1 temp2 [temp3 40])
 		(cond 
-			((not argc) (|= scaleSignal $0001) (&= scaleSignal (~ $0002)))
-			((not param1) (&= scaleSignal (~ (| $0001 $0002))))
+			((not argc) (|= scaleSignal $0001) (&= scaleSignal $fffd))
+			((not param1) (&= scaleSignal $fffc))
 			((< param1 (gRoom vanishingY?))
 				(Printf
 					{<%s setScale:> y value less than vanishingY}
@@ -245,7 +245,7 @@
 				(= temp0 (- param1 (gRoom vanishingY?)))
 				(= temp1 (- 190 param1))
 				(= temp2 (+ (/ (* temp1 100) temp0) 100))
-				(|= scaleSignal (| $0001 $0002))
+				(|= scaleSignal $0003)
 				(= maxScale (/ (* temp2 128) 100))
 			)
 		)
@@ -350,7 +350,7 @@
 			((not argc) (super setScale:))
 			((IsObject param1)
 				(|= scaleSignal $0001)
-				(&= scaleSignal (~ $0002))
+				(&= scaleSignal $fffd)
 				(= scaler
 					(if (& (param1 -info-?) $8000)
 						(param1 new:)

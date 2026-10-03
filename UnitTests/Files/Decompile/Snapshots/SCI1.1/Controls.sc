@@ -47,11 +47,11 @@
 	)
 	
 	(method (enable param1)
-		(if param1 (|= state $0001) else (&= state (~ $0001)))
+		(if param1 (|= state $0001) else (&= state $fffe))
 	)
 	
 	(method (select param1)
-		(if param1 (|= state $0008) else (&= state (~ $0008)))
+		(if param1 (|= state $0008) else (&= state $fff7))
 		(self draw:)
 	)
 	
@@ -201,10 +201,10 @@
 		(super handleEvent: param1)
 	)
 	
-	(method (setSize param1 &tmp [temp0 2] temp2 temp3)
-		(TextSize @temp0 text font (if argc param1 else 0))
-		(= nsBottom (+ nsTop temp2))
-		(= nsRight (+ nsLeft temp3))
+	(method (setSize param1 &tmp [temp0 4])
+		(TextSize @[temp0 0] text font (if argc param1 else 0))
+		(= nsBottom (+ nsTop [temp0 2]))
+		(= nsRight (+ nsLeft [temp0 3]))
 	)
 	
 	(method (draw)
@@ -397,13 +397,13 @@
 		)
 	)
 	
-	(method (setSize &tmp dialogFirst temp1 theNsTop theNsLeft theNsBottom theNsRight)
+	(method (setSize &tmp dialogFirst temp1 [theNsTop 4])
 		(if text
-			(TextSize @theNsTop text font -1 0)
-			(= nsTop theNsTop)
-			(= nsLeft theNsLeft)
-			(= nsBottom theNsBottom)
-			(= nsRight theNsRight)
+			(TextSize @[theNsTop 0] text font -1 0)
+			(= nsTop [theNsTop 0])
+			(= nsLeft [theNsTop 1])
+			(= nsBottom [theNsTop 2])
+			(= nsRight [theNsTop 3])
 		else
 			(= nsRight (= nsBottom (= nsLeft (= nsTop 0))))
 		)

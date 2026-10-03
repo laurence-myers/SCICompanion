@@ -229,7 +229,7 @@
 	)
 )
 
-(procedure (localproc_04b3)
+(procedure (localproc_04b2)
 	(= local391
 		(Print
 			addText: {doVerb method?}
@@ -240,7 +240,7 @@
 	)
 )
 
-(procedure (localproc_04de param1)
+(procedure (localproc_04dd param1)
 	(newFile name: @gDebugFilename writeString: param1 close:)
 )
 
@@ -325,7 +325,7 @@
 			(temp15 y: (newEvent y?))
 			(newEvent dispose:)
 		)
-		(localproc_04b3)
+		(localproc_04b2)
 		(FeatureSaver doit: temp15)
 		(= gWindow theWindow)
 	)
@@ -469,33 +469,33 @@
 				init:
 			)
 		)
-		(localproc_04de @temp0)
+		(localproc_04dd @temp0)
 		(if local391
 			(Format
 				@temp0
 				{ \t(method (doVerb theVerb)\n\n\t\t(switch theVerb\n\n}
 			)
-			(localproc_04de @temp0)
-			(if local180
+			(localproc_04dd @temp0)
+			(if [local180 0]
 				(Format @temp0 { \t\t\t(LOOK\n\n\t\t\t)\n\n} @local180)
-				(localproc_04de @temp0)
+				(localproc_04dd @temp0)
 			)
-			(if local80
+			(if [local80 0]
 				(Format @temp0 { \t\t\t(DO\n\n\t\t\t)\n\n} @local80)
-				(localproc_04de @temp0)
+				(localproc_04dd @temp0)
 			)
-			(if local280
+			(if [local280 0]
 				(Format @temp0 { \t\t\t(TALK\n\n\t\t\t)\n\n} @local280)
-				(localproc_04de @temp0)
+				(localproc_04dd @temp0)
 			)
 			(Format
 				@temp0
 				{ \t\t\t(else\n\n\t\t\t\t(super doVerb: theVerb)\n\n\t\t\t)\n\n\t\t)\n\n\t)\n\n}
 			)
-			(localproc_04de @temp0)
+			(localproc_04dd @temp0)
 		)
 		(StrCpy @temp0 {)\n\n})
-		(localproc_04de @temp0)
+		(localproc_04dd @temp0)
 		(if (param1 isMemberOf: Feature)
 			(param1 dispose:)
 		else

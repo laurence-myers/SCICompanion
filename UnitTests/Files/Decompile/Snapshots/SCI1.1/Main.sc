@@ -10,7 +10,6 @@
 (use PseudoMouse)
 (use BorderWindow)
 (use IconItem)
-(use Polygon)
 (use Grooper)
 (use Sound)
 (use Game)
@@ -31,8 +30,6 @@
 	ScoreFlag 10
 	HideStatus 11
 	DebugPrint 12
-	AddPolygonsToRoom 13
-	CreateNewPolygon 14
 )
 
 (local
@@ -306,52 +303,6 @@
 	(if gDebugOut (gDebugOut debugPrint: &rest))
 )
 
-(procedure (AddPolygonsToRoom param1 &tmp temp0)
-	(if (u< param1 100)
-		(Prints {polyBuffer is not a pointer. Polygon ignored.})
-	else
-		(= temp0 (Memory 5 param1))
-		(+= param1 2)
-		(while temp0
-			(gRoom
-				addObstacle:
-					(if (== temp0 1)
-						(localproc_0403 param1)
-					else
-						(localproc_0403 param1 @param1)
-					)
-			)
-			(-- temp0)
-		)
-	)
-)
-
-(procedure (CreateNewPolygon param1 &tmp temp0)
-	(if (u< param1 100)
-		(Prints {polyBuffer is not a pointer. Polygon ignored.})
-		(return 0)
-	else
-		(= temp0 (Memory 5 param1))
-		(+= param1 2)
-		(return (localproc_0403 param1 &rest))
-	)
-)
-
-(procedure (localproc_0403 param1 param2 &tmp newPolygon temp1)
-	(= newPolygon (Polygon new:))
-	(= temp1 (Memory 5 (+ param1 2)))
-	(newPolygon
-		dynamic: 0
-		type: (Memory 5 param1)
-		size: temp1
-		points: (+ param1 4)
-	)
-	(if (> argc 1)
-		(Memory 6 param2 (+ param1 4 (* 4 temp1)))
-	)
-	(return newPolygon)
-)
-
 (instance rm0Sound of Sound
 	(properties
 		priority 15
@@ -592,9 +543,9 @@
 				width: 75
 				window: gWindow
 				mode: 1
-				addText: 20 1 0 1 0 0 0
-				addColorButton: 1 20 1 0 2 0 40 0
-				addColorButton: 0 20 1 0 3 0 50 0
+				addText: 20 0 0 1 0 0 0
+				addButton: 1 20 0 0 3 0 20 0
+				addButton: 0 20 0 0 4 40 20 0
 				init:
 			)
 		)
@@ -726,9 +677,9 @@
 				font: gFont
 				width: 75
 				mode: 1
-				addText: 19 1 0 1 0 0 0
-				addColorButton: 1 19 1 0 2 0 25 0
-				addColorButton: 0 19 1 0 3 0 35 0
+				addText: 19 0 0 1 0 0 0
+				addButton: 1 19 0 0 3 0 20 0
+				addButton: 0 19 0 0 4 40 20 0
 				init:
 			)
 		)

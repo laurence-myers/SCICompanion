@@ -393,7 +393,7 @@
 			)
 			(1
 				(switch (param1 modifiers?)
-					((| $0004 $0008)
+					(12
 						(param1 claimed: 1)
 						(Format @temp0 10 4 (param1 x?) (param1 y?))
 						(= gRoomObstacles
@@ -411,11 +411,11 @@
 						(newEvent dispose:)
 						(gRoomObstacles dispose:)
 					)
-					((| $0004 $0001)
+					(5
 						(param1 type: 4 message: 4864)
 						(self handleEvent: param1)
 					)
-					((| $0004 $0002)
+					(6
 						(param1 type: 4 message: 4608)
 						(self handleEvent: param1)
 					)

@@ -2,6 +2,7 @@
 (script# 110)
 (include sci.sh)
 (use Main)
+(use Polygon)
 (use Game)
 
 (public
@@ -22,7 +23,14 @@
 	)
 	
 	(method (init)
-		(AddPolygonsToRoom @P_Default110)
+		(gRoom
+			addObstacle:
+				((Polygon new:)
+					type: 3
+					init: 319 189 319 50 0 50 0 189
+					yourself:
+				)
+		)
 		(super init:)
 		(switch gPreviousRoomNumber
 			(else 

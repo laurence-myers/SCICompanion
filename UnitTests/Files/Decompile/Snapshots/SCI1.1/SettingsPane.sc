@@ -126,7 +126,7 @@
 				iconMessageMode
 				iconHelp
 			eachElementDo: 219 0
-			eachElementDo: 220 4
+			eachElementDo: 220 5
 			eachElementDo: 222 0
 			eachElementDo: 223 5
 			helpIconItem: iconHelp
