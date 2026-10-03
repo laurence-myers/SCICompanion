@@ -1667,6 +1667,7 @@ void CompileContext::ResolveSCOPropertyTokens()
 			if (property.NeedsReloc())
 			{
 				auto itFind = _tokenToSourceOffset.find(property.GetValue());
+				assert(itFind != _tokenToSourceOffset.end());
 				if (itFind != _tokenToSourceOffset.end())
 				{
 					property.SetValue(itFind->second);
