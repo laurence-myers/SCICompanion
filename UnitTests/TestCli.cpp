@@ -1049,6 +1049,21 @@ namespace UnitTests
             }
         }
 
+        // script compile writes the .sco that script sco makes from the
+        // compiled script: a string default of a class property (Gauge's
+        // higher, in the SCI1.1 template) has its offset in the compiled
+        // script, not the compiler's temporary token.
+        TEST_METHOD(Sco_AfterCompile_ChangesNoObjectFile)
+        {
+            for (const char *templateFolder : { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" })
+            {
+                CopyTemplate(templateFolder);
+                cli::StringConsole compile = Expect(0, { "script", "compile", _copyFolder, "--all" });
+                cli::StringConsole sco = Expect(0, { "script", "sco", _copyFolder, "--all" });
+                std::string output = sco.out + sco.err;
+                Assert::IsTrue(output.find("Wrote 0 .sco files") != std::string::npos, Wide(std::string(templateFolder) + "\n" + output).c_str());
+            }
+        }
         // A public block that the compiler refuses, and a syntax error, fail
         // the script (exit code 6), in the MSBuild format, and write no .sco:
         // the .sco builder checks the public block as the compiler does.
