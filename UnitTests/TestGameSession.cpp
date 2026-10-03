@@ -650,5 +650,68 @@ namespace UnitTests
             sci::SourceCodeWriter out(text, script.get());
             script->OutputSourceCode(out);
             Assert::IsTrue(text.str().find("palFIND_COLOR") != std::string::npos, L"the enum from sci.sh must name the value");
-        }    };
+        }
+
+        // A Decompiler.ini value of the wrong type (a number where a string
+        // or an array of strings is expected, a value where a table is
+        // expected) is ignored; the other values are read, and a value of an
+        // array keeps its position.
+        TEST_METHOD(DecompilerConfig_ValuesOfTheWrongType_AreSkipped)
+        {
+            _game.Make(TemplateSci11);
+            WriteFileText(_game.Src("Decompiler.ini"),
+                "[methodParameterNames]\n"
+                "doit = [ \"first\", 2, \"third\" ]\n"
+                "init = 5\n"
+                "[bitfieldProperties]\n"
+                "bitfieldProperties = [ 1, \"signal\" ]\n"
+                "[textResourceTuples]\n"
+                "textResourceTuples = \"Print\"\n"
+                "[enums]\n"
+                "badEnum = 7\n"
+                "[commonSwitchValueTypes]\n"
+                "state = 3\n"
+                "[methodParameterTypes]\n"
+                "setCycle = 4\n"
+                "[kernelParameterTypes]\n"
+                "Load = [ \"rsType\", 9 ]\n");
+
+            GameSession &session = _game.Open();
+            GlobalCompiledScriptLookups lookups;
+            Assert::IsTrue(lookups.Load(session.Helper()), L"the lookups must load");
+            uint16_t dummy;
+            lookups.GetSelectorTable().ReverseLookup("", dummy);
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(session.ResourceMap(), lookups.GetSelectorTable());
+
+            Assert::IsTrue(config->error.empty(), Wide(config->error).c_str());
+            std::vector<std::string> names = config->GetParameterNamesFor(nullptr, "doit");
+            Assert::AreEqual((size_t)3, names.size(), L"each name keeps its position");
+            Assert::AreEqual(std::string("first"), names[0]);
+            Assert::AreEqual(std::string(), names[1], L"the number gives no name");
+            Assert::AreEqual(std::string("third"), names[2]);
+            Assert::IsTrue(config->GetParameterNamesFor(nullptr, "init").empty());
+            Assert::IsTrue(config->IsBitfieldProperty("signal"), L"the string after the number is read");
+            Assert::IsFalse(config->IsTextResourceTupleProcedure("Print"), L"a string is not an array");
+        }
+
+        // A Decompiler.ini that is not valid TOML gives the error, with the
+        // file, the line and the column.
+        TEST_METHOD(DecompilerConfig_InvalidToml_GivesTheLine)
+        {
+            _game.Make(TemplateSci11);
+            WriteFileText(_game.Src("Decompiler.ini"),
+                "[enums]\n"
+                "evType = = [ \"ev.*\" ]\n");
+
+            GameSession &session = _game.Open();
+            GlobalCompiledScriptLookups lookups;
+            Assert::IsTrue(lookups.Load(session.Helper()), L"the lookups must load");
+            uint16_t dummy;
+            lookups.GetSelectorTable().ReverseLookup("", dummy);
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(session.ResourceMap(), lookups.GetSelectorTable());
+
+            Assert::IsTrue(config->error.find("Decompiler.ini(2,") != std::string::npos, Wide(config->error).c_str());
+            Assert::IsTrue(config->GetParameterNamesFor(nullptr, "doit").empty());
+        }
+    };
 }

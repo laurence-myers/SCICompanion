@@ -159,7 +159,10 @@ public:
 					int index = 1;  // Params start at 1
 					for (string &name : config->GetParameterNamesFor(classDef.get(), method->GetName()))
 					{
-						SetRenamed(method.get(), _GetParamVariableName(index), name, false);
+						if (!name.empty())
+						{
+							SetRenamed(method.get(), _GetParamVariableName(index), name, false);
+						}
 						index++;
 					}
 				}

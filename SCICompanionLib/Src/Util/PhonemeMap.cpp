@@ -14,11 +14,10 @@
 #include "stdafx.h"
 #include "PhonemeMap.h"
 #include "GameFolderHelper.h"
-#include "cpptoml.h"
+#include "TomlFile.h"
 #include "format.h"
 
 using namespace std;
-using namespace cpptoml;
 
 std::unordered_map<std::string, std::string> CreatePhonemeToExampleMap();
 
@@ -43,23 +42,24 @@ std::unique_ptr<PhonemeMap> LoadPhonemeMapForViewLoop(const GameFolderHelper &he
 
 PhonemeMap::PhonemeMap(const std::string &filename) : _filespec(filename.substr(filename.find_last_of("\\/")))
 {
-	try
+	if (PathFileExists(filename.c_str()))
 	{
-		if (PathFileExists(filename.c_str()))
+		sci::Result<toml::table> table = ParseTomlFile(filename);
+		if (table)
 		{
-			unique_ptr<cpptoml::table> table = make_unique<cpptoml::table>(parse_file(filename));
-			if (table->contains("phoneme_to_cel"))
+			const toml::table *phonemes = (*table)["phoneme_to_cel"].as_table();
+			if (phonemes)
 			{
-				shared_ptr<cpptoml::table> phonemes = table->get_table("phoneme_to_cel");
-				for (auto entry : *phonemes.get())
+				for (const auto &entry : *phonemes)
 				{
-					// as<int64_t>() returns null when the value is not an integer
-					// (for example `ah = "3"`). That is not a parse_exception, so
-					// the catch below did not see it and the dereference crashed (#73).
-					auto value = entry.second->as<int64_t>();
+					string phoneme(entry.first.str());
+					// A value that is not an integer (for example `ah = "3"`)
+					// is not a parse error: it is reported, and the entry is
+					// skipped.
+					const toml::value<int64_t> *value = entry.second.as_integer();
 					if (value)
 					{
-						_phonemeToCel[entry.first] = (int)(*value).get();
+						_phonemeToCel[phoneme] = (int)value->get();
 					}
 					else
 					{
@@ -67,7 +67,7 @@ PhonemeMap::PhonemeMap(const std::string &filename) : _filespec(filename.substr(
 						{
 							_errors += "\n";
 						}
-						_errors += "phoneme_to_cel." + entry.first + " is not an integer; entry ignored.";
+						_errors += "phoneme_to_cel." + phoneme + " is not an integer; entry ignored.";
 					}
 				}
 			}
@@ -81,12 +81,12 @@ PhonemeMap::PhonemeMap(const std::string &filename) : _filespec(filename.substr(
 		}
 		else
 		{
-			_errors = std::string("Can't open ") + filename;
+			_errors = table.error().ToString();
 		}
 	}
-	catch (cpptoml::parse_exception &e)
+	else
 	{
-		_errors = e.what();
+		_errors = std::string("Can't open ") + filename;
 	}
 }
 

@@ -16,10 +16,6 @@
 class CResourceMap;
 class SelectorTable;
 
-namespace cpptoml
-{
-	class table;
-}
 namespace sci
 {
 	class ClassDefinition;
@@ -30,6 +26,8 @@ class SelectorTable;
 class IDecompilerConfig
 {
 public:
+	// The names of the parameters of the method, in order. An empty name
+	// keeps the position of a parameter that has no name.
 	virtual std::vector<std::string> GetParameterNamesFor(sci::ClassDefinition *classDef, const std::string &methodName) const = 0;
 	virtual void ResolveMethodCallParameterTypes(sci::SendParam &sendParam) const = 0;
 	virtual void ResolveProcedureCallParameterTypes(sci::ProcedureCall &procCall) const = 0;

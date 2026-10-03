@@ -13,12 +13,10 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "TalkerToViewMap.h"
-#include "cpptoml.h"
 #include "format.h"
 #include "CoreLog.h"
 
 using namespace std;
-using namespace cpptoml;
 
 TalkerToViewMap::TalkerToViewMap(const std::string &lipSyncFolder)
 {

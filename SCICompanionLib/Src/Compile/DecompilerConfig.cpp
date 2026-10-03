@@ -12,7 +12,7 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #include "stdafx.h"
-#include "cpptoml.h"
+#include "TomlFile.h"
 #include "ScriptOMAll.h"
 #include "GameFolderHelper.h"
 #include "ResourceMap.h"
@@ -27,12 +27,28 @@
 
 using namespace std;
 using namespace sci;
-using namespace cpptoml;
 
 class DummyLog : public ICompileLog
 {
 	void ReportResult(const CompileResult &result) override {} 
 };
+
+// The strings of a TOML array. A value that is not a string gives an empty
+// string, as the placeholder "" does, so each string keeps its position. A
+// node that is not an array gives no strings.
+vector<string> GetTomlStrings(const toml::node *node)
+{
+	vector<string> strings;
+	const toml::array *array = node ? node->as_array() : nullptr;
+	if (array)
+	{
+		for (const toml::node &element : *array)
+		{
+			strings.push_back(element.value<string>().value_or(string()));
+		}
+	}
+	return strings;
+}
 
 // The defines of a header of the include folder. A header that cannot be read
 // gives an empty script, and one that does not parse the defines before its
@@ -66,13 +82,10 @@ public:
 		unique_ptr<Script> definesScript = GetDefinesScript(helper, includeFolder, "sci.sh", headerWarnings);
 		unique_ptr<Script> keysScript = GetDefinesScript(helper, includeFolder, "keys.sh", headerWarnings);
 
-		try
+		sci::Result<toml::table> table = ParseTomlFile(decompilerIniPath);
+		if (table)
 		{
-			_table = make_unique<table>(parse_file(decompilerIniPath));
-			if (_table->contains("methodParameterNames"))
-			{
-				_methodParameterNames = _table->get_table("methodParameterNames");
-			}
+			_table = std::move(*table);
 			_CacheBitfieldProps();
 			_CacheTextResourceTupleProcedures();
 			_CacheEnums({ definesScript.get(), keysScript.get() });
@@ -81,9 +94,9 @@ public:
 			_CacheSwitchValueTypes();
 			//_CacheGlobals();
 		}
-		catch (parse_exception &e)
+		else
 		{
-			error = e.what();
+			error = table.error().ToString();
 		}
 	}
 
@@ -92,26 +105,19 @@ public:
 	std::vector<std::string> GetParameterNamesFor(sci::ClassDefinition *classDef, const std::string &methodName) const
 	{
 		vector<string> paramsOut;
-		if (_methodParameterNames && _methodParameterNames->contains(methodName))
+		const toml::node *params = _table["methodParameterNames"][methodName].node();
+		if (params)
 		{
-			auto params = _methodParameterNames->get(methodName);
 			if (params->is_array())
 			{
-				for (const auto &paramName : params->as_array()->get())
-				{
-					auto name = paramName->as<std::string>();
-					if (name)
-					{
-						paramsOut.push_back(name->get());
-					}
-				}
+				paramsOut = GetTomlStrings(params);
 			}
-			else if (params->is_value()) // Just a single guy
+			else
 			{
-				auto name = params->as<string>();
+				optional<string> name = params->value<string>(); // Just a single guy
 				if (name)
 				{
-					paramsOut.push_back(name->get());
+					paramsOut.push_back(*name);
 				}
 			}
 		}
@@ -254,24 +260,22 @@ private:
 
 	void _CacheBitfieldProps()
 	{
-		if (_table->contains_qualified("bitfieldProperties.bitfieldProperties"))
+		for (const string &prop : GetTomlStrings(_table["bitfieldProperties"]["bitfieldProperties"].node()))
 		{
-			auto bitfieldProps = _table->get_array_qualified("bitfieldProperties.bitfieldProperties");
-			for (auto prop : bitfieldProps->get())
+			if (!prop.empty())
 			{
-				_bitfieldProperties.insert(prop->as<string>()->get());
+				_bitfieldProperties.insert(prop);
 			}
 		}
 	}
 
 	void _CacheTextResourceTupleProcedures()
 	{
-		if (_table->contains_qualified("textResourceTuples.textResourceTuples"))
+		for (const string &prop : GetTomlStrings(_table["textResourceTuples"]["textResourceTuples"].node()))
 		{
-			auto textResourceProcs = _table->get_array_qualified("textResourceTuples.textResourceTuples");
-			for (auto prop : textResourceProcs->get())
+			if (!prop.empty())
 			{
-				_textResourceTupleProcedures.insert(prop->as<string>()->get());
+				_textResourceTupleProcedures.insert(prop);
 			}
 		}
 	}
@@ -287,15 +291,15 @@ private:
 			}
 		}
 
-		if (_table->contains_qualified("enums"))
+		const toml::table *enums = _table["enums"].as_table();
+		if (enums)
 		{
-			for (auto keyValuePairs : *_table->get("enums")->as_table())
+			for (const auto &keyValuePair : *enums)
 			{
-				string enumCategory = keyValuePairs.first;
+				string enumCategory(keyValuePair.first.str());
 				enumList_t enumList;
-				for (auto &valueDescriptor : keyValuePairs.second->as_array()->get())
+				for (const string &valueDescriptorString : GetTomlStrings(&keyValuePair.second))
 				{
-					const string &valueDescriptorString = valueDescriptor->as<string>()->get();
 					// Match this to what's in the defines.
 					if (valueDescriptorString.find('*') == string::npos)
 					{
@@ -326,16 +330,12 @@ private:
 
 	void _CacheCallParamTypes(const string &keyName, std::unordered_map<string, vector<string>> &storage)
 	{
-		if (_table->contains_qualified(keyName))
+		const toml::table *callParamTypes = _table[keyName].as_table();
+		if (callParamTypes)
 		{
-			for (auto keyValuePairs : *_table->get(keyName)->as_table())
+			for (const auto &keyValuePair : *callParamTypes)
 			{
-				vector<string> types;
-				for (auto type : keyValuePairs.second->as_array()->get())
-				{
-					types.push_back(type->as<string>()->get());
-				}
-				storage[keyValuePairs.first] = types;
+				storage[string(keyValuePair.first.str())] = GetTomlStrings(&keyValuePair.second);
 			}
 		}
 	}
@@ -352,15 +352,15 @@ private:
 
 	void _CacheSwitchValueTypes()
 	{
-		if (_table->contains_qualified("commonSwitchValueTypes"))
+		const toml::table *switchValueTypes = _table["commonSwitchValueTypes"].as_table();
+		if (switchValueTypes)
 		{
-			for (auto keyValuePairs : *_table->get("commonSwitchValueTypes")->as_table())
+			for (const auto &keyValuePair : *switchValueTypes)
 			{
-				vector<string> types;
-				auto theValue = keyValuePairs.second->as<string>();
-				if (_enumLists.find(theValue->get()) != _enumLists.end())
+				optional<string> theValue = keyValuePair.second.value<string>();
+				if (theValue && (_enumLists.find(*theValue) != _enumLists.end()))
 				{
-					_switchValueTypes[keyValuePairs.first] = theValue->get();
+					_switchValueTypes[string(keyValuePair.first.str())] = *theValue;
 				}
 				else
 				{
@@ -381,8 +381,7 @@ private:
 
 	std::unordered_set<string> _textResourceTupleProcedures;
 
-	std::unique_ptr<cpptoml::table> _table;
-	std::shared_ptr<cpptoml::table> _methodParameterNames;
+	toml::table _table;
 
 	const SelectorTable &_selectorTable;
 };

@@ -13,6 +13,8 @@
 ***************************************************************************/
 #include "stdafx.h"
 #include "CppUnitTest.h"
+#include "Helper.h"
+#include "TestSupport.h"
 #include "PhonemeMap.h"
 #include "TalkerToViewMap.h"
 #include <filesystem>
@@ -73,6 +75,52 @@ namespace UnitTests
             Assert::AreEqual((uint16_t)0xffff, map.PhonemeToCel("ah"), L"the non-integer entry is skipped");
             Assert::IsTrue(map.HasErrors(), L"the bad entry must be reported");
             Assert::IsTrue(map.GetErrors().find("ah") != std::string::npos, L"the report names the entry");
+        }
+
+        // A phoneme map that is not valid TOML is reported, and nothing of it
+        // is read. The parse must not crash, and must not accept the file.
+        TEST_METHOD(PhonemeMap_InvalidToml_IsReported)
+        {
+            const char *documents[] =
+            {
+                "[phoneme_to_cel]\nah = [1, 2\n",
+                "[phoneme_to_cel]\nah = \"unterminated\n",
+                "[phoneme_to_cel]\nah = 1979-05-27T\n",
+                "[phoneme_to_cel\nah = 1\n",
+                "[phoneme_to_cel]\nah = { b = 1\n",
+                "[phoneme_to_cel]\nah = 1\nah = 2\n",
+                "[phoneme_to_cel]\n= 1\n",
+                "[phoneme_to_cel]\nah = 0x\n",
+                "[phoneme_to_cel]\nah = 1e\n",
+                "[phoneme_to_cel]\nah = 1e+\n",
+                "[phoneme_to_cel]\nah = 1.\n",
+                "[phoneme_to_cel]\nah = 1__2\n",
+                "[phoneme_to_cel]\nah = 1\n\xff\xfe = 2\n",
+            };
+            for (const char *document : documents)
+            {
+                std::filesystem::path path = _folder / "phonemes.ini";
+                WriteFile(path, document);
+
+                PhonemeMap map(path.string());
+
+                Assert::IsTrue(map.HasErrors(), Wide(std::string("the error must be reported: ") + document).c_str());
+                Assert::IsTrue(map.GetFileContents().empty(), Wide(std::string("a file with an error gives no text: ") + document).c_str());
+            }
+        }
+
+        // The sample phoneme maps that the program ships are valid.
+        TEST_METHOD(PhonemeMap_ShippedSamples_Load)
+        {
+            for (const char *name : { "default_phoneme_map.ini", "sample_phoneme_map.ini" })
+            {
+                PhonemeMap map(GetTestModuleDirectory() + "\\Samples\\" + name);
+
+                Assert::IsFalse(map.HasErrors(), Wide(map.GetErrors()).c_str());
+                Assert::AreEqual((size_t)39, map.Entries().size(), Wide(name).c_str());
+                Assert::AreNotEqual((uint16_t)0xffff, map.PhonemeToCel("AH"), Wide(name).c_str());
+                Assert::IsFalse(map.GetFileContents().empty(), Wide(name).c_str());
+            }
         }
 
         // TalkerToViewMap called stoi on every line. A blank or comment line

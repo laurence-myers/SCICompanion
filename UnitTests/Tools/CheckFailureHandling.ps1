@@ -34,7 +34,7 @@ $srcRoot = Join-Path $repoRoot "SCICompanionLib\Src"
 $allowPath = Join-Path $PSScriptRoot "CheckFailureHandling.allow.txt"
 
 # Third-party code keeps its own style.
-$excluded = @("CrystalEdit", "GIFLIB", "cpptoml", "CppFormat", "r8brain", "CRC32")
+$excluded = @("CrystalEdit", "GIFLIB", "CppFormat", "r8brain", "CRC32")
 
 $rules = @(
     @{ Name = "empty-catch-all"; Pattern = 'catch\s*\(\s*\.\.\.\s*\)\s*\{(?:\s|;|//[^\n]*|/\*[\s\S]*?\*/)*\}'; Folders = $null },
