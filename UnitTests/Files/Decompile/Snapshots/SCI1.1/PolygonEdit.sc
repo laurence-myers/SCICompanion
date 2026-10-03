@@ -123,7 +123,7 @@
 		array 0
 	)
 	
-	(method (init theArray &tmp temp0 temp1 temp2 temp3 [temp4 3] temp7 [temp8 40] temp48 temp49)
+	(method (init theArray &tmp temp0 temp1 temp2 temp3 [temp4 4] [temp8 40] temp48 temp49)
 		(= text (Memory 2 81))
 		(Memory 6 text 0)
 		(= temp1 (= array theArray))
@@ -135,7 +135,7 @@
 			(StrCat @temp8 {_})
 			(StrCat text @temp8)
 			(TextSize @temp4 @temp8 0 0)
-			(+= temp48 temp7)
+			(+= temp48 [temp4 3])
 			(Memory 6 (+ temp1 4) temp48)
 			(if (not (Memory 5 (+ temp1 2)))
 				(= temp49 (StrAt temp2 0))
@@ -174,6 +174,22 @@
 			(+= theArray 6)
 		)
 		(param1 claimed: 1)
+	)
+)
+
+(instance editMenu of ClickMenu
+	(properties)
+	
+	(method (init)
+		(super init: @local46)
+	)
+)
+
+(instance addMenu of ClickMenu
+	(properties)
+	
+	(method (init)
+		(super init: @local71)
 	)
 )
 
@@ -681,6 +697,26 @@
 	)
 )
 
+(instance readObstacle of Code
+	(properties)
+	
+	(method (doit param1 param2 &tmp temp0 temp1 polyEditAdd)
+		(= polyEditAdd (PolyEdit add:))
+		(= temp0 0)
+		(= temp1 (param1 points?))
+		(while (< temp0 (param1 size?))
+			(polyEditAdd
+				add: (Memory 5 temp1) (Memory 5 (+ temp1 2)) 0
+				type: (param1 type?)
+				srcList: param2
+			)
+			(++ temp0)
+			(+= temp1 4)
+		)
+		(polyEditAdd closed: 1)
+	)
+)
+
 (class PolyEdit of List
 	(properties
 		elements 0
@@ -1152,41 +1188,5 @@
 		(newFile writeString: {\t\t)\n\n})
 		(newFile dispose:)
 		(return 1)
-	)
-)
-
-(instance editMenu of ClickMenu
-	(properties)
-	
-	(method (init)
-		(super init: @local46)
-	)
-)
-
-(instance addMenu of ClickMenu
-	(properties)
-	
-	(method (init)
-		(super init: @local71)
-	)
-)
-
-(instance readObstacle of Code
-	(properties)
-	
-	(method (doit param1 param2 &tmp temp0 temp1 polyEditAdd)
-		(= polyEditAdd (PolyEdit add:))
-		(= temp0 0)
-		(= temp1 (param1 points?))
-		(while (< temp0 (param1 size?))
-			(polyEditAdd
-				add: (Memory 5 temp1) (Memory 5 (+ temp1 2)) 0
-				type: (param1 type?)
-				srcList: param2
-			)
-			(++ temp0)
-			(+= temp1 4)
-		)
-		(polyEditAdd closed: 1)
 	)
 )

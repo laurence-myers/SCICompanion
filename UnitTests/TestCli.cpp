@@ -1033,9 +1033,9 @@ namespace UnitTests
         }
 
         // Plan section 4.6: script sco makes the .sco files of both templates
-        // from their sources. The SCI1.1 template's Main and DebugHandler
-        // get a warning in the MSBuild format: their compiled scripts export
-        // slots that their public blocks do not list.
+        // from their sources. The public block of each script lists the
+        // slots that its compiled script exports, so no script gets the
+        // export warning.
         TEST_METHOD(Sco_BothTemplates)
         {
             for (const char *templateFolder : { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" })
@@ -1045,17 +1045,7 @@ namespace UnitTests
                 Assert::IsTrue(removed > 20, L"setup: the .sco files");
                 cli::StringConsole console = Expect(0, { "script", "sco", _copyFolder, "--all" });
                 Assert::AreEqual(removed, CountObjectFiles(_copyFolder), Wide(console.err).c_str());
-                bool sci11 = (std::string(templateFolder) == "\\TemplateGame\\SCI1.1");
-                size_t warnings = 0;
-                for (const std::string &line : Lines(console.err))
-                {
-                    if (line.find(": warning : The public block has the slots") != std::string::npos)
-                    {
-                        warnings++;
-                        Assert::IsTrue((line.find("Main.sc(") != std::string::npos) || (line.find("DebugHandler.sc(") != std::string::npos), Wide(line).c_str());
-                    }
-                }
-                Assert::AreEqual(sci11 ? (size_t)2 : (size_t)0, warnings, Wide(console.err).c_str());
+                Assert::AreEqual(std::string::npos, console.err.find(": warning : The public block has the slots"), Wide(console.err).c_str());
             }
         }
 

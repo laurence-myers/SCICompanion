@@ -157,52 +157,80 @@
 		)
 	)
 	
-	(method (addButton param1 param2 param3 param4 param5 param6 param7 theTheGRoomNumber &tmp temp0 temp1 temp2 temp3 temp4 temp5 theGRoomNumber temp7 temp8)
+	(method (addButton param1 theTheGRoomNumber &tmp theTheTheGRoomNumber theTheTheGRoomNumber_2 theTheTheGRoomNumber_3 temp3 theTheTheGRoomNumber_4 theTheTheGRoomNumber_5 theGRoomNumber temp7 temp8)
 		(if (not dialog) (= dialog (Dialog new:)))
 		(if (== font -1) (= font gFont))
 		(if (> argc 4)
-			(= temp0 param2)
-			(= temp1 param3)
-			(= temp2 param4)
-			(= temp3 (if param5 param5 else 1))
-			(= temp4 0)
-			(= temp5 0)
+			(= theTheTheGRoomNumber [theTheGRoomNumber 0])
+			(= theTheTheGRoomNumber_2 [theTheGRoomNumber 1])
+			(= theTheTheGRoomNumber_3 [theTheGRoomNumber 2])
+			(= temp3
+				(if [theTheGRoomNumber 3] [theTheGRoomNumber 3] else 1)
+			)
+			(= theTheTheGRoomNumber_4 0)
+			(= theTheTheGRoomNumber_5 0)
 			(= theGRoomNumber gRoomNumber)
 			(if (> argc 5)
-				(= temp4 param6)
+				(= theTheTheGRoomNumber_4 [theTheGRoomNumber 4])
 				(if (> argc 6)
-					(= temp5 param7)
-					(if (> argc 7) (= theGRoomNumber theTheGRoomNumber))
+					(= theTheTheGRoomNumber_5 [theTheGRoomNumber 5])
+					(if (> argc 7) (= theGRoomNumber [theTheGRoomNumber 6]))
 				)
 			)
 			(= temp8
-				(Message 2 theGRoomNumber temp0 temp1 temp2 temp3)
+				(Message
+					2
+					theGRoomNumber
+					theTheTheGRoomNumber
+					theTheTheGRoomNumber_2
+					theTheTheGRoomNumber_3
+					temp3
+				)
 			)
 			(if temp8
 				(= temp7
 					(Memory
 						1
 						(= temp8
-							(Message 2 theGRoomNumber temp0 temp1 temp2 temp3)
+							(Message
+								2
+								theGRoomNumber
+								theTheTheGRoomNumber
+								theTheTheGRoomNumber_2
+								theTheTheGRoomNumber_3
+								temp3
+							)
 						)
 					)
 				)
 				(if
 					(not
-						(Message 0 theGRoomNumber temp0 temp1 temp2 temp3 temp7)
+						(Message
+							0
+							theGRoomNumber
+							theTheTheGRoomNumber
+							theTheTheGRoomNumber_2
+							theTheTheGRoomNumber_3
+							temp3
+							temp7
+						)
 					)
 					(= temp7 0)
 				)
 			)
 		else
-			(= temp4 0)
-			(= temp5 0)
+			(= theTheTheGRoomNumber_4 0)
+			(= theTheTheGRoomNumber_5 0)
 			(if (> argc 2)
-				(= temp4 param3)
-				(if (> argc 3) (= temp5 param4))
+				(= theTheTheGRoomNumber_4 [theTheGRoomNumber 1])
+				(if (> argc 3)
+					(= theTheTheGRoomNumber_5 [theTheGRoomNumber 2])
+				)
 			)
-			(= temp7 (Memory 1 (+ (StrLen param2) 1)))
-			(StrCpy temp7 param2)
+			(= temp7
+				(Memory 1 (+ (StrLen [theTheGRoomNumber 0]) 1))
+			)
+			(StrCpy temp7 [theTheGRoomNumber 0])
 		)
 		(if temp7
 			(dialog
@@ -212,7 +240,7 @@
 						font: font
 						text: temp7
 						setSize:
-						moveTo: (+ 4 temp4) (+ 4 temp5)
+						moveTo: (+ 4 theTheTheGRoomNumber_4) (+ 4 theTheTheGRoomNumber_5)
 						yourself:
 					)
 				setSize:
@@ -220,40 +248,44 @@
 		)
 	)
 	
-	(method (addColorButton param1 param2 param3 param4 param5 param6 param7 theTheGRoomNumber param9 param10 param11 theTheTheTheGRoomNumber param13 param14 &tmp temp0 temp1 temp2 temp3 temp4 temp5 theGRoomNumber temp7 temp8 temp9 theTheTheGRoomNumber temp11 temp12 temp13 temp14)
+	(method (addColorButton param1 theTheGRoomNumber &tmp theTheTheGRoomNumber theTheTheGRoomNumber_2 theTheTheGRoomNumber_3 temp3 theTheTheGRoomNumber_4 theTheTheGRoomNumber_5 theGRoomNumber temp7 temp8 theTheTheGRoomNumber_6 theTheTheGRoomNumber_9 theTheTheGRoomNumber_7 theTheTheGRoomNumber_10 theTheTheGRoomNumber_8 theTheTheGRoomNumber_11)
 		(if (not dialog) (= dialog (Dialog new:)))
 		(if (== font -1) (= font gFont))
-		(= temp9 0)
-		(= temp11 15)
-		(= temp13 31)
-		(= theTheTheGRoomNumber 5)
-		(= temp12 5)
-		(= temp14 5)
-		(if (< (Abs param2) 1000)
-			(= temp0 param2)
-			(= temp1 param3)
-			(= temp2 param4)
-			(= temp3 (if param5 param5 else 1))
-			(= temp4 0)
-			(= temp5 0)
+		(= theTheTheGRoomNumber_6 0)
+		(= theTheTheGRoomNumber_7 15)
+		(= theTheTheGRoomNumber_8 31)
+		(= theTheTheGRoomNumber_9 5)
+		(= theTheTheGRoomNumber_10 5)
+		(= theTheTheGRoomNumber_11 5)
+		(if (< (Abs [theTheGRoomNumber 0]) 1000)
+			(= theTheTheGRoomNumber [theTheGRoomNumber 0])
+			(= theTheTheGRoomNumber_2 [theTheGRoomNumber 1])
+			(= theTheTheGRoomNumber_3 [theTheGRoomNumber 2])
+			(= temp3
+				(if [theTheGRoomNumber 3] [theTheGRoomNumber 3] else 1)
+			)
+			(= theTheTheGRoomNumber_4 0)
+			(= theTheTheGRoomNumber_5 0)
 			(= theGRoomNumber gRoomNumber)
 			(if (> argc 5)
-				(= temp4 param6)
+				(= theTheTheGRoomNumber_4 [theTheGRoomNumber 4])
 				(if (> argc 6)
-					(= temp5 param7)
+					(= theTheTheGRoomNumber_5 [theTheGRoomNumber 5])
 					(if (> argc 7)
-						(= theGRoomNumber theTheGRoomNumber)
+						(= theGRoomNumber [theTheGRoomNumber 6])
 						(if (> argc 8)
-							(= temp9 param9)
+							(= theTheTheGRoomNumber_6 [theTheGRoomNumber 7])
 							(if (> argc 9)
-								(= temp11 param10)
+								(= theTheTheGRoomNumber_7 [theTheGRoomNumber 8])
 								(if (> argc 10)
-									(= temp13 param11)
+									(= theTheTheGRoomNumber_8 [theTheGRoomNumber 9])
 									(if (> argc 11)
-										(= theTheTheGRoomNumber theTheTheTheGRoomNumber)
+										(= theTheTheGRoomNumber_9 [theTheGRoomNumber 10])
 										(if (> argc 12)
-											(= temp12 param13)
-											(if (> argc 13) (= temp14 param14))
+											(= theTheTheGRoomNumber_10 [theTheGRoomNumber 11])
+											(if (> argc 13)
+												(= theTheTheGRoomNumber_11 [theTheGRoomNumber 12])
+											)
 										)
 									)
 								)
@@ -263,42 +295,66 @@
 				)
 			)
 			(= temp8
-				(Message 2 theGRoomNumber temp0 temp1 temp2 temp3)
+				(Message
+					2
+					theGRoomNumber
+					theTheTheGRoomNumber
+					theTheTheGRoomNumber_2
+					theTheTheGRoomNumber_3
+					temp3
+				)
 			)
 			(if temp8
 				(= temp7
 					(Memory
 						1
 						(= temp8
-							(Message 2 theGRoomNumber temp0 temp1 temp2 temp3)
+							(Message
+								2
+								theGRoomNumber
+								theTheTheGRoomNumber
+								theTheTheGRoomNumber_2
+								theTheTheGRoomNumber_3
+								temp3
+							)
 						)
 					)
 				)
 				(if
 					(not
-						(Message 0 theGRoomNumber temp0 temp1 temp2 temp3 temp7)
+						(Message
+							0
+							theGRoomNumber
+							theTheTheGRoomNumber
+							theTheTheGRoomNumber_2
+							theTheTheGRoomNumber_3
+							temp3
+							temp7
+						)
 					)
 					(= temp7 0)
 				)
 			)
 		else
-			(= temp4 0)
-			(= temp5 0)
+			(= theTheTheGRoomNumber_4 0)
+			(= theTheTheGRoomNumber_5 0)
 			(if (> argc 2)
-				(= temp4 param3)
+				(= theTheTheGRoomNumber_4 [theTheGRoomNumber 1])
 				(if (> argc 3)
-					(= temp5 param4)
+					(= theTheTheGRoomNumber_5 [theTheGRoomNumber 2])
 					(if (> argc 4)
-						(= temp9 param5)
+						(= theTheTheGRoomNumber_6 [theTheGRoomNumber 3])
 						(if (> argc 5)
-							(= temp11 param6)
+							(= theTheTheGRoomNumber_7 [theTheGRoomNumber 4])
 							(if (> argc 6)
-								(= temp13 param7)
+								(= theTheTheGRoomNumber_8 [theTheGRoomNumber 5])
 								(if (> argc 7)
-									(= theTheTheGRoomNumber theTheGRoomNumber)
+									(= theTheTheGRoomNumber_9 [theTheGRoomNumber 6])
 									(if (> argc 8)
-										(= temp12 param9)
-										(if (> argc 9) (= temp14 param10))
+										(= theTheTheGRoomNumber_10 [theTheGRoomNumber 7])
+										(if (> argc 9)
+											(= theTheTheGRoomNumber_11 [theTheGRoomNumber 8])
+										)
 									)
 								)
 							)
@@ -306,8 +362,10 @@
 					)
 				)
 			)
-			(= temp7 (Memory 1 (+ (StrLen param2) 1)))
-			(StrCpy temp7 param2)
+			(= temp7
+				(Memory 1 (+ (StrLen [theTheGRoomNumber 0]) 1))
+			)
+			(StrCpy temp7 [theTheGRoomNumber 0])
 		)
 		(if temp7
 			(dialog
@@ -317,14 +375,14 @@
 						font: font
 						text: temp7
 						mode: mode
-						nfc: temp9
-						nbc: theTheTheGRoomNumber
-						sfc: temp13
-						sbc: temp14
-						hfc: temp11
-						hbc: temp12
+						nfc: theTheTheGRoomNumber_6
+						nbc: theTheTheGRoomNumber_9
+						sfc: theTheTheGRoomNumber_8
+						sbc: theTheTheGRoomNumber_11
+						hfc: theTheTheGRoomNumber_7
+						hbc: theTheTheGRoomNumber_10
 						setSize: width
-						moveTo: (+ 4 temp4) (+ 4 temp5)
+						moveTo: (+ 4 theTheTheGRoomNumber_4) (+ 4 theTheTheGRoomNumber_5)
 						yourself:
 					)
 				setSize:
@@ -386,38 +444,64 @@
 		)
 	)
 	
-	(method (addText param1 param2 param3 param4 param5 param6 theTheGRoomNumber &tmp temp0 temp1 temp2 temp3 temp4 temp5 theGRoomNumber temp7 temp8)
+	(method (addText theTheGRoomNumber &tmp theTheTheGRoomNumber theTheTheGRoomNumber_2 theTheTheGRoomNumber_3 temp3 theTheTheGRoomNumber_4 theTheTheGRoomNumber_5 theGRoomNumber temp7 temp8)
 		(if (not dialog) (= dialog (Dialog new:)))
 		(if (== font -1) (= font gFont))
 		(if (> argc 3)
-			(= temp0 param1)
-			(= temp1 param2)
-			(= temp2 param3)
-			(= temp3 (if param4 param4 else 1))
-			(= temp4 0)
-			(= temp5 0)
+			(= theTheTheGRoomNumber [theTheGRoomNumber 0])
+			(= theTheTheGRoomNumber_2 [theTheGRoomNumber 1])
+			(= theTheTheGRoomNumber_3 [theTheGRoomNumber 2])
+			(= temp3
+				(if [theTheGRoomNumber 3] [theTheGRoomNumber 3] else 1)
+			)
+			(= theTheTheGRoomNumber_4 0)
+			(= theTheTheGRoomNumber_5 0)
 			(= theGRoomNumber gRoomNumber)
 			(if (>= argc 5)
-				(= temp4 param5)
+				(= theTheTheGRoomNumber_4 [theTheGRoomNumber 4])
 				(if (>= argc 6)
-					(= temp5 param6)
-					(if (>= argc 7) (= theGRoomNumber theTheGRoomNumber))
+					(= theTheTheGRoomNumber_5 [theTheGRoomNumber 5])
+					(if (>= argc 7)
+						(= theGRoomNumber [theTheGRoomNumber 6])
+					)
 				)
 			)
 			(= temp8
-				(Message 2 theGRoomNumber temp0 temp1 temp2 temp3)
+				(Message
+					2
+					theGRoomNumber
+					theTheTheGRoomNumber
+					theTheTheGRoomNumber_2
+					theTheTheGRoomNumber_3
+					temp3
+				)
 			)
 			(if temp8
 				(= temp7
 					(Memory
 						1
 						(= temp8
-							(Message 2 theGRoomNumber temp0 temp1 temp2 temp3)
+							(Message
+								2
+								theGRoomNumber
+								theTheTheGRoomNumber
+								theTheTheGRoomNumber_2
+								theTheTheGRoomNumber_3
+								temp3
+							)
 						)
 					)
 				)
 				(if
-				(Message 0 theGRoomNumber temp0 temp1 temp2 temp3 temp7)
+					(Message
+						0
+						theGRoomNumber
+						theTheTheGRoomNumber
+						theTheTheGRoomNumber_2
+						theTheTheGRoomNumber_3
+						temp3
+						temp7
+					)
 					(dialog
 						add:
 							((DText new:)
@@ -425,7 +509,7 @@
 								font: font
 								mode: mode
 								setSize: width
-								moveTo: (+ 4 temp4) (+ 4 temp5)
+								moveTo: (+ 4 theTheTheGRoomNumber_4) (+ 4 theTheTheGRoomNumber_5)
 								yourself:
 							)
 						setSize:
@@ -433,14 +517,18 @@
 				)
 			)
 		else
-			(= temp4 0)
-			(= temp5 0)
+			(= theTheTheGRoomNumber_4 0)
+			(= theTheTheGRoomNumber_5 0)
 			(if (>= argc 2)
-				(= temp4 param2)
-				(if (>= argc 3) (= temp5 param3))
+				(= theTheTheGRoomNumber_4 [theTheGRoomNumber 1])
+				(if (>= argc 3)
+					(= theTheTheGRoomNumber_5 [theTheGRoomNumber 2])
+				)
 			)
-			(= temp7 (Memory 1 (+ (StrLen param1) 1)))
-			(StrCpy temp7 param1)
+			(= temp7
+				(Memory 1 (+ (StrLen [theTheGRoomNumber 0]) 1))
+			)
+			(StrCpy temp7 [theTheGRoomNumber 0])
 			(dialog
 				add:
 					((DText new:)
@@ -448,7 +536,7 @@
 						font: font
 						mode: mode
 						setSize: width
-						moveTo: (+ 4 temp4) (+ 4 temp5)
+						moveTo: (+ 4 theTheTheGRoomNumber_4) (+ 4 theTheTheGRoomNumber_5)
 						yourself:
 					)
 				setSize:
@@ -464,13 +552,13 @@
 		(Memory 3 temp1)
 	)
 	
-	(method (addTitle param1 param2 param3 param4 param5 &tmp temp0 temp1 temp2 temp3 temp4 temp5)
+	(method (addTitle param1 &tmp temp0 temp1 temp2 temp3 temp4 temp5)
 		(if (> argc 1)
-			(= temp0 param1)
-			(= temp1 param2)
-			(= temp2 param3)
-			(= temp3 param4)
-			(= temp4 param5)
+			(= temp0 [param1 0])
+			(= temp1 [param1 1])
+			(= temp2 [param1 2])
+			(= temp3 [param1 3])
+			(= temp4 [param1 4])
 			(= temp5 (Message 2 temp4 temp0 temp1 temp2 temp3))
 			(if temp5
 				(= title
@@ -482,8 +570,8 @@
 				(Message 0 temp4 temp0 temp1 temp2 temp3 title)
 			)
 		else
-			(= title (Memory 1 (+ (StrLen param1) 1)))
-			(StrCpy title param1)
+			(= title (Memory 1 (+ (StrLen [param1 0]) 1)))
+			(StrCpy title [param1 0])
 		)
 	)
 	

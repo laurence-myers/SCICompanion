@@ -77,6 +77,23 @@
 	)
 )
 
+(instance checkHiliteCode of Code
+	(properties)
+	
+	(method (doit param1 param2 param3)
+		(if
+			(and
+				(& (param1 state?) $0001)
+				(param1 check: param3)
+				(not (& (param1 state?) $0008))
+			)
+			((param2 theItem?) select: 0)
+			(param2 theItem: param1)
+			(param1 select: 1)
+		)
+	)
+)
+
 (class ChoiceNarrator of Narrator
 	(properties
 		x -1
@@ -338,7 +355,7 @@
 			)
 			(if (& gMessageType $0002) (self startAudio:))
 			(if (& gMessageType $0001) (self startText: param1))
-			(= ticks (+ ticks 60 gGameTime))
+			(+= ticks (+ 60 gGameTime))
 			(return 1)
 		)
 	)
@@ -475,23 +492,6 @@
 				)
 				(SetPort temp101)
 			)
-		)
-	)
-)
-
-(instance checkHiliteCode of Code
-	(properties)
-	
-	(method (doit param1 param2 param3)
-		(if
-			(and
-				(& (param1 state?) $0001)
-				(param1 check: param3)
-				(not (& (param1 state?) $0008))
-			)
-			((param2 theItem?) select: 0)
-			(param2 theItem: param1)
-			(param1 select: 1)
 		)
 	)
 )

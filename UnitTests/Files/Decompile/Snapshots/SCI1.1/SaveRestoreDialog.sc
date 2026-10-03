@@ -150,14 +150,14 @@
 			text: @local35
 			setSize:
 			moveTo: local1 (+ (deleteI nsBottom?) 4)
-			state: (& (changeDirI state?) (~ $0008))
+			state: (& (changeDirI state?) $fff7)
 		)
 		(Message 0 990 22 0 0 1 @local50)
 		(cancelI
 			text: @local50
 			setSize:
 			moveTo: local1 (+ (changeDirI nsBottom?) 4)
-			state: (& (cancelI state?) (~ $0008))
+			state: (& (cancelI state?) $fff7)
 		)
 		(self
 			add: selectorI okI deleteI changeDirI cancelI
@@ -174,14 +174,14 @@
 				(Message 0 990 30 0 0 1 @temp0)
 			)
 		)
-		(Instance_990_10
+		(textI
 			text: @temp0
 			setSize: (- (- nsRight nsLeft) 8)
 			moveTo: 4 4
 		)
-		(= local1 (+ (Instance_990_10 nsBottom?) 4))
+		(= local1 (+ (textI nsBottom?) 4))
 		(self eachElementDo: 187 0 local1)
-		(self add: Instance_990_10 setSize: center: open: 4 -1)
+		(self add: textI setSize: center: open: 4 -1)
 		(return 1)
 	)
 	
@@ -486,7 +486,7 @@
 	)
 )
 
-(instance Instance_990_10 of DText
+(instance textI of DText
 	(properties
 		font 0
 	)

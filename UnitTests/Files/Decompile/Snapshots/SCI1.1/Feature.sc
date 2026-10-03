@@ -235,7 +235,7 @@
 	
 	(method (approachVerbs param1 &tmp temp0 temp1)
 		(= _approachVerbs 0)
-		(if (and argc gApproachCode param1)
+		(if (and argc gApproachCode [param1 0])
 			(= temp0 0)
 			(while (< temp0 argc)
 				(= temp1 (gApproachCode doit: [param1 temp0]))
@@ -258,7 +258,7 @@
 				(&= state $fffb)
 			)
 			(2
-				(= onMeCheck theOnMeCheck_2)
+				(= onMeCheck [theOnMeCheck_2 0])
 				(&= state $fffb)
 			)
 			(1

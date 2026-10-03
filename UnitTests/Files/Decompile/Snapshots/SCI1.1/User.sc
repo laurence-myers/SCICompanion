@@ -5,6 +5,20 @@
 (use System)
 
 
+(instance uEvt of Event
+	(properties)
+	
+	(method (new)
+		(= type
+			(= message
+				(= modifiers (= y (= x (= claimed (= port 0)))))
+			)
+		)
+		(GetEvent 32767 self)
+		(return self)
+	)
+)
+
 (class User of Obj
 	(properties
 		alterEgo 0
@@ -207,20 +221,6 @@
 		(and (theTheObj onMe: param2) (> (theTheObj y?) lastY))
 			(= lastY ((= theObj theTheObj) y?))
 		)
-	)
-)
-
-(instance uEvt of Event
-	(properties)
-	
-	(method (new)
-		(= type
-			(= message
-				(= modifiers (= y (= x (= claimed (= port 0)))))
-			)
-		)
-		(GetEvent 32767 self)
-		(return self)
 	)
 )
 

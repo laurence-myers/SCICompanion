@@ -101,6 +101,62 @@
 	)
 )
 
+(instance mainMenu of ClickMenu
+	(properties)
+	
+	(method (init)
+		(super init: @local62)
+	)
+)
+
+(instance editBMenu of ClickMenu
+	(properties)
+	
+	(method (init)
+		(super init: @local90)
+	)
+)
+
+(instance editTMenu of ClickMenu
+	(properties)
+	
+	(method (init)
+		(super init: @local112)
+	)
+)
+
+(instance editEMenu of ClickMenu
+	(properties)
+	
+	(method (init)
+		(super init: @local137)
+	)
+)
+
+(instance editIMenu of ClickMenu
+	(properties)
+	
+	(method (init)
+		(super init: @local159)
+	)
+)
+
+(instance editSMenu of ClickMenu
+	(properties)
+	
+	(method (init)
+		(super init: @local181)
+	)
+)
+
+(instance editWMenu of ClickMenu
+	(properties)
+	
+	(method (init)
+		(super init: @local200)
+	)
+)
+
 (class DlgWindow of SysWindow
 	(properties
 		top 0
@@ -124,7 +180,7 @@
 		eraseOnly 0
 		noun 0
 		verb 0
-		sel_509 0
+		case 0
 		seq 0
 		modNum 0
 	)
@@ -184,9 +240,9 @@
 		(if (localproc_02b6 self)
 			(if title (Memory 3 title))
 			(= title
-				(Memory 1 (Message 2 modNum noun verb sel_509 seq))
+				(Memory 1 (Message 2 modNum noun verb case seq))
 			)
-			(Message 0 modNum noun verb sel_509 seq title)
+			(Message 0 modNum noun verb case seq title)
 		)
 		(self create:)
 	)
@@ -220,7 +276,7 @@
 		(if seq
 			(Memory 3 title)
 			(= noun
-				(= verb (= sel_509 (= seq (= modNum (= title 0)))))
+				(= verb (= case (= seq (= modNum (= title 0)))))
 			)
 		)
 		(if (not title)
@@ -258,7 +314,7 @@
 	
 	(method (select param1)
 		(self hide:)
-		(if param1 (|= state $0008) else (&= state (~ $0008)))
+		(if param1 (|= state $0008) else (&= state $fff7))
 		(self draw:)
 	)
 	
@@ -361,17 +417,23 @@
 		width 0
 		noun 0
 		verb 0
-		sel_509 0
+		case 0
 		seq 0
 		modNum 0
 	)
 	
-	(method (setSize param1 &tmp [temp0 2] temp2 temp3)
-		(TextSize @temp0 text font (if argc param1 else width))
+	(method (setSize param1 &tmp [temp0 4])
+		(TextSize
+			@[temp0
+			0]
+			text
+			font
+			(if argc param1 else width)
+		)
 		(-- nsLeft)
 		(-- nsTop)
-		(= nsBottom (+ nsTop temp2 1))
-		(= nsRight (+ nsLeft temp3 1))
+		(= nsBottom (+ nsTop [temp0 2] 1))
+		(= nsRight (+ nsLeft [temp0 3] 1))
 	)
 	
 	(method (showHelp)
@@ -441,9 +503,9 @@
 		(if (localproc_02b6 self)
 			(Memory 3 text)
 			(= text
-				(Memory 1 (Message 2 modNum noun verb sel_509 seq))
+				(Memory 1 (Message 2 modNum noun verb case seq))
 			)
-			(Message 0 modNum noun verb sel_509 seq text)
+			(Message 0 modNum noun verb case seq text)
 		)
 		(self hide: setSize: draw:)
 	)
@@ -457,7 +519,7 @@
 			(Memory 3 text)
 			(= text (Memory 1 100))
 			(StrCpy text {text})
-			(= noun (= verb (= sel_509 (= seq (= modNum 0)))))
+			(= noun (= verb (= case (= seq (= modNum 0)))))
 		)
 		(Print
 			addTitle: @local42
@@ -585,18 +647,18 @@
 		font 0
 		noun 0
 		verb 0
-		sel_509 0
+		case 0
 		seq 0
 		modNum 0
 	)
 	
-	(method (setSize &tmp [temp0 2] temp2 temp3)
-		(TextSize @temp0 text font 0 0)
-		(+= temp2 2)
-		(+= temp3 2)
-		(= nsBottom (+ nsTop temp2))
-		(= temp3 (* (/ (+ temp3 15) 16) 16))
-		(= nsRight (+ temp3 nsLeft))
+	(method (setSize &tmp [temp0 4])
+		(TextSize @[temp0 0] text font 0 0)
+		(+= [temp0 2] 2)
+		(+= [temp0 3] 2)
+		(= nsBottom (+ nsTop [temp0 2]))
+		(= [temp0 3] (* (/ (+ [temp0 3] 15) 16) 16))
+		(= nsRight (+ [temp0 3] nsLeft))
 	)
 	
 	(method (showHelp)
@@ -635,9 +697,9 @@
 		(if (localproc_02b6 self)
 			(Memory 3 text)
 			(= text
-				(Memory 1 (Message 2 modNum noun verb sel_509 seq))
+				(Memory 1 (Message 2 modNum noun verb case seq))
 			)
-			(Message 0 modNum noun verb sel_509 seq text)
+			(Message 0 modNum noun verb case seq text)
 		)
 		(self hide: setSize: draw:)
 	)
@@ -651,7 +713,7 @@
 			(Memory 3 text)
 			(= text (Memory 1 50))
 			(StrCpy text {button})
-			(= noun (= verb (= sel_509 (= seq (= modNum 0)))))
+			(= noun (= verb (= case (= seq (= modNum 0)))))
 		)
 		(Print
 			addTitle: @local42
@@ -697,10 +759,10 @@
 		cursor 0
 	)
 	
-	(method (setSize &tmp [temp0 2] temp2 temp3)
-		(TextSize @temp0 {M} font 0 0)
-		(= nsBottom (+ nsTop temp2))
-		(= nsRight (+ nsLeft (/ (* temp3 max 3) 4)))
+	(method (setSize &tmp [temp0 4])
+		(TextSize @[temp0 0] {M} font 0 0)
+		(= nsBottom (+ nsTop [temp0 2]))
+		(= nsRight (+ nsLeft (/ (* [temp0 3] max 3) 4)))
 		(= cursor (StrLen text))
 	)
 	
@@ -780,10 +842,10 @@
 		y 6
 	)
 	
-	(method (setSize &tmp [temp0 2] temp2 temp3)
-		(TextSize @temp0 {M} font 0 0)
-		(= nsBottom (+ nsTop 20 (* temp2 y)))
-		(= nsRight (+ nsLeft (/ (* temp3 x 3) 4)))
+	(method (setSize &tmp [temp0 4])
+		(TextSize @[temp0 0] {M} font 0 0)
+		(= nsBottom (+ nsTop 20 (* [temp0 2] y)))
+		(= nsRight (+ nsLeft (/ (* [temp0 3] x 3) 4)))
 	)
 	
 	(method (showHelp)
@@ -875,6 +937,7 @@
 	
 	(method (handleEvent param1 &tmp temp0 theCurItem [temp2 506] [temp508 30] [temp538 30] [temp568 30] [temp598 30] [temp628 30] [temp658 20] [temp678 30] [temp708 30] [temp738 20] [temp758 30] [temp788 30])
 		(switch (param1 type?)
+			(0)
 			(1
 				(= theCurItem (self firstTrue: 180 param1))
 				(if theCurItem
@@ -888,6 +951,7 @@
 					)
 				)
 			)
+			(2)
 			(4
 				(switch (param1 message?)
 					(63 (param1 message: 104))
@@ -916,6 +980,8 @@
 							(= curItem (DialogEditor at: (-- temp0)))
 						)
 					)
+					(32)
+					(8)
 					(97
 						(Print
 							addTitle: @local42
@@ -1266,7 +1332,7 @@
 						{\t\t\taddTitle:\t%d %d %d %d %d,\n\n}
 						(DlgWindow noun?)
 						(DlgWindow verb?)
-						(DlgWindow sel_509?)
+						(DlgWindow case?)
 						(DlgWindow seq?)
 						(DlgWindow modNum?)
 					)
@@ -1433,61 +1499,5 @@
 			)
 		)
 		(if curMenu (curMenu init:))
-	)
-)
-
-(instance mainMenu of ClickMenu
-	(properties)
-	
-	(method (init)
-		(super init: @local62)
-	)
-)
-
-(instance editBMenu of ClickMenu
-	(properties)
-	
-	(method (init)
-		(super init: @local90)
-	)
-)
-
-(instance editTMenu of ClickMenu
-	(properties)
-	
-	(method (init)
-		(super init: @local112)
-	)
-)
-
-(instance editEMenu of ClickMenu
-	(properties)
-	
-	(method (init)
-		(super init: @local137)
-	)
-)
-
-(instance editIMenu of ClickMenu
-	(properties)
-	
-	(method (init)
-		(super init: @local159)
-	)
-)
-
-(instance editSMenu of ClickMenu
-	(properties)
-	
-	(method (init)
-		(super init: @local181)
-	)
-)
-
-(instance editWMenu of ClickMenu
-	(properties)
-	
-	(method (init)
-		(super init: @local200)
 	)
 )

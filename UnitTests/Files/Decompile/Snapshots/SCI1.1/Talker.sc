@@ -239,7 +239,7 @@
 				(gFastCast name: {fastCast} add: self)
 			)
 		)
-		(= ticks (+ ticks 60 gGameTime))
+		(+= ticks (+ 60 gGameTime))
 		(return 1)
 	)
 	

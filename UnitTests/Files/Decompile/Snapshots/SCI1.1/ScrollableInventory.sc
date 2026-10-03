@@ -378,7 +378,7 @@
 			(= temp9 (NodeValue inventoryBaseFirst))
 			(if (temp9 isKindOf: InventoryItem)
 				(if (temp9 ownedBy: param1)
-					(temp9 signal: (& (temp9 signal?) (~ $0004)))
+					(temp9 signal: (& (temp9 signal?) $fffb))
 					(++ temp0)
 					(= temp6
 						(CelWide (temp9 view?) (temp9 loop?) (temp9 cel?))
@@ -534,7 +534,7 @@
 				)
 				(= temp17 (+ (temp9 nsLeft?) temp6))
 				(= temp18 (temp9 nsTop?))
-				(temp9 signal: (& (temp9 signal?) (~ $0004)) show:)
+				(temp9 signal: (& (temp9 signal?) $fffb) show:)
 			)
 			(= inventoryBaseFirst (self next: inventoryBaseFirst))
 		)
@@ -856,12 +856,12 @@
 		(if (not curPos)
 			(upIcon signal: (| (upIcon signal?) $0004))
 		else
-			(upIcon signal: (& (upIcon signal?) (~ $0004)))
+			(upIcon signal: (& (upIcon signal?) $fffb))
 		)
 		(if (>= curPos (- (items size?) dispAmount))
 			(downIcon signal: (| (downIcon signal?) $0004))
 		else
-			(downIcon signal: (& (downIcon signal?) (~ $0004)))
+			(downIcon signal: (& (downIcon signal?) $fffb))
 		)
 		(upIcon show:)
 		(downIcon show:)

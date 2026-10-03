@@ -45,6 +45,7 @@
 	
 	(method (doVerb param1)
 		(switch param1
+			(4)
 			(else 
 				(super doVerb: param1 &rest)
 			)
@@ -101,6 +102,7 @@
 	
 	(method (doVerb param1)
 		(switch param1
+			(4)
 			(else 
 				(super doVerb: param1 &rest)
 			)
