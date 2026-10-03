@@ -69,6 +69,7 @@ public:
 	WORD GetSelector() const { return _wNameIndex; }
 	WORD GetValue() const { return _wValue; }
 	bool NeedsReloc() const { return _fNeedsReloc; }
+	void SetValue(WORD wValue) { _wValue = wValue; }
 
 private:
 	WORD _wNameIndex;

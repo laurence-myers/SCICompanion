@@ -175,6 +175,11 @@ public:
 	// Does the heavy work of writing the final offsets into the token reference positions:
 	void FixupSinksAndSources(std::vector<uint8_t> &scrResource, std::vector<uint8_t> &heapOrScrResource);
 
+	// Puts the final offset of each string or said in place of its token, in the
+	// property values of the classes of the script's .sco: the values that the
+	// compiled script has.
+	void ResolveSCOPropertyTokens();
+
 	// For SCI1.1 only:
 	void WriteOutOffsetsOfHepPointersInScr(std::vector<uint8_t> &scrResource);
 	void WriteOutOffsetsOfHepPointersInHep(std::vector<uint8_t> &hepResource);
