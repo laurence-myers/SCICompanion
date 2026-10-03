@@ -279,7 +279,16 @@ const vector<string> &CompileContext::GetResourceStrings()
 {
 	return _resourceStrings;
 }
-WORD CompileContext::LookupSelectorAndAdd(const string &str)
+WORD CompileContext::_AddSelector(const string &str, const ISourceCodePosition *pos)
+{
+	SelectorTable &selectors = _tables.Selectors();
+	if (selectors.IsMadeFromScripts())
+	{
+		ReportError(pos, "The game has no selector table (vocab 997), so the new selector '%s' cannot keep its name. Use a number that no script uses in its place, for example sel_%d.", str.c_str(), (int)selectors.FirstFreeNumber());
+	}
+	return selectors.Add(str);
+}
+WORD CompileContext::LookupSelectorAndAdd(const string &str, const ISourceCodePosition *pos)
 {
 	WORD w;
 	if (_tables.Selectors().ReverseLookup(str, w))
@@ -290,7 +299,7 @@ WORD CompileContext::LookupSelectorAndAdd(const string &str)
 	{
 		// It doesn't exist ... add it.
 		// We can just keep on adding to the selectors list (lots of room)
-		w = _tables.Selectors().Add(str);
+		w = _AddSelector(str, pos);
 	}
 	return w;
 }
@@ -303,9 +312,9 @@ bool CompileContext::LookupSelector(const string &str, WORD &wIndex)
 	}
 	return found;
 }
-void CompileContext::DefineNewSelector(const std::string &str, WORD &wIndex)
+void CompileContext::DefineNewSelector(const std::string &str, WORD &wIndex, const ISourceCodePosition *pos)
 {
-	wIndex = _tables.Selectors().Add(str);
+	wIndex = _AddSelector(str, pos);
 }
 bool CompileContext::LookupDefine(const std::string &str, WORD &wValue)
 {
@@ -604,16 +613,22 @@ const WORD c_rgCommonPropsTypesSCI0[] = { DataTypeAny, DataTypeAny, DataTypeUInt
 const char* c_rgCommonPropsSCI1[] = { "-objID-", "-size-","-propDict-","-methDict-","-classScript-", "-script-", "-super-", "-info-", "name" };
 const WORD c_rgCommonPropsTypesSCI1[] = { DataTypeAny, DataTypeAny, DataTypeAny, DataTypeAny, DataTypeAny, DataTypeAny, DataTypeAny, DataTypeUInt, DataTypeString };
 
-unordered_set<string> GetDefaultSelectorNames(SCIVersion version)
+vector<string> GetDefaultPropertyNames(SCIVersion version)
 {
 	if (version.SeparateHeapResources)
 	{
-		return unordered_set<string>(c_rgCommonPropsSCI1, c_rgCommonPropsSCI1 + ARRAYSIZE(c_rgCommonPropsSCI1));
+		return vector<string>(c_rgCommonPropsSCI1, c_rgCommonPropsSCI1 + ARRAYSIZE(c_rgCommonPropsSCI1));
 	}
 	else
 	{
-		return unordered_set<string>(c_rgCommonPropsSCI0, c_rgCommonPropsSCI0 + ARRAYSIZE(c_rgCommonPropsSCI0));
+		return vector<string>(c_rgCommonPropsSCI0, c_rgCommonPropsSCI0 + ARRAYSIZE(c_rgCommonPropsSCI0));
 	}
+}
+
+unordered_set<string> GetDefaultSelectorNames(SCIVersion version)
+{
+	vector<string> names = GetDefaultPropertyNames(version);
+	return unordered_set<string>(names.begin(), names.end());
 }
 
 // The properties returned here, include the 4 default ones.  Even if we can't find the

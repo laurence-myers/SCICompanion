@@ -36,7 +36,7 @@ ResourceBlob *_GetVocabData(const GameFolderHelper &helper, int iVocab)
 sci::Status CheckVocabTables(const GameFolderHelper &helper)
 {
 	struct VocabTable { int number; bool required; const char *name; };
-	const VocabTable tables[] = { { VocabClassTable, true, "class table" }, { VocabSelectorNames, true, "selector table" }, { VocabKernelNames, false, "kernel table" } };
+	const VocabTable tables[] = { { VocabClassTable, true, "class table" }, { VocabSelectorNames, false, "selector table" }, { VocabKernelNames, false, "kernel table" } };
 	for (const VocabTable &table : tables)
 	{
 		std::unique_ptr<ResourceBlob> blob(_GetVocabData(helper, table.number));
@@ -49,6 +49,10 @@ sci::Status CheckVocabTables(const GameFolderHelper &helper)
 			sci::ErrorLocation where;
 			where.resource = DescribeResource(ResourceType::Vocab, table.number);
 			return sci::Fail(sci::ErrorCode::NotFound, std::string("the game has no ") + table.name, where);
+		}
+		else if (table.number == VocabSelectorNames)
+		{
+			CoreLog(LogLevel::Warning, "the game has no selector table (vocab 997): each selector gets the name sel_<number>");
 		}
 	}
 	return sci::Ok();
@@ -725,28 +729,147 @@ bool SelectorTable::ReverseLookup(std::string name, uint16_t &wIndex) const
 	return _ParseNumberedName(name, "sel_", wIndex);
 }
 
+// -objID- and the other object header selectors of SCI1.1 start here.
+static const uint16_t c_firstHeaderSelector = 0x1000;
+
+bool SelectorTable::_CreateFromScripts(const GameFolderHelper &helper)
+{
+	vector<string> defaultNames = GetDefaultPropertyNames(_version);
+	map<uint16_t, pair<unique_ptr<ResourceBlob>, unique_ptr<ResourceBlob>>> scriptAndHeap;
+	auto container = helper.Resources(ResourceTypeFlags::Script | ResourceTypeFlags::Heap, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+	for (auto &resource : *container)
+	{
+		pair<unique_ptr<ResourceBlob>, unique_ptr<ResourceBlob>> &blobs = scriptAndHeap[(uint16_t)resource->GetNumber()];
+		((resource->GetType() == ResourceType::Script) ? blobs.first : blobs.second) = move(resource);
+	}
+	bool loadedAScript = false;
+	bool foundRoot = false;
+	set<uint16_t> used;
+	vector<uint16_t> rootSlots;
+	for (auto &numberAndBlobs : scriptAndHeap)
+	{
+		const pair<unique_ptr<ResourceBlob>, unique_ptr<ResourceBlob>> &blobs = numberAndBlobs.second;
+		if (!blobs.first || (_version.SeparateHeapResources && !blobs.second))
+		{
+			continue;
+		}
+		CompiledScript compiledScript(numberAndBlobs.first);
+		if (!compiledScript.TryLoad(helper, _version, numberAndBlobs.first, *blobs.first, blobs.second.get()))
+		{
+			continue;
+		}
+		loadedAScript = true;
+		for (const auto &object : compiledScript.GetObjects())
+		{
+			used.insert(object->GetProperties().begin(), object->GetProperties().end());
+			used.insert(object->GetMethods().begin(), object->GetMethods().end());
+			// A root class can have fewer slots (no name slot).
+			if (!foundRoot && !object->IsInstance() && (object->GetSuperClass() == 0xffff))
+			{
+				foundRoot = true;
+				rootSlots = object->GetProperties();
+			}
+		}
+	}
+	if (!loadedAScript)
+	{
+		return false;
+	}
+	if (!foundRoot)
+	{
+		CoreLog(LogLevel::Warning, "the game has no selector table (vocab 997) and no root class: the object header properties have no names");
+	}
+
+	map<uint16_t, string> defaults;
+	for (size_t i = 0; (i < defaultNames.size()) && (i < rootSlots.size()); i++)
+	{
+		defaults[rootSlots[i]] = defaultNames[i];
+	}
+	uint16_t highest = 0;
+	for (uint16_t number : used)
+	{
+		if (number < c_firstHeaderSelector)
+		{
+			highest = max(highest, number);
+		}
+	}
+	// No gap below the first free number. A game with the old SCI0 script
+	// header (early KQ4) has only even selectors.
+	uint16_t step = _version.HasOldSCI0ScriptHeader ? 2 : 1;
+	for (uint32_t number = 0; number <= highest; number += step)
+	{
+		used.insert((uint16_t)number);
+	}
+	_indices.clear();
+	_names.clear();
+	_defaultSelectors.clear();
+	for (uint16_t number : used)
+	{
+		while (_indices.size() <= number)
+		{
+			_indices.push_back(-1);
+		}
+		auto defaultName = defaults.find(number);
+		_indices[number] = (int)_names.size();
+		_names.push_back((defaultName != defaults.end()) ? defaultName->second : _GetMissingName(number));
+		if (defaultName != defaults.end())
+		{
+			_defaultSelectors.insert(number);
+		}
+	}
+	_firstInvalidSelector = highest + step;
+	// Add puts a new selector at the end when the first free number is the end.
+	while (_indices.size() < _firstInvalidSelector)
+	{
+		_indices.push_back(-1);
+	}
+	_madeFromScripts = true;
+	return true;
+}
+
+uint16_t SelectorTable::FirstFreeNumber() const
+{
+	size_t number = 0;
+	for (size_t i = 0; (i < _indices.size()) && (i < c_firstHeaderSelector); i++)
+	{
+		if (_indices[i] != -1)
+		{
+			number = i + 1;
+		}
+	}
+	if (_version.HasOldSCI0ScriptHeader && (number % 2))
+	{
+		number++;
+	}
+	return (uint16_t)number;
+}
 bool SelectorTable::Load(const GameFolderHelper &helper)
 {
 	_version = helper.Version;
+	_madeFromScripts = false;
 	bool fRet = false;
 	unique_ptr<ResourceBlob> blob(_GetVocabData(helper, VocabSelectorNames));
 	if (blob)
 	{
 		fRet = _Create(blob->GetReadStream());
-		if (fRet)
+	}
+	else
+	{
+		fRet = _CreateFromScripts(helper);
+	}
+	if (fRet)
+	{
+		// Populate reverse lookup
+		for (size_t i = 0; i < _indices.size(); i++)
 		{
-			// Populate reverse lookup
-			for (size_t i = 0; i < _indices.size(); i++)
+			if (_indices[i] != -1)
 			{
-				if (_indices[i] != -1)
-				{
-					const string &name = _names[_indices[i]];
-					_nameToValueCache[name] = (uint16_t)i;
-				}
+				const string &name = _names[_indices[i]];
+				_nameToValueCache[name] = (uint16_t)i;
 			}
 		}
 	}
-	if (!fRet)
+	else
 	{
 		CoreLogFormat(LogLevel::Warning, "Failed to load selector names from vocab resource");
 	}
@@ -868,7 +991,7 @@ std::vector<uint8_t> SelectorTable::MakeResourceData() const
 
 void SelectorTable::Save(CResourceMap &resourceMap)
 {
-	if (_fDirty)
+	if (IsDirty())
 	{
 		resourceMap.AppendResource(ResourceBlob(resourceMap.Helper(), nullptr, ResourceType::Vocab, MakeResourceData(), _version.DefaultVolumeFile, VocabSelectorNames, NoBase36, resourceMap.GetSCIVersion(), resourceMap.Helper().GetDefaultSaveSourceFlags()));
 	}

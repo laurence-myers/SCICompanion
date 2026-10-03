@@ -244,9 +244,11 @@ public:
 	WORD GetScriptNumber();
 	WORD AddStringResourceTuple(const std::string &str);
 	const std::vector<std::string> &GetResourceStrings();
-	WORD LookupSelectorAndAdd(const std::string &str);
+	// A new selector name is an error at pos when the game has no vocab 997
+	// (SelectorTable::IsMadeFromScripts).
+	WORD LookupSelectorAndAdd(const std::string &str, const ISourceCodePosition *pos);
 	bool LookupSelector(const std::string &str, WORD &wIndex);
-	void DefineNewSelector(const std::string &str, WORD &wIndex);
+	void DefineNewSelector(const std::string &str, WORD &wIndex, const ISourceCodePosition *pos);
 	bool LookupDefine(const std::string &str, WORD &wValue);
 	void AddDefine(sci::Define *pDefine);
 	const SCIVersion &GetVersion() { return _version; }
@@ -437,6 +439,8 @@ private:
 	// the game has script N (the call then stays an error).
 	bool _LookupMissingScriptProc(const std::string &name, WORD &wScript, WORD &wIndex);
 	bool _ScriptExists(uint16_t number);
+	// Adds a new selector name (an error at pos with a table made from the scripts).
+	WORD _AddSelector(const std::string &str, const ISourceCodePosition *pos);
 	// The script numbers of the game, read at the first use.
 	std::unique_ptr<std::set<uint16_t>> _scriptNumbers;
 	// The "no vocabulary" error is given once.

@@ -920,7 +920,7 @@ std::vector<species_property> GetOverriddenProperties(CompileContext &context, c
 			else
 			{
 				// We'll add a new selector for this.
-				context.DefineNewSelector(selectorName, wSelectorIndex);
+				context.DefineNewSelector(selectorName, wSelectorIndex, classProperty.get());
 			}
 		}
 		// Then the value - defines should already be resolved.
@@ -1214,7 +1214,7 @@ void GenerateSCOObjects(CompileContext &context, const Script &script)
 		for (auto &method : classDef->GetMethods())
 		{
 			const string &methodName = method->GetName();
-			methodsOut.push_back(context.LookupSelectorAndAdd(methodName)); // Add it if it doesn't exist.
+			methodsOut.push_back(context.LookupSelectorAndAdd(methodName, method.get())); // Add it if it doesn't exist.
 		}
 		sco.SetMethods(methodsOut);
 		if (classDef->IsInstance())

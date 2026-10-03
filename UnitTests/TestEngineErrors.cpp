@@ -18,6 +18,7 @@
 #include "TestSupport.h"
 #include <filesystem>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -257,22 +258,109 @@ namespace UnitTests
             Assert::AreEqual(std::string("the game has no class table"), checked.error().message);
         }
 
-        TEST_METHOD(CheckVocabTables_NoSelectorTable_IsNotFound)
+        // The selectors that the objects of the game's scripts use.
+        static std::set<uint16_t> ObjectSelectors(const GameFolderHelper &helper)
+        {
+            std::set<uint16_t> selectors;
+            std::map<uint16_t, std::pair<std::unique_ptr<ResourceBlob>, std::unique_ptr<ResourceBlob>>> scriptAndHeap;
+            auto container = helper.Resources(ResourceTypeFlags::Script | ResourceTypeFlags::Heap, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
+            for (auto &resource : *container)
+            {
+                auto &blobs = scriptAndHeap[(uint16_t)resource->GetNumber()];
+                ((resource->GetType() == ResourceType::Script) ? blobs.first : blobs.second) = std::move(resource);
+            }
+            for (auto &numberAndBlobs : scriptAndHeap)
+            {
+                // A heap with no script is not a script (as SelectorTable::Load reads the scripts).
+                if (!numberAndBlobs.second.first || (helper.Version.SeparateHeapResources && !numberAndBlobs.second.second))
+                {
+                    continue;
+                }
+                CompiledScript script(numberAndBlobs.first);
+                AssertOk(script.TryLoad(helper, helper.Version, numberAndBlobs.first, *numberAndBlobs.second.first, numberAndBlobs.second.second.get()));
+                for (const auto &object : script.GetObjects())
+                {
+                    selectors.insert(object->GetProperties().begin(), object->GetProperties().end());
+                    selectors.insert(object->GetMethods().begin(), object->GetMethods().end());
+                }
+            }
+            return selectors;
+        }
+
+        // Deletes the resource of the session's game; an assert fails when the
+        // game does not have it.
+        static void DeleteFromGame(GameSession &session, ResourceType type, int number)
+        {
+            std::unique_ptr<ResourceBlob> blob = session.Helper().MostRecentResource(type, number, ResourceEnumFlags::None);
+            Assert::IsTrue(blob != nullptr, L"setup: the resource to delete");
+            session.ResourceMap().DeleteResource(blob.get());
+            Assert::IsTrue(session.Helper().MostRecentResource(type, number, ResourceEnumFlags::None) == nullptr, L"setup: the resource is deleted");
+        }
+
+        // A game with no selector table (vocab 997; the floppy Laura Bow 2):
+        // the check passes, and the table comes from the scripts. The object
+        // header slots get their names, at the numbers of the game's table;
+        // each other selector is sel_<number>; a new selector gets a number
+        // that no object uses, and the table is never written.
+        TEST_METHOD(SelectorTable_NoSelectorTable_ComesFromTheScripts)
+        {
+            NoAppState noAppState;
+            for (const char *name : { TemplateSci0, TemplateSci11 })
+            {
+                GameSession &session = _game.OpenCopy(name, false, SessionOptions());
+                SelectorTable original;
+                Assert::IsTrue(original.Load(session.Helper()), L"setup: the template's table");
+                Assert::IsFalse(original.IsMadeFromScripts());
+                DeleteFromGame(session, ResourceType::Vocab, 997);
+
+                AssertOk(CheckVocabTables(session.Helper()));
+                SelectorTable made;
+                Assert::IsTrue(made.Load(session.Helper()), L"the table from the scripts");
+                Assert::IsTrue(made.IsMadeFromScripts());
+                for (const std::string &property : GetDefaultPropertyNames(session.Helper().Version))
+                {
+                    uint16_t expected = 0;
+                    uint16_t actual = 0;
+                    Assert::IsTrue(original.ReverseLookup(property, expected), Wide(property).c_str());
+                    Assert::IsTrue(made.ReverseLookup(property, actual), Wide(property).c_str());
+                    Assert::AreEqual(expected, actual, Wide(property).c_str());
+                    Assert::IsTrue(made.IsDefaultSelector(actual), Wide(property).c_str());
+                }
+                uint16_t view = 0;
+                Assert::IsTrue(original.ReverseLookup("view", view), L"setup: view");
+                Assert::AreEqual("sel_" + std::to_string(view), made.Lookup(view));
+
+                uint16_t firstFree = made.FirstFreeNumber();
+                for (uint16_t selector : ObjectSelectors(session.Helper()))
+                {
+                    Assert::IsTrue((selector < firstFree) || (selector >= 0x1000), Wide("an object uses " + std::to_string(selector) + ", at or after the first free number " + std::to_string(firstFree)).c_str());
+                }
+                Assert::AreEqual(firstFree, made.Add("aNewSelector"));
+                made.ReserveNumberedName("sel_" + std::to_string(firstFree + 5), (uint16_t)(firstFree + 5));
+                Assert::IsFalse(made.IsDirty(), L"a table made from the scripts is never written");
+            }
+        }
+
+        // A game with no selector table and no root class: the selectors are
+        // sel_<number>, and the object header slots have no names.
+        TEST_METHOD(SelectorTable_NoSelectorTableNoRootClass_NumberedNames)
         {
             NoAppState noAppState;
             GameSession &session = _game.OpenCopy(TemplateSci0, false, SessionOptions());
-            std::unique_ptr<ResourceBlob> selectorTable = session.Helper().MostRecentResource(ResourceType::Vocab, 997, ResourceEnumFlags::None);
-            Assert::IsTrue(selectorTable != nullptr, L"the template has a selector table");
-            session.ResourceMap().DeleteResource(selectorTable.get());
+            SelectorTable original;
+            Assert::IsTrue(original.Load(session.Helper()), L"setup: the template's table");
+            uint16_t view = 0;
+            Assert::IsTrue(original.ReverseLookup("view", view), L"setup: view");
+            DeleteFromGame(session, ResourceType::Vocab, 997);
+            // Script 999 has Obj, the root class.
+            DeleteFromGame(session, ResourceType::Script, 999);
 
-            sci::Status checked = CheckVocabTables(session.Helper());
-
-            Assert::IsFalse(checked.has_value());
-            Assert::AreEqual(std::string("not-found"), CodeName(checked.error()));
-            Assert::AreEqual(std::string("vocab 997"), checked.error().where.resource);
-            Assert::AreEqual(std::string("the game has no selector table"), checked.error().message);
+            SelectorTable made;
+            Assert::IsTrue(made.Load(session.Helper()), L"the table from the scripts");
+            uint16_t number = 0;
+            Assert::IsFalse(made.ReverseLookup("name", number), L"no root class, so no name");
+            Assert::AreEqual("sel_" + std::to_string(view), made.Lookup(view));
         }
-
         // A table that is there but not valid gives its own name and
         // resource.
         TEST_METHOD(TablesTryLoad_SelectorTableNotValid_NamesTheTable)

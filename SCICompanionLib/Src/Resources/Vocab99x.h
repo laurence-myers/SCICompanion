@@ -43,10 +43,13 @@ protected:
 };
 
 std::unordered_set<std::string> GetDefaultSelectorNames(SCIVersion version);
+// The same names, in the order of the first property slots of an object.
+std::vector<std::string> GetDefaultPropertyNames(SCIVersion version);
 
 // The vocab resources of the class table (996), the selector names (997) and
-// the kernel names (999). NotFound when 996 or 997 is missing (999 is
-// optional); Format when one cannot be read. Each with the resource in the
+// the kernel names (999). NotFound when 996 is missing; a missing 997 is a
+// warning in the core log (SelectorTable::Load makes a table), and 999 is
+// optional. Format when one cannot be read. Each with the resource in the
 // location.
 sci::Status CheckVocabTables(const GameFolderHelper &helper);
 
@@ -66,17 +69,34 @@ public:
 	void ReserveNumberedName(const std::string &name, uint16_t wIndex);
 	const std::vector<std::string> &GetNames() const { return _names; }
 
+	// The game's vocab 997. A game with no vocab 997 (the floppy Laura Bow 2)
+	// gets a table from its scripts: see _CreateFromScripts.
 	bool Load(const GameFolderHelper &helpern);
 	uint16_t Add(const std::string &str);
 	void Save(CResourceMap &resourceMap);
 	// True when Add added a name. The compile writes MakeResourceData() to
-	// its destination.
-	bool IsDirty() const { return _fDirty; }
+	// its destination. A table made from the scripts is never written: its
+	// sel_<number> names would hide the built-in names of an interpreter
+	// such as ScummVM, which reads vocab 997 when the game has one.
+	bool IsDirty() const { return _fDirty && !_madeFromScripts; }
+	// The game has no vocab 997, so Load made the table from its scripts. A
+	// new selector name cannot be kept: the compiler reports an error.
+	bool IsMadeFromScripts() const { return _madeFromScripts; }
+	// The number after the highest selector of the table below the SCI1.1
+	// object header selectors (an even number for the old SCI0 script header).
+	uint16_t FirstFreeNumber() const;
 	std::vector<uint8_t> MakeResourceData() const;
 	bool IsDefaultSelector(uint16_t value);
 
 protected:
 	bool _Create(sci::istream &byteStream);
+	// Each selector number up to the highest one that an object of the game
+	// uses (below the object header selectors of SCI1.1) is sel_<number>; the
+	// first slots of the root class get the names of GetDefaultPropertyNames,
+	// which the compiler and the decompiler find by name (with no root class,
+	// a warning). A new selector gets a number after them. False when no
+	// script loads.
+	bool _CreateFromScripts(const GameFolderHelper &helper);
 	std::string _GetMissingName(uint16_t wName) const;
 
 private:
@@ -84,6 +104,7 @@ private:
 	std::vector<std::string> _names;
 	std::unordered_map<std::string, uint16_t> _nameToValueCache;
 	bool _fDirty;
+	bool _madeFromScripts = false;
 	size_t _firstInvalidSelector;
 	SCIVersion _version;
 	std::unordered_set<uint16_t> _defaultSelectors;
