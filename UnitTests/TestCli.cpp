@@ -12,6 +12,7 @@
 #include "CompiledScript.h"
 #include "DecompileRun.h"
 #include "GameSession.h"
+#include "ResourceMap.h"
 #include "SCO.h"
 #include "ResourceBlob.h"
 #include "ResourceContainer.h"
@@ -1659,6 +1660,37 @@ namespace UnitTests
             Assert::IsTrue(compile.err.find("(0 errors,") != std::string::npos, Wide(compile.err).c_str());
         }
 
+        // A game with no selector table (vocab 997; the floppy Laura Bow 2):
+        // decompile --all warns and names each selector sel_<number>, and the
+        // compiled text has the meaning of the game's scripts.
+        TEST_METHOD(DecompileAndCompile_NoSelectorTable_NumberedSelectors)
+        {
+            for (const char *templateFolder : { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" })
+            {
+                CopyTemplate(templateFolder, true);
+                {
+                    GameSession &session = _game.Open();
+                    std::unique_ptr<ResourceBlob> selectors = session.Helper().MostRecentResource(ResourceType::Vocab, 997, ResourceEnumFlags::None);
+                    Assert::IsNotNull(selectors.get(), L"setup: the template has a selector table");
+                    session.ResourceMap().DeleteResource(selectors.get());
+                    _game.CloseSessions();
+                }
+                cli::StringConsole decompile = Expect(0, { "script", "decompile", _copyFolder, "--all" });
+                Assert::IsTrue(decompile.err.find("the game has no selector table (vocab 997)") != std::string::npos, Wide(decompile.err).c_str());
+                std::set<std::string> sources = SourcesOf(_copyFolder);
+                Assert::IsTrue(sources.size() > 10, Wide(decompile.err).c_str());
+                bool numbered = std::any_of(sources.begin(), sources.end(), [this](const std::string &source) { return ReadFileText((fs::path(_copyFolder) / "src" / source).string()).find("sel_") != std::string::npos; });
+                Assert::IsTrue(numbered, L"a source has a selector sel_<number>");
+
+                fs::path compiled = fs::path(_copyFolder) / "compiled";
+                fs::create_directories(compiled);
+                cli::StringConsole compile = Expect(0, { "script", "compile", _copyFolder, "--all", "--out-dir", compiled.string(), "--raw" });
+                Assert::IsTrue(compile.err.find("(0 errors,") != std::string::npos, Wide(compile.err).c_str());
+                std::string table = Expect(0, { "dev", "compare-meaning", _copyFolder, compiled.string() }).out;
+                Assert::IsTrue(table.find("\tSAME\t") != std::string::npos, Wide(table).c_str());
+                Assert::IsTrue(table.find("\tDIFF\t") == std::string::npos, Wide(table).c_str());
+            }
+        }
         // A decompile names each exported procedure by the slot of its
         // export. A name from the .sco can have the form of a generated name
         // for another slot: the SCI0 template's Obj.sco names slot 1

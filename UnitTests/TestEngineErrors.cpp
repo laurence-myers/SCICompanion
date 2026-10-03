@@ -257,22 +257,53 @@ namespace UnitTests
             Assert::AreEqual(std::string("the game has no class table"), checked.error().message);
         }
 
-        TEST_METHOD(CheckVocabTables_NoSelectorTable_IsNotFound)
+        // A game with no selector table (vocab 997; the floppy Laura Bow 2):
+        // the check passes, and the table comes from the scripts. The object
+        // header slots get their names, at the numbers of the game's table;
+        // each other selector is sel_<number>; a new selector gets a number
+        // that no class uses.
+        TEST_METHOD(SelectorTable_NoSelectorTable_ComesFromTheScripts)
         {
             NoAppState noAppState;
-            GameSession &session = _game.OpenCopy(TemplateSci0, false, SessionOptions());
-            std::unique_ptr<ResourceBlob> selectorTable = session.Helper().MostRecentResource(ResourceType::Vocab, 997, ResourceEnumFlags::None);
-            Assert::IsTrue(selectorTable != nullptr, L"the template has a selector table");
-            session.ResourceMap().DeleteResource(selectorTable.get());
+            for (const char *name : { TemplateSci0, TemplateSci11 })
+            {
+                GameSession &session = _game.OpenCopy(name, false, SessionOptions());
+                SelectorTable original;
+                Assert::IsTrue(original.Load(session.Helper()), L"setup: the template's table");
+                std::unique_ptr<ResourceBlob> selectorTable = session.Helper().MostRecentResource(ResourceType::Vocab, 997, ResourceEnumFlags::None);
+                Assert::IsTrue(selectorTable != nullptr, L"the template has a selector table");
+                session.ResourceMap().DeleteResource(selectorTable.get());
+                Assert::IsTrue(session.Helper().MostRecentResource(ResourceType::Vocab, 997, ResourceEnumFlags::None) == nullptr, L"setup: no selector table");
 
-            sci::Status checked = CheckVocabTables(session.Helper());
+                AssertOk(CheckVocabTables(session.Helper()));
+                SelectorTable made;
+                Assert::IsTrue(made.Load(session.Helper()), L"the table from the scripts");
+                for (const std::string &property : GetDefaultPropertyNames(session.Helper().Version))
+                {
+                    uint16_t expected = 0;
+                    uint16_t actual = 0;
+                    Assert::IsTrue(original.ReverseLookup(property, expected), Wide(property).c_str());
+                    Assert::IsTrue(made.ReverseLookup(property, actual), Wide(property).c_str());
+                    Assert::AreEqual(expected, actual, Wide(property).c_str());
+                    Assert::IsTrue(made.IsDefaultSelector(actual), Wide(property).c_str());
+                }
+                uint16_t view = 0;
+                Assert::IsTrue(original.ReverseLookup("view", view), L"setup: view");
+                Assert::AreEqual("sel_" + std::to_string(view), made.Lookup(view));
+                Assert::IsFalse(made.IsDirty(), L"the table is not a change of the game");
 
-            Assert::IsFalse(checked.has_value());
-            Assert::AreEqual(std::string("not-found"), CodeName(checked.error()));
-            Assert::AreEqual(std::string("vocab 997"), checked.error().where.resource);
-            Assert::AreEqual(std::string("the game has no selector table"), checked.error().message);
+                uint16_t added = made.Add("aNewSelector");
+                GlobalCompiledScriptLookups lookups;
+                AssertOk(lookups.TryLoad(session.Helper()));
+                for (const std::unordered_set<uint16_t> *selectors : { &lookups.GetPropertySelectors(), &lookups.GetMethodSelectors() })
+                {
+                    for (uint16_t selector : *selectors)
+                    {
+                        Assert::IsTrue((selector < added) || (selector >= 0x1000), Wide("a class uses the new selector's number " + std::to_string(added)).c_str());
+                    }
+                }
+            }
         }
-
         // A table that is there but not valid gives its own name and
         // resource.
         TEST_METHOD(TablesTryLoad_SelectorTableNotValid_NamesTheTable)

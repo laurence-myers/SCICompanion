@@ -18,6 +18,8 @@ modernizing the build. Broad highlights since the previous release:
   and follows the "golden" decompilations from
   [sluicebox's SCI tools](https://github.com/sluicebox/sci-tools) much more
   closely (control-flow shapes, expressions and comparisons).
+* **Decompiles games that have no selector table** (such as the floppy Laura
+  Bow 2). Each selector gets a numbered name, sel_<number>.
 * **Better compile warning/error messages.**
 * **Fixed some crashes on bad or corrupt data.** 
 * **Fixed some deadlocks and race conditions.**

@@ -604,16 +604,22 @@ const WORD c_rgCommonPropsTypesSCI0[] = { DataTypeAny, DataTypeAny, DataTypeUInt
 const char* c_rgCommonPropsSCI1[] = { "-objID-", "-size-","-propDict-","-methDict-","-classScript-", "-script-", "-super-", "-info-", "name" };
 const WORD c_rgCommonPropsTypesSCI1[] = { DataTypeAny, DataTypeAny, DataTypeAny, DataTypeAny, DataTypeAny, DataTypeAny, DataTypeAny, DataTypeUInt, DataTypeString };
 
-unordered_set<string> GetDefaultSelectorNames(SCIVersion version)
+vector<string> GetDefaultPropertyNames(SCIVersion version)
 {
 	if (version.SeparateHeapResources)
 	{
-		return unordered_set<string>(c_rgCommonPropsSCI1, c_rgCommonPropsSCI1 + ARRAYSIZE(c_rgCommonPropsSCI1));
+		return vector<string>(c_rgCommonPropsSCI1, c_rgCommonPropsSCI1 + ARRAYSIZE(c_rgCommonPropsSCI1));
 	}
 	else
 	{
-		return unordered_set<string>(c_rgCommonPropsSCI0, c_rgCommonPropsSCI0 + ARRAYSIZE(c_rgCommonPropsSCI0));
+		return vector<string>(c_rgCommonPropsSCI0, c_rgCommonPropsSCI0 + ARRAYSIZE(c_rgCommonPropsSCI0));
 	}
+}
+
+unordered_set<string> GetDefaultSelectorNames(SCIVersion version)
+{
+	vector<string> names = GetDefaultPropertyNames(version);
+	return unordered_set<string>(names.begin(), names.end());
 }
 
 // The properties returned here, include the 4 default ones.  Even if we can't find the
