@@ -1662,7 +1662,8 @@ namespace UnitTests
 
         // A game with no selector table (vocab 997; the floppy Laura Bow 2):
         // decompile --all warns and names each selector sel_<number>, and the
-        // compiled text has the meaning of the game's scripts.
+        // compiled text has the meaning of the game's scripts. A new selector
+        // name needs a free number.
         TEST_METHOD(DecompileAndCompile_NoSelectorTable_NumberedSelectors)
         {
             for (const char *templateFolder : { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" })
@@ -1689,6 +1690,38 @@ namespace UnitTests
                 std::string table = Expect(0, { "dev", "compare-meaning", _copyFolder, compiled.string() }).out;
                 Assert::IsTrue(table.find("\tSAME\t") != std::string::npos, Wide(table).c_str());
                 Assert::IsTrue(table.find("\tDIFF\t") == std::string::npos, Wide(table).c_str());
+
+                // A new selector name is an error that gives a free number;
+                // with that number the script compiles, and the game still
+                // has no vocab 997.
+                std::string sourcePath;
+                std::string text;
+                for (const std::string &source : sources)
+                {
+                    sourcePath = (fs::path(_copyFolder) / "src" / source).string();
+                    text = ReadFileText(sourcePath);
+                    if (text.find("(method (") != std::string::npos)
+                    {
+                        break;
+                    }
+                }
+                size_t method = text.find("(method (");
+                size_t scriptNumberStart = text.find("(script# ");
+                Assert::IsTrue((method != std::string::npos) && (scriptNumberStart != std::string::npos), L"setup: a source with a method");
+                std::string scriptNumber = text.substr(scriptNumberStart + 9, text.find(')', scriptNumberStart) - (scriptNumberStart + 9));
+                text.insert(method, "(method (aNewSelector)\r\n\t\t(return 0)\r\n\t)\r\n\r\n\t");
+                WriteFileText(sourcePath, text);
+                cli::StringConsole refused = Expect(5, { "script", "compile", _copyFolder, scriptNumber });
+                const std::string example = "so the new selector 'aNewSelector' cannot keep its name. Use a number that no script uses in its place, for example sel_";
+                size_t exampleAt = refused.err.find(example);
+                Assert::IsTrue(exampleAt != std::string::npos, Wide(refused.err).c_str());
+                size_t digits = exampleAt + example.size();
+                std::string freeSelector = "sel_" + refused.err.substr(digits, refused.err.find_first_not_of("0123456789", digits) - digits);
+                ReplaceFirst(sourcePath, "aNewSelector", freeSelector);
+                Expect(0, { "script", "compile", _copyFolder, scriptNumber });
+                Assert::IsTrue(_game.Open().Helper().MostRecentResource(ResourceType::Vocab, 997, ResourceEnumFlags::None) == nullptr, L"the game has no vocab 997");
+                _game.CloseSessions();
+                Assert::IsTrue(ReadFileText(sourcePath).find(freeSelector) != std::string::npos, L"setup: the free number");
             }
         }
         // A decompile names each exported procedure by the slot of its

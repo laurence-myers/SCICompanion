@@ -729,10 +729,11 @@ bool SelectorTable::ReverseLookup(std::string name, uint16_t &wIndex) const
 	return _ParseNumberedName(name, "sel_", wIndex);
 }
 
+// -objID- and the other object header selectors of SCI1.1 start here.
+static const uint16_t c_firstHeaderSelector = 0x1000;
+
 bool SelectorTable::_CreateFromScripts(const GameFolderHelper &helper)
 {
-	// -objID- and the other object header selectors of SCI1.1 start here.
-	const uint16_t headerSelectors = 0x1000;
 	vector<string> defaultNames = GetDefaultPropertyNames(_version);
 	map<uint16_t, pair<unique_ptr<ResourceBlob>, unique_ptr<ResourceBlob>>> scriptAndHeap;
 	auto container = helper.Resources(ResourceTypeFlags::Script | ResourceTypeFlags::Heap, ResourceEnumFlags::MostRecentOnly | ResourceEnumFlags::AddInDefaultEnumFlags);
@@ -741,6 +742,8 @@ bool SelectorTable::_CreateFromScripts(const GameFolderHelper &helper)
 		pair<unique_ptr<ResourceBlob>, unique_ptr<ResourceBlob>> &blobs = scriptAndHeap[(uint16_t)resource->GetNumber()];
 		((resource->GetType() == ResourceType::Script) ? blobs.first : blobs.second) = move(resource);
 	}
+	bool loadedAScript = false;
+	bool foundRoot = false;
 	set<uint16_t> used;
 	vector<uint16_t> rootSlots;
 	for (auto &numberAndBlobs : scriptAndHeap)
@@ -755,37 +758,45 @@ bool SelectorTable::_CreateFromScripts(const GameFolderHelper &helper)
 		{
 			continue;
 		}
+		loadedAScript = true;
 		for (const auto &object : compiledScript.GetObjects())
 		{
 			used.insert(object->GetProperties().begin(), object->GetProperties().end());
 			used.insert(object->GetMethods().begin(), object->GetMethods().end());
-			if (rootSlots.empty() && !object->IsInstance() && (object->GetSuperClass() == 0xffff) && (object->GetProperties().size() >= defaultNames.size()))
+			// A root class can have fewer slots (no name slot).
+			if (!foundRoot && !object->IsInstance() && (object->GetSuperClass() == 0xffff))
 			{
+				foundRoot = true;
 				rootSlots = object->GetProperties();
 			}
 		}
 	}
-	if (rootSlots.empty())
+	if (!loadedAScript)
 	{
 		return false;
 	}
+	if (!foundRoot)
+	{
+		CoreLog(LogLevel::Warning, "the game has no selector table (vocab 997) and no root class: the object header properties have no names");
+	}
 
 	map<uint16_t, string> defaults;
-	for (size_t i = 0; i < defaultNames.size(); i++)
+	for (size_t i = 0; (i < defaultNames.size()) && (i < rootSlots.size()); i++)
 	{
 		defaults[rootSlots[i]] = defaultNames[i];
 	}
 	uint16_t highest = 0;
 	for (uint16_t number : used)
 	{
-		if (number < headerSelectors)
+		if (number < c_firstHeaderSelector)
 		{
 			highest = max(highest, number);
 		}
 	}
-	// No gap below the first free number, so that Add and the written table
-	// need no BAD SELECTOR there.
-	for (uint32_t number = 0; number <= highest; number++)
+	// No gap below the first free number. A game with the old SCI0 script
+	// header (early KQ4) has only even selectors.
+	uint16_t step = _version.HasOldSCI0ScriptHeader ? 2 : 1;
+	for (uint32_t number = 0; number <= highest; number += step)
 	{
 		used.insert((uint16_t)number);
 	}
@@ -806,13 +817,36 @@ bool SelectorTable::_CreateFromScripts(const GameFolderHelper &helper)
 			_defaultSelectors.insert(number);
 		}
 	}
-	_firstInvalidSelector = highest + 1;
+	_firstInvalidSelector = highest + step;
+	// Add puts a new selector at the end when the first free number is the end.
+	while (_indices.size() < _firstInvalidSelector)
+	{
+		_indices.push_back(-1);
+	}
+	_madeFromScripts = true;
 	return true;
 }
 
+uint16_t SelectorTable::FirstFreeNumber() const
+{
+	size_t number = 0;
+	for (size_t i = 0; (i < _indices.size()) && (i < c_firstHeaderSelector); i++)
+	{
+		if (_indices[i] != -1)
+		{
+			number = i + 1;
+		}
+	}
+	if (_version.HasOldSCI0ScriptHeader && (number % 2))
+	{
+		number++;
+	}
+	return (uint16_t)number;
+}
 bool SelectorTable::Load(const GameFolderHelper &helper)
 {
 	_version = helper.Version;
+	_madeFromScripts = false;
 	bool fRet = false;
 	unique_ptr<ResourceBlob> blob(_GetVocabData(helper, VocabSelectorNames));
 	if (blob)
@@ -957,7 +991,7 @@ std::vector<uint8_t> SelectorTable::MakeResourceData() const
 
 void SelectorTable::Save(CResourceMap &resourceMap)
 {
-	if (_fDirty)
+	if (IsDirty())
 	{
 		resourceMap.AppendResource(ResourceBlob(resourceMap.Helper(), nullptr, ResourceType::Vocab, MakeResourceData(), _version.DefaultVolumeFile, VocabSelectorNames, NoBase36, resourceMap.GetSCIVersion(), resourceMap.Helper().GetDefaultSaveSourceFlags()));
 	}

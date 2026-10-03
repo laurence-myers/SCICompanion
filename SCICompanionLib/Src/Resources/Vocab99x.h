@@ -75,8 +75,16 @@ public:
 	uint16_t Add(const std::string &str);
 	void Save(CResourceMap &resourceMap);
 	// True when Add added a name. The compile writes MakeResourceData() to
-	// its destination.
-	bool IsDirty() const { return _fDirty; }
+	// its destination. A table made from the scripts is never written: its
+	// sel_<number> names would hide the built-in names of an interpreter
+	// such as ScummVM, which reads vocab 997 when the game has one.
+	bool IsDirty() const { return _fDirty && !_madeFromScripts; }
+	// The game has no vocab 997, so Load made the table from its scripts. A
+	// new selector name cannot be kept: the compiler reports an error.
+	bool IsMadeFromScripts() const { return _madeFromScripts; }
+	// The number after the highest selector of the table below the SCI1.1
+	// object header selectors (an even number for the old SCI0 script header).
+	uint16_t FirstFreeNumber() const;
 	std::vector<uint8_t> MakeResourceData() const;
 	bool IsDefaultSelector(uint16_t value);
 
@@ -85,8 +93,9 @@ protected:
 	// Each selector number up to the highest one that an object of the game
 	// uses (below the object header selectors of SCI1.1) is sel_<number>; the
 	// first slots of the root class get the names of GetDefaultPropertyNames,
-	// which the compiler and the decompiler find by name. A new selector gets
-	// a number after them. False when the game has no root class.
+	// which the compiler and the decompiler find by name (with no root class,
+	// a warning). A new selector gets a number after them. False when no
+	// script loads.
 	bool _CreateFromScripts(const GameFolderHelper &helper);
 	std::string _GetMissingName(uint16_t wName) const;
 
@@ -95,6 +104,7 @@ private:
 	std::vector<std::string> _names;
 	std::unordered_map<std::string, uint16_t> _nameToValueCache;
 	bool _fDirty;
+	bool _madeFromScripts = false;
 	size_t _firstInvalidSelector;
 	SCIVersion _version;
 	std::unordered_set<uint16_t> _defaultSelectors;

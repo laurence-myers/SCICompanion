@@ -41,6 +41,7 @@
 #include "ResourceUtil.h"
 #include "Font.h"
 #include "ResourceBlob.h"
+#include "ResourceContainer.h"
 
 BOOL ResourcePreviewer::OnInitDialog()
 {
@@ -314,11 +315,25 @@ void ScriptPreviewer::SetResource(const ResourceBlob &blob)
 
 		// If that wasn't possible, spew info from the compiled script resource:
 		// The selector table only: the classes of the game (for an instance of a
-		// class of another script) would load every script for one preview.
+		// class of another script) would load every script for one preview. A
+		// game with no vocab 997 makes its selector table from every script, so
+		// it takes the table of the resource map's lookups, which loads once.
 		CompiledScript compiledScript(0);
 		SelectorTable selectors;
-		selectors.Load(AppResourceMap().Helper());
-		compiledScript.SetNameSelector(selectors);
+		GlobalCompiledScriptLookups *lookups = nullptr;
+		if (!AppResourceMap().Helper().MostRecentResource(ResourceType::Vocab, 997, ResourceEnumFlags::None))
+		{
+			lookups = AppResourceMap().GetCompiledScriptLookups();
+		}
+		if (lookups)
+		{
+			compiledScript.SetNameSelector(lookups->GetSelectorTable());
+		}
+		else
+		{
+			selectors.Load(AppResourceMap().Helper());
+			compiledScript.SetNameSelector(selectors);
+		}
 		if (compiledScript.Load(AppResourceMap().Helper(), AppVersion(), blob.GetNumber(), blob.GetReadStream()))
 		{
 			// Write some crap.
