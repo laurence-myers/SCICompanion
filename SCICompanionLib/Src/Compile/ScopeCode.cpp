@@ -360,11 +360,14 @@ namespace scope
 	// underflow. A candidate is a live bt or bnt whose target the live
 	// instruction before it falls into with more values on the stack than
 	// the branch has (Sierra's compiler gives each other path into an
-	// address the same depth, or more: a break out of a switch). The
-	// candidates are stray when the code has no underflow without them;
-	// else no branch is stray (extra values that nothing takes, as after a
-	// send whose frame is smaller than its pushes, are no fault of the
-	// branch: Quest for Glory IV CD script 10, wisps::init).
+	// address the same depth, or more: a break out of a switch). When the
+	// code has an underflow also without all the candidates, no branch is
+	// stray (extra values that nothing takes, as after a send whose frame
+	// is smaller than its pushes, are no fault of the branch: Quest for
+	// Glory IV CD script 10, wisps::init). Else the stray branches are the
+	// candidates that the code needs for no underflow: a stray branch
+	// lowers the depths after its target, so a real branch there can be a
+	// candidate too (the test of an if after the call).
 	void CodeModel::_FindStrayBranches()
 	{
 		if (!_underflow)
@@ -385,16 +388,16 @@ namespace scope
 		{
 			return;
 		}
-		auto setTargets = [&](bool stray)
+		auto setStray = [&](int b, bool stray)
 		{
-			for (int b : candidates)
-			{
-				Inst &entry = _insts[b];
-				entry.stray = stray;
-				entry.target = stray ? (b + 1) : entry.bytecodeTarget;
-				entry.parseTarget = entry.target;
-				entry.threadedTarget = entry.target;
-			}
+			Inst &entry = _insts[b];
+			entry.stray = stray;
+			entry.target = stray ? (b + 1) : entry.bytecodeTarget;
+			entry.parseTarget = entry.target;
+			entry.threadedTarget = entry.target;
+		};
+		auto findDepths = [&]()
+		{
 			for (Inst &entry : _insts)
 			{
 				entry.live = false;
@@ -406,10 +409,29 @@ namespace scope
 			_FindLiveCode();
 			_FindDepths();
 		};
-		setTargets(true);
+		for (int b : candidates)
+		{
+			setStray(b, true);
+		}
+		findDepths();
 		if (_underflow)
 		{
-			setTargets(false);
+			for (int b : candidates)
+			{
+				setStray(b, false);
+			}
+			findDepths();
+			return;
+		}
+		for (int b : candidates)
+		{
+			setStray(b, false);
+			findDepths();
+			if (_underflow)
+			{
+				setStray(b, true);
+				findDepths();
+			}
 		}
 	}
 

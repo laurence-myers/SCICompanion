@@ -74,9 +74,9 @@ namespace scope
 		// False for jmp and ret: control does not go to the next instruction.
 		bool FallsThrough(int i) const;
 
-		// The target of a branch as the bytecode has it (for a stray branch,
-		// the next instruction); NoIndex for an instruction that is not a
-		// branch.
+		// The target of a branch in the model: the target that the bytecode
+		// has, or the next instruction for a stray branch; NoIndex for an
+		// instruction that is not a branch.
 		int Target(int i) const { return _insts[i].target; }
 		// The target of a branch as the bytecode has it, also for a stray
 		// branch.

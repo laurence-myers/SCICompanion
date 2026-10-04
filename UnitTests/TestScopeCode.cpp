@@ -576,11 +576,17 @@ namespace UnitTests
 			}
 		}
 
-		// A branch that gets to its target with more values than the
-		// fall-through (a break out of a switch) is no stray.
+		// In a function with a stray branch, a branch that gets to its target
+		// with more values than the fall-through (a break out of a switch) is
+		// no stray.
 		TEST_METHOD(Stray_ABranchWithMoreValuesIsNoStray)
 		{
 			ScopeAsm a(R"(
+				push1
+			args:
+				lal 1
+				push
+				callk 5 2
 				lsp 2
 				dup
 				ldi 1
@@ -591,14 +597,93 @@ namespace UnitTests
 				bt exit
 			switchDone:
 				toss
+			stray:
+				bnt args
 				ldi 3
 			exit:
 				ret
 			)");
 			CodeModel model(a.code);
+			Assert::IsTrue(model.IsStray(a.At("stray")));
 			Assert::IsFalse(model.IsStray(a.At("brk")));
 			Assert::AreEqual(a.At("exit"), model.Target(a.At("brk")));
 			Assert::IsTrue(model.HasDepthConflict(a.At("exit")));
+			Assert::IsFalse(model.HasStackUnderflow());
+		}
+
+		// The Camelot shape in the first case of an outer switch: the test of
+		// the if after the call goes to the toss of the outer switch (Sierra
+		// threads it through the jmp at the end of the case). The stray
+		// branch lowers the depth of the call, so the test gets to the toss
+		// with fewer values than the fall-through too. Only the branch that
+		// the code needs for no underflow is stray: the test stays.
+		TEST_METHOD(Stray_OnlyTheBranchesThatTheCodeNeedsAreStray)
+		{
+			ScopeAsm a(R"(
+				lsp 0
+				dup
+				ldi 1
+				eq?
+				bnt case2
+				push1
+			args:
+				lal 1
+				push
+				callk 5 2
+			test:
+				bnt outerDone
+				lsp 2
+				dup
+				ldi 1
+				eq?
+				bnt innerElse
+				push0
+				callk 2 0
+				jmp innerDone
+			innerElse:
+				push0
+				callk 3 0
+			innerDone:
+				toss
+			stray:
+				bnt args
+				jmp outerDone
+			case2:
+				dup
+				ldi 2
+				eq?
+				bnt outerDone
+				push0
+				callk 4 0
+			outerDone:
+				toss
+				ret
+			)");
+			CodeModel model(a.code);
+			Assert::IsTrue(model.IsStray(a.At("stray")));
+			Assert::IsFalse(model.IsStray(a.At("test")));
+			Assert::AreEqual(a.At("outerDone"), model.Target(a.At("test")));
+			Assert::IsFalse(model.HasStackUnderflow());
+		}
+
+		// A branch to code that no fall-through gets to is no candidate,
+		// also when the code there underflows and is dead without the branch.
+		TEST_METHOD(Stray_ABranchToCodeThatNoFallThroughGetsToIsNoStray)
+		{
+			ScopeAsm a(R"(
+				lap 0
+			test:
+				bnt bad
+				ret
+			bad:
+				toss
+				ret
+			)");
+			CodeModel model(a.code);
+			Assert::IsFalse(model.IsStray(a.At("test")));
+			Assert::AreEqual(a.At("bad"), model.Target(a.At("test")));
+			Assert::IsTrue(model.IsLive(a.At("bad")));
+			Assert::IsTrue(model.HasStackUnderflow());
 		}
 
 		// The fall-through leaves values that nothing takes (Quest for Glory
