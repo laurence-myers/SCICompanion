@@ -1235,6 +1235,18 @@ public:
 
 	void Visit(const CodeBlock &block) override
 	{
+		if (block.IsGroup())
+		{
+			// An expression: its own parentheses, with no space after the first one.
+			_MaybeNewLineIndent();
+			out.out << "(";
+			SET_MULTILINEMODE(_ShouldBeMultiline(&block));
+			_SkipNextSpace();
+			_IndentAcceptChildren(block.GetList());
+			_MaybeNewLineIndentNoSpace();
+			out.out << ")";
+			return;
+		}
 		// The parent should have set is multiline (e.g. if statements, etc...)
 		// SET_MULTILINEMODE(_ShouldBeMultiline(&block));
 		// No indent, because the parent will already have indented (e.g. if statements, etc...)

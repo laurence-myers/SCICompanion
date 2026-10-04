@@ -1728,6 +1728,22 @@ CodeResult CodeBlock::OutputByteCode(CompileContext &context) const
 	// I've decided this is a bad thing.  We should not remove meaning.
 	// e.g. switch (a, b)
 
+	if (_group && !_segments.empty())
+	{
+		// The statements before the value are statements: their values go
+		// nowhere, and an and or an or among them is a value, not a test.
+		for (size_t i = 0; i + 1 < _segments.size(); ++i)
+		{
+			declare_conditional isCondition(context, false);
+			change_meaning meaning(context, false);
+			COutputContext accContext(context, OC_Accumulator);
+			_segments[i]->OutputByteCode(context);
+		}
+		// The value, in the context of the group.
+		CodeResult result = _segments.back()->OutputByteCode(context);
+		return CodeResult(result.GetBytes(), result.GetType());
+	}
+
 	CodeResult result = SingleStatementVectorOutputHelper(_segments, context, &wBytes);
 	return CodeResult(wBytes, result.GetType());
 }

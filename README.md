@@ -23,6 +23,10 @@ modernizing the build. Broad highlights since the previous release:
 * **Decompiles known damaged scripts** (such as script 995 of Hoyle 3, whose
   resource is cut short). The decompile reads up to the end of the data, and a
   warning at the top of the source tells what is missing.
+* **Statement groups in expressions.** `((= a 1) (b c:))` is two or more
+  statements in parentheses, whose value is the value of the last one. Sierra's
+  1993 compiler accepted it (Pepper's Adventures in Time uses it), and the
+  decompiler now writes it where the code has one.
 * **The template games are compiled from their current sources.** A new
   game starts with the scripts that its `src` folder holds.
 * **Better compile warning/error messages.**

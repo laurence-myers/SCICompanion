@@ -63,6 +63,7 @@ const char *chunkTypeNames[] =
 	"Nary",
 	"For",
 	"Step",
+	"Group",
 };
 
 // fwd decl
@@ -192,7 +193,15 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode2(ConsumptionNode &node, Decomp
 			_ApplyChildren(node, *codeBlock, lookups);
 			return unique_ptr<SyntaxNode>(move(codeBlock));
 		}
-			
+
+		case ChunkType::Group:
+		{
+			unique_ptr<CodeBlock> group = std::make_unique<CodeBlock>();
+			group->SetGroup(true);
+			_ApplyChildren(node, *group, lookups);
+			return unique_ptr<SyntaxNode>(move(group));
+		}
+
 		case ChunkType::While:
 		{
 			unique_ptr<WhileLoop> whileLoop = make_unique<WhileLoop>();

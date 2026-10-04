@@ -280,7 +280,11 @@ public:
 						statements = static_cast<DoLoop*>(_callStack.back());
 						break;
 					case NodeTypeCodeBlock:
-						statements = static_cast<CodeBlock*>(_callStack.back());
+						// Not after the value of a group: the comment goes to a statement list around it.
+						if (!static_cast<CodeBlock*>(_callStack.back())->IsGroup())
+						{
+							statements = static_cast<CodeBlock*>(_callStack.back());
+						}
 						break;
 					case NodeTypeForLoop:
 						statements = static_cast<ForLoop*>(_callStack.back());

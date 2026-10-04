@@ -462,6 +462,8 @@ namespace UnitTests
         FIXTURE_TEST(StoreInSlot, "V3_StoreInSlot", 966)
         // A loop whose value is the test of an if.
         FIXTURE_TEST(LoopValue, "V4_LoopValue", 967)
+        // A term of an and with statements before its value: a group.
+        FIXTURE_TEST(GroupTerm, "V5_GroupTerm", 975)
         // An instance with the name of a property, and a &rest before the last
         // argument.
         FIXTURE_TEST(ObjectNamedLikeAProperty, "O1_ObjectNamedLikeAProperty", 968)

@@ -88,6 +88,13 @@ namespace
 			if ((frame.kind == SlotKind::Statement) && frame.list && (i >= 2))
 			{
 				const AstContext::Frame &block = ctx._frames[i - 2];
+				// The last statement of a group is its value: the slot of the group.
+				CodeBlock *group = AsCodeBlock(block.node);
+				if (group && group->IsGroup() && (frame.index + 1 == frame.list->size()))
+				{
+					i--;
+					continue;
+				}
 				if ((block.node->GetNodeType() != NodeTypeCodeBlock) ||
 					((block.kind != SlotKind::IfThen) && (block.kind != SlotKind::IfElse)))
 				{

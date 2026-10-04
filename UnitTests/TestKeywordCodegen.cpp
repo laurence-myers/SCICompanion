@@ -274,6 +274,45 @@ namespace UnitTests
             AssertSameBytes(keyword, manual, L"an and/or in a condition must branch to the else of the if");
         }
 
+        // A group, two or more statements in parentheses, is the value of its
+        // last statement (Pepper's Adventures in Time, script 230). Before the
+        // value, an or is a value of its own: its bt goes to its end, not to
+        // the then-part of the if.
+        TEST_METHOD(Group_StatementsThenTheValue)
+        {
+            _gameFolder = SetUpGameSCI11();
+            std::string keyword = KTest("a b c &tmp t",
+                "\t(if (and a ((or b c) (= t 3) a))\n"
+                "\t\t(= t 1)\n"
+                "\telse\n"
+                "\t\t(= t 2)\n"
+                "\t)\n"
+                "\t(return t)\n");
+            std::string manual = KTest("a b c &tmp t",
+                "\t(asm\n"
+                "\t\tlap a\n"
+                "\t\tbnt andElse\n"
+                "\t\tlap b\n"
+                "\t\tbt orEnd\n"
+                "\t\tlap c\n"
+                "\torEnd:\n"
+                "\t\tldi 3\n"
+                "\t\tsat t\n"
+                "\t\tlap a\n"
+                "\t\tbnt andElse\n"
+                "\t\tldi 1\n"
+                "\t\tsat t\n"
+                "\t\tjmp andEnd\n"
+                "\tandElse:\n"
+                "\t\tldi 2\n"
+                "\t\tsat t\n"
+                "\tandEnd:\n"
+                "\t\tlat t\n"
+                "\t\tret\n"
+                "\t)\n");
+            AssertSameBytes(keyword, manual, L"a group must compile its statements, then its value");
+        }
+
         // A call to proc<N>_<M> that no name resolves, in a game with no
         // script N (Sierra removed script 911 from KQ6), compiles to
         // "calle N M" with a warning.

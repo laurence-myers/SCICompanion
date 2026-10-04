@@ -343,6 +343,14 @@ void SetStatementAsConditionA(MatchResult &match, const ParserSCI *pParser, Synt
 	}
 }
 
+void SetGroupA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
+{
+	if (match.Result())
+	{
+		pContext->GetSyntaxNode<CodeBlock>()->SetGroup(true);
+	}
+}
+
 template<typename _T>
 void AddCodeBlockA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
 {
@@ -987,6 +995,14 @@ void SCISyntaxParser::Load()
 	// (SomeProc param1 param2 param3)
 	procedure_call = alphanumNK_p[SetStatementNameA<ProcedureCall>] >> (*statement[AddStatementA<ProcedureCall>])[{nullptr, acInSendOrProcCall}];
 
+	// ((= a 1) (b c:)): two or more statements, whose value is the value of
+	// the last one.
+	expression_group =
+		alwaysmatch_p[SetStatementA<CodeBlock>]
+		>> alwaysmatch_p[SetGroupA]
+		>> statement[AddStatementA<CodeBlock>]
+		>> ++statement[AddStatementA<CodeBlock>];
+
 	// posn: x y z
 	send_param_call = selector_send_p[SetStatementNameA<SendParam>] >> alwaysmatch_p[SendParamIsMethod] >> *statement[AddStatementA<SendParam>];
 
@@ -1108,7 +1124,8 @@ void SCISyntaxParser::Load()
 		contif_statement |
 		asm_block |
 		send_call |			 // Send has to come before procedure. Because procedure will match (foo sel:)
-		procedure_call
+		procedure_call |
+		expression_group	 // Last: a send to an expression starts with a statement too, ((GetObj) sel:)
 		)[{nullptr, acStartStatement}] >>
 		clpar)
 		| (rest_statement
