@@ -487,6 +487,10 @@ namespace UnitTests
             Assert::IsTrue(out.text.find("; Group") != std::string::npos, L"setup: the text of the call is a comment");
         }
 
+        // The second operand of an or with statements before its value, which
+        // an instruction after the or reads: a group.
+        FIXTURE_TEST(GroupOrOperand, "V7_GroupOrOperand", 957)
+
         // A group whose first statement is a value would be a call or a send
         // as text: the function falls back to asm, and the text compiles.
         TEST_METHOD(GroupValueFirst_FallsBackToAsm)

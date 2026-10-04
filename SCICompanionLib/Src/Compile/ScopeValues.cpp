@@ -929,7 +929,13 @@ namespace scope
 			// that can read it.
 			bool _AccIsDeadAfter(int i)
 			{
-				int k = i + 1;
+				return _AccIsDeadAt(i + 1);
+			}
+
+			// No instruction reads the accumulator from the instruction k on
+			// (see _AccIsDeadAfter).
+			bool _AccIsDeadAt(int k)
+			{
 				for (int steps = 0; (steps < 64) && (k >= 0) && (k < _model.Size()); ++steps)
 				{
 					Opcode op = _model.Op(k);
@@ -1704,17 +1710,37 @@ namespace scope
 					_Region(*region.body);
 				}
 				bool isValue = (thenNode->GetChildCount() == 0) || ((thenNode->GetChildCount() == 1) && _AccIsAvailable());
-				std::unique_ptr<ConsumptionNode> second = isValue ? _TakeAcc(region.branch) : nullptr;
+				// Statements before the value of the second operand, and an
+				// instruction after the or reads its value: the second operand
+				// is a group of the statements, whose last one gives the value
+				// (QfG1 VGA script 0, proc0_3: "ldi 17; sat temp0" before a
+				// loop, then "not; bnt" after it). The join is the target that
+				// the parser uses: a compiler can thread the bt past the bnt.
+				int join = _model.ParseTarget(region.branch);
+				bool isGroup = !isValue && _AccIsAvailable() && (join != NoIndex) && !_AccIsDeadAt(join);
+				std::unique_ptr<ConsumptionNode> second = (isValue || isGroup) ? _TakeAcc(region.branch) : nullptr;
 				_EndList(list, region.branch);
 				_list = outer;
 				_ResetFacts();
-				if (isValue)
+				if (isGroup)
+				{
+					std::unique_ptr<ConsumptionNode> group = std::make_unique<ConsumptionNode>();
+					group->SetType(ChunkType::Group);
+					while (thenNode->GetChildCount() > 0)
+					{
+						group->AppendChild(thenNode->StealChild(0));
+					}
+					group->AppendChild(std::move(second));
+					second = std::move(group);
+				}
+				if (isValue || isGroup)
 				{
 					_Append(_Logical(ChunkType::Or, std::move(first), std::move(second)), true, region.branch);
 					return;
 				}
-				// Statements in the second operand: as a statement, (or c X) is
-				// (if (not c) X). It has no value: a reader of it has no text.
+				// Statements in the second operand, and it is no group: as a
+				// statement, (or c X) is (if (not c) X). It has no value: a
+				// reader of it has no text.
 				std::unique_ptr<ConsumptionNode> ifNode = std::make_unique<ConsumptionNode>();
 				ifNode->SetType(ChunkType::If);
 				ifNode->AppendChild(_Wrap(ChunkType::Condition, _Wrap(ChunkType::Invert, std::move(first))));
