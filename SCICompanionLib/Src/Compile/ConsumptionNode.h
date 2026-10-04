@@ -40,6 +40,7 @@ enum class ChunkType
 	Nary,
 	For,		// Condition, LoopBody, Step
 	Step,		// the statements of the step of a for loop
+	Group,		// statements, then the value: an operand in parentheses
 };
 
 // The names of the chunk types, for the debug dumps.

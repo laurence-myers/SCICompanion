@@ -22,6 +22,8 @@
 #include "DecompilerResults.h"
 #include "AppState.h"
 #include "TestSupport.h"
+#include "format.h"
+#include <chrono>
 #include <set>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -622,6 +624,54 @@ namespace UnitTests
             std::vector<std::string> differences = CompareScriptTexts(golden, actual, AppVersion());
             Assert::AreEqual(size_t(1), differences.size(), L"one function differs");
             Assert::AreEqual(std::string("theProc"), differences[0], L"the differing function is named");
+        }
+
+        // --- Statement groups ---
+
+        // The value of the first statement of the procedure, an assignment.
+        static const sci::SyntaxNode *AssignedValue(sci::Script &script)
+        {
+            const sci::Assignment *assignment = sci::SafeSyntaxNode<sci::Assignment>(FirstProcedure(script).GetStatements()[0].get());
+            Assert::IsNotNull(assignment, L"setup: the first statement is an assignment");
+            return assignment->GetStatement1();
+        }
+
+        // ((= u 1) a) is a group. A name first is a call, (a (Abs b)), and a
+        // statement with a selector after it is a send, ((Abs a) foo:).
+        TEST_METHOD(Group_Parses)
+        {
+            std::unique_ptr<sci::Script> group = ParseSierraScript(WrapProcedure("(= t ((= u 1) a))"));
+            const sci::CodeBlock *block = sci::SafeSyntaxNode<sci::CodeBlock>(AssignedValue(*group));
+            Assert::IsTrue(block && block->IsGroup() && (block->GetStatements().size() == 2), L"a group of two statements");
+            std::string text = ScriptToText(*group);
+            Assert::IsTrue(text.find("((= u 1) a)") != std::string::npos, Wide(text).c_str());
+
+            std::unique_ptr<sci::Script> call = ParseSierraScript(WrapProcedure("(= t (a (Abs b)))"));
+            Assert::AreEqual((int)sci::NodeTypeProcedureCall, (int)AssignedValue(*call)->GetNodeType(), L"a name first is a call");
+            std::unique_ptr<sci::Script> send = ParseSierraScript(WrapProcedure("(= t ((Abs a) foo:))"));
+            Assert::AreEqual((int)sci::NodeTypeSendCall, (int)AssignedValue(*send)->GetNodeType(), L"a selector after the statement is a send");
+        }
+
+        // Each level of nested parentheses parses its first statement one
+        // time: the time does not double with each level.
+        TEST_METHOD(Group_DeepNesting_ParsesQuickly)
+        {
+            std::string body = "(= t " + std::string(24, '(') + "Abs a" + std::string(24, ')') + ")";
+            std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+            std::string error;
+            TryParseSierraScript(WrapProcedure(body), &error);
+            double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+            Assert::IsTrue(seconds < 5.0, Wide(fmt::format("24 levels took {0:.1f} s", seconds)).c_str());
+        }
+
+        // The last statement of a group is its value, in the slot of the
+        // group; a statement before it is not a value.
+        TEST_METHOD(Group_LastStatementIsTheValue)
+        {
+            std::string last = ApplyAllPasses("(if (and a ((= t 3) (if b c))) (= t 1))");
+            Assert::IsTrue(last.find("((= t 3) (and b c))") != std::string::npos, Wide(last).c_str());
+            std::string earlier = ApplyAllPasses("(if (and a ((if b c) a)) (= t 1))");
+            Assert::IsTrue(earlier.find("((if b c) a)") != std::string::npos, Wide(earlier).c_str());
         }
 
     private:

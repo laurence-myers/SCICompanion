@@ -1554,8 +1554,11 @@ namespace scope
 				return true;
 			}
 
-			// The value at the end of a sequence that is an operand (an
-			// and-term, the second operand of an or): its only statement.
+			// The value at the end of a sequence that is an and-term: its only
+			// statement, or a group of its statements whose last one gives the
+			// value (Pepper script 230, sTalkPoorRich::changeState: "ldi 1; sal
+			// local1; pushi #setScript; ...; send 6; bnt" is the term
+			// ((= local1 1) (global2 setScript: sGetKeyNotYet))).
 			std::unique_ptr<ConsumptionNode> _OperandValue(const Region *sequence, int reader, const char *id)
 			{
 				ConsumptionNode holder;
@@ -1568,14 +1571,28 @@ namespace scope
 				{
 					_Region(*sequence);
 				}
-				if ((holder.GetChildCount() > 1) || ((holder.GetChildCount() == 1) && !_AccIsAvailable()))
+				// With statements before it, the value is the last statement:
+				// a copy from a fact would be an expression that the code
+				// does not have.
+				if ((holder.GetChildCount() > 0) && !_AccIsAvailable())
 				{
-					_Fail(id, reader, "statements in an operand");
+					_Fail(id, reader, "statements in an operand, and the last one is not the value");
 				}
 				std::unique_ptr<ConsumptionNode> value = _TakeAcc(reader);
 				_EndList(list, reader);
 				_list = outer;
-				return value;
+				if (holder.GetChildCount() == 0)
+				{
+					return value;
+				}
+				std::unique_ptr<ConsumptionNode> group = std::make_unique<ConsumptionNode>();
+				group->SetType(ChunkType::Group);
+				while (holder.GetChildCount() > 0)
+				{
+					group->AppendChild(holder.StealChild(0));
+				}
+				group->AppendChild(std::move(value));
+				return group;
 			}
 
 			std::unique_ptr<ConsumptionNode> _Logical(ChunkType type, std::unique_ptr<ConsumptionNode> first, std::unique_ptr<ConsumptionNode> second)

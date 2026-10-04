@@ -1024,7 +1024,12 @@ namespace sci
 		CodeBlock& operator=(const CodeBlock& src) = delete;
 
 		const SyntaxNodeVector &GetList() const { return _segments; }
-		
+
+		// A group: an expression in parentheses that is two or more
+		// statements, whose value is the value of the last one, for example
+		// (and a ((= b 1) (c d:))).
+		bool IsGroup() const { return _group; }
+		void SetGroup(bool group) { _group = group; }
 
 		// IOutputByteCode
 		CodeResult OutputByteCode(CompileContext &context) const override;
@@ -1044,6 +1049,9 @@ namespace sci
 		}
 
 		void Accept(ISyntaxNodeVisitor &visitor) const override;
+
+	private:
+		bool _group = false;
 	};
 
 	//

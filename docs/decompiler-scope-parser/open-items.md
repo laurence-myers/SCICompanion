@@ -40,7 +40,7 @@ Open items only: gaps, unfixed findings, questions. The plan is in
 
 ## Refusals
 
-The full corpus run gives 113 functions as `asm`:
+The full corpus run gives 112 functions as `asm`:
 
 - `syntax` (46): code that the text cannot have: a property past the end
   of its object (for example `Act::canBeHere` of ICEMAN, LSL3 and QfG1,
@@ -69,5 +69,3 @@ The full corpus run gives 113 functions as `asm`:
   count (`push; calle 921 0 0`).
 - `stack-underflow` (2): Camelot 40 `Rm40::handleEvent` (two copies): a
   branch back goes past the push of an argument count.
-- `term-statement` (1): Pepper 230 `sTalkPoorRich::changeState`: an
-  and-term with statements before its value.

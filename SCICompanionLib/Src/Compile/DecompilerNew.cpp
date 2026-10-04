@@ -63,6 +63,7 @@ const char *chunkTypeNames[] =
 	"Nary",
 	"For",
 	"Step",
+	"Group",
 };
 
 // fwd decl
@@ -192,7 +193,22 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode2(ConsumptionNode &node, Decomp
 			_ApplyChildren(node, *codeBlock, lookups);
 			return unique_ptr<SyntaxNode>(move(codeBlock));
 		}
-			
+
+		case ChunkType::Group:
+		{
+			unique_ptr<CodeBlock> group = std::make_unique<CodeBlock>();
+			group->SetGroup(true);
+			_ApplyChildren(node, *group, lookups);
+			// A value first, (local0 (Abs a)), is a call of local0 or a send to
+			// it as text: the function falls back to asm.
+			NodeType first = group->GetStatements().front()->GetNodeType();
+			if ((first == NodeTypeValue) || (first == NodeTypeComplexValue) || (first == NodeTypeLValue))
+			{
+				throw ConsumptionNodeException(&node, "A group whose first statement is a value.");
+			}
+			return unique_ptr<SyntaxNode>(move(group));
+		}
+
 		case ChunkType::While:
 		{
 			unique_ptr<WhileLoop> whileLoop = make_unique<WhileLoop>();

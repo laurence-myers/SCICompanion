@@ -343,6 +343,29 @@ void SetStatementAsConditionA(MatchResult &match, const ParserSCI *pParser, Synt
 	}
 }
 
+// After the expression of a send, with no selector: a group, whose first
+// statement is that expression. A name (gEgo) is no statement of a group:
+// (foo bar) is a call of the procedure foo.
+void SendObjectToGroupA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
+{
+	if (match.Result())
+	{
+		SendCall *send = pContext->GetSyntaxNode<SendCall>();
+		if (!send->GetStatement1())
+		{
+			match.ChangeResult(false);
+			return;
+		}
+		std::unique_ptr<SyntaxNode> first = std::move(send->GetStatement1Internal());
+		LineCol position = send->GetPosition();
+		pContext->CreateSyntaxNode<CodeBlock>(stream);
+		CodeBlock *group = pContext->GetSyntaxNode<CodeBlock>();
+		group->SetPosition(position);
+		group->SetGroup(true);
+		group->AddStatement(std::move(first));
+	}
+}
+
 template<typename _T>
 void AddCodeBlockA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
 {
@@ -992,13 +1015,19 @@ void SCISyntaxParser::Load()
 
 	// expression selectorA: one two three, selectorB: one two
 	// expression selectorA?
+	// Or a group, ((= a 1) (b c:)): two or more statements, whose value is
+	// the value of the last one. Its first statement is the expression of
+	// the send, parsed one time for both forms.
 	send_call = (alwaysmatch_p[SetStatementA<SendCall>] // Simple form, e.g. gEgo
 		>> ((alphanumSendToken_p[SetNameA<SendCall>]) | statement[StatementBindTo1stA<SendCall, errSendObject>])) // Expression, e.g. [clients 4], or (GetTheGuy)
 		>>
-		(propget_p[AddSimpleSendParamA] |			 // Single prop get
-		(syntaxnode_d[send_param_call[AddSendParamA]] % -comma[GeneralE])	  // Or a series regular ones separated by optional comma
-		)[{nullptr, acInSendOrProcCall}]			  // AC stuff that's inside a send call
-		;
+		(
+			(propget_p[AddSimpleSendParamA] |			 // Single prop get
+			(syntaxnode_d[send_param_call[AddSendParamA]] % -comma[GeneralE])	  // Or a series regular ones separated by optional comma
+			)[{nullptr, acInSendOrProcCall}]			  // AC stuff that's inside a send call
+			|
+			(alwaysmatch_p[SendObjectToGroupA] >> ++statement[AddStatementA<CodeBlock>])
+		);
 
 	// Operators
 	// These are binary-only operators
