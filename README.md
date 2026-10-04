@@ -24,7 +24,9 @@ modernizing the build. Broad highlights since the previous release:
   resource is cut short). The decompile reads up to the end of the data, and a
   warning at the top of the source tells what is missing. A branch that
   Sierra's compiler made by mistake (such as in script 40 of Conquests of
-  Camelot) is left out, also with a warning.
+  Camelot) is left out, also with a warning. So is an export that points
+  outside the code of its script (such as exports 6 to 29 of script 0 of
+  Codename: ICEMAN), not given an empty procedure.
 * **Statement groups in expressions.** `((= a 1) (b c:))` is two or more
   statements in parentheses, whose value is the value of the last one. Sierra's
   1993 compiler accepted it (Pepper's Adventures in Time uses it), and the

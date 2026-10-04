@@ -41,8 +41,10 @@ struct DecompiledFunction
 	// The output of the function: "scope" (source), "asm" (the
 	// disassembly), "corrupt" (the end of its
 	// code is not known), "error" (its decompile threw, so the script
-	// failed), or "stale" (an export that points into the code of another
-	// function: no function starts there, and it has no source).
+	// failed), "stale" (an export that points into the code of another
+	// function: no function starts there, and it has no source), or
+	// "outside" (an export that points outside the code of the script: it
+	// has no source).
 	std::string output;
 	// The result of the scope engine: empty when it did not run (asm only,
 	// or no code), "ok", or why it failed ("[scope:<stage>:<id>]").

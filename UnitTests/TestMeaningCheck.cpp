@@ -775,40 +775,6 @@ namespace UnitTests
 			AssertVerdict(meaning::Verdict::Same, Check("pushi 6\nldi 3\ndiv\nsal 0\nret", "ldi 2\nsal 0\nret"));
 		}
 
-		// Each export by its index; an export whose address is not in the
-		// original script is UNCOMPARED (ICEMAN script 0: exports 6 to 29
-		// point past the end; the text gives empty procedures).
-		TEST_METHOD(Meaning_ABadExportIsUncompared)
-		{
-			meaning::Function stub = Fn("ret");
-			meaning::Function bad6;
-			bad6.key = "export 6";
-			bad6.badExport = true;
-			bad6.unreadable = "code-bounds";
-			meaning::Function bad7 = bad6;
-			bad7.key = "export 7";
-			meaning::Function stub6 = stub;
-			stub6.key = "export 6";
-			meaning::Function stub7 = stub;
-			stub7.key = "export 7";
-			std::vector<meaning::FunctionOutcome> rows = meaning::CompareFunctions({ bad6, bad7 }, { stub6, stub7 });
-			Assert::AreEqual((size_t)2, rows.size());
-			for (const auto &row : rows)
-			{
-				AssertVerdict(meaning::Verdict::Uncompared, row.outcome);
-				Assert::AreEqual(std::string("bad-export"), row.outcome.detail);
-			}
-			// The text lost the export, or gave it code.
-			rows = meaning::CompareFunctions({ bad6, bad7 }, { stub6, Fn("push0\ncallk 1 0\nret") });
-			AssertVerdict(meaning::Verdict::Diff, rows[1].outcome);
-			Assert::AreEqual(std::string("no-recompiled-function"), rows[1].outcome.detail);
-			meaning::Function body7 = Fn("push0\ncallk 1 0\nret");
-			body7.key = "export 7";
-			rows = meaning::CompareFunctions({ bad6, bad7 }, { stub6, body7 });
-			AssertVerdict(meaning::Verdict::Diff, rows[1].outcome);
-			Assert::AreEqual(std::string("bad-export-body"), rows[1].outcome.detail);
-		}
-
 		// A local procedure that only dead code calls is dead code too: the
 		// text leaves out the dead call, so the recompiled script has no
 		// caller for it (QfG3 script 460, localproc_1f5b).

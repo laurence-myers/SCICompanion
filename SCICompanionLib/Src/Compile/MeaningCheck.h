@@ -63,9 +63,6 @@ namespace meaning
 		std::vector<int> depth;
 		// Not empty: the check cannot read the function, and why.
 		std::string unreadable;
-		// An export whose address is not in the script (no code): the text
-		// cannot give it, so the check does not compare it.
-		bool badExport = false;
 	};
 
 	enum class Verdict
@@ -117,10 +114,8 @@ namespace meaning
 	// original, then the recompiled functions that the original has not. A
 	// function with no partner is DIFF ("no-recompiled-function" or
 	// "no-original-function"). The local procedures pair by meaning (the
-	// text can have them in another order), and an export whose address is
-	// not in the original script is UNCOMPARED ("bad-export") when the text
-	// gives it an empty procedure. A local procedure that only dead code calls,
-	// and that has no partner, is UNCOMPARED ("no-live-caller").
+	// text can have them in another order). A local procedure that only dead
+	// code calls, and that has no partner, is UNCOMPARED ("no-live-caller").
 	std::vector<FunctionOutcome> CompareFunctions(const std::vector<Function> &original, const std::vector<Function> &recompiled);
 
 	// The functions of a compiled script (ReadScriptFunctions), for the check.

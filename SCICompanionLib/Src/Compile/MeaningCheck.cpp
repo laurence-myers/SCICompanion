@@ -1707,25 +1707,6 @@ namespace meaning
 	{
 		const char LocalPrefix[] = "local ";
 
-		// The code of an empty procedure: a ret, with no other instruction
-		// than a link or a line number.
-		bool _IsEmptyProcedure(const Function &function)
-		{
-			bool ret = false;
-			for (const Instruction &inst : function.code)
-			{
-				if (inst.op == Opcode::RET)
-				{
-					ret = true;
-				}
-				else if ((inst.op != Opcode::LINK) && (inst.op != Opcode::LineNumber) && (inst.op != Opcode::Filename))
-				{
-					return false;
-				}
-			}
-			return ret;
-		}
-
 		bool _IsLocalKey(const std::string &key)
 		{
 			return key.compare(0, sizeof(LocalPrefix) - 1, LocalPrefix) == 0;
@@ -1939,18 +1920,7 @@ namespace meaning
 			row.display = function.display;
 			row.offset = function.offset;
 			auto partner = byKey.find(function.key);
-			if (function.badExport && (partner != byKey.end()) && _IsEmptyProcedure(*partner->second))
-			{
-				// No code: the text has an empty procedure for the export.
-				row.outcome.verdict = Verdict::Uncompared;
-				row.outcome.detail = "bad-export";
-			}
-			else if (function.badExport && (partner != byKey.end()))
-			{
-				row.outcome.verdict = Verdict::Diff;
-				row.outcome.detail = "bad-export-body";
-			}
-			else if ((partner == byKey.end()) && _IsLocalKey(function.key) && (calledLocals.count(function.key) == 0))
+			if ((partner == byKey.end()) && _IsLocalKey(function.key) && (calledLocals.count(function.key) == 0))
 			{
 				// Only dead code calls the procedure: the text leaves out the dead
 				// call, and the recompiled script has no caller for it.
@@ -2083,7 +2053,6 @@ namespace meaning
 			}
 			Function function = MakeFunction(key, display, code.code, code.returnsValue, lookups.GetVersion(), addressText, procedureKey, calleKey);
 			function.offset = code.offset;
-			function.badExport = (code.exportIndex >= 0) && code.badAddress;
 			function.localsAreGlobals = (script.GetScriptNumber() == 0);
 			if (!code.read)
 			{
