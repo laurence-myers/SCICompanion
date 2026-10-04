@@ -53,26 +53,6 @@
                                  ]
                   },
                   {
-                      "name":  "Codename ICEMAN - dev",
-                      "md5":  "ca97e4c2e594c0f001388b4178f465bc",
-                      "failures":  [
-                                       255,
-                                       354,
-                                       385,
-                                       821,
-                                       984,
-                                       990,
-                                       994
-                                   ],
-                      "random":  [
-                                     16,
-                                     301,
-                                     315,
-                                     388,
-                                     991
-                                 ]
-                  },
-                  {
                       "name":  "Codename ICEMAN (1989)",
                       "md5":  "964725892023bfb6e2ac552d1dd71e16",
                       "failures":  [
@@ -90,33 +70,6 @@
                                      100,
                                      309,
                                      369
-                                 ]
-                  },
-                  {
-                      "name":  "Conquests of Camelot - dev",
-                      "md5":  "bde99c29f8f8328a9b26762296f0b3d8",
-                      "failures":  [
-                                       2,
-                                       5,
-                                       40,
-                                       47,
-                                       51,
-                                       67,
-                                       107,
-                                       128,
-                                       133,
-                                       209,
-                                       255,
-                                       911,
-                                       952,
-                                       990
-                                   ],
-                      "random":  [
-                                     66,
-                                     112,
-                                     145,
-                                     178,
-                                     995
                                  ]
                   },
                   {
@@ -519,23 +472,6 @@
                                  ]
                   },
                   {
-                      "name":  "Kings Quest 4 - dev",
-                      "md5":  "4cda80e024f9ef2bc6167150c59c5cbf",
-                      "failures":  [
-                                       0,
-                                       78,
-                                       255,
-                                       990
-                                   ],
-                      "random":  [
-                                     35,
-                                     61,
-                                     67,
-                                     86,
-                                     508
-                                 ]
-                  },
-                  {
                       "name":  "King\u0027s Quest I - Quest for the Crown VGA (1990)",
                       "md5":  "fcf6a00f2ff4715bf8ea65388458179d",
                       "failures":  [
@@ -876,22 +812,6 @@
                                  ]
                   },
                   {
-                      "name":  "Leisure Suit Larry 2 - dev",
-                      "md5":  "d806b2973c9860a4f5e20ab6ae2a0a7a",
-                      "failures":  [
-                                       0,
-                                       255,
-                                       990
-                                   ],
-                      "random":  [
-                                     38,
-                                     42,
-                                     50,
-                                     58,
-                                     101
-                                 ]
-                  },
-                  {
                       "name":  "Leisure Suit Larry 2 - Goes looking for Love in Several Wrong Places (1988)",
                       "md5":  "2c9c3b0923e3764f5ab999bcb71c2d47",
                       "failures":  [
@@ -905,24 +825,6 @@
                                      101,
                                      114,
                                      401
-                                 ]
-                  },
-                  {
-                      "name":  "Leisure Suit Larry 3 - dev",
-                      "md5":  "c0878b255575393d4665dcca5893ce91",
-                      "failures":  [
-                                       40,
-                                       140,
-                                       255,
-                                       990,
-                                       994
-                                   ],
-                      "random":  [
-                                     43,
-                                     260,
-                                     400,
-                                     430,
-                                     967
                                  ]
                   },
                   {
@@ -1099,54 +1001,6 @@
                                  ]
                   },
                   {
-                      "name":  "Police Quest 2 - dev",
-                      "md5":  "9268048c1a859053bac1035691c6c66a",
-                      "failures":  [
-                                       0,
-                                       1,
-                                       12,
-                                       13,
-                                       16,
-                                       40,
-                                       101,
-                                       225,
-                                       255,
-                                       990
-                                   ],
-                      "random":  [
-                                     10,
-                                     28,
-                                     33,
-                                     66,
-                                     104
-                                 ]
-                  },
-                  {
-                      "name":  "Police Quest 2 - dev2",
-                      "md5":  "19b5567e6d9c8703c23a9e5a1a2ee3f9",
-                      "failures":  [
-                                       0,
-                                       1,
-                                       12,
-                                       13,
-                                       16,
-                                       40,
-                                       101,
-                                       105,
-                                       200,
-                                       225,
-                                       255,
-                                       990
-                                   ],
-                      "random":  [
-                                     3,
-                                     7,
-                                     66,
-                                     91,
-                                     124
-                                 ]
-                  },
-                  {
                       "name":  "Police Quest 2 - The Vengeance (1988)",
                       "md5":  "28a6f471c7900c2c92da40eecb615d9d",
                       "failures":  [
@@ -1280,44 +1134,6 @@
                                  ]
                   },
                   {
-                      "name":  "Quest for Glory (VGA) - dev recomp",
-                      "md5":  "8f650c60a23f18c81ea97071edd0bbc3",
-                      "failures":  [
-                                       0,
-                                       32,
-                                       70,
-                                       84,
-                                       814
-                                   ],
-                      "random":  [
-                                     104,
-                                     318,
-                                     419,
-                                     957,
-                                     988
-                                 ]
-                  },
-                  {
-                      "name":  "Quest for Glory (VGA) - dev\\EGA",
-                      "md5":  "141bf45fc93c7bc770660c454535a6b7",
-                      "failures":  [
-                                       0,
-                                       60,
-                                       255,
-                                       302,
-                                       803,
-                                       990,
-                                       994
-                                   ],
-                      "random":  [
-                                     8,
-                                     64,
-                                     115,
-                                     278,
-                                     338
-                                 ]
-                  },
-                  {
                       "name":  "Quest for Glory 2",
                       "md5":  "06d0cb2c9496d7d4494b0f37f2c6c4c2",
                       "failures":  [
@@ -1335,26 +1151,6 @@
                                      731,
                                      970,
                                      998
-                                 ]
-                  },
-                  {
-                      "name":  "Quest for Glory 2 - dev",
-                      "md5":  "1850e115406962ba5f46ceef3d3a5e31",
-                      "failures":  [
-                                       1,
-                                       170,
-                                       255,
-                                       695,
-                                       840,
-                                       990,
-                                       994
-                                   ],
-                      "random":  [
-                                     89,
-                                     131,
-                                     719,
-                                     820,
-                                     966
                                  ]
                   },
                   {
@@ -1496,26 +1292,6 @@
                                      972,
                                      989,
                                      996
-                                 ]
-                  },
-                  {
-                      "name":  "Space Quest 3 - dev",
-                      "md5":  "54afc87013511cababce4cb2a4071934",
-                      "failures":  [
-                                       0,
-                                       17,
-                                       46,
-                                       255,
-                                       984,
-                                       990,
-                                       994
-                                   ],
-                      "random":  [
-                                     4,
-                                     67,
-                                     501,
-                                     701,
-                                     987
                                  ]
                   },
                   {
@@ -1708,27 +1484,6 @@
                                      306,
                                      320,
                                      335
-                                 ]
-                  },
-                  {
-                      "name":  "The Colonel\u0027s Bequest - dev",
-                      "md5":  "d7b20cd18bf8666fcb17afab83a9afa6",
-                      "failures":  [
-                                       0,
-                                       37,
-                                       50,
-                                       245,
-                                       255,
-                                       413,
-                                       786,
-                                       990
-                                   ],
-                      "random":  [
-                                     233,
-                                     238,
-                                     266,
-                                     274,
-                                     406
                                  ]
                   }
               ]

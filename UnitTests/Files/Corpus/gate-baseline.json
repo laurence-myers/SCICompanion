@@ -90,28 +90,6 @@
                                    }
                   },
                   {
-                      "name":  "Codename ICEMAN - dev",
-                      "md5":  "ca97e4c2e594c0f001388b4178f465bc",
-                      "exit":  "0",
-                      "functions":  170,
-                      "scripts":  12,
-                      "asm":  4,
-                      "corrupt":  0,
-                      "verdicts":  {
-                                       "SAME":  74,
-                                       "NAMES":  88,
-                                       "SHAPE":  0,
-                                       "DIFF":  4,
-                                       "ASM":  4,
-                                       "SOURCE":  0,
-                                       "BOTH-ASM":  0,
-                                       "ONLY-EXPECTED":  1,
-                                       "ONLY-ACTUAL":  0,
-                                       "NEITHER":  0,
-                                       "UNPARSED":  0
-                                   }
-                  },
-                  {
                       "name":  "Codename ICEMAN (1989)",
                       "md5":  "964725892023bfb6e2ac552d1dd71e16",
                       "exit":  "0",
@@ -128,28 +106,6 @@
                                        "SOURCE":  0,
                                        "BOTH-ASM":  0,
                                        "ONLY-EXPECTED":  1,
-                                       "ONLY-ACTUAL":  0,
-                                       "NEITHER":  0,
-                                       "UNPARSED":  0
-                                   }
-                  },
-                  {
-                      "name":  "Conquests of Camelot - dev",
-                      "md5":  "bde99c29f8f8328a9b26762296f0b3d8",
-                      "exit":  "0",
-                      "functions":  214,
-                      "scripts":  19,
-                      "asm":  5,
-                      "corrupt":  0,
-                      "verdicts":  {
-                                       "SAME":  75,
-                                       "NAMES":  128,
-                                       "SHAPE":  1,
-                                       "DIFF":  5,
-                                       "ASM":  5,
-                                       "SOURCE":  0,
-                                       "BOTH-ASM":  0,
-                                       "ONLY-EXPECTED":  0,
                                        "ONLY-ACTUAL":  0,
                                        "NEITHER":  0,
                                        "UNPARSED":  0
@@ -618,28 +574,6 @@
                                    }
                   },
                   {
-                      "name":  "Kings Quest 4 - dev",
-                      "md5":  "4cda80e024f9ef2bc6167150c59c5cbf",
-                      "exit":  "0",
-                      "functions":  128,
-                      "scripts":  9,
-                      "asm":  3,
-                      "corrupt":  0,
-                      "verdicts":  {
-                                       "SAME":  52,
-                                       "NAMES":  66,
-                                       "SHAPE":  0,
-                                       "DIFF":  7,
-                                       "ASM":  3,
-                                       "SOURCE":  0,
-                                       "BOTH-ASM":  0,
-                                       "ONLY-EXPECTED":  0,
-                                       "ONLY-ACTUAL":  0,
-                                       "NEITHER":  0,
-                                       "UNPARSED":  0
-                                   }
-                  },
-                  {
                       "name":  "King\u0027s Quest I - Quest for the Crown VGA (1990)",
                       "md5":  "fcf6a00f2ff4715bf8ea65388458179d",
                       "exit":  "0",
@@ -1036,28 +970,6 @@
                                    }
                   },
                   {
-                      "name":  "Leisure Suit Larry 2 - dev",
-                      "md5":  "d806b2973c9860a4f5e20ab6ae2a0a7a",
-                      "exit":  "0",
-                      "functions":  119,
-                      "scripts":  8,
-                      "asm":  1,
-                      "corrupt":  0,
-                      "verdicts":  {
-                                       "SAME":  60,
-                                       "NAMES":  53,
-                                       "SHAPE":  0,
-                                       "DIFF":  5,
-                                       "ASM":  1,
-                                       "SOURCE":  0,
-                                       "BOTH-ASM":  0,
-                                       "ONLY-EXPECTED":  0,
-                                       "ONLY-ACTUAL":  0,
-                                       "NEITHER":  0,
-                                       "UNPARSED":  0
-                                   }
-                  },
-                  {
                       "name":  "Leisure Suit Larry 2 - Goes looking for Love in Several Wrong Places (1988)",
                       "md5":  "2c9c3b0923e3764f5ab999bcb71c2d47",
                       "exit":  "0",
@@ -1071,28 +983,6 @@
                                        "SHAPE":  0,
                                        "DIFF":  5,
                                        "ASM":  1,
-                                       "SOURCE":  0,
-                                       "BOTH-ASM":  0,
-                                       "ONLY-EXPECTED":  0,
-                                       "ONLY-ACTUAL":  0,
-                                       "NEITHER":  0,
-                                       "UNPARSED":  0
-                                   }
-                  },
-                  {
-                      "name":  "Leisure Suit Larry 3 - dev",
-                      "md5":  "c0878b255575393d4665dcca5893ce91",
-                      "exit":  "0",
-                      "functions":  153,
-                      "scripts":  10,
-                      "asm":  2,
-                      "corrupt":  0,
-                      "verdicts":  {
-                                       "SAME":  70,
-                                       "NAMES":  77,
-                                       "SHAPE":  0,
-                                       "DIFF":  4,
-                                       "ASM":  2,
                                        "SOURCE":  0,
                                        "BOTH-ASM":  0,
                                        "ONLY-EXPECTED":  0,
@@ -1344,50 +1234,6 @@
                                    }
                   },
                   {
-                      "name":  "Police Quest 2 - dev",
-                      "md5":  "9268048c1a859053bac1035691c6c66a",
-                      "exit":  "0",
-                      "functions":  235,
-                      "scripts":  15,
-                      "asm":  6,
-                      "corrupt":  0,
-                      "verdicts":  {
-                                       "SAME":  74,
-                                       "NAMES":  148,
-                                       "SHAPE":  1,
-                                       "DIFF":  6,
-                                       "ASM":  6,
-                                       "SOURCE":  0,
-                                       "BOTH-ASM":  0,
-                                       "ONLY-EXPECTED":  0,
-                                       "ONLY-ACTUAL":  0,
-                                       "NEITHER":  0,
-                                       "UNPARSED":  0
-                                   }
-                  },
-                  {
-                      "name":  "Police Quest 2 - dev2",
-                      "md5":  "19b5567e6d9c8703c23a9e5a1a2ee3f9",
-                      "exit":  "0",
-                      "functions":  250,
-                      "scripts":  17,
-                      "asm":  8,
-                      "corrupt":  0,
-                      "verdicts":  {
-                                       "SAME":  72,
-                                       "NAMES":  164,
-                                       "SHAPE":  0,
-                                       "DIFF":  6,
-                                       "ASM":  8,
-                                       "SOURCE":  0,
-                                       "BOTH-ASM":  0,
-                                       "ONLY-EXPECTED":  0,
-                                       "ONLY-ACTUAL":  0,
-                                       "NEITHER":  0,
-                                       "UNPARSED":  0
-                                   }
-                  },
-                  {
                       "name":  "Police Quest 2 - The Vengeance (1988)",
                       "md5":  "28a6f471c7900c2c92da40eecb615d9d",
                       "exit":  "0",
@@ -1520,50 +1366,6 @@
                                    }
                   },
                   {
-                      "name":  "Quest for Glory (VGA) - dev recomp",
-                      "md5":  "8f650c60a23f18c81ea97071edd0bbc3",
-                      "exit":  "0",
-                      "functions":  226,
-                      "scripts":  10,
-                      "asm":  6,
-                      "corrupt":  0,
-                      "verdicts":  {
-                                       "SAME":  53,
-                                       "NAMES":  164,
-                                       "SHAPE":  2,
-                                       "DIFF":  1,
-                                       "ASM":  4,
-                                       "SOURCE":  0,
-                                       "BOTH-ASM":  0,
-                                       "ONLY-EXPECTED":  1,
-                                       "ONLY-ACTUAL":  3,
-                                       "NEITHER":  0,
-                                       "UNPARSED":  0
-                                   }
-                  },
-                  {
-                      "name":  "Quest for Glory (VGA) - dev\\EGA",
-                      "md5":  "141bf45fc93c7bc770660c454535a6b7",
-                      "exit":  "0",
-                      "functions":  237,
-                      "scripts":  12,
-                      "asm":  3,
-                      "corrupt":  0,
-                      "verdicts":  {
-                                       "SAME":  108,
-                                       "NAMES":  121,
-                                       "SHAPE":  1,
-                                       "DIFF":  4,
-                                       "ASM":  3,
-                                       "SOURCE":  0,
-                                       "BOTH-ASM":  0,
-                                       "ONLY-EXPECTED":  0,
-                                       "ONLY-ACTUAL":  0,
-                                       "NEITHER":  0,
-                                       "UNPARSED":  0
-                                   }
-                  },
-                  {
                       "name":  "Quest for Glory 2",
                       "md5":  "06d0cb2c9496d7d4494b0f37f2c6c4c2",
                       "exit":  "0",
@@ -1574,28 +1376,6 @@
                       "verdicts":  {
                                        "SAME":  143,
                                        "NAMES":  121,
-                                       "SHAPE":  0,
-                                       "DIFF":  4,
-                                       "ASM":  3,
-                                       "SOURCE":  0,
-                                       "BOTH-ASM":  0,
-                                       "ONLY-EXPECTED":  1,
-                                       "ONLY-ACTUAL":  0,
-                                       "NEITHER":  0,
-                                       "UNPARSED":  0
-                                   }
-                  },
-                  {
-                      "name":  "Quest for Glory 2 - dev",
-                      "md5":  "1850e115406962ba5f46ceef3d3a5e31",
-                      "exit":  "0",
-                      "functions":  201,
-                      "scripts":  11,
-                      "asm":  3,
-                      "corrupt":  0,
-                      "verdicts":  {
-                                       "SAME":  107,
-                                       "NAMES":  87,
                                        "SHAPE":  0,
                                        "DIFF":  4,
                                        "ASM":  3,
@@ -1779,28 +1559,6 @@
                                        "BOTH-ASM":  0,
                                        "ONLY-EXPECTED":  0,
                                        "ONLY-ACTUAL":  1,
-                                       "NEITHER":  0,
-                                       "UNPARSED":  0
-                                   }
-                  },
-                  {
-                      "name":  "Space Quest 3 - dev",
-                      "md5":  "54afc87013511cababce4cb2a4071934",
-                      "exit":  "0",
-                      "functions":  212,
-                      "scripts":  12,
-                      "asm":  3,
-                      "corrupt":  0,
-                      "verdicts":  {
-                                       "SAME":  0,
-                                       "NAMES":  0,
-                                       "SHAPE":  0,
-                                       "DIFF":  0,
-                                       "ASM":  0,
-                                       "SOURCE":  0,
-                                       "BOTH-ASM":  0,
-                                       "ONLY-EXPECTED":  0,
-                                       "ONLY-ACTUAL":  213,
                                        "NEITHER":  0,
                                        "UNPARSED":  0
                                    }
@@ -2020,28 +1778,6 @@
                                        "SOURCE":  0,
                                        "BOTH-ASM":  0,
                                        "ONLY-EXPECTED":  0,
-                                       "ONLY-ACTUAL":  0,
-                                       "NEITHER":  0,
-                                       "UNPARSED":  0
-                                   }
-                  },
-                  {
-                      "name":  "The Colonel\u0027s Bequest - dev",
-                      "md5":  "d7b20cd18bf8666fcb17afab83a9afa6",
-                      "exit":  "0",
-                      "functions":  224,
-                      "scripts":  13,
-                      "asm":  6,
-                      "corrupt":  0,
-                      "verdicts":  {
-                                       "SAME":  84,
-                                       "NAMES":  126,
-                                       "SHAPE":  0,
-                                       "DIFF":  8,
-                                       "ASM":  6,
-                                       "SOURCE":  0,
-                                       "BOTH-ASM":  0,
-                                       "ONLY-EXPECTED":  2,
                                        "ONLY-ACTUAL":  0,
                                        "NEITHER":  0,
                                        "UNPARSED":  0
