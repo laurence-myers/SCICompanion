@@ -287,6 +287,22 @@ namespace UnitTests
             DecompileOutput caller = DecompileToText(959);
             Assert::IsTrue(caller.text.find("(__proc964_1)") != std::string::npos, Wide(caller.text).c_str());
             Assert::IsTrue(caller.text.find("staleSecond") == std::string::npos, Wide(caller.text).c_str());
+            // The asm of the call names the missing procedure too.
+            {
+                GlobalCompiledScriptLookups lookups;
+                lookups.Load(helper);
+                CompiledScript callerScript(959, CompiledScriptFlags::RemoveBadExports);
+                Assert::IsTrue(callerScript.Load(helper, helper.Version, 959), L"setup: script 959 loads");
+                std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(rm, lookups.GetSelectorTable());
+                TestDecompilerResults results;
+                std::unique_ptr<sci::Script> decompiled = DecompileScript(config.get(), lookups, rm, 959, callerScript, results, false, false, nullptr, true);
+                std::stringstream text;
+                sci::SourceCodeWriter writer(text, decompiled.get());
+                decompiled->OutputSourceCode(writer);
+                std::string source = text.str();
+                Assert::IsTrue(source.find("(asm") != std::string::npos, Wide("setup: asm\n" + source).c_str());
+                Assert::IsTrue(source.find("__proc964_1") != std::string::npos, Wide(source).c_str());
+            }
 
             DecompileOutput callee = DecompileToText(964);
             Assert::IsTrue(callee.text.find("staleSecond") == std::string::npos, Wide(callee.text).c_str());

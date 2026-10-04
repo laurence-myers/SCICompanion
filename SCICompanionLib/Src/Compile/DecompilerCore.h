@@ -199,8 +199,6 @@ private:
 	LineCol _fakePosition;
 	IDecompilerResults &_results;
 	std::unordered_set<uint32_t> _scriptExportExistance;
-	// For each script that a call asked about: the export slots with no procedure.
-	mutable std::unordered_map<uint16_t, std::set<uint16_t>> _slotsWithNoProcedure;
 	std::unordered_set<uint16_t> _scriptExistance;
 
 	// Variable usage
@@ -263,7 +261,9 @@ private:
 };
 
 std::string _GetPublicProcedureName(uint16_t wScript, uint16_t wIndex);
-std::string _GetBaseProcedureName(uint16_t wIndex);
+// The name of a call to an export: __procN_M when the export has no procedure
+// (DecompileLookups::DoesExportExist), else procN_M.
+std::string _GetPossiblyMissingPublicProcedureName(DecompileLookups &lookups, uint16_t script, uint16_t theExport);
 void MassageProcedureCalls(DecompileLookups &lookups, sci::Script &script);
 std::string _GetVariableNameFromCodePos(const scii &inst, DecompileLookups &lookups, VarScope *pVarType = nullptr, uint16_t *pwIndexOut = nullptr);
 bool _IsVOIncremented(Opcode bOpcode);

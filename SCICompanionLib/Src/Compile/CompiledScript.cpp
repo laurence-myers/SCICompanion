@@ -22,6 +22,7 @@
 #include "PMachine.h"
 #include "ResourceBlob.h"
 #include "ResourceUtil.h"
+#include "DecompileScript.h"
 
 const uint16_t KQ5CD_BadExport = 0xfffe;
 
@@ -1254,7 +1255,7 @@ bool CompiledScript::_ReadExports(sci::istream &stream, uint16_t sectionSize)
 	}
 
 	// Remove any known bad exports. To reduce the risk of this affecting fan-made games, only do
-	// this when requested (i.e. by the decompiler)
+	// this when requested (by the decompiler, and by the class table that its lookups read)
 	if ((_flags & CompiledScriptFlags::RemoveBadExports) == CompiledScriptFlags::RemoveBadExports)
 	{
 		for (size_t i = 0; i < _exportsTO.size(); i++)
@@ -1715,10 +1716,12 @@ bool GlobalCompiledScriptLookups::Load(const GameFolderHelper &helper)
 	bool selOk = _selectors.Load(helper);
 	bool kernelOk = _kernels.Load(helper);
 	bool classesOk = _classes.Load(helper, &_selectors);
-	// The class table changed, so the selector categories are stale.
+	// The class table changed, so the selector categories and the slots with no
+	// procedure are stale.
 	_selectorCategoriesValid = false;
 	_propertySelectors.clear();
 	_methodSelectors.clear();
+	_ClearSlotsWithNoProcedure();
 	return selOk && kernelOk && classesOk;
 }
 
@@ -1733,6 +1736,7 @@ sci::Status GlobalCompiledScriptLookups::TryLoad(const GameFolderHelper &helper)
 		_selectorCategoriesValid = false;
 		_propertySelectors.clear();
 		_methodSelectors.clear();
+		_ClearSlotsWithNoProcedure();
 		sci::ErrorLocation where;
 		if (!_selectors.Load(helper))
 		{
@@ -1784,6 +1788,40 @@ const std::unordered_set<uint16_t> &GlobalCompiledScriptLookups::GetMethodSelect
 {
 	_EnsureSelectorCategories();
 	return _methodSelectors;
+}
+
+void GlobalCompiledScriptLookups::_ClearSlotsWithNoProcedure()
+{
+	std::lock_guard<std::mutex> lock(_noProcedureMutex);
+	_slotsWithNoProcedure.clear();
+}
+
+bool GlobalCompiledScriptLookups::IsExportSlotWithNoProcedure(uint16_t script, uint16_t slot)
+{
+	std::lock_guard<std::mutex> lock(_noProcedureMutex);
+	auto found = _slotsWithNoProcedure.find(script);
+	if (found == _slotsWithNoProcedure.end())
+	{
+		std::set<uint16_t> slots;
+		for (CompiledScript *compiled : _classes.GetAllScripts())
+		{
+			if (compiled->GetScriptNumber() == script)
+			{
+				std::set<uint16_t> addresses = FindExportsWithNoProcedure(*compiled);
+				std::vector<uint16_t> exports = compiled->GetExports();
+				for (size_t i = 0; i < exports.size(); i++)
+				{
+					if (addresses.count(exports[i]) != 0)
+					{
+						slots.insert((uint16_t)i);
+					}
+				}
+				break;
+			}
+		}
+		found = _slotsWithNoProcedure.emplace(script, std::move(slots)).first;
+	}
+	return found->second.count(slot) != 0;
 }
 
 std::string GlobalCompiledScriptLookups::LookupSelectorName(uint16_t wIndex)

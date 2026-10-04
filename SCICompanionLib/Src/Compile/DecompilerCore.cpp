@@ -26,7 +26,6 @@
 #include "format.h"
 #include "DecompilerConfig.h"
 #include "DecompilerResults.h"
-#include "DecompileScript.h"
 #include <iterator>
 #include "GameFolderHelper.h"
 #include "Operators.h"
@@ -95,11 +94,6 @@ std::string _GetPublicProcedureName(WORD wScript, WORD wIndex)
 	return ss.str();
 }
 
-std::string _GetBaseProcedureName(WORD wIndex)
-{
-	return _GetPublicProcedureName(0, wIndex);
-}
-
 typedef std::list<scii>::reverse_iterator rcode_pos;
 
 struct Fixup
@@ -121,16 +115,13 @@ code_pos get_cur_pos(std::list<scii> &code)
 // wBaseOffset - byte offset in script file where pBegin is (used to calculate absolute code offsets)
 // code		- (out) list of sci instructions.
 //
-// Returns the end.
-// The decode of the code from pBegin to pEnd. With abortOnError, a problem
-// gives nullptr and no message (results can be null); else results gets the
-// message.
+// Returns the end. With abortOnError, a problem gives nullptr and no message
+// (results can be null); else results gets the message.
 const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResults *results, std::list<scii> &code, const BYTE *pBegin, const BYTE *pEnd, WORD wBaseOffset, bool abortOnError)
 {
 	std::unordered_map<WORD, code_pos> referenceToCodePos;
 	std::vector<Fixup> branchTargetsToFixup;
 	std::set<uint16_t> branchTargets;
-
 
 	code_pos undetermined = code.end();
 
@@ -1473,32 +1464,9 @@ bool DecompileLookups::DoesExportExist(uint16_t script, uint16_t theExport) cons
 	{
 		return false;
 	}
-	// An export with no procedure (FindExportsWithNoProcedure) has no procedure
-	// in the decompiled text of its script. The slots of each script are found
-	// once, when a call first asks.
-	auto found = _slotsWithNoProcedure.find(script);
-	if (found == _slotsWithNoProcedure.end())
-	{
-		std::set<uint16_t> slots;
-		for (CompiledScript *compiled : _pLookups->GetGlobalClassTable().GetAllScripts())
-		{
-			if (compiled->GetScriptNumber() == script)
-			{
-				std::set<uint16_t> addresses = FindExportsWithNoProcedure(*compiled);
-				std::vector<uint16_t> exports = compiled->GetExports();
-				for (size_t slot = 0; slot < exports.size(); slot++)
-				{
-					if (addresses.count(exports[slot]) != 0)
-					{
-						slots.insert((uint16_t)slot);
-					}
-				}
-				break;
-			}
-		}
-		found = _slotsWithNoProcedure.emplace(script, std::move(slots)).first;
-	}
-	return found->second.count(theExport) == 0;
+	// An export with no procedure has no procedure in the decompiled text of
+	// its script.
+	return !_pLookups->IsExportSlotWithNoProcedure(script, theExport);
 }
 
 uint16_t DecompileLookups::GetNameSelector() const
