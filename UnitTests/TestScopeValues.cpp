@@ -305,6 +305,44 @@ namespace UnitTests
 			)", "acc-no-fact", 6);
 		}
 
+		// A stray bnt (Camelot script 40, Rm40::handleEvent: after the toss,
+		// back into the arguments of a call) gives no node: the switch is the
+		// last statement of the else-part.
+		TEST_METHOD(Values_AStrayBranchGivesNoNode)
+		{
+			AssertValues(R"(
+				lal 0
+				bnt other
+				push0
+				callk 1 0
+				jmp end
+			other:
+				push1
+			args:
+				lal 1
+				push
+				callk 5 2
+				bnt end
+				lsp 2
+				dup
+				ldi 1
+				eq?
+				bnt caseElse
+				push0
+				callk 2 0
+				jmp switchDone
+			caseElse:
+				push0
+				callk 3 0
+			switchDone:
+				toss
+				bnt args
+			end:
+				ret
+			)", "If(Condition(lal) Then(callk(push0)) Else(If(Condition(callk(push1 push(lal))) "
+				"Then(Switch(SwitchValue(lsp) Case(CaseCondition(ldi) CaseBody(callk(push0))) Case(CaseBody(callk(push0)))))))) ret");
+		}
+
 		// A structure that no path reaches is dead code: its test has no
 		// value, and it gives no statement (the ret that only it reaches is
 		// dead too).

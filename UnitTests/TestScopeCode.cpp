@@ -520,6 +520,220 @@ namespace UnitTests
 			Assert::AreEqual(NoIndex, model.SwitchHead(0));
 		}
 
+		// Camelot script 40, Rm40::handleEvent: after the toss of a switch, a
+		// bnt goes back into the arguments of a call, past the push of the
+		// argument count. It gets there with one value less than the
+		// fall-through: it is stray, a branch to the next instruction.
+		TEST_METHOD(Stray_ABntIntoTheArgumentsOfACallGoesToTheNextInstruction)
+		{
+			ScopeAsm a(R"(
+				lal 0
+				bnt other
+				push0
+				callk 1 0
+				jmp end
+			other:
+				push1
+			args:
+				lal 1
+				push
+				callk 5 2
+				bnt end
+				lsp 2
+				dup
+				ldi 1
+				eq?
+				bnt caseElse
+				push0
+				callk 2 0
+				jmp switchDone
+			caseElse:
+				push0
+				callk 3 0
+			switchDone:
+				toss
+			stray:
+				bnt args
+			end:
+				ret
+			)");
+			CodeModel model(a.code);
+			int stray = a.At("stray");
+			Assert::IsTrue(model.IsStray(stray));
+			Assert::AreEqual(a.At("end"), model.Target(stray));
+			Assert::AreEqual(a.At("end"), model.ParseTarget(stray));
+			Assert::AreEqual(a.At("args"), model.BytecodeTarget(stray));
+			Assert::IsTrue(model.IsNoOp(stray));
+			Assert::AreEqual(a.At("end"), model.Resolve(stray, Arrival::False));
+			Assert::IsFalse(model.IsLabel(a.At("args")));
+			Assert::IsFalse(model.HasDepthConflict(a.At("args")));
+			Assert::IsFalse(model.HasStackUnderflow());
+			Assert::IsTrue(model.LoopHeads().empty());
+			Assert::AreEqual(1, model.DepthBefore(a.At("args")));
+			for (int i = 0; i < model.Size(); ++i)
+			{
+				Assert::AreEqual(i == stray, model.IsStray(i));
+			}
+		}
+
+		// In a function with a stray branch, a branch that gets to its target
+		// with more values than the fall-through (a break out of a switch) is
+		// no stray.
+		TEST_METHOD(Stray_ABranchWithMoreValuesIsNoStray)
+		{
+			ScopeAsm a(R"(
+				push1
+			args:
+				lal 1
+				push
+				callk 5 2
+				lsp 2
+				dup
+				ldi 1
+				eq?
+				bnt switchDone
+				lap 1
+			brk:
+				bt exit
+			switchDone:
+				toss
+			stray:
+				bnt args
+				ldi 3
+			exit:
+				ret
+			)");
+			CodeModel model(a.code);
+			Assert::IsTrue(model.IsStray(a.At("stray")));
+			Assert::IsFalse(model.IsStray(a.At("brk")));
+			Assert::AreEqual(a.At("exit"), model.Target(a.At("brk")));
+			Assert::IsTrue(model.HasDepthConflict(a.At("exit")));
+			Assert::IsFalse(model.HasStackUnderflow());
+		}
+
+		// The Camelot shape in the first case of an outer switch: the test of
+		// the if after the call goes to the toss of the outer switch (Sierra
+		// threads it through the jmp at the end of the case). The stray
+		// branch lowers the depth of the call, so the test gets to the toss
+		// with fewer values than the fall-through too. Only the branch that
+		// the code needs for no underflow is stray: the test stays.
+		TEST_METHOD(Stray_OnlyTheBranchesThatTheCodeNeedsAreStray)
+		{
+			ScopeAsm a(R"(
+				lsp 0
+				dup
+				ldi 1
+				eq?
+				bnt case2
+				push1
+			args:
+				lal 1
+				push
+				callk 5 2
+			test:
+				bnt outerDone
+				lsp 2
+				dup
+				ldi 1
+				eq?
+				bnt innerElse
+				push0
+				callk 2 0
+				jmp innerDone
+			innerElse:
+				push0
+				callk 3 0
+			innerDone:
+				toss
+			stray:
+				bnt args
+				jmp outerDone
+			case2:
+				dup
+				ldi 2
+				eq?
+				bnt outerDone
+				push0
+				callk 4 0
+			outerDone:
+				toss
+				ret
+			)");
+			CodeModel model(a.code);
+			Assert::IsTrue(model.IsStray(a.At("stray")));
+			Assert::IsFalse(model.IsStray(a.At("test")));
+			Assert::AreEqual(a.At("outerDone"), model.Target(a.At("test")));
+			Assert::IsFalse(model.HasStackUnderflow());
+		}
+
+		// A branch to code that no fall-through gets to is no candidate,
+		// also when the code there underflows and is dead without the branch.
+		TEST_METHOD(Stray_ABranchToCodeThatNoFallThroughGetsToIsNoStray)
+		{
+			ScopeAsm a(R"(
+				lap 0
+			test:
+				bnt bad
+				ret
+			bad:
+				toss
+				ret
+			)");
+			CodeModel model(a.code);
+			Assert::IsFalse(model.IsStray(a.At("test")));
+			Assert::AreEqual(a.At("bad"), model.Target(a.At("test")));
+			Assert::IsTrue(model.IsLive(a.At("bad")));
+			Assert::IsTrue(model.HasStackUnderflow());
+		}
+
+		// The fall-through leaves values that nothing takes (Quest for Glory
+		// IV CD script 10, wisps::init: a send frame smaller than its pushes):
+		// no underflow, so the test of the if is no stray.
+		TEST_METHOD(Stray_ExtraValuesThatNothingTakesGiveNoStray)
+		{
+			ScopeAsm a(R"(
+				lsp 0
+				ldi 2
+				lt?
+			test:
+				bnt end
+				push1
+				push1
+				push1
+				pushSelf
+				self 2
+			end:
+				ret
+			)");
+			CodeModel model(a.code);
+			Assert::IsFalse(model.IsStray(a.At("test")));
+			Assert::AreEqual(a.At("end"), model.Target(a.At("test")));
+			Assert::IsTrue(model.HasDepthConflict(a.At("end")));
+			Assert::IsFalse(model.HasStackUnderflow());
+		}
+
+		// With an underflow that the candidates do not remove, no branch is
+		// stray.
+		TEST_METHOD(Stray_NoStrayWhenTheUnderflowStays)
+		{
+			ScopeAsm a(R"(
+				push1
+			args:
+				lal 1
+				push
+				callk 5 2
+			test:
+				bnt args
+				toss
+				ret
+			)");
+			CodeModel model(a.code);
+			Assert::IsFalse(model.IsStray(a.At("test")));
+			Assert::AreEqual(a.At("args"), model.Target(a.At("test")));
+			Assert::IsTrue(model.HasStackUnderflow());
+			Assert::IsTrue(model.IsLabel(a.At("args")));
+		}
+
 		// A while that is the first statement of a repeat (King's Quest V,
 		// setControls::doit): three back branches to one head, in address
 		// order. The latch is the last one.
@@ -728,6 +942,25 @@ namespace UnitTests
 				"0002 ldi    7                  d0\n"
 				"0003 ret                       d0 label\n";
 			Assert::AreEqual(expected, model.Dump());
+		}
+
+		// A stray branch has the next instruction as its target, and the
+		// target of the bytecode in its flags.
+		TEST_METHOD(Dump_AStrayBranchHasTheTargetOfTheBytecode)
+		{
+			ScopeAsm a(R"(
+				push1
+			args:
+				lal 1
+				push
+				callk 5 2
+				bnt args
+				ret
+			)");
+			CodeModel model(a.code);
+			std::string dump = model.Dump();
+			std::string line = "0004 bnt    0005               d0 no-op stray 0001\n";
+			Assert::IsTrue(dump.find(line) != std::string::npos, std::wstring(dump.begin(), dump.end()).c_str());
 		}
 	};
 }

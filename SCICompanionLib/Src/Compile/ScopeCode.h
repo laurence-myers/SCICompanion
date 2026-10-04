@@ -74,9 +74,21 @@ namespace scope
 		// False for jmp and ret: control does not go to the next instruction.
 		bool FallsThrough(int i) const;
 
-		// The target of a branch as the bytecode has it; NoIndex for an
+		// The target of a branch in the model: the target that the bytecode
+		// has, or the next instruction for a stray branch; NoIndex for an
 		// instruction that is not a branch.
 		int Target(int i) const { return _insts[i].target; }
+		// The target of a branch as the bytecode has it, also for a stray
+		// branch.
+		int BytecodeTarget(int i) const { return _insts[i].bytecodeTarget; }
+		// A bt or bnt that Sierra's compiler made by mistake: it gets to its
+		// target with fewer values on the stack than the fall-through into
+		// the target, so the code there takes values that its path did not
+		// push: the stack underflows with it, and not without it (Camelot
+		// script 40, Rm40::handleEvent: "toss; bnt" into the arguments of a
+		// call). The model reads it as a branch to the next instruction, a
+		// no-op. It is never the last instruction.
+		bool IsStray(int i) const { return _insts[i].stray; }
 		// The target that the parser uses: the target, or an equal target
 		// that the dialect pass chose (plan section 3.2).
 		int ParseTarget(int i) const { return _insts[i].parseTarget; }
@@ -162,6 +174,8 @@ namespace scope
 			int target = NoIndex;
 			int parseTarget = NoIndex;
 			int threadedTarget = NoIndex;
+			int bytecodeTarget = NoIndex;
+			bool stray = false;
 			std::vector<int> sources;
 			bool live = false;
 			bool noOp = false;
@@ -176,6 +190,7 @@ namespace scope
 		void _FindLiveCode();
 		void _FindNoOps();
 		void _FindDepths();
+		void _FindStrayBranches();
 		void _FindNaryCompares();
 		void _FindLoops();
 		void _FindSwitches();

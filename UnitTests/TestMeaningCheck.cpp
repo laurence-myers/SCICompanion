@@ -693,6 +693,48 @@ namespace UnitTests
 			AssertVerdict(meaning::Verdict::Diff, Check("lap 1\nbnt a\na:\nlap 2\nbnt end\npush0\ncallk 1 0\nend:\nret", "push0\ncallk 1 0\nret"));
 		}
 
+		// A stray bnt (Camelot script 40, Rm40::handleEvent: after the toss,
+		// back into the arguments of a call) is no test: the decompiler
+		// leaves it out.
+		TEST_METHOD(Meaning_AStrayBranchIsNoTest)
+		{
+			const char *original = R"(
+				push1
+			args:
+				lal 1
+				push
+				callk 5 2
+				lsp 2
+				dup
+				ldi 1
+				eq?
+				bnt switchDone
+				push0
+				callk 2 0
+			switchDone:
+				toss
+				bnt args
+				ret
+			)";
+			const char *recompiled = R"(
+				push1
+				lal 1
+				push
+				callk 5 2
+				lsp 2
+				dup
+				ldi 1
+				eq?
+				bnt switchDone
+				push0
+				callk 2 0
+			switchDone:
+				toss
+				ret
+			)";
+			AssertVerdict(meaning::Verdict::Same, Check(original, recompiled));
+		}
+
 		// Where the two sides differ at a test, the check looks past more
 		// tests: a chain of tests whose outcomes all get to the same effect
 		// is no test (LB2 script 250, Trash::inBounds: four tests and an

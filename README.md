@@ -22,7 +22,9 @@ modernizing the build. Broad highlights since the previous release:
   Bow 2). Each selector gets a numbered name, sel_<number>.
 * **Decompiles known damaged scripts** (such as script 995 of Hoyle 3, whose
   resource is cut short). The decompile reads up to the end of the data, and a
-  warning at the top of the source tells what is missing.
+  warning at the top of the source tells what is missing. A branch that
+  Sierra's compiler made by mistake (such as in script 40 of Conquests of
+  Camelot) is left out, also with a warning.
 * **Statement groups in expressions.** `((= a 1) (b c:))` is two or more
   statements in parentheses, whose value is the value of the last one. Sierra's
   1993 compiler accepted it (Pepper's Adventures in Time uses it), and the
