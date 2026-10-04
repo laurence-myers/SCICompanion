@@ -174,6 +174,88 @@ namespace UnitTests
             Assert::IsTrue(reported, L"the function report has the stale export");
         }
 
+        // An export that points outside the code of the script is no
+        // procedure: past the end of the script (ICEMAN script 0: exports 6
+        // to 29 are f9ff), or into the script before its code. The decompiler
+        // leaves it out, with a warning, and the meaning check reads no
+        // function there.
+        TEST_METHOD(ExportOutsideTheCode_IsLeftOut)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AddFixtureScript("X3_StaleExport");
+            std::string error;
+            Assert::IsTrue(CompileFixture(964, "X3_StaleExport", &error), Wide(error).c_str());
+            const GameFolderHelper &helper = AppResourceMap().Helper();
+            CompiledScript compiled(964, CompiledScriptFlags::RemoveBadExports);
+            Assert::IsTrue(compiled.Load(helper, helper.Version, 964), L"setup: the script loads");
+            std::unique_ptr<ResourceBlob> heapBlob = helper.MostRecentResource(ResourceType::Heap, 964, ResourceEnumFlags::None);
+            Assert::IsNotNull(heapBlob.get(), L"setup: the heap");
+            sci::istream heapRead = heapBlob->GetReadStream();
+            std::vector<uint8_t> heap(heapRead.GetDataSize());
+            heapRead.read_data(heap.data(), (uint32_t)heap.size());
+            GlobalCompiledScriptLookups lookups;
+            lookups.Load(helper);
+            for (uint16_t outside : { (uint16_t)0xf9ff, (uint16_t)4 })
+            {
+                std::string label = fmt::format("export 1 at {0:04x}: ", outside);
+                std::vector<uint8_t> script = compiled.GetRawBytes();
+                // SCI1.1: the count of the exports at 6, the exports from 8.
+                Assert::AreEqual((uint16_t)2, (uint16_t)(script[6] | (script[7] << 8)), L"setup: two exports");
+                script[10] = (uint8_t)(outside & 0xff);
+                script[11] = (uint8_t)(outside >> 8);
+
+                // The meaning check reads no function at the export.
+                sci::Result<std::vector<meaning::Function>> functions = meaning::ReadScriptData(helper, lookups, AppResourceMap().GetVocab000(), 964, script, &heap);
+                Assert::IsTrue(functions.has_value(), Wide(label + "the patched script reads").c_str());
+                for (const meaning::Function &function : *functions)
+                {
+                    Assert::AreNotEqual(std::string("export 1"), function.key, Wide(label + "no function at the export").c_str());
+                }
+
+                // The decompile leaves the export out.
+                CompiledScript patched(964, CompiledScriptFlags::RemoveBadExports);
+                sci::istream scriptStream(script.data(), (uint32_t)script.size());
+                sci::istream heapStream(heap.data(), (uint32_t)heap.size());
+                Assert::IsTrue(patched.Load(helper, helper.Version, 964, scriptStream, &heapStream), Wide(label + "the patched script loads").c_str());
+                std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(AppResourceMap(), lookups.GetSelectorTable());
+                TestDecompilerResults results;
+                std::unique_ptr<sci::Script> decompiled = DecompileScript(config.get(), lookups, AppResourceMap(), 964, patched, results);
+                std::stringstream text;
+                sci::SourceCodeWriter writer(text, decompiled.get());
+                decompiled->OutputSourceCode(writer);
+                std::string source = text.str();
+                Assert::IsTrue(source.find("(procedure (staleFirst") != std::string::npos, Wide(label + source).c_str());
+                Assert::IsTrue(source.find("staleSecond") == std::string::npos, Wide(label + source).c_str());
+                Assert::IsTrue(source.find("proc964_1") == std::string::npos, Wide(label + source).c_str());
+                bool warned = false;
+                for (const std::string &warning : results.warnings)
+                {
+                    warned = warned || (warning.find(fmt::format("Export 1 points outside the code of the script ({0:04x})", outside)) != std::string::npos);
+                    Assert::IsTrue(warning.find("Invalid function offset") == std::string::npos, Wide(label + warning).c_str());
+                }
+                Assert::IsTrue(warned, Wide(label + "a warning names the export").c_str());
+                // The function report has a line for it.
+                bool reported = false;
+                for (const DecompiledFunction &function : results.functions)
+                {
+                    reported = reported || ((function.output == "outside") && (function.offset == outside));
+                }
+                Assert::IsTrue(reported, Wide(label + "the function report has the export").c_str());
+            }
+        }
+
+        // A local procedure at 03af has its code. (Space Quest V script 16
+        // has two exports that point to 03af, outside its code; the local
+        // procedure of QfG3 script 471 at 03af is a real one.)
+        TEST_METHOD(LocalProcedureAt03af_HasItsCode)
+        {
+            _gameFolder = SetUpGameSCI11();
+            DecompileOutput out = DecompileAndRoundTrip("X4_LocalProcAt03af", 902);
+            Assert::IsTrue(out.text.find("(procedure (localproc_03af param1)") != std::string::npos, Wide("setup: the local procedure is at 03af\n" + out.text).c_str());
+            Assert::IsTrue(out.text.find("(= local0 param1)") != std::string::npos, Wide(out.text).c_str());
+            Assert::IsFalse(out.HasWarningContaining("Invalid function offset"), Wide(out.text).c_str());
+        }
+
         // A stale .sco with fewer exports than the compiled script. The proc at
         // the missing export index gets the generated proc952_1 name. Before the
         // fix the inverted condition (if (name.empty()) SetName(name)) blanked

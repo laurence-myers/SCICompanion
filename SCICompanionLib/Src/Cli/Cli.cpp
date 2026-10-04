@@ -213,7 +213,7 @@ namespace cli
         decompile->add_flag("--debug-instructions", decompileOptions.debugInstructions, "Show the use of the instructions (decompiler debug output).");
         decompile->add_option("--debug-filter", decompileOptions.debugFilter, "The debug output only for this function.");
         CLI::Option *functionReportOption = decompile->add_option("--function-report", decompileOptions.functionReport,
-            "Also write a line for each function into this file (tab-separated): its script, class, name, offset and bytes, the output (scope, asm, corrupt, error or stale), and the result of the scope engine (ok, or why it failed).");
+            "Also write a line for each function into this file (tab-separated): its script, class, name, offset and bytes, the output (scope, asm, corrupt, error, stale or outside), and the result of the scope engine (ok, or why it failed).");
 
         CLI::App *sco = script->add_subcommand("sco", "Make src\\<name>.sco from src\\<name>.sc and the compiled script, for source from another tool.");
         sco->fallthrough();

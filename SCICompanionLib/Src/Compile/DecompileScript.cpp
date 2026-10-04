@@ -241,14 +241,12 @@ void DecompileObject(const CompiledObject &object,
 	lookups.EndowWithProperties(nullptr);
 }
 
-const uint16_t BogusSQ5Export = 0x3af;
-
 void DecompileFunction(const CompiledScript &compiledScript, ProcedureDefinition &func, DecompileLookups &lookups, uint16_t wCodeOffsetTO, const set<uint16_t> &sortedCodePointersTO)
 {
 	lookups.EndowWithProperties(lookups.GetPossiblePropertiesForProc(wCodeOffsetTO));
 	set<uint16_t>::const_iterator codeStartIt = sortedCodePointersTO.find(wCodeOffsetTO);
 	assert(codeStartIt != sortedCodePointersTO.end());
-	bool isValidFunctionPointer = (*codeStartIt < compiledScript.GetRawBytes().size()) && (*codeStartIt != BogusSQ5Export);
+	bool isValidFunctionPointer = (*codeStartIt < compiledScript.GetRawBytes().size());
 	CodeSection section;
 	if (isValidFunctionPointer && FindStartEndCode(codeStartIt, sortedCodePointersTO, compiledScript._codeSections, section))
 	{
@@ -538,9 +536,24 @@ private:
 // procedures that are not exported (internalProcOffsetsTO); and the exports
 // that point into the code of the function before them (staleExportsTO:
 // Sierra left such exports, for example in QfG3 script 7; no procedure
-// starts there, and Snuffer leaves them out too).
-static void _FindCodePointers(const CompiledScript &compiledScript, DecompileLookups &lookups, set<uint16_t> &codePointersTO, set<uint16_t> &internalProcOffsetsTO, set<uint16_t> &staleExportsTO)
+// starts there, and Snuffer leaves them out too); and the exports that point
+// outside the code of the script (outsideExportsTO: for example ICEMAN script
+// 0, whose exports 6 to 29 are f9ff; Snuffer leaves them out too).
+static void _FindCodePointers(const CompiledScript &compiledScript, DecompileLookups &lookups, set<uint16_t> &codePointersTO, set<uint16_t> &internalProcOffsetsTO, set<uint16_t> &staleExportsTO, set<uint16_t> &outsideExportsTO)
 {
+	const std::vector<BYTE> &bytes = compiledScript.GetRawBytes();
+	auto isInCode = [&](uint16_t address)
+	{
+		for (const CodeSection &section : compiledScript._codeSections)
+		{
+			if ((address >= section.begin) && (address < section.end))
+			{
+				return address < bytes.size();
+			}
+		}
+		return false;
+	};
+
 	// Make an index of code pointers by looking at the object methods
 	set<uint16_t> methodPointersAll;
 	for (auto &object : compiledScript._objects)
@@ -558,7 +571,14 @@ static void _FindCodePointers(const CompiledScript &compiledScript, DecompileLoo
 		// check that it's not an object
 		if (compiledScript.IsExportAProcedure(wCodeOffset))
 		{
-			codePointersTO.insert(wCodeOffset);
+			if (isInCode(wCodeOffset))
+			{
+				codePointersTO.insert(wCodeOffset);
+			}
+			else
+			{
+				outsideExportsTO.insert(wCodeOffset);
+			}
 		}
 	}
 
@@ -571,7 +591,7 @@ static void _FindCodePointers(const CompiledScript &compiledScript, DecompileLoo
 	// Before adding these though, remove any exports from the internalProcOffsets.
 	for (const auto &exporty : compiledScript._exportsTO)
 	{
-		if (compiledScript.IsExportAProcedure(exporty)) // Exported objects can have the same address as a proc, we need to make sure we don't omit a proc because of that.
+		if (compiledScript.IsExportAProcedure(exporty) && (outsideExportsTO.count(exporty) == 0)) // Exported objects can have the same address as a proc, we need to make sure we don't omit a proc because of that.
 		{
 			set<uint16_t>::iterator internalsIndex = find(internalProcOffsetsTO.begin(), internalProcOffsetsTO.end(), exporty);
 			if (internalsIndex != internalProcOffsetsTO.end())
@@ -586,11 +606,10 @@ static void _FindCodePointers(const CompiledScript &compiledScript, DecompileLoo
 
 	// An export whose address the code of the function before it reaches
 	// (its decode goes past the address) is stale.
-	const std::vector<BYTE> &bytes = compiledScript.GetRawBytes();
 	set<uint16_t> exportPointers;
 	for (uint16_t exportPointer : compiledScript._exportsTO)
 	{
-		if (compiledScript.IsExportAProcedure(exportPointer) && (methodPointersAll.count(exportPointer) == 0) && (callTargetsTO.count(exportPointer) == 0))
+		if (compiledScript.IsExportAProcedure(exportPointer) && (outsideExportsTO.count(exportPointer) == 0) && (methodPointersAll.count(exportPointer) == 0) && (callTargetsTO.count(exportPointer) == 0))
 		{
 			exportPointers.insert(exportPointer);
 		}
@@ -653,7 +672,8 @@ unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const Compiled
 	set<uint16_t> codePointersTO;
 	set<uint16_t> internalProcOffsetsTO;
 	set<uint16_t> staleExportsTO;
-	_FindCodePointers(compiledScript, lookups, codePointersTO, internalProcOffsetsTO, staleExportsTO);
+	set<uint16_t> outsideExportsTO;
+	_FindCodePointers(compiledScript, lookups, codePointersTO, internalProcOffsetsTO, staleExportsTO, outsideExportsTO);
 
 	// Spit out code segments:
 	// First, the objects (instances, classes)
@@ -669,6 +689,20 @@ unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const Compiled
 
 	map<int, string> exportSlotToName;
 
+	// An export with no procedure (_FindCodePointers) has a warning and a line
+	// in the function report.
+	auto leaveOutExport = [&](size_t i, uint16_t exportPointer, const std::string &warning, const char *output)
+	{
+		lookups.DecompileResults().AddResult(DecompilerResultType::Warning, warning);
+		DecompiledFunction report;
+		report.script = compiledScript.GetScriptNumber();
+		report.name = lookups.ReverseLookupPublicExportName(compiledScript.GetScriptNumber(), (uint16_t)i);
+		report.offset = exportPointer;
+		report.index = lookups.FunctionCount++;
+		report.output = output;
+		lookups.DecompileResults().InformFunction(report);
+	};
+
 	// Now the exported procedures.
 	for (size_t i = 0; i < compiledScript._exportsTO.size() && !lookups.DecompileResults().IsAborted(); i++)
 	{
@@ -678,16 +712,11 @@ unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const Compiled
 		uint16_t exportPointer = compiledScript._exportsTO[i];
 		if (staleExportsTO.count(exportPointer) != 0)
 		{
-			// No procedure starts there (_FindCodePointers). The function report
-			// has a line for it.
-			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, fmt::format("Export {0} points into the code of another function ({1:04x}): it is left out.", i, exportPointer));
-			DecompiledFunction report;
-			report.script = compiledScript.GetScriptNumber();
-			report.name = lookups.ReverseLookupPublicExportName(compiledScript.GetScriptNumber(), (uint16_t)i);
-			report.offset = exportPointer;
-			report.index = lookups.FunctionCount++;
-			report.output = "stale";
-			lookups.DecompileResults().InformFunction(report);
+			leaveOutExport(i, exportPointer, fmt::format("Export {0} points into the code of another function ({1:04x}): it is left out.", i, exportPointer), "stale");
+		}
+		else if (outsideExportsTO.count(exportPointer) != 0)
+		{
+			leaveOutExport(i, exportPointer, fmt::format("Export {0} points outside the code of the script ({1:04x}): it is left out.", i, exportPointer), "outside");
 		}
 		else if (compiledScript.IsExportAProcedure(exportPointer))
 		{
@@ -932,7 +961,8 @@ std::vector<FunctionCode> ReadScriptFunctions(const CompiledScript &compiledScri
 	set<uint16_t> codePointersTO;
 	set<uint16_t> internalProcOffsetsTO;
 	set<uint16_t> staleExportsTO;
-	_FindCodePointers(compiledScript, lookups, codePointersTO, internalProcOffsetsTO, staleExportsTO);
+	set<uint16_t> outsideExportsTO;
+	_FindCodePointers(compiledScript, lookups, codePointersTO, internalProcOffsetsTO, staleExportsTO, outsideExportsTO);
 	const std::vector<BYTE> &bytes = compiledScript.GetRawBytes();
 	const BYTE *pEndScript = compiledScript.GetEndOfRawBytes();
 
@@ -941,9 +971,8 @@ std::vector<FunctionCode> ReadScriptFunctions(const CompiledScript &compiledScri
 	{
 		set<uint16_t>::const_iterator start = codePointersTO.find(function.offset);
 		CodeSection section;
-		// As DecompileFunction: a procedure at a bad address has no code.
-		bool validProcedure = (function.offset < bytes.size()) && (function.offset != BogusSQ5Export);
-		function.badAddress = !function.method && !validProcedure;
+		// As DecompileFunction: a procedure past the end of the script has no code.
+		bool validProcedure = (function.offset < bytes.size());
 		if ((start != codePointersTO.end()) && (function.method || validProcedure) &&
 			FindStartEndCode(start, codePointersTO, compiledScript._codeSections, section))
 		{
@@ -969,7 +998,7 @@ std::vector<FunctionCode> ReadScriptFunctions(const CompiledScript &compiledScri
 	for (size_t i = 0; i < compiledScript._exportsTO.size(); i++)
 	{
 		uint16_t offset = compiledScript._exportsTO[i];
-		if (compiledScript.IsExportAProcedure(offset) && (staleExportsTO.count(offset) == 0))
+		if (compiledScript.IsExportAProcedure(offset) && (staleExportsTO.count(offset) == 0) && (outsideExportsTO.count(offset) == 0))
 		{
 			functions.emplace_back();
 			FunctionCode &function = functions.back();

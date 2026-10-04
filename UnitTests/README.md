@@ -154,7 +154,8 @@ expected file is missing, the test writes the actual to
 | `D2_DeadCode` | 958 | (control flow) | dead code after a `jmp` and after a break gives no statement |
 | `L2_ContinueTwoInFor` | 962 | (control flow) | a continue of a for from an inner while |
 | `S6_NoOpCaseTest` | 963 | (switch) | a case whose test does nothing is the else case |
-| `X3_StaleExport` | 964 | (exports) | an export that points into the code of another function is left out |
+| `X3_StaleExport` | 964 | (exports) | an export that points into the code of another function, or outside the code of the script, is left out |
+| `X4_LocalProcAt03af` | 902 | (exports) | a local procedure at 03af has its code (Space Quest V script 16 has bad exports at 03af) |
 | `V2_SwappedOperands` | 965 | (values) | the operands of a mul that the optimizer swapped |
 
 `TemplateGame_FallbackBaseline` guards against new fallbacks. The baseline
