@@ -246,33 +246,63 @@ namespace UnitTests
             }
         }
 
-        // A call to an export outside the code of its script is a call to a
-        // missing procedure (__proc964_1): the decompiled script has no
-        // procedure for the export. The .sco of that decompiled script gives
-        // no warning for the slot.
+        // A call to an export that has no procedure in the decompiled text of
+        // its script is a call to a missing procedure (__proc964_1). The .sco
+        // of that decompiled script gives no warning for the slot.
         TEST_METHOD(ExportOutsideTheCode_CallAndObjectFile)
+        {
+            AssertCallToALeftOutExport(false);
+        }
+
+        TEST_METHOD(StaleExport_CallAndObjectFile)
+        {
+            AssertCallToALeftOutExport(true);
+        }
+
+        // Script 959 calls export 1 of script 964. The test moves that export
+        // into the code of the first procedure (stale), or outside the code.
+        void AssertCallToALeftOutExport(bool stale)
         {
             _gameFolder = SetUpGameSCI11();
             CResourceMap &rm = AppResourceMap();
             const GameFolderHelper &helper = rm.Helper();
             AddFixtureScript("X3_StaleExport");
-            AddFixtureScript("X5_CallOutsideExport");
+            AddFixtureScript("X5_CallLeftOutExport");
             std::string error;
             Assert::IsTrue(CompileFixture(964, "X3_StaleExport", &error), Wide(error).c_str());
-            Assert::IsTrue(CompileFixture(959, "X5_CallOutsideExport", &error), Wide(error).c_str());
+            Assert::IsTrue(CompileFixture(959, "X5_CallLeftOutExport", &error), Wide(error).c_str());
             CompiledScript compiled(964, CompiledScriptFlags::RemoveBadExports);
             Assert::IsTrue(compiled.Load(helper, helper.Version, 964), L"setup: the script loads");
             std::vector<uint8_t> script = compiled.GetRawBytes();
             // SCI1.1: the count of the exports at 6, the exports from 8.
             Assert::AreEqual((uint16_t)2, (uint16_t)(script[6] | (script[7] << 8)), L"setup: two exports");
-            script[10] = 0xff;
-            script[11] = 0xf9;
+            uint16_t first = (uint16_t)(script[8] | (script[9] << 8));
+            // Stale: the second ldi of staleFirst.
+            uint16_t moved = stale ? (uint16_t)(first + 4) : (uint16_t)0xf9ff;
+            script[10] = (uint8_t)(moved & 0xff);
+            script[11] = (uint8_t)(moved >> 8);
             ResourceBlob blob(helper, nullptr, ResourceType::Script, script, helper.Version.DefaultVolumeFile, 964, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags());
             Assert::IsTrue(SUCCEEDED(rm.AppendResource(blob)), L"setup: the patched script 964");
 
             DecompileOutput caller = DecompileToText(959);
             Assert::IsTrue(caller.text.find("(__proc964_1)") != std::string::npos, Wide(caller.text).c_str());
             Assert::IsTrue(caller.text.find("staleSecond") == std::string::npos, Wide(caller.text).c_str());
+            // The asm of the call names the missing procedure too.
+            {
+                GlobalCompiledScriptLookups lookups;
+                lookups.Load(helper);
+                CompiledScript callerScript(959, CompiledScriptFlags::RemoveBadExports);
+                Assert::IsTrue(callerScript.Load(helper, helper.Version, 959), L"setup: script 959 loads");
+                std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(rm, lookups.GetSelectorTable());
+                TestDecompilerResults results;
+                std::unique_ptr<sci::Script> decompiled = DecompileScript(config.get(), lookups, rm, 959, callerScript, results, false, false, nullptr, true);
+                std::stringstream text;
+                sci::SourceCodeWriter writer(text, decompiled.get());
+                decompiled->OutputSourceCode(writer);
+                std::string source = text.str();
+                Assert::IsTrue(source.find("(asm") != std::string::npos, Wide("setup: asm\n" + source).c_str());
+                Assert::IsTrue(source.find("__proc964_1") != std::string::npos, Wide(source).c_str());
+            }
 
             DecompileOutput callee = DecompileToText(964);
             Assert::IsTrue(callee.text.find("staleSecond") == std::string::npos, Wide(callee.text).c_str());

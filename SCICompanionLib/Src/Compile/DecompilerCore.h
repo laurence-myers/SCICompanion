@@ -228,7 +228,7 @@ bool ReadFunctionCode(DecompileLookups &lookups, const BYTE *pBegin, const BYTE 
 // The bytes of the code of the function at pBegin, by the first decode of
 // DecompileRaw (to the end of the script: it ends at a ret that no branch
 // goes past); -1 when that decode fails.
-int FunctionCodeLength(DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset);
+int FunctionCodeLength(const SCIVersion &version, const BYTE *pBegin, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset);
 
 struct VariableRange
 {
@@ -261,7 +261,9 @@ private:
 };
 
 std::string _GetPublicProcedureName(uint16_t wScript, uint16_t wIndex);
-std::string _GetBaseProcedureName(uint16_t wIndex);
+// The name of a call to an export: __procN_M when the export has no procedure
+// (DecompileLookups::DoesExportExist), else procN_M.
+std::string _GetPossiblyMissingPublicProcedureName(DecompileLookups &lookups, uint16_t script, uint16_t theExport);
 void MassageProcedureCalls(DecompileLookups &lookups, sci::Script &script);
 std::string _GetVariableNameFromCodePos(const scii &inst, DecompileLookups &lookups, VarScope *pVarType = nullptr, uint16_t *pwIndexOut = nullptr);
 bool _IsVOIncremented(Opcode bOpcode);

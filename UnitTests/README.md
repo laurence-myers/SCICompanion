@@ -155,7 +155,7 @@ expected file is missing, the test writes the actual to
 | `L2_ContinueTwoInFor` | 962 | (control flow) | a continue of a for from an inner while |
 | `S6_NoOpCaseTest` | 963 | (switch) | a case whose test does nothing is the else case |
 | `X3_StaleExport` | 964 | (exports) | an export that points into the code of another function, or outside the code of the script, is left out |
-| `X5_CallOutsideExport` | 959 | (exports) | a call to an export that points outside the code of its script is a call to a missing procedure (`__proc964_1`) |
+| `X5_CallLeftOutExport` | 959 | (exports) | a call to an export that is stale or points outside the code of its script is a call to a missing procedure (`__proc964_1`) |
 | `X4_LocalProcAt03af` | 902 | (exports) | a local procedure at 03af has its code (Space Quest V script 16 has bad exports at 03af) |
 | `V2_SwappedOperands` | 965 | (values) | the operands of a mul that the optimizer swapped |
 

@@ -277,7 +277,8 @@ void DisassembleFallback(FunctionBase &func, code_pos start, code_pos end, Decom
 
 				case Opcode::CALLB:
 				{
-					_AddToken(*asmStatement, _GetBaseProcedureName(cur->get_first_operand()));
+					// A missing export of main is __proc0_M, which compiles back to callb.
+					_AddToken(*asmStatement, _GetPossiblyMissingPublicProcedureName(lookups, 0, cur->get_first_operand()));
 					_AddNumber(*asmStatement, &valueWeak, cur->get_second_operand());
 					callFrames.Push(cur);
 					break;
@@ -285,7 +286,10 @@ void DisassembleFallback(FunctionBase &func, code_pos start, code_pos end, Decom
 
 				case Opcode::CALLE:
 				{
-					_AddToken(*asmStatement, _GetPublicProcedureName(cur->get_first_operand(), cur->get_second_operand()));
+					// A missing export of another script is __procN_M. A calle of main keeps
+					// proc0_M: the compiler takes __proc0_M only for callb.
+					uint16_t calleScript = cur->get_first_operand();
+					_AddToken(*asmStatement, (calleScript == 0) ? _GetPublicProcedureName(calleScript, cur->get_second_operand()) : _GetPossiblyMissingPublicProcedureName(lookups, calleScript, cur->get_second_operand()));
 					_AddNumber(*asmStatement, &valueWeak, cur->get_third_operand());
 					callFrames.Push(cur);
 					break;

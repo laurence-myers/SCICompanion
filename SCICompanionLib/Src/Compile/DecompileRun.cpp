@@ -8,6 +8,7 @@
 #include "ScriptOMAll.h" // DecompilerConfig.h uses the sci:: node types declared here
 #include "DecompilerConfig.h"
 #include "DecompilerResults.h"
+#include "DecompileScript.h"
 #include "ScriptCatalog.h"
 #include "CompileContext.h"
 #include "CrystalScriptStream.h"
@@ -208,11 +209,12 @@ namespace
         }
         std::set<int> compiledSlots;
         std::vector<uint16_t> exports = compiled.GetExports();
+        // A slot with no procedure (outside the code, or stale): the decompilers
+        // leave it out.
+        std::set<uint16_t> noProcedure = FindExportsWithNoProcedure(compiled);
         for (size_t slot = 0; slot < exports.size(); slot++)
         {
-            // A slot outside the code has no procedure: the decompilers leave
-            // it out.
-            if ((exports[slot] != 0) && !compiled.IsExportOutsideCode(exports[slot]))
+            if ((exports[slot] != 0) && (noProcedure.count(exports[slot]) == 0))
             {
                 compiledSlots.insert((int)slot);
             }

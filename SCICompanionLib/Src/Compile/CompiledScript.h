@@ -12,6 +12,8 @@
 	GNU General Public License for more details.
 ***************************************************************************/
 #pragma once
+#include <mutex>
+#include <set>
 #include "interfaces.h"
 #include "Vocab99x.h"
 #include "SCO.h"
@@ -105,8 +107,15 @@ public:
 	const std::unordered_set<uint16_t> &GetPropertySelectors();
 	const std::unordered_set<uint16_t> &GetMethodSelectors();
 
+	// The export slot of the script has no procedure in the decompiled text of
+	// the script (FindExportsWithNoProcedure: stale, or outside the code). The
+	// slots of a script are found once, on first use, and shared; a lock keeps
+	// them safe from any thread.
+	bool IsExportSlotWithNoProcedure(uint16_t script, uint16_t slot);
+
 private:
 	void _EnsureSelectorCategories();
+	void _ClearSlotsWithNoProcedure();
 
 	SelectorTable _selectors;
 	KernelTable	_kernels;
@@ -114,6 +123,8 @@ private:
 	bool _selectorCategoriesValid = false;
 	std::unordered_set<uint16_t> _propertySelectors;
 	std::unordered_set<uint16_t> _methodSelectors;
+	std::mutex _noProcedureMutex;
+	std::unordered_map<uint16_t, std::set<uint16_t>> _slotsWithNoProcedure;
 };
 
 class ObjectFileScriptLookups : public IObjectFileScriptLookups

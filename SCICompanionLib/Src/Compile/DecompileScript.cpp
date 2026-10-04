@@ -539,7 +539,7 @@ private:
 // starts there, and Snuffer leaves them out too); and the exports that point
 // outside the code of the script (outsideExportsTO: for example ICEMAN script
 // 0, whose exports 6 to 29 are f9ff; Snuffer leaves them out too).
-static void _FindCodePointers(const CompiledScript &compiledScript, DecompileLookups &lookups, set<uint16_t> &codePointersTO, set<uint16_t> &internalProcOffsetsTO, set<uint16_t> &staleExportsTO, set<uint16_t> &outsideExportsTO)
+static void _FindCodePointers(const CompiledScript &compiledScript, set<uint16_t> &codePointersTO, set<uint16_t> &internalProcOffsetsTO, set<uint16_t> &staleExportsTO, set<uint16_t> &outsideExportsTO)
 {
 	// Make an index of code pointers by looking at the object methods
 	set<uint16_t> methodPointersAll;
@@ -612,7 +612,7 @@ static void _FindCodePointers(const CompiledScript &compiledScript, DecompileLoo
 		uint16_t before = *std::prev(it);
 		if ((before < bytes.size()) && (exportPointer < bytes.size()))
 		{
-			int length = FunctionCodeLength(lookups, &bytes[before], compiledScript.GetEndOfRawBytes(), before);
+			int length = FunctionCodeLength(compiledScript.GetVersion(), &bytes[before], compiledScript.GetEndOfRawBytes(), before);
 			if ((length > 0) && ((int)before + length > (int)exportPointer))
 			{
 				codePointersTO.erase(it);
@@ -621,6 +621,17 @@ static void _FindCodePointers(const CompiledScript &compiledScript, DecompileLoo
 		}
 	}
 	// Now we know the length of each code segment (assuming none overlap)
+}
+
+std::set<uint16_t> FindExportsWithNoProcedure(const CompiledScript &compiledScript)
+{
+	set<uint16_t> codePointersTO;
+	set<uint16_t> internalProcOffsetsTO;
+	set<uint16_t> staleExportsTO;
+	set<uint16_t> outsideExportsTO;
+	_FindCodePointers(compiledScript, codePointersTO, internalProcOffsetsTO, staleExportsTO, outsideExportsTO);
+	staleExportsTO.insert(outsideExportsTO.begin(), outsideExportsTO.end());
+	return staleExportsTO;
 }
 
 unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const CompiledScript &compiledScript, DecompileLookups &lookups, const Vocab000 *pWords)
@@ -661,7 +672,7 @@ unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const Compiled
 	set<uint16_t> internalProcOffsetsTO;
 	set<uint16_t> staleExportsTO;
 	set<uint16_t> outsideExportsTO;
-	_FindCodePointers(compiledScript, lookups, codePointersTO, internalProcOffsetsTO, staleExportsTO, outsideExportsTO);
+	_FindCodePointers(compiledScript, codePointersTO, internalProcOffsetsTO, staleExportsTO, outsideExportsTO);
 
 	// Spit out code segments:
 	// First, the objects (instances, classes)
@@ -950,7 +961,7 @@ std::vector<FunctionCode> ReadScriptFunctions(const CompiledScript &compiledScri
 	set<uint16_t> internalProcOffsetsTO;
 	set<uint16_t> staleExportsTO;
 	set<uint16_t> outsideExportsTO;
-	_FindCodePointers(compiledScript, lookups, codePointersTO, internalProcOffsetsTO, staleExportsTO, outsideExportsTO);
+	_FindCodePointers(compiledScript, codePointersTO, internalProcOffsetsTO, staleExportsTO, outsideExportsTO);
 	const std::vector<BYTE> &bytes = compiledScript.GetRawBytes();
 	const BYTE *pEndScript = compiledScript.GetEndOfRawBytes();
 

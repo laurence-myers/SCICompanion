@@ -1130,7 +1130,8 @@ bool GlobalClassTable::_Create(const SpeciesTable &speciesTable, const GameFolde
 			uint16_t scriptNumber = numberToPair.first;
 			_scriptNums.push_back(scriptNumber);
 
-			unique_ptr<CompiledScript> compiledScript = make_unique<CompiledScript>(scriptNumber);
+			// The exports are those of the decompile of the script (RemoveBadExports).
+			unique_ptr<CompiledScript> compiledScript = make_unique<CompiledScript>(scriptNumber, CompiledScriptFlags::RemoveBadExports);
 			if (selectors)
 			{
 				compiledScript->SetNameSelector(*selectors);
