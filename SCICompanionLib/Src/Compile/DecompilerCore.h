@@ -199,6 +199,8 @@ private:
 	LineCol _fakePosition;
 	IDecompilerResults &_results;
 	std::unordered_set<uint32_t> _scriptExportExistance;
+	// For each script that a call asked about: the export slots with no procedure.
+	mutable std::unordered_map<uint16_t, std::set<uint16_t>> _slotsWithNoProcedure;
 	std::unordered_set<uint16_t> _scriptExistance;
 
 	// Variable usage
@@ -228,7 +230,7 @@ bool ReadFunctionCode(DecompileLookups &lookups, const BYTE *pBegin, const BYTE 
 // The bytes of the code of the function at pBegin, by the first decode of
 // DecompileRaw (to the end of the script: it ends at a ret that no branch
 // goes past); -1 when that decode fails.
-int FunctionCodeLength(DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset);
+int FunctionCodeLength(const SCIVersion &version, const BYTE *pBegin, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset);
 
 struct VariableRange
 {

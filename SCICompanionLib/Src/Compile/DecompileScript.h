@@ -14,6 +14,7 @@
 #pragma once
 
 #include <list>
+#include <set>
 #include <string>
 #include <vector>
 #include "scii.h"
@@ -58,6 +59,12 @@ std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, Gl
 // Gives objects that share a name, an instance (not public) with the name of a property of an object of the
 // script, and an instance with the name of a keyword, distinct names (name_a, name_b, ...); the text keeps the original as the name property.
 void FixDuplicateObjectNames(CompiledScript &compiledScript, GlobalCompiledScriptLookups &lookups);
+
+// The addresses of the exports that have no procedure in the decompiled text:
+// the exports that point outside the code of the script, and the stale
+// exports (they point into the code of the function before them, as in QfG3
+// script 7). The decompile leaves out their slots.
+std::set<uint16_t> FindExportsWithNoProcedure(const CompiledScript &compiledScript);
 
 // The code of one function of a compiled script (ReadScriptFunctions).
 struct FunctionCode

@@ -26,6 +26,7 @@
 #include "format.h"
 #include "DecompilerConfig.h"
 #include "DecompilerResults.h"
+#include "DecompileScript.h"
 #include <iterator>
 #include "GameFolderHelper.h"
 #include "Operators.h"
@@ -121,13 +122,15 @@ code_pos get_cur_pos(std::list<scii> &code)
 // code		- (out) list of sci instructions.
 //
 // Returns the end.
-const BYTE *_ConvertToInstructions(DecompileLookups &lookups, std::list<scii> &code, const BYTE *pBegin, const BYTE *pEnd, WORD wBaseOffset, bool abortOnError)
+// The decode of the code from pBegin to pEnd. With abortOnError, a problem
+// gives nullptr and no message (results can be null); else results gets the
+// message.
+const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResults *results, std::list<scii> &code, const BYTE *pBegin, const BYTE *pEnd, WORD wBaseOffset, bool abortOnError)
 {
 	std::unordered_map<WORD, code_pos> referenceToCodePos;
 	std::vector<Fixup> branchTargetsToFixup;
 	std::set<uint16_t> branchTargets;
 
-	SCIVersion sciVersion = lookups.GetVersion();
 
 	code_pos undetermined = code.end();
 
@@ -192,7 +195,7 @@ const BYTE *_ConvertToInstructions(DecompileLookups &lookups, std::list<scii> &c
 			{
 				return nullptr;
 			}
-			lookups.DecompileResults().AddResult(DecompilerResultType::Warning,
+			results->AddResult(DecompilerResultType::Warning,
 				fmt::format("Truncated instruction at 0x{0:04x}; stopping decode.", (uint16_t)(pThisInstruction - pBegin) + wBaseOffset));
 			break;
 		}
@@ -201,7 +204,7 @@ const BYTE *_ConvertToInstructions(DecompileLookups &lookups, std::list<scii> &c
 		if ((bOpcode == Opcode::BNT) || (bOpcode == Opcode::BT) || (bOpcode == Opcode::JMP))
 		{
 			// +1 because its the operand start pos.
-			uint16_t wTarget = CalcOffset(lookups.GetVersion(), wReferencePosition + 1, wOperands[0], bByte, bRawOpcode);
+			uint16_t wTarget = CalcOffset(sciVersion, wReferencePosition + 1, wOperands[0], bByte, bRawOpcode);
 
 			if (wTarget > codeLength)
 			{
@@ -215,7 +218,7 @@ const BYTE *_ConvertToInstructions(DecompileLookups &lookups, std::list<scii> &c
 					// We can't intelligently reason about where the branch is supposed to point, so just replace it with a load operation.
 					// We need to make sure it's the same size though.
 					code.push_back(scii(sciVersion, Opcode::LDI, 0xbaad, -1));
-					lookups.DecompileResults().AddResult(DecompilerResultType::Warning, fmt::format("Bad branch at 0x{0:4x}, replaced with -17747.", (wReferencePosition + wBaseOffset)));
+					results->AddResult(DecompilerResultType::Warning, fmt::format("Bad branch at 0x{0:4x}, replaced with -17747.", (wReferencePosition + wBaseOffset)));
 				}
 			}
 			else
@@ -267,7 +270,7 @@ const BYTE *_ConvertToInstructions(DecompileLookups &lookups, std::list<scii> &c
 			// tries again with a tighter bound, and that try can work.
 			if (!abortOnError)
 			{
-				lookups.DecompileResults().AddResult(DecompilerResultType::Error, "Invalid branch target.");
+				results->AddResult(DecompilerResultType::Error, "Invalid branch target.");
 			}
 			return nullptr;
 		}
@@ -1026,22 +1029,22 @@ namespace
 // end. The end of the code, or nullptr.
 static const BYTE *_DecodeFunction(DecompileLookups &lookups, std::list<scii> &code, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset)
 {
-	const BYTE *discoveredEnd = _ConvertToInstructions(lookups, code, pBegin, pScriptResourceEnd, wBaseOffset, true);
+	const BYTE *discoveredEnd = _ConvertToInstructions(lookups.GetVersion(), &lookups.DecompileResults(), code, pBegin, pScriptResourceEnd, wBaseOffset, true);
 	if (discoveredEnd == nullptr)
 	{
 		// If there were problems with that (say bogus branches that go somewhere incorrect), try a tighter bound.
 		// We don't want to try the tight bound right away, because it might have been determined using bogus
 		// exports in the export table (e.g. SQ5 does this in script 243).
 		code.clear();
-		discoveredEnd = _ConvertToInstructions(lookups, code, pBegin, pEstimatedMaxEnd, wBaseOffset, false);
+		discoveredEnd = _ConvertToInstructions(lookups.GetVersion(), &lookups.DecompileResults(), code, pBegin, pEstimatedMaxEnd, wBaseOffset, false);
 	}
 	return discoveredEnd;
 }
 
-int FunctionCodeLength(DecompileLookups &lookups, const BYTE *pBegin, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset)
+int FunctionCodeLength(const SCIVersion &version, const BYTE *pBegin, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset)
 {
 	std::list<scii> code;
-	const BYTE *end = _ConvertToInstructions(lookups, code, pBegin, pScriptResourceEnd, wBaseOffset, true);
+	const BYTE *end = _ConvertToInstructions(version, nullptr, code, pBegin, pScriptResourceEnd, wBaseOffset, true);
 	return end ? (int)(end - pBegin) : -1;
 }
 
@@ -1279,7 +1282,6 @@ _wScript(wScript), _pLookups(pLookups), _pOFLookups(pOFLookups), _pScriptThings(
 {
 
 	// Track all the valid script/export combos, so we know when someone is calling an invalid one.
-	// An export outside the code has no procedure in the decompiled text.
 	for (CompiledScript *script : _pLookups->GetGlobalClassTable().GetAllScripts())
 	{
 		_scriptExistance.insert(script->GetScriptNumber());
@@ -1288,7 +1290,7 @@ _wScript(wScript), _pLookups(pLookups), _pOFLookups(pOFLookups), _pScriptThings(
 		uint32_t index = 0;
 		for (uint16_t theExport : script->GetExports())
 		{
-			if ((theExport != 0) && !script->IsExportOutsideCode(theExport))
+			if (theExport != 0)
 			{
 				uint32_t scriptAndExport = (scriptNumber << 16) | index;
 				_scriptExportExistance.insert(scriptAndExport);
@@ -1467,8 +1469,36 @@ const SelectorTable& DecompileLookups::GetSelectorTable() const
 bool DecompileLookups::DoesExportExist(uint16_t script, uint16_t theExport) const
 {
 	uint32_t scriptAndExport = (((uint32_t)script) << 16) | theExport;
-	auto it = _scriptExportExistance.find(scriptAndExport);
-	return (it != _scriptExportExistance.end());
+	if (_scriptExportExistance.find(scriptAndExport) == _scriptExportExistance.end())
+	{
+		return false;
+	}
+	// An export with no procedure (FindExportsWithNoProcedure) has no procedure
+	// in the decompiled text of its script. The slots of each script are found
+	// once, when a call first asks.
+	auto found = _slotsWithNoProcedure.find(script);
+	if (found == _slotsWithNoProcedure.end())
+	{
+		std::set<uint16_t> slots;
+		for (CompiledScript *compiled : _pLookups->GetGlobalClassTable().GetAllScripts())
+		{
+			if (compiled->GetScriptNumber() == script)
+			{
+				std::set<uint16_t> addresses = FindExportsWithNoProcedure(*compiled);
+				std::vector<uint16_t> exports = compiled->GetExports();
+				for (size_t slot = 0; slot < exports.size(); slot++)
+				{
+					if (addresses.count(exports[slot]) != 0)
+					{
+						slots.insert((uint16_t)slot);
+					}
+				}
+				break;
+			}
+		}
+		found = _slotsWithNoProcedure.emplace(script, std::move(slots)).first;
+	}
+	return found->second.count(theExport) == 0;
 }
 
 uint16_t DecompileLookups::GetNameSelector() const
