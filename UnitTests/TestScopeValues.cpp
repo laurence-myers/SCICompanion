@@ -648,6 +648,48 @@ namespace UnitTests
 			)", "acc-differs", 6, true);
 		}
 
+		// A group of the second operand of an or in a structure: a statement
+		// form of an or in the group does not take the value of the if
+		// around it; and the latch of a do loop reads the value of the or
+		// (the bt of the or goes on to the target of the latch).
+		TEST_METHOD(Values_AnOrGroupInStructures)
+		{
+			AssertValues(R"(
+				lal 2
+				bnt other
+				lal 0
+				bt join
+				lal 1
+				bt mid
+				ldi 3
+				sal 5
+				lal 2
+			mid:
+				ldi 1
+				sal 3
+			join:
+				jmp fin
+			other:
+				ldi 9
+			fin:
+				sal 4
+				ret
+			)", "sal(If(Condition(lal) Then(Or(First(lal) Second(Group(If(Condition(Invert(lal)) Then(sal(ldi) lal)) sal(ldi))))) Else(ldi))) ret");
+			AssertValues(R"(
+			head:
+				+al 1
+				lal 0
+				bt join
+				ldi 1
+				sal 2
+				lal 3
+			join:
+				bt head
+				ldi 0
+				ret
+			)", "Do(LoopBody(+al) Condition(Or(First(lal) Second(Group(sal(ldi) lal))))) ldi ret");
+		}
+
 		// An if that is a value keeps its form; an if with an empty then-part
 		// whose else is a continue is (contif (not c)).
 		TEST_METHOD(Values_TheBreakIfFormIsForStatements)
@@ -1209,9 +1251,9 @@ namespace UnitTests
 		// statement (its last statement gives no value) in a loop whose value
 		// a test reads (the text leaves another value at the exit), a toss
 		// that takes a value that a case leaves (the switch value stays, and
-		// add reads it), and a statement
-		// in the operands of another statement in the operands of the next
-		// statement (it would come before the call that reads the old value).
+		// add reads it), and a statement in the operands of another statement
+		// in the operands of the next statement (it would come before the
+		// call that reads the old value).
 		TEST_METHOD(Values_ShapesThatTheRefusalRulesDoNotAccept)
 		{
 			AssertValuesFail(R"(

@@ -1692,6 +1692,21 @@ namespace scope
 				}
 			}
 
+			// An instruction reads the value of the or: from the target of its
+			// bt that the parser uses, or from the instruction after the
+			// second operand.
+			bool _OrValueIsRead(const Region &region)
+			{
+				int join = _model.ParseTarget(region.branch);
+				if ((join != NoIndex) && !_AccIsDeadAt(join))
+				{
+					return true;
+				}
+				std::vector<int> layout = Layout(region);
+				int after = layout.empty() ? NoIndex : *std::max_element(layout.begin(), layout.end()) + 1;
+				return (after > 0) && (after < _model.Size()) && !_AccIsDeadAt(after);
+			}
+
 			void _Or(const Region &region)
 			{
 				_DeadTest(region.branch);
@@ -1699,6 +1714,7 @@ namespace scope
 				_Structural(region.branch);
 
 				// The second operand.
+				int orStatements = _orStatements;
 				std::unique_ptr<ConsumptionNode> thenNode = std::make_unique<ConsumptionNode>();
 				thenNode->SetType(ChunkType::Then);
 				List list = { thenNode.get(), _Depth(), {} };
@@ -1714,16 +1730,20 @@ namespace scope
 				// instruction after the or reads its value: the second operand
 				// is a group of the statements, whose last one gives the value
 				// (QfG1 VGA script 0, proc0_3: "ldi 17; sat temp0" before a
-				// loop, then "not; bnt" after it). The join is the target that
-				// the parser uses: a compiler can thread the bt past the bnt.
-				int join = _model.ParseTarget(region.branch);
-				bool isGroup = !isValue && _AccIsAvailable() && (join != NoIndex) && !_AccIsDeadAt(join);
+				// loop, then "not; bnt" after it). The reader can be at the
+				// target that the parser uses (a compiler can thread the bt past
+				// the bnt) or after the second operand (a bt that goes on to the
+				// target of the bt at the join).
+				bool isGroup = !isValue && _AccIsAvailable() && _OrValueIsRead(region);
 				std::unique_ptr<ConsumptionNode> second = (isValue || isGroup) ? _TakeAcc(region.branch) : nullptr;
 				_EndList(list, region.branch);
 				_list = outer;
 				_ResetFacts();
 				if (isGroup)
 				{
+					// A statement form of an or in the group is no value of the
+					// group: a structure around the group keeps its value.
+					_orStatements = orStatements;
 					std::unique_ptr<ConsumptionNode> group = std::make_unique<ConsumptionNode>();
 					group->SetType(ChunkType::Group);
 					while (thenNode->GetChildCount() > 0)
