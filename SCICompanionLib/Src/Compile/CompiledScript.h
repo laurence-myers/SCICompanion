@@ -229,6 +229,19 @@ struct ScriptSection
 	uint16_t length;
 };
 
+// A section of a known damaged script (SCI0 and SCI1) that declares more
+// bytes than its resource has. The reader cuts the section at the end of
+// the resource, and reads no section after it. The raw bytes of the script
+// (GetRawBytes) then end with a 0 word, the end marker of the section list
+// that the resource does not have.
+struct TruncatedScriptSection
+{
+	uint16_t offset;			// the offset of the section header
+	uint16_t type;
+	uint16_t declaredLength;	// the length that the header gives, with the header
+	uint16_t length;			// the length in the resource, with the header
+};
+
 enum class CompiledScriptFlags
 {
 	None = 0,
@@ -299,6 +312,9 @@ public:
 	bool IsExportAnObject(uint16_t wOffset) const;
 	bool IsExportAProcedure(uint16_t wOffset, int *exportIndex = nullptr) const;
 	std::vector<uint16_t> GetExports() const;
+	// The section that the reader cut at the end of the resource; nullptr
+	// when the script is complete.
+	const TruncatedScriptSection *GetTruncatedSection() const { return _hasTruncatedSection ? &_truncatedSection : nullptr; }
 	CompiledObject *GetObjectForExport(uint16_t exportPointer) const;
 	std::set<uint16_t> FindInternalCallsTO() const;
 
@@ -329,7 +345,7 @@ public:
 	SCIVersion GetVersion() const { return _version; }
 
 private:
-	bool _LoadSCI0_SCI1(sci::istream &byteStream);
+	bool _LoadSCI0_SCI1(int iScriptNumber, sci::istream &byteStream);
 	bool _LoadSCI1_1(const GameFolderHelper &helper, int iScriptNumber, sci::istream &byteStream, sci::istream *heapStream);
 	void _LoadStringOffsetsSCI1_1(uint16_t offset, sci::istream heapStream);
 	// sectionSize: the size of an SCI0 export section; 0 when it is not known.
@@ -345,6 +361,8 @@ private:
 	std::vector<uint16_t> _stringPointerOffsetsSCI1_1;
 	SCIVersion _version;
 	CompiledScriptFlags _flags;
+	bool _hasTruncatedSection = false;
+	TruncatedScriptSection _truncatedSection = {};
 	bool _hasNameSelector = false;
 	uint16_t _nameSelector = 0;
 	ICompiledScriptLookups *_nameSlotClasses = nullptr;
