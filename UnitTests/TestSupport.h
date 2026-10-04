@@ -122,6 +122,14 @@ ScriptId ScriptAt(const std::string &path, uint16_t number);
 // Writes a patch file that makes the script fail to load.
 void WriteUnreadableScript(GameCopy &game, uint16_t number);
 
+// An SCI0 script with the damage of script 995 of Hoyle 3 (a known damaged
+// script, in CompiledScript.cpp), at the size of its resource (2632 bytes):
+// an export section (export 0 is the procedure), a code section with the
+// procedure (lal 0, ret) from offset 12 to 16, a relocation section of
+// zeros to offset 424, and a code section at 424 that declares 2950 bytes.
+// Another size gives the same sections, cut or padded with ret.
+std::vector<uint8_t> MakeTruncatedScript995(size_t size = 2632);
+
 // Gives these slots of the game's Main.sco their standard names (globalN),
 // in a session that closes after the save.
 void NameMainGlobals(GameCopy &game, const std::vector<size_t> &slots);

@@ -176,7 +176,7 @@ bool CompiledScript::Load(const GameFolderHelper &helper, SCIVersion version, in
 	}
 	else
 	{
-		return _LoadSCI0_SCI1(byteStream);
+		return _LoadSCI0_SCI1(number, byteStream);
 	}
 }
 
@@ -527,7 +527,41 @@ bool CompiledScript::DetectIfExportsAreWide(const SCIVersion &version, sci::istr
 	return false;
 }
 
-bool CompiledScript::_LoadSCI0_SCI1(sci::istream &byteStream)
+// A known damaged script: its resource ends inside a section.
+struct KnownTruncatedScript
+{
+	uint16_t script;
+	uint32_t resourceSize;
+	TruncatedScriptSection section;
+};
+
+const KnownTruncatedScript KnownTruncatedScripts[] =
+{
+	// Hoyle Official Book of Games, Volume 3: script 995, an inventory script
+	// that the game does not use. Its third section (code) ends 742 bytes
+	// after the end of the resource. The objects that own that code, the
+	// strings and the relocation table are not in the resource. sci-tools
+	// and ScummVM ignore this script.
+	{ 995, 2632, { 424, 2, 2950, 2208 } },
+};
+
+// The known damaged script whose resource cuts off the section at
+// sectionOffset; nullptr for any other section.
+static const TruncatedScriptSection *_FindKnownTruncatedSection(int iScriptNumber, uint32_t resourceSize, uint32_t sectionOffset, uint16_t sectionType, uint16_t declaredLength)
+{
+	for (const KnownTruncatedScript &known : KnownTruncatedScripts)
+	{
+		if ((known.script == iScriptNumber) && (known.resourceSize == resourceSize) &&
+			(known.section.offset == sectionOffset) && (known.section.type == sectionType) &&
+			(known.section.declaredLength == declaredLength) && (sectionOffset + known.section.length == resourceSize))
+		{
+			return &known.section;
+		}
+	}
+	return nullptr;
+}
+
+bool CompiledScript::_LoadSCI0_SCI1(int iScriptNumber, sci::istream &byteStream)
 {
 	bool fRet = byteStream.GetDataSize() > 0;
 	if (fRet)
@@ -539,6 +573,7 @@ bool CompiledScript::_LoadSCI0_SCI1(sci::istream &byteStream)
 		byteStream.seekg(0);
 
 		_rawScriptSections.clear();
+		_hasTruncatedSection = false;
 
 		if (_version.HasOldSCI0ScriptHeader)
 		{
@@ -560,10 +595,16 @@ bool CompiledScript::_LoadSCI0_SCI1(sci::istream &byteStream)
 			// Read the type and size.
 			uint16_t wType;
 			uint16_t wSectionSize;
+			const TruncatedScriptSection *truncated = nullptr;
 			byteStream >> wType;
 			if (wType != 0)
 			{
 				byteStream >> wSectionSize;
+				truncated = _FindKnownTruncatedSection(iScriptNumber, byteStream.GetDataSize(), dwSavePos, wType, wSectionSize);
+				if (truncated)
+				{
+					wSectionSize = truncated->length;
+				}
 				fRet = byteStream.good() && (wSectionSize >= 4);
 				if (fRet)
 				{
@@ -598,6 +639,10 @@ bool CompiledScript::_LoadSCI0_SCI1(sci::istream &byteStream)
 					fRet = byteStream.good();
 				}
 			}
+			if (truncated)
+			{
+				break; // The resource ends in this section.
+			}
 		}
 		byteStream.seekg(dwSaveBeginning);
 
@@ -611,10 +656,18 @@ bool CompiledScript::_LoadSCI0_SCI1(sci::istream &byteStream)
 			// Read the type and size.
 			uint16_t wType;
 			uint16_t wSectionSize;
+			const TruncatedScriptSection *truncated = nullptr;
 			byteStream >> wType;
 			if (wType != 0)
 			{
 				byteStream >> wSectionSize;
+				truncated = _FindKnownTruncatedSection(iScriptNumber, byteStream.GetDataSize(), dwSavePos, wType, wSectionSize);
+				if (truncated)
+				{
+					wSectionSize = truncated->length;
+					_truncatedSection = *truncated;
+					_hasTruncatedSection = true;
+				}
 				fRet = byteStream.good() && (wSectionSize >= 4);
 				if (fRet)
 				{
@@ -768,6 +821,20 @@ bool CompiledScript::_LoadSCI0_SCI1(sci::istream &byteStream)
 					fRet = byteStream.good();
 				}
 			}
+			if (truncated)
+			{
+				break; // The resource ends in this section.
+			}
+		}
+
+		if (_hasTruncatedSection)
+		{
+			// The raw bytes get the end marker of the section list (a 0 word)
+			// that the resource does not have. As in a complete script, a code
+			// section then ends before the end of the raw bytes, and a read of
+			// the code that indexes the end of its section stays in the bytes.
+			_scriptResource.push_back(0);
+			_scriptResource.push_back(0);
 		}
 
 		// Let's mark instances as public if they're in the exports list

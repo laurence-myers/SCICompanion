@@ -20,6 +20,9 @@ modernizing the build. Broad highlights since the previous release:
   closely (control-flow shapes, expressions and comparisons).
 * **Decompiles games that have no selector table** (such as the floppy Laura
   Bow 2). Each selector gets a numbered name, sel_<number>.
+* **Decompiles known damaged scripts** (such as script 995 of Hoyle 3, whose
+  resource is cut short). The decompile reads up to the end of the data, and a
+  warning at the top of the source tells what is missing.
 * **The template games are compiled from their current sources.** A new
   game starts with the scripts that its `src` folder holds.
 * **Better compile warning/error messages.**

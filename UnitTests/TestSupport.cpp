@@ -240,6 +240,33 @@ void WriteUnreadableScript(GameCopy &game, uint16_t number)
     WriteFileBytes(game.Path("script." + std::to_string(number)), { 0x80 | (uint8_t)ResourceType::Script, 0, 5, 0, 1 });
 }
 
+std::vector<uint8_t> MakeTruncatedScript995(size_t size)
+{
+    std::vector<uint8_t> data((size < 428) ? 428 : size, 0x48); // ret
+    auto header = [&data](size_t offset, uint8_t type, uint16_t length)
+    {
+        data[offset] = type;
+        data[offset + 1] = 0;
+        data[offset + 2] = (uint8_t)(length & 0xff);
+        data[offset + 3] = (uint8_t)(length >> 8);
+    };
+    header(0, 7, 8); // exports
+    data[4] = 1;
+    data[5] = 0;
+    data[6] = 12;
+    data[7] = 0;
+    header(8, 2, 8); // code
+    data[12] = 0x83; // lal 0
+    data[13] = 0;
+    data[14] = 0x48; // ret
+    data[15] = 0x48;
+    header(16, 8, 408); // relocations
+    std::fill(data.begin() + 20, data.begin() + 424, (uint8_t)0);
+    header(424, 2, 2950); // code
+    data.resize(size);
+    return data;
+}
+
 void NameMainGlobals(GameCopy &game, const std::vector<size_t> &slots)
 {
     GameSession &session = game.Open();

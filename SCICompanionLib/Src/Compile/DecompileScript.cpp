@@ -623,6 +623,15 @@ unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const Compiled
 	scriptId.SetResourceNumber(compiledScript.GetScriptNumber());
 	pScript->SetScriptId(scriptId);
 
+	if (const TruncatedScriptSection *truncated = compiledScript.GetTruncatedSection())
+	{
+		std::string message = fmt::format(
+			"The script resource is truncated: the section at {0:04x} declares {1} bytes, but the resource has only {2} of them. The rest of that section and all the sections after it are missing.",
+			truncated->offset, truncated->declaredLength, truncated->length);
+		lookups.DecompileResults().AddResult(DecompilerResultType::Warning, message);
+		pScript->AddHeaderComment("WARNING: " + message);
+	}
+
 	compiledScript.PopulateSaidStrings(pWords);
 
 	// Synonyms
@@ -723,7 +732,21 @@ unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const Compiled
 
 	if (!lookups.DecompileResults().IsAborted())
 	{
-		AddLocalVariablesToScript(*pScript, compiledScript, lookups, compiledScript._localVars);
+		std::vector<CompiledVarValue> localVars = compiledScript._localVars;
+		const std::map<uint16_t, bool> &localUsage = lookups.GetLocalUsage();
+		if (compiledScript.GetTruncatedSection() && !localUsage.empty() && (localUsage.rbegin()->first >= localVars.size()))
+		{
+			// The locals section is one of the missing sections: the script
+			// declares the locals that its code uses, with the value 0.
+			uint16_t highest = localUsage.rbegin()->first;
+			localVars.resize((size_t)highest + 1, CompiledVarValue{ 0, false });
+			std::string message = fmt::format(
+				"The code uses locals that the resource does not declare (up to {0}): the locals section is missing. The script declares them with the value 0. Their real initial values are not known.",
+				_GetLocalVariableName(highest, compiledScript.GetScriptNumber()));
+			lookups.DecompileResults().AddResult(DecompilerResultType::Warning, message);
+			pScript->AddHeaderComment("WARNING: " + message);
+		}
+		AddLocalVariablesToScript(*pScript, compiledScript, lookups, localVars);
 
 		for (auto &pair : exportSlotToName)
 		{

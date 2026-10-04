@@ -572,6 +572,38 @@ const size_t MaxColumnWidth = 60;
 const size_t MaxSendParamWidth = 75;
 const size_t MaxConditionWidth = 50;
 const size_t MaxCaseWidth = 35;
+const size_t MaxHeaderCommentWidth = 76;
+
+// The lines of a header comment (Script::AddHeaderComment): each line of the
+// text, wrapped at spaces to maxWidth characters. A word longer than maxWidth
+// stays whole on its own line.
+static std::vector<std::string> _WrapHeaderComment(const std::string &text, size_t maxWidth)
+{
+	std::vector<std::string> lines;
+	std::stringstream paragraphs(text);
+	std::string paragraph;
+	while (std::getline(paragraphs, paragraph))
+	{
+		std::stringstream words(paragraph);
+		std::string word;
+		std::string line;
+		while (words >> word)
+		{
+			if (!line.empty() && ((line.size() + 1 + word.size()) > maxWidth))
+			{
+				lines.push_back(line);
+				line.clear();
+			}
+			if (!line.empty())
+			{
+				line += " ";
+			}
+			line += word;
+		}
+		lines.push_back(line);
+	}
+	return lines;
+}
 
 // Macros yuck! But they get the job done.
 #define GO_INLINE auto line = _GoInline()
@@ -867,6 +899,19 @@ public:
 		}
 
 		out.OutputInitialComment();
+
+		for (const std::string &headerComment : script.GetHeaderComments())
+		{
+			for (const std::string &line : _WrapHeaderComment(headerComment, MaxHeaderCommentWidth))
+			{
+				out.out << ";";
+				if (!line.empty())
+				{
+					out.out << " " << line;
+				}
+				out.NewLine();
+			}
+		}
 
 		ScriptId scriptId = script.GetScriptId();
 		if (!script.GetScriptNumberDefine().empty())

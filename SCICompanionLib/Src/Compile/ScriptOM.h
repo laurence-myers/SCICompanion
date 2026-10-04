@@ -1199,6 +1199,13 @@ namespace sci
 		void AddStringDeclaration(std::unique_ptr<VariableDecl> pVar) { _scriptStringDeclarations.push_back(std::move(pVar)); }
 		void AddProcedure(std::unique_ptr<ProcedureDefinition> pProc) { _procedures.push_back(std::move(pProc)); }
 		void AddComment(std::unique_ptr<Comment> pComment) { _comments.push_back(std::move(pComment)); }
+		// A comment about the whole script that has no position in a source
+		// (for example, a note of the decompiler about a damaged resource).
+		// The formatter writes each one as comment lines at the top of the
+		// script, before (script#). A line break in the text starts a new
+		// line. A parsed script has none: its comments are in GetComments.
+		void AddHeaderComment(const std::string &text) { _headerComments.push_back(text); }
+		const std::vector<std::string> &GetHeaderComments() const { return _headerComments; }
 
 
 		void SetScriptId(ScriptId scriptId) { _scriptId = scriptId; }
@@ -1249,6 +1256,7 @@ namespace sci
 		// Instead, comments are added at the script level.  The position property of the comments
 		// can be used to place it in the right spot.
 		CommentVector _comments;
+		std::vector<std::string> _headerComments;
 
 		// These are not serialized:
 		ScriptId _scriptId;

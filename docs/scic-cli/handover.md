@@ -36,8 +36,7 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   script).
 - The corpus sweep of 2026-09-24 (93 folders): script 755 of KQ5 (EGA and
   floppy) fails with "invalid map<K, T> key" `[internal]` (a task of
-  another session works on it); script 995 of Hoyle 3 cannot be read;
-  the decompiler reports errors in scripts that it wrote for Longbow, GK
+  another session works on it); the decompiler reports errors in scripts that it wrote for Longbow, GK
   and the KQ4 `patch\NEW` folder (exit 6); 86 of 93 decompiled games do
   not compile back with 0 errors (limits of the decompiler); Willy
   Beamish is not supported (its map does not open: exit 3, "its lookup

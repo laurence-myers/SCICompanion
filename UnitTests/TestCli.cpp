@@ -812,6 +812,43 @@ namespace UnitTests
             Assert::IsTrue(console.err.find("Decompiled and wrote 1 of 2 scripts.") != std::string::npos, Wide(console.err).c_str());
         }
 
+        // A known damaged script (MakeTruncatedScript995, as a patch of
+        // script 995 of the template) decompiles up to the end of its data.
+        // The decompile warns, writes the warnings at the top of the source,
+        // and declares the local that the code uses. The source compiles.
+        TEST_METHOD(Decompile_KnownTruncatedScript_WarnsAndCompiles)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0");
+            std::vector<uint8_t> bytes = MakeTruncatedScript995();
+            // The header of an SCI0 patch file.
+            bytes.insert(bytes.begin(), { (uint8_t)(0x80 | (uint8_t)ResourceType::Script), 0 });
+            WriteFileBytes((fs::path(_copyFolder) / "script.995").string(), bytes);
+            // The names of the old object file are not the names of this script.
+            Assert::IsTrue(fs::remove(fs::path(_copyFolder) / "src" / "Inv.sco"), L"setup: src\\Inv.sco");
+
+            cli::StringConsole printed = Expect(0, { "script", "decompile", _copyFolder, "995", "--stdout" });
+            std::string truncated = "The script resource is truncated: the section at 01a8 declares 2950 bytes, but the resource has only 2208 of them.";
+            Assert::IsTrue(printed.err.find(truncated) != std::string::npos, Wide(printed.err).c_str());
+            Assert::IsTrue(printed.err.find("declare (up to local0): the locals section is missing.") != std::string::npos, Wide(printed.err).c_str());
+            std::vector<std::string> lines = Lines(printed.out);
+            auto scriptLine = std::find(lines.begin(), lines.end(), "(script# 995)");
+            Assert::IsTrue(scriptLine != lines.end(), Wide(printed.out).c_str());
+            Assert::AreEqual(std::string(";;; Sierra Script 1.0 - (do not remove this comment)"), lines[0]);
+            Assert::AreEqual(std::string("; WARNING: The script resource is truncated: the section at 01a8 declares 2950"), lines[1]);
+            std::string header;
+            for (auto line = lines.begin() + 1; line != scriptLine; ++line)
+            {
+                Assert::IsTrue(!line->empty() && ((*line)[0] == ';'), Wide(printed.out).c_str());
+                header += line->substr(1);
+            }
+            Assert::IsTrue(header.find("WARNING: The code uses locals") != std::string::npos, Wide(printed.out).c_str());
+            Assert::IsTrue(printed.out.find("(local") != std::string::npos, Wide(printed.out).c_str());
+            Assert::IsTrue(printed.out.find("(return local0)") != std::string::npos, Wide(printed.out).c_str());
+
+            Expect(0, { "script", "decompile", _copyFolder, "995" });
+            Expect(0, { "script", "compile", _copyFolder, "995", "--dry-run" });
+        }
+
         // An empty report file, and a report file that is not a function
         // report, are usage errors.
         TEST_METHOD(Decompile_FunctionReport_UsageErrors)

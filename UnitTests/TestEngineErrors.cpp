@@ -228,6 +228,48 @@ namespace UnitTests
             Assert::AreEqual(std::string("script 950"), loaded.error().where.resource);
         }
 
+        // Hoyle 3 script 995 ends inside a section: a code section at offset
+        // 424 declares 2950 bytes, and the resource has 2632 bytes. TryLoad
+        // cuts that section at the end of the resource and reads no section
+        // after it; the raw bytes get the end marker of the section list.
+        // Another script that runs past its end is still a Format error.
+        TEST_METHOD(CompiledScriptTryLoad_KnownTruncatedScript_ReadsToTheEnd)
+        {
+            GameFolderHelper helper;
+            std::vector<uint8_t> data = MakeTruncatedScript995();
+            ResourceBlob blob(helper, nullptr, ResourceType::Script, data, 1, 995, NoBase36, sciVersion1_Early, ResourceSourceFlags::PatchFile);
+            CompiledScript compiled(995);
+            AssertOk(compiled.TryLoad(helper, sciVersion1_Early, 995, blob, nullptr));
+            const TruncatedScriptSection *truncated = compiled.GetTruncatedSection();
+            Assert::IsNotNull(truncated);
+            Assert::AreEqual((uint16_t)424, truncated->offset);
+            Assert::AreEqual((uint16_t)2, truncated->type);
+            Assert::AreEqual((uint16_t)2950, truncated->declaredLength);
+            Assert::AreEqual((uint16_t)2208, truncated->length);
+            Assert::AreEqual(size_t(2), compiled._codeSections.size());
+            Assert::AreEqual((uint16_t)428, compiled._codeSections[1].begin);
+            Assert::AreEqual((uint16_t)2632, compiled._codeSections[1].end);
+            Assert::AreEqual((uint16_t)2208, compiled._rawScriptSections.back().length);
+            Assert::IsTrue(compiled.GetExports() == std::vector<uint16_t>{ 12 }, L"export 0 is the procedure at 12");
+            // The end marker: the code section ends before the end of the raw bytes.
+            const std::vector<uint8_t> &raw = compiled.GetRawBytes();
+            Assert::AreEqual(size_t(2634), raw.size());
+            Assert::AreEqual((uint8_t)0, raw[2632]);
+            Assert::AreEqual((uint8_t)0, raw[2633]);
+
+            // Another script number, or another size of the resource.
+            for (const auto &numberAndSize : { std::make_pair(994, size_t(2632)), std::make_pair(995, size_t(2634)) })
+            {
+                std::vector<uint8_t> otherData = MakeTruncatedScript995(numberAndSize.second);
+                ResourceBlob otherBlob(helper, nullptr, ResourceType::Script, otherData, 1, numberAndSize.first, NoBase36, sciVersion1_Early, ResourceSourceFlags::PatchFile);
+                CompiledScript other((uint16_t)numberAndSize.first);
+                sci::Status loaded = other.TryLoad(helper, sciVersion1_Early, numberAndSize.first, otherBlob, nullptr);
+                Assert::IsFalse(loaded.has_value(), L"a script that is not the known one must not load");
+                Assert::AreEqual(std::string("format"), CodeName(loaded.error()));
+                Assert::IsNull(other.GetTruncatedSection());
+            }
+        }
+
         TEST_METHOD(TablesTryLoad_Templates_Load)
         {
             NoAppState noAppState;
