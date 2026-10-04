@@ -21,6 +21,7 @@
 #include "DecompilerAstPasses.h"
 #include "DecompilerResults.h"
 #include "AppState.h"
+#include "TestSupport.h"
 #include <set>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -143,6 +144,48 @@ namespace UnitTests
                 L"the if should print");
             Assert::IsTrue(actual.find("(return t)") != std::string::npos,
                 L"the return should print");
+        }
+
+        // A header comment (Script::AddHeaderComment) prints as comment lines
+        // after the language marker and before (script#). A long line wraps
+        // at spaces to 76 characters, a longer word stays whole, and a line
+        // break starts a new line. The text parses back (the harness does not
+        // keep the comments of a parse).
+        TEST_METHOD(Harness_HeaderCommentsPrintBeforeScriptNumber)
+        {
+            sci::Script script;
+            ScriptId scriptId;
+            scriptId.SetResourceNumber(995);
+            script.SetScriptId(scriptId);
+            std::string words;
+            for (int i = 0; i < 20; i++)
+            {
+                words += "aaaa ";
+            }
+            std::string longWord(80, 'x');
+            script.AddHeaderComment(words + longWord + "\n\nsecond");
+            script.AddHeaderComment("another");
+
+            std::string text = ScriptToText(script);
+
+            std::string fifteen = "aaaa";
+            for (int i = 1; i < 15; i++)
+            {
+                fifteen += " aaaa";
+            }
+            std::string expected =
+                ";;; Sierra Script 1.0 - (do not remove this comment)\n"
+                "; " + fifteen + "\n"
+                "; aaaa aaaa aaaa aaaa aaaa\n"
+                "; " + longWord + "\n"
+                ";\n"
+                "; second\n"
+                "; another\n"
+                "(script# 995)";
+            Assert::AreEqual(expected, text.substr(0, expected.size()), Wide(text).c_str());
+
+            std::unique_ptr<sci::Script> parsed = ParseSierraScript(text);
+            Assert::AreEqual((WORD)995, parsed->GetScriptNumber());
         }
 
         // A nested and/or expression parses and prints as an n-ary form.
