@@ -431,7 +431,7 @@
 					(return)
 				else
 					(= temp2 (NodeValue temp0))
-					(temp2 signal: (& (temp2 signal?) (~ $0020)))
+					(temp2 signal: (& (temp2 signal?) $ffdf))
 					(= temp0 temp1)
 				)
 			)
@@ -746,7 +746,7 @@
 						(self at: [param1 temp0])
 					)
 				)
-				(temp1 signal: (& (temp1 signal?) (~ $0004)))
+				(temp1 signal: (& (temp1 signal?) $fffb))
 				(++ temp0)
 			)
 		else

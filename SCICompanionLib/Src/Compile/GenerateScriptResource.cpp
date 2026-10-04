@@ -1322,6 +1322,7 @@ bool GenerateScriptResource_SCI0(GameSession &session, Script &script, Precompil
 	push_word(output, 0);
 
 	// Get the .sco file produced.
+	context.ResolveSCOPropertyTokens();
 	results.GetSCO() = context.GetScriptSCO();
 
 	// Fill the text resource.
@@ -1590,6 +1591,7 @@ bool GenerateScriptResource_SCI11(GameSession &session, Script &script, Precompi
 		context.FixupSinksAndSources(outputScr, outputHeap);
 
 		// Get the .sco file produced.
+		context.ResolveSCOPropertyTokens();
 		results.GetSCO() = context.GetScriptSCO();
 
 		// Fill the text resource.

@@ -1033,9 +1033,9 @@ namespace UnitTests
         }
 
         // Plan section 4.6: script sco makes the .sco files of both templates
-        // from their sources. The SCI1.1 template's Main and DebugHandler
-        // get a warning in the MSBuild format: their compiled scripts export
-        // slots that their public blocks do not list.
+        // from their sources. The public block of each script lists the
+        // slots that its compiled script exports, so no script gets the
+        // export warning.
         TEST_METHOD(Sco_BothTemplates)
         {
             for (const char *templateFolder : { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" })
@@ -1045,17 +1045,29 @@ namespace UnitTests
                 Assert::IsTrue(removed > 20, L"setup: the .sco files");
                 cli::StringConsole console = Expect(0, { "script", "sco", _copyFolder, "--all" });
                 Assert::AreEqual(removed, CountObjectFiles(_copyFolder), Wide(console.err).c_str());
-                bool sci11 = (std::string(templateFolder) == "\\TemplateGame\\SCI1.1");
-                size_t warnings = 0;
-                for (const std::string &line : Lines(console.err))
+                Assert::AreEqual(std::string::npos, console.err.find(": warning : The public block has the slots"), Wide(console.err).c_str());
+            }
+        }
+
+        // script compile writes the .sco that script sco makes from the
+        // compiled script: a string default of a class property (Gauge's
+        // higher, in the SCI1.1 template) and a said default (SaidDefault,
+        // added to the SCI0 template) have their offsets in the compiled
+        // script, not the compiler's temporary tokens.
+        TEST_METHOD(Sco_AfterCompile_ChangesNoObjectFile)
+        {
+            for (const char *templateFolder : { "\\TemplateGame\\SCI0", "\\TemplateGame\\SCI1.1" })
+            {
+                CopyTemplate(templateFolder);
+                if (std::string(templateFolder) == "\\TemplateGame\\SCI0")
                 {
-                    if (line.find(": warning : The public block has the slots") != std::string::npos)
-                    {
-                        warnings++;
-                        Assert::IsTrue((line.find("Main.sc(") != std::string::npos) || (line.find("DebugHandler.sc(") != std::string::npos), Wide(line).c_str());
-                    }
+                    std::string gauge = (fs::path(_copyFolder) / "src" / "gauge.sc").string();
+                    WriteFileText(gauge, ReadFileText(gauge) + "\r\n(class SaidDefault of Gauge\r\n\t(properties\r\n\t\ttheSaid 'look'\r\n\t)\r\n)\r\n");
                 }
-                Assert::AreEqual(sci11 ? (size_t)2 : (size_t)0, warnings, Wide(console.err).c_str());
+                Expect(0, { "script", "compile", _copyFolder, "--all" });
+                cli::StringConsole sco = Expect(0, { "script", "sco", _copyFolder, "--all" });
+                std::string output = sco.out + sco.err;
+                Assert::IsTrue(output.find("Wrote 0 .sco files") != std::string::npos, Wide(std::string(templateFolder) + "\n" + output).c_str());
             }
         }
 
@@ -1740,9 +1752,8 @@ namespace UnitTests
 
         // A decompile gives each local name of the old .sco to the local at
         // the same index. The SCI0 template's SysWindow.sco has two arrays of
-        // four locals (local5 at index 5, localA at index 10), which the
-        // decompiled script declares one index at a time: local9 names index
-        // 9 only, and index 6 keeps its decompiled name.
+        // four locals (local5 at index 5, localA at index 10) and local9 at
+        // index 9: the decompiled script declares them so.
         TEST_METHOD(Decompile_Sci0SysWindow_LocalNamesByIndex)
         {
             CopyTemplate("\\TemplateGame\\SCI0");
@@ -1750,8 +1761,8 @@ namespace UnitTests
             std::vector<std::string> lines = Lines(console.out);
             size_t local9 = std::count(lines.begin(), lines.end(), std::string("\tlocal9"));
             Assert::AreEqual((size_t)1, local9, Wide(console.out).c_str());
-            Assert::IsTrue(std::find(lines.begin(), lines.end(), std::string("\tlocal6")) != lines.end(), Wide(console.out).c_str());
-            Assert::IsTrue(std::find(lines.begin(), lines.end(), std::string("\tlocalA")) != lines.end(), Wide(console.out).c_str());
+            Assert::IsTrue(std::find(lines.begin(), lines.end(), std::string("\t[local5 4]")) != lines.end(), Wide(console.out).c_str());
+            Assert::IsTrue(std::find(lines.begin(), lines.end(), std::string("\t[localA 4] = [0 0 0 8]")) != lines.end(), Wide(console.out).c_str());
         }
 
         // A .sco that loads only in part (Obj.sco cut after its exports)
@@ -1801,7 +1812,7 @@ namespace UnitTests
         }
 
         // A .sco can give two indices a name that no declaration has (here
-        // c3Twin at indices 6 and 9 of SysWindow.sco). The earlier index
+        // c3Twin at indices 5 and 9 of SysWindow.sco). The earlier index
         // takes it, and the decompiled script compiles.
         TEST_METHOD(Decompile_Sci0SysWindow_ANameOfTwoIndices)
         {
@@ -1816,13 +1827,15 @@ namespace UnitTests
                 std::unique_ptr<CSCOFile> sysWindow = GetExistingSCOFromScriptNumber(session.Helper(), 990, lookups.GetSelectorTable());
                 Assert::IsNotNull(sysWindow.get(), L"setup: SysWindow.sco");
                 Assert::IsTrue(sysWindow->GetVariables().size() > 9, L"setup: SysWindow.sco has index 9");
-                sysWindow->GetVariables()[6].SetName("c3Twin");
+                sysWindow->GetVariables()[5].SetName("c3Twin");
                 sysWindow->GetVariables()[9].SetName("c3Twin");
                 Assert::IsTrue(SaveSCOFile(session.Helper(), *sysWindow).has_value());
             }
             cli::StringConsole source = Expect(0, { "script", "decompile", _copyFolder, "990", "--stdout" });
             std::vector<std::string> lines = Lines(source.out);
-            Assert::AreEqual((size_t)1, (size_t)std::count(lines.begin(), lines.end(), std::string("\tc3Twin")), Wide(source.out).c_str());
+            Assert::AreEqual((size_t)1, (size_t)std::count(lines.begin(), lines.end(), std::string("\t[c3Twin 4]")), Wide(source.out).c_str());
+            Assert::AreEqual(std::string::npos, source.out.find("\tc3Twin\r"), Wide(source.out).c_str());
+            Assert::AreEqual(std::string::npos, source.out.find("\tc3Twin\n"), Wide(source.out).c_str());
             Assert::AreEqual((size_t)1, (size_t)std::count(lines.begin(), lines.end(), std::string("\tlocal9")), Wide(source.out).c_str());
             cli::StringConsole decompile = Expect(0, { "script", "decompile", _copyFolder, "990" });
             cli::StringConsole compile = Expect(0, { "script", "compile", _copyFolder, "990", "--dry-run" });

@@ -16,7 +16,7 @@
 	(-- temp0)
 )
 
-(procedure (localproc_005c param1 &tmp temp0 temp1 temp2 temp3)
+(procedure (localproc_005b param1 &tmp temp0 temp1 temp2 temp3)
 	(= temp3 (param1 size?))
 	(= temp0 0)
 	(while (< temp0 temp3)
@@ -102,12 +102,7 @@
 			(= clientHeading (client heading?))
 			(cond 
 				(
-					(and
-						(<= 85 clientHeading)
-						(<= (= clientHeading (client heading?)) 95)
-					)
-					(= temp14 0)
-				)
+				(and (<= 85 clientHeading) (<= clientHeading 95)) (= temp14 0))
 				(
 				(and (<= 265 clientHeading) (<= clientHeading 275)) (= temp14 1))
 				((>= temp1 0) (= temp14 2))
@@ -222,7 +217,7 @@
 			((clientMover obstacles?) delete: newPolygon)
 			((clientMover obstacles?) delete: temp17)
 			(if (IsObject (clientMover obstacles?))
-				(localproc_005c (clientMover obstacles?))
+				(localproc_005b (clientMover obstacles?))
 			)
 			(temp17 dispose:)
 			(newPolygon dispose:)

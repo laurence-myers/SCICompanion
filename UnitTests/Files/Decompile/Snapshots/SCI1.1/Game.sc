@@ -62,6 +62,18 @@
 	(return temp0)
 )
 
+(instance cast of EventHandler
+	(properties)
+)
+
+(instance features of EventHandler
+	(properties)
+)
+
+(instance theDoits of EventHandler
+	(properties)
+)
+
 (class Sounds of EventHandler
 	(properties
 		elements 0
@@ -71,6 +83,49 @@
 	(method (pause param1)
 		(self eachElementDo: 96 mayPause (if argc param1 else 1))
 	)
+)
+
+(instance mayPause of Code
+	(properties)
+	
+	(method (doit param1 param2)
+		(if (not (& (param1 flags?) $0001))
+			(param1 pause: param2)
+		)
+	)
+)
+
+(instance regions of EventHandler
+	(properties)
+)
+
+(instance addToPics of EventHandler
+	(properties)
+	
+	(method (doit)
+		(self eachElementDo: 96 aTOC)
+		(AddToPic elements)
+	)
+)
+
+(instance timers of Set
+	(properties)
+)
+
+(instance mouseDownHandler of EventHandler
+	(properties)
+)
+
+(instance keyDownHandler of EventHandler
+	(properties)
+)
+
+(instance directionHandler of EventHandler
+	(properties)
+)
+
+(instance walkHandler of EventHandler
+	(properties)
 )
 
 (class Cue of Obj
@@ -85,6 +140,34 @@
 		(if (gCuees isEmpty:) (gCuees dispose:) (= gCuees 0))
 		(cuee cue: register cuer)
 		(self dispose:)
+	)
+)
+
+(instance aTOC of Code
+	(properties)
+	
+	(method (doit param1 &tmp temp0 temp1)
+		(if (not (& (param1 signal?) $4000))
+			(= temp0
+				(+ (gEgo xStep?) (/ (CelWide (gEgo view?) 2 0) 2))
+			)
+			(= temp1 (* (gEgo yStep?) 2))
+			(gRoom
+				addObstacle:
+					((Polygon new:)
+						init:
+							(- (param1 brLeft?) temp0)
+							(- (CoordPri 1 (CoordPri (param1 y?))) temp1)
+							(+ (param1 brRight?) temp0)
+							(- (CoordPri 1 (CoordPri (param1 y?))) temp1)
+							(+ (param1 brRight?) temp0)
+							(+ (param1 y?) temp1)
+							(- (param1 brLeft?) temp0)
+							(+ (param1 y?) temp1)
+						yourself:
+					)
+			)
+		)
 	)
 )
 
@@ -657,89 +740,6 @@
 					(if (>= argc 2) param2 else 0)
 					self
 					(if (>= argc 3) param3 else 0)
-			)
-		)
-	)
-)
-
-(instance cast of EventHandler
-	(properties)
-)
-
-(instance features of EventHandler
-	(properties)
-)
-
-(instance theDoits of EventHandler
-	(properties)
-)
-
-(instance mayPause of Code
-	(properties)
-	
-	(method (doit param1 param2)
-		(if (not (& (param1 flags?) $0001))
-			(param1 pause: param2)
-		)
-	)
-)
-
-(instance regions of EventHandler
-	(properties)
-)
-
-(instance addToPics of EventHandler
-	(properties)
-	
-	(method (doit)
-		(self eachElementDo: 96 aTOC)
-		(AddToPic elements)
-	)
-)
-
-(instance timers of Set
-	(properties)
-)
-
-(instance mouseDownHandler of EventHandler
-	(properties)
-)
-
-(instance keyDownHandler of EventHandler
-	(properties)
-)
-
-(instance directionHandler of EventHandler
-	(properties)
-)
-
-(instance walkHandler of EventHandler
-	(properties)
-)
-
-(instance aTOC of Code
-	(properties)
-	
-	(method (doit param1 &tmp temp0 temp1)
-		(if (not (& (param1 signal?) $4000))
-			(= temp0
-				(+ (gEgo xStep?) (/ (CelWide (gEgo view?) 2 0) 2))
-			)
-			(= temp1 (* (gEgo yStep?) 2))
-			(gRoom
-				addObstacle:
-					((Polygon new:)
-						init:
-							(- (param1 brLeft?) temp0)
-							(- (CoordPri 1 (CoordPri (param1 y?))) temp1)
-							(+ (param1 brRight?) temp0)
-							(- (CoordPri 1 (CoordPri (param1 y?))) temp1)
-							(+ (param1 brRight?) temp0)
-							(+ (param1 y?) temp1)
-							(- (param1 brLeft?) temp0)
-							(+ (param1 y?) temp1)
-						yourself:
-					)
 			)
 		)
 	)

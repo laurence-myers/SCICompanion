@@ -52,10 +52,10 @@
 		(super dispose:)
 	)
 	
-	(method (setSize &tmp [temp0 3] temp3)
+	(method (setSize &tmp [temp0 4])
 		(super setSize:)
-		(TextSize @temp0 {M} font)
-		(= nsRight (+ nsLeft (* temp3 x)))
+		(TextSize @[temp0 0] {M} font)
+		(= nsRight (+ nsLeft (* [temp0 3] x)))
 	)
 	
 	(method (readFiles theMask &tmp [temp0 7] temp7 theText temp9)

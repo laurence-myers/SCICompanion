@@ -11,7 +11,7 @@
 		modNum -1
 		noun 0
 		verb 0
-		sel_509 0
+		case 0
 		sequence 0
 		whoSays 0
 		client 0
@@ -24,7 +24,7 @@
 	(method (showSelf &tmp [temp0 40])
 		(= whoSays
 			(gMessager
-				findTalker: (Message 0 modNum noun verb sel_509 (or sequence 1))
+				findTalker: (Message 0 modNum noun verb case (or sequence 1))
 			)
 		)
 		(if (not (IsObject whoSays))
@@ -34,7 +34,7 @@
 					modNum
 					noun
 					verb
-					sel_509
+					case
 					sequence
 				init:
 			)
@@ -42,7 +42,7 @@
 		else
 			(if font (whoSays font: font))
 			(if (or x y) (whoSays x: x y: y))
-			(gMessager say: noun verb sel_509 sequence caller modNum)
+			(gMessager say: noun verb case sequence caller modNum)
 		)
 	)
 )
@@ -79,62 +79,60 @@
 		(if theCaller (theCaller cue:))
 	)
 	
-	(method (add theTheGRoomNumber_2 theTheTheGRoomNumber_2 theTheTheTheGRoomNumber_2 theTheTheTheTheGRoomNumber_2 theTheTheTheTheTheGRoomNumber param6 param7 param8 &tmp theGRoomNumber theTheGRoomNumber theTheTheGRoomNumber theTheTheTheGRoomNumber theTheTheTheTheGRoomNumber temp5 temp6 temp7)
-		(= theTheTheTheTheGRoomNumber 0)
-		(= theTheTheTheGRoomNumber theTheTheTheTheGRoomNumber)
-		(= theTheTheGRoomNumber theTheTheTheGRoomNumber)
+	(method (add theTheGRoomNumber_2 &tmp theGRoomNumber theTheGRoomNumber theTheTheGRoomNumber theTheTheGRoomNumber_2 theTheTheGRoomNumber_2_2 theTheTheGRoomNumber_2_3 theTheTheGRoomNumber_2_4 theTheTheGRoomNumber_2_5)
+		(= theTheTheGRoomNumber_2_2 0)
+		(= theTheTheGRoomNumber_2 theTheTheGRoomNumber_2_2)
+		(= theTheTheGRoomNumber theTheTheGRoomNumber_2)
 		(= theTheGRoomNumber theTheTheGRoomNumber)
 		(= theGRoomNumber theTheGRoomNumber)
-		(= temp7 0)
-		(= temp6 temp7)
-		(= temp5 temp6)
+		(= theTheTheGRoomNumber_2_5 0)
+		(= theTheTheGRoomNumber_2_4 theTheTheGRoomNumber_2_5)
+		(= theTheTheGRoomNumber_2_3 theTheTheGRoomNumber_2_4)
 		(if
-		(and argc (not (IsObject theTheGRoomNumber_2)))
-			(= theGRoomNumber theTheGRoomNumber_2)
+		(and argc (not (IsObject [theTheGRoomNumber_2 0])))
+			(= theGRoomNumber [theTheGRoomNumber_2 0])
 			(if (== theGRoomNumber -1)
 				(= theGRoomNumber gRoomNumber)
 			)
 			(if (> argc 1)
-				(= theTheGRoomNumber theTheTheGRoomNumber_2)
+				(= theTheGRoomNumber [theTheGRoomNumber_2 1])
 				(if (> argc 2)
-					(= theTheTheGRoomNumber theTheTheTheGRoomNumber_2)
+					(= theTheTheGRoomNumber [theTheGRoomNumber_2 2])
 					(if (> argc 3)
-						(= theTheTheTheGRoomNumber theTheTheTheTheGRoomNumber_2)
+						(= theTheTheGRoomNumber_2 [theTheGRoomNumber_2 3])
 						(if (> argc 4)
-							(= theTheTheTheTheGRoomNumber
-								theTheTheTheTheTheGRoomNumber
-							)
+							(= theTheTheGRoomNumber_2_2 [theTheGRoomNumber_2 4])
 							(if (> argc 5)
-								(= temp5 param6)
+								(= theTheTheGRoomNumber_2_3 [theTheGRoomNumber_2 5])
 								(if (> argc 6)
-									(= temp6 param7)
-									(if (> argc 7) (= temp7 param8))
+									(= theTheTheGRoomNumber_2_4 [theTheGRoomNumber_2 6])
+									(if (> argc 7)
+										(= theTheTheGRoomNumber_2_5 [theTheGRoomNumber_2 7])
+									)
 								)
 							)
 						)
 					)
 				)
 			)
-			(if (not (IsObject theTheGRoomNumber_2))
+			(if (not (IsObject [theTheGRoomNumber_2 0]))
 				(super
 					add:
 						((MessageObj new:)
 							modNum: theGRoomNumber
 							noun: theTheGRoomNumber
 							verb: theTheTheGRoomNumber
-							sel_509: theTheTheTheGRoomNumber
-							sequence: theTheTheTheTheGRoomNumber
-							x: temp5
-							y: temp6
-							font: temp7
+							case: theTheTheGRoomNumber_2
+							sequence: theTheTheGRoomNumber_2_2
+							x: theTheTheGRoomNumber_2_3
+							y: theTheTheGRoomNumber_2_4
+							font: theTheTheGRoomNumber_2_5
 							yourself:
 						)
 				)
 			)
 		else
-			(super
-				add: theTheGRoomNumber_2 &rest theTheTheGRoomNumber_2
-			)
+			(super add: theTheGRoomNumber_2 &rest)
 		)
 	)
 	

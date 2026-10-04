@@ -53,30 +53,30 @@
 		)
 	)
 	
-	(method (say theLastSequence theCaller theTheTheTheCaller theCurSequence &tmp theTheLastSequence theTheCaller theTheTheCaller temp3 [temp4 20] temp24)
-		(= theTheTheCaller (= curSequence 0))
-		(= theTheCaller theTheTheCaller)
-		(= theTheLastSequence theTheCaller)
+	(method (say theCaller &tmp theTheCaller theTheCaller_2 theTheCaller_3 temp3 [temp4 20] temp24)
+		(= theTheCaller_3 (= curSequence 0))
+		(= theTheCaller_2 theTheCaller_3)
+		(= theTheCaller theTheCaller_2)
 		(= caller (= oneOnly (= killed 0)))
 		(if (and gIconBar (not oldIconBarState))
 			(= oldIconBarState (gIconBar state?))
 		)
-		(= theTheLastSequence theLastSequence)
-		(if (== theTheLastSequence -1)
-			(if (and (> argc 1) (IsObject theCaller))
-				(= caller theCaller)
+		(= theTheCaller [theCaller 0])
+		(if (== theTheCaller -1)
+			(if (and (> argc 1) (IsObject [theCaller 1]))
+				(= caller [theCaller 1])
 			)
 			(self sayNext:)
 		else
-			(if (and (> argc 1) theCaller)
-				(= theTheCaller theCaller)
+			(if (and (> argc 1) [theCaller 1])
+				(= theTheCaller_2 [theCaller 1])
 			)
-			(if (and (> argc 2) theTheTheTheCaller)
-				(= theTheTheCaller theTheTheTheCaller)
+			(if (and (> argc 2) [theCaller 2])
+				(= theTheCaller_3 [theCaller 2])
 			)
-			(if (and (> argc 3) theCurSequence)
+			(if (and (> argc 3) [theCaller 3])
 				(= oneOnly 1)
-				(= curSequence theCurSequence)
+				(= curSequence [theCaller 3])
 			else
 				(= curSequence 1)
 			)
@@ -84,23 +84,23 @@
 			(if
 				(and
 					(> argc temp24)
-					[theLastSequence temp24]
-					(not (IsObject [theLastSequence temp24]))
+					[theCaller temp24]
+					(not (IsObject [theCaller temp24]))
 				)
-				(= lastSequence [theLastSequence temp24])
+				(= lastSequence [theCaller temp24])
 				(++ temp24)
 				(= oneOnly 0)
 			else
 				(= lastSequence 0)
 			)
-			(if (and (> argc temp24) [theLastSequence temp24])
-				(= caller [theLastSequence temp24])
+			(if (and (> argc temp24) [theCaller temp24])
+				(= caller [theCaller temp24])
 			else
 				(= caller 0)
 			)
 			(= temp3
 				(if (> argc (++ temp24))
-					[theLastSequence temp24]
+					[theCaller temp24]
 				else
 					gRoomNumber
 				)
@@ -111,23 +111,23 @@
 					(Message
 						0
 						temp3
-						theTheLastSequence
 						theTheCaller
-						theTheTheCaller
+						theTheCaller_2
+						theTheCaller_3
 						curSequence
 					)
 				)
 				(self
-					sayNext: temp3 theTheLastSequence theTheCaller theTheTheCaller curSequence
+					sayNext: temp3 theTheCaller theTheCaller_2 theTheCaller_3 curSequence
 				)
 			else
 				(Print
 					addTextF:
 						{<Messager>\n\tmsgType set to 0 or\n\t%d: %d, %d, %d, %d not found}
 						temp3
-						theTheLastSequence
 						theTheCaller
-						theTheTheCaller
+						theTheCaller_2
+						theTheCaller_3
 						curSequence
 					init:
 				)

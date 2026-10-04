@@ -1658,6 +1658,25 @@ void CompileContext::WriteOutOffsetsOfHepPointersInHep(std::vector<uint8_t> &hep
 	}
 }
 
+void CompileContext::ResolveSCOPropertyTokens()
+{
+	for (CSCOObjectClass &scoClass : GetScriptSCO().GetObjects())
+	{
+		for (CSCOObjectProperty &property : scoClass.GetPropertiesNonConst())
+		{
+			if (property.NeedsReloc())
+			{
+				auto itFind = _tokenToSourceOffset.find(property.GetValue());
+				assert(itFind != _tokenToSourceOffset.end());
+				if (itFind != _tokenToSourceOffset.end())
+				{
+					property.SetValue(itFind->second);
+				}
+			}
+		}
+	}
+}
+
 void CompileContext::FixupSinksAndSources(std::vector<uint8_t> &scriptResource, std::vector<uint8_t> &heapOrScrResource)
 {
 	for (auto &pair : _tokenToSinkOffsets)
