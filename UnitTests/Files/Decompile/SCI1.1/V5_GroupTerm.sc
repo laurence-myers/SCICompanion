@@ -1,5 +1,5 @@
 ;;; Sierra Script 1.0 - (do not remove this comment)
-(script# 975)
+(script# 976)
 (include sci.sh)
 
 ; A term of an and with statements before its value (Pepper's Adventures
@@ -11,6 +11,11 @@
 ; In the second procedure, the statement before the value is an or: its
 ; bt goes to the end of the or, not to the then-part of the if.
 ; Sierra: (if (and param1 ((or param2 param3) param3)) (= temp0 1) else (= temp0 2))
+; In the third procedure, the group has a call of a text-tuple procedure
+; (FormatPrint, with text 976 entry 0): the comment with the text goes to
+; a statement list around the group, not after the value of the group.
+(use V5_FormatPrint)
+
 (local
 	local0
 )
@@ -18,6 +23,7 @@
 (public
 	v5GroupTerm 0
 	v5GroupOrStatement 1
+	v5GroupTextTuple 2
 )
 
 (procedure (v5GroupTerm param1 &tmp temp0)
@@ -65,5 +71,13 @@
 		sat temp0
 	orDone:
 		ret
+	)
+)
+
+(procedure (v5GroupTextTuple param1 param2 &tmp temp0)
+	(if (and param1 ((FormatPrint 976 0) param2))
+		(= temp0 1)
+	else
+		(= temp0 2)
 	)
 )

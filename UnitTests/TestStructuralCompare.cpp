@@ -259,9 +259,9 @@ namespace UnitTests
             // is one expression.
             Assert::AreEqual(std::string("(for ((= i 0)) (< i 9) ((++ i)) (= a  (b new:) ))"),
                 UnwrapGroupedExpressions("(for ((= i 0)) (< i 9) ((++ i)) (= a ((b new:))))"));
-            // A statement list as a value becomes a call of the block marker;
-            // a cond clause and the init of a for stay.
-            Assert::AreEqual("(or a (" + std::string(BlockMarker) + " (= b 1) (c)))", UnwrapGroupedExpressions("(or a ((= b 1) (c)))"));
+            // A group of two or more statements stays (the parser takes it),
+            // and so do a cond clause and the init of a for.
+            Assert::AreEqual(std::string("(or a ((= b 1) (c)))"), UnwrapGroupedExpressions("(or a ((= b 1) (c)))"));
             Assert::AreEqual(std::string("(cond ((a) (b)))"), UnwrapGroupedExpressions("(cond ((a) (b)))"));
             Assert::AreEqual(std::string("(for ((= i 0) (= j 0)) (< i 9) ((++ i)) (b))"), UnwrapGroupedExpressions("(for ((= i 0) (= j 0)) (< i 9) ((++ i)) (b))"));
         }
@@ -295,6 +295,10 @@ namespace UnitTests
             folders.Write("expected", "b.sc", MakeScript(15, { { "q", 0 } }, Procedure("q", "(or a ((= b 1) (c)))")));
             folders.Write("actual", "b.sc", MakeScript(15, { { "q", 0 } }, Procedure("q", "(if (not a) (= b 1) (c))")));
             folders.Write("actual", "a.sc", MakeScript(14, { { "p", 0 } }, Procedure("p", "(= a (b new:)) (for ((= a 0)) (< a 10) ((++ a)) (= b a))")));
+            // A group of one expression and a group of statements: the same
+            // group on both sides.
+            folders.Write("expected", "c.sc", MakeScript(16, { { "r", 0 } }, Procedure("r", "(= a ((b new:))) (if (and a ((= b 1) (c))) (= a 2))")));
+            folders.Write("actual", "c.sc", MakeScript(16, { { "r", 0 } }, Procedure("r", "(= a (b new:)) (if (and a ((= b 1) (c))) (= a 2))")));
             FolderCompareResult result = CompareScriptFolders(folders.Folder("expected"), folders.Folder("actual"), "", sciVersion1_1);
             std::string text = RowsText(result);
             Assert::IsTrue(result.errors.empty(), Wide(text).c_str());
@@ -304,6 +308,7 @@ namespace UnitTests
             // verdict (another shape than the if of the actual side).
             Assert::IsTrue(rows.count("15:q") > 0, Wide(text).c_str());
             Assert::AreNotEqual(std::string("UNPARSED"), std::string(StructureVerdictName(rows["15:q"].verdict)), Wide(text).c_str());
+            Assert::AreEqual(std::string("SAME"), std::string(StructureVerdictName(rows["16:r"].verdict)), Wide(text).c_str());
         }
 
         // Methods pair by the name of their class: a class that the actual

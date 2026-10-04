@@ -343,11 +343,26 @@ void SetStatementAsConditionA(MatchResult &match, const ParserSCI *pParser, Synt
 	}
 }
 
-void SetGroupA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
+// After the expression of a send, with no selector: a group, whose first
+// statement is that expression. A name (gEgo) is no statement of a group:
+// (foo bar) is a call of the procedure foo.
+void SendObjectToGroupA(MatchResult &match, const ParserSCI *pParser, SyntaxContext *pContext, const streamIt &stream)
 {
 	if (match.Result())
 	{
-		pContext->GetSyntaxNode<CodeBlock>()->SetGroup(true);
+		SendCall *send = pContext->GetSyntaxNode<SendCall>();
+		if (!send->GetStatement1())
+		{
+			match.ChangeResult(false);
+			return;
+		}
+		std::unique_ptr<SyntaxNode> first = std::move(send->GetStatement1Internal());
+		LineCol position = send->GetPosition();
+		pContext->CreateSyntaxNode<CodeBlock>(stream);
+		CodeBlock *group = pContext->GetSyntaxNode<CodeBlock>();
+		group->SetPosition(position);
+		group->SetGroup(true);
+		group->AddStatement(std::move(first));
 	}
 }
 
@@ -995,26 +1010,24 @@ void SCISyntaxParser::Load()
 	// (SomeProc param1 param2 param3)
 	procedure_call = alphanumNK_p[SetStatementNameA<ProcedureCall>] >> (*statement[AddStatementA<ProcedureCall>])[{nullptr, acInSendOrProcCall}];
 
-	// ((= a 1) (b c:)): two or more statements, whose value is the value of
-	// the last one.
-	expression_group =
-		alwaysmatch_p[SetStatementA<CodeBlock>]
-		>> alwaysmatch_p[SetGroupA]
-		>> statement[AddStatementA<CodeBlock>]
-		>> ++statement[AddStatementA<CodeBlock>];
-
 	// posn: x y z
 	send_param_call = selector_send_p[SetStatementNameA<SendParam>] >> alwaysmatch_p[SendParamIsMethod] >> *statement[AddStatementA<SendParam>];
 
 	// expression selectorA: one two three, selectorB: one two
 	// expression selectorA?
+	// Or a group, ((= a 1) (b c:)): two or more statements, whose value is
+	// the value of the last one. Its first statement is the expression of
+	// the send, parsed one time for both forms.
 	send_call = (alwaysmatch_p[SetStatementA<SendCall>] // Simple form, e.g. gEgo
 		>> ((alphanumSendToken_p[SetNameA<SendCall>]) | statement[StatementBindTo1stA<SendCall, errSendObject>])) // Expression, e.g. [clients 4], or (GetTheGuy)
 		>>
-		(propget_p[AddSimpleSendParamA] |			 // Single prop get
-		(syntaxnode_d[send_param_call[AddSendParamA]] % -comma[GeneralE])	  // Or a series regular ones separated by optional comma
-		)[{nullptr, acInSendOrProcCall}]			  // AC stuff that's inside a send call
-		;
+		(
+			(propget_p[AddSimpleSendParamA] |			 // Single prop get
+			(syntaxnode_d[send_param_call[AddSendParamA]] % -comma[GeneralE])	  // Or a series regular ones separated by optional comma
+			)[{nullptr, acInSendOrProcCall}]			  // AC stuff that's inside a send call
+			|
+			(alwaysmatch_p[SendObjectToGroupA] >> ++statement[AddStatementA<CodeBlock>])
+		);
 
 	// Operators
 	// These are binary-only operators
@@ -1124,8 +1137,7 @@ void SCISyntaxParser::Load()
 		contif_statement |
 		asm_block |
 		send_call |			 // Send has to come before procedure. Because procedure will match (foo sel:)
-		procedure_call |
-		expression_group	 // Last: a send to an expression starts with a statement too, ((GetObj) sel:)
+		procedure_call
 		)[{nullptr, acStartStatement}] >>
 		clpar)
 		| (rest_statement

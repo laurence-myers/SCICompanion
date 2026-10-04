@@ -88,7 +88,6 @@ private:
 	ParserSCI contif_statement;
 	ParserSCI repeat_statement;
 	ParserSCI procedure_call;
-	ParserSCI expression_group;
 	ParserSCI send_call;
 	ParserSCI send_param_call;
 	ParserSCI prop_get_call;

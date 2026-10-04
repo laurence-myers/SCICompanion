@@ -313,6 +313,35 @@ namespace UnitTests
             AssertSameBytes(keyword, manual, L"a group must compile its statements, then its value");
         }
 
+        // A group where a value goes on the stack (a call argument, the left
+        // operand of an operator): only its value is pushed.
+        TEST_METHOD(Group_InAStackContext_PushesOnlyTheValue)
+        {
+            _gameFolder = SetUpGameSCI11();
+            std::string keyword = KTest("a b c &tmp t u",
+                "\t(= u (Abs ((= t 3) a)))\n"
+                "\t(= u (+ ((= t 4) b) 1))\n"
+                "\t(return u)\n");
+            std::string manual = KTest("a b c &tmp t u",
+                "\t(asm\n"
+                "\t\tpush1\n"
+                "\t\tldi 3\n"
+                "\t\tsat t\n"
+                "\t\tlsp a\n"
+                "\t\tcallk Abs, 2\n"
+                "\t\tsat u\n"
+                "\t\tldi 4\n"
+                "\t\tsat t\n"
+                "\t\tlsp b\n"
+                "\t\tldi 1\n"
+                "\t\tadd\n"
+                "\t\tsat u\n"
+                "\t\tlat u\n"
+                "\t\tret\n"
+                "\t)\n");
+            AssertSameBytes(keyword, manual, L"a group on the stack must push only its value");
+        }
+
         // A call to proc<N>_<M> that no name resolves, in a game with no
         // script N (Sierra removed script 911 from KQ6), compiles to
         // "calle N M" with a warning.

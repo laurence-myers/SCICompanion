@@ -27,6 +27,8 @@
 #include "DecompileScript.h"
 #include "DecompilerConfig.h"
 #include "ResourceContainer.h"
+#include "ResourceEntity.h"
+#include "Text.h"
 #include "format.h"
 #include <sstream>
 
@@ -462,8 +464,48 @@ namespace UnitTests
         FIXTURE_TEST(StoreInSlot, "V3_StoreInSlot", 966)
         // A loop whose value is the test of an if.
         FIXTURE_TEST(LoopValue, "V4_LoopValue", 967)
-        // A term of an and with statements before its value: a group.
-        FIXTURE_TEST(GroupTerm, "V5_GroupTerm", 975)
+        // A term of an and with statements before its value: a group. Script
+        // 979 has the text-tuple procedure FormatPrint, and text 976 has the
+        // text of its call.
+        TEST_METHOD(GroupTerm)
+        {
+            _gameFolder = SetUpGameSCI11();
+            CResourceMap &rm = AppResourceMap();
+            const GameFolderHelper &helper = rm.Helper();
+            std::vector<uint8_t> text = { 'G', 'r', 'o', 'u', 'p', 0 };
+            ResourceBlob blob(helper, nullptr, ResourceType::Text, text, helper.Version.DefaultVolumeFile, 976, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags());
+            Assert::IsTrue(SUCCEEDED(rm.AppendResource(blob)), L"setup: text 976");
+            std::unique_ptr<ResourceEntity> textResource = rm.CreateResourceFromNumber(ResourceType::Text, 976);
+            Assert::IsTrue(textResource && textResource->TryGetComponent<TextComponent>() && (textResource->TryGetComponent<TextComponent>()->Texts.size() == 1), L"setup: text 976 reads back");
+            // The text-tuple procedures are in Decompiler.ini, which the decompile reads from src.
+            std::string ini = GetTestModuleDirectory() + "\\Decompiler\\Decompiler.ini";
+            Assert::IsTrue(CopyFile(ini.c_str(), (helper.GetSrcFolder() + "\\Decompiler.ini").c_str(), FALSE) != 0, L"setup: Decompiler.ini");
+            AddFixtureScript("V5_FormatPrint");
+            std::string error;
+            Assert::IsTrue(CompileFixture(979, "V5_FormatPrint", &error), Wide(error).c_str());
+            DecompileOutput out = AssertDecompileMatchesExpected("V5_GroupTerm", 976);
+            Assert::IsTrue(out.text.find("; Group") != std::string::npos, L"setup: the text of the call is a comment");
+        }
+
+        // A group whose first statement is a value would be a call or a send
+        // as text: the function falls back to asm, and the text compiles.
+        TEST_METHOD(GroupValueFirst_FallsBackToAsm)
+        {
+            _gameFolder = SetUpGameSCI11();
+            AddFixtureScript("V6_GroupValueFirst");
+            std::string error;
+            Assert::IsTrue(CompileFixture(980, "V6_GroupValueFirst", &error), Wide(error).c_str());
+            DecompileOutput out = DecompileToText(980);
+            Assert::AreEqual(1, out.fallbacks, L"the function falls back to asm");
+            Assert::IsTrue(out.text.find("(local0 (Abs") == std::string::npos, Wide(out.text).c_str());
+            {
+                std::ofstream file(AppResourceMap().Helper().GetScriptFileName("V6_GroupValueFirst").c_str(), std::ios::binary | std::ios::trunc);
+                file << out.text;
+            }
+            error.clear();
+            bool compiled = CompileFixture(980, "V6_GroupValueFirst", &error);
+            Assert::IsTrue(compiled, Wide("the decompiled text does not compile: " + error).c_str());
+        }
         // An instance with the name of a property, and a &rest before the last
         // argument.
         FIXTURE_TEST(ObjectNamedLikeAProperty, "O1_ObjectNamedLikeAProperty", 968)
