@@ -146,6 +146,21 @@ bool CompiledScript::IsExportAProcedure(uint16_t wOffset, int *exportIndex) cons
 	}
 	return result;
 }
+bool CompiledScript::IsExportOutsideCode(uint16_t wOffset) const
+{
+	if (!IsExportAProcedure(wOffset))
+	{
+		return false;
+	}
+	for (const CodeSection &section : _codeSections)
+	{
+		if ((wOffset >= section.begin) && (wOffset < section.end))
+		{
+			return wOffset >= _scriptResource.size();
+		}
+	}
+	return true;
+}
 std::vector<uint16_t> CompiledScript::GetExports() const {
 	return _exportsTO;
 }

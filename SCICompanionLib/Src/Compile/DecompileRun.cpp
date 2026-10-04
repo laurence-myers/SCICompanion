@@ -210,7 +210,9 @@ namespace
         std::vector<uint16_t> exports = compiled.GetExports();
         for (size_t slot = 0; slot < exports.size(); slot++)
         {
-            if (exports[slot] != 0)
+            // A slot outside the code has no procedure: the decompilers leave
+            // it out.
+            if ((exports[slot] != 0) && !compiled.IsExportOutsideCode(exports[slot]))
             {
                 compiledSlots.insert((int)slot);
             }

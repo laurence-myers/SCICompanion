@@ -311,6 +311,10 @@ public:
 	const uint8_t *GetEndOfRawBytes() const { return &_scriptResource[0] + _scriptResource.size(); }
 	bool IsExportAnObject(uint16_t wOffset) const;
 	bool IsExportAProcedure(uint16_t wOffset, int *exportIndex = nullptr) const;
+	// An export of a procedure (IsExportAProcedure) whose address is in no code
+	// section of the script: no procedure is there (for example ICEMAN script
+	// 0, whose exports 6 to 29 are f9ff).
+	bool IsExportOutsideCode(uint16_t wOffset) const;
 	std::vector<uint16_t> GetExports() const;
 	// The section that the reader cut at the end of the resource; nullptr
 	// when the script is complete.

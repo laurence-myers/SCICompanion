@@ -1279,6 +1279,7 @@ _wScript(wScript), _pLookups(pLookups), _pOFLookups(pOFLookups), _pScriptThings(
 {
 
 	// Track all the valid script/export combos, so we know when someone is calling an invalid one.
+	// An export outside the code has no procedure in the decompiled text.
 	for (CompiledScript *script : _pLookups->GetGlobalClassTable().GetAllScripts())
 	{
 		_scriptExistance.insert(script->GetScriptNumber());
@@ -1287,7 +1288,7 @@ _wScript(wScript), _pLookups(pLookups), _pOFLookups(pOFLookups), _pScriptThings(
 		uint32_t index = 0;
 		for (uint16_t theExport : script->GetExports())
 		{
-			if (theExport != 0)
+			if ((theExport != 0) && !script->IsExportOutsideCode(theExport))
 			{
 				uint32_t scriptAndExport = (scriptNumber << 16) | index;
 				_scriptExportExistance.insert(scriptAndExport);

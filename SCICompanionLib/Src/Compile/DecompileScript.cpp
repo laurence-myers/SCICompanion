@@ -352,7 +352,7 @@ bool _IsUndeterminedPublicProc(const CompiledScript &compiledScript, const std::
 			int offset = stoi(rest, nullptr, 16);
 			// Find the offset of this proc. If it's also a public export, count it as so.
 			int indexNumber;
-			if (compiledScript.IsExportAProcedure((uint16_t)offset, &indexNumber))
+			if (compiledScript.IsExportAProcedure((uint16_t)offset, &indexNumber) && !compiledScript.IsExportOutsideCode((uint16_t)offset))
 			{
 				script = compiledScript.GetScriptNumber();
 				index = (uint16_t)indexNumber;
@@ -541,19 +541,6 @@ private:
 // 0, whose exports 6 to 29 are f9ff; Snuffer leaves them out too).
 static void _FindCodePointers(const CompiledScript &compiledScript, DecompileLookups &lookups, set<uint16_t> &codePointersTO, set<uint16_t> &internalProcOffsetsTO, set<uint16_t> &staleExportsTO, set<uint16_t> &outsideExportsTO)
 {
-	const std::vector<BYTE> &bytes = compiledScript.GetRawBytes();
-	auto isInCode = [&](uint16_t address)
-	{
-		for (const CodeSection &section : compiledScript._codeSections)
-		{
-			if ((address >= section.begin) && (address < section.end))
-			{
-				return address < bytes.size();
-			}
-		}
-		return false;
-	};
-
 	// Make an index of code pointers by looking at the object methods
 	set<uint16_t> methodPointersAll;
 	for (auto &object : compiledScript._objects)
@@ -571,13 +558,13 @@ static void _FindCodePointers(const CompiledScript &compiledScript, DecompileLoo
 		// check that it's not an object
 		if (compiledScript.IsExportAProcedure(wCodeOffset))
 		{
-			if (isInCode(wCodeOffset))
+			if (compiledScript.IsExportOutsideCode(wCodeOffset))
 			{
-				codePointersTO.insert(wCodeOffset);
+				outsideExportsTO.insert(wCodeOffset);
 			}
 			else
 			{
-				outsideExportsTO.insert(wCodeOffset);
+				codePointersTO.insert(wCodeOffset);
 			}
 		}
 	}
@@ -606,6 +593,7 @@ static void _FindCodePointers(const CompiledScript &compiledScript, DecompileLoo
 
 	// An export whose address the code of the function before it reaches
 	// (its decode goes past the address) is stale.
+	const std::vector<BYTE> &bytes = compiledScript.GetRawBytes();
 	set<uint16_t> exportPointers;
 	for (uint16_t exportPointer : compiledScript._exportsTO)
 	{

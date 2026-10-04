@@ -30,6 +30,8 @@
 #include "ResourceEntity.h"
 #include "Text.h"
 #include "format.h"
+#include "DecompileRun.h"
+#include "AppSession.h"
 #include <sstream>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -241,6 +243,53 @@ namespace UnitTests
                     reported = reported || ((function.output == "outside") && (function.offset == outside));
                 }
                 Assert::IsTrue(reported, Wide(label + "the function report has the export").c_str());
+            }
+        }
+
+        // A call to an export outside the code of its script is a call to a
+        // missing procedure (__proc964_1): the decompiled script has no
+        // procedure for the export. The .sco of that decompiled script gives
+        // no warning for the slot.
+        TEST_METHOD(ExportOutsideTheCode_CallAndObjectFile)
+        {
+            _gameFolder = SetUpGameSCI11();
+            CResourceMap &rm = AppResourceMap();
+            const GameFolderHelper &helper = rm.Helper();
+            AddFixtureScript("X3_StaleExport");
+            AddFixtureScript("X5_CallOutsideExport");
+            std::string error;
+            Assert::IsTrue(CompileFixture(964, "X3_StaleExport", &error), Wide(error).c_str());
+            Assert::IsTrue(CompileFixture(959, "X5_CallOutsideExport", &error), Wide(error).c_str());
+            CompiledScript compiled(964, CompiledScriptFlags::RemoveBadExports);
+            Assert::IsTrue(compiled.Load(helper, helper.Version, 964), L"setup: the script loads");
+            std::vector<uint8_t> script = compiled.GetRawBytes();
+            // SCI1.1: the count of the exports at 6, the exports from 8.
+            Assert::AreEqual((uint16_t)2, (uint16_t)(script[6] | (script[7] << 8)), L"setup: two exports");
+            script[10] = 0xff;
+            script[11] = 0xf9;
+            ResourceBlob blob(helper, nullptr, ResourceType::Script, script, helper.Version.DefaultVolumeFile, 964, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags());
+            Assert::IsTrue(SUCCEEDED(rm.AppendResource(blob)), L"setup: the patched script 964");
+
+            DecompileOutput caller = DecompileToText(959);
+            Assert::IsTrue(caller.text.find("(__proc964_1)") != std::string::npos, Wide(caller.text).c_str());
+            Assert::IsTrue(caller.text.find("staleSecond") == std::string::npos, Wide(caller.text).c_str());
+
+            DecompileOutput callee = DecompileToText(964);
+            Assert::IsTrue(callee.text.find("staleSecond") == std::string::npos, Wide(callee.text).c_str());
+            std::string path = helper.GetScriptFileName("X3_StaleExport");
+            {
+                std::ofstream file(path, std::ios::binary | std::ios::trunc);
+                file << callee.text;
+            }
+            ScriptId scriptId(path.c_str());
+            scriptId.SetResourceNumber(964);
+            sci::Result<std::vector<ObjectFileOutcome>> outcomes = GenerateObjectFiles(AppSession(), { scriptId });
+            Assert::IsTrue(outcomes.has_value() && (outcomes->size() == 1), L"the .sco run");
+            const ObjectFileOutcome &outcome = (*outcomes)[0];
+            Assert::IsTrue(outcome.status.has_value(), Wide(outcome.status ? std::string() : outcome.status.error().message).c_str());
+            for (const CompileResult &diagnostic : outcome.diagnostics)
+            {
+                Assert::IsTrue(diagnostic.GetMessage().find("exports the slots") == std::string::npos, Wide(diagnostic.GetMessage()).c_str());
             }
         }
 
