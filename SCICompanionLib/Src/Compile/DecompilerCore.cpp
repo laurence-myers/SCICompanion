@@ -1006,6 +1006,18 @@ namespace
 			std::set<int> passedDeadBranches;
 			scope::Verify(model, *root, &passedDeadBranches);
 			OutputNewStructure(func, model, *root, code, passedDeadBranches, lookups);
+			for (int i = 0; i < model.Size(); ++i)
+			{
+				if (model.IsStray(i))
+				{
+					string name = func.GetOwnerClass() ? (func.GetOwnerClass()->GetName() + "::" + func.GetName()) : func.GetName();
+					std::string message = fmt::format(
+						"{0}: the source leaves out the {1} at {2:04x}, a fault of Sierra's compiler. It goes to {3:04x} with fewer values on the stack than the code there takes.",
+						name, OpcodeToName(model.Op(i), 0), model.Offset(i), model.Offset(model.BytecodeTarget(i)));
+					lookups.DecompileResults().AddResult(DecompilerResultType::Warning, message);
+					func.GetOwnerScript()->AddHeaderComment("WARNING: " + message);
+				}
+			}
 		}, where);
 	}
 }

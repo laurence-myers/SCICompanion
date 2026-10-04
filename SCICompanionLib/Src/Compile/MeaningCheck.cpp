@@ -1687,6 +1687,12 @@ namespace meaning
 				for (int i = 0; i < model.Size(); i++)
 				{
 					function.depth.push_back(model.DepthBefore(i));
+					// The decompiler leaves out a stray branch: here it goes to
+					// the next instruction.
+					if (model.IsStray(i))
+					{
+						function.code[i].target = i + 1;
+					}
 				}
 			}
 		}

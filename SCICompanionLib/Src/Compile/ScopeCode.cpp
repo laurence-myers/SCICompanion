@@ -41,6 +41,7 @@ namespace scope
 				entry.target = found->second;
 				entry.parseTarget = found->second;
 				entry.threadedTarget = found->second;
+				entry.bytecodeTarget = found->second;
 			}
 			Consumption consumption = _GetInstructionConsumption(const_cast<scii &>(*entry.inst), nullptr);
 			entry.pops = consumption.cStackConsume;
@@ -48,9 +49,10 @@ namespace scope
 		}
 
 		_FindLiveCode();
+		_FindDepths();
+		_FindStrayBranches();
 		_FindLoops();
 		_FindNoOps();
-		_FindDepths();
 		_FindNaryCompares();
 		_FindSwitches();
 		_ApplyDialect();
@@ -354,6 +356,63 @@ namespace scope
 		}
 	}
 
+	// The bt and bnt that are stray, when the function has a stack
+	// underflow. A candidate is a live bt or bnt whose target the live
+	// instruction before it falls into with more values on the stack than
+	// the branch has (Sierra's compiler gives each other path into an
+	// address the same depth, or more: a break out of a switch). The
+	// candidates are stray when the code has no underflow without them;
+	// else no branch is stray (extra values that nothing takes, as after a
+	// send whose frame is smaller than its pushes, are no fault of the
+	// branch: Quest for Glory IV CD script 10, wisps::init).
+	void CodeModel::_FindStrayBranches()
+	{
+		if (!_underflow)
+		{
+			return;
+		}
+		std::vector<int> candidates;
+		for (int b = 0; b + 1 < Size(); ++b)
+		{
+			int before = Target(b) - 1;
+			if (IsLive(b) && IsConditional(b) && (before >= 0) && (before != b) && IsLive(before) && FallsThrough(before) &&
+				(DepthAfter(b) < DepthAfter(before)))
+			{
+				candidates.push_back(b);
+			}
+		}
+		if (candidates.empty())
+		{
+			return;
+		}
+		auto setTargets = [&](bool stray)
+		{
+			for (int b : candidates)
+			{
+				Inst &entry = _insts[b];
+				entry.stray = stray;
+				entry.target = stray ? (b + 1) : entry.bytecodeTarget;
+				entry.parseTarget = entry.target;
+				entry.threadedTarget = entry.target;
+			}
+			for (Inst &entry : _insts)
+			{
+				entry.live = false;
+				entry.sources.clear();
+				entry.depthBefore = -1;
+				entry.depthConflict = false;
+			}
+			_underflow = false;
+			_FindLiveCode();
+			_FindDepths();
+		};
+		setTargets(true);
+		if (_underflow)
+		{
+			setTargets(false);
+		}
+	}
+
 	// "cmp; bnt O; pprev; ...; cmp" is one value when each O resolves, for a
 	// false value, where the end of the chain resolves (plan section 3.2).
 	void CodeModel::_FindNaryCompares()
@@ -640,6 +699,10 @@ namespace scope
 			if (IsNoOp(i))
 			{
 				flags += " no-op";
+			}
+			if (IsStray(i))
+			{
+				flags += fmt::format(" stray {0:04x}", Offset(BytecodeTarget(i)));
 			}
 			if (IsInert(i))
 			{
