@@ -40,7 +40,7 @@ Open items only: gaps, unfixed findings, questions. The plan is in
 
 ## Refusals
 
-The full corpus run gives 112 functions as `asm`:
+The full corpus run gives 110 functions as `asm`:
 
 - `syntax` (46): code that the text cannot have: a property past the end
   of its object (for example `Act::canBeHere` of ICEMAN, LSL3 and QfG1,
@@ -51,9 +51,7 @@ The full corpus run gives 112 functions as `asm`:
   decode replaces it with `ldi 47789` and warns "Bad branch").
 - `no-scope-for-target` (5): the SQ4 copy in a "patch" folder (scripts 16,
   271, 387, 391): a fan patch.
-- `acc-no-fact` (6): QfG1 VGA 0 `proc0_3` (two copies): the value of a
-  loop is an operand of an `or`, after a store that would have to be the
-  initialisation of a `for`. SQ4 patch 405 and 410 (four functions): the
+- `acc-no-fact` (4): SQ4 patch 405 and 410: the
   operands of a `mul` in the other order, with a variable pushed after the
   call (`callk Random; lsg 199; mul`); as text, the compiler reads the
   variable before the call, which can change it.

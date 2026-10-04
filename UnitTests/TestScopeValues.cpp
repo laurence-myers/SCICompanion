@@ -548,7 +548,10 @@ namespace UnitTests
 		}
 
 		// An or whose second operand has statements: as a statement, (or c
-		// X) is (if (not c) X). A reader of its value has no text.
+		// X) is (if (not c) X). When an instruction after the or reads its
+		// value, the second operand is a group whose last statement gives the
+		// value. With a last statement that gives no value (a store from the
+		// stack), a reader of the value has no text.
 		TEST_METHOD(Values_AnOrWithStatements)
 		{
 			AssertValues(R"(
@@ -560,7 +563,7 @@ namespace UnitTests
 			end:
 				ret
 			)", "If(Condition(Invert(lal)) Then(sal(ldi) lal)) ret");
-			AssertValuesFail(R"(
+			AssertValues(R"(
 				lal 0
 				bt end
 				ldi 1
@@ -569,15 +572,29 @@ namespace UnitTests
 			end:
 				sal 3
 				ret
-			)", "acc-no-fact", 5);
+			)", "sal(Or(First(lal) Second(Group(sal(ldi) lal)))) ret");
+			AssertValuesFail(R"(
+				lal 0
+				bt end
+				ldi 1
+				sal 1
+				lsl 2
+				ssl 3
+			end:
+				sal 4
+				ret
+			)", "acc-no-fact", 6);
 		}
 
+		// An or with statements whose value an instruction reads is a value
+		// (its second operand is a group): an if with it is a value, and a
+		// bare ret after it (in a function that returns a value) returns it.
 		// The statement form of an or has another value in the accumulator
 		// than the code: an if with it is no value, and a bare ret after it
-		// (in a function that returns a value) has no text.
+		// has no text.
 		TEST_METHOD(Values_AnOrWithStatementsGivesNoValue)
 		{
-			AssertValuesFail(R"(
+			AssertValues(R"(
 				lal 0
 				bnt elseBranch
 				lal 1
@@ -592,8 +609,8 @@ namespace UnitTests
 			join:
 				sal 4
 				ret
-			)", "acc-no-fact", 9);
-			AssertValuesFail(R"(
+			)", "sal(If(Condition(lal) Then(Or(First(lal) Second(Group(sal(ldi) lal)))) Else(ldi))) ret");
+			AssertValues(R"(
 				lal 0
 				bt end
 				ldi 1
@@ -601,7 +618,76 @@ namespace UnitTests
 				lal 2
 			end:
 				ret
-			)", "acc-differs", 5, true);
+			)", "ret(Or(First(lal) Second(Group(sal(ldi) lal))))", true);
+			AssertValuesFail(R"(
+				lal 0
+				bnt elseBranch
+				lal 1
+				bt orEnd
+				ldi 1
+				sal 2
+				lsl 3
+				ssl 5
+			orEnd:
+				jmp join
+			elseBranch:
+				ldi 5
+			join:
+				sal 4
+				ret
+			)", "acc-no-fact", 10);
+			AssertValuesFail(R"(
+				lal 0
+				bt end
+				ldi 1
+				sal 1
+				lsl 2
+				ssl 3
+			end:
+				ret
+			)", "acc-differs", 6, true);
+		}
+
+		// A group of the second operand of an or in a structure: a statement
+		// form of an or in the group does not take the value of the if
+		// around it; and the latch of a do loop reads the value of the or
+		// (the bt of the or goes on to the target of the latch).
+		TEST_METHOD(Values_AnOrGroupInStructures)
+		{
+			AssertValues(R"(
+				lal 2
+				bnt other
+				lal 0
+				bt join
+				lal 1
+				bt mid
+				ldi 3
+				sal 5
+				lal 2
+			mid:
+				ldi 1
+				sal 3
+			join:
+				jmp fin
+			other:
+				ldi 9
+			fin:
+				sal 4
+				ret
+			)", "sal(If(Condition(lal) Then(Or(First(lal) Second(Group(If(Condition(Invert(lal)) Then(sal(ldi) lal)) sal(ldi))))) Else(ldi))) ret");
+			AssertValues(R"(
+			head:
+				+al 1
+				lal 0
+				bt join
+				ldi 1
+				sal 2
+				lal 3
+			join:
+				bt head
+				ldi 0
+				ret
+			)", "Do(LoopBody(+al) Condition(Or(First(lal) Second(Group(sal(ldi) lal))))) ldi ret");
 		}
 
 		// An if that is a value keeps its form; an if with an empty then-part
@@ -1162,11 +1248,12 @@ namespace UnitTests
 
 
 		// Shapes that the rules of the refusals must not accept: an or as a
-		// statement in a loop whose value a test reads (the text leaves
-		// another value at the exit), a toss that takes a value that a case
-		// leaves (the switch value stays, and add reads it), and a statement
-		// in the operands of another statement in the operands of the next
-		// statement (it would come before the call that reads the old value).
+		// statement (its last statement gives no value) in a loop whose value
+		// a test reads (the text leaves another value at the exit), a toss
+		// that takes a value that a case leaves (the switch value stays, and
+		// add reads it), and a statement in the operands of another statement
+		// in the operands of the next statement (it would come before the
+		// call that reads the old value).
 		TEST_METHOD(Values_ShapesThatTheRefusalRulesDoNotAccept)
 		{
 			AssertValuesFail(R"(
@@ -1178,7 +1265,8 @@ namespace UnitTests
 				lat 1
 				bt b
 				+at 1
-				+at 0
+				lst 0
+				sst 1
 			b:
 				jmp x
 			l:
@@ -1190,7 +1278,7 @@ namespace UnitTests
 			e:
 				ldi 2
 				ret
-			)", "acc-no-fact", 10, true);
+			)", "acc-no-fact", 11, true);
 			AssertValuesFail(R"(
 				lst 0
 				lap 1
