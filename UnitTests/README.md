@@ -220,7 +220,7 @@ decompiles every script of an existing game, read-only, into a folder. It is
 driven by environment variables, so no local path lives in the source:
 
 ```
-$env:SCICOMP_DUMP_GAME  = 'F:\Games\GOG\Quest for Glory 4 - dev'
+$env:SCICOMP_DUMP_GAME  = 'F:\Games\GOG\Quest for Glory 4'
 $env:SCICOMP_DUMP_OUT   = 'C:\dump\qfg4'
 $env:SCICOMP_DUMP_NAMES = 'E:\Code\Esoteric\sci-scripts\qfg4-cd-dos-1.0\src'
 vstest.console.exe Release\UnitTests.dll /Platform:x86 /TestCaseFilter:"FullyQualifiedName~Dump_ExistingGame"
@@ -305,7 +305,9 @@ game data other than the template games.
   .\UnitTests\Tools\CliCorpusSweep.ps1 -Source 'F:\Games\Sierra', 'F:\games\gog' -Exclude '* - dev*'
   ```
 
-  It copies the files of each game folder (not its subfolders) to a temp
+  The sweep and the gate skip the dev games (folders with a ` - dev` suffix),
+  and the gate lists do not have them. It copies the files of each game
+  folder (not its subfolders) to a temp
   run folder, and it only reads the source folders. It exits with 1 when a
   command was a bug of scic (the `Bug` column): a crash, an exit code that
   scic does not give for a result (1, or a crash code), an `[internal]`
@@ -331,7 +333,7 @@ game data other than the template games.
   has the functions that it shares with `CliCorpusSweep.ps1`.
 
   ```
-  .\UnitTests\Tools\DecompileGate.ps1 -Library 'F:\Games\Sierra', 'F:\games\gog' -Exclude '_vgm*' -Snuffer <Snuffer.exe> -Work I:\tmp\scic-gate
+  .\UnitTests\Tools\DecompileGate.ps1 -Library 'F:\Games\Sierra', 'F:\games\gog' -Exclude '_vgm*', '* - dev*' -Snuffer <Snuffer.exe> -Work I:\tmp\scic-gate
   .\UnitTests\Tools\DecompileGate.ps1 ... -BaselineRun <run folder> -Check
   .\UnitTests\Tools\DecompileGate.ps1 ... -Meaning -Allowlist <allowlist> -Check
   ```
