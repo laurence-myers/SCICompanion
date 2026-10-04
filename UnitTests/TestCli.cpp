@@ -1752,9 +1752,8 @@ namespace UnitTests
 
         // A decompile gives each local name of the old .sco to the local at
         // the same index. The SCI0 template's SysWindow.sco has two arrays of
-        // four locals (local5 at index 5, localA at index 10), which the
-        // decompiled script declares one index at a time: local9 names index
-        // 9 only, and index 6 keeps its decompiled name.
+        // four locals (local5 at index 5, localA at index 10) and local9 at
+        // index 9: the decompiled script declares them so.
         TEST_METHOD(Decompile_Sci0SysWindow_LocalNamesByIndex)
         {
             CopyTemplate("\\TemplateGame\\SCI0");
@@ -1762,8 +1761,8 @@ namespace UnitTests
             std::vector<std::string> lines = Lines(console.out);
             size_t local9 = std::count(lines.begin(), lines.end(), std::string("\tlocal9"));
             Assert::AreEqual((size_t)1, local9, Wide(console.out).c_str());
-            Assert::IsTrue(std::find(lines.begin(), lines.end(), std::string("\tlocal6")) != lines.end(), Wide(console.out).c_str());
-            Assert::IsTrue(std::find(lines.begin(), lines.end(), std::string("\tlocalA")) != lines.end(), Wide(console.out).c_str());
+            Assert::IsTrue(std::find(lines.begin(), lines.end(), std::string("\t[local5 4]")) != lines.end(), Wide(console.out).c_str());
+            Assert::IsTrue(std::find(lines.begin(), lines.end(), std::string("\t[localA 4] = [0 0 0 8]")) != lines.end(), Wide(console.out).c_str());
         }
 
         // A .sco that loads only in part (Obj.sco cut after its exports)
@@ -1813,7 +1812,7 @@ namespace UnitTests
         }
 
         // A .sco can give two indices a name that no declaration has (here
-        // c3Twin at indices 6 and 9 of SysWindow.sco). The earlier index
+        // c3Twin at indices 5 and 9 of SysWindow.sco). The earlier index
         // takes it, and the decompiled script compiles.
         TEST_METHOD(Decompile_Sci0SysWindow_ANameOfTwoIndices)
         {
@@ -1828,13 +1827,15 @@ namespace UnitTests
                 std::unique_ptr<CSCOFile> sysWindow = GetExistingSCOFromScriptNumber(session.Helper(), 990, lookups.GetSelectorTable());
                 Assert::IsNotNull(sysWindow.get(), L"setup: SysWindow.sco");
                 Assert::IsTrue(sysWindow->GetVariables().size() > 9, L"setup: SysWindow.sco has index 9");
-                sysWindow->GetVariables()[6].SetName("c3Twin");
+                sysWindow->GetVariables()[5].SetName("c3Twin");
                 sysWindow->GetVariables()[9].SetName("c3Twin");
                 Assert::IsTrue(SaveSCOFile(session.Helper(), *sysWindow).has_value());
             }
             cli::StringConsole source = Expect(0, { "script", "decompile", _copyFolder, "990", "--stdout" });
             std::vector<std::string> lines = Lines(source.out);
-            Assert::AreEqual((size_t)1, (size_t)std::count(lines.begin(), lines.end(), std::string("\tc3Twin")), Wide(source.out).c_str());
+            Assert::AreEqual((size_t)1, (size_t)std::count(lines.begin(), lines.end(), std::string("\t[c3Twin 4]")), Wide(source.out).c_str());
+            Assert::AreEqual(std::string::npos, source.out.find("\tc3Twin\r"), Wide(source.out).c_str());
+            Assert::AreEqual(std::string::npos, source.out.find("\tc3Twin\n"), Wide(source.out).c_str());
             Assert::AreEqual((size_t)1, (size_t)std::count(lines.begin(), lines.end(), std::string("\tlocal9")), Wide(source.out).c_str());
             cli::StringConsole decompile = Expect(0, { "script", "decompile", _copyFolder, "990" });
             cli::StringConsole compile = Expect(0, { "script", "compile", _copyFolder, "990", "--dry-run" });

@@ -20,7 +20,7 @@ modernizing the build. Broad highlights since the previous release:
   closely (control-flow shapes, expressions and comparisons).
 * **Decompiles games that have no selector table** (such as the floppy Laura
   Bow 2). Each selector gets a numbered name, sel_<number>.
-* **The SCI1.1 template game is compiled from its current sources.** A new
+* **The template games are compiled from their current sources.** A new
   game starts with the scripts that its `src` folder holds.
 * **Better compile warning/error messages.**
 * **Fixed some crashes on bad or corrupt data.** 
