@@ -5,6 +5,14 @@ Open items only: gaps, unfixed findings, questions. The plan is in
 
 ## Outside the plan
 
+- **Branches out of the function in patched games (issue #235).** 25
+  branches of the SQ4 copy in `patch` (script 271: seven `doVerb` methods
+  that go to the tail of `pod::doVerb`) and of the KQ4 copy in
+  `patch\NEW` (scripts 0, 32, 33, 36, 39, 40, 41, 70, 77, 605: a new
+  `init` that goes to the old one), and one in script 200 of the game copy
+  with resource.map MD5 `28a6f471...`, go to code of the script outside
+  their function. The decode still replaces each one with `ldi 0xbaad`
+  (-17747). The plan: decode the target code as the tail of the function.
 - **A public instance with the name of a property.** The decompiler gives
   an instance that is not public, and that has the name of a property of
   an object of its script, another name (with its name string as an

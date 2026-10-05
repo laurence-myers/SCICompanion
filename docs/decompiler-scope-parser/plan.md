@@ -334,7 +334,9 @@ has `(if c X (continue)) Y` (the bytecode is the same).
 its bytecode has a corrupt branch (issue #235; the decode replaces it with
 `ldi 47789`), and the classic text of it was not right either. The gate
 allowlist cannot excuse rule 1, so the gate of step 13 reports this one
-failure.
+failure. The branch is a fault of Sierra's compiler (the test of an empty
+last case); since the fix of issue #235 the decode sends it to the next
+instruction, and the function is source.
 
 ## 7. Risks
 

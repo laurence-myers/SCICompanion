@@ -117,6 +117,14 @@ code_pos get_cur_pos(std::list<scii> &code)
 //   than the toss;
 // - a target past the end of the code, before a toss, jmp or ret (the
 //   last clause of a cond).
+// The end of the code is the bound of the decode: the end of the script on
+// the first decode of _DecodeFunction (and in FunctionCodeLength), the
+// estimated end of the function on the second. So a bad target of a cond
+// clause that is in the script, after the function, at the start of an
+// instruction, gives no fix: the first decode goes on into the code after
+// the function. The first decode cannot use the estimated end, which can come
+// from a bogus export: with it, a correct bnt that the compiler threads past
+// a jmp would look like a bad one.
 static bool _IsSierraBadBranch(const SCIVersion &sciVersion, const std::list<scii> &code, Opcode bOpcode, uint16_t wTarget, uint16_t wNext, uint16_t codeLength, const BYTE *pNext, const BYTE *pEnd)
 {
 	if ((bOpcode != Opcode::BNT) || (pNext >= pEnd) || (wTarget == wNext))
@@ -1117,7 +1125,7 @@ static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, con
 			{
 				string name = func.GetOwnerClass() ? (func.GetOwnerClass()->GetName() + "::" + func.GetName()) : func.GetName();
 				std::string message = fmt::format(
-					"{0}: the bnt at {1:04x} goes to {2:04x}, a fault of Sierra's compiler (the test of an empty last clause). When the test fails, the game goes there and can crash. The source goes on to the next instruction.",
+					"{0}: the bnt at {1:04x} goes to {2:04x}, a fault of Sierra's compiler (the test of an empty last clause). When the test fails, the game goes there and can crash. The decompile goes on to the next instruction.",
 					name, inst.get_final_offset_dontcare(), inst.get_bad_branch_target());
 				lookups.DecompileResults().AddResult(DecompilerResultType::Warning, message);
 				func.GetOwnerScript()->AddHeaderComment("WARNING: " + message);

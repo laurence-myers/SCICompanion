@@ -339,23 +339,24 @@ namespace UnitTests
         // clause (PQ3 script 202, addPoint::changeState; ICEMAN script 968,
         // SmoothLooper::doit). The clause is empty, so the code meant the next
         // instruction: the decompile goes there, with a warning, and the
-        // recompiled text means the same. The target is past the end of the
-        // code, or (for "eq?; bnt; toss") an instruction of the procedure.
+        // recompiled text means the same. The target is before the start of
+        // the procedure (the uint16 target wraps), past the end of the
+        // script, or (for "eq?; bnt; toss") the start of the procedure.
         TEST_METHOD(SierraBadBranch_GoesToTheNextInstruction)
         {
             _gameFolder = SetUpGameSCI11();
             CResourceMap &rm = AppResourceMap();
             const GameFolderHelper &helper = rm.Helper();
             AddFixtureScript("X6_SierraBadBranch");
-            for (bool inside : { false, true })
+            for (BadTarget where : { BadTarget::BeforeStart, BadTarget::PastEnd, BadTarget::Inside })
             {
-                std::string label = inside ? "target in the code: " : "target past the end: ";
+                std::string label = (where == BadTarget::BeforeStart) ? "target before the start: " : ((where == BadTarget::PastEnd) ? "target past the end: " : "target in the code: ");
                 std::string error;
                 Assert::IsTrue(CompileFixture(941, "X6_SierraBadBranch", &error), Wide(label + error).c_str());
                 CompiledScript compiled(941, CompiledScriptFlags::RemoveBadExports);
                 Assert::IsTrue(compiled.Load(helper, helper.Version, 941), Wide(label + "setup: the script loads").c_str());
                 std::vector<uint8_t> script = compiled.GetRawBytes();
-                Assert::AreEqual(3, _SetBadBranchTargets(helper.Version, script, inside), Wide(label + "setup: a bnt in each procedure").c_str());
+                Assert::AreEqual(3, _SetBadBranchTargets(helper.Version, script, where), Wide(label + "setup: a bnt in each procedure").c_str());
                 ResourceBlob blob(helper, nullptr, ResourceType::Script, script, helper.Version.DefaultVolumeFile, 941, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags());
                 Assert::IsTrue(SUCCEEDED(rm.AppendResource(blob)), Wide(label + "setup: the patched script").c_str());
                 std::vector<meaning::Function> original = ReadMeaningFunctions(941);
@@ -395,11 +396,17 @@ namespace UnitTests
             return count;
         }
 
+        // The bad target that _SetBadBranchTargets gives.
+        enum class BadTarget
+        {
+            BeforeStart,    // the largest step back: the uint16 target wraps
+            PastEnd,        // past the end of the script
+            Inside,         // "eq?; bnt; toss": the start of the procedure; another bnt: past the end
+        };
+
         // Gives a bad target to each bnt before a toss, ret or jmp in the
-        // exported procedures of an SCI1.1 script: past the end of the code;
-        // with inside, the bnt of "eq?; bnt; toss" goes to the start of its
-        // procedure. The count of the bnts.
-        static int _SetBadBranchTargets(const SCIVersion &version, std::vector<uint8_t> &script, bool inside)
+        // exported procedures of an SCI1.1 script. The count of the bnts.
+        static int _SetBadBranchTargets(const SCIVersion &version, std::vector<uint8_t> &script, BadTarget where)
         {
             int count = 0;
             uint16_t exports = (uint16_t)(script[6] | (script[7] << 8));
@@ -423,8 +430,11 @@ namespace UnitTests
                         Opcode after = RawToOpcode(version, script[next]);
                         if ((after == Opcode::TOSS) || (after == Opcode::RET) || (after == Opcode::JMP))
                         {
-                            bool toStart = inside && (after == Opcode::TOSS) && (previous == Opcode::EQ);
-                            int offset = toStart ? -(int)(next - start) : (word ? -0x8000 : -0x80);
+                            bool toStart = (where == BadTarget::Inside) && (after == Opcode::TOSS) && (previous == Opcode::EQ);
+                            int offset = toStart ? -(int)(next - start) :
+                                ((where == BadTarget::BeforeStart) ? (word ? -0x8000 : -0x80) : (int)(script.size() + 0x10 - next));
+                            Assert::IsTrue(word ? ((offset >= -0x8000) && (offset <= 0x7fff)) : ((offset >= -0x80) && (offset <= 0x7f)),
+                                Wide(fmt::format("setup: the target of the bnt at {0:04x} fits its operand", at)).c_str());
                             script[at + 1] = (uint8_t)(offset & 0xff);
                             if (word)
                             {
