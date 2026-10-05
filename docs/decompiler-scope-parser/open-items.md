@@ -40,15 +40,15 @@ Open items only: gaps, unfixed findings, questions. The plan is in
 
 ## Refusals
 
-The full corpus run gives 110 functions as `asm`:
+The full corpus run gives 71 functions as `asm`:
 
-- `syntax` (46): code that the text cannot have: a property past the end
+- `syntax` (53): code that the text cannot have: a property past the end
   of its object (for example `Act::canBeHere` of ICEMAN, LSL3 and QfG1,
-  Hoyle 1 `Deck`, `MouthSync::init`), and a
+  Hoyle 1 `Deck`, `MouthSync::init`), a
   property read in a procedure (an export at the code of a method:
-  Mixed-Up Mother Goose script 0).
-- `case-test` (46): each function has a corrupt branch (issue #235; the
-  decode replaces it with `ldi 47789` and warns "Bad branch").
+  Mixed-Up Mother Goose script 0), and a super of a class that is not the
+  superclass (the SQ4 copy in a "patch" folder, script 271: seven `doVerb`
+  methods go to the tail of `pod::doVerb`, whose superclass is another one).
 - `no-scope-for-target` (5): the SQ4 copy in a "patch" folder (scripts 16,
   271, 387, 391): a fan patch.
 - `acc-no-fact` (4): SQ4 patch 405 and 410: the

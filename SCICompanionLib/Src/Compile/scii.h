@@ -98,6 +98,16 @@ public:
 	bool is_marked();
 	bool _is_branch_instruction();
 	bool is_conditional_branch_instruction();
+	// A bnt of a fault of Sierra's compiler: the test of an empty last
+	// clause, whose target in the bytecode is bad. The decode makes it go
+	// to the next instruction, and keeps the bytecode target here.
+	void set_bad_branch_target(uint16_t wTarget);
+	bool is_bad_branch() const;
+	uint16_t get_bad_branch_target() const;
+	// An instruction outside the code of the function, which the decode reads
+	// because a branch of the function goes there (a patch of a game).
+	void set_outside_function();
+	bool is_outside_function() const;
 
 	static uint16_t GetInstructionSize(const SCIVersion &version, uint8_t rawOpcode);
 	static uint16_t GetInstructionArgumentSize(const SCIVersion &version, uint8_t rawOpcode);
@@ -113,6 +123,9 @@ private:
 	bool _fForceWord; // This instruction must be a uint16_t sized one on the next attempt at calculating size.
 	bool _fUndetermined;
 	bool _fForwardBranch;
+	bool _fBadBranch = false;
+	bool _fOutsideFunction = false;
+	uint16_t _wBadBranchTarget = 0;
 	Opcode _bOpcode;
 	int _pDebug;	  // Extra info for debugging.
 

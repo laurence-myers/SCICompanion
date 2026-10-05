@@ -673,6 +673,7 @@ unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const Compiled
 	set<uint16_t> staleExportsTO;
 	set<uint16_t> outsideExportsTO;
 	_FindCodePointers(compiledScript, codePointersTO, internalProcOffsetsTO, staleExportsTO, outsideExportsTO);
+	lookups.SetOutsideCode(compiledScript.GetRawBytes().data(), compiledScript._codeSections);
 
 	// Spit out code segments:
 	// First, the objects (instances, classes)
@@ -926,7 +927,7 @@ void FixDuplicateObjectNames(CompiledScript &compiledScript, GlobalCompiledScrip
 	}
 }
 
-std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, uint16_t wScript, CompiledScript &compiledScript, IDecompilerResults &results, bool debugControlFlow, bool debugInstConsumption, PCSTR pszDebugFilter, bool decompileAsm, bool substituteTextTuples)
+std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, uint16_t wScript, CompiledScript &compiledScript, IDecompilerResults &results, bool debugControlFlow, bool debugInstConsumption, PCSTR pszDebugFilter, bool decompileAsm, bool substituteTextTuples, BadBranchPolicy badBranches)
 {
 	const GameFolderHelper &helper = resourceMap.Helper();
 	unique_ptr<sci::Script> pScript;
@@ -947,6 +948,7 @@ std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, Gl
 	decompileLookups.pszDebugFilter = pszDebugFilter;
 	decompileLookups.DecompileAsm = decompileAsm;
 	decompileLookups.SubstituteTextTuples = substituteTextTuples;
+	decompileLookups.BadBranches = badBranches;
 	pScript.reset(Decompile(helper, compiledScript, decompileLookups, resourceMap.GetVocab000()));
 
 	ConvertToSCISyntaxHelper(*pScript, &scriptLookups);
@@ -962,6 +964,7 @@ std::vector<FunctionCode> ReadScriptFunctions(const CompiledScript &compiledScri
 	set<uint16_t> staleExportsTO;
 	set<uint16_t> outsideExportsTO;
 	_FindCodePointers(compiledScript, codePointersTO, internalProcOffsetsTO, staleExportsTO, outsideExportsTO);
+	lookups.SetOutsideCode(compiledScript.GetRawBytes().data(), compiledScript._codeSections);
 	const std::vector<BYTE> &bytes = compiledScript.GetRawBytes();
 	const BYTE *pEndScript = compiledScript.GetEndOfRawBytes();
 

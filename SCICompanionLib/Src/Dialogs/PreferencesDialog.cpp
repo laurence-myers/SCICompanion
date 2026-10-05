@@ -55,6 +55,7 @@ void CPreferencesDialog::DoDataExchange(CDataExchange* pDX)
 	DDX_Check(pDX, IDC_TRACKHEADERFILES, appState->_fTrackHeaderFiles);
 	DDX_Check(pDX, IDC_COMPILEDIRTYSCRIPTS, appState->_fCompileDirtyScriptsBeforeRun);
 	DDX_Check(pDX, IDC_UNUSEDINSTANCEWARNINGS, appState->_fWarnOnUnusedInstances);
+	DDX_Check(pDX, IDC_DECOMPILEBADBRANCHASM, appState->_fDecompileBadBranchesAsAsm);
 
 	DDX_Text(pDX, IDC_FAKEEGOX, appState->_cxFakeEgo);
 	DDV_MinMaxInt(pDX, appState->_cxFakeEgo, 10, 80);
@@ -81,6 +82,7 @@ void CPreferencesDialog::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_TRACKHEADERFILES, m_wndCheck12);
 	DDX_Control(pDX, IDC_SAVESCRIPTS, m_wndCheck13);
 	DDX_Control(pDX, IDC_UNUSEDINSTANCEWARNINGS, m_wndCheck14);
+	DDX_Control(pDX, IDC_DECOMPILEBADBRANCHASM, m_wndCheck15);
 
 	DDX_Control(pDX, IDOK, m_wndOk);
 	DDX_Control(pDX, IDCANCEL, m_wndCancel);

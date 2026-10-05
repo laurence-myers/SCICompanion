@@ -449,7 +449,8 @@ namespace cli
             {
                 output.Message(fmt::format("Functions: {0} of {1} decompiled ({2}%); bytes: {3}%.{4}", stats.functions, functions, stats.functions * 100 / functions,
                     (bytes > 0) ? (stats.functionBytes * 100 / bytes) : 100,
-                    (stats.fallbacks > 0) ? fmt::format(" {0} fell back to asm.", stats.fallbacks) : std::string()));
+                    (stats.fallbacks > 0) ? fmt::format(" {0} fell back to asm{1}.", stats.fallbacks,
+                        (stats.badBranchAsm > 0) ? fmt::format(" ({0} by --bad-branch asm)", stats.badBranchAsm) : std::string()) : std::string()));
             }
             if (!report.globalRenames.empty())
             {
@@ -507,6 +508,7 @@ namespace cli
         DecompileRunOptions run;
         run.engine.SubstituteTextTuples = options.textTuples;
         run.engine.DecompileAsm = options.asmOnly;
+        run.engine.BadBranches = (options.badBranch == "asm") ? BadBranchPolicy::Asm : BadBranchPolicy::Fix;
         run.engine.DebugControlFlow = options.debugControlFlow;
         run.engine.DebugInstructionConsumption = options.debugInstructions;
         run.engine.DebugFunctionMatch = options.debugFilter;

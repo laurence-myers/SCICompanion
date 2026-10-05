@@ -110,140 +110,357 @@ code_pos get_cur_pos(std::list<scii> &code)
 	return pos;
 }
 
-// 
+// A bnt of a fault of Sierra's compiler: the test of an empty last clause
+// of a switch or a cond. Its target is bad, but the clause is empty, so the
+// code meant the next instruction (at wNext; pNext points to it):
+// - "eq?; bnt; toss" (the last case of a switch), with any target other
+//   than the toss;
+// - a target past the end of the code, before a toss, jmp or ret (the
+//   last clause of a cond).
+// previous is the instruction before the bnt; it is INDETERMINATE for the
+// first instruction of a part outside the function, which has no first form.
+// The caller gives a codeLength of 0xffff (no second form) for a part outside
+// the function, and for a target before the start of the function (its
+// position wraps past codeLength): such a target can be code of the script.
+// The end of the code is the bound of the decode: the end of the script on
+// the first decode of _DecodeFunction (and in FunctionCodeLength), the
+// estimated end of the function on the second. So a bad target of a cond
+// clause that is in the script, after the function, at the start of an
+// instruction, gives no fix: the first decode goes on into the code after
+// the function. The first decode cannot use the estimated end, which can come
+// from a bogus export: with it, a correct bnt that the compiler threads past
+// a jmp would look like a bad one.
+static bool _IsSierraBadBranch(const SCIVersion &sciVersion, Opcode previous, Opcode bOpcode, uint16_t wTarget, uint16_t wNext, uint16_t codeLength, const BYTE *pNext, const BYTE *pEnd)
+{
+	if ((bOpcode != Opcode::BNT) || (pNext >= pEnd) || (wTarget == wNext))
+	{
+		return false;
+	}
+	Opcode next = RawToOpcode(sciVersion, *pNext);
+	if ((next == Opcode::TOSS) && (previous == Opcode::EQ))
+	{
+		return true;
+	}
+	return (wTarget > codeLength) && ((next == Opcode::TOSS) || (next == Opcode::JMP) || (next == Opcode::RET));
+}
+
+//
 // pBegin/pEnd - bounding pointers for the raw byte code
 // wBaseOffset - byte offset in script file where pBegin is (used to calculate absolute code offsets)
 // code		- (out) list of sci instructions.
+// outside	- the code of the script, or null. A branch out of the function to
+//			  that code (a patch of a game: the KQ4 copy in "patch\NEW" puts a
+//			  new init before a jmp to the old one) makes the decode read the
+//			  code there too, as the tail of the function: each part of it
+//			  until a ret (or a jmp out of the part) that no branch of the
+//			  part goes past, right after a jmp that goes there, else after
+//			  the code of the function. Its instructions are "outside the
+//			  function".
 //
-// Returns the end. With abortOnError, a problem gives nullptr and no message
-// (results can be null); else results gets the message.
-const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResults *results, std::list<scii> &code, const BYTE *pBegin, const BYTE *pEnd, WORD wBaseOffset, bool abortOnError)
+// Returns the end of the code of the function. With abortOnError, a problem
+// gives nullptr and no message (results can be null); else results gets the
+// message.
+const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResults *results, std::list<scii> &code, const BYTE *pBegin, const BYTE *pEnd, WORD wBaseOffset, bool abortOnError, const OutsideCode *outside)
 {
 	std::unordered_map<WORD, code_pos> referenceToCodePos;
 	std::vector<Fixup> branchTargetsToFixup;
-	std::set<uint16_t> branchTargets;
 
 	code_pos undetermined = code.end();
 
-	uint16_t codeLength = (uint16_t)(pEnd - pBegin);
-	uint16_t wReferencePosition = 0;
-	const BYTE *pCur = pBegin;
-	while (pCur < pEnd)
+	// The code of the function, then each part outside it: its bytes, and its
+	// start as a position from pBegin (uint16 positions wrap, so each address
+	// of the script has one position).
+	struct Part
 	{
-		const BYTE *pThisInstruction = pCur;
-		BYTE bRawOpcode = *pCur;
-		bool bByte = (*pCur) & 1;
-		Opcode bOpcode = RawToOpcode(sciVersion, bRawOpcode);
-		assert(bOpcode <= Opcode::LastOne);
-		++pCur; // Advance past opcode.
-		uint16_t wOperands[3];
-		ZeroMemory(wOperands, sizeof(wOperands));
-		int cIncr = 0;
-		bool fTruncatedOperand = false;
-
-		for (int i = 0; i < 3; i++)
+		const BYTE *pBegin;
+		const BYTE *pEnd;
+		uint16_t wStart;
+		// The jmp that its instructions come after in the list; code.end(): they go at the end.
+		code_pos afterJmp;
+		// Its first and last instructions, once it is decoded.
+		code_pos first;
+		code_pos last;
+	};
+	std::vector<Part> parts = { { pBegin, pEnd, 0, code.end(), code.end(), code.end() } };
+	const size_t MaxParts = 9;
+	// The address of a position, and the code section of the script that has
+	// it as a part outside the function (else nullptr).
+	auto outsideSection = [&](uint16_t wTarget) -> const CodeSection *
+	{
+		if (!outside || !outside->sections)
 		{
-			OperandType opType = GetOperandTypes(sciVersion, bOpcode)[i];
-			cIncr = GetOperandSize(bRawOpcode, opType, pCur, pEnd);
-			if ((cIncr != 0) && ((pEnd - pCur) < (ptrdiff_t)cIncr))
+			return nullptr;
+		}
+		uint16_t address = (uint16_t)(wTarget + wBaseOffset);
+		for (const CodeSection &section : *outside->sections)
+		{
+			if ((address >= section.begin) && (address < section.end))
 			{
-				// The operand runs past the end of the code. Stop before we read
-				// it, so we never index past the script resource buffer.
-				fTruncatedOperand = true;
-				break;
-			}
-			switch (cIncr)
-			{
-			case 1:
-				// We may need to sign-extend this.
-				if ((opType == otINT) || (opType == otINT8) || (opType == otLABEL))
-				{
-					wOperands[i] = (uint16_t)(int16_t)(int8_t)*pCur;
-				}
-				else
-				{
-					wOperands[i] = (uint16_t)*pCur;
-				}
-				break;
-			case 2:
-				wOperands[i] = *((uint16_t*)pCur); // REVIEW
-				break;
-			default:
-				break;
-			}
-			pCur += cIncr;
-			if (cIncr == 0) // No more operands
-			{
-				break;
+				return &section;
 			}
 		}
-		if (fTruncatedOperand)
-		{
-			// A truncated final instruction. On the abort pass, fail so the caller
-			// retries with a tighter bound; otherwise report it and stop decoding,
-			// leaving the already-decoded instructions (and their fixups) intact.
-			if (abortOnError)
-			{
-				return nullptr;
-			}
-			results->AddResult(DecompilerResultType::Warning,
-				fmt::format("Truncated instruction at 0x{0:04x}; stopping decode.", (uint16_t)(pThisInstruction - pBegin) + wBaseOffset));
-			break;
-		}
-		// Add the instruction - use the constructor that takes all arguments, even if
-		// not all are valid.
-		if ((bOpcode == Opcode::BNT) || (bOpcode == Opcode::BT) || (bOpcode == Opcode::JMP))
-		{
-			// +1 because its the operand start pos.
-			uint16_t wTarget = CalcOffset(sciVersion, wReferencePosition + 1, wOperands[0], bByte, bRawOpcode);
+		return nullptr;
+	};
 
-			if (wTarget > codeLength)
+	// A decoded part outside the function that starts at wPosition moves to
+	// insertAt in the list (the part before it goes on into it). False when
+	// there is none, or when insertAt is in it.
+	auto movePartAfter = [&](size_t part, uint16_t wPosition, code_pos insertAt) -> bool
+	{
+		for (size_t k = 1; k < part; ++k)
+		{
+			Part &other = parts[k];
+			if ((other.wStart != wPosition) || (other.first == code.end()))
 			{
+				continue;
+			}
+			code_pos end = std::next(other.last);
+			for (code_pos it = other.first; it != end; ++it)
+			{
+				if (it == insertAt)
+				{
+					return false;
+				}
+			}
+			code.splice(insertAt, code, other.first, end);
+			return true;
+		}
+		return false;
+	};
+
+	uint16_t codeLength = (uint16_t)(pEnd - pBegin);	const BYTE *pFunctionEnd = pBegin;
+	// A bogus instruction after the ret at the end of the code of the function.
+	code_pos functionPadding = code.end();
+	for (size_t part = 0; part < parts.size(); ++part)
+	{
+		const BYTE *pPartEnd = parts[part].pEnd;
+		uint16_t wPartStart = parts[part].wStart;
+		uint16_t wPartLength = (uint16_t)(pPartEnd - parts[part].pBegin);
+		code_pos insertAt = (parts[part].afterJmp == code.end()) ? code.end() : std::next(parts[part].afterJmp);
+		code_pos cur = code.end();
+		code_pos first = code.end();
+		Opcode previous = Opcode::INDETERMINATE;
+		if (referenceToCodePos.find(wPartStart) != referenceToCodePos.end())
+		{
+			// An earlier part has this code.
+			continue;
+		}
+		if ((insertAt == code.end()) && !code.empty() && (code.back().get_opcode() != Opcode::RET) && (code.back().get_opcode() != Opcode::JMP) &&
+			(functionPadding != std::prev(code.end())))
+		{
+			// The code at the end of the list (but for the padding after the ret of the function) goes on into the
+			// next instruction: a part there would be that instruction.
+			if (!abortOnError)
+			{
+				results->AddResult(DecompilerResultType::Error, fmt::format("The code before {0:04x}, outside the function, goes on into it.", (uint16_t)(wPartStart + wBaseOffset)));
+			}
+			return nullptr;
+		}
+		// The targets in this part, as distances from its start.
+		std::set<uint16_t> branchTargets;
+		uint16_t wReferencePosition = wPartStart;
+		const BYTE *pCur = parts[part].pBegin;
+		while (pCur < pPartEnd)
+		{
+			if ((part > 0) && (referenceToCodePos.find(wReferencePosition) != referenceToCodePos.end()))
+			{
+				// The part goes on into code that an earlier part has. A part outside the function that starts
+				// there comes next in the list. Else a jmp there, of no bytes, keeps the order of the list.
+				if (movePartAfter(part, wReferencePosition, insertAt))
+				{
+					break;
+				}
+				cur = code.insert(insertAt, scii(sciVersion, Opcode::JMP, undetermined, true, -1));
+				Fixup fixup = { cur, wReferencePosition, false };
+				branchTargetsToFixup.push_back(fixup);
+				cur->set_offset_and_size(wReferencePosition + wBaseOffset, 0);
+				cur->set_outside_function();
+				if (first == code.end())
+				{
+					first = cur;
+				}
+				break;
+			}
+			const BYTE *pThisInstruction = pCur;
+			BYTE bRawOpcode = *pCur;
+			bool bByte = (*pCur) & 1;
+			Opcode bOpcode = RawToOpcode(sciVersion, bRawOpcode);
+			assert(bOpcode <= Opcode::LastOne);
+			++pCur; // Advance past opcode.
+			uint16_t wOperands[3];
+			ZeroMemory(wOperands, sizeof(wOperands));
+			int cIncr = 0;
+			bool fTruncatedOperand = false;
+
+			for (int i = 0; i < 3; i++)
+			{
+				OperandType opType = GetOperandTypes(sciVersion, bOpcode)[i];
+				cIncr = GetOperandSize(bRawOpcode, opType, pCur, pPartEnd);
+				if ((cIncr != 0) && ((pPartEnd - pCur) < (ptrdiff_t)cIncr))
+				{
+					// The operand runs past the end of the code. Stop before we read
+					// it, so we never index past the script resource buffer.
+					fTruncatedOperand = true;
+					break;
+				}
+				switch (cIncr)
+				{
+				case 1:
+					// We may need to sign-extend this.
+					if ((opType == otINT) || (opType == otINT8) || (opType == otLABEL))
+					{
+						wOperands[i] = (uint16_t)(int16_t)(int8_t)*pCur;
+					}
+					else
+					{
+						wOperands[i] = (uint16_t)*pCur;
+					}
+					break;
+				case 2:
+					wOperands[i] = *((uint16_t*)pCur); // REVIEW
+					break;
+				default:
+					break;
+				}
+				pCur += cIncr;
+				if (cIncr == 0) // No more operands
+				{
+					break;
+				}
+			}
+			if (fTruncatedOperand)
+			{
+				// A truncated final instruction. On the abort pass, fail so the caller
+				// retries with a tighter bound; otherwise report it and stop decoding,
+				// leaving the already-decoded instructions (and their fixups) intact.
 				if (abortOnError)
+				{
+					return nullptr;
+				}
+				results->AddResult(DecompilerResultType::Warning,
+					fmt::format("Truncated instruction at 0x{0:04x}; stopping decode.", (uint16_t)(wReferencePosition + wBaseOffset)));
+				break;
+			}
+			uint16_t wSize = (uint16_t)(pCur - pThisInstruction);
+			// A jmp out of the part: the part can end there, as at a ret.
+			bool fLeavesPart = false;
+			// Add the instruction - use the constructor that takes all arguments, even if
+			// not all are valid.
+			if ((bOpcode == Opcode::BNT) || (bOpcode == Opcode::BT) || (bOpcode == Opcode::JMP))
+			{
+				// +1 because its the operand start pos.
+				uint16_t wTarget = CalcOffset(sciVersion, wReferencePosition + 1, wOperands[0], bByte, bRawOpcode);
+				uint16_t wNext = wReferencePosition + wSize;
+				// The distances from the start of this part.
+				uint16_t wHere = (uint16_t)(wReferencePosition - wPartStart);
+				uint16_t wThere = (uint16_t)(wTarget - wPartStart);
+				// In the code of the function (the first part goes to codeLength:
+				// a target there is a later instruction of the function).
+				bool inFunction = (wTarget <= codeLength);
+				bool inPart = (part == 0) ? inFunction : (wThere <= wPartLength);
+				const CodeSection *section = nullptr;
+				// A target before the function start: its position wraps.
+				bool fWraps = ((uint32_t)wTarget + wBaseOffset) > 0xffff;
+				bool fKnownPart = (referenceToCodePos.find(wTarget) != referenceToCodePos.end()) ||
+					std::any_of(parts.begin(), parts.end(), [&](const Part &other) { return other.wStart == wTarget; });
+
+				if (_IsSierraBadBranch(sciVersion, previous, bOpcode, wTarget, wNext, ((part == 0) && !fWraps) ? codeLength : (uint16_t)0xffff, pCur, pPartEnd))
+				{
+					cur = code.insert(insertAt, scii(sciVersion, bOpcode, undetermined, true, -1));
+					cur->set_bad_branch_target(wTarget + wBaseOffset);
+					Fixup fixup = { cur, wNext, true };
+					branchTargetsToFixup.push_back(fixup);
+					branchTargets.insert((uint16_t)(wNext - wPartStart));
+				}
+				else if (inPart || inFunction)
+				{
+					cur = code.insert(insertAt, scii(sciVersion, bOpcode, undetermined, true, -1));
+					// A branch from a part outside the function to the function goes back.
+					bool fForward = inPart && (wThere > wHere) && ((part == 0) || !inFunction);
+					fLeavesPart = (bOpcode == Opcode::JMP) && !inPart;
+					Fixup fixup = { cur, wTarget, fForward };
+					branchTargetsToFixup.push_back(fixup);
+					if (fForward)
+					{
+						branchTargets.insert(wThere);
+					}
+				}
+				else if (((section = outsideSection(wTarget)) != nullptr) && (fKnownPart || (parts.size() < MaxParts)))
+				{
+					// A part outside the function: it comes after the parts so far.
+					cur = code.insert(insertAt, scii(sciVersion, bOpcode, undetermined, true, -1));
+					Fixup fixup = { cur, wTarget, true };
+					branchTargetsToFixup.push_back(fixup);
+					fLeavesPart = (bOpcode == Opcode::JMP);
+					// A part that a jmp goes to comes right after the jmp, which then does nothing (the
+					// KQ4 copy in "patch\NEW", script 0, gSound::play: "bt; jmp; ret").
+					auto queued = std::find_if(parts.begin(), parts.end(), [&](const Part &other) { return other.wStart == wTarget; });
+					if (queued == parts.end())
+					{
+						uint16_t address = (uint16_t)(wTarget + wBaseOffset);
+						parts.push_back({ outside->pScript + address, outside->pScript + section->end, wTarget, (bOpcode == Opcode::JMP) ? cur : code.end(), code.end(), code.end() });
+					}
+					else if ((bOpcode == Opcode::JMP) && (queued->afterJmp == code.end()) && (queued->first == code.end()))
+					{
+						queued->afterJmp = cur;
+					}
+				}
+				else if (abortOnError)
 				{
 					return nullptr;
 				}
 				else
 				{
-					// This goes out of bounds. Some code is corrupt, like SmoothLooper in script 968 in Hero's Quest.
-					// We can't intelligently reason about where the branch is supposed to point, so just replace it with a load operation.
+					// This goes out of bounds, and it is no bnt of a fault of Sierra's compiler, and no code of
+					// the script. We can't intelligently reason about where the branch is supposed to point, so just
+					// replace it with a load operation.
 					// We need to make sure it's the same size though.
-					code.push_back(scii(sciVersion, Opcode::LDI, 0xbaad, -1));
-					results->AddResult(DecompilerResultType::Warning, fmt::format("Bad branch at 0x{0:4x}, replaced with -17747.", (wReferencePosition + wBaseOffset)));
+					cur = code.insert(insertAt, scii(sciVersion, Opcode::LDI, 0xbaad, -1));
+					results->AddResult(DecompilerResultType::Warning, fmt::format("Bad branch at 0x{0:4x}, replaced with -17747.", (uint16_t)(wReferencePosition + wBaseOffset)));
 				}
 			}
 			else
 			{
-				code.push_back(scii(sciVersion, bOpcode, undetermined, true, -1));
-				bool fForward = (wTarget > wReferencePosition);
-				Fixup fixup = { get_cur_pos(code), wTarget, fForward };
-				branchTargetsToFixup.push_back(fixup);
-				branchTargets.insert(wTarget);
+				cur = code.insert(insertAt, scii(sciVersion, bOpcode, wOperands[0], wOperands[1], wOperands[2], -1));
 			}
-		}
-		else
-		{
-			code.push_back(scii(sciVersion, bOpcode, wOperands[0], wOperands[1], wOperands[2], -1));
-		}
 
-		// Store the position of the instruction we just added:
-		referenceToCodePos[wReferencePosition] = get_cur_pos(code);
-		// Store the actual offset in the instruction itself:
-		uint16_t wSize = (uint16_t)(pCur - pThisInstruction);
-		get_cur_pos(code)->set_offset_and_size(wReferencePosition + wBaseOffset, wSize);
-
-		// Attempt to detect the end of the function. If we encounter a return staetment and it's equal to or beyond anything in branchTargetsToFixup,
-		// then we have reached the end.
-		if (bOpcode == Opcode::RET)
-		{
-			if (branchTargets.empty() || ((*branchTargets.rbegin()) <= wReferencePosition))
+			// Store the position of the instruction we just added:
+			referenceToCodePos[wReferencePosition] = cur;
+			// Store the actual offset in the instruction itself:
+			cur->set_offset_and_size(wReferencePosition + wBaseOffset, wSize);
+			if (part > 0)
 			{
-				// We've reached the end
-				break;
+				cur->set_outside_function();
+			}
+			if (first == code.end())
+			{
+				first = cur;
+			}
+			previous = bOpcode;
+
+			// Attempt to detect the end of the part. If we encounter a return statement (or a jmp out of the part) and
+			// it's equal to or beyond each target in the part, then we have reached the end.
+			if ((bOpcode == Opcode::RET) || fLeavesPart)
+			{
+				if (branchTargets.empty() || ((*branchTargets.rbegin()) <= (uint16_t)(wReferencePosition - wPartStart)))
+				{
+					// We've reached the end
+					break;
+				}
+			}
+
+			wReferencePosition += wSize;
+		}
+		parts[part].first = first;
+		parts[part].last = cur;
+		if (part == 0)
+		{
+			pFunctionEnd = pCur;
+			if ((cur != code.end()) && (cur != code.begin()) && (std::prev(cur)->get_opcode() == Opcode::RET) && (cur->get_opcode() != Opcode::RET))
+			{
+				functionPadding = cur;
 			}
 		}
-
-		wReferencePosition += wSize;
 	}
 
 	// Now fixup any branches.
@@ -269,21 +486,14 @@ const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResu
 
 	// Special hack... function code is placed at even intervals.  That means there might be an extra bogus
 	// instruction at the end, just after a ret statement (often it is Opcode::BNOT, which is 0).  If the instruction
-	// before the end is a ret instruction, remove the last instruction (unless it's also a ret - since sometimes
-	// functions will end with two RETs, both of which are jump targets).
-	if (code.size() > 1)
+	// before the end of the code of the function is a ret instruction, remove the last instruction (unless it's also
+	// a ret - since sometimes functions will end with two RETs, both of which are jump targets).
+	if (functionPadding != code.end())
 	{
-		code_pos theEnd = code.end();
-		--theEnd; // Last instruction
-		code_pos maybeRET = theEnd;
-		--maybeRET;
-		if ((maybeRET->get_opcode() == Opcode::RET) && (theEnd->get_opcode() != Opcode::RET))
-		{
-			code.erase(theEnd);
-		}
+		code.erase(functionPadding);
 	}
 
-	return pCur;
+	return pFunctionEnd;
 }
 
 bool _IsVariableUse(SCIVersion version, code_pos pos, VarScope varScope, WORD &wIndex)
@@ -1020,14 +1230,14 @@ namespace
 // end. The end of the code, or nullptr.
 static const BYTE *_DecodeFunction(DecompileLookups &lookups, std::list<scii> &code, const BYTE *pBegin, const BYTE *pEstimatedMaxEnd, const BYTE *pScriptResourceEnd, WORD wBaseOffset)
 {
-	const BYTE *discoveredEnd = _ConvertToInstructions(lookups.GetVersion(), &lookups.DecompileResults(), code, pBegin, pScriptResourceEnd, wBaseOffset, true);
+	const BYTE *discoveredEnd = _ConvertToInstructions(lookups.GetVersion(), &lookups.DecompileResults(), code, pBegin, pScriptResourceEnd, wBaseOffset, true, lookups.GetOutsideCode());
 	if (discoveredEnd == nullptr)
 	{
 		// If there were problems with that (say bogus branches that go somewhere incorrect), try a tighter bound.
 		// We don't want to try the tight bound right away, because it might have been determined using bogus
 		// exports in the export table (e.g. SQ5 does this in script 243).
 		code.clear();
-		discoveredEnd = _ConvertToInstructions(lookups.GetVersion(), &lookups.DecompileResults(), code, pBegin, pEstimatedMaxEnd, wBaseOffset, false);
+		discoveredEnd = _ConvertToInstructions(lookups.GetVersion(), &lookups.DecompileResults(), code, pBegin, pEstimatedMaxEnd, wBaseOffset, false, lookups.GetOutsideCode());
 	}
 	return discoveredEnd;
 }
@@ -1035,7 +1245,7 @@ static const BYTE *_DecodeFunction(DecompileLookups &lookups, std::list<scii> &c
 int FunctionCodeLength(const SCIVersion &version, const BYTE *pBegin, const BYTE *pScriptResourceEnd, uint16_t wBaseOffset)
 {
 	std::list<scii> code;
-	const BYTE *end = _ConvertToInstructions(version, nullptr, code, pBegin, pScriptResourceEnd, wBaseOffset, true);
+	const BYTE *end = _ConvertToInstructions(version, nullptr, code, pBegin, pScriptResourceEnd, wBaseOffset, true, nullptr);
 	return end ? (int)(end - pBegin) : -1;
 }
 
@@ -1080,6 +1290,32 @@ static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, con
 					fmt::format("Scope: {0}\n{1}Code:\n{2}", trackingName, report.scopeTree, scope::CodeForDump(code)));
 			}
 		}
+		for (const scii &inst : code)
+		{
+			if (inst.is_bad_branch())
+			{
+				string name = func.GetOwnerClass() ? (func.GetOwnerClass()->GetName() + "::" + func.GetName()) : func.GetName();
+				std::string message = fmt::format(
+					"{0}: the bnt at {1:04x} goes to {2:04x}, a fault of Sierra's compiler (the test of an empty last clause). When the test fails, the game goes there and can crash. The decompile goes on to the next instruction.",
+					name, inst.get_final_offset_dontcare(), inst.get_bad_branch_target());
+				lookups.DecompileResults().AddResult(DecompilerResultType::Warning, message);
+				func.GetOwnerScript()->AddHeaderComment("WARNING: " + message);
+			}
+		}
+		for (scii &inst : code)
+		{
+			Opcode opcode = inst.get_opcode();
+			if (((opcode == Opcode::BNT) || (opcode == Opcode::BT) || (opcode == Opcode::JMP)) && !inst.is_outside_function() &&
+				inst.get_branch_target()->is_outside_function())
+			{
+				string name = func.GetOwnerClass() ? (func.GetOwnerClass()->GetName() + "::" + func.GetName()) : func.GetName();
+				std::string message = fmt::format(
+					"{0}: the {1} at {2:04x} goes to {3:04x}, outside the code of the function (a patch of the game). The decompile reads the code there as the tail of the function.",
+					name, OpcodeToName(opcode, 0), inst.get_final_offset_dontcare(), inst.get_branch_target()->get_final_offset_dontcare());
+				lookups.DecompileResults().AddResult(DecompilerResultType::Warning, message);
+				func.GetOwnerScript()->AddHeaderComment("WARNING: " + message);
+			}
+		}
 		_DetermineIfFunctionReturnsValue(code, lookups);
 
 		// Construct the function -> for now use procedure, but really should be method or proc
@@ -1089,7 +1325,14 @@ static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, con
 
 		_TrackExternalScriptUsage(code, lookups);
 
-		if (!lookups.DecompileAsm)
+		// The bad branch policy Asm: a function with a bad branch goes to asm.
+		bool badBranchAsm = (lookups.BadBranches == BadBranchPolicy::Asm) &&
+			std::any_of(code.begin(), code.end(), [](const scii &inst) { return inst.is_bad_branch() || inst.is_outside_function(); });
+		if (badBranchAsm && !lookups.DecompileAsm)
+		{
+			report.scope = BadBranchAsmScope;
+		}
+		else if (!lookups.DecompileAsm)
 		{
 			std::string where;
 			sci::Status scoped = _DecompileWithScope(func, lookups, code, &where);
@@ -1123,7 +1366,9 @@ static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, con
 		func.GetStatements().clear();
 		lookups.ResetOnFailure();
 
-		lookups.DecompileResults().AddResult(DecompilerResultType::Important, fmt::format("Falling back to disassembly for {0}", func.GetName()));
+		lookups.DecompileResults().AddResult(DecompilerResultType::Important, (report.scope == BadBranchAsmScope) ?
+			fmt::format("Disassembling {0}: it has a bad branch, and the bad branch policy is asm", func.GetName()) :
+			fmt::format("Falling back to disassembly for {0}", func.GetName()));
 		DisassembleFallback(func, code.begin(), code.end(), lookups);
 		report.output = "asm";
 	}
@@ -1588,6 +1833,7 @@ void DecompileLookups::ReleaseDecompileState()
 	_restStatementTrack.clear();
 	_localProcToPropLookups.clear();
 	_pPropertyNames = nullptr;
+	_outside = { nullptr, nullptr };
 	_pFunc = nullptr;
 	FunctionDecompileHints.Reset();
 }

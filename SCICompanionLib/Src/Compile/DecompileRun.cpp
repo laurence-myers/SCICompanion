@@ -54,6 +54,10 @@ namespace
         }
         void InformFunction(const DecompiledFunction &function) override
         {
+            if (function.scope == BadBranchAsmScope)
+            {
+                _stats.badBranchAsm++;
+            }
             _inner.InformFunction(function);
         }
         void SetGlobalVarsUpdated(const std::vector<std::pair<std::string, std::string>> &renames) override

@@ -648,6 +648,7 @@ void DecompileDialog::OnBnClickedDecompile()
 	_debugAsm = m_wndAsm.GetCheck() != 0;
 	m_wndDebugFunctionMatch.GetWindowTextA(_debugFunctionMatch);
 	_substituteTextTuples = m_wndTextTuples.GetCheck() != 0;
+	_badBranchesAsAsm = !!appState->_fDecompileBadBranchesAsAsm;
 
 	// Get a list of scripts to decompile
 	if (m_wndListScripts.GetSelectedCount() == 0)
@@ -782,6 +783,7 @@ void DecompileDialog::s_DecompileThreadWorker(DecompileDialog *pThis)
 	options.engine.DebugFunctionMatch = (PCSTR)pThis->_debugFunctionMatch;
 	options.engine.DecompileAsm = pThis->_debugAsm;
 	options.engine.SubstituteTextTuples = pThis->_substituteTextTuples;
+	options.engine.BadBranches = pThis->_badBranchesAsAsm ? BadBranchPolicy::Asm : BadBranchPolicy::Fix;
 	options.names = NameAssignment::None;
 	options.gameIni = GameIniNames::None;
 	// After a Cancel, the dialog offers no stale script (below), so the run

@@ -487,9 +487,17 @@ namespace UnitTests
 		// A form that the check does not read.
 		TEST_METHOD(Meaning_AStackUnderflowIsUncompared)
 		{
-			meaning::Outcome outcome = Check("toss\nret", "toss\nret");
+			meaning::Outcome outcome = Check("toss\nldi 0\nret", "toss\nldi 0\nret");
 			AssertVerdict(meaning::Verdict::Uncompared, outcome);
 			Assert::AreEqual(std::string("original: stack-underflow"), outcome.detail);
+		}
+
+		// A toss with no value on the stack right before a ret does nothing:
+		// the ret clears the stack (a patch of a game goes to the "toss; ret"
+		// of a switch of another function).
+		TEST_METHOD(Meaning_ATossWithNoValueBeforeRetDoesNothing)
+		{
+			AssertVerdict(meaning::Verdict::Same, Check("ldi 5\ntoss\nret", "ldi 5\nret"));
 		}
 
 		// The functions pair by key; one with no partner is UNCOMPARED.

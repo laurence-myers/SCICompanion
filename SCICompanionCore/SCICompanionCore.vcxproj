@@ -87,6 +87,7 @@
     <ClInclude Include="..\SCICompanionLib\Src\Compile\CompiledScript.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\CompileInterfaces.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\CompileWrite.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\BadBranchPolicy.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileBatch.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerAstPasses.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompilerConfig.h" />

@@ -26,7 +26,17 @@ modernizing the build. Broad highlights since the previous release:
   Sierra's compiler made by mistake (such as in script 40 of Conquests of
   Camelot) is left out, also with a warning. So is an export that points
   outside the code of its script (such as exports 6 to 29 of script 0 of
-  Codename: ICEMAN), not given an empty procedure.
+  Codename: ICEMAN), not given an empty procedure. The bad target that
+  Sierra's compiler gave to the test of an empty last clause (such as in
+  script 202 of Police Quest 3) no longer becomes the number -17747: the
+  clause is empty, so the decompile goes on to the next instruction, with a
+  warning and a `COMPILER BUG` comment. A branch that a patch of a game
+  sends to code outside its function (such as the new `init` methods of
+  the King's Quest IV patch that go on into the old ones) makes the
+  decompile read that code as the tail of the function, also with a
+  warning. To see such functions as asm instead, turn on "Decompile bad
+  branches as asm" in the preferences, or give `--bad-branch asm` to
+  `scic script decompile`.
 * **Statement groups in expressions.** `((= a 1) (b c:))` is two or more
   statements in parentheses, whose value is the value of the last one. Sierra's
   1993 compiler accepted it (Pepper's Adventures in Time uses it), and the

@@ -1268,6 +1268,12 @@ namespace meaning
 					break;
 				case Opcode::TOSS:
 				{
+					// A toss with no value on the stack right before a ret does nothing: the ret clears the
+					// stack (the spare toss of scope::CodeModel, and its copy in a recompiled function).
+					if (state.stack.empty() && (state.pc + 1 < (int)_function.code.size()) && (_function.code[state.pc + 1].op == Opcode::RET))
+					{
+						break;
+					}
 					_Pop(state);
 					// The end of a switch: a fact about its value ends with it (so that the
 					// paths of its cases get to one state after it).

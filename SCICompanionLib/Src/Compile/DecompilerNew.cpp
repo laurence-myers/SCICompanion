@@ -99,6 +99,54 @@ void _ApplyChildren(ConsumptionNode &node, StatementsNode &statementsNode, Decom
 	}
 }
 
+// The comment of a clause whose test is a bnt of a fault of Sierra's
+// compiler (ConsumptionNode::_compilerBug).
+static const char CompilerBugComment[] = "; COMPILER BUG: when the test fails, the game can crash";
+
+// The node has a value that such a bnt tests, outside the statement lists
+// in it (each list gives its own comments).
+static bool _HasCompilerBugValue(ConsumptionNode &node)
+{
+	switch (node.GetType())
+	{
+		case ChunkType::Then:
+		case ChunkType::Else:
+		case ChunkType::CaseBody:
+		case ChunkType::LoopBody:
+		case ChunkType::Step:
+		case ChunkType::FunctionBody:
+			return false;
+		default:
+			break;
+	}
+	if (node._compilerBug)
+	{
+		return true;
+	}
+	for (auto &child : node.Children())
+	{
+		if (_HasCompilerBugValue(*child))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+// The statements of a list. A statement with a value that a bnt of a fault
+// of Sierra's compiler tests gets the comment after it.
+static void _ApplyStatements(ConsumptionNode &node, StatementsNode &statementsNode, DecompileLookups &lookups)
+{
+	for (auto &child : node.Children())
+	{
+		_ApplySyntaxNodeToCodeNode(*child, statementsNode, lookups);
+		if (_HasCompilerBugValue(*child))
+		{
+			statementsNode.AddStatement(std::make_unique<Comment>(CompilerBugComment, CommentType::Indented));
+		}
+	}
+}
+
 
 std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode2(ConsumptionNode &node, DecompileLookups &lookups)
 {
@@ -123,9 +171,9 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode2(ConsumptionNode &node, Decomp
 			unique_ptr<ForLoop> forLoop = make_unique<ForLoop>();
 			forLoop->SetCodeBlock(make_unique<CodeBlock>());
 			_ApplySyntaxNodeToCodeNodeConditionNode(*node.GetChild(ChunkType::Condition), *forLoop, lookups);
-			_ApplyChildren(*node.GetChild(ChunkType::LoopBody), *forLoop, lookups);
+			_ApplyStatements(*node.GetChild(ChunkType::LoopBody), *forLoop, lookups);
 			unique_ptr<CodeBlock> step = make_unique<CodeBlock>();
-			_ApplyChildren(*node.GetChild(ChunkType::Step), *step, lookups);
+			_ApplyStatements(*node.GetChild(ChunkType::Step), *step, lookups);
 			forLoop->SetLooper(move(step));
 			return unique_ptr<SyntaxNode>(move(forLoop));
 		}
@@ -190,7 +238,11 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode2(ConsumptionNode &node, Decomp
 		case ChunkType::CaseBody:
 		{
 			unique_ptr<CodeBlock> codeBlock = std::make_unique<CodeBlock>();
-			_ApplyChildren(node, *codeBlock, lookups);
+			_ApplyStatements(node, *codeBlock, lookups);
+			if (node._compilerBug)
+			{
+				codeBlock->AddStatement(std::make_unique<Comment>(CompilerBugComment, CommentType::Indented));
+			}
 			return unique_ptr<SyntaxNode>(move(codeBlock));
 		}
 
@@ -213,7 +265,7 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode2(ConsumptionNode &node, Decomp
 		{
 			unique_ptr<WhileLoop> whileLoop = make_unique<WhileLoop>();
 			_ApplySyntaxNodeToCodeNodeConditionNode(*node.GetChild(ChunkType::Condition), *whileLoop, lookups);
-			_ApplyChildren(*node.GetChild(ChunkType::LoopBody), *whileLoop, lookups);
+			_ApplyStatements(*node.GetChild(ChunkType::LoopBody), *whileLoop, lookups);
 			return unique_ptr<SyntaxNode>(move(whileLoop));
 		}
 
@@ -221,7 +273,7 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode2(ConsumptionNode &node, Decomp
 		{
 			unique_ptr<DoLoop> doLoop = make_unique<DoLoop>();
 			_ApplySyntaxNodeToCodeNodeConditionNode(*node.GetChild(ChunkType::Condition), *doLoop, lookups);
-			_ApplyChildren(*node.GetChild(ChunkType::LoopBody), *doLoop, lookups);
+			_ApplyStatements(*node.GetChild(ChunkType::LoopBody), *doLoop, lookups);
 			return unique_ptr<SyntaxNode>(move(doLoop));
 		}
 
@@ -739,12 +791,13 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, Decompi
 					// script 1826 has many) the code keeps its super.
 					throw ConsumptionNodeException(&node, "A super in a procedure.");
 				}
-				if (classDefinition)
+				if (classDefinition && _CompilerMakesTheVersion(lookups) &&
+					(classDefinition->GetSuperClass() != lookups.LookupClassName(inst.get_first_operand())))
 				{
-					uint16_t species = inst.get_first_operand();
-					std::string superClassContext = classDefinition->GetSuperClass();
-					std::string superClassStated = lookups.LookupClassName(species);
-					assert(superClassContext == superClassStated);
+					// A super of another class: the text's super compiles to the superclass, so the
+					// function falls back to asm (the SQ4 copy in "patch", script 271: ZZTop::doVerb
+					// goes to the code of pod::doVerb, whose superclass is another one).
+					throw ConsumptionNodeException(&node, "A super of a class that is not the superclass.");
 				}
 				sendCall->SetName("super");
 			}
@@ -1313,10 +1366,7 @@ void OutputNewStructure(sci::FunctionBase &func, const scope::CodeModel &model, 
 
 	try
 	{
-		for (auto &child : mainChunk->Children())
-		{
-			_ApplySyntaxNodeToCodeNode(*child, func, lookups);
-		}
+		_ApplyStatements(*mainChunk, func, lookups);
 	}
 	catch (ConsumptionNodeException &e)
 	{

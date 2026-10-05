@@ -435,6 +435,7 @@ namespace UnitTests
                 { "script", "decompile", _copyFolder, "--all", "--stdout" },
                 { "script", "decompile", _copyFolder, "0", "974", "--stdout" },
                 { "script", "decompile", _copyFolder, "974", "--game-ini", "xml" },
+                { "script", "decompile", _copyFolder, "974", "--bad-branch", "text" },
                 { "script", "decompile", _copyFolder, "s1nosuchscript" },
                 { "script", "sco", _copyFolder },
                 { "script", "sco", _copyFolder, "rm001", "--all" },
@@ -782,6 +783,17 @@ namespace UnitTests
             Assert::IsTrue(dryRun.out.empty(), L"no source on stdout");
             Assert::IsTrue(dryRun.err.find("would write") != std::string::npos, Wide(dryRun.err).c_str());
             Assert::IsTrue(before == Snapshot(_copyFolder), L"--dry-run writes nothing");
+        }
+
+        // --bad-branch asm gives asm only for a function with a bad branch:
+        // the template has none, so its text is the text of the default.
+        TEST_METHOD(Decompile_BadBranchAsm_OnlyForABadBranch)
+        {
+            CopyTemplate("\\TemplateGame\\SCI0", true);
+            cli::StringConsole fix = Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout" });
+            cli::StringConsole asmPolicy = Expect(0, { "script", "decompile", _copyFolder, "974", "--stdout", "--bad-branch", "asm" });
+            Assert::IsTrue(fix.out.find("(script# 974)") != std::string::npos, Wide(fix.out).c_str());
+            Assert::AreEqual(fix.out, asmPolicy.out);
         }
 
         // A run on some scripts reports the stale scripts; --update-stale

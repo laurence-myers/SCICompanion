@@ -50,6 +50,7 @@ namespace scope
 
 		_FindLiveCode();
 		_FindDepths();
+		_FindSpareTosses();
 		_FindStrayBranches();
 		_FindLoops();
 		_FindNoOps();
@@ -356,6 +357,31 @@ namespace scope
 		}
 	}
 
+	// The spare tosses (IsSpareToss): each one takes nothing, and the depths
+	// are found again.
+	void CodeModel::_FindSpareTosses()
+	{
+		bool found = false;
+		for (int i = 0; i + 1 < Size(); ++i)
+		{
+			if ((Op(i) == Opcode::TOSS) && At(i).is_outside_function() && (Op(i + 1) == Opcode::RET) && IsLive(i) && (DepthBefore(i) == 0) && !_insts[i].depthConflict)
+			{
+				_insts[i].spareToss = true;
+				_insts[i].pops = 0;
+				found = true;
+			}
+		}
+		if (found)
+		{
+			for (Inst &entry : _insts)
+			{
+				entry.depthBefore = -1;
+			}
+			_underflow = false;
+			_FindDepths();
+		}
+	}
+
 	// The bt and bnt that are stray, when the function has a stack
 	// underflow. A candidate is a live bt or bnt whose target the live
 	// instruction before it falls into with more values on the stack than
@@ -552,7 +578,7 @@ namespace scope
 	{
 		for (int toss = 0; toss < Size(); ++toss)
 		{
-			if (!IsLive(toss) || (Op(toss) != Opcode::TOSS))
+			if (!IsLive(toss) || (Op(toss) != Opcode::TOSS) || _insts[toss].spareToss)
 			{
 				continue;
 			}
@@ -725,6 +751,10 @@ namespace scope
 			if (IsStray(i))
 			{
 				flags += fmt::format(" stray {0:04x}", Offset(BytecodeTarget(i)));
+			}
+			if (IsSpareToss(i))
+			{
+				flags += " spare";
 			}
 			if (IsInert(i))
 			{

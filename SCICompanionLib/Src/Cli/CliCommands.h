@@ -139,6 +139,7 @@ namespace cli
         bool toStdout = false;
         bool textTuples = false;
         bool asmOnly = false;
+        std::string badBranch = "fix";     // fix or asm
         bool debugControlFlow = false;
         bool debugInstructions = false;
         std::string debugFilter;

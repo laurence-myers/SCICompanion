@@ -857,11 +857,13 @@ namespace
 					}
 				}
 				// Empty comment nodes (dead jumps) stay out of the else, or the
-				// printed shape depends on them.
+				// printed shape depends on them. A comment with text (such as
+				// the COMPILER BUG comment) goes into the else.
 				unique_ptr<CodeBlock> elseB = make_unique<CodeBlock>();
 				for (size_t j = ifIndex + 1; j < list.size(); j++)
 				{
-					if (!SafeSyntaxNode<Comment>(list[j].get()))
+					Comment *comment = SafeSyntaxNode<Comment>(list[j].get());
+					if (!comment || (comment->CommentType != CommentType::None))
 					{
 						elseB->AddStatement(move(list[j]));
 					}

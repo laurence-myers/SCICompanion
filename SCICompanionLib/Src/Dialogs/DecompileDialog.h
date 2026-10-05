@@ -130,6 +130,8 @@ private:
 	bool _debugInstConsumption;
 	bool _debugAsm;
 	bool _substituteTextTuples;
+	// The bad branch policy of the preferences, read when the decompile starts.
+	bool _badBranchesAsAsm;
 	CString _debugFunctionMatch;
 	void _AssignFilenames();
 
