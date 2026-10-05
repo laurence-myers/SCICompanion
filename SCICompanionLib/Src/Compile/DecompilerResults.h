@@ -30,6 +30,10 @@ enum class DecompilerResultType
 	Debug
 };
 
+// The scope (DecompiledFunction::scope) of a function that the bad branch
+// policy Asm gives as asm.
+inline constexpr char BadBranchAsmScope[] = "bad-branch-asm";
+
 // What the decompiler did with one function (the function report).
 struct DecompiledFunction
 {
@@ -47,7 +51,9 @@ struct DecompiledFunction
 	// has no source).
 	std::string output;
 	// The result of the scope engine: empty when it did not run (asm only,
-	// or no code), "ok", or why it failed ("[scope:<stage>:<id>]").
+	// or no code), "ok", why it failed ("[scope:<stage>:<id>]"), or
+	// BadBranchAsmScope (the bad branch policy Asm gave the function as asm,
+	// with no run of the scope engine).
 	std::string scope;
 	// With the debug dumps of the control flow: the region tree of the scope
 	// parser after the verify stage (scope::Dump), or the error of the stage

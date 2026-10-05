@@ -1330,7 +1330,7 @@ static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, con
 			std::any_of(code.begin(), code.end(), [](const scii &inst) { return inst.is_bad_branch() || inst.is_outside_function(); });
 		if (badBranchAsm && !lookups.DecompileAsm)
 		{
-			report.scope = "bad-branch-asm";
+			report.scope = BadBranchAsmScope;
 		}
 		else if (!lookups.DecompileAsm)
 		{
@@ -1366,7 +1366,9 @@ static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, con
 		func.GetStatements().clear();
 		lookups.ResetOnFailure();
 
-		lookups.DecompileResults().AddResult(DecompilerResultType::Important, fmt::format("Falling back to disassembly for {0}", func.GetName()));
+		lookups.DecompileResults().AddResult(DecompilerResultType::Important, (report.scope == BadBranchAsmScope) ?
+			fmt::format("Disassembling {0}: it has a bad branch, and the bad branch policy is asm", func.GetName()) :
+			fmt::format("Falling back to disassembly for {0}", func.GetName()));
 		DisassembleFallback(func, code.begin(), code.end(), lookups);
 		report.output = "asm";
 	}

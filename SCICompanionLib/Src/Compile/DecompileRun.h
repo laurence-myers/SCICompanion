@@ -77,6 +77,7 @@ struct DecompileStats
 {
     int functions = 0;          // decompiled to source
     int fallbacks = 0;          // fell back to asm
+    int badBranchAsm = 0;       // of the fallbacks: asm by the bad branch policy Asm
     int functionBytes = 0;
     int fallbackBytes = 0;
 };

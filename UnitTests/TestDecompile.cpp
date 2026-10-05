@@ -632,12 +632,14 @@ namespace UnitTests
                 int functions;      // the functions with a bad branch
                 int comments;       // the comments of the asm, one for each bad branch
                 const char *comment;
+                const char *fixture;
             };
             for (const Case &item : {
-                Case{ 941, 3, 3, "COMPILER BUG: the game has" },
-                Case{ 955, 5, 7, "is outside the code of the function (a patch of the game)" } })
+                Case{ 941, 3, 3, "COMPILER BUG: the game has", "X6_SierraBadBranch" },
+                Case{ 955, 5, 7, "is outside the code of the function (a patch of the game)", "X7_BranchOutsideFunction" } })
             {
                 std::string label = fmt::format("script {0}: ", item.script);
+                std::vector<meaning::Function> original = ReadMeaningFunctions(item.script);
                 TestDecompilerResults fixResults;
                 std::string fixText = _DecompileWithPolicy(item.script, BadBranchPolicy::Fix, fixResults);
                 TestDecompilerResults asmResults;
@@ -653,6 +655,14 @@ namespace UnitTests
                 {
                     Assert::AreNotEqual(std::string("bad-branch-asm"), function.scope, Wide(label + fixText).c_str());
                 }
+
+                // The asm compiles again (each function has its own labels), and means the same.
+                {
+                    std::ofstream file(helper.GetScriptFileName(item.fixture), std::ios::binary | std::ios::trunc);
+                    file << asmText;
+                }
+                Assert::IsTrue(CompileFixture(item.script, item.fixture, &error), Wide(label + "the recompile: " + error + "\n" + asmText).c_str());
+                AssertMeaningKept(item.fixture, original, item.script);
             }
         }
 
