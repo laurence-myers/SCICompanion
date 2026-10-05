@@ -568,6 +568,10 @@ namespace scope
 						}
 						_naryCompare = _pending;
 					}
+					if (_model.At(i).is_bad_branch() && _AccIsAvailable())
+					{
+						_pending->_compilerBug = true;
+					}
 					_Structural(i);
 					return;
 				}
@@ -1150,6 +1154,7 @@ namespace scope
 					ConsumptionNode *bodyRaw = body.get();
 					caseNode->AppendChild(std::move(body));
 					_SequenceInto(item->body.get(), bodyRaw, (item->caseJmp != NoIndex) ? item->caseJmp : region.toss);
+					bodyRaw->_compilerBug = (item->branch != NoIndex) && _model.At(item->branch).is_bad_branch() && (bodyRaw->GetChildCount() == 0);
 					_Structural(item->caseJmp);
 					switchNode->AppendChild(std::move(caseNode));
 				}
@@ -1655,6 +1660,7 @@ namespace scope
 				ConsumptionNode *thenRaw = thenNode.get();
 				ifNode->AppendChild(std::move(thenNode));
 				_SequenceInto(region.thenPart.get(), thenRaw, region.tests.back());
+				thenRaw->_compilerBug = _model.At(region.tests.back()).is_bad_branch() && (thenRaw->GetChildCount() == 0);
 
 				if (region.elseKind == ElseKind::Else)
 				{

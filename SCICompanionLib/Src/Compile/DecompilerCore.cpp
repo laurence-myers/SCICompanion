@@ -110,7 +110,28 @@ code_pos get_cur_pos(std::list<scii> &code)
 	return pos;
 }
 
-// 
+// A bnt of a fault of Sierra's compiler: the test of an empty last clause
+// of a switch or a cond. Its target is bad, but the clause is empty, so the
+// code meant the next instruction (at wNext; pNext points to it):
+// - "eq?; bnt; toss" (the last case of a switch), with any target other
+//   than the toss;
+// - a target past the end of the code, before a toss, jmp or ret (the
+//   last clause of a cond).
+static bool _IsSierraBadBranch(const SCIVersion &sciVersion, const std::list<scii> &code, Opcode bOpcode, uint16_t wTarget, uint16_t wNext, uint16_t codeLength, const BYTE *pNext, const BYTE *pEnd)
+{
+	if ((bOpcode != Opcode::BNT) || (pNext >= pEnd) || (wTarget == wNext))
+	{
+		return false;
+	}
+	Opcode next = RawToOpcode(sciVersion, *pNext);
+	if ((next == Opcode::TOSS) && !code.empty() && (code.back().get_opcode() == Opcode::EQ))
+	{
+		return true;
+	}
+	return (wTarget > codeLength) && ((next == Opcode::TOSS) || (next == Opcode::JMP) || (next == Opcode::RET));
+}
+
+//
 // pBegin/pEnd - bounding pointers for the raw byte code
 // wBaseOffset - byte offset in script file where pBegin is (used to calculate absolute code offsets)
 // code		- (out) list of sci instructions.
@@ -196,8 +217,17 @@ const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResu
 		{
 			// +1 because its the operand start pos.
 			uint16_t wTarget = CalcOffset(sciVersion, wReferencePosition + 1, wOperands[0], bByte, bRawOpcode);
+			uint16_t wNext = wReferencePosition + (uint16_t)(pCur - pThisInstruction);
 
-			if (wTarget > codeLength)
+			if (_IsSierraBadBranch(sciVersion, code, bOpcode, wTarget, wNext, codeLength, pCur, pEnd))
+			{
+				code.push_back(scii(sciVersion, bOpcode, undetermined, true, -1));
+				get_cur_pos(code)->set_bad_branch_target(wTarget + wBaseOffset);
+				Fixup fixup = { get_cur_pos(code), wNext, true };
+				branchTargetsToFixup.push_back(fixup);
+				branchTargets.insert(wNext);
+			}
+			else if (wTarget > codeLength)
 			{
 				if (abortOnError)
 				{
@@ -205,8 +235,9 @@ const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResu
 				}
 				else
 				{
-					// This goes out of bounds. Some code is corrupt, like SmoothLooper in script 968 in Hero's Quest.
-					// We can't intelligently reason about where the branch is supposed to point, so just replace it with a load operation.
+					// This goes out of bounds, and it is no bnt of a fault of Sierra's compiler (a patch of a game, like
+					// the KQ4 copy in "patch\NEW", script 32). We can't intelligently reason about where the branch is
+					// supposed to point, so just replace it with a load operation.
 					// We need to make sure it's the same size though.
 					code.push_back(scii(sciVersion, Opcode::LDI, 0xbaad, -1));
 					results->AddResult(DecompilerResultType::Warning, fmt::format("Bad branch at 0x{0:4x}, replaced with -17747.", (wReferencePosition + wBaseOffset)));
@@ -1078,6 +1109,18 @@ static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, con
 			{
 				lookups.DecompileResults().AddResult(DecompilerResultType::Debug,
 					fmt::format("Scope: {0}\n{1}Code:\n{2}", trackingName, report.scopeTree, scope::CodeForDump(code)));
+			}
+		}
+		for (const scii &inst : code)
+		{
+			if (inst.is_bad_branch())
+			{
+				string name = func.GetOwnerClass() ? (func.GetOwnerClass()->GetName() + "::" + func.GetName()) : func.GetName();
+				std::string message = fmt::format(
+					"{0}: the bnt at {1:04x} goes to {2:04x}, a fault of Sierra's compiler (the test of an empty last clause). When the test fails, the game goes there and can crash. The source goes on to the next instruction.",
+					name, inst.get_final_offset_dontcare(), inst.get_bad_branch_target());
+				lookups.DecompileResults().AddResult(DecompilerResultType::Warning, message);
+				func.GetOwnerScript()->AddHeaderComment("WARNING: " + message);
 			}
 		}
 		_DetermineIfFunctionReturnsValue(code, lookups);

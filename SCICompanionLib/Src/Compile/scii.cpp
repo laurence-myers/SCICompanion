@@ -880,6 +880,10 @@ bool scii::is_branch_determined() { return !_fUndetermined; }
 void scii::mark() { }
 bool scii::is_marked() { return false; }
 
+void scii::set_bad_branch_target(uint16_t wTarget) { _fBadBranch = true; _wBadBranchTarget = wTarget; }
+bool scii::is_bad_branch() const { return _fBadBranch; }
+uint16_t scii::get_bad_branch_target() const { return _wBadBranchTarget; }
+
 bool scii::_is_branch_instruction()
 {
 	return (_bOpcode == Opcode::BNT) || (_bOpcode == Opcode::BT) || (_bOpcode == Opcode::JMP);

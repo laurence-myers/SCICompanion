@@ -64,6 +64,11 @@ struct ConsumptionNode
 	bool _hoisted = false;
 	// Break, Continue: the loop, 1 for the innermost one.
 	int _level = 1;
+	// A bnt of a fault of Sierra's compiler (scii::is_bad_branch) tests the
+	// clause. Then, CaseBody: the empty clause, which gets a comment. Another
+	// node: the value that the bnt tests, when the bnt is no branch of the
+	// tree; the statement that has the value gets a comment after it.
+	bool _compilerBug = false;
 
 	code_pos GetCode() const
 	{

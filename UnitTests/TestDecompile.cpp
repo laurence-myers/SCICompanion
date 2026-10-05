@@ -335,6 +335,115 @@ namespace UnitTests
             Assert::IsFalse(out.HasWarningContaining("Invalid function offset"), Wide(out.text).c_str());
         }
 
+        // Sierra's compiler gave a bad target to the bnt of an empty last
+        // clause (PQ3 script 202, addPoint::changeState; ICEMAN script 968,
+        // SmoothLooper::doit). The clause is empty, so the code meant the next
+        // instruction: the decompile goes there, with a warning, and the
+        // recompiled text means the same. The target is past the end of the
+        // code, or (for "eq?; bnt; toss") an instruction of the procedure.
+        TEST_METHOD(SierraBadBranch_GoesToTheNextInstruction)
+        {
+            _gameFolder = SetUpGameSCI11();
+            CResourceMap &rm = AppResourceMap();
+            const GameFolderHelper &helper = rm.Helper();
+            AddFixtureScript("X6_SierraBadBranch");
+            for (bool inside : { false, true })
+            {
+                std::string label = inside ? "target in the code: " : "target past the end: ";
+                std::string error;
+                Assert::IsTrue(CompileFixture(941, "X6_SierraBadBranch", &error), Wide(label + error).c_str());
+                CompiledScript compiled(941, CompiledScriptFlags::RemoveBadExports);
+                Assert::IsTrue(compiled.Load(helper, helper.Version, 941), Wide(label + "setup: the script loads").c_str());
+                std::vector<uint8_t> script = compiled.GetRawBytes();
+                Assert::AreEqual(3, _SetBadBranchTargets(helper.Version, script, inside), Wide(label + "setup: a bnt in each procedure").c_str());
+                ResourceBlob blob(helper, nullptr, ResourceType::Script, script, helper.Version.DefaultVolumeFile, 941, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags());
+                Assert::IsTrue(SUCCEEDED(rm.AppendResource(blob)), Wide(label + "setup: the patched script").c_str());
+                std::vector<meaning::Function> original = ReadMeaningFunctions(941);
+
+                DecompileOutput out = DecompileToText(941);
+                Assert::AreEqual(0, out.fallbacks, Wide(label + out.text).c_str());
+                Assert::IsFalse(out.ContainsAsm(), Wide(label + out.text).c_str());
+                Assert::IsTrue(out.text.find("-17747") == std::string::npos, Wide(label + out.text).c_str());
+                int warnings = 0;
+                for (const std::string &warning : out.warnings)
+                {
+                    Assert::IsTrue(warning.find("Bad branch") == std::string::npos, Wide(label + warning).c_str());
+                    warnings += (warning.find("a fault of Sierra's compiler (the test of an empty last clause)") != std::string::npos) ? 1 : 0;
+                }
+                Assert::AreEqual(3, warnings, Wide(label + "a warning for each bnt").c_str());
+                Assert::AreEqual(3, _CountOf(out.text, "; WARNING: "), Wide(label + "a header comment for each bnt\n" + out.text).c_str());
+                Assert::AreEqual(3, _CountOf(out.text, "; COMPILER BUG: "), Wide(label + "a comment in each empty clause\n" + out.text).c_str());
+
+                // The recompiled text means the same.
+                {
+                    std::ofstream file(helper.GetScriptFileName("X6_SierraBadBranch"), std::ios::binary | std::ios::trunc);
+                    file << out.text;
+                }
+                Assert::IsTrue(CompileFixture(941, "X6_SierraBadBranch", &error), Wide(label + "the recompile: " + error + "\n" + out.text).c_str());
+                AssertMeaningKept("X6_SierraBadBranch", original, 941);
+                AddFixtureScript("X6_SierraBadBranch");
+            }
+        }
+
+        static int _CountOf(const std::string &text, const std::string &needle)
+        {
+            int count = 0;
+            for (size_t at = text.find(needle); at != std::string::npos; at = text.find(needle, at + 1))
+            {
+                ++count;
+            }
+            return count;
+        }
+
+        // Gives a bad target to each bnt before a toss, ret or jmp in the
+        // exported procedures of an SCI1.1 script: past the end of the code;
+        // with inside, the bnt of "eq?; bnt; toss" goes to the start of its
+        // procedure. The count of the bnts.
+        static int _SetBadBranchTargets(const SCIVersion &version, std::vector<uint8_t> &script, bool inside)
+        {
+            int count = 0;
+            uint16_t exports = (uint16_t)(script[6] | (script[7] << 8));
+            for (uint16_t e = 0; e < exports; ++e)
+            {
+                size_t start = (size_t)(script[8 + 2 * e] | (script[9 + 2 * e] << 8));
+                Opcode previous = Opcode::INDETERMINATE;
+                size_t lastTarget = start;
+                for (size_t at = start; at < script.size(); )
+                {
+                    Opcode opcode = RawToOpcode(version, script[at]);
+                    size_t next = at + scii::GetInstructionSize(version, script[at]);
+                    bool word = ((script[at] & 1) == 0);
+                    if ((opcode == Opcode::BNT) || (opcode == Opcode::BT) || (opcode == Opcode::JMP))
+                    {
+                        int offset = word ? (int)(int16_t)(script[at + 1] | (script[at + 2] << 8)) : (int)(int8_t)script[at + 1];
+                        lastTarget = max(lastTarget, (size_t)((int)next + offset));
+                    }
+                    if ((opcode == Opcode::BNT) && (next < script.size()))
+                    {
+                        Opcode after = RawToOpcode(version, script[next]);
+                        if ((after == Opcode::TOSS) || (after == Opcode::RET) || (after == Opcode::JMP))
+                        {
+                            bool toStart = inside && (after == Opcode::TOSS) && (previous == Opcode::EQ);
+                            int offset = toStart ? -(int)(next - start) : (word ? -0x8000 : -0x80);
+                            script[at + 1] = (uint8_t)(offset & 0xff);
+                            if (word)
+                            {
+                                script[at + 2] = (uint8_t)((offset >> 8) & 0xff);
+                            }
+                            ++count;
+                        }
+                    }
+                    if ((opcode == Opcode::RET) && (lastTarget <= at))
+                    {
+                        break;
+                    }
+                    previous = opcode;
+                    at = next;
+                }
+            }
+            return count;
+        }
+
         // A stale .sco with fewer exports than the compiled script. The proc at
         // the missing export index gets the generated proc952_1 name. Before the
         // fix the inverted condition (if (name.empty()) SetName(name)) blanked
