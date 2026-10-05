@@ -673,6 +673,7 @@ unique_ptr<Script> DecompileToAst(const GameFolderHelper &helper, const Compiled
 	set<uint16_t> staleExportsTO;
 	set<uint16_t> outsideExportsTO;
 	_FindCodePointers(compiledScript, codePointersTO, internalProcOffsetsTO, staleExportsTO, outsideExportsTO);
+	lookups.SetOutsideCode(compiledScript.GetRawBytes().data(), compiledScript._codeSections);
 
 	// Spit out code segments:
 	// First, the objects (instances, classes)
@@ -962,6 +963,7 @@ std::vector<FunctionCode> ReadScriptFunctions(const CompiledScript &compiledScri
 	set<uint16_t> staleExportsTO;
 	set<uint16_t> outsideExportsTO;
 	_FindCodePointers(compiledScript, codePointersTO, internalProcOffsetsTO, staleExportsTO, outsideExportsTO);
+	lookups.SetOutsideCode(compiledScript.GetRawBytes().data(), compiledScript._codeSections);
 	const std::vector<BYTE> &bytes = compiledScript.GetRawBytes();
 	const BYTE *pEndScript = compiledScript.GetEndOfRawBytes();
 

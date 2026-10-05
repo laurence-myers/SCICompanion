@@ -83,6 +83,15 @@ struct FunctionDecompileHints
 class IDecompilerResults;
 class IDecompilerConfig;
 
+// The code of a script, for the decode of a function: its bytes, and its code
+// sections. A branch out of the function to that code makes the decode read
+// the code there too.
+struct OutsideCode
+{
+	const BYTE *pScript;
+	const std::vector<CodeSection> *sections;
+};
+
 class DecompileLookups : public ICompiledScriptLookups
 {
 public:
@@ -174,6 +183,12 @@ public:
 	// The count of the functions that DecompileRaw began in this script.
 	int FunctionCount = 0;
 
+	// The code of the script, for the decode of its functions (a branch out
+	// of a function to it makes the decode read that code too). Before it is
+	// set, the decode reads only the code of the function.
+	void SetOutsideCode(const BYTE *pScript, const std::vector<CodeSection> &sections) { _outside = { pScript, &sections }; }
+	const OutsideCode *GetOutsideCode() const { return _outside.pScript ? &_outside : nullptr; }
+
 	const SelectorTable& GetSelectorTable() const;
 
 	void ResetOnFailure();
@@ -186,6 +201,7 @@ public:
 	void ReleaseDecompileState();
 
 private:
+	OutsideCode _outside = { nullptr, nullptr };
 	uint16_t _wScript;
 	const IDecompilerConfig *_config;
 	GlobalCompiledScriptLookups *_pLookups;

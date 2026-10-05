@@ -89,6 +89,13 @@ namespace scope
 		// call). The model reads it as a branch to the next instruction, a
 		// no-op. It is never the last instruction.
 		bool IsStray(int i) const { return _insts[i].stray; }
+		// A toss outside the code of the function (scii::is_outside_function),
+		// right before a ret, that takes a value that the function did not
+		// push: a patch of a game goes to the "toss; ret" of a switch of
+		// another function (the SQ4 copy in "patch", script 271). The ret
+		// clears the stack, so the toss does nothing: the model reads it as
+		// no instruction of the stack, and it ends no switch.
+		bool IsSpareToss(int i) const { return _insts[i].spareToss; }
 		// The target that the parser uses: the target, or an equal target
 		// that the dialect pass chose (plan section 3.2).
 		int ParseTarget(int i) const { return _insts[i].parseTarget; }
@@ -176,6 +183,7 @@ namespace scope
 			int threadedTarget = NoIndex;
 			int bytecodeTarget = NoIndex;
 			bool stray = false;
+			bool spareToss = false;
 			std::vector<int> sources;
 			bool live = false;
 			bool noOp = false;
@@ -190,6 +198,7 @@ namespace scope
 		void _FindLiveCode();
 		void _FindNoOps();
 		void _FindDepths();
+		void _FindSpareTosses();
 		void _FindStrayBranches();
 		void _FindNaryCompares();
 		void _FindLoops();

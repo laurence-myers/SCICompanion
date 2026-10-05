@@ -791,12 +791,13 @@ std::unique_ptr<SyntaxNode> _CodeNodeToSyntaxNode(ConsumptionNode &node, Decompi
 					// script 1826 has many) the code keeps its super.
 					throw ConsumptionNodeException(&node, "A super in a procedure.");
 				}
-				if (classDefinition)
+				if (classDefinition && _CompilerMakesTheVersion(lookups) &&
+					(classDefinition->GetSuperClass() != lookups.LookupClassName(inst.get_first_operand())))
 				{
-					uint16_t species = inst.get_first_operand();
-					std::string superClassContext = classDefinition->GetSuperClass();
-					std::string superClassStated = lookups.LookupClassName(species);
-					assert(superClassContext == superClassStated);
+					// A super of another class: the text's super compiles to the superclass, so the
+					// function falls back to asm (the SQ4 copy in "patch", script 271: ZZTop::doVerb
+					// goes to the code of pod::doVerb, whose superclass is another one).
+					throw ConsumptionNodeException(&node, "A super of a class that is not the superclass.");
 				}
 				sendCall->SetName("super");
 			}

@@ -5,14 +5,6 @@ Open items only: gaps, unfixed findings, questions. The plan is in
 
 ## Outside the plan
 
-- **Branches out of the function in patched games (issue #235).** 25
-  branches of the SQ4 copy in `patch` (script 271: seven `doVerb` methods
-  that go to the tail of `pod::doVerb`) and of the KQ4 copy in
-  `patch\NEW` (scripts 0, 32, 33, 36, 39, 40, 41, 70, 77, 605: a new
-  `init` that goes to the old one), and one in script 200 of the game copy
-  with resource.map MD5 `28a6f471...`, go to code of the script outside
-  their function. The decode still replaces each one with `ldi 0xbaad`
-  (-17747). The plan: decode the target code as the tail of the function.
 - **A public instance with the name of a property.** The decompiler gives
   an instance that is not public, and that has the name of a property of
   an object of its script, another name (with its name string as an
@@ -48,13 +40,15 @@ Open items only: gaps, unfixed findings, questions. The plan is in
 
 ## Refusals
 
-The full corpus run gives 64 functions as `asm`:
+The full corpus run gives 71 functions as `asm`:
 
-- `syntax` (46): code that the text cannot have: a property past the end
+- `syntax` (53): code that the text cannot have: a property past the end
   of its object (for example `Act::canBeHere` of ICEMAN, LSL3 and QfG1,
-  Hoyle 1 `Deck`, `MouthSync::init`), and a
+  Hoyle 1 `Deck`, `MouthSync::init`), a
   property read in a procedure (an export at the code of a method:
-  Mixed-Up Mother Goose script 0).
+  Mixed-Up Mother Goose script 0), and a super of a class that is not the
+  superclass (the SQ4 copy in a "patch" folder, script 271: seven `doVerb`
+  methods go to the tail of `pod::doVerb`, whose superclass is another one).
 - `no-scope-for-target` (5): the SQ4 copy in a "patch" folder (scripts 16,
   271, 387, 391): a fan patch.
 - `acc-no-fact` (4): SQ4 patch 405 and 410: the

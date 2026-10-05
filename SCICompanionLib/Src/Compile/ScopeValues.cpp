@@ -597,6 +597,11 @@ namespace scope
 					_naryCompare = nullptr;
 					return;
 				case Opcode::TOSS:
+					if (_model.IsSpareToss(i))
+					{
+						_Structural(i);
+						return;
+					}
 					_Fail("toss-outside-switch", i);
 				case Opcode::REST:
 					_Push(_Node(i), EntryKind::Rest);

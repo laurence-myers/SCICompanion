@@ -386,6 +386,175 @@ namespace UnitTests
             }
         }
 
+        // A branch out of the function into code of the script (patches of
+        // games: the KQ4 copy in "patch\NEW", script 32; the SQ4 copy in
+        // "patch", script 271). The decode reads the code there as the tail
+        // of the function: a detour to code that nothing calls, and a shared
+        // tail of a switch whose "toss; ret" takes a value that the function
+        // did not push. A tail with a super of a class that is not the
+        // superclass falls back to asm. The recompiled text means the same.
+        TEST_METHOD(BranchOutsideFunction_ReadsTheCodeThere)
+        {
+            _gameFolder = SetUpGameSCI11();
+            CResourceMap &rm = AppResourceMap();
+            const GameFolderHelper &helper = rm.Helper();
+            const SCIVersion &version = helper.Version;
+            AddFixtureScript("X7_BranchOutsideFunction");
+            std::string error;
+            Assert::IsTrue(CompileFixture(955, "X7_BranchOutsideFunction", &error), Wide(error).c_str());
+            CompiledScript compiled(955, CompiledScriptFlags::RemoveBadExports);
+            Assert::IsTrue(compiled.Load(helper, version, 955), L"setup: the script loads");
+            std::vector<uint8_t> script = compiled.GetRawBytes();
+            auto exportAt = [&](int e) { return (size_t)(script[8 + 2 * e] | (script[9 + 2 * e] << 8)); };
+            auto methodAt = [&](const std::string &object) -> size_t
+            {
+                for (const auto &compiledObject : compiled._objects)
+                {
+                    if (compiledObject->GetName() == object)
+                    {
+                        return compiledObject->GetMethodCodePointersTO()[0];
+                    }
+                }
+                Assert::Fail(Wide("setup: no object " + object).c_str());
+                return 0;
+            };
+
+            // detour: a jmp to oldBody in place of "push0; call oldBody".
+            std::vector<_Inst> detour = _Instructions(version, script, exportAt(0));
+            size_t call = _Find(detour, Opcode::CALL, L"setup: the call of oldBody");
+            Assert::IsTrue((call > 0) && (detour[call - 1].opcode == Opcode::PUSH0), L"setup: push0 before the call");
+            _SetJmp(script, detour[call - 1].at, detour[call].target);
+            // sharer: its bnt to the else of switcher, its jmp to the toss.
+            std::vector<_Inst> switcher = _Instructions(version, script, exportAt(1));
+            std::vector<_Inst> sharer = _Instructions(version, script, exportAt(2));
+            size_t elseOfSwitcher = switcher[_Find(switcher, Opcode::BNT, L"setup: the bnt of switcher")].target;
+            size_t tossOfSwitcher = switcher[_Find(switcher, Opcode::JMP, L"setup: the jmp of switcher")].target;
+            Assert::AreEqual((int)Opcode::TOSS, (int)RawToOpcode(version, script[tossOfSwitcher]), L"setup: the jmp of switcher goes to the toss");
+            _SetTarget(script, sharer[_Find(sharer, Opcode::BNT, L"setup: the bnt of sharer")], elseOfSwitcher);
+            _SetTarget(script, sharer[_Find(sharer, Opcode::JMP, L"setup: the jmp of sharer")], tossOfSwitcher);
+            // X7Other::doit: its jmp to the "pushi #doit" of X7Tail::doit.
+            std::vector<_Inst> tail = _Instructions(version, script, methodAt("X7Tail"));
+            std::vector<_Inst> other = _Instructions(version, script, methodAt("X7Other"));
+            _SetTarget(script, other[_Find(other, Opcode::JMP, L"setup: the jmp of X7Other::doit")], tail[_Find(tail, Opcode::PUSHI, L"setup: the pushi of X7Tail::doit")].at);
+
+            ResourceBlob blob(helper, nullptr, ResourceType::Script, script, helper.Version.DefaultVolumeFile, 955, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags());
+            Assert::IsTrue(SUCCEEDED(rm.AppendResource(blob)), L"setup: the patched script");
+            std::vector<meaning::Function> original = ReadMeaningFunctions(955);
+
+            DecompileOutput out = DecompileToText(955);
+            Assert::IsTrue(out.text.find("-17747") == std::string::npos, Wide(out.text).c_str());
+            Assert::IsTrue(out.text.find("(procedure (oldBody") == std::string::npos, Wide("nothing calls oldBody\n" + out.text).c_str());
+            std::string detourText = _FunctionText(out.text, "(procedure (detour");
+            Assert::IsTrue((detourText.find("(= local0 300)") != std::string::npos) && (detourText.find("(= local0 7)") != std::string::npos) &&
+                (detourText.find("(= local0 9)") != std::string::npos) && (detourText.find("(asm") == std::string::npos), Wide(out.text).c_str());
+            std::string sharerText = _FunctionText(out.text, "(procedure (sharer");
+            Assert::IsTrue((sharerText.find("(= local0 3)") != std::string::npos) && (sharerText.find("(= local0 2)") != std::string::npos) &&
+                (sharerText.find("(= local0 4)") == std::string::npos) && (sharerText.find("(asm") == std::string::npos), Wide(out.text).c_str());
+            std::string otherText = _FunctionText(out.text, "(class X7Other");
+            Assert::IsTrue((otherText.find("(asm") != std::string::npos) && (otherText.find("super") != std::string::npos) &&
+                (otherText.find("Code") != std::string::npos), Wide(out.text).c_str());
+            Assert::AreEqual(1, out.fallbacks, Wide("X7Other::doit falls back to asm\n" + out.text).c_str());
+            Assert::IsTrue(out.HasWarningContaining("A super of a class that is not the superclass"), Wide(out.text).c_str());
+            int outsideWarnings = 0;
+            for (const std::string &warning : out.warnings)
+            {
+                outsideWarnings += (warning.find("outside the code of the function (a patch of the game)") != std::string::npos) ? 1 : 0;
+            }
+            Assert::AreEqual(4, outsideWarnings, Wide("a warning for each branch out\n" + out.text).c_str());
+            Assert::AreEqual(4, _CountOf(out.text, "; WARNING: "), Wide("a header comment for each branch out\n" + out.text).c_str());
+
+            // The recompiled text means the same.
+            {
+                std::ofstream file(helper.GetScriptFileName("X7_BranchOutsideFunction"), std::ios::binary | std::ios::trunc);
+                file << out.text;
+            }
+            Assert::IsTrue(CompileFixture(955, "X7_BranchOutsideFunction", &error), Wide("the recompile: " + error + "\n" + out.text).c_str());
+            AssertMeaningKept("X7_BranchOutsideFunction", original, 955);
+        }
+
+        struct _Inst
+        {
+            size_t at;
+            Opcode opcode;
+            size_t size;
+            size_t target;  // a branch or a call: its target
+        };
+
+        // The instructions of a function of an SCI1.1 script, up to a ret
+        // that no branch goes past.
+        static std::vector<_Inst> _Instructions(const SCIVersion &version, const std::vector<uint8_t> &script, size_t start)
+        {
+            std::vector<_Inst> instructions;
+            size_t lastTarget = start;
+            for (size_t at = start; at < script.size(); )
+            {
+                Opcode opcode = RawToOpcode(version, script[at]);
+                size_t size = scii::GetInstructionSize(version, script[at]);
+                size_t target = 0;
+                if ((opcode == Opcode::BNT) || (opcode == Opcode::BT) || (opcode == Opcode::JMP) || (opcode == Opcode::CALL))
+                {
+                    bool word = ((script[at] & 1) == 0);
+                    int offset = word ? (int)(int16_t)(script[at + 1] | (script[at + 2] << 8)) : (int)(int8_t)script[at + 1];
+                    target = (size_t)((int)(at + size) + offset);
+                    if (opcode != Opcode::CALL)
+                    {
+                        lastTarget = max(lastTarget, target);
+                    }
+                }
+                instructions.push_back({ at, opcode, size, target });
+                if ((opcode == Opcode::RET) && (lastTarget <= at))
+                {
+                    break;
+                }
+                at += size;
+            }
+            return instructions;
+        }
+
+        static size_t _Find(const std::vector<_Inst> &instructions, Opcode opcode, const wchar_t *setup)
+        {
+            for (size_t i = 0; i < instructions.size(); ++i)
+            {
+                if (instructions[i].opcode == opcode)
+                {
+                    return i;
+                }
+            }
+            Assert::Fail(setup);
+            return 0;
+        }
+
+        // Sets the target of a bt, bnt or jmp.
+        static void _SetTarget(std::vector<uint8_t> &script, const _Inst &branch, size_t target)
+        {
+            bool word = ((script[branch.at] & 1) == 0);
+            int offset = (int)target - (int)(branch.at + branch.size);
+            Assert::IsTrue(word ? ((offset >= -0x8000) && (offset <= 0x7fff)) : ((offset >= -0x80) && (offset <= 0x7f)),
+                Wide(fmt::format("setup: the target {0:04x} of the branch at {1:04x} fits its operand", target, branch.at)).c_str());
+            script[branch.at + 1] = (uint8_t)(offset & 0xff);
+            if (word)
+            {
+                script[branch.at + 2] = (uint8_t)((offset >> 8) & 0xff);
+            }
+        }
+
+        // Writes a jmp (word operand) at an address.
+        static void _SetJmp(std::vector<uint8_t> &script, size_t at, size_t target)
+        {
+            script[at] = (uint8_t)((uint8_t)Opcode::JMP << 1);
+            _SetTarget(script, { at, Opcode::JMP, 3, 0 }, target);
+        }
+
+        // The text from the start of a function or class to the start of the
+        // next one.
+        static std::string _FunctionText(const std::string &text, const std::string &start)
+        {
+            size_t from = text.find(start);
+            Assert::IsTrue(from != std::string::npos, Wide("no " + start + "\n" + text).c_str());
+            size_t to = (std::min)(text.find("\n(procedure", from + 1), text.find("\n(class", from + 1));
+            return text.substr(from, (to == std::string::npos) ? std::string::npos : (to - from));
+        }
+
         static int _CountOf(const std::string &text, const std::string &needle)
         {
             int count = 0;

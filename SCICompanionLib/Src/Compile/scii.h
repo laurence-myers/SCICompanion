@@ -104,6 +104,10 @@ public:
 	void set_bad_branch_target(uint16_t wTarget);
 	bool is_bad_branch() const;
 	uint16_t get_bad_branch_target() const;
+	// An instruction outside the code of the function, which the decode reads
+	// because a branch of the function goes there (a patch of a game).
+	void set_outside_function();
+	bool is_outside_function() const;
 
 	static uint16_t GetInstructionSize(const SCIVersion &version, uint8_t rawOpcode);
 	static uint16_t GetInstructionArgumentSize(const SCIVersion &version, uint8_t rawOpcode);
@@ -120,6 +124,7 @@ private:
 	bool _fUndetermined;
 	bool _fForwardBranch;
 	bool _fBadBranch = false;
+	bool _fOutsideFunction = false;
 	uint16_t _wBadBranchTarget = 0;
 	Opcode _bOpcode;
 	int _pDebug;	  // Extra info for debugging.

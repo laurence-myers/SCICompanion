@@ -1268,6 +1268,10 @@ namespace meaning
 					break;
 				case Opcode::TOSS:
 				{
+					if (inst.spareToss)
+					{
+						break;
+					}
 					_Pop(state);
 					// The end of a switch: a fact about its value ends with it (so that the
 					// paths of its cases get to one state after it).
@@ -1693,6 +1697,9 @@ namespace meaning
 					{
 						function.code[i].target = i + 1;
 					}
+					// The decompiler reads a spare toss as no instruction of
+					// the stack: here it takes nothing.
+					function.code[i].spareToss = model.IsSpareToss(i);
 				}
 			}
 		}
