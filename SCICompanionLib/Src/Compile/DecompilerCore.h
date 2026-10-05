@@ -18,6 +18,7 @@
 #include "ScriptOM.h"
 #include <cstdint>
 #include "CompileCommon.h"
+#include "BadBranchPolicy.h"
 
 // fwd decl
 namespace sci
@@ -179,6 +180,7 @@ public:
 	bool DebugInstructionConsumption;
 	bool DecompileAsm = false;
 	bool SubstituteTextTuples = false;
+	BadBranchPolicy BadBranches = BadBranchPolicy::Fix;
 	PCSTR pszDebugFilter = nullptr;
 	// The count of the functions that DecompileRaw began in this script.
 	int FunctionCount = 0;

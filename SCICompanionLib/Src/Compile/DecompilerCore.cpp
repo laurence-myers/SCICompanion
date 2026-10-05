@@ -1325,7 +1325,14 @@ static void _DecompileRawBody(FunctionBase &func, DecompileLookups &lookups, con
 
 		_TrackExternalScriptUsage(code, lookups);
 
-		if (!lookups.DecompileAsm)
+		// The bad branch policy Asm: a function with a bad branch goes to asm.
+		bool badBranchAsm = (lookups.BadBranches == BadBranchPolicy::Asm) &&
+			std::any_of(code.begin(), code.end(), [](const scii &inst) { return inst.is_bad_branch() || inst.is_outside_function(); });
+		if (badBranchAsm && !lookups.DecompileAsm)
+		{
+			report.scope = "bad-branch-asm";
+		}
+		else if (!lookups.DecompileAsm)
 		{
 			std::string where;
 			sci::Status scoped = _DecompileWithScope(func, lookups, code, &where);

@@ -126,6 +126,7 @@ AppState::AppState(CWinApp *pApp) : _session(SessionOptions(), this, &_resourceR
 	_onionRightOnTop = FALSE;
 	_onionWrap = TRUE;
 	_fWarnOnUnusedInstances = TRUE;
+	_fDecompileBadBranchesAsAsm = FALSE;
 
 	_pVocabTemplate = nullptr;
 

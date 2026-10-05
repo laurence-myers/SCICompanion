@@ -196,6 +196,8 @@ public:
 	BOOL _onionWrap;
 
 	BOOL _fWarnOnUnusedInstances;
+	// The decompiler gives a function with a bad branch as asm (BadBranchPolicy::Asm).
+	BOOL _fDecompileBadBranchesAsAsm;
 
 	// This is a hack, but we're making this as a spot fix to allow
 	// for per-game aspect ratio.

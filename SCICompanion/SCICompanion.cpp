@@ -530,6 +530,7 @@ void SCICompanionApp::_LoadSettings(BOOL fReset)
 	appState->_onionWrap = GetProfileInt(pszRegName, TEXT("OnionWrap"), TRUE);
 
 	appState->_fWarnOnUnusedInstances = GetProfileInt(pszRegName, TEXT("WarnOnUnusedInstances"), TRUE);
+	appState->_fDecompileBadBranchesAsAsm = GetProfileInt(pszRegName, TEXT("DecompileBadBranchesAsAsm"), FALSE);
 }
 
 void SCICompanionApp::_SaveSettings()
@@ -580,6 +581,7 @@ void SCICompanionApp::_SaveSettings()
 	WriteProfileInt(m_pszAppName, TEXT("OnionWrap"), appState->_onionWrap);
 
 	WriteProfileInt(m_pszAppName, TEXT("WarnOnUnusedInstances"), appState->_fWarnOnUnusedInstances);
+	WriteProfileInt(m_pszAppName, TEXT("DecompileBadBranchesAsAsm"), appState->_fDecompileBadBranchesAsAsm);
 }
 
 // CAboutDlg dialog used for App About

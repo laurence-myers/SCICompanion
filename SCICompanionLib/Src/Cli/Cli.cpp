@@ -209,6 +209,8 @@ namespace cli
         decompile->add_flag("--stdout", decompileOptions.toStdout, "One script: print its source, and write nothing.");
         decompile->add_flag("--text-tuples", decompileOptions.textTuples, "Replace text resource tuples with strings.");
         decompile->add_flag("--asm-only", decompileOptions.asmOnly, "Disassemble only.");
+        decompile->add_option("--bad-branch", decompileOptions.badBranch, "fix (default): a bnt that Sierra's compiler gave a bad target goes to the next instruction, and a branch out of the function reads the code there, in text where it can be; asm: a function with such a branch is asm.")
+            ->check(CLI::IsMember({ "fix", "asm" }));
         decompile->add_flag("--debug-control-flow", decompileOptions.debugControlFlow, "Show the control flow (decompiler debug output).");
         decompile->add_flag("--debug-instructions", decompileOptions.debugInstructions, "Show the use of the instructions (decompiler debug output).");
         decompile->add_option("--debug-filter", decompileOptions.debugFilter, "The debug output only for this function.");

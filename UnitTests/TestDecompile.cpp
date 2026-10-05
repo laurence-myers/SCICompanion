@@ -386,18 +386,10 @@ namespace UnitTests
             }
         }
 
-        // A branch out of the function into code of the script (patches of
-        // games: the KQ4 copy in "patch\NEW", script 32; the SQ4 copy in
-        // "patch", script 271). The decode reads the code there as the tail
-        // of the function: a detour to code that nothing calls, a shared
-        // tail of a switch whose "toss; ret" takes a value that the function
-        // did not push (also with the jmp to the toss before the bnt to the
-        // code before it), and a bnt before a ret to code before the start of
-        // the function. A tail with a super of a class that is not the
-        // superclass falls back to asm. The recompiled text means the same.
-        TEST_METHOD(BranchOutsideFunction_ReadsTheCodeThere)
+        // Compiles X7_BranchOutsideFunction as script 955, and puts its branches
+        // out of their functions (see BranchOutsideFunction_ReadsTheCodeThere).
+        static void _SetUpBranchesOutside()
         {
-            _gameFolder = SetUpGameSCI11();
             CResourceMap &rm = AppResourceMap();
             const GameFolderHelper &helper = rm.Helper();
             const SCIVersion &version = helper.Version;
@@ -448,6 +440,24 @@ namespace UnitTests
 
             ResourceBlob blob(helper, nullptr, ResourceType::Script, script, helper.Version.DefaultVolumeFile, 955, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags());
             Assert::IsTrue(SUCCEEDED(rm.AppendResource(blob)), L"setup: the patched script");
+        }
+
+        // A branch out of the function into code of the script (patches of
+        // games: the KQ4 copy in "patch\NEW", script 32; the SQ4 copy in
+        // "patch", script 271). The decode reads the code there as the tail
+        // of the function: a detour to code that nothing calls, a shared
+        // tail of a switch whose "toss; ret" takes a value that the function
+        // did not push (also with the jmp to the toss before the bnt to the
+        // code before it), and a bnt before a ret to code before the start of
+        // the function. A tail with a super of a class that is not the
+        // superclass falls back to asm. The recompiled text means the same.
+        TEST_METHOD(BranchOutsideFunction_ReadsTheCodeThere)
+        {
+            _gameFolder = SetUpGameSCI11();
+            CResourceMap &rm = AppResourceMap();
+            const GameFolderHelper &helper = rm.Helper();
+            _SetUpBranchesOutside();
+            std::string error;
             std::vector<meaning::Function> original = ReadMeaningFunctions(955);
 
             DecompileOutput out = DecompileToText(955);
@@ -595,6 +605,72 @@ namespace UnitTests
             Assert::IsTrue(from != std::string::npos, Wide("no " + start + "\n" + text).c_str());
             size_t to = (std::min)(text.find("\n(procedure", from + 1), text.find("\n(class", from + 1));
             return text.substr(from, (to == std::string::npos) ? std::string::npos : (to - from));
+        }
+
+        // The bad branch policy Asm: each function with a bad branch (a bnt of
+        // a fault of Sierra's compiler, or a branch out of the function) is
+        // asm, with a comment at the branch; with Fix, it is text.
+        TEST_METHOD(BadBranchPolicyAsm_GivesAsmWithAComment)
+        {
+            _gameFolder = SetUpGameSCI11();
+            CResourceMap &rm = AppResourceMap();
+            const GameFolderHelper &helper = rm.Helper();
+            AddFixtureScript("X6_SierraBadBranch");
+            std::string error;
+            Assert::IsTrue(CompileFixture(941, "X6_SierraBadBranch", &error), Wide(error).c_str());
+            CompiledScript compiled(941, CompiledScriptFlags::RemoveBadExports);
+            Assert::IsTrue(compiled.Load(helper, helper.Version, 941), L"setup: the script loads");
+            std::vector<uint8_t> script = compiled.GetRawBytes();
+            Assert::AreEqual(3, _SetBadBranchTargets(helper.Version, script, BadTarget::PastEnd), L"setup: a bnt in each procedure");
+            ResourceBlob blob(helper, nullptr, ResourceType::Script, script, helper.Version.DefaultVolumeFile, 941, NoBase36, helper.Version, helper.GetDefaultSaveSourceFlags());
+            Assert::IsTrue(SUCCEEDED(rm.AppendResource(blob)), L"setup: the patched script");
+            _SetUpBranchesOutside();
+
+            struct Case
+            {
+                uint16_t script;
+                int functions;      // the functions with a bad branch
+                int comments;       // the comments of the asm, one for each bad branch
+                const char *comment;
+            };
+            for (const Case &item : {
+                Case{ 941, 3, 3, "COMPILER BUG: the game has" },
+                Case{ 955, 5, 7, "is outside the code of the function (a patch of the game)" } })
+            {
+                std::string label = fmt::format("script {0}: ", item.script);
+                TestDecompilerResults fixResults;
+                std::string fixText = _DecompileWithPolicy(item.script, BadBranchPolicy::Fix, fixResults);
+                TestDecompilerResults asmResults;
+                std::string asmText = _DecompileWithPolicy(item.script, BadBranchPolicy::Asm, asmResults);
+                int policyAsm = 0;
+                for (const DecompiledFunction &function : asmResults.functions)
+                {
+                    policyAsm += ((function.output == "asm") && (function.scope == "bad-branch-asm")) ? 1 : 0;
+                }
+                Assert::AreEqual(item.functions, policyAsm, Wide(label + asmText).c_str());
+                Assert::AreEqual(item.comments, _CountOf(asmText, item.comment), Wide(label + asmText).c_str());
+                for (const DecompiledFunction &function : fixResults.functions)
+                {
+                    Assert::AreNotEqual(std::string("bad-branch-asm"), function.scope, Wide(label + fixText).c_str());
+                }
+            }
+        }
+
+        // The source of a script of the game, decompiled with a bad branch policy.
+        static std::string _DecompileWithPolicy(uint16_t number, BadBranchPolicy policy, TestDecompilerResults &results)
+        {
+            CResourceMap &rm = AppResourceMap();
+            const GameFolderHelper &helper = rm.Helper();
+            GlobalCompiledScriptLookups lookups;
+            lookups.Load(helper);
+            CompiledScript compiled(number, CompiledScriptFlags::RemoveBadExports);
+            Assert::IsTrue(compiled.Load(helper, helper.Version, number), L"setup: the script loads");
+            std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(rm, lookups.GetSelectorTable());
+            std::unique_ptr<sci::Script> decompiled = DecompileScript(config.get(), lookups, rm, number, compiled, results, false, false, nullptr, false, false, policy);
+            std::stringstream text;
+            sci::SourceCodeWriter writer(text, decompiled.get());
+            decompiled->OutputSourceCode(writer);
+            return text.str();
         }
 
         static int _CountOf(const std::string &text, const std::string &needle)

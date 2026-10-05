@@ -60,6 +60,7 @@ private:
 	CExtCheckBox m_wndCheck12;
 	CExtCheckBox m_wndCheck13;
 	CExtCheckBox m_wndCheck14;
+	CExtCheckBox m_wndCheck15;
 	CExtButton m_wndOk;
 	CExtButton m_wndCancel;
 

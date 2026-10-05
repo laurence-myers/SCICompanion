@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Result.h"
+#include "BadBranchPolicy.h"
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -24,6 +25,7 @@ struct DecompileOptions
 	std::string DebugFunctionMatch;
 	bool DecompileAsm = false;
 	bool SubstituteTextTuples = false;
+	BadBranchPolicy BadBranches = BadBranchPolicy::Fix;
 };
 
 // Instead of the files: the source of each script (the command line's

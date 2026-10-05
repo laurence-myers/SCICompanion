@@ -34,7 +34,9 @@ modernizing the build. Broad highlights since the previous release:
   sends to code outside its function (such as the new `init` methods of
   the King's Quest IV patch that go on into the old ones) makes the
   decompile read that code as the tail of the function, also with a
-  warning.
+  warning. To see such functions as asm instead, turn on "Decompile bad
+  branches as asm" in the preferences, or give `--bad-branch asm` to
+  `scic script decompile`.
 * **Statement groups in expressions.** `((= a 1) (b c:))` is two or more
   statements in parentheses, whose value is the value of the last one. Sierra's
   1993 compiler accepted it (Pepper's Adventures in Time uses it), and the

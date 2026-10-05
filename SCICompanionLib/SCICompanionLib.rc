@@ -974,6 +974,7 @@ BEGIN
     CONTROL         "Use original SCI aspect ratio by default\n(can be set per game)",IDC_CHECK_ASPECTRATIO,
                     "Button",BS_AUTOCHECKBOX | BS_MULTILINE | WS_TABSTOP,9,108,138,19
     CONTROL         "Show tabs in script editor",IDC_CHECK_SHOWTABS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,134,97,10
+    CONTROL         "Decompile bad branches as asm",IDC_DECOMPILEBADBRANCHASM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,9,148,120,10
     EDITTEXT        IDC_FAKEEGOX,97,8,22,14,ES_AUTOHSCROLL | ES_NUMBER
     EDITTEXT        IDC_FAKEEGOY,133,8,22,14,ES_AUTOHSCROLL | ES_NUMBER
     LTEXT           "x",IDC_STATIC,124,9,8,8,SS_CENTERIMAGE

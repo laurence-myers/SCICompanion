@@ -927,7 +927,7 @@ void FixDuplicateObjectNames(CompiledScript &compiledScript, GlobalCompiledScrip
 	}
 }
 
-std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, uint16_t wScript, CompiledScript &compiledScript, IDecompilerResults &results, bool debugControlFlow, bool debugInstConsumption, PCSTR pszDebugFilter, bool decompileAsm, bool substituteTextTuples)
+std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, GlobalCompiledScriptLookups &scriptLookups, CResourceMap &resourceMap, uint16_t wScript, CompiledScript &compiledScript, IDecompilerResults &results, bool debugControlFlow, bool debugInstConsumption, PCSTR pszDebugFilter, bool decompileAsm, bool substituteTextTuples, BadBranchPolicy badBranches)
 {
 	const GameFolderHelper &helper = resourceMap.Helper();
 	unique_ptr<sci::Script> pScript;
@@ -948,6 +948,7 @@ std::unique_ptr<sci::Script> DecompileScript(const IDecompilerConfig *config, Gl
 	decompileLookups.pszDebugFilter = pszDebugFilter;
 	decompileLookups.DecompileAsm = decompileAsm;
 	decompileLookups.SubstituteTextTuples = substituteTextTuples;
+	decompileLookups.BadBranches = badBranches;
 	pScript.reset(Decompile(helper, compiledScript, decompileLookups, resourceMap.GetVocab000()));
 
 	ConvertToSCISyntaxHelper(*pScript, &scriptLookups);

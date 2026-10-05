@@ -822,6 +822,7 @@
 #define IDC_CHECKINDICES                1404
 #define IDC_CHECKPOLYGONS               1405
 #define IDC_UNUSEDINSTANCEWARNINGS      1406
+#define IDC_DECOMPILEBADBRANCHASM       1407
 #define ID_PENTOOL                      32771
 #define ID_ZOOM                         32773
 #define ID_HISTORY                      32775
@@ -1241,7 +1242,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        411
 #define _APS_NEXT_COMMAND_VALUE         33364
-#define _APS_NEXT_CONTROL_VALUE         1406
+#define _APS_NEXT_CONTROL_VALUE         1408
 #define _APS_NEXT_SYMED_VALUE           105
 #endif
 #endif

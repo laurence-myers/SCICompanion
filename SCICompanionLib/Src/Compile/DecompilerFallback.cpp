@@ -239,7 +239,21 @@ void DisassembleFallback(FunctionBase &func, code_pos start, code_pos end, Decom
 				case Opcode::BNT:
 				case Opcode::JMP:
 				{
-					_AddToken(*asmStatement, _GetLabelName(*cur->get_branch_target(), functionOffset));
+					code_pos target = cur->get_branch_target();
+					_AddToken(*asmStatement, _GetLabelName(*target, functionOffset));
+					// A comment after a bad branch (the statements come in reverse order).
+					if (cur->is_bad_branch())
+					{
+						_AddSyntaxNode(statements, make_unique<Comment>(fmt::format(
+							"COMPILER BUG: the game has {0:04x} here (the test of an empty last clause); the asm goes to the next instruction",
+							cur->get_bad_branch_target()), CommentType::Indented));
+					}
+					else if (target->is_outside_function() && !cur->is_outside_function())
+					{
+						_AddSyntaxNode(statements, make_unique<Comment>(fmt::format(
+							"{0:04x} is outside the code of the function (a patch of the game): the asm has the code from there too",
+							target->get_final_offset()), CommentType::Indented));
+					}
 					break;
 				}
 

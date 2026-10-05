@@ -507,6 +507,7 @@ namespace cli
         DecompileRunOptions run;
         run.engine.SubstituteTextTuples = options.textTuples;
         run.engine.DecompileAsm = options.asmOnly;
+    run.engine.BadBranches = (options.badBranch == "asm") ? BadBranchPolicy::Asm : BadBranchPolicy::Fix;
         run.engine.DebugControlFlow = options.debugControlFlow;
         run.engine.DebugInstructionConsumption = options.debugInstructions;
         run.engine.DebugFunctionMatch = options.debugFilter;

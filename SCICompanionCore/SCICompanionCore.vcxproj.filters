@@ -434,6 +434,9 @@ $include
     <ClInclude Include="..\SCICompanionLib\Src\Compile\CompileWrite.h">
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Compile\BadBranchPolicy.h">
+      <Filter>Source Files\Compile</Filter>
+    </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Compile\DecompileBatch.h">
       <Filter>Source Files\Compile</Filter>
     </ClInclude>
