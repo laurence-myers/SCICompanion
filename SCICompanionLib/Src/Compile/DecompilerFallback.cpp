@@ -207,9 +207,10 @@ void DisassembleFallback(FunctionBase &func, code_pos start, code_pos end, Decom
 
 			unique_ptr<Asm> asmStatement = make_unique<Asm>();
 
-			// Assign a label if appropriate
+			// Assign a label if appropriate. A jmp of no bytes (the decode puts one where code outside the
+			// function goes on into code it has) has the address of its target: the label is the target's.
 			uint16_t offset = cur->get_final_offset();
-			if (contains(labels, offset))
+			if (contains(labels, offset) && (cur->get_final_postop_offset() != offset))
 			{
 				asmStatement->SetLabel(_GetLabelName(offset));
 			}

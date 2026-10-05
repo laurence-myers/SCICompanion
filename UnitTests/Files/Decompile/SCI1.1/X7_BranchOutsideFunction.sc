@@ -12,6 +12,8 @@
 	detour 0
 	switcher 1
 	sharer 2
+	jmpFirst 3
+	backward 4
 )
 
 (local
@@ -56,6 +58,46 @@
 		ldi 4
 		sal local0
 	tossHere:
+		ret
+	)
+)
+
+; The test sets the jmp to the toss of switcher, and then the bnt to its
+; else (ldi 2), whose code goes on into that toss: the part of the toss
+; moves after the part of the else.
+(procedure (jmpFirst param1)
+	(asm
+		lsp param1
+		ldi 1
+		eq?
+		bnt jfThen
+		ldi 5
+		sal local0
+		jmp jfToss
+	jfThen:
+		lsp param1
+		ldi 2
+		eq?
+		bnt jfElse
+		ldi 6
+		sal local0
+	jfElse:
+		ldi 7
+	jfToss:
+		ret
+	)
+)
+
+; The test sets the bnt, before a ret, to the else of switcher: a target
+; before the start of the procedure, in the code of the script.
+(procedure (backward param1)
+	(asm
+		lsp param1
+		ldi 1
+		eq?
+		bnt bwThere
+		ret
+	bwThere:
 		ret
 	)
 )

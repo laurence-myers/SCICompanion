@@ -91,7 +91,7 @@ namespace scope
 		bool IsStray(int i) const { return _insts[i].stray; }
 		// A toss outside the code of the function (scii::is_outside_function),
 		// right before a ret, that takes a value that the function did not
-		// push: a patch of a game goes to the "toss; ret" of a switch of
+		// push on any path to it: a patch of a game goes to the "toss; ret" of a switch of
 		// another function (the SQ4 copy in "patch", script 271). The ret
 		// clears the stack, so the toss does nothing: the model reads it as
 		// no instruction of the stack, and it ends no switch.

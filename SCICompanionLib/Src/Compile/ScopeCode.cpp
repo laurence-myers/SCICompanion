@@ -364,7 +364,7 @@ namespace scope
 		bool found = false;
 		for (int i = 0; i + 1 < Size(); ++i)
 		{
-			if ((Op(i) == Opcode::TOSS) && At(i).is_outside_function() && (Op(i + 1) == Opcode::RET) && IsLive(i) && (DepthBefore(i) == 0))
+			if ((Op(i) == Opcode::TOSS) && At(i).is_outside_function() && (Op(i + 1) == Opcode::RET) && IsLive(i) && (DepthBefore(i) == 0) && !_insts[i].depthConflict)
 			{
 				_insts[i].spareToss = true;
 				_insts[i].pops = 0;

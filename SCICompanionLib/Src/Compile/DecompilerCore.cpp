@@ -117,6 +117,11 @@ code_pos get_cur_pos(std::list<scii> &code)
 //   than the toss;
 // - a target past the end of the code, before a toss, jmp or ret (the
 //   last clause of a cond).
+// previous is the instruction before the bnt; it is INDETERMINATE for the
+// first instruction of a part outside the function, which has no first form.
+// The caller gives a codeLength of 0xffff (no second form) for a part outside
+// the function, and for a target before the start of the function (its
+// position wraps past codeLength): such a target can be code of the script.
 // The end of the code is the bound of the decode: the end of the script on
 // the first decode of _DecodeFunction (and in FunctionCodeLength), the
 // estimated end of the function on the second. So a bad target of a cond
@@ -172,8 +177,11 @@ const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResu
 		uint16_t wStart;
 		// The jmp that its instructions come after in the list; code.end(): they go at the end.
 		code_pos afterJmp;
+		// Its first and last instructions, once it is decoded.
+		code_pos first;
+		code_pos last;
 	};
-	std::vector<Part> parts = { { pBegin, pEnd, 0, code.end() } };
+	std::vector<Part> parts = { { pBegin, pEnd, 0, code.end(), code.end(), code.end() } };
 	const size_t MaxParts = 9;
 	// The address of a position, and the code section of the script that has
 	// it as a part outside the function (else nullptr).
@@ -194,8 +202,33 @@ const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResu
 		return nullptr;
 	};
 
-	uint16_t codeLength = (uint16_t)(pEnd - pBegin);
-	const BYTE *pFunctionEnd = pBegin;
+	// A decoded part outside the function that starts at wPosition moves to
+	// insertAt in the list (the part before it goes on into it). False when
+	// there is none, or when insertAt is in it.
+	auto movePartAfter = [&](size_t part, uint16_t wPosition, code_pos insertAt) -> bool
+	{
+		for (size_t k = 1; k < part; ++k)
+		{
+			Part &other = parts[k];
+			if ((other.wStart != wPosition) || (other.first == code.end()))
+			{
+				continue;
+			}
+			code_pos end = std::next(other.last);
+			for (code_pos it = other.first; it != end; ++it)
+			{
+				if (it == insertAt)
+				{
+					return false;
+				}
+			}
+			code.splice(insertAt, code, other.first, end);
+			return true;
+		}
+		return false;
+	};
+
+	uint16_t codeLength = (uint16_t)(pEnd - pBegin);	const BYTE *pFunctionEnd = pBegin;
 	// A bogus instruction after the ret at the end of the code of the function.
 	code_pos functionPadding = code.end();
 	for (size_t part = 0; part < parts.size(); ++part)
@@ -205,11 +238,23 @@ const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResu
 		uint16_t wPartLength = (uint16_t)(pPartEnd - parts[part].pBegin);
 		code_pos insertAt = (parts[part].afterJmp == code.end()) ? code.end() : std::next(parts[part].afterJmp);
 		code_pos cur = code.end();
+		code_pos first = code.end();
 		Opcode previous = Opcode::INDETERMINATE;
 		if (referenceToCodePos.find(wPartStart) != referenceToCodePos.end())
 		{
 			// An earlier part has this code.
 			continue;
+		}
+		if ((insertAt == code.end()) && !code.empty() && (code.back().get_opcode() != Opcode::RET) && (code.back().get_opcode() != Opcode::JMP) &&
+			(functionPadding != std::prev(code.end())))
+		{
+			// The code at the end of the list (but for the padding after the ret of the function) goes on into the
+			// next instruction: a part there would be that instruction.
+			if (!abortOnError)
+			{
+				results->AddResult(DecompilerResultType::Error, fmt::format("The code before {0:04x}, outside the function, goes on into it.", (uint16_t)(wPartStart + wBaseOffset)));
+			}
+			return nullptr;
 		}
 		// The targets in this part, as distances from its start.
 		std::set<uint16_t> branchTargets;
@@ -219,13 +264,21 @@ const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResu
 		{
 			if ((part > 0) && (referenceToCodePos.find(wReferencePosition) != referenceToCodePos.end()))
 			{
-				// The part goes on into code that an earlier part has: a jmp
-				// there, of no bytes, keeps the order of the list.
+				// The part goes on into code that an earlier part has. A part outside the function that starts
+				// there comes next in the list. Else a jmp there, of no bytes, keeps the order of the list.
+				if (movePartAfter(part, wReferencePosition, insertAt))
+				{
+					break;
+				}
 				cur = code.insert(insertAt, scii(sciVersion, Opcode::JMP, undetermined, true, -1));
 				Fixup fixup = { cur, wReferencePosition, false };
 				branchTargetsToFixup.push_back(fixup);
 				cur->set_offset_and_size(wReferencePosition + wBaseOffset, 0);
 				cur->set_outside_function();
+				if (first == code.end())
+				{
+					first = cur;
+				}
 				break;
 			}
 			const BYTE *pThisInstruction = pCur;
@@ -306,9 +359,12 @@ const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResu
 				bool inFunction = (wTarget <= codeLength);
 				bool inPart = (part == 0) ? inFunction : (wThere <= wPartLength);
 				const CodeSection *section = nullptr;
-				fLeavesPart = (bOpcode == Opcode::JMP) && !inPart;
+				// A target before the function start: its position wraps.
+				bool fWraps = ((uint32_t)wTarget + wBaseOffset) > 0xffff;
+				bool fKnownPart = (referenceToCodePos.find(wTarget) != referenceToCodePos.end()) ||
+					std::any_of(parts.begin(), parts.end(), [&](const Part &other) { return other.wStart == wTarget; });
 
-				if (_IsSierraBadBranch(sciVersion, previous, bOpcode, wTarget, wNext, (part == 0) ? codeLength : (uint16_t)0xffff, pCur, pPartEnd))
+				if (_IsSierraBadBranch(sciVersion, previous, bOpcode, wTarget, wNext, ((part == 0) && !fWraps) ? codeLength : (uint16_t)0xffff, pCur, pPartEnd))
 				{
 					cur = code.insert(insertAt, scii(sciVersion, bOpcode, undetermined, true, -1));
 					cur->set_bad_branch_target(wTarget + wBaseOffset);
@@ -321,6 +377,7 @@ const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResu
 					cur = code.insert(insertAt, scii(sciVersion, bOpcode, undetermined, true, -1));
 					// A branch from a part outside the function to the function goes back.
 					bool fForward = inPart && (wThere > wHere) && ((part == 0) || !inFunction);
+					fLeavesPart = (bOpcode == Opcode::JMP) && !inPart;
 					Fixup fixup = { cur, wTarget, fForward };
 					branchTargetsToFixup.push_back(fixup);
 					if (fForward)
@@ -328,16 +385,25 @@ const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResu
 						branchTargets.insert(wThere);
 					}
 				}
-				else if ((parts.size() < MaxParts) && ((section = outsideSection(wTarget)) != nullptr))
+				else if (((section = outsideSection(wTarget)) != nullptr) && (fKnownPart || (parts.size() < MaxParts)))
 				{
 					// A part outside the function: it comes after the parts so far.
 					cur = code.insert(insertAt, scii(sciVersion, bOpcode, undetermined, true, -1));
 					Fixup fixup = { cur, wTarget, true };
 					branchTargetsToFixup.push_back(fixup);
-					uint16_t address = (uint16_t)(wTarget + wBaseOffset);
+					fLeavesPart = (bOpcode == Opcode::JMP);
 					// A part that a jmp goes to comes right after the jmp, which then does nothing (the
 					// KQ4 copy in "patch\NEW", script 0, gSound::play: "bt; jmp; ret").
-					parts.push_back({ outside->pScript + address, outside->pScript + section->end, wTarget, (bOpcode == Opcode::JMP) ? cur : code.end() });
+					auto queued = std::find_if(parts.begin(), parts.end(), [&](const Part &other) { return other.wStart == wTarget; });
+					if (queued == parts.end())
+					{
+						uint16_t address = (uint16_t)(wTarget + wBaseOffset);
+						parts.push_back({ outside->pScript + address, outside->pScript + section->end, wTarget, (bOpcode == Opcode::JMP) ? cur : code.end(), code.end(), code.end() });
+					}
+					else if ((bOpcode == Opcode::JMP) && (queued->afterJmp == code.end()) && (queued->first == code.end()))
+					{
+						queued->afterJmp = cur;
+					}
 				}
 				else if (abortOnError)
 				{
@@ -366,6 +432,10 @@ const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResu
 			{
 				cur->set_outside_function();
 			}
+			if (first == code.end())
+			{
+				first = cur;
+			}
 			previous = bOpcode;
 
 			// Attempt to detect the end of the part. If we encounter a return statement (or a jmp out of the part) and
@@ -381,6 +451,8 @@ const BYTE *_ConvertToInstructions(const SCIVersion &sciVersion, IDecompilerResu
 
 			wReferencePosition += wSize;
 		}
+		parts[part].first = first;
+		parts[part].last = cur;
 		if (part == 0)
 		{
 			pFunctionEnd = pCur;

@@ -339,9 +339,9 @@ namespace UnitTests
         // clause (PQ3 script 202, addPoint::changeState; ICEMAN script 968,
         // SmoothLooper::doit). The clause is empty, so the code meant the next
         // instruction: the decompile goes there, with a warning, and the
-        // recompiled text means the same. The target is before the start of
-        // the procedure (the uint16 target wraps), past the end of the
-        // script, or (for "eq?; bnt; toss") the start of the procedure.
+        // recompiled text means the same. The target is past the end of the
+        // script, or (for "eq?; bnt; toss") before the start of the procedure
+        // (the uint16 target wraps) or the start of the procedure.
         TEST_METHOD(SierraBadBranch_GoesToTheNextInstruction)
         {
             _gameFolder = SetUpGameSCI11();
@@ -389,9 +389,11 @@ namespace UnitTests
         // A branch out of the function into code of the script (patches of
         // games: the KQ4 copy in "patch\NEW", script 32; the SQ4 copy in
         // "patch", script 271). The decode reads the code there as the tail
-        // of the function: a detour to code that nothing calls, and a shared
+        // of the function: a detour to code that nothing calls, a shared
         // tail of a switch whose "toss; ret" takes a value that the function
-        // did not push. A tail with a super of a class that is not the
+        // did not push (also with the jmp to the toss before the bnt to the
+        // code before it), and a bnt before a ret to code before the start of
+        // the function. A tail with a super of a class that is not the
         // superclass falls back to asm. The recompiled text means the same.
         TEST_METHOD(BranchOutsideFunction_ReadsTheCodeThere)
         {
@@ -432,6 +434,13 @@ namespace UnitTests
             Assert::AreEqual((int)Opcode::TOSS, (int)RawToOpcode(version, script[tossOfSwitcher]), L"setup: the jmp of switcher goes to the toss");
             _SetTarget(script, sharer[_Find(sharer, Opcode::BNT, L"setup: the bnt of sharer")], elseOfSwitcher);
             _SetTarget(script, sharer[_Find(sharer, Opcode::JMP, L"setup: the jmp of sharer")], tossOfSwitcher);
+            // jmpFirst: its jmp to the toss of switcher, then its bnt to the else.
+            std::vector<_Inst> jmpFirst = _Instructions(version, script, exportAt(3));
+            _SetTarget(script, jmpFirst[_Find(jmpFirst, Opcode::JMP, L"setup: the jmp of jmpFirst")], tossOfSwitcher);
+            _SetTarget(script, jmpFirst[_Find(jmpFirst, Opcode::BNT, L"setup: the second bnt of jmpFirst", 1)], elseOfSwitcher);
+            // backward: its bnt before a ret to the else of switcher.
+            std::vector<_Inst> backward = _Instructions(version, script, exportAt(4));
+            _SetTarget(script, backward[_Find(backward, Opcode::BNT, L"setup: the bnt of backward")], elseOfSwitcher);
             // X7Other::doit: its jmp to the "pushi #doit" of X7Tail::doit.
             std::vector<_Inst> tail = _Instructions(version, script, methodAt("X7Tail"));
             std::vector<_Inst> other = _Instructions(version, script, methodAt("X7Other"));
@@ -442,6 +451,11 @@ namespace UnitTests
             std::vector<meaning::Function> original = ReadMeaningFunctions(955);
 
             DecompileOutput out = DecompileToText(955);
+            std::string warningsText;
+            for (const std::string &warning : out.warnings)
+            {
+                warningsText += warning + "\n";
+            }
             Assert::IsTrue(out.text.find("-17747") == std::string::npos, Wide(out.text).c_str());
             Assert::IsTrue(out.text.find("(procedure (oldBody") == std::string::npos, Wide("nothing calls oldBody\n" + out.text).c_str());
             std::string detourText = _FunctionText(out.text, "(procedure (detour");
@@ -450,7 +464,14 @@ namespace UnitTests
             std::string sharerText = _FunctionText(out.text, "(procedure (sharer");
             Assert::IsTrue((sharerText.find("(= local0 3)") != std::string::npos) && (sharerText.find("(= local0 2)") != std::string::npos) &&
                 (sharerText.find("(= local0 4)") == std::string::npos) && (sharerText.find("(asm") == std::string::npos), Wide(out.text).c_str());
-            std::string otherText = _FunctionText(out.text, "(class X7Other");
+            // The part of the toss moves after the part of the else, which goes on into it.
+            std::string jmpFirstText = _FunctionText(out.text, "(procedure (jmpFirst");
+            Assert::IsTrue((jmpFirstText.find("(= local0 5)") != std::string::npos) && (jmpFirstText.find("(= local0 6)") != std::string::npos) &&
+                (jmpFirstText.find("(= local0 2)") != std::string::npos) && (jmpFirstText.find("(asm") == std::string::npos), Wide(warningsText + out.text).c_str());
+            // A target before the start, before a ret, is code of the script, not a fault of Sierra's compiler.
+            std::string backwardText = _FunctionText(out.text, "(procedure (backward");
+            Assert::IsTrue((backwardText.find("(= local0 2)") != std::string::npos) && (backwardText.find("(asm") == std::string::npos), Wide(out.text).c_str());
+            Assert::IsTrue(out.text.find("COMPILER BUG") == std::string::npos, Wide(out.text).c_str());            std::string otherText = _FunctionText(out.text, "(class X7Other");
             Assert::IsTrue((otherText.find("(asm") != std::string::npos) && (otherText.find("super") != std::string::npos) &&
                 (otherText.find("Code") != std::string::npos), Wide(out.text).c_str());
             Assert::AreEqual(1, out.fallbacks, Wide("X7Other::doit falls back to asm\n" + out.text).c_str());
@@ -460,8 +481,8 @@ namespace UnitTests
             {
                 outsideWarnings += (warning.find("outside the code of the function (a patch of the game)") != std::string::npos) ? 1 : 0;
             }
-            Assert::AreEqual(4, outsideWarnings, Wide("a warning for each branch out\n" + out.text).c_str());
-            Assert::AreEqual(4, _CountOf(out.text, "; WARNING: "), Wide("a header comment for each branch out\n" + out.text).c_str());
+            Assert::AreEqual(7, outsideWarnings, Wide("a warning for each branch out\n" + out.text).c_str());
+            Assert::AreEqual(7, _CountOf(out.text, "; WARNING: "), Wide("a header comment for each branch out\n" + out.text).c_str());
 
             // The recompiled text means the same.
             {
@@ -511,11 +532,12 @@ namespace UnitTests
             return instructions;
         }
 
-        static size_t _Find(const std::vector<_Inst> &instructions, Opcode opcode, const wchar_t *setup)
+        // The index of the instruction with the opcode (after skip others of it).
+        static size_t _Find(const std::vector<_Inst> &instructions, Opcode opcode, const wchar_t *setup, int skip = 0)
         {
             for (size_t i = 0; i < instructions.size(); ++i)
             {
-                if (instructions[i].opcode == opcode)
+                if ((instructions[i].opcode == opcode) && (skip-- == 0))
                 {
                     return i;
                 }
@@ -568,7 +590,7 @@ namespace UnitTests
         // The bad target that _SetBadBranchTargets gives.
         enum class BadTarget
         {
-            BeforeStart,    // the largest step back: the uint16 target wraps
+            BeforeStart,    // "eq?; bnt; toss": the largest step back (the uint16 target wraps); another bnt: past the end
             PastEnd,        // past the end of the script
             Inside,         // "eq?; bnt; toss": the start of the procedure; another bnt: past the end
         };
@@ -601,7 +623,7 @@ namespace UnitTests
                         {
                             bool toStart = (where == BadTarget::Inside) && (after == Opcode::TOSS) && (previous == Opcode::EQ);
                             int offset = toStart ? -(int)(next - start) :
-                                ((where == BadTarget::BeforeStart) ? (word ? -0x8000 : -0x80) : (int)(script.size() + 0x10 - next));
+                                (((where == BadTarget::BeforeStart) && (after == Opcode::TOSS) && (previous == Opcode::EQ)) ? (word ? -0x8000 : -0x80) : (int)(script.size() + 0x10 - next));
                             Assert::IsTrue(word ? ((offset >= -0x8000) && (offset <= 0x7fff)) : ((offset >= -0x80) && (offset <= 0x7f)),
                                 Wide(fmt::format("setup: the target of the bnt at {0:04x} fits its operand", at)).c_str());
                             script[at + 1] = (uint8_t)(offset & 0xff);
