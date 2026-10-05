@@ -33,8 +33,6 @@ namespace meaning
 		uint16_t offset = 0;
 		// The index of the target of a branch; -1 for another instruction.
 		int target = -1;
-		// A toss that takes nothing (scope::CodeModel::IsSpareToss).
-		bool spareToss = false;
 		// lofsa, lofss: the thing at the address ("object Name", "string
 		// text", "said text"; empty when there is none). call, and a calle of
 		// the script's own export: the key of the procedure.

@@ -484,13 +484,33 @@ namespace UnitTests
             Assert::AreEqual(7, outsideWarnings, Wide("a warning for each branch out\n" + out.text).c_str());
             Assert::AreEqual(7, _CountOf(out.text, "; WARNING: "), Wide("a header comment for each branch out\n" + out.text).c_str());
 
-            // The recompiled text means the same.
+            // The asm of every function: sharer, jmpFirst and backward each have
+            // the tail of switcher, with labels of their own.
+            std::string asmText;
             {
-                std::ofstream file(helper.GetScriptFileName("X7_BranchOutsideFunction"), std::ios::binary | std::ios::trunc);
-                file << out.text;
+                GlobalCompiledScriptLookups lookups;
+                lookups.Load(helper);
+                CompiledScript patched(955, CompiledScriptFlags::RemoveBadExports);
+                Assert::IsTrue(patched.Load(helper, helper.Version, 955), L"setup: the patched script loads");
+                std::unique_ptr<IDecompilerConfig> config = CreateDecompilerConfig(rm, lookups.GetSelectorTable());
+                TestDecompilerResults results;
+                std::unique_ptr<sci::Script> decompiled = DecompileScript(config.get(), lookups, rm, 955, patched, results, false, false, nullptr, true);
+                std::stringstream text;
+                sci::SourceCodeWriter writer(text, decompiled.get());
+                decompiled->OutputSourceCode(writer);
+                asmText = text.str();
             }
-            Assert::IsTrue(CompileFixture(955, "X7_BranchOutsideFunction", &error), Wide("the recompile: " + error + "\n" + out.text).c_str());
-            AssertMeaningKept("X7_BranchOutsideFunction", original, 955);
+
+            // The recompiled text, and the recompiled asm, mean the same.
+            for (const std::string *text : { &out.text, &asmText })
+            {
+                {
+                    std::ofstream file(helper.GetScriptFileName("X7_BranchOutsideFunction"), std::ios::binary | std::ios::trunc);
+                    file << *text;
+                }
+                Assert::IsTrue(CompileFixture(955, "X7_BranchOutsideFunction", &error), Wide("the recompile: " + error + "\n" + *text).c_str());
+                AssertMeaningKept("X7_BranchOutsideFunction", original, 955);
+            }
         }
 
         struct _Inst

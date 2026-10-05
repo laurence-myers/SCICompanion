@@ -48,6 +48,18 @@ string _GetLabelName(uint16_t offset)
 	return fmt::format("code_{:04x}", offset);
 }
 
+// The label of an instruction. Asm labels are names of the script, and code
+// outside the function (scii::is_outside_function) can be in the asm of more
+// than one function: its label also has the address of the function.
+static string _GetLabelName(const scii &inst, uint16_t functionOffset)
+{
+	if (inst.is_outside_function())
+	{
+		return fmt::format("code_{0:04x}_{1:04x}", inst.get_final_offset(), functionOffset);
+	}
+	return _GetLabelName(inst.get_final_offset());
+}
+
 void _AddSyntaxNode(StatementsNode &statementsNode, unique_ptr<SyntaxNode> syntaxNode)
 {
 	statementsNode.AddStatement(std::move(syntaxNode));
@@ -197,6 +209,8 @@ void DisassembleFallback(FunctionBase &func, code_pos start, code_pos end, Decom
 	StatementsNode statements;
 
 	set<uint16_t> labels = CalcBranchLabels(start, end);
+	// The address of the function: start is the placeholder before its first instruction.
+	uint16_t functionOffset = (std::next(start) != end) ? std::next(start)->get_final_offset() : 0;
 	code_pos cur = end;
 	--cur;
 	while (cur != start)
@@ -212,7 +226,7 @@ void DisassembleFallback(FunctionBase &func, code_pos start, code_pos end, Decom
 			uint16_t offset = cur->get_final_offset();
 			if (contains(labels, offset) && (cur->get_final_postop_offset() != offset))
 			{
-				asmStatement->SetLabel(_GetLabelName(offset));
+				asmStatement->SetLabel(_GetLabelName(*cur, functionOffset));
 			}
 
 			// Instruction name
@@ -225,7 +239,7 @@ void DisassembleFallback(FunctionBase &func, code_pos start, code_pos end, Decom
 				case Opcode::BNT:
 				case Opcode::JMP:
 				{
-					_AddToken(*asmStatement, _GetLabelName(cur->get_branch_target()->get_final_offset()));
+					_AddToken(*asmStatement, _GetLabelName(*cur->get_branch_target(), functionOffset));
 					break;
 				}
 
