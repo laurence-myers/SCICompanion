@@ -18,6 +18,7 @@
 #include "crc.h"
 #include "format.h"
 #include <algorithm>
+#include <cwctype>
 #include <filesystem>
 #include <set>
 
@@ -662,6 +663,29 @@ namespace cli
             bool writeFailed = false;
         };
 
+        // The file name of the path in the ANSI code page, which the paths
+        // of scic have. False when the name has a character that the code
+        // page does not have: name then has '?' for it.
+        bool NarrowFileName(const fs::path &path, std::string &name)
+        {
+            const std::wstring wide = path.filename().wstring();
+            name.clear();
+            if (wide.empty())
+            {
+                return true;
+            }
+            BOOL usedDefault = FALSE;
+            int length = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide.data(), (int)wide.size(), nullptr, 0, nullptr, &usedDefault);
+            if (length <= 0)
+            {
+                name = "?";
+                return false;
+            }
+            name.assign(length, '\0');
+            WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide.data(), (int)wide.size(), &name[0], length, nullptr, nullptr);
+            return !usedDefault;
+        }
+
         // The job of a sidecar file: the pic, and the cels that have a file.
         // The files are in the folder of the sidecar.
         sci::Result<PicImportJob> JobOfSidecar(const std::string &sidecarPath)
@@ -926,6 +950,10 @@ namespace cli
         {
             PicImportJob job;
             std::string sidecarPath;
+            // The name of the sidecar file has a character that the ANSI
+            // code page does not have, so scic cannot open the file.
+            // sidecarPath has '?' for such a character.
+            bool badName = false;
         };
         std::vector<Work> works;
         if (!options.inDir.empty())
@@ -936,27 +964,32 @@ namespace cli
             {
                 return sci::Fail(sci::ErrorCode::NotFound, "the input folder does not exist: " + inDir);
             }
-            std::vector<std::string> sidecars;
-            for (const auto &entry : fs::directory_iterator(inDir, ec))
+            // The names are compared as wide text: path::string() throws for
+            // a name with a character that the ANSI code page does not have.
+            std::error_code listError;
+            for (fs::directory_iterator it(inDir, listError), end; !listError && (it != end); it.increment(listError))
             {
-                std::string extension = entry.path().extension().string();
-                std::transform(extension.begin(), extension.end(), extension.begin(), [](char ch) { return (char)tolower((unsigned char)ch); });
-                if (entry.is_regular_file(ec) && (extension == ".toml"))
+                std::wstring extension = it->path().extension().wstring();
+                std::transform(extension.begin(), extension.end(), extension.begin(), [](wchar_t ch) { return (wchar_t)towlower(ch); });
+                if ((extension != L".toml") || !it->is_regular_file(ec))
                 {
-                    sidecars.push_back(entry.path().string());
+                    continue;
                 }
+                Work work;
+                std::string name;
+                work.badName = !NarrowFileName(it->path(), name);
+                work.sidecarPath = inDir + "\\" + name;
+                works.push_back(work);
             }
-            if (sidecars.empty())
+            if (listError)
+            {
+                return sci::Fail(sci::ErrorCode::Io, fmt::format("the input folder cannot be read: {0}: {1}", inDir, listError.message()));
+            }
+            if (works.empty())
             {
                 return sci::Fail(sci::ErrorCode::Usage, "the input folder has no .toml file of scic pic export: " + inDir);
             }
-            std::sort(sidecars.begin(), sidecars.end());
-            for (const std::string &sidecar : sidecars)
-            {
-                Work work;
-                work.sidecarPath = sidecar;
-                works.push_back(work);
-            }
+            std::sort(works.begin(), works.end(), [](const Work &a, const Work &b) { return a.sidecarPath < b.sidecarPath; });
         }
         else
         {
@@ -997,6 +1030,10 @@ namespace cli
             // The exception boundary of the pic.
             sci::Status status = sci::Guard("importing " + name, [&]() -> sci::Status
             {
+                if (work.badName)
+                {
+                    return sci::Fail(sci::ErrorCode::Unsupported, "the name of the file has a character that the ANSI code page of Windows does not have, so scic cannot open the file");
+                }
                 if (!work.sidecarPath.empty())
                 {
                     SCI_TRY_ASSIGN(work.job, JobOfSidecar(work.sidecarPath));
@@ -1005,14 +1042,17 @@ namespace cli
                 }
                 if (!done.insert(work.job.number).second)
                 {
-                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} is in two .toml files of the input folder; the second is {1}", name, work.sidecarPath));
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("the pic is in two .toml files of the input folder; the second is {0}", work.sidecarPath));
                 }
                 return ImportPic(session, work.job, palette, options.allowUnusedIndices, outDir, common.dryRun, output, result);
             });
             if (!status)
             {
                 failed++;
-                output.Error(name + ": " + status.error().ToString());
+                // An error of a sidecar file whose pic is not known has the
+                // file as its location, so the line needs no name before it.
+                const bool hasItsFile = (name == work.sidecarPath) && !status.error().where.file.empty();
+                output.Error(hasItsFile ? status.error().ToString() : (name + ": " + status.error().ToString()));
                 if (status.error().code == sci::ErrorCode::Internal)
                 {
                     facts.internal = true;

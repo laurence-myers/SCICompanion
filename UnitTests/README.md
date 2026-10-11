@@ -321,12 +321,15 @@ game data other than the template games.
   copies in a run folder. It exports every cel of every pic, imports the
   files with no change, and exports again from a game copy with the patch
   files; then it does the same with two palette entries swapped in each
-  image. It checks that each pic has one BMP file for each cel, that the
-  game copy reads each pic from its patch file, that an SCI2 patch file
-  has the header `81 81 00 00` and the CRC-32 of the pic (an SCI2 pic
-  changes in place), and that each image comes back byte for byte. It
-  writes `roundtrip.csv` and the logs of each command, and exits with 1
-  when a check fails:
+  image. It checks that each pic has one BMP file for each cel, that
+  import takes each pic that export took, that the game copy reads each
+  pic from its patch file, that an SCI2 patch file has the header
+  `81 81 00 00` and the CRC-32 of the pic (an SCI2 pic changes in place),
+  and that each image comes back byte for byte. It writes `roundtrip.csv`
+  and the logs of each command, and exits with 1 when a check fails or
+  when no pic went through export and import. For a game whose own pixels
+  have palette entries that are not marked as used (import refuses them),
+  give `-AllowUnusedIndices`:
 
   ```
   .\UnitTests\Tools\PicRoundTripSweep.ps1 -Game <a copy of the game folder> -Work I:\tmp\pic-sweep

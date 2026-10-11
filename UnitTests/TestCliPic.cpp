@@ -1008,12 +1008,40 @@ namespace UnitTests
             std::string patches = NewFolder("patches");
             Expect(0, { "pic", "export", _gameFolder, "--all", "--out-dir", exported });
             WriteFileText(exported + "\\110.bmp", "not an image");
+            // The extension of a .toml file can be in upper case, and a
+            // folder with that extension is not a .toml file.
+            fs::rename(exported + "\\200.toml", exported + "\\200.TOML");
+            fs::create_directories(exported + "\\folder.toml");
 
             cli::StringConsole console = Expect(6, { "pic", "import", _gameFolder, "--in-dir", exported, "--out-dir", patches });
 
             Assert::IsTrue(Has(console.err, "scic: error: pic 110: ") && Has(console.err, "not a BMP file"), Wide(console.err).c_str());
             Assert::IsTrue(Has(console.err, "Imported 2 of 3 pics (2 cels) into " + patches + "; 1 pic failed."), Wide(console.err).c_str());
             Assert::IsTrue(std::vector<std::string>({ "100.p56", "200.p56" }) == FileNamesOf(patches), L"the other pics are imported");
+        }
+
+        // A file of the input folder whose name has a character that the
+        // ANSI code page does not have: scic cannot open a .toml file with
+        // such a name, so that file is a failure of its own. Another file
+        // with such a name is not read. The good pic is imported.
+        TEST_METHOD(Import_InDir_NamesOutsideTheAnsiCodePage)
+        {
+            CopyTemplate();
+            std::string exported = NewFolder("exported");
+            std::string patches = NewFolder("patches");
+            Expect(0, { "pic", "export", _gameFolder, "--pic", "100", "--out-dir", exported });
+            // A Japanese letter, an Arabic letter and a Latin letter with an
+            // accent: no ANSI code page has the three.
+            const std::wstring name = { (wchar_t)0x65e5, (wchar_t)0x0639, (wchar_t)0x00e9 };
+            fs::copy_file(fs::path(exported) / "100.toml", fs::path(exported) / (name + L".toml"));
+            fs::copy_file(fs::path(exported) / "100.bmp", fs::path(exported) / (L"notes." + name));
+
+            cli::StringConsole console = Expect(6, { "pic", "import", _gameFolder, "--in-dir", exported, "--out-dir", patches });
+
+            Assert::IsFalse(Has(console.err, "[internal]"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, ".toml: the name of the file has a character that the ANSI code page of Windows does not have, so scic cannot open the file [unsupported]"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Imported 1 of 2 pics (1 cel) into " + patches + "; 1 pic failed."), Wide(console.err).c_str());
+            Assert::IsTrue(std::vector<std::string>({ "100.p56" }) == FileNamesOf(patches), L"the good pic is imported");
         }
 
         // The .toml files of the input folder that do not give a pic to
@@ -1035,11 +1063,22 @@ namespace UnitTests
 
             cli::StringConsole console = Expect(6, { "pic", "import", _gameFolder, "--in-dir", exported, "--out-dir", patches });
 
-            Assert::IsTrue(Has(console.err, "scic: error: " + exported + "\\a-not-toml.toml: ") && Has(console.err, "[format]"), Wide(console.err).c_str());
+            // The line of a .toml file that cannot be read has the file one
+            // time, as the location of the error.
+            std::string notToml;
+            for (const std::string &line : LinesOf(console.err))
+            {
+                if (Has(line, "a-not-toml.toml"))
+                {
+                    notToml = line;
+                }
+            }
+            Assert::IsTrue((notToml.rfind("scic: error: ", 0) == 0) && Has(notToml, "(" + exported + "\\a-not-toml.toml(1,") && Has(notToml, "[format]"), Wide(console.err).c_str());
+            Assert::IsTrue(notToml.find("a-not-toml.toml") == notToml.rfind("a-not-toml.toml"), Wide(notToml).c_str());
             Assert::IsTrue(Has(console.err, "scic: error: pic 5: the game has no pic 5"), Wide(console.err).c_str());
             Assert::IsTrue(Has(console.err, "scic: error: pic 110: ") && Has(console.err, "110.bmp") && Has(console.err, "[not-found]"), Wide(console.err).c_str());
-            Assert::IsTrue(Has(console.err, "scic: error: pic 100: pic 100 is in two .toml files of the input folder; the second is " + exported + "\\z-second.toml"), Wide(console.err).c_str());
-            Assert::IsTrue(Has(console.err, "c-no-file.toml: the file names no image file of a cel"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "scic: error: pic 100: the pic is in two .toml files of the input folder; the second is " + exported + "\\z-second.toml"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "scic: error: the file names no image file of a cel (" + exported + "\\c-no-file.toml) [usage]"), Wide(console.err).c_str());
             Assert::IsTrue(Has(console.err, "Imported 1 of 6 pics (1 cel) into " + patches + "; 5 pics failed."), Wide(console.err).c_str());
             Assert::IsTrue(std::vector<std::string>({ "100.p56" }) == FileNamesOf(patches), L"the good pic is imported");
         }
@@ -1900,6 +1939,10 @@ namespace UnitTests
             fails("[source]\npic = 7\n[palette]\nused = [[9, 3]]\n", "an element of \"used\" is not 2 numbers", 4);
             fails("[source]\npic = 7\n[palette]\nused = [[0, 256]]\n", "an element of \"used\" is not 2 numbers", 4);
             fails("[source]\npic = 7\n[palette]\nflags = [[0, 9]]\n", "an element of \"flags\" is not 3 numbers", 4);
+            // A table key that is not a table.
+            fails("source = 5\n", "\"source\" is not a table ([source])", 1);
+            fails("pic = 5\n[source]\npic = 7\n", "\"pic\" is not a table ([pic])", 1);
+            fails("palette = 'none'\n[source]\npic = 7\n", "\"palette\" is not a table ([palette])", 1);
             // The cels.
             fails("[source]\npic = 7\n[cel]\nindex = 0\n", "\"cel\" is not an array of tables", 0);
             fails("[source]\npic = 7\n[[cel]]\nfile = 'a.bmp'\n", "a [[cel]] has no index", 0);
@@ -1909,6 +1952,36 @@ namespace UnitTests
             for (const char *file : { "..\\\\7.bmp", "sub/7.bmp", "C:7.bmp", "..", ".", "" })
             {
                 fails(std::string("[source]\npic = 7\n[[cel]]\nindex = 3\nfile = \"") + file + "\"\n", "[[cel]] 3: \"file\" must be a file name with no folder", 5);
+            }
+            // A file name with a Japanese, an Arabic and an accented Latin
+            // letter (in UTF-8): no ANSI code page has the three.
+            fails(std::string("[source]\npic = 7\n[[cel]]\nindex = 3\nfile = \"") + "\xE6\x97\xA5\xD8\xB9\xC3\xA9" + ".bmp\"\n",
+                "[[cel]] 3: \"file\" has a character that the ANSI code page of Windows does not have", 5);
+        }
+
+        // The text of a TOML file is UTF-8, and a path of scic is in the
+        // ANSI code page: the reader gives the file of a cel in that code
+        // page.
+        TEST_METHOD(Parse_FileNameOutsideAscii_IsInTheAnsiCodePage)
+        {
+            // "caf", an e with an acute accent, ".bmp".
+            const std::wstring wide = { L'c', L'a', L'f', (wchar_t)0x00e9, L'.', L'b', L'm', L'p' };
+            const std::string utf8 = std::string("caf") + "\xC3\xA9" + ".bmp";
+            char ansi[16] = {};
+            BOOL usedDefault = FALSE;
+            int length = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide.data(), (int)wide.size(), ansi, (int)sizeof(ansi), nullptr, &usedDefault);
+
+            sci::Result<PicSidecar> read = ParsePicSidecar("[source]\npic = 7\n[[cel]]\nindex = 0\nfile = \"" + utf8 + "\"\n");
+
+            if ((length > 0) && !usedDefault)
+            {
+                AssertOk(read, "parse");
+                Assert::AreEqual(std::string(ansi, (size_t)length), read->cels[0].file);
+            }
+            else
+            {
+                // The code page of this machine does not have the letter.
+                Assert::IsFalse(read.has_value());
             }
         }
 

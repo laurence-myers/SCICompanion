@@ -258,10 +258,54 @@ namespace
         return !name.empty() && (name != ".") && (name != "..") && (name.find_first_of("\\/:") == std::string::npos);
     }
 
+    // The text of a TOML file (UTF-8) in the ANSI code page, as a path has
+    // it. False for a character that the code page does not have.
+    bool AnsiOfUtf8(const std::string &utf8, std::string &ansi)
+    {
+        ansi.clear();
+        if (utf8.empty())
+        {
+            return true;
+        }
+        int wideLength = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), (int)utf8.size(), nullptr, 0);
+        if (wideLength <= 0)
+        {
+            return false;
+        }
+        std::wstring wide(wideLength, L'\0');
+        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), (int)utf8.size(), &wide[0], wideLength);
+        BOOL usedDefault = FALSE;
+        int length = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide.data(), wideLength, nullptr, 0, nullptr, &usedDefault);
+        if ((length <= 0) || usedDefault)
+        {
+            return false;
+        }
+        ansi.assign(length, '\0');
+        WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide.data(), wideLength, &ansi[0], length, nullptr, nullptr);
+        return true;
+    }
+
+    // The table of a key of the root; null when the root has no such key.
+    // Format for a key that is not a table.
+    sci::Result<const toml::table *> TableOf(const toml::table &root, const char *key)
+    {
+        const toml::node *node = root.get(key);
+        if (node == nullptr)
+        {
+            return (const toml::table *)nullptr;
+        }
+        const toml::table *table = node->as_table();
+        if (table == nullptr)
+        {
+            return BadKey(*node, fmt::format("\"{0}\" is not a table ([{0}])", key));
+        }
+        return table;
+    }
+
     sci::Result<PicSidecar> SidecarOf(const toml::table &root)
     {
         PicSidecar sidecar;
-        const toml::table *source = root["source"].as_table();
+        SCI_TRY_ASSIGN(const toml::table *source, TableOf(root, "source"));
         if ((source == nullptr) || (source->get("pic") == nullptr))
         {
             return sci::Fail(sci::ErrorCode::Format, "the file has no pic number ([source] pic): it is not a file of scic pic export");
@@ -273,14 +317,16 @@ namespace
         sidecar.hasCrc32 = (source->get("crc32") != nullptr);
         SCI_TRY(ReadNumber(*source, "[source]", "crc32", 0, 0xffffffffLL, sidecar.crc32));
 
-        if (const toml::table *pic = root["pic"].as_table())
+        SCI_TRY_ASSIGN(const toml::table *pic, TableOf(root, "pic"));
+        if (pic != nullptr)
         {
             SCI_TRY(ReadNumber(*pic, "[pic]", "width", 0, 65535, sidecar.width));
             SCI_TRY(ReadNumber(*pic, "[pic]", "height", 0, 65535, sidecar.height));
             SCI_TRY(ReadNumber(*pic, "[pic]", "background_cel", -1, 255, sidecar.backgroundCel));
         }
 
-        if (const toml::table *palette = root["palette"].as_table())
+        SCI_TRY_ASSIGN(const toml::table *palette, TableOf(root, "palette"));
+        if (palette != nullptr)
         {
             SCI_TRY(ReadFlag(*palette, "[palette]", "present", sidecar.hasPalette));
             SCI_TRY(ReadNumber(*palette, "[palette]", "stored_first", 0, 255, sidecar.storedFirst));
@@ -316,10 +362,18 @@ namespace
                 PicSidecarCel sidecarCel;
                 SCI_TRY(ReadNumber(*cel, "[[cel]]", "index", 0, 255, sidecarCel.index));
                 const std::string name = fmt::format("[[cel]] {0}", sidecarCel.index);
-                SCI_TRY(ReadText(*cel, name, "file", sidecarCel.file));
-                if ((cel->get("file") != nullptr) && !IsPlainFileName(sidecarCel.file))
+                if (const toml::node *file = cel->get("file"))
                 {
-                    return BadKey(*cel->get("file"), fmt::format("{0}: \"file\" must be a file name with no folder", name));
+                    std::string text;
+                    SCI_TRY(ReadText(*cel, name, "file", text));
+                    if (!AnsiOfUtf8(text, sidecarCel.file))
+                    {
+                        return BadKey(*file, fmt::format("{0}: \"file\" has a character that the ANSI code page of Windows does not have", name));
+                    }
+                    if (!IsPlainFileName(sidecarCel.file))
+                    {
+                        return BadKey(*file, fmt::format("{0}: \"file\" must be a file name with no folder", name));
+                    }
                 }
                 SCI_TRY(ReadNumber(*cel, name, "width", 0, 65535, sidecarCel.width));
                 SCI_TRY(ReadNumber(*cel, name, "height", 0, 65535, sidecarCel.height));

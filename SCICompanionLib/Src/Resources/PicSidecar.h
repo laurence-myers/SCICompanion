@@ -84,9 +84,12 @@ std::string PicSidecarText(const PicSidecar &sidecar);
 // Reads the sidecar from the text of a TOML file. It needs the pic number
 // ([source] pic, 0 to 65535) and the index of each [[cel]]; a key that is
 // not there keeps the value of a new PicSidecar. The file of a cel must be a
-// file name with no folder. Format for text that is not TOML (the error has
-// the line and the column), for a key of another type, for a number that is
-// not in its range, and for a file with a folder.
+// file name with no folder; the text of the TOML file is UTF-8, and the
+// sidecar has the name in the ANSI code page, as a path has it. Format for
+// text that is not TOML (the error has the line and the column), for a key
+// of another type (also source, pic or palette that is not a table), for a
+// number that is not in its range, for a file with a folder, and for a file
+// with a character that the ANSI code page does not have.
 sci::Result<PicSidecar> ParsePicSidecar(const std::string &text);
 
 // Reads the sidecar file (a path in the ANSI code page). NotFound when the

@@ -1031,7 +1031,11 @@ folder. The images come in one of two ways:
   `[source] crc32`: when it is not the CRC-32 of the pic in the game, the
   images are of another copy of the pic, and `import` gives a warning. It
   does not use the other keys, but each key must have its type and a
-  value in its range.
+  value in its range. The text of a `.toml` file is UTF-8, and the paths
+  of `scic` are in the ANSI code page of Windows: a `file`, or the name of
+  a `.toml` file, with a character that the code page does not have is an
+  error of that `.toml` file. A file of the folder that is not a `.toml`
+  file is not read.
 - `--pic <pic> --image <file>`: one image for one pic. `--cel <index>`
   gives the cel; the default is the background cel.
 
@@ -1094,7 +1098,8 @@ Rules of `import`:
   failed.`
 
 `UnitTests\Tools\PicRoundTripSweep.ps1` (local use) runs export, import and
-export again on a copy of a game, and compares the images.
+export again on a copy of a game, and compares the images. A pic that
+`export` took and `import` did not is a failure of the sweep.
 
 ## 5. Where compiled output goes
 

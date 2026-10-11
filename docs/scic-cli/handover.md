@@ -220,8 +220,9 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   interpreter was not run.
 - A patch file of `import` that fails to write after its check (a full
   disk; `ResourceBlob::SaveToFile` gives the error, exit 9), a pic that is
-  too big for a resource after the import (`CheckResourceSize`), and an
-  internal error of one pic (exit 1).
+  too big for a resource after the import (`CheckResourceSize`), an
+  internal error of one pic (exit 1), and an input folder that cannot be
+  listed (`Io`).
 - The branches of `ReplaceCelPixels` that refuse an SCI1.1 pic whose size,
   priority bars or palette change in the write: the tests have a pic
   whose commands change.

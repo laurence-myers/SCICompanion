@@ -29,9 +29,15 @@
     row for each pic (number, format, cels, exported, cel_files, imported,
     crc_same, images_same, swap_same, note), and logs\ (stdout and stderr of
     each command). A cell is "yes", "no", or empty when the check does not
-    apply (a pic that export or import did not take, for example a pic with a
+    apply (a pic that export did not take, for example a pic with a
     compressed cel; crc_same of an SCI1.1 pic, which import writes again).
     cel_files is "yes" when export1 has one BMP file for each cel of the pic.
+    imported is "no" for a pic that export took and import did not: that is
+    a failure, and the note of the row has the error of import.
+
+    Some games have pixels with a palette entry that the pic and palette 999
+    do not mark as used, and import refuses them. -AllowUnusedIndices gives
+    --allow-unused-indices to import, so that these pics are in the check.
 
     The script exits with 1 when a check gives "no", when scic gives an exit
     code that is not 0 or 6 (6: a pic failed, which the rows show), or when a
@@ -40,7 +46,7 @@
 
     Usage:
       .\UnitTests\Tools\PicRoundTripSweep.ps1 -Game 'F:\Games\Sierra\Leisure Suit Larry 6 - Shape Up or Slip Out (1993)\LSL6CD'
-      .\UnitTests\Tools\PicRoundTripSweep.ps1 -Game <folder> -Work I:\tmp\pic-sweep -Keep
+      .\UnitTests\Tools\PicRoundTripSweep.ps1 -Game <folder> -Work I:\tmp\pic-sweep -Keep -AllowUnusedIndices
 #>
 # No [Parameter(Mandatory)]: it makes the script an advanced script, and
 # then an exit in a finally block after Ctrl+C has no effect.
@@ -51,7 +57,8 @@ param(
     # Default: Release\scic.exe of this repository.
     [string]$Scic = "",
     [int]$TimeoutSeconds = 900,
-    [switch]$Keep
+    [switch]$Keep,
+    [switch]$AllowUnusedIndices
 )
 
 $ErrorActionPreference = "Stop"
@@ -107,6 +114,19 @@ function Get-PicRows([string]$name, [string]$gameCopy) {
         $rows[[int]$fields[0]] = [pscustomobject]@{ Format = $fields[1]; Cels = $fields[4]; Source = $fields[12]; Crc32 = $fields[14]; Error = $fields[18] }
     }
     return $rows
+}
+
+# The error lines of a scic command for its pics ("scic: error: pic 110:
+# ..."), by pic number: the text after the pic.
+function Get-PicErrors([string]$name) {
+    $errors = @{}
+    $err = Join-Path $logs "$name.err.txt"
+    if (Test-Path -LiteralPath $err) {
+        foreach ($line in [IO.File]::ReadAllLines($err)) {
+            if ($line -match '^scic: error: pic (\d+): (.*)$') { $errors[[int]$Matches[1]] = $Matches[2] }
+        }
+    }
+    return $errors
 }
 
 function Test-SameBytes([string]$one, [string]$other) {
@@ -191,7 +211,10 @@ Copy-GameFiles $gameFull $copy
 $original = Get-PicRows "1-list" $copy
 if ($original.Count -eq 0) { throw "scic pic list found no pic in $copy (see $logs)." }
 [void](Invoke-Scic "2-export" @("pic", "export", $copy, "--all", "--cel", "all", "--out-dir", $export1))
-[void](Invoke-Scic "3-import" @("pic", "import", $copy, "--in-dir", $export1, "--out-dir", $patch1))
+$importOptions = @()
+if ($AllowUnusedIndices) { $importOptions = @("--allow-unused-indices") }
+[void](Invoke-Scic "3-import" (@("pic", "import", $copy, "--in-dir", $export1, "--out-dir", $patch1) + $importOptions))
+$importErrors = Get-PicErrors "3-import"
 
 $copy2 = New-PatchedCopy "game-patch1" $patch1
 $patched = Get-PicRows "4-list-patched" $copy2
@@ -224,7 +247,7 @@ foreach ($sidecar in @(Get-ChildItem -LiteralPath $export1 -File -Filter "*.toml
         if (Write-SwappedImage (Join-Path $export1 $file) (Join-Path $swappedFolder $file) $skipColors[$file]) { $swappedImages++ }
     }
 }
-[void](Invoke-Scic "7-import-swapped" @("pic", "import", $copy, "--in-dir", $swappedFolder, "--out-dir", $patch2))
+[void](Invoke-Scic "7-import-swapped" (@("pic", "import", $copy, "--in-dir", $swappedFolder, "--out-dir", $patch2) + $importOptions))
 $copy3 = New-PatchedCopy "game-patch2" $patch2
 [void](Invoke-Scic "8-export-swapped" @("pic", "export", $copy3, "--all", "--cel", "all", "--out-dir", $export3))
 
@@ -271,6 +294,12 @@ foreach ($number in ($original.Keys | Sort-Object)) {
                 $failures.Add("pic ${number}: the import of the swapped images wrote no patch file")
             }
         }
+        else {
+            $reason = $importErrors[$number]
+            if (-not $reason) { $reason = "import wrote no patch file and gave no error for the pic" }
+            $row.note = $reason
+            $failures.Add("pic ${number}: export took the pic and import did not: $reason")
+        }
     }
     $rows += [pscustomobject]$row
 }
@@ -290,6 +319,7 @@ Write-Host ("Pics: {0}. Exported: {1} ({2} with one BMP file for each cel). Impo
 Write-Host ("CRC-32 the same (SCI2): {0}. Images the same: {1}. Swapped images the same: {2}." -f @($rows | Where-Object { $_.crc_same -eq "yes" }).Count,
     @($rows | Where-Object { $_.images_same -eq "yes" }).Count, @($rows | Where-Object { $_.swap_same -eq "yes" }).Count)
 Write-Host "CSV: $csv"
+if ($importedCount -eq 0) { $failures.Add("no pic went through export and import, so the sweep checked no image") }
 if ($failures.Count -gt 0) {
     Write-Host ("{0} failure(s):" -f $failures.Count)
     $failures | Select-Object -First 30 | ForEach-Object { Write-Host "  $_" }
