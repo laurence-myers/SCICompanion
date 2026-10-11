@@ -358,6 +358,9 @@
     <ClCompile Include="..\SCICompanionLib\Src\Util\ImageData.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Util\IndexedBmp.cpp">
+      <Filter>Source Files\Util</Filter>
+    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Util\PerfTimer.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
@@ -771,6 +774,9 @@ $include
       <Filter>Source Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Util\ImageData.h">
+      <Filter>Source Files\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Util\IndexedBmp.h">
       <Filter>Source Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Util\interfaces.h">

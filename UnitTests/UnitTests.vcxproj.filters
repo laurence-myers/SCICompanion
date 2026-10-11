@@ -104,6 +104,9 @@
     <ClCompile Include="TestTomlFile.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestIndexedBmp.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestGameSession.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

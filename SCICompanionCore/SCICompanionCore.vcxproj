@@ -200,6 +200,7 @@
     <ClInclude Include="..\SCICompanionLib\Src\Util\CrystalScriptStream.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Util\DependencyTracker.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Util\ImageData.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Util\IndexedBmp.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Util\interfaces.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Util\MemoryDC.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Util\PerfTimer.h" />
@@ -328,6 +329,7 @@
     <ClCompile Include="..\SCICompanionLib\Src\Util\CrystalScriptStream.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Util\DependencyTracker.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Util\ImageData.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Util\IndexedBmp.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Util\PerfTimer.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Util\ScriptText.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Util\SoundUtil.cpp" />
