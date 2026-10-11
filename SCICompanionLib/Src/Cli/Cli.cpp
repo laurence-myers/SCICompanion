@@ -304,6 +304,12 @@ namespace cli
         CLI::Option *meaningOutOption = compareMeaning->add_option("--out", meaningOptions.outFile, "Write the table into this file (default: stdout).");
         compareMeaning->add_option("--scripts", meaningOptions.scripts, "Compare only these scripts (numbers, separated by commas).")
             ->delimiter(',')->check(CLI::Range(0, 65535));
+        PaletteUseOptions paletteUseOptions;
+        CLI::App *paletteUse = dev->add_subcommand("palette-use", "Show the palette entries of each view and of each palette resource of a game: those that its palette marks as used, and those of the pixels of a view.");
+        paletteUse->fallthrough();
+        paletteUse->add_option("game-folder", paletteUseOptions.gameFolder, "The game folder.")->required();
+        CLI::Option *paletteUseOutOption = paletteUse->add_option("--out", paletteUseOptions.outFile, "Write the table into this file (default: stdout).");
+        paletteUse->add_flag("--colors", paletteUseOptions.colors, "Also the colour of each entry that a palette marks as used.");
 
         CliOutput output(console, common);
         try
@@ -467,7 +473,8 @@ namespace cli
             {
                 return "--baseline needs a folder";
             }
-            if (((compareOutOption->count() > 0) && compareOptions.outFile.empty()) || ((meaningOutOption->count() > 0) && meaningOptions.outFile.empty()))
+            if (((compareOutOption->count() > 0) && compareOptions.outFile.empty()) || ((meaningOutOption->count() > 0) && meaningOptions.outFile.empty()) ||
+                ((paletteUseOutOption->count() > 0) && paletteUseOptions.outFile.empty()))
             {
                 return "--out needs a file";
             }
@@ -520,17 +527,22 @@ namespace cli
         if (dev->parsed())
         {
             // No game of the command line: compare-structure reads folders,
-            // and compare-meaning opens its two games.
-            if (!compareStructure->parsed() && !compareMeaning->parsed())
+            // and compare-meaning and palette-use open their game.
+            if (!compareStructure->parsed() && !compareMeaning->parsed() && !paletteUse->parsed())
             {
                 logged.Help(HelpOf(dev, "scic dev"));
                 return (int)ExitCode::Success;
             }
-            sci::Result<ExitCode> compared = sci::Guard(compareMeaning->parsed() ? "comparing the meaning" : "comparing the structure", [&]() -> sci::Result<ExitCode>
+            const char *const devWork = compareMeaning->parsed() ? "comparing the meaning" : (paletteUse->parsed() ? "reading the palette use" : "comparing the structure");
+            sci::Result<ExitCode> compared = sci::Guard(devWork, [&]() -> sci::Result<ExitCode>
             {
                 if (compareMeaning->parsed())
                 {
                     return RunCompareMeaning(meaningOptions, AbsolutePath(DataFolderOf(common)), logged);
+                }
+                if (paletteUse->parsed())
+                {
+                    return RunPaletteUse(paletteUseOptions, AbsolutePath(DataFolderOf(common)), logged);
                 }
                 return RunCompareStructure(compareOptions, logged);
             });

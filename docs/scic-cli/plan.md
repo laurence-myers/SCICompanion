@@ -1101,6 +1101,34 @@ Rules of `import`:
 export again on a copy of a game, and compares the images. A pic that
 `export` took and `import` did not is a failure of the sweep.
 
+### 4.8 `scic dev palette-use` (a hidden command)
+
+In an SCI2 game, a view gives the entries that its own palette marks as
+used to the palette of the screen, and the game does no best-fit match. A
+palette resource that a script loads does the same. So a pic can get new
+colours only in the entries that no view of its room and no such palette
+uses. `scic dev palette-use <game-folder> [--out <file>] [--colors]` shows
+the facts for that check. The `dev` commands are not in the help of `scic`.
+
+It writes a table (tab-separated) to stdout, or into the file of `--out`,
+with a row for each view and then for each palette resource of the game,
+from the lowest number:
+
+| Column | Meaning |
+|---|---|
+| `kind` | `view` or `palette`. |
+| `number`, `source` | The number of the resource; `package` or `patch` (the copy that the game uses). |
+| `loops`, `cels` | The counts of a view; `-` for a palette. |
+| `palette_entries` | The entries that the palette of the resource marks as used, as runs: `0-63,80-235`; `-` for none (also for a view with no palette). |
+| `pixel_entries` | The entries of the pixels of the cels of a view, without the transparent colour of each cel; `-` for none, and for a palette. |
+| `colors` | With `--colors`: `entry=rrggbb` for each entry of `palette_entries`, with a space between them. Else `-`. |
+| `error` | Why the resource could not be read; its other cells then have `-`. |
+
+The counts of the rows go to stderr. It writes nothing into the game. Each
+resource runs in its own exception boundary: a resource that cannot be read
+has the error in its row and as a warning, and the exit code is 6. A table
+that cannot be written makes the exit code 9.
+
 ## 5. Where compiled output goes
 
 Two terms:

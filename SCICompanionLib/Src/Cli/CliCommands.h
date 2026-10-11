@@ -371,6 +371,33 @@ namespace cli
     // recompiled folder does not exist (NotFound).
     sci::Result<ExitCode> RunCompareMeaning(const CompareMeaningOptions &options, const std::string &dataFolder, CliOutput &output);
 
+    // scic dev palette-use (hidden): the palette entries of the views and of
+    // the palette resources of a game.
+    struct PaletteUseOptions
+    {
+        std::string gameFolder;
+        std::string outFile;            // empty: stdout
+        // Also the colour of each entry that a palette marks as used.
+        bool colors = false;
+    };
+
+    // The first line of the table of palette-use.
+    extern const char *const PaletteUseHeader;
+
+    // Writes a table (tab-separated) to the out file or stdout, with a row
+    // for each view and then for each palette resource of the game, from the
+    // lowest number: kind (view or palette), number, source (package or
+    // patch), loops, cels, palette_entries (the entries that the palette of
+    // the resource marks as used, as runs: 0-63,80-235), pixel_entries (the
+    // entries of the pixels of the cels of a view, without the transparent
+    // colour of each cel), colors, error. A cell with no value has "-". With
+    // colors, the cell has "entry=rrggbb" for each entry of palette_entries,
+    // with a space between them. Then the count of the rows goes to stderr.
+    // A resource runs in its own exception boundary: one that cannot be read
+    // has the error in its row, and the exit code is 6. Fails when the game
+    // does not open, and after Ctrl+C (Cancelled).
+    sci::Result<ExitCode> RunPaletteUse(const PaletteUseOptions &options, const std::string &dataFolder, CliOutput &output);
+
     // The full path of a folder or a file, from GetFullPathName: a relative
     // path starts at the current folder, and the case of the path stays. A
     // separator at the end goes, except the one of a root (C:\, \\?\C:\). An

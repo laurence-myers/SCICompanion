@@ -4,12 +4,23 @@
 #include "StructuralCompare.h"
 #include "CompiledScript.h"
 #include "GameSession.h"
+#include "GameFolderHelper.h"
 #include "MeaningCheck.h"
+#include "PaletteOperations.h"
+#include "PaletteUse.h"
+#include "PicImage.h"
+#include "ResourceBlob.h"
+#include "ResourceContainer.h"
+#include "ResourceEntity.h"
 #include "ResourceMap.h"
+#include "ResourceSourceFlags.h"
+#include "ResourceUtil.h"
 #include "ScriptCatalog.h"
+#include "View.h"
 #include "FileWrite.h"
 #include "format.h"
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -238,6 +249,174 @@ namespace cli
             output.Warning(error);
         }
         output.Message(fmt::format("Functions: {0}. Verdicts: {1}.", verdicts.size(), CountsText(verdicts)));
+        if (!errors.empty() && (code == ExitCode::Success))
+        {
+            code = ExitCode::PartialFailure;
+        }
+        return code;
+    }
+
+    const char *const PaletteUseHeader = "kind\tnumber\tsource\tloops\tcels\tpalette_entries\tpixel_entries\tcolors\terror";
+
+    namespace
+    {
+        // The numbers of the resources of a type, from the lowest.
+        std::vector<int> ResourceNumbersOf(GameSession &game, ResourceType type)
+        {
+            std::set<int> numbers;
+            auto container = game.ResourceMap().Resources(ResourceTypeToFlag(type), game.Helper().GetDefaultEnumFlags() | ResourceEnumFlags::MostRecentOnly);
+            for (auto it = container->begin(); it != container->end(); ++it)
+            {
+                numbers.insert(it.GetResourceNumber());
+            }
+            return std::vector<int>(numbers.begin(), numbers.end());
+        }
+
+        // The runs of the entries, or "-" for none.
+        std::string EntriesText(const std::array<bool, 256> &entries)
+        {
+            const std::string text = IndexRunsText(IndexRunsOf(entries));
+            return text.empty() ? std::string("-") : text;
+        }
+
+        // "80=aabbcc 81=001122": the colour of each entry that the palette
+        // marks as used; "-" for none.
+        std::string ColorsText(const PaletteComponent &palette)
+        {
+            std::string text;
+            for (int entry = 0; entry < 256; entry++)
+            {
+                const RGBQUAD &color = palette.Colors[entry];
+                if (color.rgbReserved != 0)
+                {
+                    text += fmt::format("{0}{1}={2:02x}{3:02x}{4:02x}", text.empty() ? "" : " ", entry, color.rgbRed, color.rgbGreen, color.rgbBlue);
+                }
+            }
+            return text.empty() ? std::string("-") : text;
+        }
+
+        // The cells of a row after the number.
+        struct PaletteUseRow
+        {
+            std::string source = "-";
+            std::string loops = "-";
+            std::string cels = "-";
+            std::string paletteEntries = "-";
+            std::string pixelEntries = "-";
+            std::string colors = "-";
+        };
+
+        // NotFound when the game has no such resource; Format when it is
+        // damaged.
+        sci::Result<PaletteUseRow> PaletteUseOf(GameSession &game, ResourceType type, int number, bool colors)
+        {
+            std::unique_ptr<ResourceBlob> blob = game.ResourceMap().MostRecentResource(type, number, false);
+            if (!blob)
+            {
+                return sci::Fail(sci::ErrorCode::NotFound, "the game has no such resource");
+            }
+            SCI_TRY(CheckResourceData(*blob));
+            SCI_TRY_ASSIGN(std::unique_ptr<ResourceEntity> entity, TryCreateResourceFromResourceData(*blob));
+            PaletteUseRow row;
+            row.source = IsFlagSet(blob->GetSourceFlags(), ResourceSourceFlags::PatchFile) ? "patch" : "package";
+            const PaletteComponent *palette = entity->TryGetComponent<PaletteComponent>();
+            if (type == ResourceType::View)
+            {
+                const RasterComponent *raster = entity->TryGetComponent<RasterComponent>();
+                if (raster == nullptr)
+                {
+                    return sci::Fail(sci::ErrorCode::Format, "the view has no image");
+                }
+                const ViewPaletteUse use = DescribeViewPaletteUse(*raster, palette);
+                row.loops = fmt::format("{0}", use.loops);
+                row.cels = fmt::format("{0}", use.cels);
+                row.pixelEntries = EntriesText(use.pixelEntries);
+                if (use.hasPalette)
+                {
+                    row.paletteEntries = EntriesText(use.paletteEntries);
+                }
+            }
+            else
+            {
+                if (palette == nullptr)
+                {
+                    return sci::Fail(sci::ErrorCode::Format, "the resource has no palette");
+                }
+                row.paletteEntries = EntriesText(UsedPaletteEntries(*palette));
+            }
+            if (colors && (palette != nullptr))
+            {
+                row.colors = ColorsText(*palette);
+            }
+            return row;
+        }
+    }
+
+    sci::Result<ExitCode> RunPaletteUse(const PaletteUseOptions &options, const std::string &dataFolder, CliOutput &output)
+    {
+        SessionOptions sessionOptions;
+        sessionOptions.dataFolder = dataFolder;
+        GameSession game(sessionOptions);
+        SetCurrentItem("opening the game");
+        SCI_TRY(game.Open(AbsolutePath(options.gameFolder)));
+
+        struct Kind
+        {
+            ResourceType type;
+            const char *name;
+        };
+        const Kind kinds[] = { { ResourceType::View, "view" }, { ResourceType::Palette, "palette" } };
+        std::string table = std::string(PaletteUseHeader) + "\n";
+        size_t counts[2] = {};
+        std::vector<std::string> errors;
+        for (size_t kind = 0; kind < 2; kind++)
+        {
+            for (int number : ResourceNumbersOf(game, kinds[kind].type))
+            {
+                if (CancelFlag().load())
+                {
+                    return sci::Fail(sci::ErrorCode::Cancelled, "cancelled");
+                }
+                const std::string name = fmt::format("{0} {1}", kinds[kind].name, number);
+                SetCurrentItem("reading " + name);
+                // The exception boundary of the resource.
+                sci::Result<PaletteUseRow> read = sci::Guard("reading " + name, [&]() -> sci::Result<PaletteUseRow>
+                {
+                    return PaletteUseOf(game, kinds[kind].type, number, options.colors);
+                });
+                const PaletteUseRow row = read ? *read : PaletteUseRow();
+                std::string error;
+                if (!read)
+                {
+                    error = read.error().ToString();
+                    errors.push_back(name + ": " + error);
+                }
+                table += fmt::format("{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\t{7}\t{8}\n", kinds[kind].name, number, row.source, row.loops, row.cels, row.paletteEntries, row.pixelEntries,
+                    row.colors, TableField(error));
+                counts[kind]++;
+            }
+        }
+        SetCurrentItem("");
+
+        ExitCode code = ExitCode::Success;
+        if (options.outFile.empty())
+        {
+            output.Result(table);
+        }
+        else
+        {
+            sci::Status written = WriteTextToFile(options.outFile, table);
+            if (!written)
+            {
+                output.Error(written.error().ToString());
+                code = ExitCode::WriteFailed;
+            }
+        }
+        for (const std::string &error : errors)
+        {
+            output.Warning(error);
+        }
+        output.Message(fmt::format("Views: {0}. Palettes: {1}.", counts[0], counts[1]));
         if (!errors.empty() && (code == ExitCode::Success))
         {
             code = ExitCode::PartialFailure;

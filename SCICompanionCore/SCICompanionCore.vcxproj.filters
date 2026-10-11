@@ -265,6 +265,9 @@
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PaletteOperations.cpp">
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\PaletteUse.cpp">
+      <Filter>Source Files\Resources</Filter>
+    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PatchResourceSource.cpp">
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
@@ -684,6 +687,9 @@ $include
       <Filter>Source Files\Resources</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PaletteOperations.h">
+      <Filter>Source Files\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\PaletteUse.h">
       <Filter>Source Files\Resources</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PatchResourceSource.h">

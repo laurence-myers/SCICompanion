@@ -116,6 +116,9 @@
     <ClCompile Include="TestCliPic.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestPaletteUse.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestGameSession.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

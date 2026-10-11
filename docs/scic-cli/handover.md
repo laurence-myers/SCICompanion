@@ -239,6 +239,10 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
 - The branches of `ReplaceCelPixels` that refuse an SCI1.1 pic whose size,
   priority bars or palette change in the write: the tests have a pic
   whose commands change.
+- The exception boundary of a resource in `scic dev palette-use` for an
+  exception: the damaged view of the test gives an error value. The
+  command on a game with SCI2 views has a local run only (the hi-res LSL6:
+  548 views, no error); CI has the SCI1.1 template.
 
 ## Questions for you
 
