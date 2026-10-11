@@ -8,6 +8,11 @@ This release focuses on the compiler and decompiler, on stability, and on
 modernizing the build. Broad highlights since the previous release:
 
 * **A command-line tool, `scic.exe`.**
+* **Pic images from the command line.** `scic pic list` shows the cels and
+  the palette use of each VGA pic (SCI1.1 and SCI2). `scic pic export`
+  writes the cels as 8-bit BMP files whose pixels are the palette entries
+  of the game, with a `.toml` file of the facts of each pic, so that
+  another tool can change the images.
 * **A new decompiler engine.**
 * **Decompiled scripts compiles to the same bytecode.**
 * **Fixed incorrect bytecode output.**

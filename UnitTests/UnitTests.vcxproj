@@ -133,6 +133,7 @@ exit /b 0</Command>
     <ClCompile Include="TestTomlFile.cpp" />
     <ClCompile Include="TestIndexedBmp.cpp" />
     <ClCompile Include="TestPicImage.cpp" />
+    <ClCompile Include="TestCliPic.cpp" />
     <ClCompile Include="TestGameSession.cpp" />
     <ClCompile Include="TestPatchWrites.cpp" />
     <ClCompile Include="TestDeferredWrites.cpp" />

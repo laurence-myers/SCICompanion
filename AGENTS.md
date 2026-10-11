@@ -26,7 +26,8 @@ in two static libraries:
 The `SCICompanion` project is a thin `.exe` wrapper over both libraries.
 The `SCICompanionCli` project is a thin wrapper too: it builds `scic.exe`,
 the command-line tool (`scic script list`, `decompile`, `sco` and
-`compile`), whose code is in `SCICompanionLib\Src\Cli`. It links only
+`compile`; `scic pic list` and `export`), whose code is in
+`SCICompanionLib\Src\Cli`. It links only
 `SCICompanionCore`. Its design is in `docs\scic-cli\plan.md`. Tests are in
 `UnitTests`.
 
@@ -94,11 +95,12 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
 
 - Integration tests are those whose test-class name contains `Integration`; the
   default run excludes them, so it never spawns a thread or a process.
-- The command-line tool: `TestCli` runs `cli::RunCli` in the test process,
-  with a console that keeps the output, on a temp copy of a template game.
-  `TestCliIntegration` (an integration test) starts `Release\scic.exe`. CI
-  also has a smoke step that runs `scic script list`, `script decompile
-  --all` and `script compile --all` on copies of the SCI1.1 template.
+- The command-line tool: `TestCli` and `TestCliPic` run `cli::RunCli` in
+  the test process, with a console that keeps the output, on a temp copy of
+  a template game. `TestCliIntegration` (an integration test) starts
+  `Release\scic.exe`. CI also has a smoke step that runs `scic script
+  list`, `script decompile --all`, `script compile --all`, `pic list` and
+  `pic export --all` on copies of the SCI1.1 template.
   `UnitTests\Tools\CliCorpusSweep.ps1` runs the same commands on copies of
   a local game library (local use only). See `UnitTests\README.md`.
 - The decompiler corpus gate: `UnitTests\Tools\DecompileGate.ps1` (local use

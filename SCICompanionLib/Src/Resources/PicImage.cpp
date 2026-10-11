@@ -379,6 +379,11 @@ const char *PicFormatName(PicFormat format)
     return "unknown";
 }
 
+bool CanReadPicImage(PicFormat format)
+{
+    return (format == PicFormat::VGA1_1) || (format == PicFormat::VGA2);
+}
+
 sci::Result<PicDescription> DescribePic(const SCIVersion &version, const std::vector<uint8_t> &data)
 {
     switch (version.PicFormat)

@@ -165,8 +165,10 @@ namespace cli
         ScriptDecompileOptions decompileOptions;
         ScriptScoOptions scoOptions;
         ScriptCompileOptions compileOptions;
+        PicListOptions picListOptions;
+        PicExportOptions picExportOptions;
 
-        CLI::App app("scic: the command line of SCI Companion. Commands: script list, script decompile, script sco, script compile. \"scic help <group> <command>\" shows a command.", "scic");
+        CLI::App app("scic: the command line of SCI Companion. Commands: script list, script decompile, script sco, script compile, pic list, pic export. \"scic help <group> <command>\" shows a command.", "scic");
         // "/games/sq3" is a path, not an option.
         app.allow_windows_style_options(false);
         // One command: the words after it are its own (for example the topic of
@@ -240,6 +242,28 @@ namespace cli
             ->check(CLI::Range(1, 100));
         compile->add_flag("--fail-fast", compileOptions.failFast, "Stop after the first script that fails.");
         compile->add_flag("--no-warn-unused", compileOptions.noWarnUnused, "No warning for an instance that is not used.");
+
+        CLI::App *pic = app.add_subcommand("pic", "The pic commands: list, export.");
+        pic->fallthrough();
+        pic->require_subcommand(0, 1);
+        pic->footer(CommonFooter);
+
+        CLI::App *picList = pic->add_subcommand("list", "Show the cels and the palette use of each pic. It writes nothing.");
+        picList->fallthrough();
+        picList->footer(CommonFooter);
+        picList->add_option("game-folder", picListOptions.gameFolder, "The game folder.")->required();
+        picList->add_option("--pic", picListOptions.pics, "Pic numbers or ranges (100-199). Default: every pic.");
+        picList->add_option("--format", picListOptions.format, "text (default) or tsv.")->check(CLI::IsMember({ "text", "tsv" }));
+
+        CLI::App *picExport = pic->add_subcommand("export", "Write the cels of VGA pics as 8-bit BMP files, with a .toml file for each pic. The pixels are the palette entries of the game.");
+        picExport->fallthrough();
+        picExport->footer(CommonFooter);
+        picExport->add_option("game-folder", picExportOptions.gameFolder, "The game folder.")->required();
+        picExport->add_option("--pic", picExportOptions.pics, "Pic numbers or ranges (100-199). Or give --all.");
+        picExport->add_flag("--all", picExportOptions.all, "Every pic of the game.");
+        CLI::Option *picExportOutDirOption = picExport->add_option("--out-dir", picExportOptions.outDir, "The folder for the files. It must exist, and it must not be the game folder.")->required();
+        picExport->add_option("--cel", picExportOptions.cel, "background (default): the cel with the largest area, as <pic>.bmp; all: also each other cel, as <pic>.cel<index>.bmp.")
+            ->check(CLI::IsMember({ "background", "all" }));
 
         // Tools for the development of the decompiler. The empty group hides
         // them from the help of scic.
@@ -336,6 +360,17 @@ namespace cli
             {
                 return "--stdout takes one script, not --all";
             }
+            if ((picExportOutDirOption->count() > 0) && picExportOptions.outDir.empty())
+            {
+                // An empty --out-dir is not the current folder.
+                return "--out-dir needs a folder";
+            }
+            // Plan section 4.7: export takes --all or one or more pics, not
+            // both and not neither.
+            if (picExport->parsed() && (picExportOptions.all == !picExportOptions.pics.empty()))
+            {
+                return picExportOptions.all ? "give --all or --pic, not both" : "give --all, or --pic with one or more pics";
+            }
             if ((functionReportOption->count() > 0) && decompileOptions.functionReport.empty())
             {
                 return "--function-report needs a file";
@@ -379,7 +414,7 @@ namespace cli
             {
                 return "--out needs a file";
             }
-            if (!script->parsed() && !dev->parsed())
+            if (!script->parsed() && !pic->parsed() && !dev->parsed())
             {
                 helpAfterUsageError = HelpOf(&app, "scic");
                 return "give a command";
@@ -449,7 +484,13 @@ namespace cli
             }
             return (int)*compared;
         }
-        if (!list->parsed() && !decompile->parsed() && !sco->parsed() && !compile->parsed())
+        if (pic->parsed() && !picList->parsed() && !picExport->parsed())
+        {
+            // "scic pic" lists the pic commands.
+            logged.Help(HelpOf(pic, "scic pic"));
+            return (int)ExitCode::Success;
+        }
+        if (script->parsed() && !list->parsed() && !decompile->parsed() && !sco->parsed() && !compile->parsed())
         {
             // Plan section 4.1: "scic script" lists the script commands.
             logged.Help(HelpOf(script, "scic script"));
@@ -475,13 +516,19 @@ namespace cli
                 }
             }
         };
-        if (dataFolder.empty() || !fs::exists(fs::path(dataFolder) / "include" / "sci.sh", ec))
+        // Only the script commands read the data folder (the headers of
+        // include\ and the files of Decompiler\): a pic command runs with no
+        // data folder.
+        if (script->parsed())
         {
-            logged.Error(fmt::format("the data folder \"{0}\" has no include\\sci.sh. Give the folder that holds include\\ and Decompiler\\ with --data-dir, or set SCIC_DATA_DIR.", dataFolder));
-            writeEmptyReport();
-            return (int)ExitCode::CannotStart;
+            if (dataFolder.empty() || !fs::exists(fs::path(dataFolder) / "include" / "sci.sh", ec))
+            {
+                logged.Error(fmt::format("the data folder \"{0}\" has no include\\sci.sh. Give the folder that holds include\\ and Decompiler\\ with --data-dir, or set SCIC_DATA_DIR.", dataFolder));
+                writeEmptyReport();
+                return (int)ExitCode::CannotStart;
+            }
+            logged.Detail("The data folder: " + dataFolder);
         }
-        logged.Detail("The data folder: " + dataFolder);
         if (functionReport)
         {
             // A report that cannot be written stops the command before the
@@ -502,7 +549,8 @@ namespace cli
         // the VS Code problem matcher needs (the matcher cannot open a
         // relative path such as ".\src\rm001.sc").
         std::string gameFolder = decompile->parsed() ? decompileOptions.gameFolder :
-            (sco->parsed() ? scoOptions.gameFolder : (compile->parsed() ? compileOptions.gameFolder : listOptions.gameFolder));
+            (sco->parsed() ? scoOptions.gameFolder : (compile->parsed() ? compileOptions.gameFolder :
+            (picList->parsed() ? picListOptions.gameFolder : (picExport->parsed() ? picExportOptions.gameFolder : listOptions.gameFolder))));
         sci::Status opened = session.Open(AbsolutePath(gameFolder));
         if (!opened)
         {
@@ -526,6 +574,14 @@ namespace cli
             if (compile->parsed())
             {
                 return RunScriptCompile(session, compileOptions, common, logged);
+            }
+            if (picList->parsed())
+            {
+                return RunPicList(session, picListOptions, logged);
+            }
+            if (picExport->parsed())
+            {
+                return RunPicExport(session, picExportOptions, common, logged);
             }
             return RunScriptList(session, listOptions, logged);
         });

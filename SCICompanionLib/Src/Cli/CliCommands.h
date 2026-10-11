@@ -220,6 +220,55 @@ namespace cli
     // batch cannot start (the code of ExitCodeForStartError: 1, 2, 3, 7 or 8).
     sci::Result<ExitCode> RunScriptCompile(GameSession &session, const ScriptCompileOptions &options, const CommonOptions &common, CliOutput &output);
 
+    // scic pic list (plan section 4.7).
+    struct PicListOptions
+    {
+        std::string gameFolder;
+        // Numbers and ranges (100-199); empty: every pic.
+        std::vector<std::string> pics;
+        std::string format = "text";
+    };
+
+    // The first line of the tsv table of pic list: the names of its columns.
+    extern const char *const PicListTsvHeader;
+
+    // Prints a row for each pic: its format and size, its cels, the cel with
+    // the largest area (the background), where the pic comes from, its size
+    // in bytes and its CRC-32, and the palette entries that its pixels and
+    // its palette have. A pic of a format with no image that scic reads
+    // (ega, vga1) gets a row with no cels. It writes nothing. Success, or
+    // PartialFailure when a pic cannot be read (its row has the error).
+    // Fails for a selector that is not a number or a range, and for a pic
+    // that the game does not have (Usage), and after Ctrl+C (Cancelled).
+    sci::Result<ExitCode> RunPicList(GameSession &session, const PicListOptions &options, CliOutput &output);
+
+    // scic pic export (plan section 4.7).
+    struct PicExportOptions
+    {
+        std::string gameFolder;
+        // Numbers and ranges (100-199), or all.
+        std::vector<std::string> pics;
+        bool all = false;
+        std::string outDir;
+        std::string cel = "background";     // background or all
+    };
+
+    // Writes, for each pic, its cels as 8-bit BMP files and a .toml file
+    // (PicSidecar.h) into the output folder: <pic>.bmp is the background cel,
+    // and with --cel all each other cel is <pic>.cel<index>.bmp. The pixels
+    // of a file are the bytes of the cel, and its colour table is the palette
+    // of the pic over palette 999 of the game. The files of a pic are all
+    // made before the first is written. --dry-run writes nothing and lists
+    // the files. A pic runs in its own exception boundary, so a pic that
+    // fails does not stop the next one. With --all, a pic with no cel is
+    // skipped and counted; a named pic with no cel fails. The exit code: 6
+    // when a pic failed (also a pic of a format or with a cel that scic does
+    // not export), 9 when a file could not be written, 7 after Ctrl+C, 1 for
+    // a bug. Fails when the run cannot start: the output folder does not
+    // exist (NotFound) or is the game folder (Usage), or a selector is bad
+    // (Usage).
+    sci::Result<ExitCode> RunPicExport(GameSession &session, const PicExportOptions &options, const CommonOptions &common, CliOutput &output);
+
     // scic dev compare-structure (hidden): the structure of the functions of
     // a folder of decompiled scripts against another decompile.
     struct CompareStructureOptions

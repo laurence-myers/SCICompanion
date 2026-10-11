@@ -287,6 +287,12 @@ game data other than the template games.
   the files: a dry run compares a snapshot of the game folder, and a
   compile to the package gives the same bytes as patch files and as the
   GUI's compile.
+- `TestCliPic.cpp` runs the pic commands in the same way (`scic pic list`
+  and `scic pic export`, plan section 4.7) on the template games: the SCI1.1
+  template has VGA pics with one cel, and the SCI0 template has EGA pics,
+  which have no image that `scic` reads. The tests of the functions under
+  the commands are `TestPicImage.cpp` (on the pic files of `Files\Pics`,
+  SCI2 too) and `TestIndexedBmp.cpp` (the 8-bit BMP reader and writer).
 - `TestDecompileRun.cpp` and `TestCompileBatch.cpp` test the services under
   the commands (`DecompileRun`, `CompileBatch`), with event hooks that throw
   at a chosen point.
@@ -298,7 +304,10 @@ game data other than the template games.
   SCI1.1 template: as it ships (its own sources compile first, as a dry
   run that writes nothing), and with no `game.ini` and no `src\`. Each
   command must exit with 0 and print no internal error, and each summary
-  must name every script that `list` found.
+  must name every script that `list` found. It also runs `scic pic list`
+  and `scic pic export --all` on the first copy, with a data folder that
+  has no `include\`: export must write a BMP file and a `.toml` file for
+  each pic with a cel.
 - `Tools\CliCorpusSweep.ps1` (local use) runs the same three commands on
   copies of a game library, and writes a CSV of the exit codes, error
   counts, error codes and times:

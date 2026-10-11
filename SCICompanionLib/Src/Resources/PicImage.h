@@ -105,6 +105,10 @@ struct PicDescription
 // "ega", "vga1", "vga11" or "vga2".
 const char *PicFormatName(PicFormat format);
 
+// True for the pic formats whose image these functions read (vga11 and
+// vga2).
+bool CanReadPicImage(PicFormat format);
+
 // What the pic has. Unsupported for a pic format that these functions do
 // not read; Format for data that is not a pic of the format of the version,
 // and for a pic whose palette cannot be read.
