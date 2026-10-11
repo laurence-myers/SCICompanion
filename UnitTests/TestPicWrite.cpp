@@ -108,6 +108,15 @@ namespace UnitTests
                 { 0xf5, 0x00, 0x03, 0x02, 0x83, 0xfb, 0xff });
         }
 
+        // A negative column with a row that is not negative: a line to the
+        // point, then a line from it to a point with a negative column.
+        TEST_METHOD(Line_ToAndFromANegativeColumn_IsKept)
+        {
+            AssertWrittenAndKept(
+                { PicCommand::CreateLine(3, 2, -2, 2), PicCommand::CreateLine(-2, 2, -40, 30) },
+                { 0xf5, 0x00, 0x03, 0x02, 0x00, 0xfb, 0x1c, 0xda, 0xff });
+        }
+
         // The second line starts at a negative point, so it cannot start a
         // new command (a command starts with an absolute coordinate). It is
         // a longer step than the first line: the two lines are one command
@@ -160,6 +169,29 @@ namespace UnitTests
             AssertWrittenAndKept(
                 { Pattern(10, 10), Pattern(10, 5), Pattern(10, -1), Pattern(60, -3), Pattern(20, 30) },
                 { 0xf9, 0x01, 0xf4, 0x00, 0x0a, 0x0a, 0xfd, 0x00, 0x0a, 0x05, 0x86, 0x00, 0x82, 0x32, 0x21, 0xd8, 0xff });
+        }
+
+        // Patterns at points with a negative column and a row that is not
+        // negative.
+        TEST_METHOD(Pattern_StepsToNegativeColumns_AreKept)
+        {
+            AssertWrittenAndKept(
+                { Pattern(3, 2), Pattern(-2, 2), Pattern(-40, 30) },
+                { 0xf9, 0x01, 0xfd, 0x00, 0x03, 0x02, 0x00, 0xfb, 0x1c, 0xda, 0xff });
+        }
+
+        // Patterns with a pattern number (1, 2 and 3; size 3): the byte of
+        // the number (the number times 2) is before each coordinate, also
+        // before the medium step to the negative point.
+        TEST_METHOD(Pattern_WithAPatternNumber_StepToANegativePoint_IsKept)
+        {
+            AssertWrittenAndKept(
+                {
+                    PicCommand::CreatePattern(10, 3, 3, 1, true, false),
+                    PicCommand::CreatePattern(10, -2, 3, 2, true, false),
+                    PicCommand::CreatePattern(11, 0, 3, 3, true, false),
+                },
+                { 0xf9, 0x23, 0xfd, 0x02, 0x00, 0x0a, 0x03, 0x04, 0x85, 0x00, 0x06, 0x02, 0x01, 0xff });
         }
 
         // The second pattern does not continue the command of absolute

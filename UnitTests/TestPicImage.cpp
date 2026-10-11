@@ -1190,6 +1190,35 @@ namespace UnitTests
             AssertFails(ReplaceCelPixels(sciVersion1_1, data, 0, OtherPixels(pixels)), sci::ErrorCode::Unsupported, "the count of the commands of the pic");
         }
 
+        // The writer changes the last command of this pic, and the count of
+        // the commands stays. The pic has a line with absolute coordinates
+        // to (3839, 10), then a short line from there to (3845, 10). The
+        // writer gives the second line an absolute coordinate, and the first
+        // byte of an absolute coordinate with an x of 3840 or more reads as
+        // an opcode. The made pic has four fills; the test puts the opcode
+        // that disables the visual screen, and then the two lines, in their
+        // place.
+        TEST_METHOD(ReplaceCelPixels_Sci11_PicWithACommandThatTheWriterChanges_IsUnsupported)
+        {
+            const std::vector<uint8_t> pixels(8 * 4, 7);
+            std::vector<uint8_t> data = MakeSci11Pic(8, 4, point16(0, 0), pixels,
+                { PicCommand::CreateFill(1, 1), PicCommand::CreateFill(2, 2), PicCommand::CreateFill(3, 3), PicCommand::CreateFill(4, 4) });
+            const std::vector<uint8_t> fills = { 0xf8, 0x00, 0x01, 0x01, 0x00, 0x02, 0x02, 0x00, 0x03, 0x03, 0x00, 0x04, 0x04 };
+            auto found = std::search(data.begin(), data.end(), fills.begin(), fills.end());
+            Assert::IsTrue(found != data.end(), L"the fills in the made pic");
+            const std::vector<uint8_t> lines = { 0xf1, 0xf6, 0x00, 0x0a, 0x0a, 0xe0, 0xff, 0x0a, 0xf7, 0xe0, 0xff, 0x0a, 0x60 };
+            std::copy(lines.begin(), lines.end(), found);
+
+            std::unique_ptr<ResourceEntity> pic = ReadPicEntity(data, sciVersion1_1);
+            const std::vector<PicCommand> &commands = pic->GetComponent<PicComponent>().commands;
+            Assert::IsTrue(commands.back().type == PicCommand::Line, L"the last command is the short line");
+            Assert::AreEqual(3839, (int)commands.back().drawLine.xFrom);
+            Assert::AreEqual(3845, (int)commands.back().drawLine.xTo);
+
+            AssertFails(ReplaceCelPixels(sciVersion1_1, data, 0, OtherPixels(pixels)), sci::ErrorCode::Unsupported,
+                "command " + std::to_string(commands.size() - 1) + " of the pic is different after the write");
+        }
+
         // A good pic header whose cel header offset is past the data: the
         // reader of SCI Companion refuses the pic.
         TEST_METHOD(Sci11_PicThatTheReaderRefuses_IsAnError)

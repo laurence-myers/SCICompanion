@@ -138,11 +138,23 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   pic commands.
 - The palette of a pic cannot grow in place: `--palette replace` changes
   only entries that the pic stores, and it does not change a flag byte.
-- The pic data has no form for a line or a pattern at a negative point
-  that is not a short or medium step from the point before it in the same
-  command (a longer step, or another command between the two). The pic
-  writer gives bad bytes for it. The pic reader gives no such command; an
+- The pic data has no form for three commands with a negative point, and
+  the pic writer gives bad bytes for them: a line or a pattern at a
+  negative point that is not a short or medium step from the point before
+  it in the same command (a longer step, or another command between the
+  two); a line that starts at a negative point and is longer than a medium
+  step; a pattern at a negative point with other flags or another size
+  than the pattern before it. The pic reader gives no such command; an
   edit in the pic editor can.
+- The pic reader takes two things that the pic writer does not keep. No
+  pic of 30 games (SCI0 to SCI1.1, 2174 pics) has one of them. The first:
+  a pen pattern with a pattern number of 120 or more (the byte of the
+  number is `0xf0` or more). The reader takes it as the first pattern of a
+  pattern command; the writer can put it after another pattern, where the
+  byte reads as an opcode. The second: a line that ends at an x of 3840 or
+  more, after a line with absolute coordinates. The writer gives it an
+  absolute coordinate, whose first byte (`0xf0`) reads as an opcode;
+  `ReplaceCelPixels` refuses such a pic.
 - Pics 100 and 14000 of KQ7 give `[format]` in `list` and `export`: the
   pixels of cel 0 are not all in the resource.
 - `import` takes each `.toml` file of `--in-dir`, also one that another
