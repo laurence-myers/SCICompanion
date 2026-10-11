@@ -281,8 +281,8 @@ namespace cli
         picImport->add_flag("--allow-unused-indices", picImportOptions.allowUnusedIndices, "A pixel with a palette entry that the pic and palette 999 do not mark as used is a warning, not an error.");
         CLI::Option *importOutDirOption = picImport->add_option("--out-dir", picImportOptions.outDir, "The folder for the patch files. It must exist, and it must not be the game folder or a folder inside it.")->required();
 
-        // Tools for the development of the decompiler. The empty group hides
-        // them from the help of scic.
+        // Tools for the development of scic. The empty group hides them from
+        // the help of scic.
         CompareStructureOptions compareOptions;
         CLI::App *dev = app.add_subcommand("dev", "Tools for the development of scic.");
         dev->group("");

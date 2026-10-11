@@ -26,6 +26,32 @@ namespace fs = std::filesystem;
 
 namespace cli
 {
+    GameFolderPlace PlaceInGameFolder(const std::string &gameFolder, const std::string &folder)
+    {
+        std::error_code ec;
+        const fs::path game = gameFolder;
+        // The path with no link in it, so that each parent of the text is a
+        // parent of the folder.
+        fs::path current = fs::canonical(folder, ec);
+        if (ec)
+        {
+            current = fs::absolute(folder, ec);
+        }
+        for (bool first = true;; first = false)
+        {
+            if (fs::equivalent(current, game, ec))
+            {
+                return first ? GameFolderPlace::GameFolder : GameFolderPlace::Inside;
+            }
+            const fs::path parent = current.parent_path();
+            if (parent.empty() || (parent == current))
+            {
+                return GameFolderPlace::Outside;
+            }
+            current = parent;
+        }
+    }
+
     const char *const PicListTsvHeader =
         "number\tformat\twidth\theight\tcels\tcompressed_cels\tbackground_cel\tbackground_width\tbackground_height\tbackground_x\tbackground_y\tbackground_priority\t"
         "source\tbytes\tcrc32\tskip_pixels\tpalette_entries\tpixel_entries\terror\n";
@@ -188,9 +214,7 @@ namespace cli
 
         // The output folder of export: NotFound when it is not a folder,
         // Usage when it is the game folder or a folder inside it (a game can
-        // read patch files from a folder of its own). The folders are
-        // compared as files, so another name of a folder (another case, a
-        // short name, a junction) is the same folder.
+        // read patch files from a folder of its own).
         sci::Status CheckOutputFolder(GameSession &session, const std::string &outDir)
         {
             std::error_code ec;
@@ -198,27 +222,14 @@ namespace cli
             {
                 return sci::Fail(sci::ErrorCode::NotFound, "the output folder does not exist: " + outDir);
             }
-            const fs::path game = session.Helper().GameFolder;
-            // The path with no link in it, so that each parent of the text is
-            // a parent of the folder.
-            fs::path folder = fs::canonical(outDir, ec);
-            if (ec)
+            switch (PlaceInGameFolder(session.Helper().GameFolder, outDir))
             {
-                folder = fs::absolute(outDir, ec);
-            }
-            for (bool first = true;; first = false)
-            {
-                if (fs::equivalent(folder, game, ec))
-                {
-                    return sci::Fail(sci::ErrorCode::Usage, first ? "the output folder is the game folder; give a folder outside the game" :
-                        "the output folder is inside the game folder; give a folder outside the game");
-                }
-                const fs::path parent = folder.parent_path();
-                if (parent.empty() || (parent == folder))
-                {
-                    return sci::Ok();
-                }
-                folder = parent;
+            case GameFolderPlace::GameFolder:
+                return sci::Fail(sci::ErrorCode::Usage, "the output folder is the game folder; give a folder outside the game");
+            case GameFolderPlace::Inside:
+                return sci::Fail(sci::ErrorCode::Usage, "the output folder is inside the game folder; give a folder outside the game");
+            default:
+                return sci::Ok();
             }
         }
 

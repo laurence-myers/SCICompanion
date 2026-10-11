@@ -159,6 +159,16 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   pixels of cel 0 are not all in the resource.
 - `import` takes each `.toml` file of `--in-dir`, also one that another
   tool wrote: there is no option that selects pics of the folder.
+- The palette readers take each stored 3-byte entry of a palette as used
+  (`ReadPalette` gives it the flag 1), and they read a header with 1
+  palette. The SCI32 interpreter gives the entries the flag byte of the
+  header, and a header can declare no palette. `scic dev palette-use`
+  reads the flag byte of the header; `scic pic list` and the `.toml` file
+  of `export` do not. For the views and the palette resources of the
+  hi-res LSL6, the two rules give the same table.
+- `--out` of `scic dev compare-structure` and of `scic dev compare-meaning`
+  can be a file of the game: the table then takes its place. `scic dev
+  palette-use` refuses such a file.
 
 ### The core library (E1)
 
@@ -242,7 +252,8 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
 - The exception boundary of a resource in `scic dev palette-use` for an
   exception: the damaged view of the test gives an error value. The
   command on a game with SCI2 views has a local run only (the hi-res LSL6:
-  548 views, no error); CI has the SCI1.1 template.
+  548 views, no error); CI has the SCI1.1 template. A view of SCI1 (its
+  used entries come from the palette as the reader gives it) has no test.
 
 ## Questions for you
 

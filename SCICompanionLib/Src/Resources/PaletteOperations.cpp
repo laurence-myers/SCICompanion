@@ -560,11 +560,14 @@ sci::Result<PaletteLayout> ReadPaletteLayout(const uint8_t *data, size_t size, s
 	}
 	else
 	{
+		layout.hasHeader = true;
 		layout.firstEntry = header.palColorStart;
 		layout.entryCount = header.palColorCount;
 		if (header.palFormat == SCI_PAL_FORMAT_CONSTANT)
 		{
 			layout.entrySize = 3;
+			// The byte before the format is the flag of each 3-byte entry.
+			layout.sharedFlag = header.unknown7;
 		}
 		else if (header.palFormat == SCI_PAL_FORMAT_VARIABLE)
 		{

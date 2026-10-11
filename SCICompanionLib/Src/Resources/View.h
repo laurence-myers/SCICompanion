@@ -54,6 +54,21 @@ struct Cel
 	bool Stride32;  // 32 bit stride
 };
 
+// The bytes of a row of a cel as SCI Companion holds it. Cel::GetStride
+// gives 16 bits, which the stride of a cel of 65533 pixels or more does
+// not fit.
+inline size_t StrideOf(const Cel &cel)
+{
+	const size_t width = cel.size.cx;
+	return cel.Stride32 ? ((width + 3) & ~(size_t)3) : width;
+}
+
+// The offset of the palette in the data of a view, as the reader of the
+// views of SCI1.1 and SCI2 finds it. 0 for a view with no palette, for data
+// that is too short for the header of a view, and for a view that this
+// reader gives to the reader of SCI1 views.
+uint32_t ReadViewPaletteOffsetVGA11(const uint8_t *data, size_t size);
+
 struct Loop
 {
 	Loop() : UnknownData(0), IsMirror(false), MirrorOf(0xff) {}

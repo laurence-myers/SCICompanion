@@ -1122,12 +1122,31 @@ from the lowest number:
 | `palette_entries` | The entries that the palette of the resource marks as used, as runs: `0-63,80-235`; `-` for none (also for a view with no palette). |
 | `pixel_entries` | The entries of the pixels of the cels of a view, without the transparent colour of each cel; `-` for none, and for a palette. |
 | `colors` | With `--colors`: `entry=rrggbb` for each entry of `palette_entries`, with a space between them. Else `-`. |
-| `error` | Why the resource could not be read; its other cells then have `-`. |
+| `error` | Why the row has no values; its other cells then have `-`. |
 
-The counts of the rows go to stderr. It writes nothing into the game. Each
-resource runs in its own exception boundary: a resource that cannot be read
-has the error in its row and as a warning, and the exit code is 6. A table
-that cannot be written makes the exit code 9.
+How the command reads "used":
+
+- A palette resource, and a view of SCI1.1 or SCI2: from the bytes of the
+  palette. A 4-byte entry is used when its flag byte is not 0. The 3-byte
+  entries of a palette have one flag byte in the header of the palette:
+  when it is 0, no stored entry is used, as in the SCI32 interpreter.
+- Another view (SCI1): from the palette as the reader gives it.
+- The command reads a palette header that has 1 palette, as the readers of
+  SCI Companion do. It does not read the count of palettes in the header.
+
+Rules:
+
+- The counts of the rows go to stderr.
+- It writes nothing into the game: an `--out` file in the game folder, or
+  in a folder inside it, is a usage error (exit 2).
+- The table is the result of the command, so `--dry-run` does not stop the
+  write of the `--out` file.
+- Each resource runs in its own exception boundary. A resource that cannot
+  be read has the error in its row and as a warning, and the exit code is
+  6. So has a resource that a reader repaired: the readers put a cel or a
+  palette of their own in the place of some damaged data and log a warning,
+  and such a row would show damaged data as good data.
+- A table that cannot be written makes the exit code 9.
 
 ## 5. Where compiled output goes
 

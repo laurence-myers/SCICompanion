@@ -371,6 +371,19 @@ namespace cli
     // recompiled folder does not exist (NotFound).
     sci::Result<ExitCode> RunCompareMeaning(const CompareMeaningOptions &options, const std::string &dataFolder, CliOutput &output);
 
+    // Where a folder is, against the game folder.
+    enum class GameFolderPlace
+    {
+        Outside,
+        GameFolder,     // the folder is the game folder
+        Inside,         // the folder is a folder inside the game folder
+    };
+
+    // The folders are compared as files, so another name of a folder (another
+    // case, a short name, a junction) is the same folder. A folder that does
+    // not exist has the place of its first parent that exists.
+    GameFolderPlace PlaceInGameFolder(const std::string &gameFolder, const std::string &folder);
+
     // scic dev palette-use (hidden): the palette entries of the views and of
     // the palette resources of a game.
     struct PaletteUseOptions
@@ -393,9 +406,18 @@ namespace cli
     // colour of each cel), colors, error. A cell with no value has "-". With
     // colors, the cell has "entry=rrggbb" for each entry of palette_entries,
     // with a space between them. Then the count of the rows goes to stderr.
-    // A resource runs in its own exception boundary: one that cannot be read
-    // has the error in its row, and the exit code is 6. Fails when the game
-    // does not open, and after Ctrl+C (Cancelled).
+    //
+    // The used entries of a palette resource, and of a view of SCI1.1 or
+    // SCI2, come from the bytes of the palette (ReadUsedPaletteEntries);
+    // those of another view come from the palette as the reader gives it.
+    //
+    // A resource runs in its own exception boundary. A resource that cannot
+    // be read, and one whose damage a reader repaired with a warning in the
+    // core log, has the error in its row and "-" in its other cells, and
+    // the exit code is 6. The table is the result of the command, so
+    // --dry-run does not stop the write of the out file. Fails when the game
+    // does not open, when the out file is in the game folder (Usage), and
+    // after Ctrl+C (Cancelled).
     sci::Result<ExitCode> RunPaletteUse(const PaletteUseOptions &options, const std::string &dataFolder, CliOutput &output);
 
     // The full path of a folder or a file, from GetFullPathName: a relative

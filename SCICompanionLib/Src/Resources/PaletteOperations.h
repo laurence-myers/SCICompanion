@@ -87,6 +87,14 @@ struct PaletteLayout
 	int entrySize = 0;
 	// The offset of the first stored entry, from the start of the data.
 	size_t entriesOffset = 0;
+	// The palette has a header (the form of SCI1.1 and SCI2). False for the
+	// form with a mapping table and no header, and for bytes that are too
+	// short for a header.
+	bool hasHeader = false;
+	// For the 3-byte entries of a palette with a header: the flag byte of
+	// the header, which is the flag of each stored entry. 0 for other
+	// palettes.
+	uint8_t sharedFlag = 0;
 };
 
 // The layout of the palette at paletteOffset of the data, as ReadPalette

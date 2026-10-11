@@ -3,6 +3,7 @@
 #include "CliHost.h"
 #include "StructuralCompare.h"
 #include "CompiledScript.h"
+#include "CoreLog.h"
 #include "GameSession.h"
 #include "GameFolderHelper.h"
 #include "MeaningCheck.h"
@@ -25,6 +26,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <mutex>
 #include <set>
 
 namespace cli
@@ -279,21 +281,50 @@ namespace cli
             return text.empty() ? std::string("-") : text;
         }
 
-        // "80=aabbcc 81=001122": the colour of each entry that the palette
-        // marks as used; "-" for none.
-        std::string ColorsText(const PaletteComponent &palette)
+        // "80=aabbcc 81=001122": the colour of each used entry of the
+        // palette; "-" for none.
+        std::string ColorsText(const PaletteComponent &palette, const std::array<bool, 256> &used)
         {
             std::string text;
             for (int entry = 0; entry < 256; entry++)
             {
-                const RGBQUAD &color = palette.Colors[entry];
-                if (color.rgbReserved != 0)
+                if (used[entry])
                 {
+                    const RGBQUAD &color = palette.Colors[entry];
                     text += fmt::format("{0}{1}={2:02x}{3:02x}{4:02x}", text.empty() ? "" : " ", entry, color.rgbRed, color.rgbGreen, color.rgbBlue);
                 }
             }
             return text.empty() ? std::string("-") : text;
         }
+
+        // Keeps the warnings and the errors that the readers log while a
+        // resource is read: a reader repairs some damage (a palette that
+        // stores entries past 255, a cel with a size that is not possible)
+        // and only logs it. A codec can log from another thread.
+        class RepairLogSink : public ILogSink
+        {
+        public:
+            ~RepairLogSink() { RemoveCoreLogSink(this); }
+
+            void Write(LogLevel level, const std::string &text) override
+            {
+                if (level != LogLevel::Info)
+                {
+                    std::lock_guard<std::mutex> lock(_mutex);
+                    _text += (_text.empty() ? "" : " ") + text;
+                }
+            }
+
+            std::string Text()
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                return _text;
+            }
+
+        private:
+            std::mutex _mutex;
+            std::string _text;
+        };
 
         // The cells of a row after the number.
         struct PaletteUseRow
@@ -315,11 +346,20 @@ namespace cli
             {
                 return sci::Fail(sci::ErrorCode::NotFound, "the game has no such resource");
             }
-            SCI_TRY(CheckResourceData(*blob));
             SCI_TRY_ASSIGN(std::unique_ptr<ResourceEntity> entity, TryCreateResourceFromResourceData(*blob));
             PaletteUseRow row;
             row.source = IsFlagSet(blob->GetSourceFlags(), ResourceSourceFlags::PatchFile) ? "patch" : "package";
             const PaletteComponent *palette = entity->TryGetComponent<PaletteComponent>();
+            std::array<bool, 256> used = {};
+            if (palette != nullptr)
+            {
+                used = UsedPaletteEntries(*palette);
+            }
+            // The used entries come from the bytes of the palette where the
+            // command knows its place: a palette resource, and a view of
+            // SCI1.1 or SCI2. A damaged palette is then an error.
+            const uint8_t *data = blob->GetData();
+            const size_t size = blob->GetLength();
             if (type == ResourceType::View)
             {
                 const RasterComponent *raster = entity->TryGetComponent<RasterComponent>();
@@ -331,9 +371,11 @@ namespace cli
                 row.loops = fmt::format("{0}", use.loops);
                 row.cels = fmt::format("{0}", use.cels);
                 row.pixelEntries = EntriesText(use.pixelEntries);
-                if (use.hasPalette)
+                const ViewFormat format = game.Version().ViewFormat;
+                const uint32_t paletteOffset = ((format == ViewFormat::VGA1_1) || (format == ViewFormat::VGA2)) ? ReadViewPaletteOffsetVGA11(data, size) : 0;
+                if ((palette != nullptr) && (paletteOffset != 0))
                 {
-                    row.paletteEntries = EntriesText(use.paletteEntries);
+                    SCI_TRY_ASSIGN(used, ReadUsedPaletteEntries(data, size, paletteOffset));
                 }
             }
             else
@@ -342,11 +384,12 @@ namespace cli
                 {
                     return sci::Fail(sci::ErrorCode::Format, "the resource has no palette");
                 }
-                row.paletteEntries = EntriesText(UsedPaletteEntries(*palette));
+                SCI_TRY_ASSIGN(used, ReadUsedPaletteEntries(data, size, 0));
             }
+            row.paletteEntries = EntriesText(used);
             if (colors && (palette != nullptr))
             {
-                row.colors = ColorsText(*palette);
+                row.colors = ColorsText(*palette, used);
             }
             return row;
         }
@@ -359,6 +402,15 @@ namespace cli
         GameSession game(sessionOptions);
         SetCurrentItem("opening the game");
         SCI_TRY(game.Open(AbsolutePath(options.gameFolder)));
+        if (!options.outFile.empty())
+        {
+            // The table must not take the place of a file of the game.
+            const std::string outFolder = std::filesystem::path(AbsolutePath(options.outFile)).parent_path().string();
+            if (PlaceInGameFolder(game.Helper().GameFolder, outFolder) != GameFolderPlace::Outside)
+            {
+                return sci::Fail(sci::ErrorCode::Usage, "the file of --out is in the game folder; give a file outside the game");
+            }
+        }
 
         struct Kind
         {
@@ -379,11 +431,18 @@ namespace cli
                 }
                 const std::string name = fmt::format("{0} {1}", kinds[kind].name, number);
                 SetCurrentItem("reading " + name);
+                RepairLogSink repairs;
                 // The exception boundary of the resource.
                 sci::Result<PaletteUseRow> read = sci::Guard("reading " + name, [&]() -> sci::Result<PaletteUseRow>
                 {
+                    ScopedCoreLogSink scopedSink(repairs);
                     return PaletteUseOf(game, kinds[kind].type, number, options.colors);
                 });
+                if (read && !repairs.Text().empty())
+                {
+                    // The row would show the repaired resource as a good one.
+                    read = sci::Fail(sci::ErrorCode::Format, "the reader repaired damaged data: " + repairs.Text());
+                }
                 const PaletteUseRow row = read ? *read : PaletteUseRow();
                 std::string error;
                 if (!read)

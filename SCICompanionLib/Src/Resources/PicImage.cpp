@@ -106,15 +106,6 @@ namespace
         return nullptr;
     }
 
-    // The bytes of a row of a cel as SCI Companion holds it. Cel::GetStride
-    // gives 16 bits, which the stride of a cel of 65533 pixels or more does
-    // not fit.
-    size_t StrideOf(const Cel &cel)
-    {
-        const size_t width = cel.size.cx;
-        return cel.Stride32 ? ((width + 3) & ~(size_t)3) : width;
-    }
-
     // A cel as SCI Companion holds it has the bottom row first, and each row
     // has the bytes of its stride. Format when the cel has fewer bytes.
     sci::Status CheckCelData(const Cel &cel)

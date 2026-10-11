@@ -58,6 +58,48 @@ namespace
         return cel;
     }
 
+    // The bytes of a palette with a header (the form of SCI1.1 and SCI2)
+    // that stores the entries first to first + count - 1. With 3-byte
+    // entries, the header has the flag of the entries. With 4-byte entries,
+    // entry i has the flag flags[i] (1 when flags is empty). Entry e has
+    // the colour (e, e + 1, e + 2).
+    std::vector<uint8_t> MakePaletteBytes(int first, int count, bool threeByte, uint8_t headerFlag, const std::vector<uint8_t> &flags = {})
+    {
+        std::vector<uint8_t> bytes(37, 0);
+        bytes[0] = 0x0e;
+        bytes[10] = 1;
+        bytes[25] = (uint8_t)first;
+        bytes[29] = (uint8_t)(count & 0xff);
+        bytes[30] = (uint8_t)(count >> 8);
+        bytes[31] = headerFlag;
+        bytes[32] = threeByte ? 1 : 0;
+        for (int i = 0; i < count; i++)
+        {
+            const int entry = first + i;
+            if (!threeByte)
+            {
+                bytes.push_back(flags.empty() ? (uint8_t)1 : flags[i]);
+            }
+            bytes.push_back((uint8_t)entry);
+            bytes.push_back((uint8_t)(entry + 1));
+            bytes.push_back((uint8_t)(entry + 2));
+        }
+        return bytes;
+    }
+
+    // The first line that starts with the text; empty when no line does.
+    std::string LineWith(const std::vector<std::string> &lines, const std::string &start)
+    {
+        for (const std::string &line : lines)
+        {
+            if (line.compare(0, start.size(), start) == 0)
+            {
+                return line;
+            }
+        }
+        return std::string();
+    }
+
     std::vector<std::string> LinesOf(const std::string &text)
     {
         std::vector<std::string> lines;
@@ -175,6 +217,79 @@ namespace UnitTests
             Assert::AreEqual(std::string("64-66,255"), RunsOf(UsedPaletteEntries(palette)));
             Assert::AreEqual(std::string("5"), RunsOf(use.pixelEntries));
         }
+
+        TEST_METHOD(ACelOf65533PixelsInARowGivesThePixelsOfEachRow)
+        {
+            std::unique_ptr<ResourceEntity> view(CreateViewResource(sciVersion1_1));
+            RasterComponent &raster = view->GetComponent<RasterComponent>();
+            raster.Loops.clear();
+            // A row of 65533 pixels has 65536 bytes, which 16 bits do not hold.
+            const size_t stride = 65536;
+            Cel cel;
+            cel.size = size16(65533, 2);
+            cel.TransparentColor = 0;
+            cel.Data.allocate(stride * 2);
+            for (size_t i = 0; i < stride * 2; i++)
+            {
+                cel.Data[i] = 0;
+            }
+            cel.Data[stride + 5] = 77;
+            Loop loop;
+            loop.Cels.push_back(cel);
+            raster.Loops.push_back(loop);
+
+            ViewPaletteUse use = DescribeViewPaletteUse(raster, nullptr);
+
+            Assert::AreEqual(std::string("77"), RunsOf(use.pixelEntries));
+        }
+
+        TEST_METHOD(UsedEntriesAreReadAtTheOffsetOfThePalette)
+        {
+            // The palette is not at the start of the data.
+            std::vector<uint8_t> data(4, 0xee);
+            const std::vector<uint8_t> palette = MakePaletteBytes(80, 4, true, 1);
+            data.insert(data.end(), palette.begin(), palette.end());
+
+            sci::Result<std::array<bool, 256>> used = ReadUsedPaletteEntries(data.data(), data.size(), 4);
+
+            AssertOk(used, "the used entries");
+            Assert::AreEqual(std::string("80-83"), RunsOf(*used));
+        }
+
+        TEST_METHOD(UsedEntriesOfThreeByteEntriesHaveTheFlagOfTheHeader)
+        {
+            for (uint8_t flag : { (uint8_t)3, (uint8_t)0 })
+            {
+                const std::vector<uint8_t> data = MakePaletteBytes(80, 4, true, flag);
+
+                sci::Result<std::array<bool, 256>> used = ReadUsedPaletteEntries(data.data(), data.size(), 0);
+
+                AssertOk(used, "the used entries");
+                // The flag 0 marks no entry as used.
+                Assert::AreEqual(std::string((flag == 0) ? "" : "80-83"), RunsOf(*used), Wide(fmt::format("flag {0}", (int)flag)).c_str());
+            }
+        }
+
+        TEST_METHOD(UsedEntriesOfFourByteEntriesHaveTheirOwnFlags)
+        {
+            // The flag of the header is not the flag of a 4-byte entry.
+            const std::vector<uint8_t> data = MakePaletteBytes(200, 4, false, 0, { 0, 1, 0, 3 });
+
+            sci::Result<std::array<bool, 256>> used = ReadUsedPaletteEntries(data.data(), data.size(), 0);
+
+            AssertOk(used, "the used entries");
+            Assert::AreEqual(std::string("201,203"), RunsOf(*used));
+        }
+
+        TEST_METHOD(UsedEntriesOfAPaletteThatStoresEntriesPast255AreAnError)
+        {
+            const std::vector<uint8_t> data = MakePaletteBytes(200, 100, true, 1);
+
+            sci::Result<std::array<bool, 256>> used = ReadUsedPaletteEntries(data.data(), data.size(), 0);
+
+            Assert::IsFalse(used.has_value(), L"the palette stores the entries 200 to 299");
+            Assert::IsTrue(used.error().code == sci::ErrorCode::Format, Wide(used.error().ToString()).c_str());
+        }
     };
 
     // scic dev palette-use, run in this process through RunCli, on a copy
@@ -215,6 +330,51 @@ namespace UnitTests
             return std::move(*entity);
         }
 
+        // Writes a patch file for a palette into the game copy: the header
+        // of a patch file, then the data.
+        void WritePalettePatch(GameSession &session, int number, const std::vector<uint8_t> &data)
+        {
+            std::vector<uint8_t> bytes = { 0x8b, 0x00 };
+            bytes.insert(bytes.end(), data.begin(), data.end());
+            WriteFileBytes(_gameFolder + "\\" + GetFileNameFor(ResourceType::Palette, number, NoBase36, session.Version()), bytes);
+        }
+
+        // A view with 1 cel of 3 x 2 pixels, and a palette that marks the
+        // entries 64 to 66 as used. Entry e has the colour
+        // (0x10 + e, 0x20 + e, 0x30 + e).
+        std::unique_ptr<ResourceEntity> MakeViewWithPalette(GameSession &session)
+        {
+            std::unique_ptr<ResourceEntity> view(CreateViewResource(session.Version()));
+            RasterComponent &raster = view->GetComponent<RasterComponent>();
+            raster.Loops.clear();
+            Loop loop;
+            loop.Cels.push_back(MakeCel(3, 2, 0, { 64, 65, 0, 0, 70, 64 }, 0));
+            raster.Loops.push_back(loop);
+            view->AddComponent(std::make_unique<PaletteComponent>());
+            PaletteComponent &palette = view->GetComponent<PaletteComponent>();
+            for (int entry = 0; entry < 256; entry++)
+            {
+                palette.Colors[entry] = RGBQUAD();
+            }
+            for (int entry = 64; entry <= 66; entry++)
+            {
+                palette.Colors[entry].rgbRed = (BYTE)(0x10 + entry);
+                palette.Colors[entry].rgbGreen = (BYTE)(0x20 + entry);
+                palette.Colors[entry].rgbBlue = (BYTE)(0x30 + entry);
+                palette.Colors[entry].rgbReserved = 1;
+            }
+            return view;
+        }
+
+        // The bytes of the view as a resource of the game.
+        std::vector<uint8_t> BytesOf(const ResourceEntity &view, int number)
+        {
+            sci::ostream stream;
+            std::map<BlobKey, uint32_t> propertyBag;
+            view.WriteTo(stream, true, number, propertyBag);
+            return std::vector<uint8_t>(stream.GetInternalPointer(), stream.GetInternalPointer() + stream.GetDataSize());
+        }
+
         // Writes a patch file for the view into the game copy: the header
         // of a patch file with 2 more bytes, then the data.
         void WriteViewPatch(GameSession &session, int number, const std::vector<uint8_t> &data)
@@ -246,9 +406,10 @@ namespace UnitTests
                 const PaletteComponent *palette = entity->TryGetComponent<PaletteComponent>();
                 const ViewPaletteUse use = DescribeViewPaletteUse(entity->GetComponent<RasterComponent>(), palette);
                 Assert::IsTrue((use.loops > 0) && (use.cels > 0), L"setup: the view has cels");
-                // The palettes of the views of the template mark no entry as
-                // used: "-". A view with only transparent pixels has "-" too.
-                Assert::AreEqual(std::string(""), RunsOf(use.paletteEntries), L"setup: the palette of the view marks no entry");
+                // The views of the template have no palette, or a palette
+                // with no entry: "-". A view with only transparent pixels
+                // has "-" too.
+                Assert::AreEqual(std::string(""), RunsOf(use.paletteEntries), L"setup: the view has no palette, or a palette with no entry");
                 const std::string pixelEntries = RunsOf(use.pixelEntries);
                 anyEmptyView = anyEmptyView || pixelEntries.empty();
                 const std::string expected = fmt::format("view\t{0}\tpackage\t{1}\t{2}\t-\t{3}\t-\t", views[i], use.loops, use.cels, pixelEntries.empty() ? std::string("-") : pixelEntries);
@@ -316,32 +477,10 @@ namespace UnitTests
         {
             _gameFolder = _game.Make(TemplateSci11);
             {
-                // A new view 5 as a patch file: 1 cel, and a palette that
-                // marks the entries 64 to 66 as used.
+                // A new view 5 as a patch file.
                 GameSession &session = _game.Open();
-                std::unique_ptr<ResourceEntity> view(CreateViewResource(session.Version()));
-                RasterComponent &raster = view->GetComponent<RasterComponent>();
-                raster.Loops.clear();
-                Loop loop;
-                loop.Cels.push_back(MakeCel(3, 2, 0, { 64, 65, 0, 0, 70, 64 }, 0));
-                raster.Loops.push_back(loop);
-                view->AddComponent(std::make_unique<PaletteComponent>());
-                PaletteComponent &palette = view->GetComponent<PaletteComponent>();
-                for (int entry = 0; entry < 256; entry++)
-                {
-                    palette.Colors[entry] = RGBQUAD();
-                }
-                for (int entry = 64; entry <= 66; entry++)
-                {
-                    palette.Colors[entry].rgbRed = (BYTE)(0x10 + entry);
-                    palette.Colors[entry].rgbGreen = (BYTE)(0x20 + entry);
-                    palette.Colors[entry].rgbBlue = (BYTE)(0x30 + entry);
-                    palette.Colors[entry].rgbReserved = 1;
-                }
-                sci::ostream stream;
-                std::map<BlobKey, uint32_t> propertyBag;
-                view->WriteTo(stream, true, 5, propertyBag);
-                WriteViewPatch(session, 5, std::vector<uint8_t>(stream.GetInternalPointer(), stream.GetInternalPointer() + stream.GetDataSize()));
+                std::unique_ptr<ResourceEntity> view = MakeViewWithPalette(session);
+                WriteViewPatch(session, 5, BytesOf(*view, 5));
                 _game.CloseSessions();
             }
 
@@ -355,6 +494,111 @@ namespace UnitTests
             // Without the option, the cell has "-".
             const std::vector<std::string> plain = LinesOf(Expect(0, { "dev", "palette-use", _gameFolder }).out);
             Assert::AreEqual(std::string("view\t5\tpatch\t1\t1\t64-66\t64-65,70\t-\t"), plain[2]);
+        }
+
+        TEST_METHOD(PaletteUseReadsTheFlagOfThreeByteEntriesFromTheHeader)
+        {
+            _gameFolder = _game.Make(TemplateSci11);
+            {
+                // Two new palettes as patch files, with 3-byte entries that
+                // do not start at entry 0: the header of 500 gives them the
+                // flag 1, and the header of 501 gives them the flag 0.
+                GameSession &session = _game.Open();
+                WritePalettePatch(session, 500, MakePaletteBytes(80, 4, true, 1));
+                WritePalettePatch(session, 501, MakePaletteBytes(80, 4, true, 0));
+                _game.CloseSessions();
+            }
+
+            cli::StringConsole console = Expect(0, { "dev", "palette-use", _gameFolder, "--colors" });
+
+            const std::vector<std::string> lines = LinesOf(console.out);
+            Assert::AreEqual(std::string("palette\t500\tpatch\t-\t-\t80-83\t-\t80=505152 81=515253 82=525354 83=535455\t"), LineWith(lines, "palette\t500\t"), Wide(console.out).c_str());
+            Assert::AreEqual(std::string("palette\t501\tpatch\t-\t-\t-\t-\t-\t"), LineWith(lines, "palette\t501\t"), Wide(console.out).c_str());
+        }
+
+        TEST_METHOD(PaletteUseReadsTheFlagOfThreeByteEntriesOfAView)
+        {
+            _gameFolder = _game.Make(TemplateSci11);
+            {
+                // The palette of the view gets the form with 3-byte entries
+                // and the flag 0 in its header (the bytes 32 and 31 of the
+                // palette). Its 256 entries then mark no entry as used; the
+                // reader of the views gives each of them the flag 1.
+                GameSession &session = _game.Open();
+                std::vector<uint8_t> bytes = BytesOf(*MakeViewWithPalette(session), 5);
+                const uint32_t paletteOffset = ReadViewPaletteOffsetVGA11(bytes.data(), bytes.size());
+                Assert::IsTrue((paletteOffset != 0) && ((size_t)paletteOffset + 37 < bytes.size()), L"setup: the view has a palette");
+                bytes[paletteOffset + 31] = 0;
+                bytes[paletteOffset + 32] = 1;
+                WriteViewPatch(session, 5, bytes);
+                _game.CloseSessions();
+                std::unique_ptr<ResourceEntity> read = EntityOf(_game.Open(), ResourceType::View, 5);
+                Assert::AreEqual(std::string("0-255"), RunsOf(UsedPaletteEntries(read->GetComponent<PaletteComponent>())), L"setup: the flags that the reader gives");
+                _game.CloseSessions();
+            }
+
+            cli::StringConsole console = Expect(0, { "dev", "palette-use", _gameFolder, "--colors" });
+
+            Assert::AreEqual(std::string("view\t5\tpatch\t1\t1\t-\t64-65,70\t-\t"), LineWith(LinesOf(console.out), "view\t5\t"), Wide(console.out).c_str());
+        }
+
+        TEST_METHOD(PaletteUseGivesADamagedPaletteAnErrorInItsRow)
+        {
+            _gameFolder = _game.Make(TemplateSci11);
+            {
+                // The palette stores the entries 200 to 299.
+                GameSession &session = _game.Open();
+                WritePalettePatch(session, 500, MakePaletteBytes(200, 100, true, 1));
+                _game.CloseSessions();
+            }
+
+            cli::StringConsole console = Expect(6, { "dev", "palette-use", _gameFolder });
+
+            const std::string line = LineWith(LinesOf(console.out), "palette\t500\t");
+            const std::string noValues = "palette\t500\t-\t-\t-\t-\t-\t-\t";
+            Assert::AreEqual(noValues, line.substr(0, noValues.size()), Wide(console.out).c_str());
+            Assert::IsTrue(line.size() > noValues.size(), L"the row has the error");
+            Assert::IsTrue(Has(console.err, "palette 500: "), Wide(console.err).c_str());
+            // The palette of the template has its row with no error.
+            Assert::AreEqual(std::string("palette\t999\tpackage\t-\t-\t0-63,253-255\t-\t-\t"), LineWith(LinesOf(console.out), "palette\t999\t"));
+        }
+
+        TEST_METHOD(PaletteUseGivesAViewThatAReaderRepairedAnErrorInItsRow)
+        {
+            _gameFolder = _game.Make(TemplateSci11);
+            {
+                // A view whose second loop has no cel: the reader of the
+                // views logs a warning and gives the loop a cel.
+                GameSession &session = _game.Open();
+                std::unique_ptr<ResourceEntity> view = MakeViewWithPalette(session);
+                view->GetComponent<RasterComponent>().Loops.push_back(Loop());
+                WriteViewPatch(session, 5, BytesOf(*view, 5));
+                _game.CloseSessions();
+            }
+
+            cli::StringConsole console = Expect(6, { "dev", "palette-use", _gameFolder });
+
+            const std::string line = LineWith(LinesOf(console.out), "view\t5\t");
+            const std::string noValues = "view\t5\t-\t-\t-\t-\t-\t-\t";
+            Assert::AreEqual(noValues, line.substr(0, noValues.size()), Wide(console.out).c_str());
+            Assert::IsTrue(Has(line, "Empty loop found"), Wide(line).c_str());
+            Assert::IsTrue(Has(console.err, "view 5: "), Wide(console.err).c_str());
+        }
+
+        TEST_METHOD(PaletteUseRefusesAnOutFileInTheGameFolder)
+        {
+            _gameFolder = _game.Make(TemplateSci11);
+            const std::string map = _gameFolder + "\\resource.map";
+            const std::vector<uint8_t> before = ReadFileBytes(map);
+            Assert::IsFalse(before.empty(), L"setup: the map of the game");
+
+            cli::StringConsole console = Expect(2, { "dev", "palette-use", _gameFolder, "--out", map });
+
+            Assert::IsTrue(before == ReadFileBytes(map), L"the map of the game did not change");
+            Assert::IsTrue(Has(console.err, "--out"), Wide(console.err).c_str());
+            // A folder of the game that is not there yet is in the game too.
+            Expect(2, { "dev", "palette-use", _gameFolder, "--out", _gameFolder + "\\new\\table.tsv" });
+            Assert::IsFalse(fs::exists(_gameFolder + "\\new"));
         }
 
         TEST_METHOD(PaletteUseRefusesBadOptionsAndAGameThatIsNotThere)
@@ -408,7 +652,9 @@ namespace UnitTests
             const std::vector<std::string> lines = LinesOf(console.out);
             const std::vector<std::string> first = PartsOf(lines[1], '\t');
             Assert::AreEqual((size_t)9, first.size(), Wide(lines[1]).c_str());
-            Assert::AreEqual(std::to_string(damaged), first[1]);
+            // The cells of the row before the error have "-".
+            const std::string noValues = fmt::format("view\t{0}\t-\t-\t-\t-\t-\t-\t", damaged);
+            Assert::AreEqual(noValues, lines[1].substr(0, noValues.size()));
             Assert::IsFalse(first[8].empty(), L"the row of the damaged view has the error");
             Assert::IsTrue(Has(console.err, fmt::format("view {0}: ", damaged)), Wide(console.err).c_str());
             // The next view has its row with no error.
