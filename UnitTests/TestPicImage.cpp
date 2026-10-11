@@ -6,9 +6,14 @@
 #include "IndexedBmp.h"
 #include "PaletteOperations.h"
 #include "Pic.h"
+#include "PicDrawManager.h"
 #include "PicImage.h"
 #include "ResourceBlob.h"
+#include "ResourceEntity.h"
 #include "ResourceSourceFlags.h"
+#include "ResourceUtil.h"
+#include "View.h"
+#include <algorithm>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -59,6 +64,58 @@ namespace UnitTests
             HRESULT hr = blob.CreateFromFile("pic", PicPath(name), version, ResourceSaveLocation::Patch, version.DefaultVolumeFile);
             Assert::IsTrue(SUCCEEDED(hr), Wide("reading " + PicPath(name)).c_str());
             return std::vector<uint8_t>(blob.GetData(), blob.GetData() + blob.GetLength());
+        }
+
+        // An SCI1.1 pic that the writer of SCI Companion makes: a cel with
+        // the pixels (rows from the top), a palette of black entries, and
+        // the commands of a new pic and of the test.
+        std::vector<uint8_t> MakeSci11Pic(int width, int height, point16 placement, const std::vector<uint8_t> &pixels, const std::vector<PicCommand> &moreCommands = {})
+        {
+            std::unique_ptr<ResourceEntity> pic(CreateDefaultPicResource(sciVersion1_1));
+            std::unique_ptr<PaletteComponent> palette = std::make_unique<PaletteComponent>();
+            memset(palette->Colors, 0, sizeof(palette->Colors));
+            pic->AddComponent(std::move(palette));
+            // A cel has the bottom row first, and rows of a multiple of 4
+            // bytes.
+            Cel cel(size16((uint16_t)width, (uint16_t)height), placement, 255);
+            const size_t stride = ((size_t)width + 3) / 4 * 4;
+            cel.Data.allocate(stride * height);
+            cel.Data.fill(255);
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    cel.Data[((size_t)(height - 1 - y) * stride) + x] = pixels[((size_t)y * width) + x];
+                }
+            }
+            PicComponent &component = pic->GetComponent<PicComponent>();
+            PicCommand bitmap;
+            bitmap.CreateDrawVisualBitmap(cel, true);
+            component.commands.push_back(bitmap);
+            component.commands.insert(component.commands.end(), moreCommands.begin(), moreCommands.end());
+            sci::ostream stream;
+            std::map<BlobKey, uint32_t> propertyBag;
+            pic->WriteTo(stream, false, 1, propertyBag);
+            return std::vector<uint8_t>(stream.GetInternalPointer(), stream.GetInternalPointer() + stream.GetDataSize());
+        }
+
+        // The pic of the bytes, as SCI Companion reads it.
+        std::unique_ptr<ResourceEntity> ReadPicEntity(const std::vector<uint8_t> &data, const SCIVersion &version)
+        {
+            GameFolderHelper helper;
+            ResourceBlob blob(helper, "pic", ResourceType::Pic, data, version.DefaultVolumeFile, 1, NoBase36, version, ResourceSourceFlags::PatchFile);
+            sci::Result<std::unique_ptr<ResourceEntity>> pic = TryCreateResourceFromResourceData(blob);
+            AssertOk(pic, "reading the pic");
+            return std::move(*pic);
+        }
+
+        // The pixels of a screen of the pic, as SCI Companion draws it.
+        std::vector<uint8_t> DrawnScreen(const ResourceEntity &pic, PicScreen screen)
+        {
+            PicDrawManager manager(pic.TryGetComponent<PicComponent>(), pic.TryGetComponent<PaletteComponent>());
+            std::unique_ptr<Cel> cel = manager.MakeCelFromPic(screen, PicPosition::Final);
+            Assert::IsNotNull(cel.get(), L"the screen of the pic");
+            return std::vector<uint8_t>(&cel->Data[0], &cel->Data[0] + cel->Data.size());
         }
 
         void SetU16(std::vector<uint8_t> &bytes, size_t offset, uint16_t value)
@@ -278,6 +335,40 @@ namespace UnitTests
             Assert::AreEqual(3, pic->backgroundCel);
         }
 
+        // Cels 0 and 3 get a width of 1, and cel 2 the width of cel 1: cels
+        // 1 and 2 are then the largest, with the same area (46 x 74).
+        TEST_METHOD(DescribePic_BackgroundCelIsTheFirstOfTheLargest)
+        {
+            std::vector<uint8_t> data = PicData(Sci2Pic220, sciVersion2);
+            SetU16(data, CelField(0, CelWidthField), 1);
+            SetU16(data, CelField(3, CelWidthField), 1);
+            SetU16(data, CelField(2, CelWidthField), 46);
+
+            sci::Result<PicDescription> pic = DescribePic(sciVersion2, data);
+
+            AssertOk(pic, "describe");
+            Assert::AreEqual(46 * 74, pic->cels[1].width * pic->cels[1].height);
+            Assert::AreEqual(46 * 74, pic->cels[2].width * pic->cels[2].height);
+            Assert::AreEqual(1, pic->backgroundCel);
+        }
+
+        // The header of the pic gets no size (as in a game of 320 x 200):
+        // the pic is then as large as its largest cel, 640 x 334.
+        TEST_METHOD(DescribePic_Sci2_PicIsNotSmallerThanItsCels)
+        {
+            const size_t picWidthField = 10;
+            const size_t picHeightField = 12;
+            std::vector<uint8_t> data = PicData(Sci2Pic220, sciVersion2);
+            SetU16(data, picWidthField, 0);
+            SetU16(data, picHeightField, 0);
+
+            sci::Result<PicDescription> pic = DescribePic(sciVersion2, data);
+
+            AssertOk(pic, "describe");
+            Assert::AreEqual(640, pic->width);
+            Assert::AreEqual(334, pic->height);
+        }
+
         TEST_METHOD(DescribePic_Sci2_NoPalette)
         {
             std::vector<uint8_t> data = PicData(Sci2Pic220, sciVersion2);
@@ -415,7 +506,7 @@ namespace UnitTests
             SetU16(data, CelField(0, CelWidthField), 4);
             std::vector<uint8_t> pixels(4 * 124);
 
-            AssertFails(PatchPicCelPixelsVGA2(data, 0, pixels), sci::ErrorCode::Unsupported, "cel 1 of the pic is compressed");
+            AssertFails(PatchPicCelPixelsVGA2(data, 0, pixels), sci::ErrorCode::Unsupported, "cel 1 is compressed");
         }
 
         // Cel 1 gets the offset of cel 2, so the two have bytes in common.
@@ -425,8 +516,13 @@ namespace UnitTests
             SetU32(data, CelField(1, CelControlOffsetField), (uint32_t)Pic220Cel2Offset);
             std::vector<uint8_t> before = data;
 
-            AssertFails(PatchPicCelPixelsVGA2(data, 2, std::vector<uint8_t>(30 * 74)), sci::ErrorCode::Unsupported, "cel 2 and cel 1 have pixel bytes in common");
+            AssertFails(PatchPicCelPixelsVGA2(data, 2, std::vector<uint8_t>(30 * 74)), sci::ErrorCode::Unsupported, "cel 1 and cel 2 have pixel bytes in common");
             AssertFails(PatchPicCelPixelsVGA2(data, 1, std::vector<uint8_t>(46 * 74)), sci::ErrorCode::Unsupported, "cel 1 and cel 2 have pixel bytes in common");
+            // Cel 0 has its own bytes, but a pic with such cels does not
+            // change in place.
+            AssertFails(PatchPicCelPixelsVGA2(data, 0, std::vector<uint8_t>(640 * 334)), sci::ErrorCode::Unsupported, "cel 1 and cel 2 have pixel bytes in common");
+            RGBQUAD colors[256] = {};
+            AssertFails(PatchPicPaletteColorsVGA2(data, 10, 12, colors), sci::ErrorCode::Unsupported, "cel 1 and cel 2 have pixel bytes in common");
             Assert::IsTrue(before == data, L"a refused patch changes nothing");
         }
 
@@ -440,12 +536,77 @@ namespace UnitTests
 
             std::vector<uint8_t> inPalette = PicData(Sci2Pic220, sciVersion2);
             SetU32(inPalette, CelField(0, CelControlOffsetField), (uint32_t)(paletteEnd - 1));
+            std::vector<uint8_t> before = inPalette;
             AssertFails(PatchPicCelPixelsVGA2(inPalette, 0, pixels), sci::ErrorCode::Unsupported, "cel 0 and the palette of the pic have bytes in common");
+            // New colours would change a pixel of the cel.
+            AssertFails(ReplacePaletteRange(sciVersion2, inPalette, 0, 254, NewColors()), sci::ErrorCode::Unsupported, "cel 0 and the palette of the pic have bytes in common");
+            Assert::IsTrue(before == inPalette, L"a refused patch changes nothing");
 
             std::vector<uint8_t> afterPalette = PicData(Sci2Pic220, sciVersion2);
             SetU32(afterPalette, CelField(0, CelControlOffsetField), (uint32_t)paletteEnd);
             AssertOk(PatchPicCelPixelsVGA2(afterPalette, 0, pixels), "a cel after the palette");
             Assert::AreEqual(9, (int)afterPalette[paletteEnd]);
+            AssertOk(ReplacePaletteRange(sciVersion2, afterPalette, 0, 254, NewColors()), "the palette before the cel");
+        }
+
+        // A palette that cannot be read has no known bytes, so the pic does
+        // not change in place, and DescribePic gives the same error.
+        TEST_METHOD(PatchPicCelPixels_PaletteThatCannotBeRead_IsFormat)
+        {
+            std::vector<uint8_t> data = PicData(Sci2Pic220, sciVersion2);
+            data[Pic220PaletteOffset + PaletteFormatField] = 2;
+            std::vector<uint8_t> before = data;
+
+            AssertFails(PatchPicCelPixelsVGA2(data, 2, std::vector<uint8_t>(30 * 74)), sci::ErrorCode::Format, "a format that is not known (2)");
+            AssertFails(DescribePic(sciVersion2, data), sci::ErrorCode::Format, "a format that is not known (2)");
+            AssertFails(ReplacePaletteRange(sciVersion2, data, 10, 12, NewColors()), sci::ErrorCode::Format, "a format that is not known (2)");
+            Assert::IsTrue(before == data, L"a refused patch changes nothing");
+        }
+
+        // The palette offset is 10 bytes before the end of the data: too few
+        // bytes for a palette header. All 10 bytes count as the palette, and
+        // they are pixels of cel 3.
+        TEST_METHOD(PatchPicCelPixels_PaletteOfFewerBytesThanAHeader_CountsToTheEndOfTheData)
+        {
+            std::vector<uint8_t> data = PicData(Sci2Pic220, sciVersion2);
+            SetU32(data, PaletteOffsetField, (uint32_t)(data.size() - 10));
+
+            AssertFails(PatchPicCelPixelsVGA2(data, 2, std::vector<uint8_t>(30 * 74)), sci::ErrorCode::Unsupported, "cel 3 and the palette of the pic have bytes in common");
+        }
+
+        // A cel of no pixels has no bytes: its offset is not checked, and it
+        // has no bytes in common with another part.
+        TEST_METHOD(CelOfNoPixels_IsReadAndThePicChangesInPlace)
+        {
+            std::vector<uint8_t> data = PicData(Sci2Pic220, sciVersion2);
+            SetU16(data, CelField(3, CelWidthField), 0);
+            SetU32(data, CelField(3, CelControlOffsetField), 0);
+
+            sci::Result<PicDescription> pic = DescribePic(sciVersion2, data);
+            AssertOk(pic, "describe");
+            Assert::AreEqual((size_t)4, pic->cels.size());
+            Assert::AreEqual(0, pic->cels[3].width);
+            Assert::AreEqual(122, pic->cels[3].height);
+            Assert::AreEqual((uint32_t)0, Sum(pic->cels[3].pixelCounts));
+
+            sci::Result<std::vector<uint8_t>> pixels = GetCelPixels(sciVersion2, data, 3);
+            AssertOk(pixels, "the pixels of the cel");
+            Assert::IsTrue(pixels->empty());
+
+            sci::Result<std::vector<uint8_t>> same = ReplaceCelPixels(sciVersion2, data, 3, std::vector<uint8_t>());
+            AssertOk(same, "no new pixels for the cel");
+            Assert::IsTrue(data == *same);
+
+            sci::Result<std::vector<uint8_t>> cel2 = GetCelPixels(sciVersion2, data, 2);
+            AssertOk(cel2, "the pixels of cel 2");
+            sci::Result<std::vector<uint8_t>> replaced = ReplaceCelPixels(sciVersion2, data, 2, OtherPixels(*cel2));
+            AssertOk(replaced, "new pixels for cel 2");
+            Assert::AreEqual(Pic220Cel2Size, ChangedOffsets(data, *replaced).size());
+        }
+
+        TEST_METHOD(ReplacePaletteRange_PicWithACompressedCel_IsUnsupported)
+        {
+            AssertFails(ReplacePaletteRange(sciVersion2, PicData(Sci2Pic901, sciVersion2), 10, 12, NewColors()), sci::ErrorCode::Unsupported, "cel 0 is compressed");
         }
 
         TEST_METHOD(ReadPicLayoutVGA2_GivesTheOffsets)
@@ -603,6 +764,25 @@ namespace UnitTests
 
             // One byte less: the last entry is not all in the data.
             AssertFails(ReadPaletteLayout(data.data(), data.size() - 1, paletteOffset), sci::ErrorCode::Format, "the 256 entries of the palette are not all in the data");
+        }
+
+        // The form with no header whose mapping table does not start with
+        // 0, 1: ReadPalette knows it by a first byte of 0 and a count of 0 in
+        // the bytes where a header has its count of entries (29 and 30).
+        TEST_METHOD(ReadPaletteLayout_FormWithNoHeaderAndAnotherMappingTable)
+        {
+            std::vector<uint8_t> data(260 + (256 * 4), 0);
+            data[1] = 9;
+            data[28] = 7;
+            data[31] = 7;
+
+            sci::Result<PaletteLayout> layout = ReadPaletteLayout(data.data(), data.size(), 0);
+
+            AssertOk(layout, "layout");
+            Assert::AreEqual(0, layout->firstEntry);
+            Assert::AreEqual(256, layout->entryCount);
+            Assert::AreEqual(4, layout->entrySize);
+            Assert::AreEqual((size_t)260, layout->entriesOffset);
         }
 
         // ReadPalette reads no entry from fewer than 37 bytes.
@@ -882,6 +1062,149 @@ namespace UnitTests
             sci::Result<std::vector<uint8_t>> readBack = GetCelPixels(sciVersion1_1, *once, 0);
             AssertOk(readBack, "read back");
             Assert::IsTrue(*pixels == *readBack, L"the pixels stay");
+        }
+
+        // The flag byte of a 4-byte entry: 0 is an entry that the pic does
+        // not use.
+        TEST_METHOD(DescribePic_Sci11_GivesTheFlagBytesOfThePalette)
+        {
+            std::vector<uint8_t> data = PicData(Sci11Pic100, sciVersion1_1);
+            const size_t entries = Pic100PaletteOffset + PaletteHeaderSize;
+            data[entries + (3 * 4)] = 0;
+            data[entries + (4 * 4)] = 3;
+            data[entries + (5 * 4)] = 0x33;
+
+            sci::Result<PicDescription> pic = DescribePic(sciVersion1_1, data);
+
+            AssertOk(pic, "describe");
+            Assert::AreEqual(0, (int)pic->palette.flags[3]);
+            Assert::AreEqual(3, (int)pic->palette.flags[4]);
+            Assert::AreEqual(0x33, (int)pic->palette.flags[5]);
+            std::array<bool, 256> used = pic->palette.UsedEntries();
+            Assert::IsFalse(used[3]);
+            Assert::IsTrue(used[4]);
+            Assert::IsTrue(used[5]);
+        }
+
+        // A cel of 5 x 3 at (7, 9): each row of the cel has 3 bytes of
+        // padding in SCI Companion.
+        TEST_METHOD(Sci11_CelWhoseWidthIsNotAMultipleOfFour)
+        {
+            const std::vector<uint8_t> pixels = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
+            std::vector<uint8_t> data = MakeSci11Pic(5, 3, point16(7, 9), pixels);
+
+            sci::Result<PicDescription> pic = DescribePic(sciVersion1_1, data);
+            AssertOk(pic, "describe");
+            Assert::AreEqual((size_t)1, pic->cels.size());
+            Assert::AreEqual(5, pic->cels[0].width);
+            Assert::AreEqual(3, pic->cels[0].height);
+            Assert::AreEqual(7, pic->cels[0].x);
+            Assert::AreEqual(9, pic->cels[0].y);
+            Assert::AreEqual((uint32_t)1, pic->cels[0].pixelCounts[15]);
+            Assert::AreEqual((uint32_t)15, Sum(pic->cels[0].pixelCounts));
+
+            sci::Result<std::vector<uint8_t>> read = GetCelPixels(sciVersion1_1, data, 0);
+            AssertOk(read, "pixels");
+            Assert::IsTrue(pixels == *read, L"the pixels of the made pic");
+
+            const std::vector<uint8_t> newPixels = { 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1 };
+            sci::Result<std::vector<uint8_t>> replaced = ReplaceCelPixels(sciVersion1_1, data, 0, newPixels);
+            AssertOk(replaced, "replace");
+            sci::Result<std::vector<uint8_t>> readBack = GetCelPixels(sciVersion1_1, *replaced, 0);
+            AssertOk(readBack, "read back");
+            Assert::IsTrue(newPixels == *readBack, L"the new pixels");
+        }
+
+        // The four SCI1.1 pics of the pic tests: each gets its own pixels
+        // again, and SCI Companion then draws the same visual, priority and
+        // control screens from it (the drawing commands and the priority
+        // bars are the same).
+        TEST_METHOD(ReplaceCelPixels_Sci11_OwnPixels_DrawsTheSameScreens)
+        {
+            for (const char *name : { "SCI1.1\\100.p56", "SCI1.1\\320.p56", "SCI1.1\\630.p56", "SCI1.1\\860.p56" })
+            {
+                std::vector<uint8_t> data = PicData(name, sciVersion1_1);
+                sci::Result<std::vector<uint8_t>> pixels = GetCelPixels(sciVersion1_1, data, 0);
+                AssertOk(pixels, name);
+
+                sci::Result<std::vector<uint8_t>> replaced = ReplaceCelPixels(sciVersion1_1, data, 0, *pixels);
+
+                AssertOk(replaced, name);
+                std::unique_ptr<ResourceEntity> before = ReadPicEntity(data, sciVersion1_1);
+                std::unique_ptr<ResourceEntity> after = ReadPicEntity(*replaced, sciVersion1_1);
+                Assert::AreEqual(before->GetComponent<PicComponent>().commands.size(), after->GetComponent<PicComponent>().commands.size(), Wide(name).c_str());
+                for (PicScreen screen : { PicScreen::Visual, PicScreen::Priority, PicScreen::Control })
+                {
+                    Assert::IsTrue(DrawnScreen(*before, screen) == DrawnScreen(*after, screen), Wide(std::string(name) + ", screen " + std::to_string((int)screen)).c_str());
+                }
+            }
+        }
+
+        // The writer of SCI Companion gives a line to a point above the pic
+        // another end point, so it does not keep a pic with such a line.
+        // The made pic has the line from (112, 110) to (112, -1); the writer
+        // gave it the byte 0x91 for the step of -111 rows, which reads as a
+        // step of -17 rows. The test puts the byte of the step in (0xef).
+        TEST_METHOD(ReplaceCelPixels_Sci11_PicThatTheWriterDoesNotKeep_IsUnsupported)
+        {
+            const std::vector<uint8_t> pixels(8 * 4, 7);
+            std::vector<uint8_t> data = MakeSci11Pic(8, 4, point16(0, 0), pixels, { PicCommand::CreateLine(112, 110, 112, -1) });
+            // The start of the line (0, 112, 110), then the step in y and in x.
+            const std::vector<uint8_t> line = { 0x00, 0x70, 0x6e, 0x91, 0x00 };
+            auto found = std::search(data.begin(), data.end(), line.begin(), line.end());
+            Assert::IsTrue(found != data.end(), L"the line in the made pic");
+            // The made pic reads as a line to (112, 93), which the writer keeps.
+            AssertOk(ReplaceCelPixels(sciVersion1_1, data, 0, OtherPixels(pixels)), "the pic with the line to (112, 93)");
+
+            *(found + 3) = 0xef;
+
+            AssertOk(DescribePic(sciVersion1_1, data), "describe the pic with the line to (112, -1)");
+            AssertOk(GetCelPixels(sciVersion1_1, data, 0), "the pixels of the pic with the line to (112, -1)");
+            AssertFails(ReplaceCelPixels(sciVersion1_1, data, 0, OtherPixels(pixels)), sci::ErrorCode::Unsupported, "command 5 of the pic is different after the write");
+        }
+
+        // A good pic header whose cel header offset is past the data: the
+        // reader of SCI Companion refuses the pic.
+        TEST_METHOD(Sci11_PicThatTheReaderRefuses_IsAnError)
+        {
+            const size_t celHeaderOffsetField = 32;
+            std::vector<uint8_t> data = PicData(Sci11Pic100, sciVersion1_1);
+            SetU32(data, celHeaderOffsetField, 0xfffffff0);
+            std::vector<uint8_t> pixels(320 * 199);
+
+            AssertFails(DescribePic(sciVersion1_1, data), sci::ErrorCode::Format, "");
+            AssertFails(GetCelPixels(sciVersion1_1, data, 0), sci::ErrorCode::Format, "");
+            AssertFails(ReplaceCelPixels(sciVersion1_1, data, 0, pixels), sci::ErrorCode::Format, "");
+        }
+
+        // A cel of 65535 x 2 with plain rows (the form of a magnifier cel):
+        // a row of the cel has 65536 bytes in SCI Companion, which a 16-bit
+        // stride does not fit. The first row has colour 1, the second 2.
+        TEST_METHOD(Sci11_CelOf65535PixelsWide_GivesItsRows)
+        {
+            const size_t celHeaderAt = 72;
+            const size_t celKindField = 9;
+            const size_t celRowsOffsetField = 24;
+            const size_t celLiteralOffsetField = 28;
+            std::vector<uint8_t> data = PicData(Sci11Pic100, sciVersion1_1);
+            SetU16(data, celHeaderAt, 65535);
+            SetU16(data, celHeaderAt + 2, 2);
+            data[celHeaderAt + celKindField] = 0;
+            SetU32(data, celHeaderAt + celRowsOffsetField, (uint32_t)data.size());
+            SetU32(data, celHeaderAt + celLiteralOffsetField, 0);
+            data.insert(data.end(), 65535, 1);
+            data.insert(data.end(), 65535, 2);
+
+            sci::Result<std::vector<uint8_t>> pixels = GetCelPixels(sciVersion1_1, data, 0);
+
+            AssertOk(pixels, "pixels");
+            Assert::AreEqual((size_t)(65535 * 2), pixels->size());
+            Assert::AreEqual(1, (int)pixels->front());
+            Assert::AreEqual(1, (int)(*pixels)[65534]);
+            Assert::AreEqual(2, (int)(*pixels)[65535]);
+            Assert::AreEqual(2, (int)pixels->back());
+            // The writer of SCI Companion has the 16-bit stride.
+            AssertFails(ReplaceCelPixels(sciVersion1_1, data, 0, *pixels), sci::ErrorCode::Unsupported, "65535 pixels wide");
         }
 
         TEST_METHOD(ReplaceCelPixels_Sci11_BadCelOrPixelCount_IsUsage)

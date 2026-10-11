@@ -1195,17 +1195,68 @@ sci::Result<PicLayoutVGA2> ReadPicLayoutVGA2(const uint8_t *data, size_t size)
 		if (!cel.compressed)
 		{
 			const uint64_t pixelSize = (uint64_t)celHeader.size.cx * (uint64_t)celHeader.size.cy;
-			if ((celHeader.controlOffset < headersEnd) || (((uint64_t)celHeader.controlOffset + pixelSize) > size))
+			// A cel of no pixels has no bytes: its offset can be any value,
+			// and the layout gives 0.
+			if (pixelSize > 0)
 			{
-				return sci::Fail(sci::ErrorCode::Format, fmt::format("the pixels of cel {0} ({1} x {2}, at offset {3}) are not all in the resource after the headers ({4} to {5})",
-					index, cel.width, cel.height, celHeader.controlOffset, headersEnd, size));
+				if ((celHeader.controlOffset < headersEnd) || (((uint64_t)celHeader.controlOffset + pixelSize) > size))
+				{
+					return sci::Fail(sci::ErrorCode::Format, fmt::format("the pixels of cel {0} ({1} x {2}, at offset {3}) are not all in the resource after the headers ({4} to {5})",
+						index, cel.width, cel.height, celHeader.controlOffset, headersEnd, size));
+				}
+				cel.pixelOffset = celHeader.controlOffset;
+				cel.pixelSize = (uint32_t)pixelSize;
 			}
-			cel.pixelOffset = celHeader.controlOffset;
-			cel.pixelSize = (uint32_t)pixelSize;
 		}
 		layout.cels.push_back(cel);
 	}
 	return layout;
+}
+
+namespace
+{
+	// A patch changes bytes in place, so each part of the pic must have its
+	// own bytes. Unsupported for a pic with a compressed cel (the offsets of
+	// its data are not in the layout), and for a cel whose pixel bytes are
+	// also bytes of another cel or of the palette. The errors of
+	// ReadPaletteLayout for a palette that cannot be read.
+	sci::Status CheckPartsHaveTheirOwnBytes(const std::vector<uint8_t> &data, const PicLayoutVGA2 &layout)
+	{
+		for (size_t cel = 0; cel < layout.cels.size(); cel++)
+		{
+			if (layout.cels[cel].compressed)
+			{
+				return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} is compressed; a pic with a compressed cel cannot change in place", cel));
+			}
+		}
+		for (size_t one = 0; one < layout.cels.size(); one++)
+		{
+			for (size_t other = one + 1; other < layout.cels.size(); other++)
+			{
+				if (RangesOverlap(layout.cels[one].pixelOffset, layout.cels[one].pixelSize, layout.cels[other].pixelOffset, layout.cels[other].pixelSize))
+				{
+					return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} and cel {1} have pixel bytes in common", one, other));
+				}
+			}
+		}
+		if (layout.paletteOffset != 0)
+		{
+			SCI_TRY_ASSIGN(PaletteLayout palette, ReadPaletteLayout(data.data(), data.size(), layout.paletteOffset));
+			// The bytes of the palette: its header and its entries. Bytes that
+			// are too few for a palette header (entry size 0) count to the end
+			// of the data.
+			const uint64_t paletteSize = (palette.entrySize == 0) ? ((uint64_t)data.size() - layout.paletteOffset) :
+				((palette.entriesOffset - layout.paletteOffset) + ((uint64_t)palette.entryCount * (uint64_t)palette.entrySize));
+			for (size_t cel = 0; cel < layout.cels.size(); cel++)
+			{
+				if (RangesOverlap(layout.cels[cel].pixelOffset, layout.cels[cel].pixelSize, layout.paletteOffset, paletteSize))
+				{
+					return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} and the palette of the pic have bytes in common", cel));
+				}
+			}
+		}
+		return sci::Ok();
+	}
 }
 
 sci::Status PatchPicCelPixelsVGA2(std::vector<uint8_t> &data, int cel, const std::vector<uint8_t> &pixels)
@@ -1215,49 +1266,25 @@ sci::Status PatchPicCelPixelsVGA2(std::vector<uint8_t> &data, int cel, const std
 	{
 		return sci::Fail(sci::ErrorCode::Usage, fmt::format("the pic has no cel {0}; it has {1} cels", cel, layout.cels.size()));
 	}
+	SCI_TRY(CheckPartsHaveTheirOwnBytes(data, layout));
 	const PicCelLayoutVGA2 &target = layout.cels[cel];
-	if (target.compressed)
-	{
-		return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} is compressed; only a cel that is not compressed can get new pixels", cel));
-	}
 	if (pixels.size() != target.pixelSize)
 	{
 		return sci::Fail(sci::ErrorCode::Usage, fmt::format("cel {0} has {1} x {2} pixels ({3} bytes), and the new pixels are {4} bytes", cel, target.width, target.height, target.pixelSize, pixels.size()));
 	}
-	// The bytes of the cel must be its own. A compressed cel has other data
-	// (its offsets are not in the layout), so a pic with one is refused.
-	for (size_t other = 0; other < layout.cels.size(); other++)
-	{
-		if (other == (size_t)cel)
-		{
-			continue;
-		}
-		if (layout.cels[other].compressed)
-		{
-			return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} of the pic is compressed; a pic with a compressed cel cannot get new pixels", other));
-		}
-		if (RangesOverlap(target.pixelOffset, target.pixelSize, layout.cels[other].pixelOffset, layout.cels[other].pixelSize))
-		{
-			return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} and cel {1} have pixel bytes in common", cel, other));
-		}
-	}
-	if (layout.paletteOffset != 0)
-	{
-		// The bytes of the palette: its header and its entries. A palette
-		// whose layout cannot be read counts as its first byte.
-		uint64_t paletteSize = 1;
-		sci::Result<PaletteLayout> palette = ReadPaletteLayout(data.data(), data.size(), layout.paletteOffset);
-		if (palette)
-		{
-			paletteSize = (palette->entriesOffset - layout.paletteOffset) + ((uint64_t)palette->entryCount * (uint64_t)palette->entrySize);
-		}
-		if (RangesOverlap(target.pixelOffset, target.pixelSize, layout.paletteOffset, (std::max)(paletteSize, (uint64_t)1)))
-		{
-			return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} and the palette of the pic have bytes in common", cel));
-		}
-	}
 	std::copy(pixels.begin(), pixels.end(), data.begin() + target.pixelOffset);
 	return sci::Ok();
+}
+
+sci::Status PatchPicPaletteColorsVGA2(std::vector<uint8_t> &data, int first, int last, const RGBQUAD *colors)
+{
+	SCI_TRY_ASSIGN(PicLayoutVGA2 layout, ReadPicLayoutVGA2(data.data(), data.size()));
+	if (layout.paletteOffset == 0)
+	{
+		return sci::Fail(sci::ErrorCode::Usage, "the pic has no palette, so no entry can get a new colour");
+	}
+	SCI_TRY(CheckPartsHaveTheirOwnBytes(data, layout));
+	return PatchPaletteColors(data, layout.paletteOffset, first, last, colors);
 }
 
 sci::Result<uint32_t> ReadPicPaletteOffsetVGA11(const uint8_t *data, size_t size)

@@ -116,7 +116,7 @@ struct PicCelLayoutVGA2
 	// The cel has run-length data. pixelOffset and pixelSize are then 0.
 	bool compressed = false;
 	// The pixels of a cel that is not compressed: width * height bytes, the
-	// top row first, with no padding.
+	// top row first, with no padding. Both are 0 for a cel of no pixels.
 	uint32_t pixelOffset = 0;
 	uint32_t pixelSize = 0;
 };
@@ -141,11 +141,21 @@ sci::Result<PicLayoutVGA2> ReadPicLayoutVGA2(const uint8_t *data, size_t size);
 // Writes new pixels (width * height bytes, the top row first) over the
 // pixels of a cel of an SCI2 pic, in the bytes of its resource. No other
 // byte changes, and the size of the data stays. Usage for a cel that the
-// pic does not have, and for a count of pixels that is not that of the cel;
-// Unsupported for a pic that has a compressed cel (this cel or another),
-// and for a cel whose pixel bytes are also bytes of another cel or of the
-// palette; the errors of ReadPicLayoutVGA2.
+// pic does not have, and for a count of pixels that is not that of the cel.
+// A patch needs a pic whose parts each have their own bytes: Unsupported
+// for a pic that has a compressed cel (this cel or another), and for a pic
+// with a cel whose pixel bytes are also bytes of another cel or of the
+// palette. The errors of ReadPicLayoutVGA2, and of ReadPaletteLayout for
+// the palette of the pic.
 sci::Status PatchPicCelPixelsVGA2(std::vector<uint8_t> &data, int cel, const std::vector<uint8_t> &pixels);
+
+// Writes the red, the green and the blue of the entries first to last of
+// colors (256 colours, by entry number) into the palette of an SCI2 pic, in
+// the bytes of its resource, as PatchPaletteColors. No other byte changes.
+// Usage for a pic with no palette, and for a range that is not inside the
+// entries that the palette stores; Unsupported and the other errors as
+// PatchPicCelPixelsVGA2.
+sci::Status PatchPicPaletteColorsVGA2(std::vector<uint8_t> &data, int first, int last, const RGBQUAD *colors);
 
 // The offset of the palette in the bytes of an SCI1.1 pic
 // (PicFormat::VGA1_1); 0: the pic has no palette. Format when the header is

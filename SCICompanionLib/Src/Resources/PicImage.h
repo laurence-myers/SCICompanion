@@ -8,9 +8,16 @@
 //
 // An SCI2 pic changes in place: the new bytes are the old bytes, with other
 // values only in the pixels of the cel or in the colours of the palette
-// range. An SCI1.1 pic keeps its cel as run-length data, so new pixels make
-// a new resource, which SCI Companion writes as it saves a pic (the image,
-// the palette and the drawing commands stay; other bytes can change).
+// range. That needs a pic whose parts each have their own bytes: a pic with
+// a compressed cel, or with a cel whose pixel bytes are also bytes of
+// another cel or of the palette, gives Unsupported.
+//
+// An SCI1.1 pic keeps its cel as run-length data, so new pixels make a new
+// resource, which SCI Companion writes as it saves a pic. Other bytes can
+// change (the form of the palette, the encoding of the drawing commands),
+// but the new resource must read back as the same pic: the same size,
+// commands, priority bars, cel and palette. A pic that the writer does not
+// keep gives Unsupported.
 
 #include "IndexedBmp.h"
 #include "Result.h"
@@ -98,24 +105,27 @@ struct PicDescription
 // "ega", "vga1", "vga11" or "vga2".
 const char *PicFormatName(PicFormat format);
 
-// What the pic has. Unsupported for a pic format with no cels; Format for
-// data that is not a pic of the format of the version.
+// What the pic has. Unsupported for a pic format that these functions do
+// not read; Format for data that is not a pic of the format of the version,
+// and for a pic whose palette cannot be read.
 sci::Result<PicDescription> DescribePic(const SCIVersion &version, const std::vector<uint8_t> &data);
 
 // The pixels of a cel: width * height bytes, the top row first, with no
 // padding. Each byte is a palette entry. Usage for a cel that the pic does
-// not have; Unsupported for a compressed SCI2 cel; else as DescribePic.
+// not have; Unsupported for a compressed SCI2 cel; Format for data that is
+// not a pic.
 sci::Result<std::vector<uint8_t>> GetCelPixels(const SCIVersion &version, const std::vector<uint8_t> &data, int cel);
 
 // The bytes of the pic with new pixels in a cel (width * height bytes, the
 // top row first). Usage for a cel that the pic does not have, and for a
-// count of pixels that is not that of the cel; Unsupported for an SCI2 pic
-// that has a compressed cel; else as DescribePic.
+// count of pixels that is not that of the cel; Unsupported for a pic that
+// cannot change as the top of this file says; else as DescribePic.
 sci::Result<std::vector<uint8_t>> ReplaceCelPixels(const SCIVersion &version, const std::vector<uint8_t> &data, int cel, const std::vector<uint8_t> &pixels);
 
 // The bytes of the pic with the colours of the entries first to last in its
 // palette. Only the red, the green and the blue of those entries change:
 // the flag bytes and the count of the stored entries stay. Usage when the
 // pic has no palette, and when first to last is not a range of entries that
-// the pic stores; else as DescribePic.
+// the pic stores; Unsupported for an SCI2 pic that cannot change in place;
+// else as DescribePic.
 sci::Result<std::vector<uint8_t>> ReplacePaletteRange(const SCIVersion &version, const std::vector<uint8_t> &data, int first, int last, const std::array<IndexedBmpColor, 256> &colors);

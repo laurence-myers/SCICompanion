@@ -106,11 +106,20 @@ namespace
         return nullptr;
     }
 
+    // The bytes of a row of a cel as SCI Companion holds it. Cel::GetStride
+    // gives 16 bits, which the stride of a cel of 65533 pixels or more does
+    // not fit.
+    size_t StrideOf(const Cel &cel)
+    {
+        const size_t width = cel.size.cx;
+        return cel.Stride32 ? ((width + 3) & ~(size_t)3) : width;
+    }
+
     // A cel as SCI Companion holds it has the bottom row first, and each row
     // has the bytes of its stride. Format when the cel has fewer bytes.
     sci::Status CheckCelData(const Cel &cel)
     {
-        const size_t needed = (size_t)cel.GetStride() * (size_t)cel.size.cy;
+        const size_t needed = StrideOf(cel) * (size_t)cel.size.cy;
         if (cel.Data.size() < needed)
         {
             return sci::Fail(sci::ErrorCode::Format, fmt::format("the cel of the pic has {0} bytes; {1} x {2} pixels need {3}", cel.Data.size(), cel.size.cx, cel.size.cy, needed));
@@ -124,7 +133,7 @@ namespace
         SCI_TRY(CheckCelData(cel));
         const size_t width = cel.size.cx;
         const size_t height = cel.size.cy;
-        const size_t stride = cel.GetStride();
+        const size_t stride = StrideOf(cel);
         std::vector<uint8_t> pixels(width * height);
         // A cel of no width has no bytes to point at.
         for (size_t y = 0; (width > 0) && (y < height); y++)
@@ -142,13 +151,98 @@ namespace
         SCI_TRY(CheckCelData(cel));
         const size_t width = cel.size.cx;
         const size_t height = cel.size.cy;
-        const size_t stride = cel.GetStride();
+        const size_t stride = StrideOf(cel);
         for (size_t y = 0; (width > 0) && (y < height); y++)
         {
             const uint8_t *row = pixels.data() + (y * width);
             std::copy(row, row + width, &cel.Data[(height - 1 - y) * stride]);
         }
         return sci::Ok();
+    }
+
+    // The two cels have the same size, placement, skip colour and pixels.
+    bool SameCel(const Cel &one, const Cel &two)
+    {
+        if ((one.size != two.size) || (one.placement != two.placement) || (one.TransparentColor != two.TransparentColor))
+        {
+            return false;
+        }
+        sci::Result<std::vector<uint8_t>> onePixels = TopDownPixels(one);
+        sci::Result<std::vector<uint8_t>> twoPixels = TopDownPixels(two);
+        return onePixels && twoPixels && (*onePixels == *twoPixels);
+    }
+
+    // The data that two commands point at is the same, or neither has data.
+    template<typename T, typename TSame>
+    bool SameData(const T *one, const T *two, TSame same)
+    {
+        return ((one == nullptr) || (two == nullptr)) ? (one == two) : same(*one, *two);
+    }
+
+    // The two commands have the same type and the same values. A command
+    // that points at data (an EGA palette, the priority bars, a cel) is
+    // compared by its values and that data. Each other command is compared
+    // by its bytes: PicCommand() sets them all to 0 before the values.
+    bool SameCommand(const PicCommand &one, const PicCommand &two)
+    {
+        if (one.type != two.type)
+        {
+            return false;
+        }
+        switch (one.type)
+        {
+        case PicCommand::SetPalette:
+            return (one.setPalette.bPaletteNumber == two.setPalette.bPaletteNumber) &&
+                SameData(one.setPalette.pPalette, two.setPalette.pPalette, [](const EGACOLOR &a, const EGACOLOR &b)
+                {
+                    return memcmp(&a, &b, sizeof(EGACOLOR) * PALETTE_SIZE) == 0;
+                });
+        case PicCommand::SetPriorityBars:
+            return (one.setPriorityBars.is16Bit == two.setPriorityBars.is16Bit) && (one.setPriorityBars.isVGA == two.setPriorityBars.isVGA) &&
+                SameData(one.setPriorityBars.pPriorityLines, two.setPriorityBars.pPriorityLines, [](const uint16_t &a, const uint16_t &b)
+                {
+                    return memcmp(&a, &b, sizeof(uint16_t) * NumPriorityBars) == 0;
+                });
+        case PicCommand::DrawBitmap:
+            return (one.drawVisualBitmap.priority == two.drawVisualBitmap.priority) && (one.drawVisualBitmap.mirrored == two.drawVisualBitmap.mirrored) &&
+                (one.drawVisualBitmap.isVGA == two.drawVisualBitmap.isVGA) && SameData(one.drawVisualBitmap.pCel, two.drawVisualBitmap.pCel, SameCel);
+        default:
+            return memcmp(&one, &two, sizeof(PicCommand)) == 0;
+        }
+    }
+
+    // What of the two pics is not the same: the size, a command (the cel
+    // and the priority bars are commands) or the palette. Empty when all of
+    // them are the same.
+    std::string DifferenceOf(const ResourceEntity &one, const ResourceEntity &two)
+    {
+        const PicComponent &onePic = one.GetComponent<PicComponent>();
+        const PicComponent &twoPic = two.GetComponent<PicComponent>();
+        if (onePic.Size != twoPic.Size)
+        {
+            return "the size of the pic";
+        }
+        if (onePic.commands.size() != twoPic.commands.size())
+        {
+            return fmt::format("the count of the commands of the pic ({0}, then {1})", onePic.commands.size(), twoPic.commands.size());
+        }
+        for (size_t i = 0; i < onePic.commands.size(); i++)
+        {
+            if (!SameCommand(onePic.commands[i], twoPic.commands[i]))
+            {
+                return fmt::format("command {0} of the pic", i);
+            }
+        }
+        const PaletteComponent *onePalette = one.TryGetComponent<PaletteComponent>();
+        const PaletteComponent *twoPalette = two.TryGetComponent<PaletteComponent>();
+        if (!SameData(onePalette, twoPalette, [](const PaletteComponent &a, const PaletteComponent &b)
+            {
+                return memcmp(a.Colors, b.Colors, sizeof(a.Colors)) == 0;
+            }))
+        {
+            return "the palette of the pic";
+        }
+        return std::string();
     }
 
     sci::Result<PicDescription> DescribeVGA2(const std::vector<uint8_t> &data)
@@ -354,9 +448,14 @@ sci::Result<std::vector<uint8_t>> ReplaceCelPixels(const SCIVersion &version, co
         {
             return sci::Fail(sci::ErrorCode::Usage, fmt::format("cel {0} has {1} x {2} pixels ({3} bytes), and the new pixels are {4} bytes", cel, target->size.cx, target->size.cy, pixelCount, pixels.size()));
         }
+        if (StrideOf(*target) != (size_t)target->GetStride())
+        {
+            // The writer works with the 16-bit stride of the cel.
+            return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("a cel of {0} pixels wide cannot be written", target->size.cx));
+        }
         SCI_TRY(SetTopDownPixels(*target, pixels));
         // The exception boundary of the write of the pic.
-        return sci::Guard("writing the pic", [&]() -> sci::Result<std::vector<uint8_t>>
+        SCI_TRY_ASSIGN(std::vector<uint8_t> written, sci::Guard("writing the pic", [&]() -> sci::Result<std::vector<uint8_t>>
         {
             sci::ostream stream;
             std::map<BlobKey, uint32_t> propertyBag;
@@ -364,7 +463,17 @@ sci::Result<std::vector<uint8_t>> ReplaceCelPixels(const SCIVersion &version, co
             pic->WriteTo(stream, false, pic->ResourceNumber, propertyBag);
             const uint8_t *bytes = stream.GetInternalPointer();
             return std::vector<uint8_t>(bytes, bytes + stream.GetDataSize());
-        });
+        }));
+        // The writer does not keep each pic (for example, a line to a point
+        // above the pic gets another end point). So the new bytes must read
+        // back as the pic with the new pixels.
+        SCI_TRY_ASSIGN(std::unique_ptr<ResourceEntity> readBack, ParsePic(version, written));
+        const std::string difference = DifferenceOf(*pic, *readBack);
+        if (!difference.empty())
+        {
+            return sci::Fail(sci::ErrorCode::Unsupported, "SCI Companion cannot write this pic again with no other change: " + difference + " is different after the write");
+        }
+        return written;
     }
     default:
         return NoImage(version.PicFormat);
@@ -373,28 +482,6 @@ sci::Result<std::vector<uint8_t>> ReplaceCelPixels(const SCIVersion &version, co
 
 sci::Result<std::vector<uint8_t>> ReplacePaletteRange(const SCIVersion &version, const std::vector<uint8_t> &data, int first, int last, const std::array<IndexedBmpColor, 256> &colors)
 {
-    uint32_t paletteOffset = 0;
-    switch (version.PicFormat)
-    {
-    case PicFormat::VGA2:
-    {
-        SCI_TRY_ASSIGN(PicLayoutVGA2 layout, ReadPicLayoutVGA2(data.data(), data.size()));
-        paletteOffset = layout.paletteOffset;
-        break;
-    }
-    case PicFormat::VGA1_1:
-    {
-        SCI_TRY_ASSIGN(uint32_t offset, ReadPicPaletteOffsetVGA11(data.data(), data.size()));
-        paletteOffset = offset;
-        break;
-    }
-    default:
-        return NoImage(version.PicFormat);
-    }
-    if (paletteOffset == 0)
-    {
-        return sci::Fail(sci::ErrorCode::Usage, "the pic has no palette, so no entry can get a new colour");
-    }
     RGBQUAD quads[256] = {};
     for (size_t i = 0; i < colors.size(); i++)
     {
@@ -403,6 +490,22 @@ sci::Result<std::vector<uint8_t>> ReplacePaletteRange(const SCIVersion &version,
         quads[i].rgbBlue = colors[i].blue;
     }
     std::vector<uint8_t> patched = data;
-    SCI_TRY(PatchPaletteColors(patched, paletteOffset, first, last, quads));
-    return patched;
+    switch (version.PicFormat)
+    {
+    case PicFormat::VGA2:
+        SCI_TRY(PatchPicPaletteColorsVGA2(patched, first, last, quads));
+        return patched;
+    case PicFormat::VGA1_1:
+    {
+        SCI_TRY_ASSIGN(uint32_t paletteOffset, ReadPicPaletteOffsetVGA11(data.data(), data.size()));
+        if (paletteOffset == 0)
+        {
+            return sci::Fail(sci::ErrorCode::Usage, "the pic has no palette, so no entry can get a new colour");
+        }
+        SCI_TRY(PatchPaletteColors(patched, paletteOffset, first, last, quads));
+        return patched;
+    }
+    default:
+        return NoImage(version.PicFormat);
+    }
 }
