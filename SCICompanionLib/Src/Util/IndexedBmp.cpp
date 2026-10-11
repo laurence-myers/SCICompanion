@@ -50,11 +50,6 @@ sci::Result<std::vector<uint8_t>> EncodeIndexedBmp(const IndexedBmp &image)
     {
         return sci::Fail(sci::ErrorCode::Usage, fmt::format("a BMP image cannot have {0} x {1} pixels", image.width, image.height));
     }
-    const uint64_t pixelCount = (uint64_t)image.width * (uint64_t)image.height;
-    if ((uint64_t)image.pixels.size() != pixelCount)
-    {
-        return sci::Fail(sci::ErrorCode::Usage, fmt::format("an image of {0} x {1} pixels needs {2} bytes of pixels, and it has {3}", image.width, image.height, pixelCount, image.pixels.size()));
-    }
     const uint64_t rowSize = RowSize(image.width);
     const uint64_t imageSize = rowSize * (uint64_t)image.height;
     const uint64_t pixelOffset = FileHeaderSize + InfoHeaderSize + (TableEntries * TableEntrySize);
@@ -62,6 +57,11 @@ sci::Result<std::vector<uint8_t>> EncodeIndexedBmp(const IndexedBmp &image)
     if (fileSize > IndexedBmpMaxFileSize)
     {
         return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("a BMP file of {0} x {1} pixels is larger than {2} bytes", image.width, image.height, IndexedBmpMaxFileSize));
+    }
+    const uint64_t pixelCount = (uint64_t)image.width * (uint64_t)image.height;
+    if ((uint64_t)image.pixels.size() != pixelCount)
+    {
+        return sci::Fail(sci::ErrorCode::Usage, fmt::format("an image of {0} x {1} pixels needs {2} bytes of pixels, and it has {3}", image.width, image.height, pixelCount, image.pixels.size()));
     }
 
     std::vector<uint8_t> out;
@@ -206,51 +206,53 @@ sci::Status WriteIndexedBmpFile(const std::string &path, const IndexedBmp &image
 
 sci::Result<IndexedBmp> ReadIndexedBmpFile(const std::string &path)
 {
-    const std::string what = "Reading " + path;
-    HANDLE file = CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (file == INVALID_HANDLE_VALUE)
+    // The exception boundary: the vector of a large file can fail to
+    // allocate, and the handle then closes.
+    sci::Result<IndexedBmp> image = sci::Guard("reading " + path, [&]() -> sci::Result<IndexedBmp>
     {
-        DWORD error = GetLastError();
-        return sci::Fail(sci::FromWin32(error, what));
-    }
-    std::vector<uint8_t> bytes;
-    LARGE_INTEGER fileSize = {};
-    DWORD error = ERROR_SUCCESS;
-    bool tooLarge = false;
-    if (!GetFileSizeEx(file, &fileSize))
-    {
-        error = GetLastError();
-    }
-    else if ((uint64_t)fileSize.QuadPart > IndexedBmpMaxFileSize)
-    {
-        tooLarge = true;
-    }
-    else
-    {
-        bytes.resize((size_t)fileSize.QuadPart);
-        DWORD read = 0;
-        if (!bytes.empty() && !ReadFile(file, bytes.data(), (DWORD)bytes.size(), &read, nullptr))
+        const std::string what = "Reading " + path;
+        ScopedHandle file;
+        // Another program can read the file at the same time. A program that
+        // has it open for writing stops the read: the file is not complete.
+        file.hFile = CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+        if (file.hFile == INVALID_HANDLE_VALUE)
         {
-            error = GetLastError();
+            DWORD error = GetLastError();
+            return sci::Fail(sci::FromWin32(error, what));
         }
-        // A file that became shorter after the size was read.
-        bytes.resize(read);
-    }
-    CloseHandle(file);
-    if (error != ERROR_SUCCESS)
+        LARGE_INTEGER fileSize = {};
+        if (!GetFileSizeEx(file.hFile, &fileSize))
+        {
+            DWORD error = GetLastError();
+            return sci::Fail(sci::FromWin32(error, what));
+        }
+        if ((uint64_t)fileSize.QuadPart > IndexedBmpMaxFileSize)
+        {
+            return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("the file has {0} bytes; the limit for a BMP file is {1} bytes", fileSize.QuadPart, IndexedBmpMaxFileSize));
+        }
+        std::vector<uint8_t> bytes((size_t)fileSize.QuadPart);
+        size_t total = 0;
+        while (total < bytes.size())
+        {
+            DWORD read = 0;
+            if (!ReadFile(file.hFile, bytes.data() + total, (DWORD)(bytes.size() - total), &read, nullptr))
+            {
+                DWORD error = GetLastError();
+                return sci::Fail(sci::FromWin32(error, what));
+            }
+            if (read == 0)
+            {
+                // The file became shorter after its size was read.
+                break;
+            }
+            total += read;
+        }
+        bytes.resize(total);
+        return DecodeIndexedBmp(bytes);
+    });
+    if (!image && image.error().where.file.empty())
     {
-        return sci::Fail(sci::FromWin32(error, what));
-    }
-    sci::ErrorLocation where;
-    where.file = path;
-    if (tooLarge)
-    {
-        return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("the file is larger than {0} bytes", IndexedBmpMaxFileSize), where);
-    }
-    sci::Result<IndexedBmp> image = DecodeIndexedBmp(bytes);
-    if (!image)
-    {
-        image.error().where = where;
+        image.error().where.file = path;
     }
     return image;
 }
