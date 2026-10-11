@@ -14,6 +14,7 @@
 #include "stdafx.h"
 #include "CppUnitTest.h"
 #include "Helper.h"
+#include "TestSupport.h"
 #include "View.h"
 #include "ResourceEntity.h"
 #include "ResourceMap.h"
@@ -251,6 +252,59 @@ namespace UnitTests
             std::filesystem::remove(path, ec2);
             Assert::IsTrue(FAILED(hr),
                 L"a truncated patch file must fail cleanly rather than parse a bogus huge size");
+        }
+
+        // The header of a patch file of a pic or a view. An SCI2 pic has 81 81
+        // 00 00: the header of Sierra's SCI2 pic patches, and ScummVM takes the
+        // data of an SCI2 pic patch at offset 4. An SCI1.1 pic and a view of
+        // SCI1.1 or SCI2 have the type byte, 80, and 24 bytes of 0. The data
+        // comes back from each file.
+        TEST_METHOD(PatchFileHeader_PicAndView)
+        {
+            std::string dir = GetRandomTempFolder();
+            std::error_code ec;
+            std::filesystem::create_directories(dir, ec);
+            std::vector<uint8_t> data;
+            for (int i = 0; i < 100; i++)
+            {
+                data.push_back((uint8_t)(i + 1));
+            }
+            struct Case
+            {
+                const char *name;
+                ResourceType type;
+                SCIVersion version;
+                std::vector<uint8_t> header;
+            };
+            std::vector<uint8_t> long81 = { 0x81, 0x80 };
+            long81.resize(26, 0);
+            std::vector<uint8_t> long80 = { 0x80, 0x80 };
+            long80.resize(26, 0);
+            const std::vector<Case> cases =
+            {
+                { "an SCI2 pic", ResourceType::Pic, sciVersion2, { 0x81, 0x81, 0x00, 0x00 } },
+                { "an SCI1.1 pic", ResourceType::Pic, sciVersion1_1, long81 },
+                { "an SCI2 view", ResourceType::View, sciVersion2, long80 },
+                { "an SCI1.1 view", ResourceType::View, sciVersion1_1, long80 },
+            };
+            for (const Case &test : cases)
+            {
+                GameFolderHelper helper;
+                helper.Version = test.version;
+                ResourceBlob blob(helper, nullptr, test.type, data, test.version.DefaultVolumeFile, 7, NoBase36, test.version, ResourceSourceFlags::PatchFile);
+                std::string path = dir + "\\patch.bin";
+                Assert::IsTrue(SUCCEEDED(blob.SaveToFile(path)), Wide(std::string("save: ") + test.name).c_str());
+
+                std::vector<uint8_t> expected = test.header;
+                expected.insert(expected.end(), data.begin(), data.end());
+                Assert::IsTrue(expected == ReadFileBytes(path), Wide(std::string("the bytes of the patch file of ") + test.name).c_str());
+
+                ResourceBlob read;
+                Assert::IsTrue(SUCCEEDED(read.CreateFromFile(nullptr, path, test.version, ResourceSaveLocation::Patch, -1, 7)), Wide(std::string("read: ") + test.name).c_str());
+                Assert::IsTrue(read.GetType() == test.type, Wide(std::string("the type of ") + test.name).c_str());
+                Assert::IsTrue(data == std::vector<uint8_t>(read.GetData(), read.GetData() + read.GetLength()), Wide(std::string("the data of ") + test.name).c_str());
+            }
+            std::filesystem::remove_all(dir, ec);
         }
 
         // Narrowing a resource header from the agnostic form must reject a

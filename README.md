@@ -13,6 +13,10 @@ modernizing the build. Broad highlights since the previous release:
   writes the cels as 8-bit BMP files whose pixels are the palette entries
   of the game, with a `.toml` file of the facts of each pic, so that
   another tool can change the images.
+* **Patch files of SCI2 pics that the game can read.** A pic of an SCI2
+  game that is saved as a patch file (`.p56`) gets the 4-byte header of
+  Sierra's own SCI2 pic patches. Before, it got the 26-byte header of an
+  SCI1.1 pic, and ScummVM read the pic from the wrong offset.
 * **A new decompiler engine.**
 * **Decompiled scripts compiles to the same bytecode.**
 * **Fixed incorrect bytecode output.**
