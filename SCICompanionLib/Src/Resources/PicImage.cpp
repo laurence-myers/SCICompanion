@@ -469,9 +469,9 @@ sci::Result<std::vector<uint8_t>> ReplaceCelPixels(const SCIVersion &version, co
             const uint8_t *bytes = stream.GetInternalPointer();
             return std::vector<uint8_t>(bytes, bytes + stream.GetDataSize());
         }));
-        // The writer does not keep each pic (for example, a line to a point
-        // above the pic gets another end point). So the new bytes must read
-        // back as the pic with the new pixels.
+        // The writer does not keep each pic (for example, it writes only the
+        // first priority table of a pic). So the new bytes must read back as
+        // the pic with the new pixels.
         SCI_TRY_ASSIGN(std::unique_ptr<ResourceEntity> readBack, ParsePic(version, written));
         const std::string difference = DifferenceOf(*pic, *readBack);
         if (!difference.empty())

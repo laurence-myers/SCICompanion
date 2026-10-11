@@ -109,20 +109,29 @@ DRAWSIZE DrawSizeFromCoords(int16_t x1, int16_t y1, int16_t x2, int16_t y2)
 {
 	DRAWSIZE dsReturn = DS_LARGE;
 
-	__int16 dx = abs(x1 - x2);
-	__int16 dy = abs(y1 - y2);
+	// The step from the first point to the second.
+	int dx = x2 - x1;
+	int dy = y2 - y1;
 
-	if ((dx <= 6) && (dy <= 7))  // This keeps the byte below 0xf0
+	if ((abs(dx) <= 6) && (abs(dy) <= 7))  // This keeps the byte below 0xf0
 	{
 		// Each coord is within 6 or 7 pixels of the previous
 		dsReturn = DS_SMALL;
 	}
-	else if ((dx <= 0x7f) && (dy <= 0x6f))
+	else if ((dx >= -0x80) && (dx <= 0x7f) && (dy >= -0x6f) && (dy <= 0x7f))
 	{
-		// x is within 127 pixels (128 is ok for +ve, but who cares) and y is within 111
+		// The x step is a signed byte. The y step is a sign bit and 7 bits; its byte must
+		// stay below 0xf0, so a step to a smaller y is 111 at most.
 		dsReturn = DS_MEDIUM;
 	}
 	return dsReturn;
+}
+
+// An absolute coordinate has 12 bits for x and 12 bits for y, and no sign. A point with a
+// negative x or y is in the pic data only as a relative step from the point before it.
+bool _IsRelativeOnly(int16_t x, int16_t y)
+{
+	return (x < 0) || (y < 0);
 }
 
 
@@ -210,7 +219,7 @@ void _WriteAbsCoordinate(sci::ostream *pSerial, uint16_t x, uint16_t y)
 	pSerial->WriteByte((uint8_t) (y & 0x00ff));
 }
 
-void _WriteMediumCoordinate(sci::ostream *pSerial, uint16_t xOld, uint16_t yOld, uint16_t x, uint16_t y)
+void _WriteMediumCoordinate(sci::ostream *pSerial, int16_t xOld, int16_t yOld, int16_t x, int16_t y)
 {
 	// x | y
 	uint8_t byte;
@@ -225,11 +234,11 @@ void _WriteMediumCoordinate(sci::ostream *pSerial, uint16_t xOld, uint16_t yOld,
 	assert(byte < 0xf0); // Since 0xf0 signifies the next opcode.
 	pSerial->WriteByte(byte);
 
-	byte = (uint8_t)(((__int16)x) - (__int16)xOld);
+	byte = (uint8_t)(x - xOld);
 	pSerial->WriteByte(byte);
 }
 
-void _WriteSmallCoordinate(sci::ostream *pSerial, uint16_t xOld, uint16_t yOld, uint16_t x, uint16_t y)
+void _WriteSmallCoordinate(sci::ostream *pSerial, int16_t xOld, int16_t yOld, int16_t x, int16_t y)
 {
 	// x,y
 	// where xxxxyyyy, and leftmost bits of each indicate -ve or +ve
@@ -254,7 +263,8 @@ void _WriteSmallCoordinate(sci::ostream *pSerial, uint16_t xOld, uint16_t yOld, 
 	pSerial->WriteByte(byte);
 }
 
-void _WriteCoordinate(sci::ostream *pSerial, DRAWSIZE ds, uint16_t xOld, uint16_t yOld, uint16_t x, uint16_t y)
+// The coordinates have a sign: a relative step can go to a negative x or y, and can start there.
+void _WriteCoordinate(sci::ostream *pSerial, DRAWSIZE ds, int16_t xOld, int16_t yOld, int16_t x, int16_t y)
 {
 	switch (ds)
 	{
@@ -1690,6 +1700,15 @@ void LineCommand_Serialize(sci::ostream *pSerial, const PicCommand *pCommand, co
 	DRAWSIZE ds = DrawSizeFromCoords(pCommand->drawLine.xFrom, pCommand->drawLine.yFrom,
 									 pCommand->drawLine.xTo, pCommand->drawLine.yTo);
 
+	// A line to a point that is only relative is a medium step. The next line starts at that
+	// point, so it cannot start a new command: it must continue this one, and a medium command
+	// has room for each relative step.
+	bool relativeOnly = (ds != DS_LARGE) && _IsRelativeOnly(pCommand->drawLine.xTo, pCommand->drawLine.yTo);
+	if (relativeOnly)
+	{
+		ds = DS_MEDIUM;
+	}
+
 	// We need to start a new command if the previous one was a different kind of command (or none)
 	bool bStartNew = (!pCommandPrev) || (pCommand->type != pCommandPrev->type);
 
@@ -1707,7 +1726,8 @@ void LineCommand_Serialize(sci::ostream *pSerial, const PicCommand *pCommand, co
 		// But how can we be sure of the previous DRAWSIZE?  It might expost itself as smaller than
 		// it really was, since the thing before it could have been bigger.  So it needs to be
 		// passed in as a param.
-		bStartNew = (ds > dsPrev);
+		// A command of absolute coordinates cannot continue to a point that is only relative.
+		bStartNew = (ds > dsPrev) || (relativeOnly && (dsPrev == DS_LARGE));
 	}
 
 	if (bStartNew)
@@ -1842,13 +1862,21 @@ void PatternCommand_Serialize(sci::ostream *pSerial, const PicCommand *pCommand,
 		}
 	}
 
+	// A next pattern at a point that is only relative cannot start a new command. It must
+	// continue the command of this pattern, so that command is one of medium steps: it has
+	// room for each relative step.
+	bool nextIsRelativeOnly = pCommandNext && (pCommand->type == pCommandNext->type) &&
+		_IsRelativeOnly(pCommandNext->drawPattern.x, pCommandNext->drawPattern.y) &&
+		(DrawSizeFromCoords(pCommand->drawPattern.x, pCommand->drawPattern.y,
+							pCommandNext->drawPattern.x, pCommandNext->drawPattern.y) != DS_LARGE);
+
 	if (!bStartNew)
 	{
 		// We can be able to continue from the last pattern command, if the previous DRAWSIZE is more
 		// than the current (or undefined)
 		DRAWSIZE ds = DrawSizeFromCoords(pCommandPrev->drawPattern.x, pCommandPrev->drawPattern.y,
 										 pCommand->drawPattern.x, pCommand->drawPattern.y);
-		bStartNew = (ds > dsPrev);
+		bStartNew = (ds > dsPrev) || (nextIsRelativeOnly && (dsPrev != DS_MEDIUM));
 	}
 
 	if (bStartNew)
@@ -1860,6 +1888,10 @@ void PatternCommand_Serialize(sci::ostream *pSerial, const PicCommand *pCommand,
 		if (!pCommandNext || (pCommand->type != pCommandNext->type))
 		{
 			dsThis = DS_LARGE; // Well, we're just one point.
+		}
+		else if (nextIsRelativeOnly)
+		{
+			dsThis = DS_MEDIUM;
 		}
 		else
 		{

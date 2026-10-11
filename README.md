@@ -19,6 +19,12 @@ modernizing the build. Broad highlights since the previous release:
   game that is saved as a patch file (`.p56`) gets the 4-byte header of
   Sierra's own SCI2 pic patches. Before, it got the 26-byte header of an
   SCI1.1 pic, and ScummVM read the pic from the wrong offset.
+* **A saved pic keeps the lines that go off the picture.** A line or a pen
+  pattern that ends above or to the left of the picture (a negative
+  coordinate) stays the same when SCI Companion saves the pic. Before, the
+  save moved the end of the line, or the pic lost the drawing commands
+  after it (for example pic 19 of Space Quest 3 and pic 112 of Space
+  Quest 5).
 * **A new decompiler engine.**
 * **Decompiled scripts compiles to the same bytecode.**
 * **Fixed incorrect bytecode output.**

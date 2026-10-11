@@ -1140,27 +1140,54 @@ namespace UnitTests
             }
         }
 
-        // The writer of SCI Companion gives a line to a point above the pic
-        // another end point, so it does not keep a pic with such a line.
-        // The made pic has the line from (112, 110) to (112, -1); the writer
-        // gave it the byte 0x91 for the step of -111 rows, which reads as a
-        // step of -17 rows. The test puts the byte of the step in (0xef).
-        TEST_METHOD(ReplaceCelPixels_Sci11_PicThatTheWriterDoesNotKeep_IsUnsupported)
+        // A line to a point above the pic is a relative step to a negative
+        // row (pic 112 of Space Quest 5 has the line of the test). The
+        // writer keeps the line, so the pic gets the new pixels.
+        TEST_METHOD(ReplaceCelPixels_Sci11_PicWithALineToANegativeRow_KeepsTheLine)
         {
             const std::vector<uint8_t> pixels(8 * 4, 7);
             std::vector<uint8_t> data = MakeSci11Pic(8, 4, point16(0, 0), pixels, { PicCommand::CreateLine(112, 110, 112, -1) });
-            // The start of the line (0, 112, 110), then the step in y and in x.
-            const std::vector<uint8_t> line = { 0x00, 0x70, 0x6e, 0x91, 0x00 };
-            auto found = std::search(data.begin(), data.end(), line.begin(), line.end());
-            Assert::IsTrue(found != data.end(), L"the line in the made pic");
-            // The made pic reads as a line to (112, 93), which the writer keeps.
-            AssertOk(ReplaceCelPixels(sciVersion1_1, data, 0, OtherPixels(pixels)), "the pic with the line to (112, 93)");
+            // The start of the line (0, 112, 110), then the step in y (111
+            // rows up) and in x.
+            const std::vector<uint8_t> line = { 0x00, 0x70, 0x6e, 0xef, 0x00 };
+            Assert::IsTrue(std::search(data.begin(), data.end(), line.begin(), line.end()) != data.end(), L"the line in the made pic");
 
-            *(found + 3) = 0xef;
+            sci::Result<std::vector<uint8_t>> replaced = ReplaceCelPixels(sciVersion1_1, data, 0, OtherPixels(pixels));
 
-            AssertOk(DescribePic(sciVersion1_1, data), "describe the pic with the line to (112, -1)");
-            AssertOk(GetCelPixels(sciVersion1_1, data, 0), "the pixels of the pic with the line to (112, -1)");
-            AssertFails(ReplaceCelPixels(sciVersion1_1, data, 0, OtherPixels(pixels)), sci::ErrorCode::Unsupported, "command 5 of the pic is different after the write");
+            AssertOk(replaced, "replace");
+            sci::Result<std::vector<uint8_t>> readBack = GetCelPixels(sciVersion1_1, *replaced, 0);
+            AssertOk(readBack, "read back");
+            Assert::IsTrue(OtherPixels(pixels) == *readBack, L"the new pixels");
+            std::unique_ptr<ResourceEntity> after = ReadPicEntity(*replaced, sciVersion1_1);
+            const PicCommand &last = after->GetComponent<PicComponent>().commands.back();
+            Assert::IsTrue(last.type == PicCommand::Line, L"the last command is the line");
+            Assert::AreEqual(112, (int)last.drawLine.xFrom);
+            Assert::AreEqual(110, (int)last.drawLine.yFrom);
+            Assert::AreEqual(112, (int)last.drawLine.xTo);
+            Assert::AreEqual(-1, (int)last.drawLine.yTo);
+        }
+
+        // The writer of SCI Companion writes only the first priority table
+        // of a pic, so it does not keep a pic that has a second priority
+        // table in its drawing commands. The made pic has five fills; the
+        // test puts a priority table (the bytes fe 04, then its 14 values)
+        // in their place.
+        TEST_METHOD(ReplaceCelPixels_Sci11_PicThatTheWriterDoesNotKeep_IsUnsupported)
+        {
+            const std::vector<uint8_t> pixels(8 * 4, 7);
+            std::vector<uint8_t> data = MakeSci11Pic(8, 4, point16(0, 0), pixels,
+                { PicCommand::CreateFill(1, 1), PicCommand::CreateFill(2, 2), PicCommand::CreateFill(3, 3), PicCommand::CreateFill(4, 4), PicCommand::CreateFill(5, 5) });
+            const std::vector<uint8_t> fills = { 0xf8, 0x00, 0x01, 0x01, 0x00, 0x02, 0x02, 0x00, 0x03, 0x03, 0x00, 0x04, 0x04, 0x00, 0x05, 0x05 };
+            auto found = std::search(data.begin(), data.end(), fills.begin(), fills.end());
+            Assert::IsTrue(found != data.end(), L"the fills in the made pic");
+            AssertOk(ReplaceCelPixels(sciVersion1_1, data, 0, OtherPixels(pixels)), "the pic with the fills");
+
+            const std::vector<uint8_t> priorityTable = { 0xfe, 0x04, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140 };
+            std::copy(priorityTable.begin(), priorityTable.end(), found);
+
+            AssertOk(DescribePic(sciVersion1_1, data), "describe the pic with two priority tables");
+            AssertOk(GetCelPixels(sciVersion1_1, data, 0), "the pixels of the pic with two priority tables");
+            AssertFails(ReplaceCelPixels(sciVersion1_1, data, 0, OtherPixels(pixels)), sci::ErrorCode::Unsupported, "the count of the commands of the pic");
         }
 
         // A good pic header whose cel header offset is past the data: the

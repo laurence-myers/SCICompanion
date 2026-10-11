@@ -110,6 +110,9 @@
     <ClCompile Include="TestPicImage.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestPicWrite.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestCliPic.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

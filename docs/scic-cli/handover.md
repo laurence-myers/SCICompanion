@@ -138,10 +138,11 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   pic commands.
 - The palette of a pic cannot grow in place: `--palette replace` changes
   only entries that the pic stores, and it does not change a flag byte.
-- An SCI1.1 pic that the pic writer does not keep is refused. Pic 112 of
-  SQ5: the writer changes a line that goes to a negative coordinate
-  (`_WriteMediumCoordinate` in `PicCommands.cpp` takes the y as
-  `uint16_t`). The writer is not fixed.
+- The pic data has no form for a line or a pattern at a negative point
+  that is not a short or medium step from the point before it in the same
+  command (a longer step, or another command between the two). The pic
+  writer gives bad bytes for it. The pic reader gives no such command; an
+  edit in the pic editor can.
 - Pics 100 and 14000 of KQ7 give `[format]` in `list` and `export`: the
   pixels of cel 0 are not all in the resource.
 - `import` takes each `.toml` file of `--in-dir`, also one that another
