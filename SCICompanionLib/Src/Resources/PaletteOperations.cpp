@@ -18,6 +18,7 @@
 #include "CoreLog.h"
 #include "ImageData.h"
 #include "GameFolderHelper.h"
+#include "format.h"
 
 using namespace std;
 
@@ -529,6 +530,89 @@ void ReadPalette(PaletteComponent &palette, sci::istream &byteStream)
 	{
 		palette.Colors[entry] = black;
 	}
+}
+
+sci::Result<PaletteLayout> ReadPaletteLayout(const uint8_t *data, size_t size, size_t paletteOffset)
+{
+	PaletteLayout layout;
+	if (paletteOffset > size)
+	{
+		return sci::Fail(sci::ErrorCode::Format, fmt::format("the palette offset ({0}) is not in the data ({1} bytes)", paletteOffset, size));
+	}
+	const size_t remaining = size - paletteOffset;
+	if (remaining < sizeof(PaletteHeader))
+	{
+		// ReadPalette reads no entry from such bytes.
+		layout.entriesOffset = paletteOffset;
+		return layout;
+	}
+	PaletteHeader header;
+	memcpy(&header, data + paletteOffset, sizeof(header));
+	size_t entriesAt;
+	if ((header.marker == 0) && ((header.garbage[0] == 1) || (header.palColorCount == 0)))
+	{
+		// The form with no header: a mapping table of 256 bytes and 4 more
+		// bytes, then 256 entries of 4 bytes.
+		layout.firstEntry = 0;
+		layout.entryCount = 256;
+		layout.entrySize = 4;
+		entriesAt = 260;
+	}
+	else
+	{
+		layout.firstEntry = header.palColorStart;
+		layout.entryCount = header.palColorCount;
+		if (header.palFormat == SCI_PAL_FORMAT_CONSTANT)
+		{
+			layout.entrySize = 3;
+		}
+		else if (header.palFormat == SCI_PAL_FORMAT_VARIABLE)
+		{
+			layout.entrySize = 4;
+		}
+		else
+		{
+			return sci::Fail(sci::ErrorCode::Format, fmt::format("the palette has a format that is not known ({0})", (int)header.palFormat));
+		}
+		entriesAt = sizeof(PaletteHeader);
+	}
+	if ((layout.firstEntry + layout.entryCount) > 256)
+	{
+		return sci::Fail(sci::ErrorCode::Format, fmt::format("the palette stores the entries {0} to {1}; a palette has the entries 0 to 255", layout.firstEntry, layout.firstEntry + layout.entryCount - 1));
+	}
+	if ((entriesAt + ((size_t)layout.entryCount * (size_t)layout.entrySize)) > remaining)
+	{
+		return sci::Fail(sci::ErrorCode::Format, fmt::format("the {0} entries of the palette are not all in the data", layout.entryCount));
+	}
+	layout.entriesOffset = paletteOffset + entriesAt;
+	return layout;
+}
+
+sci::Status PatchPaletteColors(std::vector<uint8_t> &data, size_t paletteOffset, int first, int last, const RGBQUAD *colors)
+{
+	SCI_TRY_ASSIGN(PaletteLayout layout, ReadPaletteLayout(data.data(), data.size(), paletteOffset));
+	if ((first < 0) || (last > 255) || (first > last))
+	{
+		return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}-{1} is not a range of palette entries", first, last));
+	}
+	if (layout.entryCount == 0)
+	{
+		return sci::Fail(sci::ErrorCode::Usage, fmt::format("the palette stores no entry, so the entries {0}-{1} cannot get new colours", first, last));
+	}
+	if ((first < layout.firstEntry) || (last >= (layout.firstEntry + layout.entryCount)))
+	{
+		return sci::Fail(sci::ErrorCode::Usage, fmt::format("the palette stores the entries {0}-{1}; the range {2}-{3} is not inside them", layout.firstEntry, layout.firstEntry + layout.entryCount - 1, first, last));
+	}
+	// A 4-byte entry has its flag byte first.
+	const size_t colorAt = (layout.entrySize == 4) ? 1 : 0;
+	for (int entry = first; entry <= last; entry++)
+	{
+		uint8_t *bytes = data.data() + layout.entriesOffset + ((size_t)(entry - layout.firstEntry) * (size_t)layout.entrySize) + colorAt;
+		bytes[0] = colors[entry].rgbRed;
+		bytes[1] = colors[entry].rgbGreen;
+		bytes[2] = colors[entry].rgbBlue;
+	}
+	return sci::Ok();
 }
 
 void PaletteReadFrom(ResourceEntity &resource, sci::istream &byteStream, const std::map<BlobKey, uint32_t> &propertyBag)

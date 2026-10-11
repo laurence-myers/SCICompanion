@@ -1132,6 +1132,155 @@ void PicWriteToVGA2(const ResourceEntity &resource, sci::ostream &byteStream, st
 
 namespace
 {
+	// Copies a packed struct from an offset of the data. False when the
+	// struct is not all in the data.
+	template<typename T>
+	bool ReadStructAt(const uint8_t *data, size_t size, uint64_t offset, T &value)
+	{
+		if ((offset > size) || ((size - offset) < sizeof(T)))
+		{
+			return false;
+		}
+		memcpy(&value, data + (size_t)offset, sizeof(T));
+		return true;
+	}
+
+	// The two byte ranges have a byte in common. A range of 0 bytes has none.
+	bool RangesOverlap(uint64_t offsetA, uint64_t sizeA, uint64_t offsetB, uint64_t sizeB)
+	{
+		return (sizeA > 0) && (sizeB > 0) && (offsetA < (offsetB + sizeB)) && (offsetB < (offsetA + sizeA));
+	}
+}
+
+sci::Result<PicLayoutVGA2> ReadPicLayoutVGA2(const uint8_t *data, size_t size)
+{
+	PicHeader_VGA2 header;
+	if (!ReadStructAt(data, size, 0, header))
+	{
+		return sci::Fail(sci::ErrorCode::Format, fmt::format("the pic header is not all in the resource ({0} bytes)", size));
+	}
+	if ((header.headerSize != sizeof(PicHeader_VGA2)) || (header.celHeaderSize != sizeof(PicCelHeader_VGA2)))
+	{
+		return sci::Fail(sci::ErrorCode::Format, fmt::format("the pic has a header of {0} bytes and cel headers of {1} bytes; an SCI2 pic has {2} and {3}",
+			header.headerSize, header.celHeaderSize, sizeof(PicHeader_VGA2), sizeof(PicCelHeader_VGA2)));
+	}
+	const uint64_t headersEnd = sizeof(PicHeader_VGA2) + ((uint64_t)header.celCount * sizeof(PicCelHeader_VGA2));
+	if (headersEnd > size)
+	{
+		return sci::Fail(sci::ErrorCode::Format, fmt::format("the {0} cel headers of the pic are not all in the resource ({1} bytes)", (int)header.celCount, size));
+	}
+	if ((header.paletteOffset != 0) && ((header.paletteOffset < headersEnd) || (header.paletteOffset >= size)))
+	{
+		return sci::Fail(sci::ErrorCode::Format, fmt::format("the palette offset of the pic ({0}) is not in the resource after the headers ({1} to {2})", header.paletteOffset, headersEnd, size));
+	}
+
+	PicLayoutVGA2 layout;
+	layout.width = header.width;
+	layout.height = header.height;
+	layout.paletteOffset = header.paletteOffset;
+	for (int index = 0; index < header.celCount; index++)
+	{
+		PicCelHeader_VGA2 celHeader;
+		// The check of headersEnd makes this read good.
+		ReadStructAt(data, size, sizeof(PicHeader_VGA2) + ((uint64_t)index * sizeof(PicCelHeader_VGA2)), celHeader);
+		PicCelLayoutVGA2 cel;
+		cel.width = celHeader.size.cx;
+		cel.height = celHeader.size.cy;
+		cel.x = celHeader.relativePlacement.x;
+		cel.y = celHeader.relativePlacement.y;
+		cel.priority = celHeader.priority;
+		cel.skipColor = celHeader.transparentColor;
+		// As ReadPicCelFromVGA2: a cel with no colour offset has plain pixels.
+		cel.compressed = (celHeader.colorOffset != 0) && (celHeader.compressed != 0);
+		if (!cel.compressed)
+		{
+			const uint64_t pixelSize = (uint64_t)celHeader.size.cx * (uint64_t)celHeader.size.cy;
+			if ((celHeader.controlOffset < headersEnd) || (((uint64_t)celHeader.controlOffset + pixelSize) > size))
+			{
+				return sci::Fail(sci::ErrorCode::Format, fmt::format("the pixels of cel {0} ({1} x {2}, at offset {3}) are not all in the resource after the headers ({4} to {5})",
+					index, cel.width, cel.height, celHeader.controlOffset, headersEnd, size));
+			}
+			cel.pixelOffset = celHeader.controlOffset;
+			cel.pixelSize = (uint32_t)pixelSize;
+		}
+		layout.cels.push_back(cel);
+	}
+	return layout;
+}
+
+sci::Status PatchPicCelPixelsVGA2(std::vector<uint8_t> &data, int cel, const std::vector<uint8_t> &pixels)
+{
+	SCI_TRY_ASSIGN(PicLayoutVGA2 layout, ReadPicLayoutVGA2(data.data(), data.size()));
+	if ((cel < 0) || ((size_t)cel >= layout.cels.size()))
+	{
+		return sci::Fail(sci::ErrorCode::Usage, fmt::format("the pic has no cel {0}; it has {1} cels", cel, layout.cels.size()));
+	}
+	const PicCelLayoutVGA2 &target = layout.cels[cel];
+	if (target.compressed)
+	{
+		return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} is compressed; only a cel that is not compressed can get new pixels", cel));
+	}
+	if (pixels.size() != target.pixelSize)
+	{
+		return sci::Fail(sci::ErrorCode::Usage, fmt::format("cel {0} has {1} x {2} pixels ({3} bytes), and the new pixels are {4} bytes", cel, target.width, target.height, target.pixelSize, pixels.size()));
+	}
+	// The bytes of the cel must be its own. A compressed cel has other data
+	// (its offsets are not in the layout), so a pic with one is refused.
+	for (size_t other = 0; other < layout.cels.size(); other++)
+	{
+		if (other == (size_t)cel)
+		{
+			continue;
+		}
+		if (layout.cels[other].compressed)
+		{
+			return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} of the pic is compressed; a pic with a compressed cel cannot get new pixels", other));
+		}
+		if (RangesOverlap(target.pixelOffset, target.pixelSize, layout.cels[other].pixelOffset, layout.cels[other].pixelSize))
+		{
+			return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} and cel {1} have pixel bytes in common", cel, other));
+		}
+	}
+	if (layout.paletteOffset != 0)
+	{
+		// The bytes of the palette: its header and its entries. A palette
+		// whose layout cannot be read counts as its first byte.
+		uint64_t paletteSize = 1;
+		sci::Result<PaletteLayout> palette = ReadPaletteLayout(data.data(), data.size(), layout.paletteOffset);
+		if (palette)
+		{
+			paletteSize = (palette->entriesOffset - layout.paletteOffset) + ((uint64_t)palette->entryCount * (uint64_t)palette->entrySize);
+		}
+		if (RangesOverlap(target.pixelOffset, target.pixelSize, layout.paletteOffset, (std::max)(paletteSize, (uint64_t)1)))
+		{
+			return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} and the palette of the pic have bytes in common", cel));
+		}
+	}
+	std::copy(pixels.begin(), pixels.end(), data.begin() + target.pixelOffset);
+	return sci::Ok();
+}
+
+sci::Result<uint32_t> ReadPicPaletteOffsetVGA11(const uint8_t *data, size_t size)
+{
+	PicHeader_VGA11 header;
+	if (!ReadStructAt(data, size, 0, header))
+	{
+		return sci::Fail(sci::ErrorCode::Format, fmt::format("the pic header is not all in the resource ({0} bytes)", size));
+	}
+	// The size field does not count its own 2 bytes.
+	if (header.headerSize != (sizeof(PicHeader_VGA11) - sizeof(header.headerSize)))
+	{
+		return sci::Fail(sci::ErrorCode::Format, fmt::format("the pic has a header of {0} bytes; an SCI1.1 pic has {1}", header.headerSize, sizeof(PicHeader_VGA11) - sizeof(header.headerSize)));
+	}
+	if ((header.paletteOffset != 0) && ((header.paletteOffset < sizeof(PicHeader_VGA11)) || (header.paletteOffset >= size)))
+	{
+		return sci::Fail(sci::ErrorCode::Format, fmt::format("the palette offset of the pic ({0}) is not in the resource after the header ({1} to {2})", header.paletteOffset, sizeof(PicHeader_VGA11), size));
+	}
+	return header.paletteOffset;
+}
+
+namespace
+{
 	std::atomic<PicCheckWarningHandler> g_picCheckWarningHandler(nullptr);
 
 	void WarnAboutPic(const std::string &text)

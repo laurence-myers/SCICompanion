@@ -274,6 +274,9 @@
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PicCommands.cpp">
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\PicImage.cpp">
+      <Filter>Source Files\Resources</Filter>
+    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Resources\Polygon.cpp">
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
@@ -681,6 +684,9 @@ $include
       <Filter>Source Files\Resources</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PicCommands.h">
+      <Filter>Source Files\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\PicImage.h">
       <Filter>Source Files\Resources</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PicCommandsCommon.h">

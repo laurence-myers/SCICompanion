@@ -166,6 +166,7 @@
     <ClInclude Include="..\SCICompanionLib\Src\Resources\MessageSource.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Resources\NounsAndCases.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PaletteOperations.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\PicImage.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PatchResourceSource.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Resources\Pic.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PicCommands.h" />
@@ -297,6 +298,7 @@
     <ClCompile Include="..\SCICompanionLib\Src\Resources\MessageSource.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Resources\NounsAndCases.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PaletteOperations.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\PicImage.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PatchResourceSource.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Resources\Pic.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PicColors.cpp" />
