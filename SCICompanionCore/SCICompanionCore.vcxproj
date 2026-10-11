@@ -75,6 +75,7 @@
     <ClInclude Include="..\SCICompanionLib\Src\Cli\CliCommands.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Cli\CliConsole.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Cli\CliHost.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Cli\CliPic.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Cli\CliVersion.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Cli\ExitCodes.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Compile\AstRewrite.h" />

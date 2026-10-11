@@ -4,6 +4,7 @@
 #include "CliCommands.h"
 #include "CliConsole.h"
 #include "CliHost.h"
+#include "CliPic.h"
 #include "GameSession.h"
 #include "GameFolderHelper.h"
 #include "IndexedBmp.h"
@@ -93,6 +94,26 @@ namespace
     bool Has(const std::string &text, const std::string &part)
     {
         return text.find(part) != std::string::npos;
+    }
+
+    // The text with one space for each run of spaces and line ends: the
+    // help of scic wraps its lines.
+    std::string OneLine(const std::string &text)
+    {
+        std::string line;
+        for (char ch : text)
+        {
+            const bool space = (ch == ' ') || (ch == '\n') || (ch == '\r') || (ch == '\t');
+            if (!space)
+            {
+                line += ch;
+            }
+            else if (!line.empty() && (line.back() != ' '))
+            {
+                line += ' ';
+            }
+        }
+        return line;
     }
 
     // The runs of an array of [first, last] arrays, as "0-2,7-7".
@@ -202,7 +223,9 @@ namespace UnitTests
 
             std::vector<std::string> lines = LinesOf(console.out);
             Assert::AreEqual((size_t)5, lines.size(), Wide(console.out).c_str());
-            Assert::AreEqual(std::string(cli::PicListTsvHeader), lines[0] + "\n");
+            // The names and the order of the columns (plan section 4.7).
+            Assert::AreEqual(std::string("number\tformat\twidth\theight\tcels\tcompressed_cels\tbackground_cel\tbackground_width\tbackground_height\tbackground_x\tbackground_y\tbackground_priority\t"
+                "source\tbytes\tcrc32\tskip_pixels\tpalette_entries\tpixel_entries\terror"), lines[0]);
             const size_t columns = TabFieldsOf(lines[0]).size();
             Assert::AreEqual((size_t)19, columns);
             for (const std::string &line : lines)
@@ -249,7 +272,14 @@ namespace UnitTests
             Assert::IsTrue(Has(unknown.err, "the game has no pic 5") && unknown.out.empty(), Wide(unknown.out + unknown.err).c_str());
             cli::StringConsole emptyRange = Expect(2, { "pic", "list", _gameFolder, "--pic", "300-400" });
             Assert::IsTrue(Has(emptyRange.err, "the game has no pic in the range 300-400"), Wide(emptyRange.err).c_str());
-            for (const char *bad : { "abc", "110-100", "100-", "-100", "1e2", "100000" })
+            // Zeros before a number do not change it.
+            cli::StringConsole zeros = Expect(0, { "pic", "list", _gameFolder, "--format", "tsv", "--pic", "000100", "0110-000200" });
+            lines = LinesOf(zeros.out);
+            Assert::AreEqual((size_t)4, lines.size(), Wide(zeros.out).c_str());
+            Assert::AreEqual(std::string("100"), TabFieldsOf(lines[1])[0]);
+            Assert::AreEqual(std::string("200"), TabFieldsOf(lines[3])[0]);
+
+            for (const char *bad : { "abc", "110-100", "100-", "-100", "1e2", "65536", "100000", "99999999999999999999", "+100", " 100" })
             {
                 cli::StringConsole console;
                 int code = cli::RunCli({ "pic", "list", _gameFolder, "--pic", bad }, console);
@@ -544,8 +574,24 @@ namespace UnitTests
             Assert::IsTrue(Has(unknown.err, "the game has no pic 5"), Wide(unknown.err).c_str());
             cli::StringConsole gameFolder = Expect(2, { "pic", "export", _gameFolder, "--pic", "100", "--out-dir", _gameFolder });
             Assert::IsTrue(Has(gameFolder.err, "the output folder is the game folder"), Wide(gameFolder.err).c_str());
-            // Another name of the game folder.
-            Expect(2, { "pic", "export", _gameFolder, "--pic", "100", "--out-dir", _gameFolder + "\\src\\.." });
+            // Other names of the game folder: through a folder of it, with a
+            // separator at the end, and in upper case.
+            cli::StringConsole otherName = Expect(2, { "pic", "export", _gameFolder, "--pic", "100", "--out-dir", _gameFolder + "\\src\\.." });
+            Assert::IsTrue(Has(otherName.err, "the output folder is the game folder"), Wide(otherName.err).c_str());
+            Expect(2, { "pic", "export", _gameFolder, "--pic", "100", "--out-dir", _gameFolder + "\\" });
+            Expect(2, { "pic", "export", _gameFolder, "--pic", "100", "--out-dir", Upper(_gameFolder) });
+            // A folder inside the game folder, at any depth.
+            fs::create_directories(_gameFolder + "\\src\\pics");
+            before = FilesOf(_gameFolder);
+            for (const char *inside : { "\\src", "\\src\\pics", "\\SRC\\Pics" })
+            {
+                cli::StringConsole console = Expect(2, { "pic", "export", _gameFolder, "--pic", "100", "--out-dir", _gameFolder + inside });
+                Assert::IsTrue(Has(console.err, "the output folder is inside the game folder"), Wide(std::string(inside) + ": " + console.err).c_str());
+            }
+            // The folder that holds the game folder is not in the game.
+            std::string parent = fs::path(_gameFolder).parent_path().string();
+            cli::StringConsole outside = Expect(0, { "pic", "export", _gameFolder, "--pic", "100", "--out-dir", parent, "--dry-run" });
+            Assert::IsTrue(Has(outside.err, "A run would export 1 of 1 pic"), Wide(outside.err).c_str());
 
             // Plan section 8: a folder that is missing is exit code 3.
             cli::StringConsole missing = Expect(3, { "pic", "export", _gameFolder, "--pic", "100", "--out-dir", _outDir + "\\no-such-folder" });
@@ -627,7 +673,273 @@ namespace UnitTests
             cli::StringConsole helpList = Expect(0, { "pic", "list", "--help" });
             Assert::IsTrue(Has(helpList.out, "--format") && Has(helpList.out, "scic pic list"), Wide(helpList.out).c_str());
             cli::StringConsole root = Expect(0, { "help" });
-            Assert::IsTrue(Has(root.out, "pic list, pic export"), Wide(root.out).c_str());
+            Assert::IsTrue(Has(OneLine(root.out), "pic list, pic export"), Wide(root.out).c_str());
+            // The dry run of a pic command writes nothing into its output
+            // folder.
+            Assert::IsTrue(Has(OneLine(root.out), "write nothing into the game or into an output folder"), Wide(root.out).c_str());
+        }
+    };
+
+    // The parts of the pic commands that need no game (CliPic.h), on the SCI2
+    // pics of the pic tests: the template games have no pic with more than
+    // one cel. Pic 220 has 4 cels that are not compressed; pic 901 has 8
+    // compressed cels.
+    TEST_CLASS(TestCliPicSci2)
+    {
+        // Where pic 220 has the pixels of its cels: 640 x 334, 46 x 74,
+        // 30 x 74 and 264 x 122.
+        static const size_t Cel0Offset = 996;
+        static const size_t Cel1Offset = 214756;
+        static const size_t Cel2Offset = 218160;
+        static const size_t Cel3Offset = 220380;
+
+        static std::vector<uint8_t> PicData(const char *name)
+        {
+            ResourceBlob blob;
+            std::string path = GetTestFileDirectory("Pics") + "\\SCI2\\" + name;
+            Assert::IsTrue(SUCCEEDED(blob.CreateFromFile("pic", path, sciVersion2, ResourceSaveLocation::Patch, sciVersion2.DefaultVolumeFile)), Wide("setup: " + path).c_str());
+            return std::vector<uint8_t>(blob.GetData(), blob.GetData() + blob.GetLength());
+        }
+
+        // Pic 220 with a width of 1 for cel 0 (the first field of its header,
+        // after the pic header of 14 bytes): the cel with the largest area is
+        // then cel 3, 264 x 122 at 43,0 with the priority 51.
+        static std::vector<uint8_t> Pic220WithBackgroundCel3()
+        {
+            std::vector<uint8_t> data = PicData("220.p56");
+            data[14] = 1;
+            data[15] = 0;
+            return data;
+        }
+
+        // Counts the bytes of a cel in the data, for each value.
+        static void Count(const std::vector<uint8_t> &data, size_t offset, size_t size, std::array<uint32_t, 256> &counts)
+        {
+            for (size_t i = 0; i < size; i++)
+            {
+                counts[data[offset + i]]++;
+            }
+        }
+
+        // Entry i is (i, 255 - i, 77), and the entries below "used" are
+        // marked as used.
+        static PaletteComponent TestPalette(int used)
+        {
+            PaletteComponent palette;
+            for (int i = 0; i < 256; i++)
+            {
+                palette.Colors[i].rgbRed = (uint8_t)i;
+                palette.Colors[i].rgbGreen = (uint8_t)(255 - i);
+                palette.Colors[i].rgbBlue = 77;
+                palette.Colors[i].rgbReserved = (i < used) ? 1 : 0;
+            }
+            return palette;
+        }
+
+        static toml::table ParseToml(const std::string &text)
+        {
+            try
+            {
+                return toml::parse(text);
+            }
+            catch (const toml::parse_error &error)
+            {
+                Assert::Fail(Wide(std::string(error.description()) + "\n" + text).c_str());
+            }
+            return toml::table();
+        }
+
+    public:
+        TEST_METHOD(ListRow_HasTheBackgroundCelItsPriorityAndTheSkipPixels)
+        {
+            std::vector<uint8_t> data = Pic220WithBackgroundCel3();
+            std::array<uint32_t, 256> counts = {};
+            Count(data, Cel0Offset, 1 * 334, counts);
+            Count(data, Cel1Offset, 46 * 74, counts);
+            Count(data, Cel2Offset, 30 * 74, counts);
+            Count(data, Cel3Offset, 264 * 122, counts);
+            Assert::IsTrue(counts[255] > 0, L"setup: the cels have pixels of the skip colour");
+            std::array<bool, 256> entries = {};
+            for (size_t i = 0; i < 255; i++)
+            {
+                entries[i] = (counts[i] != 0);
+            }
+
+            cli::PicListRow row = cli::MakePicListRow(sciVersion2, 220, data, true);
+
+            Assert::IsTrue(row.described && row.error.empty(), Wide(row.error).c_str());
+            std::vector<std::string> lines = LinesOf(cli::PicListTsvTable({ row }));
+            Assert::AreEqual((size_t)2, lines.size());
+            std::vector<std::string> expected = { "220", "vga2", "640", "480", "4", "0", "3", "264", "122", "43", "0", "51", "patch", std::to_string(data.size()),
+                fmt::format("{0:08x}", (uint32_t)crcFast(data.data(), (int)data.size())), std::to_string(counts[255]), "0-254", IndexRunsText(IndexRunsOf(entries)), "" };
+            Assert::IsTrue(expected == TabFieldsOf(lines[1]), Wide(lines[1]).c_str());
+
+            std::string text = cli::PicListTextTable({ row });
+            Assert::IsTrue(Has(text, "  3: 264x122 at 43,0 pri 51  patch  "), Wide(text).c_str());
+        }
+
+        TEST_METHOD(ListRow_CountsTheCompressedCels)
+        {
+            cli::PicListRow row = cli::MakePicListRow(sciVersion2, 901, PicData("901.p56"), false);
+
+            Assert::IsTrue(row.described && row.error.empty(), Wide(row.error).c_str());
+            std::vector<std::string> fields = TabFieldsOf(LinesOf(cli::PicListTsvTable({ row }))[1]);
+            Assert::AreEqual(std::string("320"), fields[2]);
+            Assert::AreEqual(std::string("200"), fields[3]);
+            Assert::AreEqual(std::string("8"), fields[4]);
+            Assert::AreEqual(std::string("8"), fields[5]);
+            Assert::AreEqual(std::string("0"), fields[6]);
+            Assert::AreEqual(std::string("-1000"), fields[11]);
+            Assert::AreEqual(std::string("package"), fields[12]);
+            Assert::AreEqual(std::string("0"), fields[15]);
+            Assert::AreEqual(std::string("0-254"), fields[16]);
+            Assert::AreEqual(std::string(), fields[17]);
+            std::string text = cli::PicListTextTable({ row });
+            Assert::IsTrue(Has(text, "901  vga2    320x200     8     8  0: 320x124 at 0,22 pri -1000  package"), Wide(text).c_str());
+        }
+
+        // The error of a pic that cannot be read comes two spaces after the
+        // last cell of its row, also when another row has a long last cell.
+        TEST_METHOD(ListRow_PicThatCannotBeRead_HasItsErrorAfterTheLastCell)
+        {
+            cli::PicListRow good = cli::MakePicListRow(sciVersion2, 220, PicData("220.p56"), false);
+            cli::PicListRow bad = cli::MakePicListRow(sciVersion2, 221, std::vector<uint8_t>(100, 0xff), true);
+
+            Assert::IsFalse(bad.described);
+            Assert::IsTrue(Has(bad.error, "an SCI2 pic has 14 and 42") && Has(bad.error, "[format]"), Wide(bad.error).c_str());
+            std::vector<std::string> fields = TabFieldsOf(LinesOf(cli::PicListTsvTable({ good, bad }))[2]);
+            Assert::AreEqual(std::string("221"), fields[0]);
+            Assert::AreEqual(std::string(), fields[2]);
+            Assert::AreEqual(std::string("patch"), fields[12]);
+            Assert::AreEqual(std::string("100"), fields[13]);
+            Assert::AreEqual(bad.error, fields[18]);
+            std::vector<std::string> lines = LinesOf(cli::PicListTextTable({ good, bad }));
+            Assert::AreEqual((size_t)3, lines.size());
+            Assert::IsTrue(TabFieldsOf(LinesOf(cli::PicListTsvTable({ good }))[1])[17].size() > 3, L"setup: the last cell of the row of pic 220 is longer than that of the other row");
+            const std::string end = " -  (unreadable: " + bad.error + ")";
+            Assert::IsTrue((lines[2].size() > end.size()) && (lines[2].compare(lines[2].size() - end.size(), end.size(), end) == 0), Wide(lines[2]).c_str());
+            Assert::IsFalse(Has(lines[2], "   (unreadable"), Wide(lines[2]).c_str());
+        }
+
+        // A pic of a format with no image that scic reads: its source, size
+        // and CRC-32, and no error.
+        TEST_METHOD(ListRow_EgaPic_HasNoImageValues)
+        {
+            std::vector<uint8_t> data(50, 7);
+
+            cli::PicListRow row = cli::MakePicListRow(sciVersion0, 5, data, false);
+
+            Assert::IsFalse(row.described);
+            Assert::IsTrue(row.error.empty(), Wide(row.error).c_str());
+            std::vector<std::string> expected = { "5", "ega", "", "", "", "", "", "", "", "", "", "", "package", "50", fmt::format("{0:08x}", (uint32_t)crcFast(data.data(), (int)data.size())), "", "", "", "" };
+            Assert::IsTrue(expected == TabFieldsOf(LinesOf(cli::PicListTsvTable({ row }))[1]));
+        }
+
+        // With every cel: <pic>.bmp is the background cel (cel 3 here, not cel
+        // 0), and each other cel is <pic>.cel<index>.bmp.
+        TEST_METHOD(ExportFiles_EveryCel_NamesTheBackgroundAndTheOtherCels)
+        {
+            std::vector<uint8_t> data = Pic220WithBackgroundCel3();
+            sci::Result<PicDescription> description = DescribePic(sciVersion2, data);
+            AssertOk(description, "setup: describe");
+            PaletteComponent colors = TestPalette(200);
+            PaletteComponent palette999 = TestPalette(80);
+
+            sci::Result<std::vector<cli::PicExportFile>> files = cli::MakePicExportFiles(sciVersion2, 220, data, *description, false, colors, &palette999, true);
+
+            AssertOk(files, "files");
+            std::vector<std::string> names;
+            for (const cli::PicExportFile &file : *files)
+            {
+                names.push_back(file.name);
+                Assert::AreEqual(file.name == "220.toml", file.isText, Wide(file.name).c_str());
+            }
+            Assert::IsTrue(std::vector<std::string>({ "220.cel0.bmp", "220.cel1.bmp", "220.cel2.bmp", "220.bmp", "220.toml" }) == names, L"the names of the files");
+
+            sci::Result<IndexedBmp> background = DecodeIndexedBmp((*files)[3].bytes);
+            AssertOk(background, "220.bmp");
+            Assert::AreEqual(264, background->width);
+            Assert::AreEqual(122, background->height);
+            Assert::IsTrue(std::vector<uint8_t>(data.begin() + Cel3Offset, data.begin() + Cel3Offset + (264 * 122)) == background->pixels, L"the pixels of cel 3");
+            for (size_t i = 0; i < 256; i++)
+            {
+                Assert::IsTrue(IndexedBmpColor{ (uint8_t)i, (uint8_t)(255 - i), 77 } == background->colors[i], Wide("colour " + std::to_string(i)).c_str());
+            }
+            sci::Result<IndexedBmp> overlay = DecodeIndexedBmp((*files)[1].bytes);
+            AssertOk(overlay, "220.cel1.bmp");
+            Assert::AreEqual(46, overlay->width);
+            Assert::AreEqual(74, overlay->height);
+            Assert::IsTrue(std::vector<uint8_t>(data.begin() + Cel1Offset, data.begin() + Cel1Offset + (46 * 74)) == overlay->pixels, L"the pixels of cel 1");
+
+            const toml::table table = ParseToml(files->back().text);
+            Assert::AreEqual((int64_t)220, table["source"]["pic"].value_or((int64_t)-1));
+            Assert::AreEqual(std::string("vga2"), table["source"]["format"].value_or(std::string()));
+            Assert::AreEqual(std::string("package"), table["source"]["from"].value_or(std::string()));
+            Assert::AreEqual((int64_t)data.size(), table["source"]["size"].value_or((int64_t)-1));
+            Assert::AreEqual((int64_t)(uint32_t)crcFast(data.data(), (int)data.size()), table["source"]["crc32"].value_or((int64_t)-1));
+            Assert::AreEqual((int64_t)3, table["pic"]["background_cel"].value_or((int64_t)-1));
+            Assert::AreEqual(std::string("0-254-1"), RunsOf(table["palette"]["flags"]));
+            Assert::AreEqual(std::string("0-199"), RunsOf(table["palette"]["used"]));
+            Assert::AreEqual(std::string("0-79"), RunsOf(table["palette"]["palette_999"]));
+            Assert::AreEqual(std::string("220.cel0.bmp"), table["cel"][0]["file"].value_or(std::string()));
+            Assert::AreEqual(std::string("220.cel1.bmp"), table["cel"][1]["file"].value_or(std::string()));
+            Assert::AreEqual((int64_t)40, table["cel"][1]["priority"].value_or((int64_t)-1));
+            Assert::AreEqual((int64_t)113, table["cel"][1]["x"].value_or((int64_t)-1));
+            Assert::AreEqual(std::string("220.bmp"), table["cel"][3]["file"].value_or(std::string()));
+            Assert::AreEqual((int64_t)51, table["cel"][3]["priority"].value_or((int64_t)-1));
+        }
+
+        // With the background only: one BMP file, and the .toml file names a
+        // file only for that cel. A pic from a patch file, and a game with no
+        // palette 999.
+        TEST_METHOD(ExportFiles_BackgroundOnly_HasTheBackgroundCel)
+        {
+            std::vector<uint8_t> data = Pic220WithBackgroundCel3();
+            sci::Result<PicDescription> description = DescribePic(sciVersion2, data);
+            AssertOk(description, "setup: describe");
+            PaletteComponent colors = TestPalette(256);
+
+            sci::Result<std::vector<cli::PicExportFile>> files = cli::MakePicExportFiles(sciVersion2, 220, data, *description, true, colors, nullptr, false);
+
+            AssertOk(files, "files");
+            Assert::AreEqual((size_t)2, files->size());
+            Assert::AreEqual(std::string("220.bmp"), (*files)[0].name);
+            Assert::AreEqual(std::string("220.toml"), (*files)[1].name);
+            sci::Result<IndexedBmp> background = DecodeIndexedBmp((*files)[0].bytes);
+            AssertOk(background, "220.bmp");
+            Assert::AreEqual(264, background->width);
+            Assert::IsTrue(std::vector<uint8_t>(data.begin() + Cel3Offset, data.begin() + Cel3Offset + (264 * 122)) == background->pixels, L"the pixels of cel 3");
+            const toml::table table = ParseToml(files->back().text);
+            Assert::AreEqual(std::string("patch"), table["source"]["from"].value_or(std::string()));
+            Assert::AreEqual(std::string(), RunsOf(table["palette"]["palette_999"]));
+            Assert::AreEqual(std::string("0-255"), RunsOf(table["palette"]["used"]));
+            Assert::IsFalse((bool)table["cel"][0]["file"], L"a cel with no BMP file has no file key");
+            Assert::AreEqual(std::string("220.bmp"), table["cel"][3]["file"].value_or(std::string()));
+        }
+
+        // A cel with run-length data that would get a file fails the pic, and
+        // so does a pic with no cel.
+        TEST_METHOD(ExportFiles_CompressedCelOrNoCel_IsUnsupported)
+        {
+            std::vector<uint8_t> data = PicData("901.p56");
+            sci::Result<PicDescription> description = DescribePic(sciVersion2, data);
+            AssertOk(description, "setup: describe");
+            PaletteComponent colors = TestPalette(256);
+
+            for (bool everyCel : { false, true })
+            {
+                sci::Result<std::vector<cli::PicExportFile>> files = cli::MakePicExportFiles(sciVersion2, 901, data, *description, false, colors, nullptr, everyCel);
+                Assert::IsFalse(files.has_value());
+                Assert::IsTrue(files.error().code == sci::ErrorCode::Unsupported, Wide(files.error().ToString()).c_str());
+                Assert::IsTrue(Has(files.error().message, "cel 0 is compressed"), Wide(files.error().ToString()).c_str());
+            }
+
+            PicDescription noCel;
+            noCel.format = PicFormat::VGA2;
+            sci::Result<std::vector<cli::PicExportFile>> files = cli::MakePicExportFiles(sciVersion2, 5, data, noCel, false, colors, nullptr, true);
+            Assert::IsFalse(files.has_value());
+            Assert::IsTrue(files.error().code == sci::ErrorCode::Unsupported, Wide(files.error().ToString()).c_str());
+            Assert::IsTrue(Has(files.error().message, "the pic has no cel to export"), Wide(files.error().ToString()).c_str());
         }
     };
 

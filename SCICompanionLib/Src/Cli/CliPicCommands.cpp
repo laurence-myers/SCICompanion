@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "CliCommands.h"
 #include "CliHost.h"
+#include "CliPic.h"
 #include "GameSession.h"
 #include "GameFolderHelper.h"
 #include "ResourceMap.h"
@@ -53,15 +54,29 @@ namespace cli
             return std::vector<int>(numbers.begin(), numbers.end());
         }
 
-        // A number of 1 to 5 digits, up to 65535.
+        // A number of 0 to 65535: digits only, with any count of zeros before
+        // them.
         bool ParseNumber(const std::string &text, int &number)
         {
-            if (text.empty() || (text.size() > 5) || !std::all_of(text.begin(), text.end(), [](char ch) { return (ch >= '0') && (ch <= '9'); }))
+            if (text.empty())
             {
                 return false;
             }
-            number = std::stoi(text);
-            return number <= 65535;
+            int value = 0;
+            for (char ch : text)
+            {
+                if ((ch < '0') || (ch > '9'))
+                {
+                    return false;
+                }
+                value = (value * 10) + (ch - '0');
+                if (value > 65535)
+                {
+                    return false;
+                }
+            }
+            number = value;
+            return true;
         }
 
         // The pics of the game that the selectors name: a number ("230") or a
@@ -113,9 +128,10 @@ namespace cli
             uint32_t crc32 = 0;
         };
 
-        const char *SourceText(const PicSource &source)
+        // The CRC-32 of the bytes of a pic resource.
+        uint32_t Crc32Of(const std::vector<uint8_t> &data)
         {
-            return source.fromPatch ? "patch" : "package";
+            return data.empty() ? 0 : (uint32_t)crcFast(data.data(), (int)data.size());
         }
 
         // NotFound when the game has no such pic; Format when its resource is
@@ -133,7 +149,7 @@ namespace cli
             const uint8_t *bytes = source.blob->GetData();
             source.data.assign(bytes, bytes + source.blob->GetLength());
             source.fromPatch = IsFlagSet(source.blob->GetSourceFlags(), ResourceSourceFlags::PatchFile);
-            source.crc32 = source.data.empty() ? 0 : (uint32_t)crcFast(source.data.data(), (int)source.data.size());
+            source.crc32 = Crc32Of(source.data);
             return std::move(source);
         }
 
@@ -170,7 +186,10 @@ namespace cli
         }
 
         // The output folder of export: NotFound when it is not a folder,
-        // Usage when it is the game folder.
+        // Usage when it is the game folder or a folder inside it (a game can
+        // read patch files from a folder of its own). The folders are
+        // compared as files, so another name of a folder (another case, a
+        // short name, a junction) is the same folder.
         sci::Status CheckOutputFolder(GameSession &session, const std::string &outDir)
         {
             std::error_code ec;
@@ -178,53 +197,48 @@ namespace cli
             {
                 return sci::Fail(sci::ErrorCode::NotFound, "the output folder does not exist: " + outDir);
             }
-            if (fs::equivalent(outDir, session.Helper().GameFolder, ec))
+            const fs::path game = session.Helper().GameFolder;
+            // The path with no link in it, so that each parent of the text is
+            // a parent of the folder.
+            fs::path folder = fs::canonical(outDir, ec);
+            if (ec)
             {
-                return sci::Fail(sci::ErrorCode::Usage, "the output folder is the game folder; give another folder");
+                folder = fs::absolute(outDir, ec);
             }
-            return sci::Ok();
+            for (bool first = true;; first = false)
+            {
+                if (fs::equivalent(folder, game, ec))
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, first ? "the output folder is the game folder; give a folder outside the game" :
+                        "the output folder is inside the game folder; give a folder outside the game");
+                }
+                const fs::path parent = folder.parent_path();
+                if (parent.empty() || (parent == folder))
+                {
+                    return sci::Ok();
+                }
+                folder = parent;
+            }
         }
 
-        // One row of pic list.
-        struct PicRow
+        // The row of a pic of the game. The exception boundary of the pic: a
+        // pic that cannot be read has the error in its row.
+        PicListRow RowOf(GameSession &session, int number)
         {
-            int number = 0;
-            std::string format;
-            // Empty when the pic was not read.
-            std::string source;
-            size_t bytes = 0;
-            uint32_t crc32 = 0;
-            // The pic has an image that scic reads, and description has it.
-            bool described = false;
-            PicDescription description;
-            // The pic cannot be read.
-            std::string error;
-        };
-
-        PicRow RowOf(GameSession &session, int number)
-        {
-            PicRow row;
-            row.number = number;
-            row.format = PicFormatName(session.Version().PicFormat);
-            // The exception boundary of the pic.
-            sci::Status read = sci::Guard("reading " + PicText(number), [&]() -> sci::Status
+            sci::Result<PicListRow> row = sci::Guard("reading " + PicText(number), [&]() -> sci::Result<PicListRow>
             {
                 SCI_TRY_ASSIGN(PicSource source, ReadPic(session, number));
-                row.source = SourceText(source);
-                row.bytes = source.data.size();
-                row.crc32 = source.crc32;
-                if (CanReadPicImage(session.Version().PicFormat))
-                {
-                    SCI_TRY_ASSIGN(row.description, DescribePic(session.Version(), source.data));
-                    row.described = true;
-                }
-                return sci::Ok();
+                return MakePicListRow(session.Version(), number, source.data, source.fromPatch);
             });
-            if (!read)
+            if (row)
             {
-                row.error = read.error().ToString();
+                return *row;
             }
-            return row;
+            PicListRow unread;
+            unread.number = number;
+            unread.format = PicFormatName(session.Version().PicFormat);
+            unread.error = row.error().ToString();
+            return unread;
         }
 
         size_t CompressedCels(const PicDescription &description)
@@ -249,7 +263,7 @@ namespace cli
 
         // The cells of the row for the text table, in the order of the
         // header. A pic that was not described has "-" in its image cells.
-        std::vector<std::string> TextCells(const PicRow &row)
+        std::vector<std::string> TextCells(const PicListRow &row)
         {
             std::vector<std::string> cells = { fmt::format("{0}", row.number), row.format };
             if (row.described)
@@ -292,90 +306,6 @@ namespace cli
             return cells;
         }
 
-        // Aligned columns: the numbers to the right, the texts to the left.
-        // The entries of the pixels are the last column: they can be long.
-        // Then the error of a pic that cannot be read.
-        std::string TextTable(const std::vector<PicRow> &rows)
-        {
-            const std::vector<std::string> header = { "Pic", "Format", "Size", "Cels", "Comp", "Background cel", "Source", "Bytes", "CRC32", "Skip px", "Palette entries", "Pixel entries" };
-            const std::vector<bool> right = { true, false, false, true, true, false, false, true, false, true, false, false };
-            std::vector<std::vector<std::string>> table = { header };
-            for (const PicRow &row : rows)
-            {
-                table.push_back(TextCells(row));
-            }
-            std::vector<size_t> widths(header.size(), 0);
-            for (const std::vector<std::string> &cells : table)
-            {
-                for (size_t i = 0; i < cells.size(); i++)
-                {
-                    widths[i] = (std::max)(widths[i], cells[i].size());
-                }
-            }
-            std::string text;
-            for (size_t r = 0; r < table.size(); r++)
-            {
-                std::string line;
-                for (size_t i = 0; i < table[r].size(); i++)
-                {
-                    const std::string &cell = table[r][i];
-                    const std::string padding(widths[i] - cell.size(), ' ');
-                    line += (i == 0) ? "" : "  ";
-                    line += right[i] ? (padding + cell) : (cell + padding);
-                }
-                if ((r > 0) && !rows[r - 1].error.empty())
-                {
-                    line += "  (unreadable: " + rows[r - 1].error + ")";
-                }
-                // No spaces at the end of a line.
-                line.erase(line.find_last_not_of(' ') + 1);
-                text += line + "\n";
-            }
-            return text;
-        }
-
-        // Tab-separated columns with a header row, for scripts. A cell with
-        // no value is empty.
-        std::string TsvTable(const std::vector<PicRow> &rows)
-        {
-            std::string text = PicListTsvHeader;
-            for (const PicRow &row : rows)
-            {
-                text += fmt::format("{0}\t{1}\t", row.number, row.format);
-                if (row.described)
-                {
-                    const PicDescription &pic = row.description;
-                    text += fmt::format("{0}\t{1}\t{2}\t{3}\t", pic.width, pic.height, pic.cels.size(), CompressedCels(pic));
-                    const PicCelDescription *background = BackgroundOf(pic);
-                    if (background != nullptr)
-                    {
-                        text += fmt::format("{0}\t{1}\t{2}\t{3}\t{4}\t", background->index, background->width, background->height, background->x, background->y);
-                        text += (pic.format == PicFormat::VGA2) ? fmt::format("{0}\t", background->priority) : std::string("\t");
-                    }
-                    else
-                    {
-                        text += "\t\t\t\t\t\t";
-                    }
-                }
-                else
-                {
-                    text += "\t\t\t\t\t\t\t\t\t\t";
-                }
-                text += row.source.empty() ? std::string("\t\t\t") : fmt::format("{0}\t{1}\t{2:08x}\t", row.source, row.bytes, row.crc32);
-                if (row.described)
-                {
-                    text += fmt::format("{0}\t{1}\t{2}\t", SkipPixels(row.description), IndexRunsText(IndexRunsOf(row.description.palette.UsedEntries())),
-                        IndexRunsText(IndexRunsOf(PixelEntriesOf(row.description))));
-                }
-                else
-                {
-                    text += "\t\t\t";
-                }
-                text += row.error + "\n";
-            }
-            return text;
-        }
-
         // What the export of one pic did.
         struct PicExportResult
         {
@@ -386,29 +316,15 @@ namespace cli
             bool writeFailed = false;
         };
 
-        // A file of the export, made in memory.
-        struct ExportFile
-        {
-            std::string path;
-            std::vector<uint8_t> bytes;
-            // A text file: each line end becomes CR LF.
-            std::string text;
-            bool isText = false;
-        };
-
         sci::Status ExportPic(GameSession &session, int number, bool everyPic, bool everyCel, const std::string &outDir, bool dryRun, CliOutput &output, PicExportResult &result)
         {
             SCI_TRY_ASSIGN(PicSource source, ReadPic(session, number));
             const SCIVersion &version = session.Version();
             SCI_TRY_ASSIGN(PicDescription description, DescribePic(version, source.data));
-            if (description.cels.empty())
+            if (description.cels.empty() && everyPic)
             {
-                if (everyPic)
-                {
-                    result.skipped = true;
-                    return sci::Ok();
-                }
-                return sci::Fail(sci::ErrorCode::Unsupported, "the pic has no cel to export");
+                result.skipped = true;
+                return sci::Ok();
             }
 
             // The colours as SCI Companion shows the pic: the palette of the
@@ -421,81 +337,199 @@ namespace cli
                 return sci::Fail(sci::ErrorCode::Internal, "the palette of the pic could not be made");
             }
 
-            PicSidecar sidecar = MakePicSidecar(description);
-            sidecar.pic = number;
-            sidecar.from = SourceText(source);
-            sidecar.size = (uint32_t)source.data.size();
-            sidecar.crc32 = source.crc32;
-            sidecar.palette999 = IndexRunsOf(UsedEntriesOf(session.ResourceMap().GetPalette999()));
-            sidecar.used = IndexRunsOf(UsedEntriesOf(merged.get()));
-
             // Each file is made before the first is written, so a pic with a
             // cel that cannot be exported writes no file.
-            std::vector<ExportFile> files;
-            for (const PicCelDescription &cel : description.cels)
-            {
-                const bool background = (cel.index == description.backgroundCel);
-                if (!background && !everyCel)
-                {
-                    continue;
-                }
-                if (cel.compressed)
-                {
-                    return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} is compressed; only a cel that is not compressed can be exported", cel.index));
-                }
-                IndexedBmp image;
-                image.width = cel.width;
-                image.height = cel.height;
-                SCI_TRY_ASSIGN(image.pixels, GetCelPixels(version, source.data, cel.index));
-                for (size_t i = 0; i < image.colors.size(); i++)
-                {
-                    image.colors[i].red = merged->Colors[i].rgbRed;
-                    image.colors[i].green = merged->Colors[i].rgbGreen;
-                    image.colors[i].blue = merged->Colors[i].rgbBlue;
-                }
-                ExportFile file;
-                std::string name = background ? fmt::format("{0}.bmp", number) : fmt::format("{0}.cel{1}.bmp", number, cel.index);
-                file.path = outDir + "\\" + name;
-                SCI_TRY_ASSIGN(file.bytes, EncodeIndexedBmp(image));
-                files.push_back(std::move(file));
-                sidecar.cels[cel.index].file = name;
-                result.cels++;
-            }
-            ExportFile sidecarFile;
-            sidecarFile.path = outDir + "\\" + fmt::format("{0}.toml", number);
-            sidecarFile.text = PicSidecarText(sidecar);
-            sidecarFile.isText = true;
-            files.push_back(std::move(sidecarFile));
+            SCI_TRY_ASSIGN(std::vector<PicExportFile> files, MakePicExportFiles(version, number, source.data, description, source.fromPatch, *merged, session.ResourceMap().GetPalette999(), everyCel));
 
             // Each file that is there already must open for writing, so that a
             // file that cannot be replaced fails the pic before its first
             // write. The write shares read and write (WriteBytesToFile).
-            for (const ExportFile &file : files)
+            for (const PicExportFile &file : files)
             {
-                sci::Status writable = CheckFileCanBeReplaced(file.path, FILE_SHARE_READ | FILE_SHARE_WRITE);
+                sci::Status writable = CheckFileCanBeReplaced(outDir + "\\" + file.name, FILE_SHARE_READ | FILE_SHARE_WRITE);
                 if (!writable)
                 {
                     result.writeFailed = true;
                     return writable;
                 }
             }
-            for (const ExportFile &file : files)
+            for (const PicExportFile &file : files)
             {
+                const std::string path = outDir + "\\" + file.name;
+                if (!file.isText)
+                {
+                    result.cels++;
+                }
                 if (dryRun)
                 {
-                    output.Message("Would write " + file.path);
+                    output.Message("Would write " + path);
                     continue;
                 }
-                sci::Status written = file.isText ? WriteTextToFile(file.path, file.text) : WriteBytesToFile(file.path, file.bytes);
+                sci::Status written = file.isText ? WriteTextToFile(path, file.text) : WriteBytesToFile(path, file.bytes);
                 if (!written)
                 {
                     result.writeFailed = true;
                     return written;
                 }
-                output.Detail("Wrote " + file.path);
+                output.Detail("Wrote " + path);
             }
             return sci::Ok();
         }
+    }
+
+    PicListRow MakePicListRow(const SCIVersion &version, int number, const std::vector<uint8_t> &data, bool fromPatch)
+    {
+        PicListRow row;
+        row.number = number;
+        row.format = PicFormatName(version.PicFormat);
+        row.source = fromPatch ? "patch" : "package";
+        row.bytes = data.size();
+        row.crc32 = Crc32Of(data);
+        if (CanReadPicImage(version.PicFormat))
+        {
+            // The exception boundary of the description.
+            sci::Result<PicDescription> description = sci::Guard(fmt::format("reading pic {0}", number), [&]() { return DescribePic(version, data); });
+            if (description)
+            {
+                row.description = *description;
+                row.described = true;
+            }
+            else
+            {
+                row.error = description.error().ToString();
+            }
+        }
+        return row;
+    }
+
+    // Aligned columns: the numbers to the right, the texts to the left. The
+    // entries of the pixels are the last column: they can be long.
+    std::string PicListTextTable(const std::vector<PicListRow> &rows)
+    {
+        const std::vector<std::string> header = { "Pic", "Format", "Size", "Cels", "Comp", "Background cel", "Source", "Bytes", "CRC32", "Skip px", "Palette entries", "Pixel entries" };
+        const std::vector<bool> right = { true, false, false, true, true, false, false, true, false, true, false, false };
+        std::vector<std::vector<std::string>> table = { header };
+        for (const PicListRow &row : rows)
+        {
+            table.push_back(TextCells(row));
+        }
+        std::vector<size_t> widths(header.size(), 0);
+        for (const std::vector<std::string> &cells : table)
+        {
+            for (size_t i = 0; i < cells.size(); i++)
+            {
+                widths[i] = (std::max)(widths[i], cells[i].size());
+            }
+        }
+        std::string text;
+        for (size_t r = 0; r < table.size(); r++)
+        {
+            std::string line;
+            for (size_t i = 0; i < table[r].size(); i++)
+            {
+                const std::string &cell = table[r][i];
+                const std::string padding(widths[i] - cell.size(), ' ');
+                line += (i == 0) ? "" : "  ";
+                line += right[i] ? (padding + cell) : (cell + padding);
+            }
+            // No spaces at the end of a line, and none before the error but
+            // the two that divide it from the last cell.
+            line.erase(line.find_last_not_of(' ') + 1);
+            if ((r > 0) && !rows[r - 1].error.empty())
+            {
+                line += "  (unreadable: " + rows[r - 1].error + ")";
+            }
+            text += line + "\n";
+        }
+        return text;
+    }
+
+    std::string PicListTsvTable(const std::vector<PicListRow> &rows)
+    {
+        std::string text = PicListTsvHeader;
+        for (const PicListRow &row : rows)
+        {
+            text += fmt::format("{0}\t{1}\t", row.number, row.format);
+            if (row.described)
+            {
+                const PicDescription &pic = row.description;
+                text += fmt::format("{0}\t{1}\t{2}\t{3}\t", pic.width, pic.height, pic.cels.size(), CompressedCels(pic));
+                const PicCelDescription *background = BackgroundOf(pic);
+                if (background != nullptr)
+                {
+                    text += fmt::format("{0}\t{1}\t{2}\t{3}\t{4}\t", background->index, background->width, background->height, background->x, background->y);
+                    text += (pic.format == PicFormat::VGA2) ? fmt::format("{0}\t", background->priority) : std::string("\t");
+                }
+                else
+                {
+                    text += "\t\t\t\t\t\t";
+                }
+            }
+            else
+            {
+                text += "\t\t\t\t\t\t\t\t\t\t";
+            }
+            text += row.source.empty() ? std::string("\t\t\t") : fmt::format("{0}\t{1}\t{2:08x}\t", row.source, row.bytes, row.crc32);
+            if (row.described)
+            {
+                text += fmt::format("{0}\t{1}\t{2}\t", SkipPixels(row.description), IndexRunsText(IndexRunsOf(row.description.palette.UsedEntries())),
+                    IndexRunsText(IndexRunsOf(PixelEntriesOf(row.description))));
+            }
+            else
+            {
+                text += "\t\t\t";
+            }
+            text += row.error + "\n";
+        }
+        return text;
+    }
+
+    sci::Result<std::vector<PicExportFile>> MakePicExportFiles(const SCIVersion &version, int number, const std::vector<uint8_t> &data, const PicDescription &description, bool fromPatch,
+        const PaletteComponent &colors, const PaletteComponent *palette999, bool everyCel)
+    {
+        if (description.cels.empty())
+        {
+            return sci::Fail(sci::ErrorCode::Unsupported, "the pic has no cel to export");
+        }
+        PicSidecar sidecar = MakePicSidecar(description);
+        sidecar.pic = number;
+        sidecar.from = fromPatch ? "patch" : "package";
+        sidecar.size = (uint32_t)data.size();
+        sidecar.crc32 = Crc32Of(data);
+        sidecar.palette999 = IndexRunsOf(UsedEntriesOf(palette999));
+        sidecar.used = IndexRunsOf(UsedEntriesOf(&colors));
+
+        std::vector<PicExportFile> files;
+        for (const PicCelDescription &cel : description.cels)
+        {
+            const bool background = (cel.index == description.backgroundCel);
+            if (!background && !everyCel)
+            {
+                continue;
+            }
+            IndexedBmp image;
+            image.width = cel.width;
+            image.height = cel.height;
+            // Unsupported for a cel with run-length data in an SCI2 pic.
+            SCI_TRY_ASSIGN(image.pixels, GetCelPixels(version, data, cel.index));
+            for (size_t i = 0; i < image.colors.size(); i++)
+            {
+                image.colors[i].red = colors.Colors[i].rgbRed;
+                image.colors[i].green = colors.Colors[i].rgbGreen;
+                image.colors[i].blue = colors.Colors[i].rgbBlue;
+            }
+            PicExportFile file;
+            file.name = background ? fmt::format("{0}.bmp", number) : fmt::format("{0}.cel{1}.bmp", number, cel.index);
+            SCI_TRY_ASSIGN(file.bytes, EncodeIndexedBmp(image));
+            sidecar.cels[cel.index].file = file.name;
+            files.push_back(std::move(file));
+        }
+        PicExportFile sidecarFile;
+        sidecarFile.name = fmt::format("{0}.toml", number);
+        sidecarFile.text = PicSidecarText(sidecar);
+        sidecarFile.isText = true;
+        files.push_back(std::move(sidecarFile));
+        return files;
     }
 
     sci::Result<ExitCode> RunPicList(GameSession &session, const PicListOptions &options, CliOutput &output)
@@ -505,7 +539,7 @@ namespace cli
         {
             SCI_TRY_ASSIGN(pics, SelectPics(pics, options.pics));
         }
-        std::vector<PicRow> rows;
+        std::vector<PicListRow> rows;
         for (int number : pics)
         {
             if (CancelFlag().load())
@@ -518,8 +552,8 @@ namespace cli
             rows.push_back(RowOf(session, number));
         }
         SetCurrentItem("");
-        output.Result((options.format == "tsv") ? TsvTable(rows) : TextTable(rows));
-        bool unreadable = std::any_of(rows.begin(), rows.end(), [](const PicRow &row) { return !row.error.empty(); });
+        output.Result((options.format == "tsv") ? PicListTsvTable(rows) : PicListTextTable(rows));
+        bool unreadable = std::any_of(rows.begin(), rows.end(), [](const PicListRow &row) { return !row.error.empty(); });
         return unreadable ? ExitCode::PartialFailure : ExitCode::Success;
     }
 

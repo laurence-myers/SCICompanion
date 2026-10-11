@@ -178,7 +178,7 @@ namespace cli
         app.add_flag("-v,--verbose", common.verbose, "Show more detail.");
         CLI::Option *logOption = app.add_option("--log", common.logFile, "Also write all messages to a file: a new file, an empty file, or a log of scic.");
         CLI::Option *dataFolderOption = app.add_option("--data-dir", common.dataFolder, "The folder that holds include\\ and Decompiler\\. Default: SCIC_DATA_DIR, or the folder of scic.exe.");
-        app.add_flag("--dry-run", common.dryRun, "Do the work in memory, and write nothing into the game (--log and --function-report are still written).");
+        app.add_flag("--dry-run", common.dryRun, "Do the work in memory, and write nothing into the game or into an output folder (--log and --function-report are still written).");
         app.add_flag("--version", version, "Show the version.");
 
         CLI::App *help = app.add_subcommand("help", "Show the help of a group or of a command: scic help script list.");
@@ -261,7 +261,7 @@ namespace cli
         picExport->add_option("game-folder", picExportOptions.gameFolder, "The game folder.")->required();
         picExport->add_option("--pic", picExportOptions.pics, "Pic numbers or ranges (100-199). Or give --all.");
         picExport->add_flag("--all", picExportOptions.all, "Every pic of the game.");
-        CLI::Option *picExportOutDirOption = picExport->add_option("--out-dir", picExportOptions.outDir, "The folder for the files. It must exist, and it must not be the game folder.")->required();
+        CLI::Option *picExportOutDirOption = picExport->add_option("--out-dir", picExportOptions.outDir, "The folder for the files. It must exist, and it must not be the game folder or a folder inside it.")->required();
         picExport->add_option("--cel", picExportOptions.cel, "background (default): the cel with the largest area, as <pic>.bmp; all: also each other cel, as <pic>.cel<index>.bmp.")
             ->check(CLI::IsMember({ "background", "all" }));
 

@@ -265,8 +265,8 @@ namespace cli
     // when a pic failed (also a pic of a format or with a cel that scic does
     // not export), 9 when a file could not be written, 7 after Ctrl+C, 1 for
     // a bug. Fails when the run cannot start: the output folder does not
-    // exist (NotFound) or is the game folder (Usage), or a selector is bad
-    // (Usage).
+    // exist (NotFound), or it is the game folder or a folder inside it
+    // (Usage), or a selector is bad (Usage).
     sci::Result<ExitCode> RunPicExport(GameSession &session, const PicExportOptions &options, const CommonOptions &common, CliOutput &output);
 
     // scic dev compare-structure (hidden): the structure of the functions of

@@ -998,7 +998,9 @@ Rules of `export`:
 
 - It needs `--all` or `--pic` with one or more pics, not both.
 - `--out-dir` must exist (exit 3 if not), and it must not be the game
-  folder (exit 2). `export` writes nothing into the game.
+  folder or a folder inside it (exit 2), under any name of the folder
+  (another case, a short name, a junction). `export` writes nothing into
+  the game.
 - Each pic runs in its own exception boundary: a pic that fails is an error
   line (`scic: error: pic 110: ...`), and the next pic goes on. A pic that
   failed makes the exit code 6: a pic of the formats `ega` and `vga1`, a

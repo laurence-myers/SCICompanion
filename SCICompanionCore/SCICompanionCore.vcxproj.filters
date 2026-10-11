@@ -407,6 +407,9 @@ $include
     <ClInclude Include="..\SCICompanionLib\Src\Cli\CliConsole.h">
       <Filter>Source Files\Cli</Filter>
     </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Cli\CliPic.h">
+      <Filter>Source Files\Cli</Filter>
+    </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Cli\CliHost.h">
       <Filter>Source Files\Cli</Filter>
     </ClInclude>
