@@ -3,9 +3,11 @@
 // The .toml file that scic pic export writes next to the BMP files of a pic
 // (plan section 4.7 of docs\scic-cli\plan.md): where the pic came from, its
 // size, what its palette stores, and its cels with their files. A tool that
-// changes the BMP files reads it (Python: tomllib).
+// changes the BMP files reads it (Python: tomllib), and scic pic import
+// reads it to find the pic and the file of each cel.
 
 #include "PicImage.h"
+#include "Result.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -45,6 +47,8 @@ struct PicSidecar
     std::string from;           // "package" or "patch"
     uint32_t size = 0;          // the bytes of the pic resource
     uint32_t crc32 = 0;         // the CRC-32 of those bytes
+    // False for a file that was read and has no crc32 key.
+    bool hasCrc32 = true;
     // [pic]
     int width = 0;
     int height = 0;
@@ -76,3 +80,16 @@ PicSidecar MakePicSidecar(const PicDescription &description);
 // flag run is [first, last, flag]. A cel with no file has no "file" key, and
 // only a cel of an SCI2 pic has a "priority" key.
 std::string PicSidecarText(const PicSidecar &sidecar);
+
+// Reads the sidecar from the text of a TOML file. It needs the pic number
+// ([source] pic, 0 to 65535) and the index of each [[cel]]; a key that is
+// not there keeps the value of a new PicSidecar. The file of a cel must be a
+// file name with no folder. Format for text that is not TOML (the error has
+// the line and the column), for a key of another type, for a number that is
+// not in its range, and for a file with a folder.
+sci::Result<PicSidecar> ParsePicSidecar(const std::string &text);
+
+// Reads the sidecar file (a path in the ANSI code page). NotFound when the
+// file cannot be opened; the errors of ParsePicSidecar, with the file as
+// their location.
+sci::Result<PicSidecar> ReadPicSidecarFile(const std::string &path);

@@ -60,8 +60,9 @@ jobs:
     # game that SCI Companion never opened (no game.ini, no src\). Each
     # command must exit with 0 and print no internal error, each summary
     # must name every script that list found, and the second game must not
-    # get a game.ini. The pic commands run on the first copy: pic list, and
-    # pic export of every pic into a folder of the runner's temp folder.
+    # get a game.ini. The pic commands run on the first copy: pic list, pic
+    # export of every pic into a folder of the runner's temp folder, and
+    # pic import of those files into a second folder.
     # The step runs also when a test step failed, so that its result shows.
     - name: Smoke test scic.exe
       if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -102,11 +103,12 @@ jobs:
         # The pic commands, on the game as it ships and with a data folder
         # that has no include\: list has a row for each pic (tsv: a row
         # starts with the pic number, and column 5 is its count of cels),
-        # and export writes a BMP file and a .toml file for each pic with a
-        # cel.
+        # export writes a BMP file and a .toml file for each pic with a cel,
+        # and import writes a patch file for each of them from those files.
         $noData = Join-Path $root "no-data"
         $picFiles = Join-Path $root "pics"
-        New-Item -ItemType Directory -Force $noData, $picFiles | Out-Null
+        $picPatches = Join-Path $root "pic-patches"
+        New-Item -ItemType Directory -Force $noData, $picFiles, $picPatches | Out-Null
         $picRows = @((Invoke-Scic pic list $shipped --format tsv --data-dir $noData).Out | Where-Object { $_ -match '^\d+\t' })
         if ($picRows.Count -lt 1) { throw "scic pic list found no pic in $shipped." }
         $withCel = @($picRows | Where-Object { ($_ -split "`t")[4] -ne '0' }).Count
@@ -115,6 +117,9 @@ jobs:
           $written = @(Get-ChildItem $picFiles -Filter "*.$extension").Count
           if ($written -ne $withCel) { throw "scic pic export wrote $written .$extension files for $withCel pics with a cel." }
         }
+        Assert-Line (Invoke-Scic pic import $shipped --in-dir $picFiles --out-dir $picPatches --data-dir $noData).All "Imported $withCel of $withCel pics"
+        $patches = @(Get-ChildItem $picPatches -Filter "*.p56").Count
+        if ($patches -ne $withCel) { throw "scic pic import wrote $patches patch files for $withCel pics with a cel." }
         foreach ($game in @($shipped, $neverOpened)) {
           # A row of the table (stdout) starts with the script number.
           $count = @((Invoke-Scic script list $game).Out | Where-Object { $_ -match '^\s*\d+\s' }).Count

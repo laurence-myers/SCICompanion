@@ -632,4 +632,418 @@ namespace cli
         output.Message(summary + ".");
         return ExitCodeForFacts(facts);
     }
+
+    namespace
+    {
+        // The image of one cel of an import.
+        struct ImportCel
+        {
+            // Below 0: the background cel of the pic.
+            int cel = -1;
+            std::string imagePath;
+        };
+
+        // The images of an import for one pic.
+        struct PicImportJob
+        {
+            int number = 0;
+            std::vector<ImportCel> cels;
+            // The CRC-32 that the sidecar of the images has for the pic.
+            bool hasCrc32 = false;
+            uint32_t crc32 = 0;
+            std::string sidecarPath;
+        };
+
+        // What the import of one pic did.
+        struct PicImportResult
+        {
+            size_t cels = 0;
+            // The failure is a patch file that could not be written.
+            bool writeFailed = false;
+        };
+
+        // The job of a sidecar file: the pic, and the cels that have a file.
+        // The files are in the folder of the sidecar.
+        sci::Result<PicImportJob> JobOfSidecar(const std::string &sidecarPath)
+        {
+            SCI_TRY_ASSIGN(PicSidecar sidecar, ReadPicSidecarFile(sidecarPath));
+            PicImportJob job;
+            job.number = sidecar.pic;
+            job.hasCrc32 = sidecar.hasCrc32;
+            job.crc32 = sidecar.crc32;
+            job.sidecarPath = sidecarPath;
+            const std::string folder = fs::path(sidecarPath).parent_path().string();
+            for (const PicSidecarCel &cel : sidecar.cels)
+            {
+                if (!cel.file.empty())
+                {
+                    ImportCel importCel;
+                    importCel.cel = cel.index;
+                    importCel.imagePath = folder + "\\" + cel.file;
+                    job.cels.push_back(importCel);
+                }
+            }
+            if (job.cels.empty())
+            {
+                sci::ErrorLocation where;
+                where.file = sidecarPath;
+                return sci::Fail(sci::ErrorCode::Usage, "the file names no image file of a cel", where);
+            }
+            return job;
+        }
+
+        // Checks the new pixels of a cel against its pixels in the game: a
+        // pixel has the skip colour where the cel has it and nowhere else,
+        // and each other pixel is a used entry. Usage for a pixel that
+        // fails a check; an unused entry is a warning when the options allow
+        // it.
+        sci::Status CheckNewPixels(const std::string &imagePath, const PicCelDescription &cel, const std::vector<uint8_t> &oldPixels, const std::vector<uint8_t> &newPixels,
+            const std::array<bool, 256> &used, bool allowUnused, std::vector<std::string> &warnings)
+        {
+            size_t skipChanges = 0;
+            size_t firstSkipChange = 0;
+            size_t unusedPixels = 0;
+            std::array<bool, 256> unused = {};
+            for (size_t i = 0; i < newPixels.size(); i++)
+            {
+                const bool wasSkip = (oldPixels[i] == cel.skipColor);
+                const bool isSkip = (newPixels[i] == cel.skipColor);
+                if (wasSkip != isSkip)
+                {
+                    if (skipChanges == 0)
+                    {
+                        firstSkipChange = i;
+                    }
+                    skipChanges++;
+                }
+                else if (!isSkip && !used[newPixels[i]])
+                {
+                    unused[newPixels[i]] = true;
+                    unusedPixels++;
+                }
+            }
+            if (skipChanges > 0)
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}: {1} to or from the skip colour {2} of cel {3} (the first at {4},{5}); the pixels of the skip colour must stay where they are",
+                    imagePath, (skipChanges == 1) ? std::string("1 pixel changes") : fmt::format("{0} pixels change", skipChanges), (int)cel.skipColor, cel.index,
+                    firstSkipChange % (size_t)cel.width, firstSkipChange / (size_t)cel.width));
+            }
+            if (unusedPixels > 0)
+            {
+                const std::string text = fmt::format("{0}: {1} of cel {2} {3} palette entries that the pic and palette 999 do not mark as used: {4}",
+                    imagePath, CountText(unusedPixels, "pixel"), cel.index, (unusedPixels == 1) ? "has" : "have", IndexRunsText(IndexRunsOf(unused)));
+                if (!allowUnused)
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, text + " (--allow-unused-indices makes this a warning)");
+                }
+                warnings.push_back(text);
+            }
+            return sci::Ok();
+        }
+
+        sci::Status ImportPic(GameSession &session, const PicImportJob &job, const PicImportPalette &palette, bool allowUnused, const std::string &outDir, bool dryRun, CliOutput &output, PicImportResult &result)
+        {
+            const std::string picText = PicText(job.number);
+            SCI_TRY_ASSIGN(PicSource source, ReadPic(session, job.number));
+            const SCIVersion &version = session.Version();
+            SCI_TRY_ASSIGN(PicDescription description, DescribePic(version, source.data));
+            if (job.hasCrc32 && (job.crc32 != source.crc32))
+            {
+                output.Warning(fmt::format("{0}: {1} has the CRC-32 {2:08x}, and the pic in the game has {3:08x}: the images are of another copy of the pic", picText, job.sidecarPath, job.crc32, source.crc32));
+            }
+
+            // The entries that the game has a colour for: those that the
+            // pic or palette 999 marks as used (the palette of export).
+            SCI_TRY_ASSIGN(std::unique_ptr<ResourceEntity> entity, TryCreateResourceFromResourceData(*source.blob));
+            std::unique_ptr<PaletteComponent> merged = session.ResourceMap().GetMergedPalette(*entity, 999);
+            if (!merged)
+            {
+                return sci::Fail(sci::ErrorCode::Internal, "the palette of the pic could not be made");
+            }
+            const std::array<bool, 256> used = UsedEntriesOf(merged.get());
+
+            // Each image is read, and then all are checked, before the pic
+            // changes.
+            std::vector<PicImportImage> images;
+            for (const ImportCel &importCel : job.cels)
+            {
+                PicImportImage image;
+                image.cel = importCel.cel;
+                image.name = importCel.imagePath;
+                SCI_TRY_ASSIGN(image.image, ReadIndexedBmpFile(importCel.imagePath));
+                images.push_back(std::move(image));
+            }
+            std::vector<std::string> warnings;
+            sci::Result<std::vector<uint8_t>> made = MakePicImportData(version, source.data, description, used, images, palette, allowUnused, warnings);
+            for (const std::string &warning : warnings)
+            {
+                output.Warning(picText + ": " + warning);
+            }
+            SCI_TRY_ASSIGN(std::vector<uint8_t> data, std::move(made));
+            SCI_TRY(CheckResourceSize(version, (DWORD)data.size(), ResourceType::Pic));
+
+            const std::string path = outDir + "\\" + GetFileNameFor(ResourceType::Pic, job.number, NoBase36, version);
+            // The write of a patch file shares nothing (ResourceBlob::SaveToFile).
+            sci::Status writable = CheckFileCanBeReplaced(path, 0);
+            if (!writable)
+            {
+                result.writeFailed = true;
+                return writable;
+            }
+            result.cels = images.size();
+            if (dryRun)
+            {
+                output.Message("Would write " + path);
+                return sci::Ok();
+            }
+            ResourceBlob blob(session.Helper(), nullptr, ResourceType::Pic, data, version.DefaultVolumeFile, job.number, NoBase36, version, ResourceSourceFlags::PatchFile);
+            HRESULT hr = blob.SaveToFile(path);
+            if (FAILED(hr))
+            {
+                result.writeFailed = true;
+                return sci::Fail(sci::FromHResult(hr, "Writing " + path));
+            }
+            output.Detail("Wrote " + path);
+            return sci::Ok();
+        }
+    }
+
+    sci::Result<std::vector<uint8_t>> MakePicImportData(const SCIVersion &version, const std::vector<uint8_t> &data, const PicDescription &description, const std::array<bool, 256> &usedEntries,
+        const std::vector<PicImportImage> &images, const PicImportPalette &palette, bool allowUnusedEntries, std::vector<std::string> &warnings)
+    {
+        // The cel of each image, in the order of the images.
+        std::vector<int> cels;
+        // The first image: its colour table has the colours of the range.
+        const PicImportImage *rangeColors = nullptr;
+        for (const PicImportImage &image : images)
+        {
+            const int index = (image.cel < 0) ? description.backgroundCel : image.cel;
+            if ((index < 0) || ((size_t)index >= description.cels.size()))
+            {
+                return sci::Fail(sci::ErrorCode::Usage, (image.cel < 0) ? std::string("the pic has no cel") :
+                    fmt::format("the pic has no cel {0}; it has {1}", image.cel, CountText(description.cels.size(), "cel")));
+            }
+            if (std::find(cels.begin(), cels.end(), index) != cels.end())
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("two images are for cel {0}", index));
+            }
+            const PicCelDescription &cel = description.cels[index];
+            if (cel.compressed)
+            {
+                return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} is compressed; only a cel that is not compressed can get new pixels", index));
+            }
+            if ((image.image.width != cel.width) || (image.image.height != cel.height))
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} has {1} x {2} pixels, and cel {3} has {4} x {5}", image.name, image.image.width, image.image.height, index, cel.width, cel.height));
+            }
+            SCI_TRY_ASSIGN(std::vector<uint8_t> oldPixels, GetCelPixels(version, data, index));
+            SCI_TRY(CheckNewPixels(image.name, cel, oldPixels, image.image.pixels, usedEntries, allowUnusedEntries, warnings));
+            if (palette.replace)
+            {
+                if (image.image.colorCount <= palette.last)
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}: the colour table has {1} {2}, and the palette range is {3}-{4}", image.name, image.image.colorCount,
+                        (image.image.colorCount == 1) ? "entry" : "entries", palette.first, palette.last));
+                }
+                if (rangeColors == nullptr)
+                {
+                    rangeColors = &image;
+                }
+                else
+                {
+                    for (int entry = palette.first; entry <= palette.last; entry++)
+                    {
+                        if (image.image.colors[entry] != rangeColors->image.colors[entry])
+                        {
+                            return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} and {1} have another colour for entry {2}; the images of a pic must have one palette", rangeColors->name, image.name, entry));
+                        }
+                    }
+                }
+            }
+            cels.push_back(index);
+        }
+
+        std::vector<uint8_t> newData = data;
+        if (rangeColors != nullptr)
+        {
+            SCI_TRY_ASSIGN(newData, ReplacePaletteRange(version, newData, palette.first, palette.last, rangeColors->image.colors));
+            // The range is inside the stored entries here. An entry with the
+            // flag 0 gets its new colour, but the game does not use it.
+            std::array<bool, 256> notUsed = {};
+            bool anyNotUsed = false;
+            for (int entry = palette.first; entry <= palette.last; entry++)
+            {
+                if (description.palette.flags[entry] == 0)
+                {
+                    notUsed[entry] = true;
+                    anyNotUsed = true;
+                }
+            }
+            if (anyNotUsed)
+            {
+                warnings.push_back(fmt::format("the pic does not mark the entries {0} as used, so the game takes their colours from another palette", IndexRunsText(IndexRunsOf(notUsed))));
+            }
+        }
+        for (size_t i = 0; i < images.size(); i++)
+        {
+            SCI_TRY_ASSIGN(newData, ReplaceCelPixels(version, newData, cels[i], images[i].image.pixels));
+        }
+        return newData;
+    }
+
+    bool ParsePaletteRange(const std::string &text, int &first, int &last)
+    {
+        size_t dash = text.find('-');
+        if (dash == std::string::npos)
+        {
+            return false;
+        }
+        int low = 0;
+        int high = 0;
+        if (!ParseNumber(text.substr(0, dash), low) || !ParseNumber(text.substr(dash + 1), high) || (high > 255) || (low > high))
+        {
+            return false;
+        }
+        first = low;
+        last = high;
+        return true;
+    }
+
+    sci::Result<ExitCode> RunPicImport(GameSession &session, const PicImportOptions &options, const CommonOptions &common, CliOutput &output)
+    {
+        const std::string outDir = AbsolutePath(options.outDir);
+        SCI_TRY(CheckOutputFolder(session, outDir));
+        PicImportPalette palette;
+        palette.replace = (options.palette == "replace");
+        if (palette.replace && !ParsePaletteRange(options.paletteRange, palette.first, palette.last))
+        {
+            return sci::Fail(sci::ErrorCode::Usage, "--palette replace needs --palette-range first-last, two entries of 0 to 255 (for example 80-235)");
+        }
+
+        // A job, or the sidecar file that gives it (read in the exception
+        // boundary of its pic).
+        struct Work
+        {
+            PicImportJob job;
+            std::string sidecarPath;
+        };
+        std::vector<Work> works;
+        if (!options.inDir.empty())
+        {
+            const std::string inDir = AbsolutePath(options.inDir);
+            std::error_code ec;
+            if (!fs::is_directory(inDir, ec))
+            {
+                return sci::Fail(sci::ErrorCode::NotFound, "the input folder does not exist: " + inDir);
+            }
+            std::vector<std::string> sidecars;
+            for (const auto &entry : fs::directory_iterator(inDir, ec))
+            {
+                std::string extension = entry.path().extension().string();
+                std::transform(extension.begin(), extension.end(), extension.begin(), [](char ch) { return (char)tolower((unsigned char)ch); });
+                if (entry.is_regular_file(ec) && (extension == ".toml"))
+                {
+                    sidecars.push_back(entry.path().string());
+                }
+            }
+            if (sidecars.empty())
+            {
+                return sci::Fail(sci::ErrorCode::Usage, "the input folder has no .toml file of scic pic export: " + inDir);
+            }
+            std::sort(sidecars.begin(), sidecars.end());
+            for (const std::string &sidecar : sidecars)
+            {
+                Work work;
+                work.sidecarPath = sidecar;
+                works.push_back(work);
+            }
+        }
+        else
+        {
+            Work work;
+            if (!ParseNumber(options.pic, work.job.number))
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("\"{0}\" is not a pic number", options.pic));
+            }
+            std::vector<int> pics = PicNumbersOf(session);
+            if (std::find(pics.begin(), pics.end(), work.job.number) == pics.end())
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("the game has no pic {0}", work.job.number));
+            }
+            ImportCel cel;
+            cel.cel = options.celGiven ? options.cel : -1;
+            cel.imagePath = AbsolutePath(options.image);
+            work.job.cels.push_back(cel);
+            works.push_back(work);
+        }
+
+        ReportFacts facts;
+        size_t imported = 0;
+        size_t cels = 0;
+        size_t failed = 0;
+        std::set<int> done;
+        for (Work &work : works)
+        {
+            if (CancelFlag().load())
+            {
+                facts.cancelled = true;
+                break;
+            }
+            // The name of the work in a message: the sidecar file until its
+            // pic is known.
+            std::string name = work.sidecarPath.empty() ? PicText(work.job.number) : work.sidecarPath;
+            SetCurrentItem("importing " + name);
+            PicImportResult result;
+            // The exception boundary of the pic.
+            sci::Status status = sci::Guard("importing " + name, [&]() -> sci::Status
+            {
+                if (!work.sidecarPath.empty())
+                {
+                    SCI_TRY_ASSIGN(work.job, JobOfSidecar(work.sidecarPath));
+                    name = PicText(work.job.number);
+                    SetCurrentItem("importing " + name);
+                }
+                if (!done.insert(work.job.number).second)
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} is in two .toml files of the input folder; the second is {1}", name, work.sidecarPath));
+                }
+                return ImportPic(session, work.job, palette, options.allowUnusedIndices, outDir, common.dryRun, output, result);
+            });
+            if (!status)
+            {
+                failed++;
+                output.Error(name + ": " + status.error().ToString());
+                if (status.error().code == sci::ErrorCode::Internal)
+                {
+                    facts.internal = true;
+                }
+                else if (result.writeFailed)
+                {
+                    facts.writeFailed = true;
+                }
+                else
+                {
+                    facts.otherFailures = true;
+                }
+            }
+            else
+            {
+                imported++;
+                cels += result.cels;
+            }
+        }
+        SetCurrentItem("");
+
+        std::string summary = fmt::format("{0} {1} of {2} ({3}) into {4}", common.dryRun ? "A run would import" : "Imported", imported, CountText(works.size(), "pic"), CountText(cels, "cel"), outDir);
+        if (failed > 0)
+        {
+            summary += fmt::format("; {0} failed", CountText(failed, "pic"));
+        }
+        if (facts.cancelled)
+        {
+            summary += "; stopped by Ctrl+C";
+        }
+        output.Message(summary + ".");
+        return ExitCodeForFacts(facts);
+    }
 }

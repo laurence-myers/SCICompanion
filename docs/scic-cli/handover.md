@@ -126,6 +126,27 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   the branch). The dialog names the scripts through `game.ini`, so it
   needs a GUI helper with no name map.
 
+### Pic commands
+
+Numbers from `UnitTests\Tools\PicRoundTripSweep.ps1` of 2026-10-11 on
+copies of 8 games (the hi-res and the lo-res LSL6, SQ5, SQ6, GK1 CD, QfG4
+CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
+
+- A cel with run-length data in an SCI2 pic gets no export and no import
+  (`Unsupported`): 133 of the 148 pics of PQ4, 46 of the 97 of GK1, 1 of
+  KQ7. No code reads or writes the run-length data of such a cel for the
+  pic commands.
+- The palette of a pic cannot grow in place: `--palette replace` changes
+  only entries that the pic stores, and it does not change a flag byte.
+- An SCI1.1 pic that the pic writer does not keep is refused. Pic 112 of
+  SQ5: the writer changes a line that goes to a negative coordinate
+  (`_WriteMediumCoordinate` in `PicCommands.cpp` takes the y as
+  `uint16_t`). The writer is not fixed.
+- Pics 100 and 14000 of KQ7 give `[format]` in `list` and `export`: the
+  pixels of cel 0 are not all in the resource.
+- `import` takes each `.toml` file of `--in-dir`, also one that another
+  tool wrote: there is no option that selects pics of the folder.
+
 ### The core library (E1)
 
 - A file of `Src\Util` is in the core or in the GUI library by its project
@@ -184,6 +205,36 @@ the design is in `plan.md`. A commit that closes an item removes it here.
   refuses a write (Internal); `RemoveEntries` and `SaveOrRemoveNegatives`
   of the audio cache, which give their errors to the GUI; the empty
   `catch (...)` blocks that now log through `CoreLogCurrentException`.
+- The pic commands on a game with SCI2 pics, from the command line to the
+  files: CI has only the SCI1.1 template. The tests call the parts that
+  need no game (`Src\Cli\CliPic.h`) with the SCI2 pic files, and the
+  round-trip sweep (local) runs the commands on a game. Two mappings of
+  options have no test and no sweep step: `--cel all` to "every cel" in
+  `RunPicExport` has the sweep only, and `--cel <index>` of `import` for a
+  cel that is not cel 0 has neither (the sweep uses `--in-dir`).
+- A patch file of `import` on the screen of a game. ScummVM 2026.3 takes
+  the data of an SCI2 pic patch at offset 4 (its log, with probe files),
+  and the patch files have Sierra's header `81 81 00 00`. An automatic run
+  of the hi-res LSL6 in ScummVM showed a black screen for 40 seconds with
+  and without patch files, so no picture was compared. Sierra's
+  interpreter was not run.
+- A patch file of `import` that fails to write after its check (a full
+  disk; `ResourceBlob::SaveToFile` gives the error, exit 9), a pic that is
+  too big for a resource after the import (`CheckResourceSize`), and an
+  internal error of one pic (exit 1).
+- The branches of `ReplaceCelPixels` that refuse an SCI1.1 pic whose size,
+  priority bars or palette change in the write: the tests have a pic
+  whose commands change.
+
+## Questions for you
+
+- `scic pic import` refuses a pixel whose palette entry neither the pic
+  nor palette 999 marks as used (your rule; `--allow-unused-indices` makes
+  it a warning). Some games have such pixels in their own pics, so the
+  import of an image with no change fails: 90 of the 165 exported pics of
+  KQ7, 5 of 51 of GK1, 3 of 59 of QfG4, 1 of 119 of SQ6 (none in LSL6 and
+  SQ5). Should the check also accept an entry that the cel has already?
+  Then only an entry that is new to the cel is an error.
 
 ## Outside this branch
 

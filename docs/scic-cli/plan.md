@@ -611,6 +611,7 @@ scic script compile   <game-folder> (<script> ... | --all) [options]
 scic script sco       <game-folder> (<script> ... | --all) [options]
 scic pic list         <game-folder> [--pic <pic> ...] [options]
 scic pic export       <game-folder> (--pic <pic> ... | --all) --out-dir <folder> [options]
+scic pic import       <game-folder> (--pic <pic> --image <file> | --in-dir <folder>) --out-dir <folder> [options]
 scic help [group [command]]
 scic --version
 ```
@@ -937,18 +938,21 @@ every script uses another one.
   review of `37ee979b`).
 - Then run `scic script compile --all`.
 
-### 4.7 `scic pic list` and `scic pic export`
+### 4.7 `scic pic list`, `scic pic export` and `scic pic import`
 
 ```
 scic pic list C:\Games\LSL6
 scic pic list C:\Games\LSL6 --pic 230 300-399 --format tsv
 scic pic export C:\Games\LSL6 --all --cel all --out-dir C:\work\pics
 scic pic export C:\Games\LSL6 --pic 230 --out-dir C:\work\pics --dry-run
+scic pic import C:\Games\LSL6 --in-dir C:\work\pics --out-dir C:\work\patches
+scic pic import C:\Games\LSL6 --pic 230 --image C:\work\230.bmp --out-dir C:\work\patches
+scic pic import C:\Games\LSL6 --in-dir C:\work\pics --palette replace --palette-range 80-235 --out-dir C:\work\patches
 ```
 
-Purpose: move the image of a VGA pic out of a game with its exact palette
-entries, so that another tool can change the image. `scic` does no colour
-work: a pixel of a file is the palette entry that the cel has. The pic
+Purpose: move the image of a VGA pic out of a game and back with its exact
+palette entries, so that another tool can change the image. `scic` does no
+colour work: a pixel of a file is the palette entry that the cel has. The pic
 commands read the pic formats that hold cels: SCI1.1 (`vga11`, one cel)
 and SCI2 (`vga2`, one or more cels). A pic selector is a number (`230`) or
 a range (`100-199`: each pic of the game in the range); a number that is
@@ -1014,6 +1018,83 @@ Rules of `export`:
   (`Would write ...`).
 - The summary: `Exported 3 of 4 pics (3 cels) into <folder>; 1 pic has no
   cel.`
+
+`import` puts the pixels of BMP files into cels of pics, and writes each
+pic as a patch file (`<pic>.p56` for SCI1.1 and SCI2) into `--out-dir`.
+The game does not change: to use a patch file, copy it into the game
+folder. The images come in one of two ways:
+
+- `--in-dir <folder>`: a folder with the files of `export`. Each `.toml`
+  file gives a pic (`[source] pic`) and the BMP file of each cel (`file` of
+  a `[[cel]]`, a file name with no folder, in the folder of the `.toml`
+  file). A `[[cel]]` with no `file` keeps its pixels. `import` also uses
+  `[source] crc32`: when it is not the CRC-32 of the pic in the game, the
+  images are of another copy of the pic, and `import` gives a warning. It
+  does not use the other keys, but each key must have its type and a
+  value in its range.
+- `--pic <pic> --image <file>`: one image for one pic. `--cel <index>`
+  gives the cel; the default is the background cel.
+
+How a pic changes:
+
+- An SCI2 pic changes in place: the patch file has the bytes of the pic
+  resource, with other values only in the pixels of the cels (and in the
+  colours of the palette range). An import with no change of the images
+  gives the same bytes, so the CRC-32 of `list` is the same.
+- An SCI1.1 pic keeps its cel as run-length data, so SCI Companion writes
+  the pic again. Other bytes can change, but the new pic must read back as
+  the same pic (`Src\Resources\PicImage.h`); a pic that the writer does
+  not keep fails (`Unsupported`).
+- `--palette keep` (the default) does not change the palette of the pic.
+  `--palette replace --palette-range <first>-<last>` gives the entries of
+  the range the colours of the colour table of the image. The range must
+  be inside the entries that the pic stores (`stored_first`,
+  `stored_count`): a palette cannot grow in place. Only the red, the green
+  and the blue of the entries change. An entry of the range that the pic
+  does not mark as used gives a warning: the game takes its colour from
+  another palette.
+- The patch file of an SCI2 pic starts with `81 81 00 00`, as Sierra's own
+  SCI2 pic patches do: ScummVM takes the data at offset 4. The patch file
+  of an SCI1.1 pic starts with `81 80` and 24 bytes of 0.
+
+The checks of a pic, all before its patch file is written:
+
+- Each image is an 8-bit BMP file that is not compressed, with the width
+  and the height of its cel.
+- The cel is not compressed (a cel with run-length data in an SCI2 pic:
+  `Unsupported`), and one image is for one cel.
+- A pixel has the skip colour of the cel where the cel has it, and nowhere
+  else.
+- Each other pixel is an entry that the pic or palette 999 marks as used
+  (`used` of the `.toml` file). The error names the entries.
+  `--allow-unused-indices` makes it a warning.
+- With `--palette replace`: the colour table of each image has the entries
+  of the range, and the images of one pic have the same colours in the
+  range.
+
+Rules of `import`:
+
+- It needs `--in-dir`, or `--pic` with `--image`, not both. `--cel` goes
+  with `--image`. `--palette-range` and `--palette replace` go together.
+- `--out-dir` has the rules of `export`: it must exist (exit 3), and it
+  must not be the game folder or a folder inside it (exit 2). The folder
+  of `--in-dir` must exist (exit 3) and have a `.toml` file (exit 2).
+  `import` does not write through the resource map, so it does not change
+  `game.ini` or another file of the game.
+- Each pic runs in its own exception boundary: a pic that fails a check is
+  an error line, it gets no patch file, and the next pic goes on. A pic
+  that failed makes the exit code 6. So does a `.toml` file that cannot be
+  read, that names a pic that the game does not have, or that names a pic
+  that an earlier `.toml` file of the folder named.
+- A patch file that is there already must open for writing before the
+  write. A patch file that cannot be written makes the exit code 9.
+- `--dry-run` does all checks, writes nothing, and lists the patch files
+  (`Would write ...`).
+- The summary: `Imported 65 of 66 pics (283 cels) into <folder>; 1 pic
+  failed.`
+
+`UnitTests\Tools\PicRoundTripSweep.ps1` (local use) runs export, import and
+export again on a copy of a game, and compares the images.
 
 ## 5. Where compiled output goes
 
@@ -1376,7 +1457,7 @@ section 5.3, which section 5.22 uses), plus code 9.
 | 0 | Success |
 | 1 | Internal error (a bug, or an escaped exception) |
 | 2 | Usage error: bad option, unknown script, header file given to `compile` |
-| 3 | Cannot open the game (also a damaged or empty `resource.map`) or start the batch, or the data folder is missing (script commands), or the output folder of `pic export` is missing |
+| 3 | Cannot open the game (also a damaged or empty `resource.map`) or start the batch, or the data folder is missing (script commands), or the output folder of `pic export` or `pic import` is missing, or the input folder of `pic import` is missing |
 | 5 | Compile errors |
 | 6 | Partial failure: some scripts failed for a reason that is not a compile error, or the decompiler reported an error in a script that it wrote, or a pic of a pic command failed |
 | 7 | Cancelled |
@@ -1746,7 +1827,6 @@ session, return `Result`, then add a command group.
 | `scic resource delete` | `DeleteResource` (`Src\Resources\ResourceMapOperations.cpp`) | message boxes (`:180-221`) |
 | `scic package rebuild` | `PurgeUnnecessaryResources` (`MainFrm.cpp:1979`), `RebuildResources`, `PostRepackage.cmd` | It is in `MainFrm.cpp`. In patch mode it builds only from patch files, so it drops package-only resources. |
 | `scic script disassemble` | `DisassembleScript` (`Src\Compile\Disassembler.cpp`) | `ShowTextFile` must become stdout |
-| `scic pic import` | `ReplaceCelPixels`, `ReplacePaletteRange` (`Src\Resources\PicImage.cpp`), `ReadIndexedBmpFile`, `ResourceBlob::SaveToFile` | none: the functions are in the core. It reads the files of `scic pic export` (section 4.7) and writes a patch file into an output folder. |
 | `scic pic render`, `scic view export` | image code, GDI+ | needs `GdiplusStartup`; the pic and sound validators open dialogs (`Src\Resources\Pic.cpp:1152`, `Src\Resources\Sound.cpp:1821`) |
 | `scic message export`, `scic message import` | message resources, `.shm` headers | |
 | `scic vocab ...` | `Vocab000` | editor prompts (`Vocab000.cpp:47, 390, 452`) |

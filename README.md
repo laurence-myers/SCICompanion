@@ -12,7 +12,9 @@ modernizing the build. Broad highlights since the previous release:
   the palette use of each VGA pic (SCI1.1 and SCI2). `scic pic export`
   writes the cels as 8-bit BMP files whose pixels are the palette entries
   of the game, with a `.toml` file of the facts of each pic, so that
-  another tool can change the images.
+  another tool can change the images. `scic pic import` puts the changed
+  images back and writes each pic as a patch file; an SCI2 pic keeps all
+  its other bytes.
 * **Patch files of SCI2 pics that the game can read.** A pic of an SCI2
   game that is saved as a patch file (`.p56`) gets the 4-byte header of
   Sierra's own SCI2 pic patches. Before, it got the 26-byte header of an

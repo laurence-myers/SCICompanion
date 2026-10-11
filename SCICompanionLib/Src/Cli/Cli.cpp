@@ -167,8 +167,9 @@ namespace cli
         ScriptCompileOptions compileOptions;
         PicListOptions picListOptions;
         PicExportOptions picExportOptions;
+        PicImportOptions picImportOptions;
 
-        CLI::App app("scic: the command line of SCI Companion. Commands: script list, script decompile, script sco, script compile, pic list, pic export. \"scic help <group> <command>\" shows a command.", "scic");
+        CLI::App app("scic: the command line of SCI Companion. Commands: script list, script decompile, script sco, script compile, pic list, pic export, pic import. \"scic help <group> <command>\" shows a command.", "scic");
         // "/games/sq3" is a path, not an option.
         app.allow_windows_style_options(false);
         // One command: the words after it are its own (for example the topic of
@@ -243,7 +244,7 @@ namespace cli
         compile->add_flag("--fail-fast", compileOptions.failFast, "Stop after the first script that fails.");
         compile->add_flag("--no-warn-unused", compileOptions.noWarnUnused, "No warning for an instance that is not used.");
 
-        CLI::App *pic = app.add_subcommand("pic", "The pic commands: list, export.");
+        CLI::App *pic = app.add_subcommand("pic", "The pic commands: list, export, import.");
         pic->fallthrough();
         pic->require_subcommand(0, 1);
         pic->footer(CommonFooter);
@@ -264,6 +265,21 @@ namespace cli
         CLI::Option *picExportOutDirOption = picExport->add_option("--out-dir", picExportOptions.outDir, "The folder for the files. It must exist, and it must not be the game folder or a folder inside it.")->required();
         picExport->add_option("--cel", picExportOptions.cel, "background (default): the cel with the largest area, as <pic>.bmp; all: also each other cel, as <pic>.cel<index>.bmp.")
             ->check(CLI::IsMember({ "background", "all" }));
+
+        CLI::App *picImport = pic->add_subcommand("import", "Put the pixels of 8-bit BMP files into cels of VGA pics, and write each pic as a patch file into a folder. The game does not change.");
+        picImport->fallthrough();
+        picImport->footer(CommonFooter);
+        picImport->add_option("game-folder", picImportOptions.gameFolder, "The game folder.")->required();
+        CLI::Option *importPicOption = picImport->add_option("--pic", picImportOptions.pic, "The number of the pic of --image.");
+        CLI::Option *importImageOption = picImport->add_option("--image", picImportOptions.image, "An 8-bit BMP file, not compressed, with the size of the cel.");
+        CLI::Option *importCelOption = picImport->add_option("--cel", picImportOptions.cel, "The cel of --image. Default: the cel with the largest area.")
+            ->check(CLI::Range(0, 255));
+        CLI::Option *importInDirOption = picImport->add_option("--in-dir", picImportOptions.inDir, "A folder with the files of scic pic export: each .toml file gives a pic and the BMP files of its cels.");
+        picImport->add_option("--palette", picImportOptions.palette, "keep (default): the palette of the pic does not change; replace: the entries of --palette-range get the colours of the colour table of the image.")
+            ->check(CLI::IsMember({ "keep", "replace" }));
+        CLI::Option *importRangeOption = picImport->add_option("--palette-range", picImportOptions.paletteRange, "With --palette replace: the palette entries that get new colours, as first-last (for example 80-235). The pic must store them.");
+        picImport->add_flag("--allow-unused-indices", picImportOptions.allowUnusedIndices, "A pixel with a palette entry that the pic and palette 999 do not mark as used is a warning, not an error.");
+        CLI::Option *importOutDirOption = picImport->add_option("--out-dir", picImportOptions.outDir, "The folder for the patch files. It must exist, and it must not be the game folder or a folder inside it.")->required();
 
         // Tools for the development of the decompiler. The empty group hides
         // them from the help of scic.
@@ -327,6 +343,7 @@ namespace cli
         // change their exit code; the log then gets them.
         compileOptions.passesGiven = (passesOption->count() > 0);
         compileOptions.toGiven = (toOption->count() > 0);
+        picImportOptions.celGiven = (importCelOption->count() > 0);
         std::string helpAfterUsageError;
         CLI::App *helpTopic = &app;
         std::string helpTopicName = "scic";
@@ -370,6 +387,46 @@ namespace cli
             if (picExport->parsed() && (picExportOptions.all == !picExportOptions.pics.empty()))
             {
                 return picExportOptions.all ? "give --all or --pic, not both" : "give --all, or --pic with one or more pics";
+            }
+            if (picImport->parsed())
+            {
+                // Plan section 4.7: import takes one image (--pic and --image,
+                // with --cel or not) or a folder (--in-dir), not both and not
+                // neither.
+                const bool oneImage = (importPicOption->count() > 0) || (importImageOption->count() > 0) || (importCelOption->count() > 0);
+                const bool folder = (importInDirOption->count() > 0);
+                if ((importOutDirOption->count() > 0) && picImportOptions.outDir.empty())
+                {
+                    return "--out-dir needs a folder";
+                }
+                if (folder && picImportOptions.inDir.empty())
+                {
+                    return "--in-dir needs a folder";
+                }
+                if (oneImage == folder)
+                {
+                    return folder ? "give --in-dir, or --pic with --image, not both" : "give --in-dir, or --pic with --image";
+                }
+                if (oneImage && (picImportOptions.pic.empty() || picImportOptions.image.empty()))
+                {
+                    return "an image needs --pic and --image";
+                }
+                const bool replace = (picImportOptions.palette == "replace");
+                const bool range = (importRangeOption->count() > 0);
+                if (range && !replace)
+                {
+                    return "--palette-range needs --palette replace";
+                }
+                if (replace && !range)
+                {
+                    return "--palette replace needs --palette-range";
+                }
+                int first = 0;
+                int last = 0;
+                if (range && !ParsePaletteRange(picImportOptions.paletteRange, first, last))
+                {
+                    return "--palette-range is first-last, two palette entries of 0 to 255 (for example 80-235)";
+                }
             }
             if ((functionReportOption->count() > 0) && decompileOptions.functionReport.empty())
             {
@@ -484,7 +541,7 @@ namespace cli
             }
             return (int)*compared;
         }
-        if (pic->parsed() && !picList->parsed() && !picExport->parsed())
+        if (pic->parsed() && !picList->parsed() && !picExport->parsed() && !picImport->parsed())
         {
             // "scic pic" lists the pic commands.
             logged.Help(HelpOf(pic, "scic pic"));
@@ -550,7 +607,8 @@ namespace cli
         // relative path such as ".\src\rm001.sc").
         std::string gameFolder = decompile->parsed() ? decompileOptions.gameFolder :
             (sco->parsed() ? scoOptions.gameFolder : (compile->parsed() ? compileOptions.gameFolder :
-            (picList->parsed() ? picListOptions.gameFolder : (picExport->parsed() ? picExportOptions.gameFolder : listOptions.gameFolder))));
+            (picList->parsed() ? picListOptions.gameFolder : (picExport->parsed() ? picExportOptions.gameFolder :
+            (picImport->parsed() ? picImportOptions.gameFolder : listOptions.gameFolder)))));
         sci::Status opened = session.Open(AbsolutePath(gameFolder));
         if (!opened)
         {
@@ -582,6 +640,10 @@ namespace cli
             if (picExport->parsed())
             {
                 return RunPicExport(session, picExportOptions, common, logged);
+            }
+            if (picImport->parsed())
+            {
+                return RunPicImport(session, picImportOptions, common, logged);
             }
             return RunScriptList(session, listOptions, logged);
         });

@@ -21,6 +21,7 @@
 #include "format.h"
 #include "Helper.h"
 #include "TestSupport.h"
+#include <algorithm>
 #include <filesystem>
 #include <map>
 #include <sstream>
@@ -177,6 +178,61 @@ namespace UnitTests
             std::vector<uint8_t> bytes = { 0x81, 0x81, 0x00, 0x00 };
             bytes.insert(bytes.end(), data.begin(), data.end());
             WriteFileBytes(_gameFolder + "\\" + std::to_string(number) + ".p56", bytes);
+        }
+
+        // Writes a patch file of pic 100 whose palette does not use the
+        // entries first to last (their flag byte is 0). Palette 999 of the
+        // template uses the entries 0 to 63 and 253 to 255.
+        void WritePic100WithUnusedEntries(int first, int last)
+        {
+            std::vector<uint8_t> data = PicDataOf(_game.Open(), 100);
+            _game.CloseSessions();
+            sci::Result<uint32_t> paletteOffset = ReadPicPaletteOffsetVGA11(data.data(), data.size());
+            AssertOk(paletteOffset, "setup: the palette of pic 100");
+            sci::Result<PaletteLayout> layout = ReadPaletteLayout(data.data(), data.size(), *paletteOffset);
+            AssertOk(layout, "setup: the palette of pic 100");
+            Assert::AreEqual(4, layout->entrySize);
+            for (int entry = first; entry <= last; entry++)
+            {
+                data[layout->entriesOffset + ((size_t)entry * 4)] = 0;
+            }
+            WritePicPatch(100, data);
+        }
+
+        // Copies the patch files of pics of a folder into the game copy.
+        void CopyPicPatchesToGame(const std::string &folder)
+        {
+            for (const auto &entry : fs::directory_iterator(folder))
+            {
+                if (entry.path().extension() == ".p56")
+                {
+                    fs::copy_file(entry.path(), fs::path(_gameFolder) / entry.path().filename(), fs::copy_options::overwrite_existing);
+                }
+            }
+        }
+
+        // A new folder in the output folder of the test.
+        std::string NewFolder(const std::string &name)
+        {
+            std::string folder = _outDir + "\\" + name;
+            fs::create_directories(folder);
+            return folder;
+        }
+
+        // The image of a BMP file of the test.
+        IndexedBmp ReadBmp(const std::string &path)
+        {
+            sci::Result<IndexedBmp> image = ReadIndexedBmpFile(path);
+            AssertOk(image, path);
+            return *image;
+        }
+
+        // Exports pic 100 into a new folder, and gives the path of its BMP.
+        std::string ExportPic100(const std::string &folderName = "exported")
+        {
+            std::string folder = NewFolder(folderName);
+            Expect(0, { "pic", "export", _gameFolder, "--pic", "100", "--out-dir", folder });
+            return folder + "\\100.bmp";
         }
 
     public:
@@ -662,6 +718,382 @@ namespace UnitTests
             Assert::IsTrue(FileNamesOf(_outDir).empty(), L"no file is written");
         }
 
+        // Each pic that export wrote goes back with no change. The patch
+        // files, put into the game, give the same BMP files again.
+        TEST_METHOD(Import_InDir_WithNoChange_GivesTheSameImagesAgain)
+        {
+            CopyTemplate();
+            std::string exported = NewFolder("exported");
+            std::string patches = NewFolder("patches");
+            std::string again = NewFolder("again");
+            Expect(0, { "pic", "export", _gameFolder, "--all", "--out-dir", exported });
+            auto before = FilesOf(_gameFolder);
+
+            cli::StringConsole console = Expect(0, { "pic", "import", _gameFolder, "--in-dir", exported, "--out-dir", patches, "-v" });
+
+            Assert::IsTrue(console.out.empty(), Wide(console.out).c_str());
+            Assert::IsTrue(std::vector<std::string>({ "100.p56", "110.p56", "200.p56" }) == FileNamesOf(patches), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Imported 3 of 3 pics (3 cels) into " + patches + "."), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Wrote " + patches + "\\110.p56"), Wide(console.err).c_str());
+            Assert::IsFalse(Has(console.err, "warning"), Wide(console.err).c_str());
+            Assert::IsTrue(before == FilesOf(_gameFolder), L"import writes nothing into the game");
+
+            CopyPicPatchesToGame(patches);
+            cli::StringConsole list = Expect(0, { "pic", "list", _gameFolder, "--format", "tsv" });
+            std::vector<std::string> lines = LinesOf(list.out);
+            Assert::AreEqual((size_t)5, lines.size(), Wide(list.out).c_str());
+            Assert::AreEqual(std::string("package"), TabFieldsOf(lines[1])[12], Wide(lines[1]).c_str());
+            for (size_t i = 2; i < lines.size(); i++)
+            {
+                Assert::AreEqual(std::string("patch"), TabFieldsOf(lines[i])[12], Wide(lines[i]).c_str());
+            }
+            Expect(0, { "pic", "export", _gameFolder, "--all", "--out-dir", again });
+            for (const char *name : { "100.bmp", "110.bmp", "200.bmp" })
+            {
+                Assert::IsTrue(ReadFileBytes(exported + "\\" + name) == ReadFileBytes(again + "\\" + name), Wide(std::string(name) + " is the same after the import").c_str());
+            }
+        }
+
+        // New pixels (two entries of the image, swapped) come back exactly
+        // from the game with the patch file, and the palette stays. The
+        // patch file has the header of a pic patch: 81 80, and 24 bytes of 0.
+        TEST_METHOD(Import_OneImage_ChangedPixelsSurviveExactly)
+        {
+            CopyTemplate();
+            IndexedBmp original = ReadBmp(ExportPic100());
+            IndexedBmp changed = original;
+            const uint8_t one = changed.pixels[0];
+            const uint8_t other = *std::find_if(changed.pixels.begin(), changed.pixels.end(), [one](uint8_t pixel) { return pixel != one; });
+            for (uint8_t &pixel : changed.pixels)
+            {
+                pixel = (pixel == one) ? other : ((pixel == other) ? one : pixel);
+            }
+            Assert::IsFalse(original.pixels == changed.pixels, L"setup: the image changes");
+            std::string image = _outDir + "\\changed.bmp";
+            AssertOk(WriteIndexedBmpFile(image, changed), "setup: the changed image");
+            std::string patches = NewFolder("patches");
+            auto before = FilesOf(_gameFolder);
+
+            cli::StringConsole console = Expect(0, { "pic", "import", _gameFolder, "--pic", "100", "--image", image, "--out-dir", patches });
+
+            Assert::IsTrue(Has(console.err, "Imported 1 of 1 pic (1 cel) into " + patches + "."), Wide(console.err).c_str());
+            // One image has no CRC-32 to compare with the pic.
+            Assert::IsFalse(Has(console.err, "warning"), Wide(console.err).c_str());
+            Assert::IsTrue(std::vector<std::string>({ "100.p56" }) == FileNamesOf(patches), L"the patch file");
+            Assert::IsTrue(before == FilesOf(_gameFolder), L"import writes nothing into the game");
+            std::vector<uint8_t> patch = ReadFileBytes(patches + "\\100.p56");
+            Assert::IsTrue(patch.size() > 26, L"the patch file has a header and data");
+            Assert::AreEqual(0x81, (int)patch[0]);
+            Assert::AreEqual(0x80, (int)patch[1]);
+            Assert::IsTrue(std::all_of(patch.begin() + 2, patch.begin() + 26, [](uint8_t byte) { return byte == 0; }), L"24 bytes of 0 after the first two");
+
+            CopyPicPatchesToGame(patches);
+            IndexedBmp again = ReadBmp(ExportPic100("again"));
+            Assert::IsTrue(changed.pixels == again.pixels, L"the new pixels");
+            Assert::IsTrue(original.colors == again.colors, L"the palette stays");
+        }
+
+        // --palette replace takes the colours of the range from the colour
+        // table of the image, and no other colour.
+        TEST_METHOD(Import_PaletteReplace_TakesTheColoursOfTheRangeFromTheImage)
+        {
+            CopyTemplate();
+            IndexedBmp original = ReadBmp(ExportPic100());
+            IndexedBmp changed = original;
+            for (size_t entry : { (size_t)10, (size_t)64, (size_t)65, (size_t)70, (size_t)71 })
+            {
+                changed.colors[entry] = IndexedBmpColor{ (uint8_t)entry, (uint8_t)(255 - entry), 77 };
+                Assert::IsFalse(original.colors[entry] == changed.colors[entry], L"setup: a new colour");
+            }
+            std::string image = _outDir + "\\changed.bmp";
+            AssertOk(WriteIndexedBmpFile(image, changed), "setup: the changed image");
+            std::string patches = NewFolder("patches");
+
+            Expect(0, { "pic", "import", _gameFolder, "--pic", "100", "--image", image, "--palette", "replace", "--palette-range", "64-70", "--out-dir", patches });
+
+            CopyPicPatchesToGame(patches);
+            IndexedBmp again = ReadBmp(ExportPic100("again"));
+            Assert::IsTrue(original.pixels == again.pixels, L"the pixels stay");
+            for (size_t entry = 0; entry < 256; entry++)
+            {
+                const bool inRange = (entry >= 64) && (entry <= 70);
+                Assert::IsTrue((inRange ? changed.colors[entry] : original.colors[entry]) == again.colors[entry], Wide("colour " + std::to_string(entry)).c_str());
+            }
+
+            // --palette keep (the default) takes no colour of the image.
+            std::string kept = NewFolder("kept");
+            Expect(0, { "pic", "import", _gameFolder, "--pic", "100", "--image", image, "--out-dir", kept });
+            CopyPicPatchesToGame(kept);
+            IndexedBmp keptImage = ReadBmp(ExportPic100("kept-again"));
+            Assert::IsTrue(again.colors == keptImage.colors, L"keep does not change the palette of the pic in the game");
+        }
+
+        // One case for each check of an image: the pic fails (exit code 6),
+        // and no patch file is written.
+        TEST_METHOD(Import_ImageThatFailsACheck_ExitsWith6)
+        {
+            CopyTemplate();
+            IndexedBmp original = ReadBmp(ExportPic100());
+            std::string patches = NewFolder("patches");
+            std::string image = _outDir + "\\image.bmp";
+            auto import = [&](const std::vector<std::string> &more) -> cli::StringConsole
+            {
+                std::vector<std::string> args = { "pic", "import", _gameFolder, "--pic", "100", "--image", image, "--out-dir", patches };
+                args.insert(args.end(), more.begin(), more.end());
+                cli::StringConsole console = Expect(6, args);
+                Assert::IsTrue(FileNamesOf(patches).empty(), Wide("no patch file is written:\n" + console.err).c_str());
+                Assert::IsTrue(Has(console.err, "Imported 0 of 1 pic (0 cels) into " + patches + "; 1 pic failed."), Wide(console.err).c_str());
+                return console;
+            };
+
+            // Another size than the cel.
+            IndexedBmp narrow = original;
+            narrow.width = 319;
+            narrow.pixels.resize(319 * 200);
+            AssertOk(WriteIndexedBmpFile(image, narrow), "setup: a narrow image");
+            cli::StringConsole size = import({});
+            Assert::IsTrue(Has(size.err, "scic: error: pic 100: ") && Has(size.err, "has 319 x 200 pixels, and cel 0 has 320 x 200"), Wide(size.err).c_str());
+
+            // A 24-bit BMP of 2 x 2 pixels.
+            std::vector<uint8_t> trueColour = { 'B', 'M', 70, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 40, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 1, 0, 24, 0 };
+            trueColour.resize(70, 0);
+            WriteFileBytes(image, trueColour);
+            cli::StringConsole bits = import({});
+            Assert::IsTrue(Has(bits.err, "a 24-bit BMP file") && Has(bits.err, "[unsupported]"), Wide(bits.err).c_str());
+
+            // A file that is not a BMP file, and no file.
+            WriteFileText(image, "not an image");
+            cli::StringConsole notBmp = import({});
+            Assert::IsTrue(Has(notBmp.err, "not a BMP file") && Has(notBmp.err, "[format]"), Wide(notBmp.err).c_str());
+            fs::remove(image);
+            cli::StringConsole noFile = import({});
+            Assert::IsTrue(Has(noFile.err, "[not-found]"), Wide(noFile.err).c_str());
+
+            // A pixel gets the skip colour of the cel (255; the cel has no
+            // pixel of it).
+            IndexedBmp hole = original;
+            hole.pixels[(3 * 320) + 5] = 255;
+            AssertOk(WriteIndexedBmpFile(image, hole), "setup: an image with a new skip pixel");
+            cli::StringConsole skip = import({});
+            Assert::IsTrue(Has(skip.err, "1 pixel changes to or from the skip colour 255 of cel 0 (the first at 5,3)"), Wide(skip.err).c_str());
+
+            // A cel that the pic does not have.
+            AssertOk(WriteIndexedBmpFile(image, original), "setup: the image");
+            cli::StringConsole cel = import({ "--cel", "1" });
+            Assert::IsTrue(Has(cel.err, "the pic has no cel 1; it has 1 cel"), Wide(cel.err).c_str());
+
+            // A colour table of 64 entries, and a range that goes to 70.
+            std::vector<uint8_t> bytes = ReadFileBytes(image);
+            Assert::AreEqual(1, (int)bytes[47], L"setup: biClrUsed is 256 (00 01 00 00)");
+            bytes[46] = 64;
+            bytes[47] = 0;
+            WriteFileBytes(image, bytes);
+            cli::StringConsole table = import({ "--palette", "replace", "--palette-range", "60-70" });
+            Assert::IsTrue(Has(table.err, "the colour table has 64 entries, and the palette range is 60-70"), Wide(table.err).c_str());
+        }
+
+        // Pic 100 with the entries 200 to 210 not in use: a pixel of them is
+        // an error, or a warning with --allow-unused-indices.
+        TEST_METHOD(Import_UnusedEntry_IsAnErrorOrAWarning)
+        {
+            CopyTemplate();
+            WritePic100WithUnusedEntries(200, 210);
+            // Entry 5 is then in use only in palette 999.
+            WritePic100WithUnusedEntries(5, 5);
+            IndexedBmp image = ReadBmp(ExportPic100());
+            image.pixels[0] = 205;
+            image.pixels[1] = 205;
+            image.pixels[2] = 201;
+            // An entry that only the pic marks as used, and one that only
+            // palette 999 marks as used.
+            image.pixels[3] = 199;
+            image.pixels[4] = 5;
+            std::string path = _outDir + "\\changed.bmp";
+            AssertOk(WriteIndexedBmpFile(path, image), "setup: the changed image");
+            std::string patches = NewFolder("patches");
+
+            cli::StringConsole refused = Expect(6, { "pic", "import", _gameFolder, "--pic", "100", "--image", path, "--out-dir", patches });
+            Assert::IsTrue(Has(refused.err, "3 pixels of cel 0 have palette entries that the pic and palette 999 do not mark as used: 201,205 (--allow-unused-indices makes this a warning)"), Wide(refused.err).c_str());
+            Assert::IsTrue(FileNamesOf(patches).empty(), L"no patch file is written");
+
+            cli::StringConsole allowed = Expect(0, { "pic", "import", _gameFolder, "--pic", "100", "--image", path, "--allow-unused-indices", "--out-dir", patches });
+            Assert::IsTrue(Has(allowed.err, "scic: warning: pic 100: ") && Has(allowed.err, "do not mark as used: 201,205"), Wide(allowed.err).c_str());
+            Assert::IsTrue(std::vector<std::string>({ "100.p56" }) == FileNamesOf(patches), L"the patch file is written");
+        }
+
+        TEST_METHOD(Import_UsageErrors)
+        {
+            CopyTemplate();
+            std::string image = ExportPic100();
+            std::string exported = fs::path(image).parent_path().string();
+            std::string patches = NewFolder("patches");
+            std::string empty = NewFolder("empty");
+            auto before = FilesOf(_gameFolder);
+            auto usage = [&](const std::vector<std::string> &options, const std::string &text)
+            {
+                std::vector<std::string> args = { "pic", "import", _gameFolder };
+                args.insert(args.end(), options.begin(), options.end());
+                cli::StringConsole console = Expect(2, args);
+                Assert::IsTrue(Has(console.err, text), Wide(text + ":\n" + console.err).c_str());
+            };
+
+            usage({ "--pic", "100", "--image", image, "--palette-range", "64-70", "--out-dir", patches }, "--palette-range needs --palette replace");
+            usage({ "--pic", "100", "--image", image, "--palette", "replace", "--out-dir", patches }, "--palette replace needs --palette-range");
+            for (const char *range : { "64", "70-64", "64-256", "a-b", "64-", "-70", "64-70-80" })
+            {
+                cli::StringConsole console;
+                int code = cli::RunCli({ "pic", "import", _gameFolder, "--pic", "100", "--image", image, "--palette", "replace", "--palette-range", range, "--out-dir", patches }, console);
+                // "-70" is an option that scic does not have: also a usage error.
+                Assert::AreEqual(2, code, Wide(std::string(range) + ": " + console.err).c_str());
+            }
+            usage({ "--pic", "100", "--image", image, "--palette", "replace", "--palette-range", "70-64", "--out-dir", patches }, "--palette-range is first-last");
+            usage({ "--pic", "100", "--image", image, "--palette", "all", "--out-dir", patches }, "--palette");
+            usage({ "--pic", "100", "--out-dir", patches }, "an image needs --pic and --image");
+            usage({ "--image", image, "--out-dir", patches }, "an image needs --pic and --image");
+            usage({ "--cel", "0", "--out-dir", patches }, "an image needs --pic and --image");
+            usage({ "--pic", "100", "--image", image, "--in-dir", exported, "--out-dir", patches }, "give --in-dir, or --pic with --image, not both");
+            usage({ "--out-dir", patches }, "give --in-dir, or --pic with --image");
+            usage({ "--pic", "100", "--image", image }, "--out-dir");
+            usage({ "--pic", "100", "--image", image, "--out-dir", "" }, "--out-dir needs a folder");
+            usage({ "--in-dir", "", "--out-dir", patches }, "--in-dir needs a folder");
+            usage({ "--pic", "100", "--image", image, "--cel", "256", "--out-dir", patches }, "--cel");
+            usage({ "--pic", "100", "--image", image, "--out-dir", _gameFolder }, "the output folder is the game folder");
+            // A patch file in a folder of the game could be a file of the
+            // game (a game can read patch files from a folder of its own).
+            usage({ "--pic", "100", "--image", image, "--out-dir", _gameFolder + "\\src" }, "the output folder is inside the game folder");
+            usage({ "--in-dir", exported, "--out-dir", _gameFolder + "\\src" }, "the output folder is inside the game folder");
+            usage({ "--pic", "5", "--image", image, "--out-dir", patches }, "the game has no pic 5");
+            usage({ "--pic", "1a", "--image", image, "--out-dir", patches }, "\"1a\" is not a pic number");
+            usage({ "--in-dir", empty, "--out-dir", patches }, "the input folder has no .toml file of scic pic export");
+
+            // Plan section 8: a folder that is missing is exit code 3.
+            cli::StringConsole noOutDir = Expect(3, { "pic", "import", _gameFolder, "--pic", "100", "--image", image, "--out-dir", _outDir + "\\no-such-folder" });
+            Assert::IsTrue(Has(noOutDir.err, "the output folder does not exist"), Wide(noOutDir.err).c_str());
+            cli::StringConsole noInDir = Expect(3, { "pic", "import", _gameFolder, "--in-dir", _outDir + "\\no-such-folder", "--out-dir", patches });
+            Assert::IsTrue(Has(noInDir.err, "the input folder does not exist"), Wide(noInDir.err).c_str());
+            Expect(3, { "pic", "import", _gameFolder + "\\NoSuchGame", "--pic", "100", "--image", image, "--out-dir", patches });
+
+            Assert::IsTrue(FileNamesOf(patches).empty(), L"no patch file is written");
+            Assert::IsTrue(before == FilesOf(_gameFolder), L"no file of the game changes");
+        }
+
+        TEST_METHOD(Import_DryRun_WritesNothing)
+        {
+            CopyTemplate();
+            std::string image = ExportPic100();
+            std::string patches = NewFolder("patches");
+            auto before = FilesOf(_gameFolder);
+
+            cli::StringConsole console = Expect(0, { "pic", "import", _gameFolder, "--pic", "100", "--image", image, "--out-dir", patches, "--dry-run" });
+
+            Assert::IsTrue(FileNamesOf(patches).empty(), L"the output folder stays empty");
+            Assert::IsTrue(before == FilesOf(_gameFolder), L"no file of the game changes");
+            Assert::IsTrue(Has(console.err, "Would write " + patches + "\\100.p56"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "A run would import 1 of 1 pic (1 cel) into " + patches + "."), Wide(console.err).c_str());
+
+            // A dry run does the checks of a run: an image that fails one is
+            // exit code 6.
+            IndexedBmp hole = ReadBmp(image);
+            hole.pixels[0] = 255;
+            AssertOk(WriteIndexedBmpFile(image, hole), "setup: an image with a new skip pixel");
+            Expect(6, { "pic", "import", _gameFolder, "--pic", "100", "--image", image, "--out-dir", patches, "--dry-run" });
+        }
+
+        // Each pic has its own exception boundary: a pic whose image fails a
+        // check does not stop the others.
+        TEST_METHOD(Import_InDir_OnePicFails_TheOthersAreImported)
+        {
+            CopyTemplate();
+            std::string exported = NewFolder("exported");
+            std::string patches = NewFolder("patches");
+            Expect(0, { "pic", "export", _gameFolder, "--all", "--out-dir", exported });
+            WriteFileText(exported + "\\110.bmp", "not an image");
+
+            cli::StringConsole console = Expect(6, { "pic", "import", _gameFolder, "--in-dir", exported, "--out-dir", patches });
+
+            Assert::IsTrue(Has(console.err, "scic: error: pic 110: ") && Has(console.err, "not a BMP file"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Imported 2 of 3 pics (2 cels) into " + patches + "; 1 pic failed."), Wide(console.err).c_str());
+            Assert::IsTrue(std::vector<std::string>({ "100.p56", "200.p56" }) == FileNamesOf(patches), L"the other pics are imported");
+        }
+
+        // The .toml files of the input folder that do not give a pic to
+        // import: each is a failure with its reason, and the good one is
+        // imported.
+        TEST_METHOD(Import_InDir_BadSidecars)
+        {
+            CopyTemplate();
+            std::string exported = NewFolder("exported");
+            std::string patches = NewFolder("patches");
+            Expect(0, { "pic", "export", _gameFolder, "--pic", "100", "110", "--out-dir", exported });
+            // Not TOML; a pic that the game does not have; an image file that
+            // is not there; a second file for pic 100; no file for a cel.
+            WriteFileText(exported + "\\a-not-toml.toml", "[source\n");
+            WriteFileText(exported + "\\b-no-such-pic.toml", "[source]\npic = 5\n[[cel]]\nindex = 0\nfile = '100.bmp'\n");
+            fs::remove(exported + "\\110.bmp");
+            fs::copy_file(exported + "\\100.toml", exported + "\\z-second.toml");
+            WriteFileText(exported + "\\c-no-file.toml", "[source]\npic = 200\n[[cel]]\nindex = 0\n");
+
+            cli::StringConsole console = Expect(6, { "pic", "import", _gameFolder, "--in-dir", exported, "--out-dir", patches });
+
+            Assert::IsTrue(Has(console.err, "scic: error: " + exported + "\\a-not-toml.toml: ") && Has(console.err, "[format]"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "scic: error: pic 5: the game has no pic 5"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "scic: error: pic 110: ") && Has(console.err, "110.bmp") && Has(console.err, "[not-found]"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "scic: error: pic 100: pic 100 is in two .toml files of the input folder; the second is " + exported + "\\z-second.toml"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "c-no-file.toml: the file names no image file of a cel"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Imported 1 of 6 pics (1 cel) into " + patches + "; 5 pics failed."), Wide(console.err).c_str());
+            Assert::IsTrue(std::vector<std::string>({ "100.p56" }) == FileNamesOf(patches), L"the good pic is imported");
+        }
+
+        // The pic in the game is not the copy that the images came from: a
+        // warning with the two CRC-32 values, and the import goes on.
+        TEST_METHOD(Import_InDir_CrcOfAnotherCopy_IsAWarning)
+        {
+            CopyTemplate();
+            std::string exported = NewFolder("exported");
+            std::string patches = NewFolder("patches");
+            Expect(0, { "pic", "export", _gameFolder, "--pic", "100", "--out-dir", exported });
+            // Another copy of pic 100 in the game: a patch file with other
+            // flag bytes in its palette.
+            WritePic100WithUnusedEntries(200, 210);
+
+            cli::StringConsole console = Expect(0, { "pic", "import", _gameFolder, "--in-dir", exported, "--out-dir", patches });
+
+            Assert::IsTrue(Has(console.err, "scic: warning: pic 100: " + exported + "\\100.toml has the CRC-32 ") && Has(console.err, "the images are of another copy of the pic"), Wide(console.err).c_str());
+            Assert::IsTrue(std::vector<std::string>({ "100.p56" }) == FileNamesOf(patches), L"the patch file is written");
+        }
+
+        // Plan section 8: a patch file that cannot be written is exit code 9,
+        // also in a dry run.
+        TEST_METHOD(Import_PatchFileThatCannotBeWritten_ExitsWith9)
+        {
+            CopyTemplate();
+            std::string image = ExportPic100();
+            std::string patches = NewFolder("patches");
+            WriteReadOnlyFile(patches + "\\100.p56", "read-only");
+
+            cli::StringConsole dryRun = Expect(9, { "pic", "import", _gameFolder, "--pic", "100", "--image", image, "--out-dir", patches, "--dry-run" });
+            Assert::IsTrue(Has(dryRun.err, "scic: error: pic 100: ") && Has(dryRun.err, "100.p56"), Wide(dryRun.err).c_str());
+            cli::StringConsole console = Expect(9, { "pic", "import", _gameFolder, "--pic", "100", "--image", image, "--out-dir", patches });
+            Assert::IsTrue(Has(console.err, "scic: error: pic 100: ") && Has(console.err, "100.p56"), Wide(console.err).c_str());
+            Assert::AreEqual(std::string("read-only"), ReadFileText(patches + "\\100.p56"));
+        }
+
+        TEST_METHOD(Import_CtrlC_ExitsWith7)
+        {
+            CopyTemplate();
+            std::string image = ExportPic100();
+            std::string patches = NewFolder("patches");
+            cli::CancelFlag().store(true);
+
+            cli::StringConsole console;
+            int code = cli::RunCli({ "pic", "import", _gameFolder, "--pic", "100", "--image", image, "--out-dir", patches }, console);
+            cli::CancelFlag().store(false);
+
+            Assert::AreEqual(7, code, Wide(console.out + console.err).c_str());
+            Assert::IsTrue(Has(console.err, "stopped by Ctrl+C"), Wide(console.err).c_str());
+            Assert::IsTrue(FileNamesOf(patches).empty(), L"no patch file is written");
+        }
+
         TEST_METHOD(Help_ListsThePicCommands)
         {
             cli::StringConsole group = Expect(0, { "pic" });
@@ -673,10 +1105,14 @@ namespace UnitTests
             cli::StringConsole helpList = Expect(0, { "pic", "list", "--help" });
             Assert::IsTrue(Has(helpList.out, "--format") && Has(helpList.out, "scic pic list"), Wide(helpList.out).c_str());
             cli::StringConsole root = Expect(0, { "help" });
-            Assert::IsTrue(Has(OneLine(root.out), "pic list, pic export"), Wide(root.out).c_str());
+            Assert::IsTrue(Has(OneLine(root.out), "pic list, pic export, pic import"), Wide(root.out).c_str());
             // The dry run of a pic command writes nothing into its output
             // folder.
             Assert::IsTrue(Has(OneLine(root.out), "write nothing into the game or into an output folder"), Wide(root.out).c_str());
+            Assert::IsTrue(Has(group.out, "import"), Wide(group.out).c_str());
+            cli::StringConsole helpImport = Expect(0, { "help", "pic", "import" });
+            Assert::IsTrue(Has(helpImport.out, "--in-dir") && Has(helpImport.out, "--palette-range") && Has(helpImport.out, "--allow-unused-indices") && Has(helpImport.out, "scic pic import"),
+                Wide(helpImport.out).c_str());
         }
     };
 
@@ -747,6 +1183,61 @@ namespace UnitTests
                 Assert::Fail(Wide(std::string(error.description()) + "\n" + text).c_str());
             }
             return toml::table();
+        }
+
+        // An image for pic import with the pixels of a cel of the data
+        // (width x height bytes at the offset), and a colour table of 256
+        // entries: entry i is (i, 255 - i, 77).
+        static cli::PicImportImage ImageOf(int cel, const char *name, const std::vector<uint8_t> &data, size_t offset, int width, int height)
+        {
+            cli::PicImportImage image;
+            image.cel = cel;
+            image.name = name;
+            image.image.width = width;
+            image.image.height = height;
+            image.image.pixels.assign(data.begin() + offset, data.begin() + offset + ((size_t)width * (size_t)height));
+            image.image.colorCount = 256;
+            for (int i = 0; i < 256; i++)
+            {
+                image.image.colors[i] = IndexedBmpColor{ (uint8_t)i, (uint8_t)(255 - i), 77 };
+            }
+            return image;
+        }
+
+        // Swaps two entries of the pixels: the first that is not the skip
+        // colour 255, and the next that is another entry and not 255.
+        static void SwapTwoEntries(std::vector<uint8_t> &pixels)
+        {
+            int one = -1;
+            int other = -1;
+            for (uint8_t pixel : pixels)
+            {
+                if (pixel == 255)
+                {
+                    continue;
+                }
+                if (one < 0)
+                {
+                    one = pixel;
+                }
+                else if (pixel != one)
+                {
+                    other = pixel;
+                    break;
+                }
+            }
+            Assert::IsTrue(other >= 0, L"setup: the pixels have two entries");
+            for (uint8_t &pixel : pixels)
+            {
+                pixel = (pixel == one) ? (uint8_t)other : ((pixel == other) ? (uint8_t)one : pixel);
+            }
+        }
+
+        static std::array<bool, 256> AllEntries()
+        {
+            std::array<bool, 256> all;
+            all.fill(true);
+            return all;
         }
 
     public:
@@ -941,6 +1432,210 @@ namespace UnitTests
             Assert::IsTrue(files.error().code == sci::ErrorCode::Unsupported, Wide(files.error().ToString()).c_str());
             Assert::IsTrue(Has(files.error().message, "the pic has no cel to export"), Wide(files.error().ToString()).c_str());
         }
+
+        // The background (cel 3 here, not cel 0) and cel 1 get new pixels: no
+        // other byte of the pic changes.
+        TEST_METHOD(ImportData_TwoImages_ChangeOnlyThePixelsOfTheirCels)
+        {
+            std::vector<uint8_t> data = Pic220WithBackgroundCel3();
+            sci::Result<PicDescription> description = DescribePic(sciVersion2, data);
+            AssertOk(description, "setup: describe");
+            cli::PicImportImage background = ImageOf(-1, "back.bmp", data, Cel3Offset, 264, 122);
+            cli::PicImportImage overlay = ImageOf(1, "one.bmp", data, Cel1Offset, 46, 74);
+            SwapTwoEntries(background.image.pixels);
+            SwapTwoEntries(overlay.image.pixels);
+
+            std::vector<std::string> warnings;
+            sci::Result<std::vector<uint8_t>> made = cli::MakePicImportData(sciVersion2, data, *description, AllEntries(), { overlay, background }, cli::PicImportPalette(), false, warnings);
+
+            AssertOk(made, "import");
+            Assert::IsTrue(warnings.empty(), L"no warning");
+            Assert::AreEqual(data.size(), made->size());
+            std::vector<uint8_t> expected = data;
+            std::copy(background.image.pixels.begin(), background.image.pixels.end(), expected.begin() + Cel3Offset);
+            std::copy(overlay.image.pixels.begin(), overlay.image.pixels.end(), expected.begin() + Cel1Offset);
+            Assert::IsFalse(expected == data, L"setup: the images have new pixels");
+            Assert::IsTrue(expected == *made, L"the pic with the new pixels of cel 3 and of cel 1, and no other change");
+        }
+
+        // One case for each check of an image: the error names the image or
+        // the cel, and no pic comes back.
+        TEST_METHOD(ImportData_ImageThatFailsACheck)
+        {
+            std::vector<uint8_t> data = PicData("220.p56");
+            sci::Result<PicDescription> description = DescribePic(sciVersion2, data);
+            AssertOk(description, "setup: describe");
+            auto fails = [&](const std::vector<cli::PicImportImage> &images, const std::array<bool, 256> &used, const std::string &text)
+            {
+                std::vector<std::string> warnings;
+                sci::Result<std::vector<uint8_t>> made = cli::MakePicImportData(sciVersion2, data, *description, used, images, cli::PicImportPalette(), false, warnings);
+                Assert::IsFalse(made.has_value(), Wide(text).c_str());
+                Assert::IsTrue(made.error().code == sci::ErrorCode::Usage, Wide(made.error().ToString()).c_str());
+                Assert::IsTrue(Has(made.error().message, text), Wide(text + "\n" + made.error().ToString()).c_str());
+            };
+            const cli::PicImportImage one = ImageOf(1, "one.bmp", data, Cel1Offset, 46, 74);
+
+            fails({ ImageOf(9, "nine.bmp", data, Cel1Offset, 46, 74) }, AllEntries(), "the pic has no cel 9; it has 4 cels");
+            // The background of pic 220 is cel 0.
+            fails({ ImageOf(-1, "back.bmp", data, Cel0Offset, 640, 334), ImageOf(0, "zero.bmp", data, Cel0Offset, 640, 334) }, AllEntries(), "two images are for cel 0");
+            fails({ ImageOf(1, "short.bmp", data, Cel1Offset, 46, 73) }, AllEntries(), "short.bmp has 46 x 73 pixels, and cel 1 has 46 x 74");
+            fails({ ImageOf(1, "wide.bmp", data, Cel1Offset, 47, 74) }, AllEntries(), "wide.bmp has 47 x 74 pixels, and cel 1 has 46 x 74");
+
+            // Two pixels of cel 1 get the skip colour: the pixel at 4,1, and
+            // one after it.
+            cli::PicImportImage holes = one;
+            const size_t first = (1 * 46) + 4;
+            Assert::IsTrue((holes.image.pixels[first] != 255) && (holes.image.pixels[first + 1] != 255), L"setup: two pixels that are not the skip colour");
+            holes.image.pixels[first] = 255;
+            holes.image.pixels[first + 1] = 255;
+            fails({ holes }, AllEntries(), "one.bmp: 2 pixels change to or from the skip colour 255 of cel 1 (the first at 4,1); the pixels of the skip colour must stay where they are");
+            // A pixel of cel 2 that has the skip colour gets another entry.
+            cli::PicImportImage filled = ImageOf(2, "two.bmp", data, Cel2Offset, 30, 74);
+            Assert::AreEqual(255, (int)filled.image.pixels[0], L"setup: the first pixel of cel 2 has the skip colour");
+            filled.image.pixels[0] = 7;
+            fails({ filled }, AllEntries(), "two.bmp: 1 pixel changes to or from the skip colour 255 of cel 2 (the first at 0,0)");
+
+            // An entry of the pixels that is not in use: an error, or a
+            // warning and the pic.
+            const uint8_t entry = one.image.pixels[0];
+            Assert::IsTrue(entry != 255, L"setup: the first pixel of cel 1 is not the skip colour");
+            std::array<bool, 256> used = AllEntries();
+            used[entry] = false;
+            const size_t count = (size_t)std::count(one.image.pixels.begin(), one.image.pixels.end(), entry);
+            const std::string unused = fmt::format("one.bmp: {0} pixels of cel 1 have palette entries that the pic and palette 999 do not mark as used: {1}", count, (int)entry);
+            Assert::IsTrue(count > 1, L"setup: more than one pixel has the entry");
+            fails({ one }, used, unused + " (--allow-unused-indices makes this a warning)");
+            std::vector<std::string> warnings;
+            sci::Result<std::vector<uint8_t>> allowed = cli::MakePicImportData(sciVersion2, data, *description, used, { one }, cli::PicImportPalette(), true, warnings);
+            AssertOk(allowed, "with the unused entries allowed");
+            Assert::IsTrue(std::vector<std::string>({ unused }) == warnings, Wide(warnings.empty() ? std::string("no warning") : warnings[0]).c_str());
+            Assert::IsTrue(data == *allowed, L"the pic with the same pixels");
+            // The skip colour is not an entry of the image: it needs no use.
+            used = {};
+            used[entry] = true;
+            cli::PicImportImage oneEntry = one;
+            for (uint8_t &pixel : oneEntry.image.pixels)
+            {
+                pixel = (pixel == 255) ? 255 : entry;
+            }
+            warnings.clear();
+            AssertOk(cli::MakePicImportData(sciVersion2, data, *description, used, { oneEntry }, cli::PicImportPalette(), false, warnings), "an image of the skip colour and one used entry");
+        }
+
+        // A cel with run-length data cannot get new pixels, and a pic with no
+        // cel has no background.
+        TEST_METHOD(ImportData_CompressedCelOrNoCel)
+        {
+            std::vector<uint8_t> data = PicData("901.p56");
+            sci::Result<PicDescription> description = DescribePic(sciVersion2, data);
+            AssertOk(description, "setup: describe");
+            std::vector<std::string> warnings;
+            cli::PicImportImage image;
+            image.cel = 0;
+            image.name = "zero.bmp";
+            image.image.width = 320;
+            image.image.height = 124;
+            image.image.pixels.assign(320 * 124, 0);
+
+            sci::Result<std::vector<uint8_t>> compressed = cli::MakePicImportData(sciVersion2, data, *description, AllEntries(), { image }, cli::PicImportPalette(), false, warnings);
+            Assert::IsFalse(compressed.has_value());
+            Assert::IsTrue(compressed.error().code == sci::ErrorCode::Unsupported, Wide(compressed.error().ToString()).c_str());
+            Assert::IsTrue(Has(compressed.error().message, "cel 0 is compressed; only a cel that is not compressed can get new pixels"), Wide(compressed.error().ToString()).c_str());
+
+            PicDescription noCel;
+            noCel.format = PicFormat::VGA2;
+            image.cel = -1;
+            sci::Result<std::vector<uint8_t>> none = cli::MakePicImportData(sciVersion2, data, noCel, AllEntries(), { image }, cli::PicImportPalette(), false, warnings);
+            Assert::IsFalse(none.has_value());
+            Assert::IsTrue(none.error().code == sci::ErrorCode::Usage, Wide(none.error().ToString()).c_str());
+            Assert::AreEqual(std::string("the pic has no cel"), none.error().message);
+        }
+
+        // With "replace", the colours of the range come from the colour
+        // table of the images, which must agree in the range; no other byte
+        // of the pic changes.
+        TEST_METHOD(ImportData_PaletteReplace)
+        {
+            std::vector<uint8_t> data = PicData("220.p56");
+            sci::Result<PicDescription> description = DescribePic(sciVersion2, data);
+            AssertOk(description, "setup: describe");
+            cli::PicImportPalette palette;
+            palette.replace = true;
+            palette.first = 10;
+            palette.last = 20;
+            const cli::PicImportImage one = ImageOf(1, "one.bmp", data, Cel1Offset, 46, 74);
+            cli::PicImportImage two = ImageOf(2, "two.bmp", data, Cel2Offset, 30, 74);
+            // The images can have other colours outside the range.
+            two.image.colors[9] = IndexedBmpColor{ 1, 2, 3 };
+            two.image.colors[21] = IndexedBmpColor{ 1, 2, 3 };
+
+            std::vector<std::string> warnings;
+            sci::Result<std::vector<uint8_t>> made = cli::MakePicImportData(sciVersion2, data, *description, AllEntries(), { one, two }, palette, false, warnings);
+
+            AssertOk(made, "import");
+            Assert::IsTrue(warnings.empty(), L"no warning");
+            sci::Result<PicDescription> after = DescribePic(sciVersion2, *made);
+            AssertOk(after, "describe the new pic");
+            bool anyNew = false;
+            for (int entry = 0; entry < 256; entry++)
+            {
+                const bool inRange = (entry >= 10) && (entry <= 20);
+                const IndexedBmpColor expected = inRange ? one.image.colors[entry] : description->palette.colors[entry];
+                Assert::IsTrue(expected == after->palette.colors[entry], Wide("colour " + std::to_string(entry)).c_str());
+                anyNew = anyNew || (inRange && (expected != description->palette.colors[entry]));
+            }
+            Assert::IsTrue(anyNew, L"setup: the range gets a new colour");
+            // The palette of pic 220 has its entries at offset 225, 3 bytes
+            // for each.
+            Assert::AreEqual(data.size(), made->size());
+            for (size_t i = 0; i < data.size(); i++)
+            {
+                if ((i < 225 + (10 * 3)) || (i >= 225 + (21 * 3)))
+                {
+                    Assert::AreEqual((int)data[i], (int)(*made)[i], Wide("byte " + std::to_string(i)).c_str());
+                }
+            }
+
+            // An entry of the range that the pic does not mark as used: a
+            // warning.
+            PicDescription unmarked = *description;
+            unmarked.palette.flags[12] = 0;
+            unmarked.palette.flags[13] = 0;
+            AssertOk(cli::MakePicImportData(sciVersion2, data, unmarked, AllEntries(), { one }, palette, false, warnings), "import with entries that are not marked");
+            Assert::IsTrue(std::vector<std::string>({ "the pic does not mark the entries 12-13 as used, so the game takes their colours from another palette" }) == warnings,
+                Wide(warnings.empty() ? std::string("no warning") : warnings[0]).c_str());
+
+            auto fails = [&](const std::vector<cli::PicImportImage> &images, const cli::PicImportPalette &range, const std::string &text)
+            {
+                std::vector<std::string> ignored;
+                sci::Result<std::vector<uint8_t>> failed = cli::MakePicImportData(sciVersion2, data, *description, AllEntries(), images, range, false, ignored);
+                Assert::IsFalse(failed.has_value(), Wide(text).c_str());
+                Assert::IsTrue(failed.error().code == sci::ErrorCode::Usage, Wide(failed.error().ToString()).c_str());
+                Assert::IsTrue(Has(failed.error().message, text), Wide(text + "\n" + failed.error().ToString()).c_str());
+            };
+            // The second image has another colour for an entry of the range.
+            cli::PicImportImage other = two;
+            other.image.colors[15] = IndexedBmpColor{ 9, 9, 9 };
+            fails({ one, other }, palette, "one.bmp and two.bmp have another colour for entry 15; the images of a pic must have one palette");
+            // The first and the last entry of the range are compared too.
+            other = two;
+            other.image.colors[10] = IndexedBmpColor{ 9, 9, 9 };
+            fails({ one, other }, palette, "have another colour for entry 10");
+            other = two;
+            other.image.colors[20] = IndexedBmpColor{ 9, 9, 9 };
+            fails({ one, other }, palette, "have another colour for entry 20");
+            // A colour table that ends before the end of the range.
+            cli::PicImportImage few = one;
+            few.image.colorCount = 20;
+            fails({ few }, palette, "one.bmp: the colour table has 20 entries, and the palette range is 10-20");
+            few.image.colorCount = 21;
+            AssertOk(cli::MakePicImportData(sciVersion2, data, *description, AllEntries(), { few }, palette, false, warnings), "a colour table with the last entry of the range");
+            // Pic 220 stores the entries 0 to 254.
+            cli::PicImportPalette outside = palette;
+            outside.first = 250;
+            outside.last = 255;
+            fails({ one }, outside, "the palette stores the entries 0-254; the range 250-255 is not inside them");
+        }
     };
 
     // The .toml file of scic pic export (PicSidecar.h).
@@ -1064,6 +1759,186 @@ namespace UnitTests
             const toml::array *cels = table["cel"].as_array();
             Assert::IsNotNull(cels, L"the cels");
             Assert::IsTrue(cels->empty());
+        }
+
+        // The reader gives back each value that the writer wrote.
+        TEST_METHOD(Parse_GivesBackWhatTextWrote)
+        {
+            PicSidecar sidecar;
+            sidecar.pic = 230;
+            sidecar.format = "vga2";
+            sidecar.from = "patch";
+            sidecar.size = 252588;
+            sidecar.crc32 = 0xdeadbeef;
+            sidecar.width = 640;
+            sidecar.height = 480;
+            sidecar.backgroundCel = 1;
+            sidecar.hasPalette = true;
+            sidecar.storedFirst = 104;
+            sidecar.storedCount = 132;
+            sidecar.entrySize = 3;
+            sidecar.flags = { { 104, 200, 1 }, { 201, 235, 0 } };
+            sidecar.palette999 = { { 0, 79 } };
+            sidecar.used = { { 0, 79 }, { 104, 200 } };
+            PicSidecarCel overlay;
+            overlay.index = 0;
+            overlay.width = 46;
+            overlay.height = 74;
+            overlay.x = 113;
+            overlay.y = -5;
+            overlay.priority = -1000;
+            overlay.skipColor = 255;
+            overlay.compressed = true;
+            overlay.skipPixels = 77;
+            PicSidecarCel background;
+            background.index = 1;
+            background.file = "230.bmp";
+            background.width = 640;
+            background.height = 334;
+            background.priority = 40;
+            background.skipColor = 250;
+            background.entries = { { 0, 12 }, { 80, 80 }, { 104, 235 } };
+            sidecar.cels = { overlay, background };
+
+            sci::Result<PicSidecar> read = ParsePicSidecar(PicSidecarText(sidecar));
+
+            AssertOk(read, "parse");
+            Assert::AreEqual(230, read->pic);
+            Assert::AreEqual(std::string("vga2"), read->format);
+            Assert::AreEqual(std::string("patch"), read->from);
+            Assert::AreEqual((uint32_t)252588, read->size);
+            Assert::IsTrue(read->hasCrc32);
+            Assert::AreEqual((uint32_t)0xdeadbeef, read->crc32);
+            Assert::AreEqual(640, read->width);
+            Assert::AreEqual(480, read->height);
+            Assert::AreEqual(1, read->backgroundCel);
+            Assert::IsTrue(read->hasPalette);
+            Assert::AreEqual(104, read->storedFirst);
+            Assert::AreEqual(132, read->storedCount);
+            Assert::AreEqual(3, read->entrySize);
+            Assert::AreEqual((size_t)2, read->flags.size());
+            Assert::AreEqual(201, read->flags[1].first);
+            Assert::AreEqual(235, read->flags[1].last);
+            Assert::AreEqual(0, read->flags[1].flag);
+            Assert::AreEqual(1, read->flags[0].flag);
+            Assert::IsTrue(sidecar.palette999 == read->palette999);
+            Assert::IsTrue(sidecar.used == read->used);
+            Assert::AreEqual((size_t)2, read->cels.size());
+            const PicSidecarCel &first = read->cels[0];
+            Assert::AreEqual(0, first.index);
+            Assert::IsTrue(first.file.empty());
+            Assert::AreEqual(46, first.width);
+            Assert::AreEqual(74, first.height);
+            Assert::AreEqual(113, first.x);
+            Assert::AreEqual(-5, first.y);
+            Assert::AreEqual(-1000, first.priority);
+            Assert::AreEqual(255, first.skipColor);
+            Assert::IsTrue(first.compressed);
+            Assert::IsTrue(first.entries.empty());
+            Assert::AreEqual((uint32_t)77, first.skipPixels);
+            const PicSidecarCel &second = read->cels[1];
+            Assert::AreEqual(1, second.index);
+            Assert::AreEqual(std::string("230.bmp"), second.file);
+            Assert::AreEqual(640, second.width);
+            Assert::AreEqual(334, second.height);
+            Assert::AreEqual(40, second.priority);
+            Assert::AreEqual(250, second.skipColor);
+            Assert::IsFalse(second.compressed);
+            Assert::IsTrue(background.entries == second.entries);
+        }
+
+        // The reader needs only the pic number and the index of each cel.
+        TEST_METHOD(Parse_KeysThatAreNotThereKeepTheirValues)
+        {
+            sci::Result<PicSidecar> read = ParsePicSidecar("[source]\npic = 7\n\n[[cel]]\nindex = 2\nfile = \"7.cel2.bmp\"\n");
+
+            AssertOk(read, "parse");
+            Assert::AreEqual(7, read->pic);
+            Assert::IsFalse(read->hasCrc32);
+            Assert::IsTrue(read->format.empty());
+            Assert::AreEqual(-1, read->backgroundCel);
+            Assert::IsFalse(read->hasPalette);
+            Assert::AreEqual((size_t)1, read->cels.size());
+            Assert::AreEqual(2, read->cels[0].index);
+            Assert::AreEqual(std::string("7.cel2.bmp"), read->cels[0].file);
+
+            sci::Result<PicSidecar> noCels = ParsePicSidecar("[source]\npic = 65535\n");
+            AssertOk(noCels, "a file with no cel");
+            Assert::AreEqual(65535, noCels->pic);
+            Assert::IsTrue(noCels->cels.empty());
+        }
+
+        TEST_METHOD(Parse_BadText_IsFormat)
+        {
+            auto fails = [](const std::string &text, const std::string &textInMessage, int line)
+            {
+                sci::Result<PicSidecar> read = ParsePicSidecar(text);
+                Assert::IsFalse(read.has_value(), Wide("the parse must fail: " + text).c_str());
+                Assert::IsTrue(read.error().code == sci::ErrorCode::Format, Wide(read.error().ToString()).c_str());
+                Assert::IsTrue(Has(read.error().message, textInMessage), Wide(textInMessage + ": " + read.error().ToString()).c_str());
+                if (line > 0)
+                {
+                    Assert::AreEqual(line, read.error().where.line, Wide(read.error().ToString()).c_str());
+                }
+            };
+            // Not TOML: the error has the line.
+            fails("[source]\npic = = 7\n", "", 2);
+            // No pic number.
+            fails("", "the file has no pic number", 0);
+            fails("[pic]\nwidth = 3\n", "the file has no pic number", 0);
+            fails("[source]\nformat = 'vga2'\n", "the file has no pic number", 0);
+            // A value of another type, or outside its range.
+            fails("[source]\npic = '7'\n", "[source]: \"pic\" is not a whole number", 2);
+            fails("[source]\npic = 7.0\n", "[source]: \"pic\" is not a whole number", 2);
+            fails("[source]\npic = 65536\n", "[source]: \"pic\" is 65536; it must be 0 to 65535", 2);
+            fails("[source]\npic = -1\n", "[source]: \"pic\" is -1; it must be 0 to 65535", 2);
+            fails("[source]\npic = 7\ncrc32 = 0x100000000\n", "[source]: \"crc32\" is 4294967296", 3);
+            fails("[source]\npic = 7\nformat = 2\n", "[source]: \"format\" is not a text", 3);
+            fails("[source]\npic = 7\n[palette]\npresent = 1\n", "[palette]: \"present\" is not true or false", 4);
+            fails("[source]\npic = 7\n[palette]\nused = 5\n", "[palette]: \"used\" is not an array", 4);
+            fails("[source]\npic = 7\n[palette]\nused = [[5]]\n", "an element of \"used\" is not 2 numbers", 4);
+            fails("[source]\npic = 7\n[palette]\nused = [[9, 3]]\n", "an element of \"used\" is not 2 numbers", 4);
+            fails("[source]\npic = 7\n[palette]\nused = [[0, 256]]\n", "an element of \"used\" is not 2 numbers", 4);
+            fails("[source]\npic = 7\n[palette]\nflags = [[0, 9]]\n", "an element of \"flags\" is not 3 numbers", 4);
+            // The cels.
+            fails("[source]\npic = 7\n[cel]\nindex = 0\n", "\"cel\" is not an array of tables", 0);
+            fails("[source]\npic = 7\n[[cel]]\nfile = 'a.bmp'\n", "a [[cel]] has no index", 0);
+            fails("[source]\npic = 7\n[[cel]]\nindex = 256\n", "[[cel]]: \"index\" is 256; it must be 0 to 255", 4);
+            fails("[source]\npic = 7\n[[cel]]\nindex = 3\nwidth = 'wide'\n", "[[cel]] 3: \"width\" is not a whole number", 5);
+            // The file of a cel is a file name with no folder.
+            for (const char *file : { "..\\\\7.bmp", "sub/7.bmp", "C:7.bmp", "..", ".", "" })
+            {
+                fails(std::string("[source]\npic = 7\n[[cel]]\nindex = 3\nfile = \"") + file + "\"\n", "[[cel]] 3: \"file\" must be a file name with no folder", 5);
+            }
+        }
+
+        TEST_METHOD(ReadFile_MissingFileAndBadFile)
+        {
+            std::string folder = (fs::temp_directory_path() / ("scicompanion-sidecar-" + std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount()))).string();
+            fs::create_directories(folder);
+
+            sci::Result<PicSidecar> missing = ReadPicSidecarFile(folder + "\\missing.toml");
+            Assert::IsFalse(missing.has_value());
+            Assert::IsTrue(missing.error().code == sci::ErrorCode::NotFound, Wide(missing.error().ToString()).c_str());
+
+            std::string bad = folder + "\\bad.toml";
+            WriteFileText(bad, "[source]\npic = 70000\n");
+            sci::Result<PicSidecar> outOfRange = ReadPicSidecarFile(bad);
+            Assert::IsFalse(outOfRange.has_value());
+            Assert::IsTrue(outOfRange.error().code == sci::ErrorCode::Format, Wide(outOfRange.error().ToString()).c_str());
+            Assert::AreEqual(bad, outOfRange.error().where.file);
+            Assert::AreEqual(2, outOfRange.error().where.line);
+
+            std::string good = folder + "\\good.toml";
+            PicSidecar sidecar;
+            sidecar.pic = 12;
+            sidecar.format = "vga11";
+            WriteFileText(good, PicSidecarText(sidecar));
+            sci::Result<PicSidecar> read = ReadPicSidecarFile(good);
+            RemoveFolder(folder);
+            AssertOk(read, "the good file");
+            Assert::AreEqual(12, read->pic);
+            Assert::AreEqual(std::string("vga11"), read->format);
         }
 
         // The description of pic 220 of the pic tests: 4 cels, and a palette

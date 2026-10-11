@@ -269,6 +269,56 @@ namespace cli
     // (Usage), or a selector is bad (Usage).
     sci::Result<ExitCode> RunPicExport(GameSession &session, const PicExportOptions &options, const CommonOptions &common, CliOutput &output);
 
+    // scic pic import (plan section 4.7).
+    struct PicImportOptions
+    {
+        std::string gameFolder;
+        // One image: the number of the pic, the BMP file, and the cel.
+        std::string pic;
+        std::string image;
+        int cel = 0;
+        // False: the image is the background cel.
+        bool celGiven = false;
+        // Or a folder with the files of scic pic export: each .toml file,
+        // and the BMP files that it names.
+        std::string inDir;
+        std::string palette = "keep";       // keep or replace
+        // "A-B": the palette entries that get the colours of the image.
+        std::string paletteRange;
+        bool allowUnusedIndices = false;
+        std::string outDir;
+    };
+
+    // The entries of a --palette-range text ("80-235": two numbers of 0 to
+    // 255, the first not more than the second). False for another text.
+    bool ParsePaletteRange(const std::string &text, int &first, int &last);
+
+    // Puts the pixels of 8-bit BMP files into cels of pics, and writes each
+    // pic as a patch file into the output folder (never into the game). An
+    // SCI2 pic changes in place: only the pixels of the cels change, and with
+    // --palette replace the colours of the palette range, which come from
+    // the colour table of the image. With --in-dir, each .toml file of the
+    // folder gives a pic and the files of its cels; a CRC-32 in it that is
+    // not that of the pic in the game is a warning.
+    //
+    // The checks of a pic, all before its file is written: each image is
+    // 8-bit and not compressed, and has the size of its cel; a pixel has the
+    // skip colour of the cel where the cel has it, and nowhere else; each
+    // other pixel is an entry that the pic or palette 999 marks as used (the
+    // error names the entries; --allow-unused-indices makes it a warning);
+    // the palette range is inside the entries that the pic stores, and the
+    // tables of the images of one pic have the same colours in it.
+    //
+    // A pic runs in its own exception boundary, so a pic that fails does not
+    // stop the next one. --dry-run does all checks and writes nothing. The
+    // exit code: 6 when a pic failed, 9 when a patch file could not be
+    // written, 7 after Ctrl+C, 1 for a bug. Fails when the run cannot start:
+    // the output folder or the input folder does not exist (NotFound), the
+    // output folder is the game folder or a folder inside it, the pic is not
+    // a number of a pic of the game, or the input folder has no .toml file
+    // (Usage).
+    sci::Result<ExitCode> RunPicImport(GameSession &session, const PicImportOptions &options, const CommonOptions &common, CliOutput &output);
+
     // scic dev compare-structure (hidden): the structure of the functions of
     // a folder of decompiled scripts against another decompile.
     struct CompareStructureOptions
