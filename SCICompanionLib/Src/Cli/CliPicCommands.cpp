@@ -2,6 +2,7 @@
 #include "CliCommands.h"
 #include "CliHost.h"
 #include "CliPic.h"
+#include "CliResources.h"
 #include "GameSession.h"
 #include "GameFolderHelper.h"
 #include "ResourceMap.h"
@@ -58,29 +59,6 @@ namespace cli
 
     namespace
     {
-        std::string PicText(int number)
-        {
-            return fmt::format("pic {0}", number);
-        }
-
-        // "1 pic", "2 pics".
-        std::string CountText(size_t count, const char *word)
-        {
-            return fmt::format("{0} {1}{2}", count, word, (count == 1) ? "" : "s");
-        }
-
-        // The numbers of the pics of the game, from the lowest.
-        std::vector<int> PicNumbersOf(GameSession &session)
-        {
-            std::set<int> numbers;
-            auto container = session.ResourceMap().Resources(ResourceTypeFlags::Pic, session.Helper().GetDefaultEnumFlags() | ResourceEnumFlags::MostRecentOnly);
-            for (auto it = container->begin(); it != container->end(); ++it)
-            {
-                numbers.insert(it.GetResourceNumber());
-            }
-            return std::vector<int>(numbers.begin(), numbers.end());
-        }
-
         // A number of 0 to 65535: digits only, with any count of zeros before
         // them.
         bool ParseNumber(const std::string &text, int &number)
@@ -105,44 +83,94 @@ namespace cli
             number = value;
             return true;
         }
+    }
 
-        // The pics of the game that the selectors name: a number ("230") or a
-        // range ("100-199"), from the lowest, each pic once. Usage for a text
-        // that is not a number or a range, for a number that is not a pic of
-        // the game, and for a range with no pic of the game.
-        sci::Result<std::vector<int>> SelectPics(const std::vector<int> &all, const std::vector<std::string> &selectors)
+    std::string CountText(size_t count, const char *word)
+    {
+        return fmt::format("{0} {1}{2}", count, word, (count == 1) ? "" : "s");
+    }
+
+    std::vector<int> ResourceNumbersOf(GameSession &session, ResourceType type)
+    {
+        std::set<int> numbers;
+        auto container = session.ResourceMap().Resources(ResourceTypeToFlag(type), session.Helper().GetDefaultEnumFlags() | ResourceEnumFlags::MostRecentOnly);
+        for (auto it = container->begin(); it != container->end(); ++it)
         {
-            std::set<int> selected;
-            for (const std::string &selector : selectors)
+            numbers.insert(it.GetResourceNumber());
+        }
+        return std::vector<int>(numbers.begin(), numbers.end());
+    }
+
+    sci::Result<std::vector<int>> SelectResourceNumbers(const std::vector<int> &all, const std::vector<std::string> &selectors, const char *noun)
+    {
+        std::set<int> selected;
+        for (const std::string &selector : selectors)
+        {
+            int first = 0;
+            int last = 0;
+            size_t dash = selector.find('-');
+            bool parsed = (dash == std::string::npos) ? ParseNumber(selector, first) :
+                (ParseNumber(selector.substr(0, dash), first) && ParseNumber(selector.substr(dash + 1), last));
+            if (dash == std::string::npos)
             {
-                int first = 0;
-                int last = 0;
-                size_t dash = selector.find('-');
-                bool parsed = (dash == std::string::npos) ? ParseNumber(selector, first) :
-                    (ParseNumber(selector.substr(0, dash), first) && ParseNumber(selector.substr(dash + 1), last));
-                if (dash == std::string::npos)
+                last = first;
+            }
+            if (!parsed || (first > last))
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("\"{0}\" is not a {1} number or a range of {1} numbers (for example 230 or 100-199)", selector, noun));
+            }
+            bool any = false;
+            for (int number : all)
+            {
+                if ((number >= first) && (number <= last))
                 {
-                    last = first;
-                }
-                if (!parsed || (first > last))
-                {
-                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("\"{0}\" is not a pic number or a range of pic numbers (for example 230 or 100-199)", selector));
-                }
-                bool any = false;
-                for (int number : all)
-                {
-                    if ((number >= first) && (number <= last))
-                    {
-                        selected.insert(number);
-                        any = true;
-                    }
-                }
-                if (!any)
-                {
-                    return sci::Fail(sci::ErrorCode::Usage, (first == last) ? fmt::format("the game has no pic {0}", first) : fmt::format("the game has no pic in the range {0}-{1}", first, last));
+                    selected.insert(number);
+                    any = true;
                 }
             }
-            return std::vector<int>(selected.begin(), selected.end());
+            if (!any)
+            {
+                return sci::Fail(sci::ErrorCode::Usage, (first == last) ? fmt::format("the game has no {0} {1}", noun, first) : fmt::format("the game has no {0} in the range {1}-{2}", noun, first, last));
+            }
+        }
+        return std::vector<int>(selected.begin(), selected.end());
+    }
+
+    sci::Status CheckOutputFolder(GameSession &session, const std::string &outDir)
+    {
+        std::error_code ec;
+        if (!fs::is_directory(outDir, ec))
+        {
+            return sci::Fail(sci::ErrorCode::NotFound, "the output folder does not exist: " + outDir);
+        }
+        switch (PlaceInGameFolder(session.Helper().GameFolder, outDir))
+        {
+        case GameFolderPlace::GameFolder:
+            return sci::Fail(sci::ErrorCode::Usage, "the output folder is the game folder; give a folder outside the game");
+        case GameFolderPlace::Inside:
+            return sci::Fail(sci::ErrorCode::Usage, "the output folder is inside the game folder; give a folder outside the game");
+        default:
+            return sci::Ok();
+        }
+    }
+
+    namespace
+    {
+        std::string PicText(int number)
+        {
+            return fmt::format("pic {0}", number);
+        }
+
+        // The numbers of the pics of the game, from the lowest.
+        std::vector<int> PicNumbersOf(GameSession &session)
+        {
+            return ResourceNumbersOf(session, ResourceType::Pic);
+        }
+
+        // The pics of the game that the selectors name (SelectResourceNumbers).
+        sci::Result<std::vector<int>> SelectPics(const std::vector<int> &all, const std::vector<std::string> &selectors)
+        {
+            return SelectResourceNumbers(all, selectors, "pic");
         }
 
         // A pic of the game: the most recent copy of its resource.
@@ -210,27 +238,6 @@ namespace cli
                 }
             }
             return entries;
-        }
-
-        // The output folder of export: NotFound when it is not a folder,
-        // Usage when it is the game folder or a folder inside it (a game can
-        // read patch files from a folder of its own).
-        sci::Status CheckOutputFolder(GameSession &session, const std::string &outDir)
-        {
-            std::error_code ec;
-            if (!fs::is_directory(outDir, ec))
-            {
-                return sci::Fail(sci::ErrorCode::NotFound, "the output folder does not exist: " + outDir);
-            }
-            switch (PlaceInGameFolder(session.Helper().GameFolder, outDir))
-            {
-            case GameFolderPlace::GameFolder:
-                return sci::Fail(sci::ErrorCode::Usage, "the output folder is the game folder; give a folder outside the game");
-            case GameFolderPlace::Inside:
-                return sci::Fail(sci::ErrorCode::Usage, "the output folder is inside the game folder; give a folder outside the game");
-            default:
-                return sci::Ok();
-            }
         }
 
         // The row of a pic of the game. The exception boundary of the pic: a

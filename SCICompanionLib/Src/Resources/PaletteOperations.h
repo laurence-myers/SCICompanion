@@ -15,6 +15,7 @@
 
 #include "Components.h"
 #include "Result.h"
+#include <array>
 
 class GameFolderHelper;
 
@@ -109,6 +110,25 @@ sci::Result<PaletteLayout> ReadPaletteLayout(const uint8_t *data, size_t size, s
 // palette stores the same entries. Usage when first to last is not a range
 // of entries that the palette stores; the errors of ReadPaletteLayout.
 sci::Status PatchPaletteColors(std::vector<uint8_t> &data, size_t paletteOffset, int first, int last, const RGBQUAD *colors);
+
+// Takes the "used" mark from the entries first to last in the bytes of the
+// palette at paletteOffset, and gives the entries that changed. An entry of
+// the range that the palette does not store has no mark, and does not change.
+//  - 4-byte entries: the flag byte of each stored entry of the range becomes
+//    0. The entries that changed are those whose flag byte was not 0.
+//  - 3-byte entries, which have one flag for all of them in the header: the
+//    palette stores fewer entries. The count of the header becomes smaller,
+//    so that the first entry of the range is the first entry that the
+//    palette does not store. The bytes of the entries after the new count
+//    stay where they are; a reader does not read them. The entries that
+//    changed are those that the palette stores no more.
+// No other byte changes, and the size of the data stays. Usage when first to
+// last is not a range of palette entries, and when the range has 3-byte
+// entries but not the last stored entry (the count cannot take an entry out
+// of the middle). Unsupported when the palette would store no entry and its
+// first byte is 0: a reader takes such bytes as a palette with no header.
+// The errors of ReadPaletteLayout.
+sci::Result<std::array<bool, 256>> ClearPaletteMarks(std::vector<uint8_t> &data, size_t paletteOffset, int first, int last);
 
 void ReadPalette(PaletteComponent &palette, sci::istream &byteStream);
 void WritePalette(sci::ostream &byteStream, const PaletteComponent &palette);

@@ -119,6 +119,9 @@
     <ClCompile Include="TestPaletteUse.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="TestCliView.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="TestGameSession.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

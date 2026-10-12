@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "CliCommands.h"
 #include "CliHost.h"
+#include "CliResources.h"
 #include "StructuralCompare.h"
 #include "CompiledScript.h"
 #include "CoreLog.h"
@@ -262,18 +263,6 @@ namespace cli
 
     namespace
     {
-        // The numbers of the resources of a type, from the lowest.
-        std::vector<int> ResourceNumbersOf(GameSession &game, ResourceType type)
-        {
-            std::set<int> numbers;
-            auto container = game.ResourceMap().Resources(ResourceTypeToFlag(type), game.Helper().GetDefaultEnumFlags() | ResourceEnumFlags::MostRecentOnly);
-            for (auto it = container->begin(); it != container->end(); ++it)
-            {
-                numbers.insert(it.GetResourceNumber());
-            }
-            return std::vector<int>(numbers.begin(), numbers.end());
-        }
-
         // The runs of the entries, or "-" for none.
         std::string EntriesText(const std::array<bool, 256> &entries)
         {
@@ -296,35 +285,6 @@ namespace cli
             }
             return text.empty() ? std::string("-") : text;
         }
-
-        // Keeps the warnings and the errors that the readers log while a
-        // resource is read: a reader repairs some damage (a palette that
-        // stores entries past 255, a cel with a size that is not possible)
-        // and only logs it. A codec can log from another thread.
-        class RepairLogSink : public ILogSink
-        {
-        public:
-            ~RepairLogSink() { RemoveCoreLogSink(this); }
-
-            void Write(LogLevel level, const std::string &text) override
-            {
-                if (level != LogLevel::Info)
-                {
-                    std::lock_guard<std::mutex> lock(_mutex);
-                    _text += (_text.empty() ? "" : " ") + text;
-                }
-            }
-
-            std::string Text()
-            {
-                std::lock_guard<std::mutex> lock(_mutex);
-                return _text;
-            }
-
-        private:
-            std::mutex _mutex;
-            std::string _text;
-        };
 
         // The cells of a row after the number.
         struct PaletteUseRow

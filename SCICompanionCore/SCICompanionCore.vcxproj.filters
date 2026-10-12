@@ -46,6 +46,9 @@
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliScriptCommands.cpp">
       <Filter>Source Files\Cli</Filter>
     </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Cli\CliViewCommands.cpp">
+      <Filter>Source Files\Cli</Filter>
+    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Cli\ExitCodes.cpp">
       <Filter>Source Files\Cli</Filter>
     </ClCompile>
@@ -283,6 +286,9 @@
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PicImage.cpp">
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\ViewPalette.cpp">
+      <Filter>Source Files\Resources</Filter>
+    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PicSidecar.cpp">
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
@@ -411,6 +417,9 @@ $include
       <Filter>Source Files\Cli</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Cli\CliPic.h">
+      <Filter>Source Files\Cli</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Cli\CliResources.h">
       <Filter>Source Files\Cli</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Cli\CliHost.h">
@@ -702,6 +711,9 @@ $include
       <Filter>Source Files\Resources</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PicImage.h">
+      <Filter>Source Files\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\ViewPalette.h">
       <Filter>Source Files\Resources</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PicSidecar.h">

@@ -618,6 +618,53 @@ sci::Status PatchPaletteColors(std::vector<uint8_t> &data, size_t paletteOffset,
 	return sci::Ok();
 }
 
+sci::Result<std::array<bool, 256>> ClearPaletteMarks(std::vector<uint8_t> &data, size_t paletteOffset, int first, int last)
+{
+	SCI_TRY_ASSIGN(PaletteLayout layout, ReadPaletteLayout(data.data(), data.size(), paletteOffset));
+	if ((first < 0) || (last > 255) || (first > last))
+	{
+		return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}-{1} is not a range of palette entries", first, last));
+	}
+	std::array<bool, 256> changed = {};
+	// The stored entries of the range.
+	const int lastStored = layout.firstEntry + layout.entryCount - 1;
+	const int from = (std::max)(first, layout.firstEntry);
+	const int to = (std::min)(last, lastStored);
+	if (from > to)
+	{
+		return changed;
+	}
+	if (layout.entrySize == 4)
+	{
+		for (int entry = from; entry <= to; entry++)
+		{
+			// A 4-byte entry has its flag byte first.
+			uint8_t &flag = data[layout.entriesOffset + ((size_t)(entry - layout.firstEntry) * 4)];
+			changed[entry] = (flag != 0);
+			flag = 0;
+		}
+		return changed;
+	}
+	if (last < lastStored)
+	{
+		return sci::Fail(sci::ErrorCode::Usage, fmt::format("the palette has one flag for all its entries ({0}-{1}), so an entry loses its mark only when the palette stores fewer entries; "
+			"the range {2}-{3} does not reach the last stored entry ({1})", layout.firstEntry, lastStored, first, last));
+	}
+	const int newCount = from - layout.firstEntry;
+	if ((newCount == 0) && (data[paletteOffset + offsetof(PaletteHeader, marker)] == 0))
+	{
+		return sci::Fail(sci::ErrorCode::Unsupported, "the palette would store no entry, and its first byte is 0: a reader takes such bytes as a palette with no header");
+	}
+	const size_t countAt = paletteOffset + offsetof(PaletteHeader, palColorCount);
+	data[countAt] = (uint8_t)(newCount & 0xff);
+	data[countAt + 1] = (uint8_t)(newCount >> 8);
+	for (int entry = from; entry <= to; entry++)
+	{
+		changed[entry] = true;
+	}
+	return changed;
+}
+
 void PaletteReadFrom(ResourceEntity &resource, sci::istream &byteStream, const std::map<BlobKey, uint32_t> &propertyBag)
 {
 	ReadPalette(resource.GetComponent<PaletteComponent>(), byteStream);
