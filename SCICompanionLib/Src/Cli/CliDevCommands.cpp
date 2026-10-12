@@ -3,17 +3,30 @@
 #include "CliHost.h"
 #include "StructuralCompare.h"
 #include "CompiledScript.h"
+#include "CoreLog.h"
 #include "GameSession.h"
+#include "GameFolderHelper.h"
 #include "MeaningCheck.h"
+#include "PaletteOperations.h"
+#include "PaletteUse.h"
+#include "PicImage.h"
+#include "ResourceBlob.h"
+#include "ResourceContainer.h"
+#include "ResourceEntity.h"
 #include "ResourceMap.h"
+#include "ResourceSourceFlags.h"
+#include "ResourceUtil.h"
 #include "ScriptCatalog.h"
+#include "View.h"
 #include "FileWrite.h"
 #include "format.h"
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <mutex>
 #include <set>
 
 namespace cli
@@ -238,6 +251,231 @@ namespace cli
             output.Warning(error);
         }
         output.Message(fmt::format("Functions: {0}. Verdicts: {1}.", verdicts.size(), CountsText(verdicts)));
+        if (!errors.empty() && (code == ExitCode::Success))
+        {
+            code = ExitCode::PartialFailure;
+        }
+        return code;
+    }
+
+    const char *const PaletteUseHeader = "kind\tnumber\tsource\tloops\tcels\tpalette_entries\tpixel_entries\tcolors\terror";
+
+    namespace
+    {
+        // The numbers of the resources of a type, from the lowest.
+        std::vector<int> ResourceNumbersOf(GameSession &game, ResourceType type)
+        {
+            std::set<int> numbers;
+            auto container = game.ResourceMap().Resources(ResourceTypeToFlag(type), game.Helper().GetDefaultEnumFlags() | ResourceEnumFlags::MostRecentOnly);
+            for (auto it = container->begin(); it != container->end(); ++it)
+            {
+                numbers.insert(it.GetResourceNumber());
+            }
+            return std::vector<int>(numbers.begin(), numbers.end());
+        }
+
+        // The runs of the entries, or "-" for none.
+        std::string EntriesText(const std::array<bool, 256> &entries)
+        {
+            const std::string text = IndexRunsText(IndexRunsOf(entries));
+            return text.empty() ? std::string("-") : text;
+        }
+
+        // "80=aabbcc 81=001122": the colour of each used entry of the
+        // palette; "-" for none.
+        std::string ColorsText(const PaletteComponent &palette, const std::array<bool, 256> &used)
+        {
+            std::string text;
+            for (int entry = 0; entry < 256; entry++)
+            {
+                if (used[entry])
+                {
+                    const RGBQUAD &color = palette.Colors[entry];
+                    text += fmt::format("{0}{1}={2:02x}{3:02x}{4:02x}", text.empty() ? "" : " ", entry, color.rgbRed, color.rgbGreen, color.rgbBlue);
+                }
+            }
+            return text.empty() ? std::string("-") : text;
+        }
+
+        // Keeps the warnings and the errors that the readers log while a
+        // resource is read: a reader repairs some damage (a palette that
+        // stores entries past 255, a cel with a size that is not possible)
+        // and only logs it. A codec can log from another thread.
+        class RepairLogSink : public ILogSink
+        {
+        public:
+            ~RepairLogSink() { RemoveCoreLogSink(this); }
+
+            void Write(LogLevel level, const std::string &text) override
+            {
+                if (level != LogLevel::Info)
+                {
+                    std::lock_guard<std::mutex> lock(_mutex);
+                    _text += (_text.empty() ? "" : " ") + text;
+                }
+            }
+
+            std::string Text()
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                return _text;
+            }
+
+        private:
+            std::mutex _mutex;
+            std::string _text;
+        };
+
+        // The cells of a row after the number.
+        struct PaletteUseRow
+        {
+            std::string source = "-";
+            std::string loops = "-";
+            std::string cels = "-";
+            std::string paletteEntries = "-";
+            std::string pixelEntries = "-";
+            std::string colors = "-";
+        };
+
+        // NotFound when the game has no such resource; Format when it is
+        // damaged.
+        sci::Result<PaletteUseRow> PaletteUseOf(GameSession &game, ResourceType type, int number, bool colors)
+        {
+            std::unique_ptr<ResourceBlob> blob = game.ResourceMap().MostRecentResource(type, number, false);
+            if (!blob)
+            {
+                return sci::Fail(sci::ErrorCode::NotFound, "the game has no such resource");
+            }
+            SCI_TRY_ASSIGN(std::unique_ptr<ResourceEntity> entity, TryCreateResourceFromResourceData(*blob));
+            PaletteUseRow row;
+            row.source = IsFlagSet(blob->GetSourceFlags(), ResourceSourceFlags::PatchFile) ? "patch" : "package";
+            const PaletteComponent *palette = entity->TryGetComponent<PaletteComponent>();
+            std::array<bool, 256> used = {};
+            if (palette != nullptr)
+            {
+                used = UsedPaletteEntries(*palette);
+            }
+            // The used entries come from the bytes of the palette where the
+            // command knows its place: a palette resource, and a view of
+            // SCI1.1 or SCI2. A damaged palette is then an error.
+            const uint8_t *data = blob->GetData();
+            const size_t size = blob->GetLength();
+            if (type == ResourceType::View)
+            {
+                const RasterComponent *raster = entity->TryGetComponent<RasterComponent>();
+                if (raster == nullptr)
+                {
+                    return sci::Fail(sci::ErrorCode::Format, "the view has no image");
+                }
+                const ViewPaletteUse use = DescribeViewPaletteUse(*raster, palette);
+                row.loops = fmt::format("{0}", use.loops);
+                row.cels = fmt::format("{0}", use.cels);
+                row.pixelEntries = EntriesText(use.pixelEntries);
+                const ViewFormat format = game.Version().ViewFormat;
+                const uint32_t paletteOffset = ((format == ViewFormat::VGA1_1) || (format == ViewFormat::VGA2)) ? ReadViewPaletteOffsetVGA11(data, size) : 0;
+                if ((palette != nullptr) && (paletteOffset != 0))
+                {
+                    SCI_TRY_ASSIGN(used, ReadUsedPaletteEntries(data, size, paletteOffset));
+                }
+            }
+            else
+            {
+                if (palette == nullptr)
+                {
+                    return sci::Fail(sci::ErrorCode::Format, "the resource has no palette");
+                }
+                SCI_TRY_ASSIGN(used, ReadUsedPaletteEntries(data, size, 0));
+            }
+            row.paletteEntries = EntriesText(used);
+            if (colors && (palette != nullptr))
+            {
+                row.colors = ColorsText(*palette, used);
+            }
+            return row;
+        }
+    }
+
+    sci::Result<ExitCode> RunPaletteUse(const PaletteUseOptions &options, const std::string &dataFolder, CliOutput &output)
+    {
+        SessionOptions sessionOptions;
+        sessionOptions.dataFolder = dataFolder;
+        GameSession game(sessionOptions);
+        SetCurrentItem("opening the game");
+        SCI_TRY(game.Open(AbsolutePath(options.gameFolder)));
+        if (!options.outFile.empty())
+        {
+            // The table must not take the place of a file of the game.
+            const std::string outFolder = std::filesystem::path(AbsolutePath(options.outFile)).parent_path().string();
+            if (PlaceInGameFolder(game.Helper().GameFolder, outFolder) != GameFolderPlace::Outside)
+            {
+                return sci::Fail(sci::ErrorCode::Usage, "the file of --out is in the game folder; give a file outside the game");
+            }
+        }
+
+        struct Kind
+        {
+            ResourceType type;
+            const char *name;
+        };
+        const Kind kinds[] = { { ResourceType::View, "view" }, { ResourceType::Palette, "palette" } };
+        std::string table = std::string(PaletteUseHeader) + "\n";
+        size_t counts[2] = {};
+        std::vector<std::string> errors;
+        for (size_t kind = 0; kind < 2; kind++)
+        {
+            for (int number : ResourceNumbersOf(game, kinds[kind].type))
+            {
+                if (CancelFlag().load())
+                {
+                    return sci::Fail(sci::ErrorCode::Cancelled, "cancelled");
+                }
+                const std::string name = fmt::format("{0} {1}", kinds[kind].name, number);
+                SetCurrentItem("reading " + name);
+                RepairLogSink repairs;
+                // The exception boundary of the resource.
+                sci::Result<PaletteUseRow> read = sci::Guard("reading " + name, [&]() -> sci::Result<PaletteUseRow>
+                {
+                    ScopedCoreLogSink scopedSink(repairs);
+                    return PaletteUseOf(game, kinds[kind].type, number, options.colors);
+                });
+                if (read && !repairs.Text().empty())
+                {
+                    // The row would show the repaired resource as a good one.
+                    read = sci::Fail(sci::ErrorCode::Format, "the reader repaired damaged data: " + repairs.Text());
+                }
+                const PaletteUseRow row = read ? *read : PaletteUseRow();
+                std::string error;
+                if (!read)
+                {
+                    error = read.error().ToString();
+                    errors.push_back(name + ": " + error);
+                }
+                table += fmt::format("{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\t{7}\t{8}\n", kinds[kind].name, number, row.source, row.loops, row.cels, row.paletteEntries, row.pixelEntries,
+                    row.colors, TableField(error));
+                counts[kind]++;
+            }
+        }
+        SetCurrentItem("");
+
+        ExitCode code = ExitCode::Success;
+        if (options.outFile.empty())
+        {
+            output.Result(table);
+        }
+        else
+        {
+            sci::Status written = WriteTextToFile(options.outFile, table);
+            if (!written)
+            {
+                output.Error(written.error().ToString());
+                code = ExitCode::WriteFailed;
+            }
+        }
+        for (const std::string &error : errors)
+        {
+            output.Warning(error);
+        }
+        output.Message(fmt::format("Views: {0}. Palettes: {1}.", counts[0], counts[1]));
         if (!errors.empty() && (code == ExitCode::Success))
         {
             code = ExitCode::PartialFailure;

@@ -40,6 +40,9 @@
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliDevCommands.cpp">
       <Filter>Source Files\Cli</Filter>
     </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Cli\CliPicCommands.cpp">
+      <Filter>Source Files\Cli</Filter>
+    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliScriptCommands.cpp">
       <Filter>Source Files\Cli</Filter>
     </ClCompile>
@@ -262,6 +265,9 @@
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PaletteOperations.cpp">
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\PaletteUse.cpp">
+      <Filter>Source Files\Resources</Filter>
+    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PatchResourceSource.cpp">
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
@@ -272,6 +278,12 @@
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PicCommands.cpp">
+      <Filter>Source Files\Resources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\PicImage.cpp">
+      <Filter>Source Files\Resources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\PicSidecar.cpp">
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Resources\Polygon.cpp">
@@ -358,6 +370,9 @@
     <ClCompile Include="..\SCICompanionLib\Src\Util\ImageData.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Util\IndexedBmp.cpp">
+      <Filter>Source Files\Util</Filter>
+    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Util\PerfTimer.cpp">
       <Filter>Source Files\Util</Filter>
     </ClCompile>
@@ -393,6 +408,9 @@ $include
       <Filter>Source Files\Cli</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Cli\CliConsole.h">
+      <Filter>Source Files\Cli</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Cli\CliPic.h">
       <Filter>Source Files\Cli</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Cli\CliHost.h">
@@ -671,6 +689,9 @@ $include
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PaletteOperations.h">
       <Filter>Source Files\Resources</Filter>
     </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\PaletteUse.h">
+      <Filter>Source Files\Resources</Filter>
+    </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PatchResourceSource.h">
       <Filter>Source Files\Resources</Filter>
     </ClInclude>
@@ -678,6 +699,12 @@ $include
       <Filter>Source Files\Resources</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PicCommands.h">
+      <Filter>Source Files\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\PicImage.h">
+      <Filter>Source Files\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\PicSidecar.h">
       <Filter>Source Files\Resources</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PicCommandsCommon.h">
@@ -771,6 +798,9 @@ $include
       <Filter>Source Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Util\ImageData.h">
+      <Filter>Source Files\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Util\IndexedBmp.h">
       <Filter>Source Files\Util</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Util\interfaces.h">

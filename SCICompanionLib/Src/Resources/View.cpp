@@ -745,6 +745,22 @@ struct ViewHeader_VGA11
 };
 #include <poppack.h>
 
+uint32_t ReadViewPaletteOffsetVGA11(const uint8_t *data, size_t size)
+{
+	ViewHeader_VGA11 header;
+	if (size < sizeof(header))
+	{
+		return 0;
+	}
+	memcpy(&header, data, sizeof(header));
+	// ViewReadFromVGA11Helper reads a view with such a loop header as an SCI1 view.
+	if (header.loopHeaderSize > 32)
+	{
+		return 0;
+	}
+	return header.paletteOffset;
+}
+
 void ReadCelFromVGA11(sci::istream &byteStream, Cel &cel, bool isPic)
 {
 	CelHeader_VGA11 celHeader;

@@ -8,6 +8,23 @@ This release focuses on the compiler and decompiler, on stability, and on
 modernizing the build. Broad highlights since the previous release:
 
 * **A command-line tool, `scic.exe`.**
+* **Pic images from the command line.** `scic pic list` shows the cels and
+  the palette use of each VGA pic (SCI1.1 and SCI2). `scic pic export`
+  writes the cels as 8-bit BMP files whose pixels are the palette entries
+  of the game, with a `.toml` file of the facts of each pic, so that
+  another tool can change the images. `scic pic import` puts the changed
+  images back and writes each pic as a patch file; an SCI2 pic keeps all
+  its other bytes.
+* **Patch files of SCI2 pics that the game can read.** A pic of an SCI2
+  game that is saved as a patch file (`.p56`) gets the 4-byte header of
+  Sierra's own SCI2 pic patches. Before, it got the 26-byte header of an
+  SCI1.1 pic, and ScummVM read the pic from the wrong offset.
+* **A saved pic keeps the lines that go off the picture.** A line or a pen
+  pattern that ends above or to the left of the picture (a negative
+  coordinate) stays the same when SCI Companion saves the pic. Before, the
+  save moved the end of the line, or the pic lost the drawing commands
+  after it (for example pic 19 of Space Quest 3 and pic 112 of Space
+  Quest 5).
 * **A new decompiler engine.**
 * **Decompiled scripts compiles to the same bytecode.**
 * **Fixed incorrect bytecode output.**

@@ -628,7 +628,8 @@ HRESULT ResourceBlob::SaveToHandle(HANDLE hFile, bool fNoHeader, DWORD *pcbWritt
 			// No resource header - this is in its own file.  It is just an indicator of what type it is.
 			uint16_t w = 0x80 | (int)header.Type;
 			// For SCI1.1 and above, views and pics appear to have 0x8? as the second byte. The high bit is a
-			// marker that extra data is there, and 0x00 indicates 24 bytes of extra data.
+			// marker that extra data is there, and 0x00 indicates 24 bytes of extra data
+			// (GetResourceOffsetInFile).
 			uint8_t secondByte = 0x00;
 			if (header.Version.PackageFormat >= ResourcePackageFormat::SCI11)
 			{
@@ -636,6 +637,12 @@ HRESULT ResourceBlob::SaveToHandle(HANDLE hFile, bool fNoHeader, DWORD *pcbWritt
 				if (header.Type == ResourceType::View || header.Type == ResourceType::Pic)
 				{
 					secondByte = 0x80;
+				}
+				// An SCI2 pic has 0x81: 2 bytes of extra data. Sierra's SCI2 pic patches have this
+				// header (81 81 00 00), and ScummVM takes the data of an SCI2 pic patch at offset 4.
+				if ((header.Type == ResourceType::Pic) && (header.Version.PackageFormat >= ResourcePackageFormat::SCI2))
+				{
+					secondByte = 0x81;
 				}
 			}
 			w |= ((uint16_t)secondByte) << 8;

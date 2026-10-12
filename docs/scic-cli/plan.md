@@ -592,8 +592,10 @@ Rules:
 - Name: `scic.exe`. Project: `SCICompanionCli\SCICompanionCli.vcxproj`.
 - Output: `$(SolutionDir)Release\scic.exe`, next to `SCICompanion.exe` and
   the data folders.
-- At start, `scic` makes sure that `<data folder>\include\sci.sh` exists. If
-  it does not, `scic` stops with exit code 3 and a clear message.
+- At the start of a script command, `scic` makes sure that
+  `<data folder>\include\sci.sh` exists. If it does not, `scic` stops with
+  exit code 3 and a clear message. The pic commands (section 4.7) do not
+  read the data folder, so they run with no data folder.
 - The data folder is the exe folder by default. `--data-dir <folder>` or the
   environment variable `SCIC_DATA_DIR` changes it. An empty `--data-dir` is
   a usage error (C1 review).
@@ -607,14 +609,18 @@ scic script list      <game-folder> [script ...] [options]
 scic script decompile <game-folder> (<script> ... | --all) [options]
 scic script compile   <game-folder> (<script> ... | --all) [options]
 scic script sco       <game-folder> (<script> ... | --all) [options]
+scic pic list         <game-folder> [--pic <pic> ...] [options]
+scic pic export       <game-folder> (--pic <pic> ... | --all) --out-dir <folder> [options]
+scic pic import       <game-folder> (--pic <pic> --image <file> | --in-dir <folder>) --out-dir <folder> [options]
 scic help [group [command]]
 scic --version
 ```
 
-- `script` is the first command group. Later groups use the same pattern
-  (section 13): for example `scic resource extract`, `scic package rebuild`.
+- `script` is the first command group, and `pic` (section 4.7) the second.
+  Later groups use the same pattern (section 13): for example
+  `scic resource extract`, `scic package rebuild`.
 - `scic script` with no command, and `scic help script`, list the script
-  commands.
+  commands. `scic pic` and `scic help pic` list the pic commands.
 
 Common options (all commands):
 
@@ -623,7 +629,7 @@ Common options (all commands):
 | `-q`, `--quiet` | Show errors only. |
 | `-v`, `--verbose` | Show more detail: each file written, memory use, warnings for each function. |
 | `--log <file>` | Also write all messages to a file. The log starts with the line `scic <version> log`. `--log` writes over an existing file only when the file is empty or starts with that line (in any folder, with any extension); else it is a usage error. So it does not truncate `resource.map`, or a `.log` file that a game ships. An error in the options themselves (a parse error, or a bad `--log`) is not in the log; the other usage errors are. |
-| `--data-dir <folder>` | The folder that holds `include\` and `Decompiler\`. Default: the exe folder. |
+| `--data-dir <folder>` | The folder that holds `include\` and `Decompiler\`. Default: the exe folder. Only the script commands read it. |
 | `--dry-run` | Do the work in memory. Write nothing. Show what a real run would write. |
 
 ### 4.2 Script selectors
@@ -931,6 +937,216 @@ every script uses another one.
   change and cannot be written fails as the write would (exit 9;
   review of `37ee979b`).
 - Then run `scic script compile --all`.
+
+### 4.7 `scic pic list`, `scic pic export` and `scic pic import`
+
+```
+scic pic list C:\Games\LSL6
+scic pic list C:\Games\LSL6 --pic 230 300-399 --format tsv
+scic pic export C:\Games\LSL6 --all --cel all --out-dir C:\work\pics
+scic pic export C:\Games\LSL6 --pic 230 --out-dir C:\work\pics --dry-run
+scic pic import C:\Games\LSL6 --in-dir C:\work\pics --out-dir C:\work\patches
+scic pic import C:\Games\LSL6 --pic 230 --image C:\work\230.bmp --out-dir C:\work\patches
+scic pic import C:\Games\LSL6 --in-dir C:\work\pics --palette replace --palette-range 80-235 --out-dir C:\work\patches
+```
+
+Purpose: move the image of a VGA pic out of a game and back with its exact
+palette entries, so that another tool can change the image. `scic` does no
+colour work: a pixel of a file is the palette entry that the cel has. The pic
+commands read the pic formats that hold cels: SCI1.1 (`vga11`, one cel)
+and SCI2 (`vga2`, one or more cels). A pic selector is a number (`230`) or
+a range (`100-199`: each pic of the game in the range); a number that is
+not a pic of the game, and a range with no pic, are usage errors. The
+commands do not read the data folder.
+
+`list` shows one row for each pic (all pics, or those of `--pic`), and
+writes nothing:
+
+| Column (`--format tsv`) | Meaning |
+|---|---|
+| `number`, `format` | The pic, and `ega`, `vga1`, `vga11` or `vga2`. |
+| `width`, `height` | The size of the pic. |
+| `cels`, `compressed_cels` | The count of cels, and of those with run-length data in an SCI2 pic (`scic` does not read their pixels). |
+| `background_cel`, `background_width`, `background_height`, `background_x`, `background_y`, `background_priority` | The cel with the largest area (the first of them): its index, its size, its placement as its header has it, and its priority (SCI2 only). |
+| `source`, `bytes`, `crc32` | `package` or `patch` (the copy that the game uses), the size of the pic resource, and the CRC-32 of its bytes (8 hex digits). |
+| `skip_pixels` | The count of pixels with the skip colour of their cel. |
+| `palette_entries` | The entries that the palette of the pic marks as used, as runs: `0-63,80-235`. |
+| `pixel_entries` | The entries that the pixels of the cels have, without the skip colour. |
+| `error` | Why a pic cannot be read. Such a pic makes the exit code 6. |
+
+The text table has the same values with the background cel in one column
+(`0: 640x334 at 0,0 pri 0`). A pic of a format with no image that `scic`
+reads (`ega`, `vga1`) gets a row with its format, source, size and CRC-32.
+
+`export` writes, into `--out-dir`, for each pic:
+
+- `<pic>.bmp`: the background cel. With `--cel all`, also
+  `<pic>.cel<index>.bmp` for each other cel.
+- A BMP file is 8-bit and not compressed, with 256 table entries. Its
+  pixels are the bytes of the cel, the top row first. Its colour table is
+  the palette as SCI Companion shows the pic: the palette of the pic, and
+  palette 999 of the game for the entries that the pic does not use
+  (`GetMergedPalette`).
+- `<pic>.toml`: the facts of the pic (`Src\Resources\PicSidecar.h`), for
+  the tool that changes the image (Python: `tomllib`). A run of entries is
+  `[first, last]`.
+
+| Table | Keys |
+|---|---|
+| `[source]` | `pic`; `format`; `from` (`package` or `patch`); `size` (bytes); `crc32` (a hex integer) |
+| `[pic]` | `width`; `height`; `background_cel` (-1: no cel) |
+| `[palette]` | `present`; `stored_first`, `stored_count` (the entries that the pic stores); `entry_size` (3 or 4 bytes); `flags` (runs `[first, last, flag]` of the flag bytes of the stored entries; a 3-byte entry counts as 1); `palette_999` (the entries that palette 999 marks as used); `used` (the entries that the pic or palette 999 marks as used) |
+| `[[cel]]` | `index`; `file` (only for a cel with a BMP file); `width`; `height`; `x`; `y`; `priority` (SCI2 only); `skip_color`; `compressed`; `entries` (the entries of its pixels, without the skip colour); `skip_pixels` |
+
+Rules of `export`:
+
+- It needs `--all` or `--pic` with one or more pics, not both.
+- `--out-dir` must exist (exit 3 if not), and it must not be the game
+  folder or a folder inside it (exit 2), under any name of the folder
+  (another case, a short name, a junction). `export` writes nothing into
+  the game.
+- Each pic runs in its own exception boundary: a pic that fails is an error
+  line (`scic: error: pic 110: ...`), and the next pic goes on. A pic that
+  failed makes the exit code 6: a pic of the formats `ega` and `vga1`, a
+  cel with run-length data in an SCI2 pic (`Unsupported`), a pic that
+  cannot be read, and a named pic with no cel. With `--all`, a pic with no
+  cel is skipped and counted.
+- The files of a pic are all made in memory, and each file that is there
+  already must open for writing, before the first is written. A file that
+  cannot be written makes the exit code 9.
+- `--dry-run` does all checks, writes nothing, and lists the files
+  (`Would write ...`).
+- The summary: `Exported 3 of 4 pics (3 cels) into <folder>; 1 pic has no
+  cel.`
+
+`import` puts the pixels of BMP files into cels of pics, and writes each
+pic as a patch file (`<pic>.p56` for SCI1.1 and SCI2) into `--out-dir`.
+The game does not change: to use a patch file, copy it into the game
+folder. The images come in one of two ways:
+
+- `--in-dir <folder>`: a folder with the files of `export`. Each `.toml`
+  file gives a pic (`[source] pic`) and the BMP file of each cel (`file` of
+  a `[[cel]]`, a file name with no folder, in the folder of the `.toml`
+  file). A `[[cel]]` with no `file` keeps its pixels. `import` also uses
+  `[source] crc32`: when it is not the CRC-32 of the pic in the game, the
+  images are of another copy of the pic, and `import` gives a warning. It
+  does not use the other keys, but each key must have its type and a
+  value in its range. The text of a `.toml` file is UTF-8, and the paths
+  of `scic` are in the ANSI code page of Windows: a `file`, or the name of
+  a `.toml` file, with a character that the code page does not have is an
+  error of that `.toml` file. A file of the folder that is not a `.toml`
+  file is not read.
+- `--pic <pic> --image <file>`: one image for one pic. `--cel <index>`
+  gives the cel; the default is the background cel.
+
+How a pic changes:
+
+- An SCI2 pic changes in place: the patch file has the bytes of the pic
+  resource, with other values only in the pixels of the cels (and in the
+  colours of the palette range). An import with no change of the images
+  gives the same bytes, so the CRC-32 of `list` is the same.
+- An SCI1.1 pic keeps its cel as run-length data, so SCI Companion writes
+  the pic again. Other bytes can change, but the new pic must read back as
+  the same pic (`Src\Resources\PicImage.h`); a pic that the writer does
+  not keep fails (`Unsupported`).
+- `--palette keep` (the default) does not change the palette of the pic.
+  `--palette replace --palette-range <first>-<last>` gives the entries of
+  the range the colours of the colour table of the image. The range must
+  be inside the entries that the pic stores (`stored_first`,
+  `stored_count`): a palette cannot grow in place. Only the red, the green
+  and the blue of the entries change. An entry of the range that the pic
+  does not mark as used gives a warning: the game takes its colour from
+  another palette.
+- The patch file of an SCI2 pic starts with `81 81 00 00`, as Sierra's own
+  SCI2 pic patches do: ScummVM takes the data at offset 4. The patch file
+  of an SCI1.1 pic starts with `81 80` and 24 bytes of 0.
+
+The checks of a pic, all before its patch file is written:
+
+- Each image is an 8-bit BMP file that is not compressed, with the width
+  and the height of its cel.
+- The cel is not compressed (a cel with run-length data in an SCI2 pic:
+  `Unsupported`), and one image is for one cel.
+- A pixel has the skip colour of the cel where the cel has it, and nowhere
+  else.
+- Each other pixel is an entry that the pic or palette 999 marks as used
+  (`used` of the `.toml` file). The error names the entries.
+  `--allow-unused-indices` makes it a warning.
+- With `--palette replace`: the colour table of each image has the entries
+  of the range, and the images of one pic have the same colours in the
+  range.
+
+Rules of `import`:
+
+- It needs `--in-dir`, or `--pic` with `--image`, not both. `--cel` goes
+  with `--image`. `--palette-range` and `--palette replace` go together.
+- `--out-dir` has the rules of `export`: it must exist (exit 3), and it
+  must not be the game folder or a folder inside it (exit 2). The folder
+  of `--in-dir` must exist (exit 3) and have a `.toml` file (exit 2).
+  `import` does not write through the resource map, so it does not change
+  `game.ini` or another file of the game.
+- Each pic runs in its own exception boundary: a pic that fails a check is
+  an error line, it gets no patch file, and the next pic goes on. A pic
+  that failed makes the exit code 6. So does a `.toml` file that cannot be
+  read, that names a pic that the game does not have, or that names a pic
+  that an earlier `.toml` file of the folder named.
+- A patch file that is there already must open for writing before the
+  write. A patch file that cannot be written makes the exit code 9.
+- `--dry-run` does all checks, writes nothing, and lists the patch files
+  (`Would write ...`).
+- The summary: `Imported 65 of 66 pics (283 cels) into <folder>; 1 pic
+  failed.`
+
+`UnitTests\Tools\PicRoundTripSweep.ps1` (local use) runs export, import and
+export again on a copy of a game, and compares the images. A pic that
+`export` took and `import` did not is a failure of the sweep.
+
+### 4.8 `scic dev palette-use` (a hidden command)
+
+In an SCI2 game, a view gives the entries that its own palette marks as
+used to the palette of the screen, and the game does no best-fit match. A
+palette resource that a script loads does the same. So a pic can get new
+colours only in the entries that no view of its room and no such palette
+uses. `scic dev palette-use <game-folder> [--out <file>] [--colors]` shows
+the facts for that check. The `dev` commands are not in the help of `scic`.
+
+It writes a table (tab-separated) to stdout, or into the file of `--out`,
+with a row for each view and then for each palette resource of the game,
+from the lowest number:
+
+| Column | Meaning |
+|---|---|
+| `kind` | `view` or `palette`. |
+| `number`, `source` | The number of the resource; `package` or `patch` (the copy that the game uses). |
+| `loops`, `cels` | The counts of a view; `-` for a palette. |
+| `palette_entries` | The entries that the palette of the resource marks as used, as runs: `0-63,80-235`; `-` for none (also for a view with no palette). |
+| `pixel_entries` | The entries of the pixels of the cels of a view, without the transparent colour of each cel; `-` for none, and for a palette. |
+| `colors` | With `--colors`: `entry=rrggbb` for each entry of `palette_entries`, with a space between them. Else `-`. |
+| `error` | Why the row has no values; its other cells then have `-`. |
+
+How the command reads "used":
+
+- A palette resource, and a view of SCI1.1 or SCI2: from the bytes of the
+  palette. A 4-byte entry is used when its flag byte is not 0. The 3-byte
+  entries of a palette have one flag byte in the header of the palette:
+  when it is 0, no stored entry is used, as in the SCI32 interpreter.
+- Another view (SCI1): from the palette as the reader gives it.
+- The command reads a palette header that has 1 palette, as the readers of
+  SCI Companion do. It does not read the count of palettes in the header.
+
+Rules:
+
+- The counts of the rows go to stderr.
+- It writes nothing into the game: an `--out` file in the game folder, or
+  in a folder inside it, is a usage error (exit 2).
+- The table is the result of the command, so `--dry-run` does not stop the
+  write of the `--out` file.
+- Each resource runs in its own exception boundary. A resource that cannot
+  be read has the error in its row and as a warning, and the exit code is
+  6. So has a resource that a reader repaired: the readers put a cel or a
+  palette of their own in the place of some damaged data and log a warning,
+  and such a row would show damaged data as good data.
+- A table that cannot be written makes the exit code 9.
 
 ## 5. Where compiled output goes
 
@@ -1256,8 +1472,9 @@ exception).
 1. Parse the arguments. A usage error exits with 2 before `scic` opens the
    game. The `--log` file opens after the usage checks, and it gets their
    errors. When it cannot open, a usage error still gives 2 (else 3).
-2. Make sure that `<data folder>\include\sci.sh` exists (exit 3 if not).
-   The data folder is made absolute, as the game folder is.
+2. For a script command, make sure that `<data folder>\include\sci.sh`
+   exists (exit 3 if not). The data folder is made absolute, as the game
+   folder is.
 3. Install a console log sink (`SetCoreLogSink`): warnings go to stderr,
    and all messages go to the `--log` file if you give one.
 4. Create a `GameSession` with the options (data folder, warn on unused
@@ -1292,9 +1509,9 @@ section 5.3, which section 5.22 uses), plus code 9.
 | 0 | Success |
 | 1 | Internal error (a bug, or an escaped exception) |
 | 2 | Usage error: bad option, unknown script, header file given to `compile` |
-| 3 | Cannot open the game (also a damaged or empty `resource.map`) or start the batch, or the data folder is missing |
+| 3 | Cannot open the game (also a damaged or empty `resource.map`) or start the batch, or the data folder is missing (script commands), or the output folder of `pic export` or `pic import` is missing, or the input folder of `pic import` is missing |
 | 5 | Compile errors |
-| 6 | Partial failure: some scripts failed for a reason that is not a compile error, or the decompiler reported an error in a script that it wrote |
+| 6 | Partial failure: some scripts failed for a reason that is not a compile error, or the decompiler reported an error in a script that it wrote, or a pic of a pic command failed |
 | 7 | Cancelled |
 | 8 | Write refused (`WriteRefused`): for example, a patch file would hide a package write, or a script of the commit used the new `.sco` of a script that the commit does not write (section 4.5) |
 | 9 | Write failed: the commit, the tables, a move, `game.ini`, main's `.sco`, or the return of a `.sco` to its state before the compile failed (any code but `Internal`, `WriteRefused` and `Cancelled`), or a file write of a script failed (`Io`; a `.scd` that cannot be written is a warning) |

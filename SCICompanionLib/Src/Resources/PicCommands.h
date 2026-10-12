@@ -405,7 +405,7 @@ uint8_t IndexFromPatternInfo(const PenStyle *pPenStyle);
 enum DRAWSIZE
 {
 	DS_SMALL	 = 0,   // x,y in one byte  (max 8,8)
-	DS_MEDIUM	= 1,   // x,y in two bytes (max 128,111)
+	DS_MEDIUM	= 1,   // x,y in two bytes (x: -128 to 127, y: -111 to 127)
 	DS_LARGE	 = 2,   // x,y in three bytes (max 319, 189)
 };
 

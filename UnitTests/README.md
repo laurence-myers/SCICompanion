@@ -287,6 +287,18 @@ game data other than the template games.
   the files: a dry run compares a snapshot of the game folder, and a
   compile to the package gives the same bytes as patch files and as the
   GUI's compile.
+- `TestCliPic.cpp` runs the pic commands in the same way (`scic pic list`,
+  `scic pic export` and `scic pic import`, plan section 4.7) on the
+  template games: the SCI1.1 template has VGA pics with one cel, and the
+  SCI0 template has EGA pics, which have no image that `scic` reads. An
+  import test puts the patch files into the game copy and exports again.
+  The class `TestCliPicSci2` calls the parts of the commands that need no
+  game (`Src\Cli\CliPic.h`) with the SCI2 pic files of `Files\Pics`: the
+  template games have no pic with more than one cel. `TestPicSidecar`
+  tests the writer and the reader of the `.toml` file. The tests of the
+  functions under the commands are `TestPicImage.cpp` (on the pic files of
+  `Files\Pics`, SCI2 too) and `TestIndexedBmp.cpp` (the 8-bit BMP reader
+  and writer).
 - `TestDecompileRun.cpp` and `TestCompileBatch.cpp` test the services under
   the commands (`DecompileRun`, `CompileBatch`), with event hooks that throw
   at a chosen point.
@@ -298,7 +310,30 @@ game data other than the template games.
   SCI1.1 template: as it ships (its own sources compile first, as a dry
   run that writes nothing), and with no `game.ini` and no `src\`. Each
   command must exit with 0 and print no internal error, and each summary
-  must name every script that `list` found.
+  must name every script that `list` found. It also runs `scic pic list`,
+  `scic pic export --all` and `scic pic import` on the first copy, with a
+  data folder that has no `include\`: export must write a BMP file and a
+  `.toml` file for each pic with a cel, and import must write a patch file
+  for each of them from the files of export.
+- `Tools\PicRoundTripSweep.ps1` (local use) is the round-trip check of the
+  pic commands on a game, for example one with SCI2 pics (CI has only the
+  SCI1.1 template). It only reads the game folder: all commands run on
+  copies in a run folder. It exports every cel of every pic, imports the
+  files with no change, and exports again from a game copy with the patch
+  files; then it does the same with two palette entries swapped in each
+  image. It checks that each pic has one BMP file for each cel, that
+  import takes each pic that export took, that the game copy reads each
+  pic from its patch file, that an SCI2 patch file has the header
+  `81 81 00 00` and the CRC-32 of the pic (an SCI2 pic changes in place),
+  and that each image comes back byte for byte. It writes `roundtrip.csv`
+  and the logs of each command, and exits with 1 when a check fails or
+  when no pic went through export and import. For a game whose own pixels
+  have palette entries that are not marked as used (import refuses them),
+  give `-AllowUnusedIndices`:
+
+  ```
+  .\UnitTests\Tools\PicRoundTripSweep.ps1 -Game <a copy of the game folder> -Work I:\tmp\pic-sweep
+  ```
 - `Tools\CliCorpusSweep.ps1` (local use) runs the same three commands on
   copies of a game library, and writes a CSV of the exit codes, error
   counts, error codes and times:

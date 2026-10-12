@@ -220,6 +220,105 @@ namespace cli
     // batch cannot start (the code of ExitCodeForStartError: 1, 2, 3, 7 or 8).
     sci::Result<ExitCode> RunScriptCompile(GameSession &session, const ScriptCompileOptions &options, const CommonOptions &common, CliOutput &output);
 
+    // scic pic list (plan section 4.7).
+    struct PicListOptions
+    {
+        std::string gameFolder;
+        // Numbers and ranges (100-199); empty: every pic.
+        std::vector<std::string> pics;
+        std::string format = "text";
+    };
+
+    // The first line of the tsv table of pic list: the names of its columns.
+    extern const char *const PicListTsvHeader;
+
+    // Prints a row for each pic: its format and size, its cels, the cel with
+    // the largest area (the background), where the pic comes from, its size
+    // in bytes and its CRC-32, and the palette entries that its pixels and
+    // its palette have. A pic of a format with no image that scic reads
+    // (ega, vga1) gets a row with no cels. It writes nothing. Success, or
+    // PartialFailure when a pic cannot be read (its row has the error).
+    // Fails for a selector that is not a number or a range, and for a pic
+    // that the game does not have (Usage), and after Ctrl+C (Cancelled).
+    sci::Result<ExitCode> RunPicList(GameSession &session, const PicListOptions &options, CliOutput &output);
+
+    // scic pic export (plan section 4.7).
+    struct PicExportOptions
+    {
+        std::string gameFolder;
+        // Numbers and ranges (100-199), or all.
+        std::vector<std::string> pics;
+        bool all = false;
+        std::string outDir;
+        std::string cel = "background";     // background or all
+    };
+
+    // Writes, for each pic, its cels as 8-bit BMP files and a .toml file
+    // (PicSidecar.h) into the output folder: <pic>.bmp is the background cel,
+    // and with --cel all each other cel is <pic>.cel<index>.bmp. The pixels
+    // of a file are the bytes of the cel, and its colour table is the palette
+    // of the pic over palette 999 of the game. The files of a pic are all
+    // made before the first is written. --dry-run writes nothing and lists
+    // the files. A pic runs in its own exception boundary, so a pic that
+    // fails does not stop the next one. With --all, a pic with no cel is
+    // skipped and counted; a named pic with no cel fails. The exit code: 6
+    // when a pic failed (also a pic of a format or with a cel that scic does
+    // not export), 9 when a file could not be written, 7 after Ctrl+C, 1 for
+    // a bug. Fails when the run cannot start: the output folder does not
+    // exist (NotFound), or it is the game folder or a folder inside it
+    // (Usage), or a selector is bad (Usage).
+    sci::Result<ExitCode> RunPicExport(GameSession &session, const PicExportOptions &options, const CommonOptions &common, CliOutput &output);
+
+    // scic pic import (plan section 4.7).
+    struct PicImportOptions
+    {
+        std::string gameFolder;
+        // One image: the number of the pic, the BMP file, and the cel.
+        std::string pic;
+        std::string image;
+        int cel = 0;
+        // False: the image is the background cel.
+        bool celGiven = false;
+        // Or a folder with the files of scic pic export: each .toml file,
+        // and the BMP files that it names.
+        std::string inDir;
+        std::string palette = "keep";       // keep or replace
+        // "A-B": the palette entries that get the colours of the image.
+        std::string paletteRange;
+        bool allowUnusedIndices = false;
+        std::string outDir;
+    };
+
+    // The entries of a --palette-range text ("80-235": two numbers of 0 to
+    // 255, the first not more than the second). False for another text.
+    bool ParsePaletteRange(const std::string &text, int &first, int &last);
+
+    // Puts the pixels of 8-bit BMP files into cels of pics, and writes each
+    // pic as a patch file into the output folder (never into the game). An
+    // SCI2 pic changes in place: only the pixels of the cels change, and with
+    // --palette replace the colours of the palette range, which come from
+    // the colour table of the image. With --in-dir, each .toml file of the
+    // folder gives a pic and the files of its cels; a CRC-32 in it that is
+    // not that of the pic in the game is a warning.
+    //
+    // The checks of a pic, all before its file is written: each image is
+    // 8-bit and not compressed, and has the size of its cel; a pixel has the
+    // skip colour of the cel where the cel has it, and nowhere else; each
+    // other pixel is an entry that the pic or palette 999 marks as used (the
+    // error names the entries; --allow-unused-indices makes it a warning);
+    // the palette range is inside the entries that the pic stores, and the
+    // tables of the images of one pic have the same colours in it.
+    //
+    // A pic runs in its own exception boundary, so a pic that fails does not
+    // stop the next one. --dry-run does all checks and writes nothing. The
+    // exit code: 6 when a pic failed, 9 when a patch file could not be
+    // written, 7 after Ctrl+C, 1 for a bug. Fails when the run cannot start:
+    // the output folder or the input folder does not exist (NotFound), the
+    // output folder is the game folder or a folder inside it, the pic is not
+    // a number of a pic of the game, or the input folder has no .toml file
+    // (Usage).
+    sci::Result<ExitCode> RunPicImport(GameSession &session, const PicImportOptions &options, const CommonOptions &common, CliOutput &output);
+
     // scic dev compare-structure (hidden): the structure of the functions of
     // a folder of decompiled scripts against another decompile.
     struct CompareStructureOptions
@@ -271,6 +370,55 @@ namespace cli
     // "recompiled-unreadable". Fails when the game does not open, or the
     // recompiled folder does not exist (NotFound).
     sci::Result<ExitCode> RunCompareMeaning(const CompareMeaningOptions &options, const std::string &dataFolder, CliOutput &output);
+
+    // Where a folder is, against the game folder.
+    enum class GameFolderPlace
+    {
+        Outside,
+        GameFolder,     // the folder is the game folder
+        Inside,         // the folder is a folder inside the game folder
+    };
+
+    // The folders are compared as files, so another name of a folder (another
+    // case, a short name, a junction) is the same folder. A folder that does
+    // not exist has the place of its first parent that exists.
+    GameFolderPlace PlaceInGameFolder(const std::string &gameFolder, const std::string &folder);
+
+    // scic dev palette-use (hidden): the palette entries of the views and of
+    // the palette resources of a game.
+    struct PaletteUseOptions
+    {
+        std::string gameFolder;
+        std::string outFile;            // empty: stdout
+        // Also the colour of each entry that a palette marks as used.
+        bool colors = false;
+    };
+
+    // The first line of the table of palette-use.
+    extern const char *const PaletteUseHeader;
+
+    // Writes a table (tab-separated) to the out file or stdout, with a row
+    // for each view and then for each palette resource of the game, from the
+    // lowest number: kind (view or palette), number, source (package or
+    // patch), loops, cels, palette_entries (the entries that the palette of
+    // the resource marks as used, as runs: 0-63,80-235), pixel_entries (the
+    // entries of the pixels of the cels of a view, without the transparent
+    // colour of each cel), colors, error. A cell with no value has "-". With
+    // colors, the cell has "entry=rrggbb" for each entry of palette_entries,
+    // with a space between them. Then the count of the rows goes to stderr.
+    //
+    // The used entries of a palette resource, and of a view of SCI1.1 or
+    // SCI2, come from the bytes of the palette (ReadUsedPaletteEntries);
+    // those of another view come from the palette as the reader gives it.
+    //
+    // A resource runs in its own exception boundary. A resource that cannot
+    // be read, and one whose damage a reader repaired with a warning in the
+    // core log, has the error in its row and "-" in its other cells, and
+    // the exit code is 6. The table is the result of the command, so
+    // --dry-run does not stop the write of the out file. Fails when the game
+    // does not open, when the out file is in the game folder (Usage), and
+    // after Ctrl+C (Cancelled).
+    sci::Result<ExitCode> RunPaletteUse(const PaletteUseOptions &options, const std::string &dataFolder, CliOutput &output);
 
     // The full path of a folder or a file, from GetFullPathName: a relative
     // path starts at the current folder, and the case of the path stays. A
