@@ -170,6 +170,30 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   can be a file of the game: the table then takes its place. `scic dev
   palette-use` refuses such a file.
 
+### View commands
+
+- `scic view palette --clear-used` cannot take the mark from an entry in
+  the middle of a palette with 3-byte entries: such a palette has one flag
+  for all its entries, so only its last entries can go (a smaller count).
+  A view that stores entries after the range fails. Of the 42 views of the
+  hi-res LSL6 that mark the entries 80 to 235 and have no pixel there, 8
+  store more: 339, 375, 376, 378, 379 and 3312 store 0 to 247, and 861 and
+  862 store 0 to 255. The tool does not change for them: they get the new
+  colours of their pic (`--colors-from`). No code changes such a palette
+  to 4-byte entries (the resource would grow).
+- The check that a view reads back with the same cels (`SameViewCels`)
+  sees what the reader of the views reads. Palette bytes that are also
+  bytes of the row table of an SCI2 cel, or of a header field that the
+  reader skips, are not found.
+- The reader of the views gives the padding bytes of the rows of a cel of
+  a mirrored loop no value (`SyncCelMirrorState`), so two reads of one view
+  can have other bytes there (30 of the 548 views of the hi-res LSL6 in
+  one run). The pixels are the same. `scic view palette` and `scic dev
+  palette-use` read only the pixels.
+- SCI Companion does not read Sierra's view patches that start with
+  `80 84` (`GetResourceOffsetInFile` takes the data at offset 10; it is at
+  26 + byte 3): issue laurence-myers/SCICompanion#311.
+
 ### The core library (E1)
 
 - A file of `Src\Util` is in the core or in the GUI library by its project
@@ -254,6 +278,23 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   command on a game with SCI2 views has a local run only (the hi-res LSL6:
   548 views, no error); CI has the SCI1.1 template. A view of SCI1 (its
   used entries come from the palette as the reader gives it) has no test.
+- `scic view palette`: the error for a view of SCI1.1 that has the form of
+  an SCI1 view, an internal error of one view (exit 1), an exception while
+  a view is read (the patch file of an earlier run then goes too), a
+  repair that a reader logs while the resource of the view is found and
+  checked (the tests have a repair of the view reader), and a patch file
+  that fails to write after its check (no file with a part of the view
+  stays). The command on a game with SCI2 views has a local run only (4
+  views of the hi-res LSL6: the patch files have other bytes only in the
+  palette, and `scic dev palette-use` reads the game copy with them as
+  expected; a dry run of each action on the 548 views gave no internal
+  error); CI has the SCI1.1 template, and the tests call the functions
+  under the command with views of SCI2 that the view writer makes. No test
+  has a view with a mirrored loop.
+- A patch file of `view palette` on the screen of a game: ScummVM and
+  Sierra's interpreter were not run with one. That a view gives its marked
+  entries to the screen comes from the ScummVM source
+  (`GfxPalette32::mergePalette`, `HunkPalette::toPalette`).
 
 ## Questions for you
 

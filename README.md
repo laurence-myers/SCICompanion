@@ -15,6 +15,11 @@ modernizing the build. Broad highlights since the previous release:
   another tool can change the images. `scic pic import` puts the changed
   images back and writes each pic as a patch file; an SCI2 pic keeps all
   its other bytes.
+* **View palettes from the command line.** `scic view palette` changes the
+  palette of views of SCI1.1 and SCI2 in place, and writes each view as a
+  patch file: new colours for a range of palette entries, from the colour
+  table of a BMP file, or no "used" mark for a range of entries, so that a
+  view does not put its own colours over the new colours of a pic.
 * **Patch files of SCI2 pics that the game can read.** A pic of an SCI2
   game that is saved as a patch file (`.p56`) gets the 4-byte header of
   Sierra's own SCI2 pic patches. Before, it got the 26-byte header of an

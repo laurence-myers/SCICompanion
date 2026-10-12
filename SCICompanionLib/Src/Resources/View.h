@@ -34,7 +34,8 @@ struct Cel
 		this->Stride32 = true;
 	}
 
-	Cel() : Stride32(true) {}
+	// A cel of no size, with the transparent colour 0.
+	Cel() : TransparentColor(0), Stride32(true) {}
 	Cel(const Cel &cel) = default;
 	Cel &operator=(const Cel &cel) = default;
 

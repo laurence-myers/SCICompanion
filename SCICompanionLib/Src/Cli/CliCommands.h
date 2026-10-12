@@ -319,6 +319,56 @@ namespace cli
     // (Usage).
     sci::Result<ExitCode> RunPicImport(GameSession &session, const PicImportOptions &options, const CommonOptions &common, CliOutput &output);
 
+    // scic view palette (plan section 4.9).
+    struct ViewPaletteOptions
+    {
+        std::string gameFolder;
+        // Numbers and ranges (100-199).
+        std::vector<std::string> views;
+        // One of two actions. The first: an 8-bit BMP file whose colour table
+        // has the new colours of the entries of the range.
+        std::string colorsFrom;
+        // The second: the entries of the range lose their "used" mark.
+        bool clearUsed = false;
+        // "A-B": the palette entries of the action.
+        std::string paletteRange;
+        std::string outDir;
+    };
+
+    // Changes the palette of each view in place, and writes the view as a
+    // patch file into the output folder (never into the game). The source is
+    // the most recent resource of the view. The new bytes are the bytes of
+    // the view, with other values only in its palette:
+    //  - colorsFrom: each entry of the range that the palette stores gets the
+    //    colour of the colour table of the BMP file (ReplaceViewPaletteColors).
+    //    An entry that the palette does not mark as used is a warning.
+    //  - clearUsed: the entries of the range lose their "used" mark
+    //    (ClearViewPaletteMarks): the flag bytes of 4-byte entries become 0,
+    //    and a palette with one flag for all its entries stores fewer
+    //    entries. A view with a pixel in an entry that loses its mark fails.
+    // A view with no change (no byte of it would be another byte) is a
+    // warning, and gets no patch file.
+    //
+    // After a run, the output folder has the patch file of a named view only
+    // when this run changed the view: a view that fails, or that has no
+    // change, loses the patch file that an earlier run left there (a
+    // message says so), and a write that fails leaves no file.
+    //
+    // A view runs in its own exception boundary, so a view that fails does
+    // not stop the next one: a view of a game version that is not SCI1.1 or
+    // SCI2, a view with no palette, a view that a reader repaired (the
+    // repair is the reason, also when the change fails), and a view that
+    // fails a check of its action. --dry-run does all checks, writes and
+    // removes nothing, and says what a run would write and remove. The exit
+    // code: 6 when a view failed, 9 when a patch file could not be written
+    // or removed, 7 after Ctrl+C, 1 for a bug. Fails when the
+    // run cannot start: the output folder does not exist (NotFound), or it
+    // is the game folder or a folder inside it (Usage), a selector or the
+    // range is bad (Usage), the BMP file cannot be read (the errors of
+    // ReadIndexedBmpFile), or its colour table does not have the entries of
+    // the range (Usage).
+    sci::Result<ExitCode> RunViewPalette(GameSession &session, const ViewPaletteOptions &options, const CommonOptions &common, CliOutput &output);
+
     // scic dev compare-structure (hidden): the structure of the functions of
     // a folder of decompiled scripts against another decompile.
     struct CompareStructureOptions

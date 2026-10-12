@@ -299,6 +299,15 @@ game data other than the template games.
   functions under the commands are `TestPicImage.cpp` (on the pic files of
   `Files\Pics`, SCI2 too) and `TestIndexedBmp.cpp` (the 8-bit BMP reader
   and writer).
+- `TestCliView.cpp` runs `scic view palette` (plan section 4.9) on the
+  SCI1.1 template. The views of the template have no palette that marks an
+  entry, so each test makes its views and puts them into the game copy as
+  patch files: a view with 4-byte palette entries from the view writer,
+  and the same view with its palette changed in place to 3-byte entries.
+  The tests compare the bytes of each patch file with the bytes of the
+  view, and read the game copy with the patch file through `scic dev
+  palette-use`. The class `TestViewPalette` calls the functions under the
+  command (`Src\Resources\ViewPalette.h`) with views of SCI1.1 and of SCI2.
 - `TestDecompileRun.cpp` and `TestCompileBatch.cpp` test the services under
   the commands (`DecompileRun`, `CompileBatch`), with event hooks that throw
   at a chosen point.
