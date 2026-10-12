@@ -230,6 +230,7 @@
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliHost.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliDevCommands.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliPicCommands.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Cli\CliResources.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliScriptCommands.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliViewCommands.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Cli\ExitCodes.cpp" />

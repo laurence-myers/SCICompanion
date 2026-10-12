@@ -345,16 +345,23 @@ namespace cli
     //  - clearUsed: the entries of the range lose their "used" mark
     //    (ClearViewPaletteMarks): the flag bytes of 4-byte entries become 0,
     //    and a palette with one flag for all its entries stores fewer
-    //    entries. A view with a pixel in an entry that changes fails.
-    // A view with no entry to change is a warning, and its patch file has
-    // the bytes of the view.
+    //    entries. A view with a pixel in an entry that loses its mark fails.
+    // A view with no change (no byte of it would be another byte) is a
+    // warning, and gets no patch file.
+    //
+    // After a run, the output folder has the patch file of a named view only
+    // when this run changed the view: a view that fails, or that has no
+    // change, loses the patch file that an earlier run left there (a
+    // message says so), and a write that fails leaves no file.
     //
     // A view runs in its own exception boundary, so a view that fails does
     // not stop the next one: a view of a game version that is not SCI1.1 or
-    // SCI2, a view with no palette, a view that a reader repaired, and a
-    // view that fails a check of its action. --dry-run does all checks and
-    // writes nothing. The exit code: 6 when a view failed, 9 when a patch
-    // file could not be written, 7 after Ctrl+C, 1 for a bug. Fails when the
+    // SCI2, a view with no palette, a view that a reader repaired (the
+    // repair is the reason, also when the change fails), and a view that
+    // fails a check of its action. --dry-run does all checks, writes and
+    // removes nothing, and says what a run would write and remove. The exit
+    // code: 6 when a view failed, 9 when a patch file could not be written
+    // or removed, 7 after Ctrl+C, 1 for a bug. Fails when the
     // run cannot start: the output folder does not exist (NotFound), or it
     // is the game folder or a folder inside it (Usage), a selector or the
     // range is bad (Usage), the BMP file cannot be read (the errors of

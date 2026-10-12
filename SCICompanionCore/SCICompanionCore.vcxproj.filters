@@ -43,6 +43,9 @@
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliPicCommands.cpp">
       <Filter>Source Files\Cli</Filter>
     </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Cli\CliResources.cpp">
+      <Filter>Source Files\Cli</Filter>
+    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Cli\CliScriptCommands.cpp">
       <Filter>Source Files\Cli</Filter>
     </ClCompile>

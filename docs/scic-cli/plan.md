@@ -1184,40 +1184,61 @@ The two actions (one for each run):
   one of two forms:
   - 4-byte entries, each with its own flag byte: the flag byte of each
     stored entry of the range becomes 0.
-  - 3-byte entries, with one flag byte in the header for all of them: an
+  - 3-byte entries, with one flag byte in the header for all of them. With
+    the flag 0 the palette marks no entry, and nothing changes. Else an
     entry loses its mark only when the palette stores fewer entries. The
     count of the stored entries in the header becomes smaller, so that the
     first entry of the range is the first that the palette does not store.
-    The bytes of the entries after the new count stay in the resource; a
-    reader does not read them. So the range must reach the last stored
-    entry: a view that stores the entries 0 to 247 fails with the range
-    `80-235`, and the error says why.
+    The size word of the header (at offset 13: 22 + the count x 3) gets
+    the value of the new count; a size word that has another value keeps
+    it, and `-v` says so. No reader needs the word (ScummVM `HunkPalette`,
+    and `PalAddr` and `SOLPalette::operator=` of Sierra's SCI32 and
+    `CopyNew2OldPalette` of SCI16, read the count), but the palette stays
+    as the palettes of the games are. The bytes of the entries after the
+    new count stay in the resource; a reader does not read them. So the
+    range must reach the last stored entry: a view that stores the entries
+    0 to 247 fails with the range `80-235`, and the error says why.
 
   A view with a pixel (not the transparent colour of its cel) in an entry
-  that would change fails: the view would lose the colour of that pixel.
+  that would lose its mark fails: the view would lose the colour of that
+  pixel. A pixel in an entry of the range that has no mark is no error.
 
 How a view changes:
 
 - In place: the patch file has the bytes of the view resource, with other
   values only in the palette bytes of the action: the colours, the flag
-  bytes, or the 2 bytes of the count. The size of the resource and the
-  bytes of the cels stay. After the change the view must read back with the
-  same cels (`Src\Resources\ViewPalette.h`).
-- A view with no entry to change (the palette stores no entry of the range,
-  or it marks none of them) gives a warning, and its patch file has the
-  bytes of the view.
+  bytes, or the 2 bytes of the count and the 2 bytes of the size word. The
+  size of the resource and the bytes of the cels stay. After the change
+  the view must read back with the same cels
+  (`Src\Resources\ViewPalette.h`). That check sees what the reader of the
+  views reads: the size, the placement, the transparent colour and the
+  pixels of each cel. It does not see palette bytes that are also bytes of
+  the row table of an SCI2 cel, or of a header field that the reader skips.
+- A view with no change gets no patch file, and gives a warning. For
+  `--colors-from` that is a palette that stores no entry of the range, or
+  whose entries of the range have the colours of the file (the marks do
+  not matter). For `--clear-used` it is a palette with no mark in the
+  range: no stored entry there, 4-byte entries with the flag 0, or 3-byte
+  entries with the flag 0 in the header.
+- After a run, `--out-dir` has `<view>.v56` for a named view only when this
+  run changed that view. So a view that fails, or that has no change, also
+  loses the `<view>.v56` that an earlier run left in `--out-dir`, and a
+  message says so (`Removed ... of an earlier run: view 430 has no
+  change`). A write that fails leaves no file with a part of the view. The
+  files of views that the run does not name stay.
 - The patch file is `<view>.v56` in `--out-dir`. It starts with `80 80` and
   24 bytes of 0, and the view comes at offset 26. That is the header that
   SCI Companion writes for a view of SCI1.1 and of SCI2. ScummVM takes the
   data of a view patch of SCI1.1 or later at offset 26 plus the value of
-  byte 3 (`ResourceManager::processPatch`). Sierra's own view patches of
-  SCI1.1 and SCI2 (Space Quest 5, the CD versions of Gabriel Knight 1 and
-  Police Quest 4) start with `80 80 00 00` and have the view at offset 26;
-  their bytes 4 to 25 are not all 0, and ScummVM does not read them.
-  Sierra's later view patches (Phantasmagoria 1 and 2, Gabriel Knight 2,
-  Lighthouse, Police Quest: SWAT) start with `80 84 00`, then a count in
-  byte 3 and that many bytes of a file name before the 22 bytes; ScummVM
-  reads both forms.
+  byte 3 (`ResourceManager::processPatch`), and Sierra's interpreters read
+  only byte 0 and byte 3 of the header (`ResView::SeekToData` in
+  `RESTYPE.CPP` of SCI32, and `VOLLOAD.C` of SCI16). Sierra's own view
+  patches of SCI1.1 and SCI2 (Space Quest 5, the CD versions of Gabriel
+  Knight 1 and Police Quest 4) start with `80 80 00 00` and have the view
+  at offset 26; their bytes 4 to 25 are not all 0. Sierra's later view
+  patches (Phantasmagoria 1 and 2, Gabriel Knight 2, Lighthouse, Police
+  Quest: SWAT) start with `80 84 00`, then a count in byte 3 and that many
+  bytes of a file name before the 22 bytes; ScummVM reads both forms.
 
 Rules:
 
@@ -1231,18 +1252,24 @@ Rules:
   have the entries of the range (exit 2).
 - Each view runs in its own exception boundary: a view that fails is an
   error line (`scic: error: view 430: ...`), it gets no patch file, and the
-  next view goes on. A view that failed makes the exit code 6: a view of a
-  game that is not SCI1.1 or SCI2 (`Unsupported`), a view with no palette,
-  a view that fails a check of `--clear-used`, a view that cannot be read,
-  and a view that its reader repaired (the reader logs a warning and puts a
-  cel of its own in the place of damaged data).
+  next view goes on. A view that failed makes the exit code 6. The view
+  itself does not allow the change (`Unsupported`): a view of a game that
+  is not SCI1.1 or SCI2, a view with no palette, a view with a pixel in an
+  entry that would lose its mark, and a palette with one flag for all its
+  entries that stores entries after the range. Or the view cannot be read
+  (`Format`), which is also the error of a view that its reader repaired
+  (the reader logs a warning and puts a cel of its own in the place of
+  damaged data): the repair is then the reason, also when the change
+  fails.
 - A patch file that is there already must open for writing before the
-  write. A patch file that cannot be written makes the exit code 9.
-- `--dry-run` does all checks, writes nothing, and lists the patch files
-  (`Would write ...`).
+  write. A patch file that cannot be written, or a patch file of an
+  earlier run that cannot be removed, makes the exit code 9.
+- `--dry-run` does all checks, writes and removes nothing, and lists the
+  patch files (`Would write ...`, `Would remove ...`).
 - `-v` shows what changed in each view: `view 631: its palette stores 0-79
   (before: 0-235), so the entries 80-235 have no mark`.
-- The summary: `Wrote 41 of 42 views into <folder>; 1 view failed.`
+- The summary: `Wrote 40 of 42 views into <folder>; 1 view with no change;
+  1 view failed.`
 
 ## 5. Where compiled output goes
 
@@ -1610,7 +1637,7 @@ section 5.3, which section 5.22 uses), plus code 9.
 | 6 | Partial failure: some scripts failed for a reason that is not a compile error, or the decompiler reported an error in a script that it wrote, or a pic of a pic command failed, or a view of `view palette` failed |
 | 7 | Cancelled |
 | 8 | Write refused (`WriteRefused`): for example, a patch file would hide a package write, or a script of the commit used the new `.sco` of a script that the commit does not write (section 4.5) |
-| 9 | Write failed: the commit, the tables, a move, `game.ini`, main's `.sco`, or the return of a `.sco` to its state before the compile failed (any code but `Internal`, `WriteRefused` and `Cancelled`), or a file write of a script failed (`Io`; a `.scd` that cannot be written is a warning) |
+| 9 | Write failed: the commit, the tables, a move, `game.ini`, main's `.sco`, or the return of a `.sco` to its state before the compile failed (any code but `Internal`, `WriteRefused` and `Cancelled`), or a file write of a script failed (`Io`; a `.scd` that cannot be written is a warning), or a file of `pic export`, a patch file of `pic import` or of `view palette`, or the table of a `dev` command could not be written, or a patch file of an earlier run of `view palette` could not be removed |
 
 The mapping is one function in `Src\Cli\`, with a unit test for each case:
 

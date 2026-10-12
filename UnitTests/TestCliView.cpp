@@ -78,7 +78,9 @@ namespace
     // palette of 256 entries of 4 bytes. The cel has the transparent colour
     // 0. The palette marks the entries 60 to 99 (flag 1) and 200 (flag 3) as
     // used, and entry e has OldColor(e). With no palette, the view has none.
-    std::vector<uint8_t> MakeViewBytes(const SCIVersion &version, const std::vector<uint8_t> &pixels = { 64, 65, 0, 0, 70, 64 }, bool withPalette = true)
+    // With an empty loop, the view has a second loop with no cel: the reader
+    // of the views logs a warning and gives that loop a cel.
+    std::vector<uint8_t> MakeViewBytes(const SCIVersion &version, const std::vector<uint8_t> &pixels = { 64, 65, 0, 0, 70, 64 }, bool withPalette = true, bool withEmptyLoop = false)
     {
         std::unique_ptr<ResourceEntity> view(CreateViewResource(version));
         RasterComponent &raster = view->GetComponent<RasterComponent>();
@@ -98,6 +100,10 @@ namespace
         Loop loop;
         loop.Cels.push_back(cel);
         raster.Loops.push_back(loop);
+        if (withEmptyLoop)
+        {
+            raster.Loops.push_back(Loop());
+        }
         if (withPalette)
         {
             view->AddComponent(std::make_unique<PaletteComponent>());
@@ -125,24 +131,51 @@ namespace
         return offset;
     }
 
-    // Gives the palette of the view of MakeViewBytes the form with 3-byte
-    // entries, in place: it stores the entries first to first + count - 1,
-    // and its header has the flag of all of them. Entry e keeps OldColor(e).
-    // The bytes of the old palette after the new entries get 0xee: they are
-    // not a part of the palette.
-    void UseThreeByteEntries(std::vector<uint8_t> &view, int first, int count, uint8_t flag)
+    // The size word of a palette (at offset 13 of its header): the 22 bytes
+    // of the header after the word, and the entries.
+    uint16_t SizeWordFor(int count, int entrySize)
+    {
+        return (uint16_t)(22 + (count * entrySize));
+    }
+
+    uint16_t SizeWordOf(const std::vector<uint8_t> &view, size_t palette)
+    {
+        return (uint16_t)(view[palette + 13] | (view[palette + 14] << 8));
+    }
+
+    void SetSizeWord(std::vector<uint8_t> &view, size_t palette, uint16_t value)
+    {
+        view[palette + 13] = (uint8_t)(value & 0xff);
+        view[palette + 14] = (uint8_t)(value >> 8);
+    }
+
+    // Gives the palette of the view of MakeViewBytes other stored entries, in
+    // place: the entries first to first + count - 1, of 3 bytes (the header
+    // has the flag of all of them) or of 4 bytes (each entry keeps its flag:
+    // 1 for 60 to 99, 3 for 200, else 0). Entry e keeps OldColor(e), and the
+    // size word of the header gets the value of the entries. The bytes of
+    // the old palette after the new entries get 0xee: they are not a part of
+    // the palette.
+    void StoreEntries(std::vector<uint8_t> &view, int first, int count, bool threeByte, uint8_t headerFlag)
     {
         const size_t palette = PaletteOffsetOf(view);
+        const int entrySize = threeByte ? 3 : 4;
+        SetSizeWord(view, palette, SizeWordFor(count, entrySize));
         view[palette + 25] = (uint8_t)first;
         view[palette + 29] = (uint8_t)(count & 0xff);
         view[palette + 30] = (uint8_t)(count >> 8);
-        view[palette + 31] = flag;
-        view[palette + 32] = 1;
+        view[palette + 31] = headerFlag;
+        view[palette + 32] = threeByte ? 1 : 0;
         std::fill(view.begin() + palette + PaletteHeaderSize, view.begin() + palette + WrittenPaletteSize, (uint8_t)0xee);
         for (int i = 0; i < count; i++)
         {
-            const IndexedBmpColor color = OldColor(first + i);
-            uint8_t *bytes = &view[palette + PaletteHeaderSize + ((size_t)i * 3)];
+            const int entry = first + i;
+            const IndexedBmpColor color = OldColor(entry);
+            uint8_t *bytes = &view[palette + PaletteHeaderSize + ((size_t)i * entrySize)];
+            if (!threeByte)
+            {
+                *bytes++ = ((entry >= 60) && (entry <= 99)) ? 1 : ((entry == 200) ? 3 : 0);
+            }
             bytes[0] = color.red;
             bytes[1] = color.green;
             bytes[2] = color.blue;
@@ -150,10 +183,19 @@ namespace
     }
 
     // The view of MakeViewBytes with 3-byte entries.
-    std::vector<uint8_t> MakeThreeByteViewBytes(const SCIVersion &version, int first, int count, uint8_t flag, const std::vector<uint8_t> &pixels = { 64, 65, 0, 0, 70, 64 })
+    std::vector<uint8_t> MakeThreeByteViewBytes(const SCIVersion &version, int first, int count, uint8_t flag, const std::vector<uint8_t> &pixels = { 64, 65, 0, 0, 70, 64 }, bool withEmptyLoop = false)
     {
-        std::vector<uint8_t> view = MakeViewBytes(version, pixels);
-        UseThreeByteEntries(view, first, count, flag);
+        std::vector<uint8_t> view = MakeViewBytes(version, pixels, true, withEmptyLoop);
+        StoreEntries(view, first, count, true, flag);
+        return view;
+    }
+
+    // The view of MakeViewBytes with 4-byte entries that do not start at
+    // entry 0.
+    std::vector<uint8_t> MakeFourByteViewBytes(const SCIVersion &version, int first, int count)
+    {
+        std::vector<uint8_t> view = MakeViewBytes(version);
+        StoreEntries(view, first, count, false, 0);
         return view;
     }
 
@@ -342,6 +384,61 @@ namespace UnitTests
                 AssertOk(edit, test.name);
                 Assert::IsTrue(view == edit->data, Wide(std::string("the bytes of the view: ") + test.name).c_str());
                 Assert::IsFalse(edit->AnyEntry());
+                Assert::IsFalse(edit->changed);
+            }
+        }
+
+        // The palette stores the entries 60 to 99, and the range starts
+        // before entry 60: the stored entries of the range change.
+        TEST_METHOD(ReplaceColors_RangeThatStartsBeforeTheFirstStoredEntry_ChangesTheStoredEntries)
+        {
+            for (const VersionCase &test : Versions())
+            {
+                const std::vector<uint8_t> view = MakeThreeByteViewBytes(test.version, 60, 40, 1);
+                const size_t entries = PaletteOffsetOf(view) + PaletteHeaderSize;
+
+                sci::Result<ViewPaletteEdit> edit = ReplaceViewPaletteColors(test.version, view, 40, 70, NewColors());
+
+                AssertOk(edit, test.name);
+                std::vector<uint8_t> expected = view;
+                for (int entry = 60; entry <= 70; entry++)
+                {
+                    const IndexedBmpColor color = NewColor(entry);
+                    expected[entries + ((size_t)(entry - 60) * 3)] = color.red;
+                    expected[entries + ((size_t)(entry - 60) * 3) + 1] = color.green;
+                    expected[entries + ((size_t)(entry - 60) * 3) + 2] = color.blue;
+                }
+                Assert::IsTrue(expected == edit->data, Wide(std::string("the bytes of the view: ") + test.name).c_str());
+                Assert::AreEqual((size_t)33, DifferentBytes(view, edit->data), Wide(test.name).c_str());
+                Assert::AreEqual(std::string("60-70"), RunsOf(edit->entries));
+                Assert::IsTrue(edit->changed);
+            }
+        }
+
+        // A view whose cel has its pixel bytes in the palette: the bytes of
+        // the colours of the entries 80 and 81 are also pixels of the cel.
+        // New colours for these entries would change the cel.
+        TEST_METHOD(ReplaceColors_CelWithBytesOfThePalette_IsUnsupported)
+        {
+            for (const VersionCase &test : Versions())
+            {
+                std::vector<uint8_t> view = MakeViewBytes(test.version);
+                const size_t palette = PaletteOffsetOf(view);
+                // The view has 1 loop: its header is after the header of the
+                // view (18 bytes), and has the offset of the header of its
+                // cel at 12. The header of a cel has the offset of its pixel
+                // bytes at 28.
+                const size_t celHeader = view[18 + 12] | (view[18 + 13] << 8);
+                Assert::AreEqual((size_t)34, celHeader, L"setup: the header of the cel is after the header of the loop");
+                const size_t colorsOf80 = palette + PaletteHeaderSize + ((size_t)80 * 4) + 1;
+                view[celHeader + 28] = (uint8_t)(colorsOf80 & 0xff);
+                view[celHeader + 29] = (uint8_t)((colorsOf80 >> 8) & 0xff);
+                view[celHeader + 30] = 0;
+                view[celHeader + 31] = 0;
+
+                // The colours of other entries are not bytes of the cel.
+                AssertOk(ReplaceViewPaletteColors(test.version, view, 100, 120, NewColors()), test.name);
+                AssertFails(ReplaceViewPaletteColors(test.version, view, 80, 81, NewColors()), sci::ErrorCode::Unsupported, "a cel and the palette have bytes in common");
             }
         }
 
@@ -389,26 +486,128 @@ namespace UnitTests
 
                     AssertOk(edit, test.name);
                     // The same bytes, but the count of the stored entries
-                    // (236, then 80): the first of its 2 bytes.
+                    // (236, then 80: the first of its 2 bytes) and the size
+                    // word (22 + 236 x 3 = 730, then 22 + 80 x 3 = 262: 2
+                    // bytes).
+                    Assert::AreEqual(730, (int)SizeWordOf(view, palette), L"setup: the size word of the palette");
                     std::vector<uint8_t> expected = view;
                     expected[palette + 29] = 80;
+                    SetSizeWord(expected, palette, 262);
                     Assert::IsTrue(expected == edit->data, Wide(std::string("the bytes of the view: ") + test.name).c_str());
-                    Assert::AreEqual((size_t)1, DifferentBytes(view, edit->data), Wide(test.name).c_str());
+                    Assert::AreEqual((size_t)3, DifferentBytes(view, edit->data), Wide(test.name).c_str());
                     Assert::AreEqual(std::string("80-235"), RunsOf(edit->entries));
                     Assert::AreEqual(std::string("0-79"), UsedRunsOf(edit->data));
                     Assert::AreEqual(236, edit->before.entryCount);
                     Assert::AreEqual(80, edit->after.entryCount);
+                    Assert::IsFalse(edit->sizeWordKept);
+                    Assert::IsTrue(edit->changed);
+                }
+
+                // A size word that does not have the value of the entries
+                // keeps its value: only the count changes.
+                for (uint16_t word : { (uint16_t)0, (uint16_t)731, (uint16_t)1046 })
+                {
+                    std::vector<uint8_t> otherWord = view;
+                    SetSizeWord(otherWord, palette, word);
+
+                    sci::Result<ViewPaletteEdit> edit = ClearViewPaletteMarks(test.version, otherWord, 80, 235);
+
+                    AssertOk(edit, test.name);
+                    std::vector<uint8_t> expected = otherWord;
+                    expected[palette + 29] = 80;
+                    Assert::IsTrue(expected == edit->data, Wide(fmt::format("the bytes of the view with the size word {0}: {1}", word, test.name)).c_str());
+                    Assert::AreEqual((size_t)1, DifferentBytes(otherWord, edit->data), Wide(test.name).c_str());
+                    Assert::IsTrue(edit->sizeWordKept);
                 }
             }
         }
 
-        TEST_METHOD(ClearMarks_ThreeByteEntries_RangeNotAtTheEnd_IsUsage)
+        // The palette stores the entries 60 to 99: the count that stays is
+        // the count of the entries before the range, not the first entry of
+        // the range.
+        TEST_METHOD(ClearMarks_ThreeByteEntries_FirstStoredEntryAbove0_StoresFewerEntries)
+        {
+            for (const VersionCase &test : Versions())
+            {
+                const std::vector<uint8_t> view = MakeThreeByteViewBytes(test.version, 60, 40, 1);
+                const size_t palette = PaletteOffsetOf(view);
+
+                sci::Result<ViewPaletteEdit> edit = ClearViewPaletteMarks(test.version, view, 80, 99);
+
+                AssertOk(edit, test.name);
+                // The count (40, then 20) and the size word (22 + 40 x 3 =
+                // 142, then 22 + 20 x 3 = 82: 1 byte).
+                std::vector<uint8_t> expected = view;
+                expected[palette + 29] = 20;
+                SetSizeWord(expected, palette, 82);
+                Assert::IsTrue(expected == edit->data, Wide(std::string("the bytes of the view: ") + test.name).c_str());
+                Assert::AreEqual((size_t)2, DifferentBytes(view, edit->data), Wide(test.name).c_str());
+                Assert::AreEqual(std::string("80-99"), RunsOf(edit->entries));
+                Assert::AreEqual(std::string("60-79"), UsedRunsOf(edit->data));
+                Assert::AreEqual(20, edit->after.entryCount);
+            }
+        }
+
+        // The palette stores the entries 40 to 139 with 4 bytes each: the
+        // flag byte of an entry is at its place after the first stored entry.
+        TEST_METHOD(ClearMarks_FourByteEntries_FirstStoredEntryAbove0_ClearsTheFlagBytesOfTheRange)
+        {
+            for (const VersionCase &test : Versions())
+            {
+                const std::vector<uint8_t> view = MakeFourByteViewBytes(test.version, 40, 100);
+                const size_t entries = PaletteOffsetOf(view) + PaletteHeaderSize;
+                Assert::AreEqual(std::string("60-99"), UsedRunsOf(view), L"setup: the marks of the view");
+
+                sci::Result<ViewPaletteEdit> edit = ClearViewPaletteMarks(test.version, view, 80, 120);
+
+                AssertOk(edit, test.name);
+                std::vector<uint8_t> expected = view;
+                for (int entry = 80; entry <= 99; entry++)
+                {
+                    expected[entries + ((size_t)(entry - 40) * 4)] = 0;
+                }
+                Assert::IsTrue(expected == edit->data, Wide(std::string("the bytes of the view: ") + test.name).c_str());
+                Assert::AreEqual((size_t)20, DifferentBytes(view, edit->data), Wide(test.name).c_str());
+                Assert::AreEqual(std::string("80-99"), RunsOf(edit->entries));
+                Assert::AreEqual(std::string("60-79"), UsedRunsOf(edit->data));
+            }
+        }
+
+        // The flag 0 in the header marks no 3-byte entry: no entry can lose
+        // a mark, so the view does not change, a range that ends before the
+        // last stored entry is no error, and a pixel in the range is no
+        // error.
+        TEST_METHOD(ClearMarks_ThreeByteEntries_FlagOfTheHeaderIs0_ChangesNothing)
+        {
+            for (const VersionCase &test : Versions())
+            {
+                const std::vector<uint8_t> view = MakeThreeByteViewBytes(test.version, 0, 236, 0);
+                Assert::AreEqual(std::string(""), UsedRunsOf(view), L"setup: the palette marks no entry");
+
+                // The pixels of the cel have the entries 64, 65 and 70.
+                for (const auto &range : { std::make_pair(80, 235), std::make_pair(80, 200), std::make_pair(60, 235), std::make_pair(0, 255) })
+                {
+                    sci::Result<ViewPaletteEdit> edit = ClearViewPaletteMarks(test.version, view, range.first, range.second);
+
+                    AssertOk(edit, fmt::format("{0}: {1}-{2}", test.name, range.first, range.second));
+                    Assert::IsTrue(view == edit->data, Wide(fmt::format("the bytes of the view: {0}: {1}-{2}", test.name, range.first, range.second)).c_str());
+                    Assert::IsFalse(edit->AnyEntry());
+                    Assert::IsFalse(edit->changed);
+                    Assert::AreEqual(236, edit->after.entryCount);
+                }
+            }
+        }
+
+        TEST_METHOD(ClearMarks_ThreeByteEntries_RangeNotAtTheEnd_IsUnsupported)
         {
             for (const VersionCase &test : Versions())
             {
                 const std::vector<uint8_t> view = MakeThreeByteViewBytes(test.version, 0, 236, 1);
 
-                AssertFails(ClearViewPaletteMarks(test.version, view, 80, 200), sci::ErrorCode::Usage, "the range 80-200 does not reach the last stored entry (235)");
+                AssertFails(ClearViewPaletteMarks(test.version, view, 80, 200), sci::ErrorCode::Unsupported, "the range 80-200 does not reach the last stored entry (235)");
+                // The last stored entry is 235: a range that ends at 234
+                // leaves it.
+                AssertFails(ClearViewPaletteMarks(test.version, view, 80, 234), sci::ErrorCode::Unsupported, "the range 80-234 does not reach the last stored entry (235)");
 
                 // A range with no stored entry changes nothing.
                 const std::vector<uint8_t> few = MakeThreeByteViewBytes(test.version, 0, 80, 1);
@@ -419,18 +618,18 @@ namespace UnitTests
             }
         }
 
-        TEST_METHOD(ClearMarks_PixelWithAnEntryThatLosesItsMark_IsUsage)
+        TEST_METHOD(ClearMarks_PixelWithAnEntryThatLosesItsMark_IsUnsupported)
         {
             for (const VersionCase &test : Versions())
             {
                 // The pixels of the cel have the entries 64, 65 and 70 (0 is
                 // the transparent colour).
                 const std::vector<uint8_t> fourByte = MakeViewBytes(test.version);
-                AssertFails(ClearViewPaletteMarks(test.version, fourByte, 60, 70), sci::ErrorCode::Usage, "pixels of the view have the entries 64-65,70");
-                AssertFails(ClearViewPaletteMarks(test.version, fourByte, 70, 235), sci::ErrorCode::Usage, "pixels of the view have the entries 70,");
+                AssertFails(ClearViewPaletteMarks(test.version, fourByte, 60, 70), sci::ErrorCode::Unsupported, "pixels of the view have the entries 64-65,70");
+                AssertFails(ClearViewPaletteMarks(test.version, fourByte, 70, 235), sci::ErrorCode::Unsupported, "pixels of the view have the entries 70,");
 
                 const std::vector<uint8_t> threeByte = MakeThreeByteViewBytes(test.version, 0, 236, 1);
-                AssertFails(ClearViewPaletteMarks(test.version, threeByte, 65, 235), sci::ErrorCode::Usage, "pixels of the view have the entries 65,70");
+                AssertFails(ClearViewPaletteMarks(test.version, threeByte, 65, 235), sci::ErrorCode::Unsupported, "pixels of the view have the entries 65,70");
 
                 // A pixel with an entry of the range that has no mark loses
                 // nothing: the palette of the view does not give its colour.
@@ -455,8 +654,8 @@ namespace UnitTests
             for (const VersionCase &test : Versions())
             {
                 const std::vector<uint8_t> noPalette = MakeViewBytes(test.version, { 64, 65, 0, 0, 70, 64 }, false);
-                AssertFails(ReplaceViewPaletteColors(test.version, noPalette, 80, 90, NewColors()), sci::ErrorCode::Usage, "the view has no palette");
-                AssertFails(ClearViewPaletteMarks(test.version, noPalette, 80, 90), sci::ErrorCode::Usage, "the view has no palette");
+                AssertFails(ReplaceViewPaletteColors(test.version, noPalette, 80, 90, NewColors()), sci::ErrorCode::Unsupported, "the view has no palette");
+                AssertFails(ClearViewPaletteMarks(test.version, noPalette, 80, 90), sci::ErrorCode::Unsupported, "the view has no palette");
 
                 // Data that is not a view.
                 const std::vector<uint8_t> damaged(100, 0xff);
@@ -476,6 +675,27 @@ namespace UnitTests
             const std::vector<uint8_t> egaBytes(stream.GetInternalPointer(), stream.GetInternalPointer() + stream.GetDataSize());
             AssertFails(ReplaceViewPaletteColors(sciVersion0, egaBytes, 80, 90, NewColors()), sci::ErrorCode::Unsupported, "only a view of SCI1.1 or SCI2 can");
             AssertFails(ClearViewPaletteMarks(sciVersion0, egaBytes, 80, 90), sci::ErrorCode::Unsupported, "only a view of SCI1.1 or SCI2 can");
+        }
+
+        // The reader of the views gives a loop with no cel a new cel: two
+        // reads of one view must give the same cel. The memory of the cel
+        // has other bytes before its constructor runs.
+        TEST_METHOD(Cel_DefaultConstructor_GivesTheTransparentColourTheValue0)
+        {
+            alignas(Cel) unsigned char memory[sizeof(Cel)];
+            memset(memory, 0xcc, sizeof(memory));
+
+            Cel *cel = new (memory) Cel();
+
+            const int transparentColor = cel->TransparentColor;
+            const int width = cel->size.cx;
+            const int height = cel->size.cy;
+            const bool stride32 = cel->Stride32;
+            cel->~Cel();
+            Assert::AreEqual(0, transparentColor);
+            Assert::AreEqual(0, width);
+            Assert::AreEqual(0, height);
+            Assert::IsTrue(stride32);
         }
 
         // The check that a view reads back with the cels that it had.
@@ -529,7 +749,10 @@ namespace UnitTests
                 AssertOk(edit, test.name);
                 Assert::AreEqual(0, edit->after.entryCount);
                 Assert::AreEqual(std::string(""), UsedRunsOf(edit->data));
-                Assert::AreEqual((size_t)1, DifferentBytes(view, edit->data), Wide(test.name).c_str());
+                // The count (236, then 0: 1 byte) and the size word (730,
+                // then 22: 2 bytes).
+                Assert::AreEqual(22, (int)SizeWordOf(edit->data, palette));
+                Assert::AreEqual((size_t)3, DifferentBytes(view, edit->data), Wide(test.name).c_str());
 
                 // With a first byte of 0, a palette with a count of 0 reads
                 // as a palette with no header.
@@ -596,15 +819,20 @@ namespace UnitTests
         }
 
         // Writes a BMP file of 1 pixel whose colour table has NewColor(e) for
-        // each entry e, and gives its path.
-        std::string WriteColorsBmp()
+        // each entry e (or OldColor(e), the colours of the test views), and
+        // gives its path.
+        std::string WriteColorsBmp(bool oldColors = false)
         {
             IndexedBmp image;
             image.width = 1;
             image.height = 1;
             image.pixels = { 0 };
             image.colors = NewColors();
-            const std::string path = _outDir + "\\colors.bmp";
+            for (int entry = 0; oldColors && (entry < 256); entry++)
+            {
+                image.colors[entry] = OldColor(entry);
+            }
+            const std::string path = _outDir + (oldColors ? "\\old-colors.bmp" : "\\colors.bmp");
             AssertOk(WriteIndexedBmpFile(path, image), "setup: the BMP file");
             return path;
         }
@@ -675,7 +903,8 @@ namespace UnitTests
         }
 
         // View 996 of the template is in the package, and its palette marks
-        // no entry: the patch file has the bytes of the view of the package.
+        // no entry: the command reads the view of the package, and the view
+        // has no change.
         TEST_METHOD(Palette_ViewOfThePackage_IsTheSource)
         {
             std::vector<uint8_t> packageView;
@@ -690,9 +919,9 @@ namespace UnitTests
 
             cli::StringConsole console = Expect(0, { "view", "palette", _gameFolder, "--view", "996", "--clear-used", "--palette-range", "0-255", "--out-dir", _patches });
 
-            Assert::IsTrue(Has(console.err, "scic: warning: view 996: its palette has no mark for an entry of the range 0-255: the view does not change"), Wide(console.err).c_str());
-            Assert::IsTrue(Has(console.err, "Wrote 1 of 1 view into " + _patches + "; 1 view with no change."), Wide(console.err).c_str());
-            Assert::IsTrue(packageView == PatchDataOf(996), L"the patch file has the bytes of the view of the package");
+            Assert::IsTrue(Has(console.err, "scic: warning: view 996: its palette has no mark for an entry of the range 0-255: the view does not change, and gets no patch file"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Wrote 0 of 1 view into " + _patches + "; 1 view with no change."), Wide(console.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty(), L"a view with no change gets no patch file");
         }
 
         TEST_METHOD(Palette_PatchFile_HasTheHeaderOfAViewPatch)
@@ -746,11 +975,14 @@ namespace UnitTests
             cli::StringConsole console = Expect(0, { "view", "palette", _gameFolder, "--view", "6", "--clear-used", "--palette-range", "80-235", "--out-dir", _patches, "-v" });
 
             Assert::IsTrue(Has(console.err, "view 6: its palette stores 0-79 (before: 0-235), so the entries 80-235 have no mark"), Wide(console.err).c_str());
+            Assert::IsFalse(Has(console.err, "the size word"), Wide(console.err).c_str());
+            // The count (236, then 80) and the size word (730, then 262).
             std::vector<uint8_t> expected = view;
             expected[palette + 29] = 80;
+            SetSizeWord(expected, palette, 262);
             const std::vector<uint8_t> patch = PatchDataOf(6);
             Assert::IsTrue(expected == patch, L"the bytes of the view in the patch file");
-            Assert::AreEqual((size_t)1, DifferentBytes(view, patch));
+            Assert::AreEqual((size_t)3, DifferentBytes(view, patch));
 
             const std::string rowBefore = PaletteUseRowOf(6);
             CopyPatchesToGame();
@@ -759,6 +991,39 @@ namespace UnitTests
             const std::string start = "view\t6\tpatch\t1\t1\t0-79\t64-65,70\t" + ColorCell(0, OldColor(0)) + " ";
             Assert::AreEqual(start, rowAfter.substr(0, start.size()), Wide(rowAfter).c_str());
             Assert::IsTrue(Has(rowAfter, " " + ColorCell(79, OldColor(79)) + "\t"), Wide(rowAfter).c_str());
+        }
+
+        // A size word that does not have the value of the entries keeps its
+        // value, and -v says so.
+        TEST_METHOD(Palette_ClearUsed_ThreeByteEntries_SizeWordWithAnotherValue_KeepsItsValue)
+        {
+            std::vector<uint8_t> view = MakeThreeByteViewBytes(sciVersion1_1, 0, 236, 1);
+            const size_t palette = PaletteOffsetOf(view);
+            SetSizeWord(view, palette, 1046);
+            PutViewIntoGame(6, view);
+
+            cli::StringConsole console = Expect(0, { "view", "palette", _gameFolder, "--view", "6", "--clear-used", "--palette-range", "80-235", "--out-dir", _patches, "-v" });
+
+            Assert::IsTrue(Has(console.err, "view 6: the size word of its palette is not 22 + the count of its entries x 3, and keeps its value"), Wide(console.err).c_str());
+            std::vector<uint8_t> expected = view;
+            expected[palette + 29] = 80;
+            const std::vector<uint8_t> patch = PatchDataOf(6);
+            Assert::IsTrue(expected == patch, L"the bytes of the view in the patch file");
+            Assert::AreEqual((size_t)1, DifferentBytes(view, patch));
+        }
+
+        // The flag 0 in the header of a palette with 3-byte entries marks no
+        // entry: the view has no change, also with a range that ends before
+        // the last stored entry and has pixels of the view.
+        TEST_METHOD(Palette_ClearUsed_ThreeByteEntriesWithTheFlag0_HasNoChange)
+        {
+            PutViewIntoGame(6, MakeThreeByteViewBytes(sciVersion1_1, 0, 236, 0));
+
+            cli::StringConsole console = Expect(0, { "view", "palette", _gameFolder, "--view", "6", "--clear-used", "--palette-range", "60-200", "--out-dir", _patches });
+
+            Assert::IsTrue(Has(console.err, "scic: warning: view 6: its palette has no mark for an entry of the range 60-200: the view does not change, and gets no patch file"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Wrote 0 of 1 view into " + _patches + "; 1 view with no change."), Wide(console.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty(), L"no patch file is written");
         }
 
         // Each view has its own exception boundary: a view that fails does
@@ -771,7 +1036,7 @@ namespace UnitTests
 
             cli::StringConsole console = Expect(6, { "view", "palette", _gameFolder, "--view", "5-7", "--clear-used", "--palette-range", "80-200", "--out-dir", _patches });
 
-            Assert::IsTrue(Has(console.err, "scic: error: view 6: the palette has one flag for all its entries (0-235)") && Has(console.err, "the range 80-200 does not reach the last stored entry (235) [usage]"),
+            Assert::IsTrue(Has(console.err, "scic: error: view 6: the palette has one flag for all its entries (0-235)") && Has(console.err, "the range 80-200 does not reach the last stored entry (235) [unsupported]"),
                 Wide(console.err).c_str());
             Assert::IsTrue(Has(console.err, "Wrote 2 of 3 views into " + _patches + "; 1 view failed."), Wide(console.err).c_str());
             Assert::IsTrue(std::vector<std::string>({ "5.v56", "7.v56" }) == FileNamesOf(_patches), L"the other views are written");
@@ -786,8 +1051,8 @@ namespace UnitTests
 
             cli::StringConsole console = Expect(6, { "view", "palette", _gameFolder, "--view", "5", "6", "7", "--clear-used", "--palette-range", "65-235", "--out-dir", _patches });
 
-            Assert::IsTrue(Has(console.err, "scic: error: view 5: pixels of the view have the entries 65,70, which would lose their mark"), Wide(console.err).c_str());
-            Assert::IsTrue(Has(console.err, "scic: error: view 6: pixels of the view have the entries 65,70, which would lose their mark"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "scic: error: view 5: pixels of the view have the entries 65,70, which would lose their mark: the view would lose the colours of these pixels [unsupported]"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "scic: error: view 6: pixels of the view have the entries 65,70, which would lose their mark: the view would lose the colours of these pixels [unsupported]"), Wide(console.err).c_str());
             Assert::IsTrue(Has(console.err, "Wrote 1 of 3 views into " + _patches + "; 2 views failed."), Wide(console.err).c_str());
             Assert::IsTrue(std::vector<std::string>({ "7.v56" }) == FileNamesOf(_patches), L"the view with no such pixel is written");
         }
@@ -800,7 +1065,7 @@ namespace UnitTests
 
             cli::StringConsole console = Expect(6, { "view", "palette", _gameFolder, "--view", "5", "6", "--colors-from", bmp, "--palette-range", "80-235", "--out-dir", _patches });
 
-            Assert::IsTrue(Has(console.err, "scic: error: view 5: the view has no palette [usage]"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "scic: error: view 5: the view has no palette [unsupported]"), Wide(console.err).c_str());
             Assert::IsTrue(Has(console.err, "Wrote 1 of 2 views into " + _patches + "; 1 view failed."), Wide(console.err).c_str());
             Assert::IsTrue(std::vector<std::string>({ "6.v56" }) == FileNamesOf(_patches), L"the view with a palette is written");
         }
@@ -818,22 +1083,31 @@ namespace UnitTests
         }
 
         // A view whose second loop has no cel: the reader of the views logs
-        // a warning and gives the loop a cel.
-        TEST_METHOD(Palette_ViewThatItsReaderRepaired_FailsTheView)
+        // a warning and gives the loop a cel. The repair is the reason that
+        // the view fails, also when the change of its palette fails.
+        TEST_METHOD(Palette_ViewThatItsReaderRepaired_FailsTheViewWithTheRepairAsTheReason)
         {
-            std::unique_ptr<ResourceEntity> view(CreateDefaultViewResource(sciVersion1_1));
-            view->AddComponent(std::make_unique<PaletteComponent>());
-            view->GetComponent<RasterComponent>().Loops.push_back(Loop());
-            sci::ostream stream;
-            std::map<BlobKey, uint32_t> propertyBag;
-            view->WriteTo(stream, true, 5, propertyBag);
-            PutViewIntoGame(5, std::vector<uint8_t>(stream.GetInternalPointer(), stream.GetInternalPointer() + stream.GetDataSize()));
+            PutViewIntoGame(5, MakeViewBytes(sciVersion1_1, { 64, 65, 0, 0, 70, 64 }, true, true));
+            PutViewIntoGame(6, MakeThreeByteViewBytes(sciVersion1_1, 0, 236, 1, { 64, 65, 0, 0, 70, 64 }, true));
             const std::string bmp = WriteColorsBmp();
+            const auto expectTheRepair = [&](const cli::StringConsole &console, int number)
+            {
+                const std::string line = LineWith(console.err, fmt::format("scic: error: view {0}: ", number));
+                Assert::IsTrue(Has(line, fmt::format("view {0}: the reader repaired damaged data: Empty loop found", number)) && Has(line, "[format]"), Wide(console.err).c_str());
+                Assert::IsFalse(Has(console.err, "bytes in common") || Has(console.err, "does not reach") || Has(console.err, "pixels of the view"), Wide(console.err).c_str());
+                Assert::IsTrue(FileNamesOf(_patches).empty(), L"no patch file is written");
+            };
 
-            cli::StringConsole console = Expect(6, { "view", "palette", _gameFolder, "--view", "5", "--colors-from", bmp, "--palette-range", "80-235", "--out-dir", _patches });
+            // New colours: the change itself does not fail.
+            cli::StringConsole colors = Expect(6, { "view", "palette", _gameFolder, "--view", "5", "6", "--colors-from", bmp, "--palette-range", "80-235", "--out-dir", _patches });
+            expectTheRepair(colors, 5);
+            expectTheRepair(colors, 6);
 
-            Assert::IsTrue(Has(console.err, "scic: error: view 5: the reader repaired damaged data: Empty loop found"), Wide(console.err).c_str());
-            Assert::IsTrue(FileNamesOf(_patches).empty(), L"no patch file is written");
+            // The range does not reach the last stored entry of view 6, and
+            // pixels of view 5 have entries of the range.
+            cli::StringConsole range = Expect(6, { "view", "palette", _gameFolder, "--view", "5", "6", "--clear-used", "--palette-range", "60-200", "--out-dir", _patches });
+            expectTheRepair(range, 5);
+            expectTheRepair(range, 6);
         }
 
         TEST_METHOD(Palette_ColorsFrom_BmpThatCannotGiveTheColours_StopsTheRun)
@@ -872,6 +1146,12 @@ namespace UnitTests
             WriteFileBytes(bmp, bytes);
             cli::StringConsole table = run(2, "60-70");
             Assert::IsTrue(Has(table.err, "the colour table has 64 entries, and the palette range is 60-70"), Wide(table.err).c_str());
+            // The last entry of the table is 63: a range that ends at 64 has
+            // an entry with no colour, and a range that ends at 63 has none.
+            cli::StringConsole oneMore = run(2, "60-64");
+            Assert::IsTrue(Has(oneMore.err, "the colour table has 64 entries, and the palette range is 60-64"), Wide(oneMore.err).c_str());
+            cli::StringConsole inTable = Expect(0, { "view", "palette", _gameFolder, "--view", "5", "--colors-from", bmp, "--palette-range", "60-63", "--out-dir", _patches });
+            Assert::IsTrue(std::vector<std::string>({ "5.v56" }) == FileNamesOf(_patches), Wide(inTable.err).c_str());
         }
 
         TEST_METHOD(Palette_ColorsFrom_EntryWithNoMark_IsAWarning)
@@ -887,31 +1167,86 @@ namespace UnitTests
             Assert::AreEqual((size_t)33, DifferentBytes(view, PatchDataOf(5)));
         }
 
-        TEST_METHOD(Palette_ViewWithNoEntryToChange_IsAWarning)
+        // A view with no change gets no patch file: the output folder has
+        // the patch file of a view only when the run changed the view.
+        TEST_METHOD(Palette_ViewWithNoChange_IsAWarningAndGetsNoPatchFile)
         {
             // The palette of view 5 stores the entries 60 to 99, and the
             // palette of view 6 has no mark after entry 99 but for 200.
-            const std::vector<uint8_t> threeByte = MakeThreeByteViewBytes(sciVersion1_1, 60, 40, 1);
-            const std::vector<uint8_t> fourByte = MakeViewBytes(sciVersion1_1);
-            PutViewIntoGame(5, threeByte);
-            PutViewIntoGame(6, fourByte);
+            PutViewIntoGame(5, MakeThreeByteViewBytes(sciVersion1_1, 60, 40, 1));
+            PutViewIntoGame(6, MakeViewBytes(sciVersion1_1));
             const std::string bmp = WriteColorsBmp();
 
             cli::StringConsole colors = Expect(0, { "view", "palette", _gameFolder, "--view", "5", "--colors-from", bmp, "--palette-range", "100-120", "--out-dir", _patches });
 
-            Assert::IsTrue(Has(colors.err, "scic: warning: view 5: its palette stores 60-99, and no entry of the range 100-120: the view does not change"), Wide(colors.err).c_str());
-            Assert::IsTrue(Has(colors.err, "Wrote 1 of 1 view into " + _patches + "; 1 view with no change."), Wide(colors.err).c_str());
-            Assert::IsTrue(threeByte == PatchDataOf(5), L"the patch file has the bytes of the view");
+            Assert::IsTrue(Has(colors.err, "scic: warning: view 5: its palette stores 60-99, and no entry of the range 100-120: the view does not change, and gets no patch file"), Wide(colors.err).c_str());
+            Assert::IsTrue(Has(colors.err, "Wrote 0 of 1 view into " + _patches + "; 1 view with no change."), Wide(colors.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty(), L"no patch file is written");
 
             cli::StringConsole clear = Expect(0, { "view", "palette", _gameFolder, "--view", "5", "6", "--clear-used", "--palette-range", "100-199", "--out-dir", _patches });
 
-            Assert::IsTrue(Has(clear.err, "scic: warning: view 5: its palette has no mark for an entry of the range 100-199: the view does not change"), Wide(clear.err).c_str());
-            Assert::IsTrue(Has(clear.err, "scic: warning: view 6: its palette has no mark for an entry of the range 100-199: the view does not change"), Wide(clear.err).c_str());
-            Assert::IsTrue(Has(clear.err, "Wrote 2 of 2 views into " + _patches + "; 2 views with no change."), Wide(clear.err).c_str());
-            Assert::IsTrue(fourByte == PatchDataOf(6), L"the patch file has the bytes of the view");
+            Assert::IsTrue(Has(clear.err, "scic: warning: view 5: its palette has no mark for an entry of the range 100-199: the view does not change, and gets no patch file"), Wide(clear.err).c_str());
+            Assert::IsTrue(Has(clear.err, "scic: warning: view 6: its palette has no mark for an entry of the range 100-199: the view does not change, and gets no patch file"), Wide(clear.err).c_str());
+            Assert::IsTrue(Has(clear.err, "Wrote 0 of 2 views into " + _patches + "; 2 views with no change."), Wide(clear.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty(), L"no patch file is written");
         }
 
-        TEST_METHOD(Palette_DryRun_WritesNothing)
+        // The entries of the range have the colours of the file already: no
+        // byte of the view would change.
+        TEST_METHOD(Palette_ColorsFrom_ColoursThatTheViewHas_IsAWarningAndGetsNoPatchFile)
+        {
+            PutViewIntoGame(5, MakeViewBytes(sciVersion1_1));
+            const std::string bmp = WriteColorsBmp(true);
+
+            cli::StringConsole console = Expect(0, { "view", "palette", _gameFolder, "--view", "5", "--colors-from", bmp, "--palette-range", "80-90", "--out-dir", _patches });
+
+            Assert::IsTrue(Has(console.err, "scic: warning: view 5: the entries 80-90 of its palette have the colours of the file: the view does not change, and gets no patch file"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Wrote 0 of 1 view into " + _patches + "; 1 view with no change."), Wide(console.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty(), L"no patch file is written");
+        }
+
+        // The patch file that an earlier run left for a view goes when the
+        // view has no change in this run.
+        TEST_METHOD(Palette_OldPatchFileOfAViewWithNoChange_IsRemoved)
+        {
+            PutViewIntoGame(5, MakeViewBytes(sciVersion1_1));
+            PutViewIntoGame(7, MakeViewBytes(sciVersion1_1));
+            Expect(0, { "view", "palette", _gameFolder, "--view", "5", "7", "--clear-used", "--palette-range", "80-235", "--out-dir", _patches });
+            Assert::IsTrue(std::vector<std::string>({ "5.v56", "7.v56" }) == FileNamesOf(_patches), L"setup: the patch files of the first run");
+            // A file of the folder that is not the patch file of a named view
+            // stays.
+            WriteFileText(_patches + "\\notes.txt", "notes");
+
+            // The palette of view 5 has no mark in the range of this run.
+            cli::StringConsole console = Expect(0, { "view", "palette", _gameFolder, "--view", "5", "--clear-used", "--palette-range", "100-199", "--out-dir", _patches });
+
+            Assert::IsTrue(Has(console.err, "Removed " + _patches + "\\5.v56 of an earlier run: view 5 has no change"), Wide(console.err).c_str());
+            Assert::IsTrue(std::vector<std::string>({ "7.v56", "notes.txt" }) == FileNamesOf(_patches), L"the patch file of view 5 is not there; the file of view 7, which the run did not name, stays");
+        }
+
+        // The patch file that an earlier run left for a view goes when the
+        // view fails in this run.
+        TEST_METHOD(Palette_OldPatchFileOfAViewThatFails_IsRemoved)
+        {
+            PutViewIntoGame(5, MakeViewBytes(sciVersion1_1));
+            PutViewIntoGame(6, MakeThreeByteViewBytes(sciVersion1_1, 0, 236, 1));
+            Expect(0, { "view", "palette", _gameFolder, "--view", "5", "6", "--clear-used", "--palette-range", "80-235", "--out-dir", _patches });
+            Assert::IsTrue(std::vector<std::string>({ "5.v56", "6.v56" }) == FileNamesOf(_patches), L"setup: the patch files of the first run");
+            const std::vector<uint8_t> firstPatchOf5 = ReadFileBytes(_patches + "\\5.v56");
+
+            // The range of this run does not reach the last stored entry of
+            // view 6. View 5 loses the mark of other entries than in the
+            // first run.
+            cli::StringConsole console = Expect(6, { "view", "palette", _gameFolder, "--view", "5", "6", "--clear-used", "--palette-range", "90-200", "--out-dir", _patches });
+
+            Assert::IsTrue(Has(console.err, "scic: error: view 6: ") && Has(console.err, "does not reach the last stored entry"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Removed " + _patches + "\\6.v56 of an earlier run: view 6 failed"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Wrote 1 of 2 views into " + _patches + "; 1 view failed."), Wide(console.err).c_str());
+            Assert::IsTrue(std::vector<std::string>({ "5.v56" }) == FileNamesOf(_patches), L"the patch file of view 6 is not there");
+            Assert::IsFalse(firstPatchOf5 == ReadFileBytes(_patches + "\\5.v56"), L"the patch file of view 5 is the file of this run");
+        }
+
+        TEST_METHOD(Palette_DryRun_WritesAndRemovesNothing)
         {
             PutViewIntoGame(5, MakeViewBytes(sciVersion1_1));
             PutViewIntoGame(6, MakeThreeByteViewBytes(sciVersion1_1, 0, 236, 1));
@@ -929,6 +1264,18 @@ namespace UnitTests
             cli::StringConsole failed = Expect(6, { "view", "palette", _gameFolder, "--view", "5", "6", "--clear-used", "--palette-range", "80-200", "--out-dir", _patches, "--dry-run" });
             Assert::IsTrue(Has(failed.err, "A run would write 1 of 2 views into " + _patches + "; 1 view failed."), Wide(failed.err).c_str());
             Assert::IsTrue(FileNamesOf(_patches).empty(), L"the output folder stays empty");
+
+            // The patch files of an earlier run stay in a dry run: the run
+            // says what it would remove. View 5 has no change with the range
+            // 100-199, and view 6 fails.
+            Expect(0, { "view", "palette", _gameFolder, "--view", "5", "6", "--clear-used", "--palette-range", "80-235", "--out-dir", _patches });
+            auto patches = FilesOf(_patches);
+            Assert::AreEqual((size_t)2, patches.size(), L"setup: the patch files of the first run");
+            cli::StringConsole stale = Expect(6, { "view", "palette", _gameFolder, "--view", "5", "6", "--clear-used", "--palette-range", "100-199", "--out-dir", _patches, "--dry-run" });
+            Assert::IsTrue(Has(stale.err, "Would remove " + _patches + "\\5.v56 of an earlier run: view 5 has no change"), Wide(stale.err).c_str());
+            Assert::IsTrue(Has(stale.err, "Would remove " + _patches + "\\6.v56 of an earlier run: view 6 failed"), Wide(stale.err).c_str());
+            Assert::IsFalse(Has(stale.err, "Removed "), Wide(stale.err).c_str());
+            Assert::IsTrue(patches == FilesOf(_patches), L"the patch files of the first run stay");
         }
 
         TEST_METHOD(Palette_UsageErrors)
@@ -985,6 +1332,27 @@ namespace UnitTests
             Assert::AreEqual(std::string("read-only"), ReadFileText(_patches + "\\5.v56"));
         }
 
+        // A patch file of an earlier run that cannot be removed is exit code
+        // 9 too, for a view with no change and for a view that fails, also
+        // in a dry run.
+        TEST_METHOD(Palette_OldPatchFileThatCannotBeRemoved_ExitsWith9)
+        {
+            PutViewIntoGame(5, MakeViewBytes(sciVersion1_1));
+            WriteReadOnlyFile(_patches + "\\5.v56", "read-only");
+            for (const char *dryRun : { "--dry-run", "-q" })
+            {
+                // No mark in the range 100-199: the view has no change.
+                cli::StringConsole noChange = Expect(9, { "view", "palette", _gameFolder, "--view", "5", "--clear-used", "--palette-range", "100-199", "--out-dir", _patches, dryRun });
+                Assert::IsTrue(Has(noChange.err, "scic: error: view 5: ") && Has(noChange.err, "5.v56"), Wide(noChange.err).c_str());
+                // Pixels of the view have entries of the range 60-70: the
+                // view fails, and the error of the view is there too.
+                cli::StringConsole failed = Expect(9, { "view", "palette", _gameFolder, "--view", "5", "--clear-used", "--palette-range", "60-70", "--out-dir", _patches, dryRun });
+                Assert::IsTrue(Has(failed.err, "scic: error: view 5: pixels of the view have the entries 64-65,70"), Wide(failed.err).c_str());
+                Assert::IsTrue(Has(failed.err, "5.v56"), Wide(failed.err).c_str());
+                Assert::AreEqual(std::string("read-only"), ReadFileText(_patches + "\\5.v56"));
+            }
+        }
+
         TEST_METHOD(Palette_CtrlC_ExitsWith7)
         {
             PutViewIntoGame(5, MakeViewBytes(sciVersion1_1));
@@ -1010,7 +1378,8 @@ namespace UnitTests
                 Has(helpPalette.out, "--out-dir") && Has(helpPalette.out, "scic view palette"), Wide(helpPalette.out).c_str());
             cli::StringConsole root = Expect(0, { "help" });
             Assert::IsTrue(Has(OneLine(root.out), "pic import, view palette."), Wide(root.out).c_str());
-            Assert::IsTrue(Has(root.out, "view"), Wide(root.out).c_str());
+            // The line of the group in the list of the commands.
+            Assert::IsTrue(Has(OneLine(root.out), " view The view commands: palette."), Wide(root.out).c_str());
         }
     };
 }

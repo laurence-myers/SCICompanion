@@ -54,7 +54,7 @@ namespace
         const PaletteComponent *palette = read.view->TryGetComponent<PaletteComponent>();
         if (palette == nullptr)
         {
-            return sci::Fail(sci::ErrorCode::Usage, "the view has no palette");
+            return sci::Fail(sci::ErrorCode::Unsupported, "the view has no palette");
         }
         read.paletteOffset = ReadViewPaletteOffsetVGA11(data.data(), data.size());
         if (read.paletteOffset == 0)
@@ -95,11 +95,13 @@ namespace
         return true;
     }
 
-    // The edit of the new bytes of a view that was read. The view must read
-    // back with the cels that it had: the change is one of palette bytes.
-    sci::Result<ViewPaletteEdit> FinishEdit(const SCIVersion &version, const ViewRead &read, std::vector<uint8_t> &&data, const std::array<bool, 256> &entries)
+    // The edit of the new bytes of a view that was read from the old bytes.
+    // The view must read back with the cels that it had: the change is one
+    // of palette bytes.
+    sci::Result<ViewPaletteEdit> FinishEdit(const SCIVersion &version, const ViewRead &read, const std::vector<uint8_t> &oldData, std::vector<uint8_t> &&data, const std::array<bool, 256> &entries)
     {
         ViewPaletteEdit edit;
+        edit.changed = (data != oldData);
         edit.entries = entries;
         edit.usedBefore = read.used;
         edit.before = read.layout;
@@ -161,24 +163,25 @@ sci::Result<ViewPaletteEdit> ReplaceViewPaletteColors(const SCIVersion &version,
         SCI_TRY(PatchPaletteColors(patched, read.paletteOffset, from, to, quads));
         std::fill(entries.begin() + from, entries.begin() + to + 1, true);
     }
-    return FinishEdit(version, read, std::move(patched), entries);
+    return FinishEdit(version, read, data, std::move(patched), entries);
 }
 
 sci::Result<ViewPaletteEdit> ClearViewPaletteMarks(const SCIVersion &version, const std::vector<uint8_t> &data, int first, int last)
 {
     SCI_TRY_ASSIGN(ViewRead read, ReadView(version, data));
     std::vector<uint8_t> patched = data;
-    std::array<bool, 256> entries = {};
-    SCI_TRY_ASSIGN(entries, ClearPaletteMarks(patched, read.paletteOffset, first, last));
+    SCI_TRY_ASSIGN(const PaletteMarksChange change, ClearPaletteMarks(patched, read.paletteOffset, first, last));
     std::array<bool, 256> lost = {};
     for (size_t i = 0; i < lost.size(); i++)
     {
-        lost[i] = entries[i] && read.pixelEntries[i];
+        lost[i] = change.entries[i] && read.pixelEntries[i];
     }
     const std::vector<IndexRun> lostRuns = IndexRunsOf(lost);
     if (!lostRuns.empty())
     {
-        return sci::Fail(sci::ErrorCode::Usage, fmt::format("pixels of the view have the entries {0}, which would lose their mark: the view would lose the colours of these pixels", IndexRunsText(lostRuns)));
+        return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("pixels of the view have the entries {0}, which would lose their mark: the view would lose the colours of these pixels", IndexRunsText(lostRuns)));
     }
-    return FinishEdit(version, read, std::move(patched), entries);
+    SCI_TRY_ASSIGN(ViewPaletteEdit edit, FinishEdit(version, read, data, std::move(patched), change.entries));
+    edit.sizeWordKept = change.sizeWordKept;
+    return std::move(edit);
 }

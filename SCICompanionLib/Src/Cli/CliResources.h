@@ -15,8 +15,13 @@ enum class ResourceType;
 
 namespace cli
 {
-    // "1 pic", "2 pics".
+    // "1 pic", "2 pics", "0 errors": the count and the word, with an "s"
+    // for each count but 1.
     std::string CountText(size_t count, const char *word);
+
+    // A number of 0 to 65535: digits only, with any count of zeros before
+    // them. False for another text; the number then keeps its value.
+    bool ParseNumber(const std::string &text, int &number);
 
     // The numbers of the resources of a type that the game has, from the
     // lowest.
@@ -41,22 +46,12 @@ namespace cli
     class RepairLogSink : public ILogSink
     {
     public:
-        ~RepairLogSink() { RemoveCoreLogSink(this); }
+        ~RepairLogSink();
 
-        void Write(LogLevel level, const std::string &text) override
-        {
-            if (level != LogLevel::Info)
-            {
-                std::lock_guard<std::mutex> lock(_mutex);
-                _text += (_text.empty() ? "" : " ") + text;
-            }
-        }
-
-        std::string Text()
-        {
-            std::lock_guard<std::mutex> lock(_mutex);
-            return _text;
-        }
+        void Write(LogLevel level, const std::string &text) override;
+        // The texts of the warnings and the errors so far, with a space
+        // between them; empty for none.
+        std::string Text();
 
     private:
         std::mutex _mutex;

@@ -111,24 +111,40 @@ sci::Result<PaletteLayout> ReadPaletteLayout(const uint8_t *data, size_t size, s
 // of entries that the palette stores; the errors of ReadPaletteLayout.
 sci::Status PatchPaletteColors(std::vector<uint8_t> &data, size_t paletteOffset, int first, int last, const RGBQUAD *colors);
 
+// What ClearPaletteMarks changed in a palette.
+struct PaletteMarksChange
+{
+	// The entries that lost their mark.
+	std::array<bool, 256> entries = {};
+	// The palette stores fewer entries, and the size word of its header did
+	// not have the value of its entries (22 + the count x the entry size):
+	// the word keeps its value.
+	bool sizeWordKept = false;
+};
+
 // Takes the "used" mark from the entries first to last in the bytes of the
-// palette at paletteOffset, and gives the entries that changed. An entry of
-// the range that the palette does not store has no mark, and does not change.
+// palette at paletteOffset, and gives the entries that lost it. An entry of
+// the range that the palette does not store, or does not mark, does not
+// change.
 //  - 4-byte entries: the flag byte of each stored entry of the range becomes
-//    0. The entries that changed are those whose flag byte was not 0.
-//  - 3-byte entries, which have one flag for all of them in the header: the
-//    palette stores fewer entries. The count of the header becomes smaller,
-//    so that the first entry of the range is the first entry that the
-//    palette does not store. The bytes of the entries after the new count
-//    stay where they are; a reader does not read them. The entries that
-//    changed are those that the palette stores no more.
+//    0. The entries that lost their mark are those whose flag byte was not 0.
+//  - 3-byte entries, which have one flag for all of them in the header.
+//    With the flag 0 the palette marks no entry, and nothing changes. Else
+//    the palette stores fewer entries: the count of the header becomes
+//    smaller, so that the first entry of the range is the first entry that
+//    the palette does not store, and the size word of the header (at offset
+//    13: 22 + the count x the entry size) gets the value of the new count.
+//    A size word with another value stays as it is. The bytes of the
+//    entries after the new count stay where they are; a reader does not
+//    read them. The entries that lost their mark are those that the palette
+//    stores no more.
 // No other byte changes, and the size of the data stays. Usage when first to
-// last is not a range of palette entries, and when the range has 3-byte
-// entries but not the last stored entry (the count cannot take an entry out
-// of the middle). Unsupported when the palette would store no entry and its
-// first byte is 0: a reader takes such bytes as a palette with no header.
-// The errors of ReadPaletteLayout.
-sci::Result<std::array<bool, 256>> ClearPaletteMarks(std::vector<uint8_t> &data, size_t paletteOffset, int first, int last);
+// last is not a range of palette entries. Unsupported when the range has
+// marked 3-byte entries but not the last stored entry (the count cannot take
+// an entry out of the middle), and when the palette would store no entry
+// and its first byte is 0: a reader takes such bytes as a palette with no
+// header. The errors of ReadPaletteLayout.
+sci::Result<PaletteMarksChange> ClearPaletteMarks(std::vector<uint8_t> &data, size_t paletteOffset, int first, int last);
 
 void ReadPalette(PaletteComponent &palette, sci::istream &byteStream);
 void WritePalette(sci::ostream &byteStream, const PaletteComponent &palette);
