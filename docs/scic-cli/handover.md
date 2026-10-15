@@ -313,9 +313,11 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   entries to the screen comes from the ScummVM source
   (`GfxPalette32::mergePalette`, `HunkPalette::toPalette`).
 - A patch file of `view import` or `view add` on the screen of a game:
-  ScummVM and Sierra's interpreter were not run with one. The round-trip
-  sweep reads the patch files back with the readers of SCI Companion only.
-  The mirror headers of `view add` come from the ScummVM source
+  Sierra's interpreter was not run with one, and ScummVM was not run with
+  one of an SCI1.1 game. ScummVM 2026.3 draws them correctly for the hi-res
+  LSL6 (SCI2): a changed cel, a mirror loop, raw cels and a raw mirror
+  loop. A mirror of a mirror (the `headerCels` rule) was not on the
+  screen. The mirror headers of `view add` come from the ScummVM source
   (`GfxView::initData`, `CelObjView`): each mirror gets the cel offset of
   the loop at the end of its chain, and as its cel count the `cels` key of
   a mirror that mirrors it (`headerCels`), else the count of that loop.
