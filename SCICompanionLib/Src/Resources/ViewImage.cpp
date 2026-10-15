@@ -309,11 +309,15 @@ sci::Result<std::vector<uint8_t>> GetViewCelPixels(const SCIVersion &version, co
     return CelTopDownPixels(read.view->GetComponent<RasterComponent>().Loops[loop].Cels[cel]);
 }
 
-sci::Result<EncodedViewCel> EncodeViewCel(int width, int height, uint8_t skipColor, const std::vector<uint8_t> &pixels)
+sci::Result<EncodedViewCel> EncodeViewCel(int width, int height, uint8_t skipColor, const std::vector<uint8_t> &pixels, int fillRun)
 {
     if ((width < 0) || (height < 0) || (pixels.size() != ((size_t)width * (size_t)height)))
     {
         return sci::Fail(sci::ErrorCode::Usage, fmt::format("a cel of {0} x {1} pixels needs {2} bytes of pixels, not {3}", width, height, (int64_t)width * height, pixels.size()));
+    }
+    if (fillRun < 2)
+    {
+        return sci::Fail(sci::ErrorCode::Usage, fmt::format("the shortest run of a colour is {0}; it must be 2 or more", fillRun));
     }
     // The longest run: the count has 6 bits.
     const int MaxRun = 63;
@@ -342,7 +346,7 @@ sci::Result<EncodedViewCel> EncodeViewCel(int width, int height, uint8_t skipCol
                 encoded.rle.push_back((uint8_t)(0xc0 | same));
                 x += same;
             }
-            else if (same >= 3)
+            else if (same >= fillRun)
             {
                 encoded.rle.push_back((uint8_t)(0x80 | same));
                 encoded.literal.push_back(row[x]);
@@ -350,9 +354,9 @@ sci::Result<EncodedViewCel> EncodeViewCel(int width, int height, uint8_t skipCol
             }
             else
             {
-                // Literal pixels, up to the skip colour or a run of 3.
+                // Literal pixels, up to the skip colour or a run of fillRun.
                 int count = 0;
-                while (((x + count) < width) && (count < MaxRun) && (row[x + count] != skipColor) && (sameFrom(x + count) < 3))
+                while (((x + count) < width) && (count < MaxRun) && (row[x + count] != skipColor) && (sameFrom(x + count) < fillRun))
                 {
                     count++;
                 }
@@ -473,6 +477,78 @@ namespace
             ranges.push_back(ByteRange{ cel.rowTableOffset, cel.rowTableOffset + (8 * (uint64_t)cel.height) });
         }
         return ranges;
+    }
+
+    // The literal data that the run-length codes of a cel need for new
+    // pixels (top row first, as the reader of the views fills the cel): the
+    // codes stay as they are, so each run of the skip colour must still be
+    // the skip colour, each run of one colour must still be one colour, and
+    // a literal pixel can have the skip colour only where the old pixel had
+    // it (Sierra's encoder of SCI1.1 put such pixels in literal runs).
+    // A byte of literal data that no pixel gives (a code that goes past the
+    // end of the cel) keeps its old value. False when the new pixels do not
+    // have these runs, or when the codes or the literal data go past the end
+    // of the data.
+    bool LiteralForOldCodes(const std::vector<uint8_t> &data, uint32_t rle, uint32_t literalOffset, const std::vector<uint8_t> &pixels, const std::vector<uint8_t> &oldPixels, uint8_t skipColor,
+        std::vector<uint8_t> &literal)
+    {
+        literal.clear();
+        size_t at = rle;
+        size_t done = 0;
+        auto oldByte = [&]() { return data[(size_t)literalOffset + literal.size()]; };
+        while (done < pixels.size())
+        {
+            if (at >= data.size())
+            {
+                return false;
+            }
+            const uint8_t code = data[at++];
+            size_t count = code & 0x3f;
+            if ((code >> 6) == 1)
+            {
+                count += 64;
+            }
+            const size_t literalCount = ((code >> 6) == 3) ? 0 : (((code >> 6) == 2) ? 1 : count);
+            if (((uint64_t)literalOffset + literal.size() + literalCount) > data.size())
+            {
+                return false;
+            }
+            // The last code can cover more pixels than the cel has left.
+            const size_t used = (std::min)(count, pixels.size() - done);
+            const uint8_t *run = pixels.data() + done;
+            switch (code >> 6)
+            {
+            case 3:
+                if (std::any_of(run, run + used, [&](uint8_t pixel) { return pixel != skipColor; }))
+                {
+                    return false;
+                }
+                break;
+            case 2:
+                if ((used > 0) && std::any_of(run, run + used, [&](uint8_t pixel) { return pixel != run[0]; }))
+                {
+                    return false;
+                }
+                literal.push_back((used > 0) ? run[0] : oldByte());
+                break;
+            default:
+                for (size_t i = 0; i < used; i++)
+                {
+                    if ((run[i] == skipColor) && (oldPixels[done + i] != skipColor))
+                    {
+                        return false;
+                    }
+                }
+                literal.insert(literal.end(), run, run + used);
+                for (size_t extra = used; extra < count; extra++)
+                {
+                    literal.push_back(oldByte());
+                }
+                break;
+            }
+            done += count;
+        }
+        return true;
     }
 
     // The pixels of a run-length cel as an SCI2 interpreter draws it: each
@@ -643,17 +719,46 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
             }
             continue;
         }
-        SCI_TRY_ASSIGN(EncodedViewCel encoded, EncodeViewCel(cel.width, cel.height, cel.skipColor, pixels));
+        // New pixels with the runs of the old codes keep the codes (and the
+        // row table of SCI2): only the literal data changes, in its place.
+        std::vector<uint8_t> literal;
+        if (alone && LiteralForOldCodes(data, header.rleOffset, header.literalOffset, pixels, oldPixels[change.first], cel.skipColor, literal))
+        {
+            std::copy(literal.begin(), literal.end(), patched.begin() + header.literalOffset);
+            changedRunLength.push_back(change.first);
+            continue;
+        }
+        // Else the new data takes the place of the old data when it fits
+        // there and no other data has those bytes. Sierra's encoders gave a
+        // run code to runs of 2 or of 3 pixels, so each form is tried: the
+        // first that fits, else the shortest.
+        // An SCI2 cel has a row table when its header gives one.
+        const bool rowTable = sci2 && (header.rowTableOffset != 0);
+        uint64_t rleBytes = 0;
+        uint64_t literalBytes = 0;
+        const bool place = alone && RunLengthSizes(data, header.rleOffset, header.literalOffset, pixels.size(), rleBytes, literalBytes) &&
+            (!rowTable || (((uint64_t)header.rowTableOffset + (8 * (uint64_t)cel.height)) <= data.size()));
+        EncodedViewCel encoded;
+        bool fits = false;
+        bool first = true;
+        for (int fillRun : { 3, 2, 4 })
+        {
+            SCI_TRY_ASSIGN(EncodedViewCel form, EncodeViewCel(cel.width, cel.height, cel.skipColor, pixels, fillRun));
+            const bool formFits = place && (form.rle.size() <= rleBytes) && (form.literal.size() <= literalBytes);
+            if (first || formFits || (!fits && ((form.rle.size() + form.literal.size()) < (encoded.rle.size() + encoded.literal.size()))))
+            {
+                encoded = std::move(form);
+                fits = formFits;
+                first = false;
+            }
+            if (fits)
+            {
+                break;
+            }
+        }
         changedRunLength.push_back(change.first);
         PutDwordAt(patched, header.headerOffset + 12, (uint32_t)(encoded.rle.size() + encoded.literal.size()));
         PutDwordAt(patched, header.headerOffset + 16, (uint32_t)encoded.rle.size());
-        // The new data takes the place of the old data when it fits there
-        // and no other data has those bytes.
-        uint64_t rleBytes = 0;
-        uint64_t literalBytes = 0;
-        const bool fits = alone && RunLengthSizes(data, header.rleOffset, header.literalOffset, pixels.size(), rleBytes, literalBytes) &&
-            (encoded.rle.size() <= rleBytes) && (encoded.literal.size() <= literalBytes) &&
-            (!sci2 || ((header.rowTableOffset != 0) && (((uint64_t)header.rowTableOffset + (8 * (uint64_t)cel.height)) <= data.size())));
         uint32_t rleAt = header.rleOffset;
         uint32_t literalAt = header.literalOffset;
         uint32_t tableAt = header.rowTableOffset;
@@ -662,17 +767,17 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
             rleAt = OffsetAtEnd(patched);
             literalAt = rleAt + (uint32_t)encoded.rle.size();
             tableAt = literalAt + (uint32_t)encoded.literal.size();
-            patched.resize(patched.size() + encoded.rle.size() + encoded.literal.size() + (sci2 ? (8 * (size_t)cel.height) : 0));
+            patched.resize(patched.size() + encoded.rle.size() + encoded.literal.size() + (rowTable ? (8 * (size_t)cel.height) : 0));
             PutDwordAt(patched, header.headerOffset + 24, rleAt);
             PutDwordAt(patched, header.headerOffset + 28, literalAt);
-            if (sci2)
+            if (rowTable)
             {
                 PutDwordAt(patched, header.headerOffset + 32, tableAt);
             }
         }
         std::copy(encoded.rle.begin(), encoded.rle.end(), patched.begin() + rleAt);
         std::copy(encoded.literal.begin(), encoded.literal.end(), patched.begin() + literalAt);
-        if (sci2)
+        if (rowTable)
         {
             for (int y = 0; y < cel.height; y++)
             {
@@ -714,7 +819,7 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
         auto change = std::find_if(changes.begin(), changes.end(), [&](const std::pair<size_t, const std::vector<uint8_t> *> &c) { return c.first == i; });
         const std::vector<uint8_t> &expected = (change != changes.end()) ? *change->second : oldPixels[i];
         same = same && (newPixels[i] == expected);
-        if (same && sci2 && (std::find(changedRunLength.begin(), changedRunLength.end(), i) != changedRunLength.end()))
+        if (same && sci2 && (newHeaders[i]->rowTableOffset != 0) && (std::find(changedRunLength.begin(), changedRunLength.end(), i) != changedRunLength.end()))
         {
             std::vector<uint8_t> rows;
             same = DecodeByRowTable(patched, *newHeaders[i], rows) && (rows == expected);

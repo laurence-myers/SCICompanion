@@ -89,8 +89,9 @@ namespace cli
 
     // The bytes of a view with the pixels of the images in its cels, and,
     // when the palette says "replace", the colours of the images in the
-    // entries of the range that the palette of the view stores
-    // (ReplaceViewPaletteColors). The cels change in place
+    // entries of the range that the palette of the view stores and marks
+    // as used (ReplaceViewPaletteColors; a stored entry with no mark keeps
+    // its colour). The cels change in place
     // (ReplaceViewCelPixels). Each image is checked before the view
     // changes:
     //  - the view stores the cel (a loop that mirrors another loop stores
@@ -104,9 +105,8 @@ namespace cli
     //  - with "replace": the colour table of the image has the entries of
     //    the range, and the images have the same colours in the range.
     // An image that fails a check gives Usage. With "replace", a palette
-    // that stores only a part of the range, or an entry of the range with no
-    // "used" mark, gives a warning; a view with no palette gives
-    // Unsupported. Then the errors of ReplaceViewPaletteColors and
+    // that stores only a part of the range gives a warning; a view with no
+    // palette gives Unsupported. Then the errors of ReplaceViewPaletteColors and
     // ReplaceViewCelPixels. A warning is a text with no view number.
     sci::Result<std::vector<uint8_t>> MakeViewImportData(const SCIVersion &version, const std::vector<uint8_t> &data, const ViewDescription &description, const std::array<bool, 256> &usedEntries,
         const std::vector<ViewImportImage> &images, const PicImportPalette &palette, bool allowUnusedEntries, std::vector<std::string> &warnings);

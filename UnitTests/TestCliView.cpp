@@ -1950,6 +1950,74 @@ namespace UnitTests
             Assert::IsTrue(Has(disagree.err, "have another colour for entry 86; the images of a view must have one palette"), Wide(disagree.err).c_str());
         }
 
+        // The entries that the view does not mark as used (the images have
+        // the colours of palette 999 there) keep their colours: the exported
+        // images give no change.
+        TEST_METHOD(Import_PaletteReplace_EntriesWithNoMarkKeepTheirColours)
+        {
+            const std::string folder = ExportView500();
+
+            cli::StringConsole console = Expect(0, { "view", "import", _gameFolder, "--in-dir", folder, "--palette", "replace", "--palette-range", "0-9", "--out-dir", _patches });
+
+            Assert::IsTrue(Has(console.err, "view 500: the images have the pixels of the view: the view does not change"), Wide(console.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty());
+        }
+
+        // New colours and new pixels in one run.
+        TEST_METHOD(Import_PaletteReplace_WithNewPixels)
+        {
+            const std::string folder = ExportView500();
+            for (const char *file : { "500.l0.c0.bmp", "500.l0.c1.bmp", "500.l2.c0.bmp" })
+            {
+                ChangeBmp(folder + "\\" + file, [](IndexedBmp &bmp) { bmp.colors[12] = IndexedBmpColor{ 7, 8, 9 }; });
+            }
+            ChangeBmp(folder + "\\500.l0.c0.bmp", [](IndexedBmp &bmp) { bmp.pixels[0] = 12; });
+            const std::vector<uint8_t> pixels = ReadIndexedBmpFile(folder + "\\500.l0.c0.bmp")->pixels;
+
+            Expect(0, { "view", "import", _gameFolder, "--in-dir", folder, "--palette", "replace", "--palette-range", "12-12", "--out-dir", _patches });
+
+            Assert::IsTrue(pixels == PixelsWithPatches(0, 0));
+            const std::string row = PaletteUseRowOf(500);
+            Assert::IsTrue(Has(row, "12=070809"), Wide(row).c_str());
+        }
+
+        TEST_METHOD(Import_PaletteReplace_ThatCannotChangeThePalette_FailsTheView)
+        {
+            const std::string folder = ExportView500();
+            // A colour table of 16 entries.
+            const std::string image = folder + "\\500.l0.c0.bmp";
+            std::vector<uint8_t> bytes = ReadFileBytes(image);
+            bytes[46] = 16;
+            bytes[47] = 0;
+            WriteFileBytes(image, bytes);
+            cli::StringConsole shortTable = Expect(6, { "view", "import", _gameFolder, "--in-dir", folder, "--palette", "replace", "--palette-range", "10-20", "--out-dir", _patches });
+            Assert::IsTrue(Has(shortTable.err, "the colour table has 16 entries, and the palette range is 10-20"), Wide(shortTable.err).c_str());
+
+            // A view with no palette.
+            sierraview::MadeView made = sierraview::ThreeLoopView();
+            made.sci2 = false;
+            made.hasPalette = false;
+            PutViewIntoGame(501, sierraview::MakeSierraView(made));
+            const std::string other = _outDir + "\\other";
+            fs::create_directories(other);
+            Expect(0, { "view", "export", _gameFolder, "--view", "501", "--out-dir", other });
+            cli::StringConsole noPalette = Expect(6, { "view", "import", _gameFolder, "--in-dir", other, "--palette", "replace", "--palette-range", "10-20", "--out-dir", _patches });
+            Assert::IsTrue(Has(noPalette.err, "view 501: the view has no palette, so no entry can get a new colour [unsupported]"), Wide(noPalette.err).c_str());
+        }
+
+        // An old patch file of a view with no change that cannot be removed:
+        // exit 9.
+        TEST_METHOD(Import_OldPatchFileThatCannotBeRemoved_ExitsWith9)
+        {
+            const std::string folder = ExportView500();
+            WriteReadOnlyFile(_patches + "\\500.v56", "read-only");
+
+            cli::StringConsole console = Expect(9, { "view", "import", _gameFolder, "--in-dir", folder, "--out-dir", _patches });
+
+            Assert::IsTrue(Has(console.err, "500.v56"), Wide(console.err).c_str());
+            Assert::AreEqual(std::string("read-only"), ReadFileText(_patches + "\\500.v56"));
+        }
+
         TEST_METHOD(Import_UsageErrors)
         {
             const std::string folder = ExportView500();
@@ -2016,8 +2084,13 @@ namespace UnitTests
             WriteFileText(folder + "\\b-no-view.toml", "[[cel]]\nloop = 0\ncel = 0\nfile = '500.l0.c0.bmp'\n");
             WriteFileText(folder + "\\c-no-file.toml", "[source]\nview = 900\n");
             ChangeBmp(folder + "\\500.l0.c0.bmp", [](IndexedBmp &image) { image.pixels[0] = 50; });
+            // The view of a .toml file that names no image file fails, and
+            // loses the patch file of an earlier run.
+            WriteFileText(_patches + "\\900.v56", "old");
 
             cli::StringConsole console = Expect(6, { "view", "import", _gameFolder, "--in-dir", folder, "--out-dir", _patches });
+
+            Assert::IsFalse(fs::exists(_patches + "\\900.v56"), Wide(console.err).c_str());
 
             Assert::IsTrue(Has(console.err, "b-no-view.toml") && Has(console.err, "the file has no view number ([source] view)"), Wide(console.err).c_str());
             Assert::IsTrue(Has(console.err, "c-no-file.toml") && Has(console.err, "the file names no image file of a cel"), Wide(console.err).c_str());

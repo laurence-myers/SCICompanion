@@ -734,21 +734,27 @@ namespace cli
             {
                 return sci::Fail(sci::ErrorCode::Unsupported, "the view has no palette, so no entry can get a new colour");
             }
-            SCI_TRY_ASSIGN(ViewPaletteEdit edit, ReplaceViewPaletteColors(version, newData, palette.first, palette.last, rangeColors->image.colors));
+            // An entry that the view does not mark as used keeps its colour:
+            // the game takes the colour of such an entry from another
+            // palette, and the colour table of an exported image has that
+            // colour there.
+            std::array<IndexedBmpColor, 256> colors = rangeColors->image.colors;
+            for (int entry = palette.first; entry <= palette.last; entry++)
+            {
+                if (description.palette.flags[entry] == 0)
+                {
+                    colors[entry] = description.palette.colors[entry];
+                }
+            }
+            SCI_TRY_ASSIGN(ViewPaletteEdit edit, ReplaceViewPaletteColors(version, newData, palette.first, palette.last, colors));
             std::array<bool, 256> notStored = {};
-            std::array<bool, 256> notUsed = {};
             for (int entry = palette.first; entry <= palette.last; entry++)
             {
                 notStored[entry] = !edit.entries[entry];
-                notUsed[entry] = edit.entries[entry] && !edit.usedBefore[entry];
             }
             if (!RunsText(notStored).empty())
             {
                 warnings.push_back(fmt::format("its palette stores {0}, so the entries {1} of the range get no colour", StoredText(edit.before), RunsText(notStored)));
-            }
-            if (!RunsText(notUsed).empty())
-            {
-                warnings.push_back(fmt::format("its palette does not mark the entries {0} as used, so the game takes their colours from another palette", RunsText(notUsed)));
             }
             newData = std::move(edit.data);
         }
@@ -814,20 +820,22 @@ namespace cli
                     job.cels.push_back(importCel);
                 }
             }
-            if (job.cels.empty())
-            {
-                return sci::Fail(sci::ErrorCode::Usage, "the file names no image file of a cel", where);
-            }
             return job;
         }
 
         // The new bytes of the view, or the same bytes for a view with no
-        // change. Format for a view that a reader repaired while its resource
-        // was read (DescribeView gives Format for a repair of the reader of
-        // the view).
+        // change. Usage for a sidecar file that names no image file; Format
+        // for a view that a reader repaired while its resource was read
+        // (DescribeView gives Format for a repair of the reader of the view).
         sci::Result<std::vector<uint8_t>> MakeImportedView(GameSession &session, const ViewImportJob &job, const PicImportPalette &palette, bool allowUnused, CliOutput &output, bool &unchanged)
         {
             const std::string viewText = ViewText(job.number);
+            if (job.cels.empty())
+            {
+                sci::ErrorLocation where;
+                where.file = job.sidecarPath;
+                return sci::Fail(sci::ErrorCode::Usage, "the file names no image file of a cel", where);
+            }
             RepairLogSink repairs;
             sci::Result<ViewSource> read = [&]()
             {

@@ -28,6 +28,8 @@ namespace sierraview
         // header points at the same bytes). Its size and pixels must be
         // those of that cel.
         bool sharesDataWithPrevious = false;
+        // An SCI2 cel with no row table (the offset of its header is 0).
+        bool noRowTable = false;
     };
 
     struct MadeLoop
@@ -44,6 +46,12 @@ namespace sierraview
         // header has 18 bytes or more; the bytes after 18 are 0.
         int headerWord = 16;
         int celHeaderSize = 52;
+        // The shortest run of one colour that gets a run code (Sierra's
+        // encoders used 2 or 3).
+        int fillRun = 3;
+        // A single pixel of the skip colour between other pixels is a
+        // literal pixel, as Sierra's encoder of SCI1.1 wrote it.
+        bool skipInLiteral = false;
         // SCI2: each cel has a row table, and the compression byte is 0x8a
         // (0x0a for SCI1.1).
         bool sci2 = true;
@@ -87,7 +95,7 @@ namespace sierraview
         std::vector<uint32_t> literalRows;
     };
 
-    inline EncodedCel EncodeCel(const MadeCel &cel)
+    inline EncodedCel EncodeCel(const MadeCel &cel, int fillRun = 3, bool skipInLiteral = false)
     {
         EncodedCel encoded;
         for (int y = 0; y < cel.height; y++)
@@ -103,12 +111,13 @@ namespace sierraview
                 {
                     same++;
                 }
-                if (row[x] == cel.skip)
+                const bool lone = (same == 1) && (x > 0) && ((x + 1) < cel.width);
+                if ((row[x] == cel.skip) && !(skipInLiteral && lone))
                 {
                     encoded.rle.push_back((uint8_t)(0xc0 | same));
                     x += same;
                 }
-                else if (same >= 3)
+                else if (same >= fillRun)
                 {
                     encoded.rle.push_back((uint8_t)(0x80 | same));
                     encoded.literal.push_back(row[x]);
@@ -117,8 +126,14 @@ namespace sierraview
                 else
                 {
                     int count = 1;
-                    while (((x + count) < cel.width) && (row[x + count] != cel.skip) && (count < 63))
+                    while (((x + count) < cel.width) && (count < 63))
                     {
+                        const bool skip = (row[x + count] == cel.skip);
+                        const bool loneSkip = skip && skipInLiteral && ((x + count + 1) < cel.width) && (row[x + count + 1] != cel.skip);
+                        if (skip && !loneSkip)
+                        {
+                            break;
+                        }
                         count++;
                     }
                     encoded.rle.push_back((uint8_t)count);
@@ -221,12 +236,12 @@ namespace sierraview
                 }
                 else
                 {
-                    const EncodedCel encoded = EncodeCel(cel);
+                    const EncodedCel encoded = EncodeCel(cel, view.fillRun, view.skipInLiteral);
                     place.rle = bytes.size();
                     bytes.insert(bytes.end(), encoded.rle.begin(), encoded.rle.end());
                     place.literal = bytes.size();
                     bytes.insert(bytes.end(), encoded.literal.begin(), encoded.literal.end());
-                    if (view.sci2)
+                    if (view.sci2 && !cel.noRowTable)
                     {
                         place.rowTable = bytes.size();
                         bytes.resize(bytes.size() + (8 * (size_t)cel.height));

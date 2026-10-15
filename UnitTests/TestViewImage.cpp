@@ -452,9 +452,9 @@ namespace UnitTests
             }
         }
 
-        // New run-length data that is not longer than the old data takes
-        // its place: the view keeps its size.
-        TEST_METHOD(Replace_RunLengthCel_ThatFits_ChangesInPlace)
+        // New pixels that have the runs of the old codes keep the codes, the
+        // row table and the sizes: only literal bytes change.
+        TEST_METHOD(Replace_RunLengthCel_WithTheOldRuns_ChangesOnlyItsLiteralData)
         {
             for (bool sci2 : { true, false })
             {
@@ -469,17 +469,64 @@ namespace UnitTests
 
                 AssertOk(patched);
                 Assert::AreEqual(data.size(), patched->size());
+                const std::vector<size_t> differences = DifferencesOf(data, *patched);
+                Assert::IsFalse(differences.empty());
+                for (size_t at : differences)
+                {
+                    Assert::IsTrue((at >= places[0].literal) && (at < places[0].literal + 15), Wide(fmt::format("byte {0} changed", at)).c_str());
+                }
+                sci::Result<std::vector<uint8_t>> read = GetViewCelPixels(version, *patched, 0, 0);
+                AssertOk(read);
+                Assert::IsTrue(pixels == *read);
+                if (sci2)
+                {
+                    Assert::IsTrue(pixels == DecodeWithRowTable(*patched, places[0].header));
+                }
+            }
+        }
+
+        // New run-length data that is not longer than the old data takes
+        // its place: the view keeps its size. A run of one colour of the old
+        // codes has two colours now (13 and 14 of row 0), so the codes change.
+        TEST_METHOD(Replace_RunLengthCel_ThatFits_ChangesInPlace)
+        {
+            for (bool sci2 : { true, false })
+            {
+                // Row 0: a run of 3 pixels of 20, then 5 literal pixels; row
+                // 1: 8 literal pixels. The codes have 3 bytes, the literal
+                // data 14.
+                MadeView made;
+                made.sci2 = sci2;
+                made.hasPalette = false;
+                MadeLoop loop;
+                MadeCel cel;
+                cel.width = 8;
+                cel.height = 2;
+                cel.pixels = { 20, 20, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33 };
+                loop.cels.push_back(cel);
+                made.loops.push_back(loop);
+                const SCIVersion &version = sci2 ? sciVersion2 : sciVersion1_1;
+                std::vector<CelPlace> places;
+                const std::vector<uint8_t> data = MakeSierraView(made, &places);
+                // The run of 20 is 20, 20, 21 now: 2 literal pixels and a
+                // run of 6 pixels of 21 (3 codes and 11 literal bytes).
+                std::vector<uint8_t> pixels = cel.pixels;
+                std::fill(pixels.begin() + 2, pixels.begin() + 8, (uint8_t)21);
+
+                sci::Result<std::vector<uint8_t>> patched = ReplaceViewCelPixels(version, data, { ViewCelPixels{ 0, 0, pixels } });
+
+                AssertOk(patched);
+                Assert::AreEqual(data.size(), patched->size());
                 const size_t header = places[0].header;
                 for (size_t at : DifferencesOf(data, *patched))
                 {
                     const bool sizes = (at >= header + 12) && (at < header + 20);
-                    // The data of cel 0 is before the data of cel 1.
-                    const bool own = (at >= places[0].rle) && (at < places[1].rle);
+                    const bool own = at >= places[0].rle;
                     Assert::IsTrue(sizes || own, Wide(fmt::format("byte {0} changed", at)).c_str());
                 }
                 Assert::AreEqual((uint32_t)places[0].rle, DwordOf(*patched, header + 24));
                 Assert::AreEqual(3u, DwordOf(*patched, header + 16));
-                Assert::AreEqual(6u, DwordOf(*patched, header + 12));
+                Assert::AreEqual(14u, DwordOf(*patched, header + 12));
                 sci::Result<std::vector<uint8_t>> read = GetViewCelPixels(version, *patched, 0, 0);
                 AssertOk(read);
                 Assert::IsTrue(pixels == *read);
@@ -488,6 +535,62 @@ namespace UnitTests
                     Assert::IsTrue(pixels == DecodeWithRowTable(*patched, header));
                 }
             }
+        }
+
+        // A cel whose literal runs have single pixels of the skip colour (as
+        // Sierra's encoder of SCI1.1 wrote them) keeps its codes when two
+        // colours swap.
+        TEST_METHOD(Replace_SkipPixelsInLiteralRuns_KeepTheOldCodes)
+        {
+            MadeView made;
+            made.sci2 = false;
+            made.skipInLiteral = true;
+            made.hasPalette = false;
+            MadeLoop loop;
+            MadeCel cel;
+            cel.width = 6;
+            cel.height = 1;
+            cel.skip = 9;
+            cel.pixels = { 1, 9, 2, 9, 3, 4 };
+            loop.cels.push_back(cel);
+            made.loops.push_back(loop);
+            std::vector<CelPlace> places;
+            const std::vector<uint8_t> data = MakeSierraView(made, &places);
+            Assert::AreEqual((uint8_t)6, data[places[0].rle], L"setup: one literal run of 6 pixels");
+
+            sci::Result<std::vector<uint8_t>> patched = ReplaceViewCelPixels(sciVersion1_1, data, { ViewCelPixels{ 0, 0, { 2, 9, 1, 9, 3, 4 } } });
+
+            AssertOk(patched);
+            Assert::AreEqual(data.size(), patched->size());
+            for (size_t at : DifferencesOf(data, *patched))
+            {
+                Assert::IsTrue((at >= places[0].literal) && (at < places[0].literal + 6), Wide(fmt::format("byte {0} changed", at)).c_str());
+            }
+            // A new pixel of the skip colour in a literal run is not
+            // Sierra's form: the cel gets new codes.
+            sci::Result<std::vector<uint8_t>> moved = ReplaceViewCelPixels(sciVersion1_1, data, { ViewCelPixels{ 0, 0, { 1, 9, 2, 9, 9, 4 } } });
+            AssertOk(moved);
+            Assert::AreNotEqual((int)data[places[0].rle], (int)(*moved)[DwordOf(*moved, places[0].header + 24)]);
+        }
+
+        // An SCI2 cel with no row table (the offset in its header is 0): it
+        // gets none.
+        TEST_METHOD(Replace_Sci2CelWithNoRowTable)
+        {
+            MadeView made = ThreeLoopView();
+            made.loops[0].cels[0].noRowTable = true;
+            std::vector<CelPlace> places;
+            const std::vector<uint8_t> data = MakeSierraView(made, &places);
+            const std::vector<uint8_t> pixels = { 60, 60, 60, 61, 0, 0, 62, 63, 64, 64, 65, 65, 65, 65, 0 };
+
+            sci::Result<std::vector<uint8_t>> patched = ReplaceViewCelPixels(sciVersion2, data, { ViewCelPixels{ 0, 0, pixels } });
+
+            AssertOk(patched);
+            Assert::AreEqual(0u, DwordOf(*patched, places[0].header + 32));
+            Assert::AreEqual(data.size() + 14, patched->size(), L"the run-length and the literal data, and no row table");
+            sci::Result<std::vector<uint8_t>> read = GetViewCelPixels(sciVersion2, *patched, 0, 0);
+            AssertOk(read);
+            Assert::IsTrue(pixels == *read);
         }
 
         // A raw cel whose data is also bytes of the palette gets new data
@@ -576,6 +679,56 @@ namespace UnitTests
         TEST_METHOD(Encode_PixelsOfAnotherSize_IsUsage)
         {
             AssertError(EncodeViewCel(3, 2, 0, std::vector<uint8_t>(5, 1)).error(), sci::ErrorCode::Usage, "a cel of 3 x 2 pixels needs 6 bytes of pixels, not 5");
+            AssertError(EncodeViewCel(3, 2, 0, std::vector<uint8_t>(6, 1), 1).error(), sci::ErrorCode::Usage, "the shortest run of a colour is 1; it must be 2 or more");
+        }
+
+        // fillRun 2 gives a run code to 2 pixels of one colour.
+        TEST_METHOD(Encode_FillRunOfTwo)
+        {
+            const std::vector<uint8_t> pixels = { 5, 5, 6, 6, 7, 8 };
+
+            sci::Result<EncodedViewCel> two = EncodeViewCel(6, 1, 0, pixels, 2);
+            sci::Result<EncodedViewCel> three = EncodeViewCel(6, 1, 0, pixels, 3);
+
+            AssertOk(two);
+            AssertOk(three);
+            Assert::IsTrue((std::vector<uint8_t>{ 0x82, 0x82, 0x02 }) == two->rle);
+            Assert::IsTrue((std::vector<uint8_t>{ 5, 6, 7, 8 }) == two->literal);
+            Assert::IsTrue((std::vector<uint8_t>{ 0x06 }) == three->rle);
+            Assert::IsTrue(pixels == three->literal);
+        }
+
+        // A cel of Sierra's SCI1.1 encoder, which gave a run code to 2
+        // pixels: new pixels whose last run of 2 has two colours fit in its
+        // place only in that form.
+        TEST_METHOD(Replace_CelOfRunsOfTwo_FitsInPlace)
+        {
+            for (bool sci2 : { false, true })
+            {
+                MadeView made;
+                made.sci2 = sci2;
+                made.fillRun = 2;
+                made.hasPalette = false;
+                MadeLoop loop;
+                MadeCel cel;
+                cel.width = 8;
+                cel.height = 2;
+                cel.pixels = { 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15, 16, 16, 17, 17 };
+                loop.cels.push_back(cel);
+                made.loops.push_back(loop);
+                const std::vector<uint8_t> data = MakeSierraView(made);
+                const SCIVersion &version = sci2 ? sciVersion2 : sciVersion1_1;
+                std::vector<uint8_t> swapped = cel.pixels;
+                swapped[6] = 12;
+
+                sci::Result<std::vector<uint8_t>> patched = ReplaceViewCelPixels(version, data, { ViewCelPixels{ 0, 0, swapped } });
+
+                AssertOk(patched);
+                Assert::AreEqual(data.size(), patched->size(), L"the new data takes the place of the old data");
+                sci::Result<std::vector<uint8_t>> read = GetViewCelPixels(version, *patched, 0, 0);
+                AssertOk(read);
+                Assert::IsTrue(swapped == *read);
+            }
         }
 
         // A raw cel that no other header points at changes in place.
