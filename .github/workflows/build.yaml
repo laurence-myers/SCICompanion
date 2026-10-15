@@ -54,7 +54,7 @@ jobs:
       run: .\UnitTests\RunTests.ps1 -Configuration ${{ matrix.configuration }} -Integration -BlameHang
 
     # Smoke test of the command-line tool (docs/scic-cli/plan.md, section 10).
-    # Run the built scic.exe as a user does, on two copies of the SCI1.1
+    # Run the built scic.exe as a user does, on copies of the SCI1.1
     # template in the runner's temp folder: the template as it ships (its
     # own sources compile first, as a dry run that writes nothing), and a
     # game that SCI Companion never opened (no game.ini, no src\). Each
@@ -144,8 +144,9 @@ jobs:
         Copy-Item $template $removeGame -Recurse
         $removed = ($viewRows[0] -split "`t")[0]
         Assert-Line (Invoke-Scic view remove $removeGame --view $removed --data-dir $noData).All "Removed 1 of 1 view"
-        $left = @((Invoke-Scic view list $removeGame --format tsv --data-dir $noData).Out | Where-Object { $_ -match '^\d+\t' }).Count
-        if ($left -ne ($viewRows.Count - 1)) { throw "scic view remove left $left of $($viewRows.Count) views." }
+        $leftRows = @((Invoke-Scic view list $removeGame --format tsv --data-dir $noData).Out | Where-Object { $_ -match '^\d+\t' })
+        if ($leftRows.Count -ne ($viewRows.Count - 1)) { throw "scic view remove left $($leftRows.Count) of $($viewRows.Count) views." }
+        if ($leftRows | Where-Object { $_.StartsWith("$removed`t") }) { throw "scic view remove left view $removed in the game." }
         foreach ($game in @($shipped, $neverOpened)) {
           # A row of the table (stdout) starts with the script number.
           $count = @((Invoke-Scic script list $game).Out | Where-Object { $_ -match '^\s*\d+\s' }).Count

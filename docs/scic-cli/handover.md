@@ -315,17 +315,19 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
 - A patch file of `view import` or `view add` on the screen of a game:
   ScummVM and Sierra's interpreter were not run with one. The round-trip
   sweep reads the patch files back with the readers of SCI Companion only.
-  The mirror headers of `view add` (the cel count and offset of the loop
-  at the end of a chain) come from the ScummVM source (`GfxView::initData`,
-  `CelObjView`).
+  The mirror headers of `view add` come from the ScummVM source
+  (`GfxView::initData`, `CelObjView`): each mirror gets the cel offset of
+  the loop at the end of its chain, and as its cel count the `cels` key of
+  a mirror that mirrors it (`headerCels`), else the count of that loop.
 - `view import` and `view add`: a view too large for a resource
   (`CheckResourceSize`, before the patch file of an earlier run goes) can
   happen only in an SCI2 game (in SCI1.1 the 64 KB check comes first), and
   the tests have no SCI2 game.
-- `view remove`: the `Internal` errors (the second read of the map does
-  not give the entry; an entry that the patch source did not list) and
-  the message box text of the GUI forms (`ShowRemoveError`). The GUI
-  delete now tells its syncs only after a removal that worked.
+- `view remove`: three `Internal` errors (the second read of the map does
+  not give the entry; an entry that the patch source did not list; a
+  removal that leaves as many copies of the view, in `RemoveView`), the
+  message box text of the GUI forms (`ShowRemoveError`), and that the GUI
+  delete does not tell its syncs after a removal that failed.
 
 ## Questions for you
 
