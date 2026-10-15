@@ -1,8 +1,9 @@
 <#
-    The round-trip check of scic view export and scic view import on a game
-    (docs/scic-cli/plan.md, sections 4.11 and 4.12). For local use: CI does
-    not run it (CI has only the SCI1.1 template; the check is for a game
-    with many views, for example the hi-res Leisure Suit Larry 6).
+    The round-trip check of scic view export, scic view import and scic view
+    add on a game (docs/scic-cli/plan.md, sections 4.11 to 4.13). For local
+    use: CI does not run it (CI has only the SCI1.1 template; the check is
+    for a game with many views, for example the hi-res Leisure Suit Larry
+    6).
 
     The script only reads the game folder. It copies the files of the game
     folder (not its subfolders) into a new run folder under -Work, and all
@@ -21,20 +22,28 @@
          patch file starts with 80 80 00 00.
       7. scic view export of the second copy -> export2: each BMP file is
          the file of swapped, byte for byte.
+      8. scic view add <copy> --view N --from export1\N.toml --replace, for
+         each view of export1                       -> patch3
+      9. A third copy of the game gets the patch files of patch3. scic view
+         export of it -> export3: each BMP file is the file of export1, byte
+         for byte, and each .toml file has the facts of the file of export1
+         (all but the comment, [source] and the file names).
 
     The run folder (<Work>\<time>-<process id>) gets roundtrip.csv, with one
     row for each view (number, format, cels, exported, cel_files,
-    no_change, imported, list_same, swap_same, note), and logs\ (stdout and
-    stderr of each command). A cell is "yes", "no", or empty when the check
-    does not apply. cel_files is "yes" when export1 has one BMP file for
-    each stored cel of the view. imported is "no" for a view that export
-    took and import did not: that is a failure, and the note of the row has
-    the error of import.
+    no_change, imported, list_same, swap_same, added, add_same, note), and
+    logs\ (stdout and stderr of each command). A cell is "yes", "no", or
+    empty when the check does not apply. cel_files is "yes" when export1
+    has one BMP file for each stored cel of the view. imported is "no" for
+    a view that export took and import did not: that is a failure, and the
+    note of the row has the error of import. added is "no" for a view that
+    add refused; that is a failure, but for an Unsupported refusal (an
+    SCI1.1 view of more than 64 KB), which is only a note.
 
     Some games have pixels with a palette entry that the view and palette
     999 do not mark as used, and import refuses them. -AllowUnusedIndices
-    gives --allow-unused-indices to import, so that these views are in the
-    check.
+    gives --allow-unused-indices to import and to add, so that these views
+    are in the check.
 
     The script exits with 1 when a check gives "no", when scic gives an exit
     code that is not 0 or 6 (6: a view failed, which the rows show), or when
@@ -201,6 +210,16 @@ function Write-SwappedImage([string]$from, [string]$to, [int]$skipColor) {
     return $swapped
 }
 
+# The text of a .toml file of export with no comment, no [source] table and
+# no file names: the facts of the view.
+function Get-ViewFacts([string]$path) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return "" }
+    $text = [IO.File]::ReadAllText($path) -replace "`r`n", "`n"
+    $text = $text -replace '(?m)^#.*\n', ''
+    $text = $text -replace '(?s)\[source\]\n.*?\n\n', ''
+    return ($text -replace '(?m)^file = .*\n', '')
+}
+
 # The first 4 bytes of a file, as 8 hex digits.
 function Get-FileHeader([string]$path) {
     $stream = [IO.File]::OpenRead($path)
@@ -218,7 +237,9 @@ $patch1 = Join-Path $run "patch1"
 $swappedFolder = Join-Path $run "swapped"
 $patch2 = Join-Path $run "patch2"
 $export2 = Join-Path $run "export2"
-foreach ($folder in @($export1, $patch1, $swappedFolder, $patch2, $export2)) { New-Item -ItemType Directory $folder | Out-Null }
+$patch3 = Join-Path $run "patch3"
+$export3 = Join-Path $run "export3"
+foreach ($folder in @($export1, $patch1, $swappedFolder, $patch2, $export2, $patch3, $export3)) { New-Item -ItemType Directory $folder | Out-Null }
 
 Copy-GameFiles $gameFull $copy
 $original = Get-ViewRows "1-list" $copy
@@ -250,13 +271,33 @@ foreach ($patch in @(Get-ChildItem -LiteralPath $patch2 -File)) {
 $patched = Get-ViewRows "5-list-patched" $copy2
 [void](Invoke-Scic "6-export-patched" @("view", "export", $copy2, "--all", "--out-dir", $export2))
 
+Write-Host "Adding each exported view again ..."
+$addErrors = @{}
+foreach ($sidecar in @(Get-ChildItem -LiteralPath $export1 -File -Filter "*.toml")) {
+    $number = [int][IO.Path]::GetFileNameWithoutExtension($sidecar.Name)
+    $name = "7-add-$number"
+    $code = Invoke-Logged $Scic (@("view", "add", $copy, "--view", "$number", "--from", $sidecar.FullName, "--replace", "--out-dir", $patch3) + $importOptions) (Join-Path $logs "$name.out.txt") (Join-Path $logs "$name.err.txt") $TimeoutSeconds
+    $errText = [IO.File]::ReadAllText((Join-Path $logs "$name.err.txt"))
+    if (($errText -match '\[internal\]|scic: crash') -or (@("0", "6") -notcontains $code)) { $failures.Add("scic $name ended with the exit code $code or an internal error (see $logs)") }
+    if ($code -ne "0") {
+        $lines = Get-ViewLines $name "error"
+        $addErrors[$number] = if ($lines.ContainsKey($number)) { $lines[$number] } else { "scic view add ended with the exit code $code" }
+    }
+}
+$copy3 = Join-Path $run "game-patch3"
+Copy-GameFiles $gameFull $copy3
+foreach ($patch in @(Get-ChildItem -LiteralPath $patch3 -File)) {
+    Copy-Item -LiteralPath $patch.FullName -Destination (Join-Path $copy3 $patch.Name)
+}
+[void](Invoke-Scic "8-export-added" @("view", "export", $copy3, "--all", "--out-dir", $export3))
+
 function Get-YesNo($value) { if ($value) { "yes" } else { "no" } }
 
 $rows = New-Object System.Collections.Generic.List[object]
 foreach ($number in ($original.Keys | Sort-Object)) {
     $view = $original[$number]
     $exported = Test-Path -LiteralPath (Join-Path $export1 "$number.toml")
-    $row = [ordered]@{ number = $number; format = $view.Format; cels = $view.Cels; exported = (Get-YesNo $exported); cel_files = ""; no_change = ""; imported = ""; list_same = ""; swap_same = ""; note = $view.Error }
+    $row = [ordered]@{ number = $number; format = $view.Format; cels = $view.Cels; exported = (Get-YesNo $exported); cel_files = ""; no_change = ""; imported = ""; list_same = ""; swap_same = ""; added = ""; add_same = ""; note = $view.Error }
     if ($exported) {
         # @(): a function gives one object, not an array of one.
         $images = @(Get-ViewImages $export1 $number)
@@ -289,6 +330,22 @@ foreach ($number in ($original.Keys | Sort-Object)) {
             $row.note = $reason
             $failures.Add("view ${number}: export took the view and import of the swapped images did not: $reason")
         }
+        # The view added from the files of export.
+        $added = Test-Path -LiteralPath (Join-Path $patch3 "$number.v56")
+        $row.added = Get-YesNo $added
+        if ($added) {
+            $addSame = ((Get-ViewFacts (Join-Path $export1 "$number.toml")) -eq (Get-ViewFacts (Join-Path $export3 "$number.toml"))) -and
+                (@($images | Where-Object { -not (Test-SameBytes $_.FullName (Join-Path $export3 $_.Name)) }).Count -eq 0)
+            $row.add_same = Get-YesNo $addSame
+            if (-not $addSame) { $failures.Add("view ${number}: the view added from the files of export does not export the same .toml facts and images") }
+        }
+        else {
+            $reason = $addErrors[$number]
+            $row.note = "add: $reason"
+            # A refusal (a view of more than 64 KB in SCI1.1) is a note; any
+            # other reason is a failure.
+            if ($reason -notmatch "Sierra's interpreter of SCI1\.1 reads a view of 65535 bytes or fewer \[unsupported\]$") { $failures.Add("view ${number}: export took the view and add did not: $reason") }
+        }
     }
     $rows.Add([pscustomobject]$row)
 }
@@ -296,7 +353,7 @@ $csv = Join-Path $run "roundtrip.csv"
 $rows | Export-Csv -LiteralPath $csv -NoTypeInformation -Encoding UTF8
 
 if (-not $Keep) {
-    foreach ($folder in @($copy, $copy2, $export1, $patch1, $swappedFolder, $patch2, $export2)) {
+    foreach ($folder in @($copy, $copy2, $copy3, $export1, $patch1, $swappedFolder, $patch2, $export2, $patch3, $export3)) {
         [IO.Directory]::Delete($folder, $true)
     }
 }
@@ -307,6 +364,7 @@ Write-Host ("Views: {0}. Exported: {1} ({2} with one BMP file for each stored ce
     @($rows | Where-Object { $_.cel_files -eq "yes" }).Count, @($rows | Where-Object { $_.no_change -eq "yes" }).Count, $swappedImages)
 Write-Host ("Imported with swapped images: {0}. Listed as before: {1}. Swapped images the same: {2}." -f $importedCount,
     @($rows | Where-Object { $_.list_same -eq "yes" }).Count, @($rows | Where-Object { $_.swap_same -eq "yes" }).Count)
+Write-Host ("Added from the files of export: {0}. The same facts and images: {1}." -f @($rows | Where-Object { $_.added -eq "yes" }).Count, @($rows | Where-Object { $_.add_same -eq "yes" }).Count)
 Write-Host "CSV: $csv"
 if ($importedCount -eq 0) { $failures.Add("no view went through export and import, so the sweep checked no image") }
 if ($failures.Count -gt 0) {

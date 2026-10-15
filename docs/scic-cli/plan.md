@@ -615,13 +615,14 @@ scic pic import       <game-folder> (--pic <pic> --image <file> | --in-dir <fold
 scic view list        <game-folder> [--view <view> ...] [options]
 scic view export      <game-folder> (--view <view> ... | --all) --out-dir <folder> [options]
 scic view import      <game-folder> (--view <view> [--loop <loop>] [--cel <cel>] --image <file> | --in-dir <folder>) --out-dir <folder> [options]
+scic view add         <game-folder> --view <view> --from <file.toml> --out-dir <folder> [options]
 scic view palette     <game-folder> --view <view> ... (--colors-from <file> | --clear-used) --palette-range <first>-<last> --out-dir <folder> [options]
 scic help [group [command]]
 scic --version
 ```
 
 - `script` is the first command group, `pic` (section 4.7) the second, and
-  `view` (sections 4.9 to 4.12) the third. Later groups use the same pattern
+  `view` (sections 4.9 to 4.13) the third. Later groups use the same pattern
   (section 13): for example `scic resource extract`, `scic package rebuild`.
 - `scic script` with no command, and `scic help script`, list the script
   commands. `scic pic` and `scic help pic` list the pic commands, and
@@ -1489,7 +1490,93 @@ Rules:
 
 `UnitTests\Tools\ViewRoundTripSweep.ps1` (local use) runs export, import
 with no change, import with 2 entries swapped in each image, and export
-again on copies of a game, and compares the images byte for byte.
+again on copies of a game, and compares the images byte for byte. It also
+adds each exported view again (`view add`, section 4.13) and compares.
+
+### 4.13 `scic view add`
+
+```
+scic view add C:\Games\LSL6 --view 9000 --from C:\work\views\600.toml --out-dir C:\work\patches
+scic view add C:\Games\LSL6 --view 600 --from C:\work\new\600.toml --replace --out-dir C:\work\patches --dry-run
+```
+
+Purpose: make a new view (for example a new door, or a view in the place
+of a view of the game) from the files of the form of `view export`. It
+makes views of SCI1.1 and SCI2, and it does not read the data folder. It
+writes the view as a patch file (`<view>.v56`, with the header of section
+4.9) into `--out-dir`; the game does not change.
+
+- `--from` is one `.toml` file of the form of `view export`
+  (`Src\Resources\ViewSidecar.h`). The BMP files of its cels are in its
+  folder. `--view` is the number of the new view; the `[source]` table of
+  the file is not used.
+- The game must not have the view (`Usage`, exit 2), but with
+  `--replace`: the patch file then takes the place of the view of the
+  game when it goes into the game.
+- The keys that `add` reads (`MakeAddedView`, `Src\Cli\CliView.h`):
+  - `[view]`: `scale_flags`, `byte_4` and `resolution` (bytes 3, 4 and 5
+    of the view header), `native_width` and `native_height` (bytes 14 to
+    17; many of Sierra's views have 0). `loops` and `cels`, when they are
+    not 0, must be the counts of the file.
+  - `[palette]`: with `present = true`, the palette stores the entries
+    `stored_first` to `stored_first + stored_count - 1`, with entries of
+    `entry_size` bytes (0: 4), and the flags of `flags` (an entry with no
+    run: 1; the 3-byte entries must have one flag, the flag of the
+    header). The colour of each stored entry comes from the colour tables
+    of the images. Each table must have the stored entries, and the
+    tables must agree for each entry with a flag that is not 0. With no
+    `present`, the view has no palette.
+  - `[[loop]]`: `index` (0 to n - 1, each one time), `mirror_of` (another
+    loop of the view; it can be a mirror too, as in some of Sierra's
+    views, but the chain of mirrors must end at a loop that is not a
+    mirror), and `cels` (when it is not 0: the count of the cels of the
+    loop, or of the loop at the end of the chain). The interpreters give a
+    mirror the cel count of the header of the loop that it names: for a
+    mirror of a mirror, `cels` (also 0, as in Sierra's views, where such a
+    mirror shows no cel) is that count, and it goes into the header of the
+    named mirror. When the loop at the end of the chain has cels, a count
+    of 0 (or no `cels` key) gives a warning for each such mirror of a
+    mirror: it shows no cel. 1 to 255 loops.
+  - `[[cel]]`: `loop`, `cel` (0 to n - 1 in each loop that is not a
+    mirror, each one time, 255 cels or fewer), `file`, `x`, `y`,
+    `skip_color` and `raw`. A mirror loop has no `[[cel]]`; a loop that is
+    not a mirror can have none, as some of Sierra's views have. `width` and
+    `height` come from the BMP file; when they are not 0, they must be its
+    size.
+  - The other keys of `export` (`entries`, `skip_pixels`, `used`, ...) are
+    not used, but each must have its type and a value in its range.
+- Each BMP file is 8-bit and not compressed. Each pixel that is not the
+  skip colour of its cel must be an entry that the new palette (a flag
+  that is not 0) or palette 999 marks as used; `--allow-unused-indices`
+  makes it a warning.
+- The write (`MakeNewViewBytes`, `Src\Resources\ViewImage.h`): the view
+  writer of SCI Companion writes the headers and the cels (a new view has
+  no Sierra layout to keep), then the bytes 3, 4, 5 and 14 to 17 get the
+  values of the file. A raw cel (`raw = true`, Sierra's magnifier cels)
+  gets its pixels as they are, after the data of the writer. The palette
+  (`MakePaletteBytes`, the form of the file: 3-byte or 4-byte entries)
+  goes after the last byte. A mirror loop gets the flag 1 in byte 1 of its
+  header, the cel offset of the loop at the end of its chain, and the cel
+  count of that loop (or the count that a mirror of it gives). The new
+  bytes must read back with the loops (also the flag and the cel offset of
+  each mirror), the cels (also their compression bytes, and through the
+  SCI2 row tables), the header bytes and the palette, else `Internal`. An
+  SCI1.1 view of more than 65535 bytes is `Unsupported`, and so is a view
+  too large for a resource of the game (checked before the old patch file
+  goes).
+
+Rules:
+
+- The view runs in an exception boundary: a view that fails is an error
+  line (exit 6; also a game version that is not SCI1.1 or SCI2), and it
+  loses the patch file of an earlier run in `--out-dir` (`Removed ...`).
+- `--out-dir` has the rules of `pic export` (exit 3 or 2). A `--from` file
+  that does not exist: exit 3. A `--view` that is not 0 to 65535: exit 2.
+- A patch file that cannot be written, or a patch file of an earlier run
+  that cannot be removed: exit 9.
+- `--dry-run` does all checks, writes and removes nothing, and says what a
+  run would write (`Would write ...`).
+- The summary: `Added view 9000 (3 loops, 12 cels) as <file>.`
 
 ## 5. Where compiled output goes
 
@@ -1852,12 +1939,12 @@ section 5.3, which section 5.22 uses), plus code 9.
 | 0 | Success |
 | 1 | Internal error (a bug, or an escaped exception) |
 | 2 | Usage error: bad option, unknown script, header file given to `compile` |
-| 3 | Cannot open the game (also a damaged or empty `resource.map`) or start the batch, or the data folder is missing (script commands), or the output folder of `pic export`, `pic import`, `view export`, `view import` or `view palette` is missing, or the input folder of `pic import` or `view import` is missing, or the BMP file of `view palette` cannot be read |
+| 3 | Cannot open the game (also a damaged or empty `resource.map`) or start the batch, or the data folder is missing (script commands), or the output folder of `pic export`, `pic import`, `view export`, `view import`, `view add` or `view palette` is missing, or the input folder of `pic import` or `view import` is missing, or the BMP file of `view palette` cannot be read, or the `.toml` file of `view add` does not exist |
 | 5 | Compile errors |
 | 6 | Partial failure: some scripts failed for a reason that is not a compile error, or the decompiler reported an error in a script that it wrote, or a pic of a pic command failed, or a view of a view command failed (also a view that `view list` cannot read) |
 | 7 | Cancelled |
 | 8 | Write refused (`WriteRefused`): for example, a patch file would hide a package write, or a script of the commit used the new `.sco` of a script that the commit does not write (section 4.5) |
-| 9 | Write failed: the commit, the tables, a move, `game.ini`, main's `.sco`, or the return of a `.sco` to its state before the compile failed (any code but `Internal`, `WriteRefused` and `Cancelled`), or a file write of a script failed (`Io`; a `.scd` that cannot be written is a warning), or a file of `pic export` or of `view export`, a patch file of `pic import`, `view import` or `view palette`, or the table of a `dev` command could not be written, or a patch file of an earlier run of `view import` or `view palette` could not be removed |
+| 9 | Write failed: the commit, the tables, a move, `game.ini`, main's `.sco`, or the return of a `.sco` to its state before the compile failed (any code but `Internal`, `WriteRefused` and `Cancelled`), or a file write of a script failed (`Io`; a `.scd` that cannot be written is a warning), or a file of `pic export` or of `view export`, a patch file of `pic import`, `view import`, `view add` or `view palette`, or the table of a `dev` command could not be written, or a patch file of an earlier run of `view import`, `view add` or `view palette` could not be removed |
 
 The mapping is one function in `Src\Cli\`, with a unit test for each case:
 

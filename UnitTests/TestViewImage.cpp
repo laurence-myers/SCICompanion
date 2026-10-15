@@ -9,6 +9,7 @@
 #include "TestSupport.h"
 #include "format.h"
 #include <filesystem>
+#include <functional>
 #include <map>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -916,6 +917,252 @@ namespace UnitTests
             sci::Result<std::vector<uint8_t>> pixels = CelTopDownPixels(cel);
             AssertOk(pixels);
             Assert::IsTrue((std::vector<uint8_t>{ 1, 2, 3, 4, 5, 6 }) == *pixels);
+        }
+
+        // A new view: loop 0 has 2 cels (with the skip colour in them), loop
+        // 1 mirrors loop 0, and loop 2 has 1 raw cel. The palette stores the
+        // entries 10 to 99; with 4-byte entries, 50 to 59 have no mark.
+        static NewView MadeNewView(int entrySize)
+        {
+            NewView view;
+            view.scaleFlags = 1;
+            view.byte4 = 7;
+            view.resolution = 2;
+            view.nativeWidth = 640;
+            view.nativeHeight = 400;
+            NewViewCel a;
+            a.width = 5;
+            a.height = 3;
+            a.x = -2;
+            a.y = 3;
+            a.skipColor = 0;
+            for (int i = 0; i < 15; i++)
+            {
+                a.pixels.push_back((uint8_t)(10 + (i % 7)));
+            }
+            a.pixels[4] = 0;
+            NewViewCel b;
+            b.width = 3;
+            b.height = 5;
+            b.skipColor = 255;
+            b.pixels.assign(15, 20);
+            b.pixels[0] = 255;
+            b.pixels[7] = 21;
+            NewViewCel c = a;
+            c.x = 4;
+            c.y = -1;
+            c.raw = true;
+            NewViewLoop first;
+            first.cels = { a, b };
+            NewViewLoop mirror;
+            mirror.mirrorOf = 0;
+            NewViewLoop last;
+            last.cels = { c };
+            view.loops = { first, mirror, last };
+            view.palette.present = true;
+            view.palette.firstEntry = 10;
+            view.palette.entryCount = 90;
+            view.palette.entrySize = entrySize;
+            for (int entry = 10; entry < 100; entry++)
+            {
+                view.palette.flags[entry] = ((entrySize == 4) && (entry >= 50) && (entry < 60)) ? 0 : 1;
+                view.palette.colors[entry] = IndexedBmpColor{ (uint8_t)entry, (uint8_t)(255 - entry), (uint8_t)(entry / 2) };
+            }
+            return view;
+        }
+
+        // The new bytes read back with the loops, the cels, the header bytes
+        // and the palette, in each version and palette form.
+        TEST_METHOD(MakeNewView_ReadsBack)
+        {
+            for (const SCIVersion *version : { &sciVersion1_1, &sciVersion2 })
+            {
+                for (int entrySize : { 4, 3 })
+                {
+                    const std::string what = fmt::format("{0}, {1}-byte entries", ViewFormatName(version->ViewFormat), entrySize);
+                    const NewView view = MadeNewView(entrySize);
+
+                    sci::Result<std::vector<uint8_t>> data = MakeNewViewBytes(*version, view);
+
+                    AssertOk(data, what);
+                    sci::Result<ViewDescription> description = DescribeView(*version, *data);
+                    AssertOk(description, what);
+                    Assert::AreEqual((size_t)3, description->loops.size());
+                    Assert::AreEqual(0, description->loops[1].mirrorOf);
+                    Assert::AreEqual(2, description->loops[1].cels);
+                    Assert::AreEqual(1, (int)description->scaleFlags);
+                    Assert::AreEqual(7, (int)description->byte4);
+                    Assert::AreEqual(2, (int)description->resolution);
+                    Assert::AreEqual(640, (int)description->nativeWidth);
+                    Assert::AreEqual(400, (int)description->nativeHeight);
+                    Assert::AreEqual(10, description->palette.firstEntry);
+                    Assert::AreEqual(90, description->palette.entryCount);
+                    Assert::AreEqual(entrySize, description->palette.entrySize);
+                    for (int entry = 10; entry < 100; entry++)
+                    {
+                        Assert::AreEqual((int)view.palette.flags[entry], (int)description->palette.flags[entry], Wide(fmt::format("{0}: flag {1}", what, entry)).c_str());
+                        Assert::IsTrue(view.palette.colors[entry] == description->palette.colors[entry], Wide(fmt::format("{0}: colour {1}", what, entry)).c_str());
+                    }
+                    Assert::IsTrue(view.loops[0].cels[1].pixels == *GetViewCelPixels(*version, *data, 0, 1));
+                    Assert::IsTrue(view.loops[2].cels[0].pixels == *GetViewCelPixels(*version, *data, 2, 0));
+                    const ViewCelDescription *cel = description->Find(2, 0);
+                    Assert::IsTrue((cel != nullptr) && (cel->x == 4) && (cel->y == -1) && (cel->skipColor == 0) && cel->raw);
+                    Assert::IsFalse(description->Find(0, 0)->raw);
+                    sci::Result<ViewLayout> layout = ReadViewLayout(data->data(), data->size());
+                    AssertOk(layout, what);
+                    // The SCI32 interpreter flips the mirror.
+                    Assert::AreEqual(1, (int)(*data)[layout->loops[1].headerOffset + 1]);
+                    const bool sci2 = (version->ViewFormat == ViewFormat::VGA2);
+                    Assert::AreEqual(sci2 ? 0x8a : 0x0a, (int)(*data)[layout->loops[0].cels[0].headerOffset + 9]);
+                    Assert::AreEqual(sci2, layout->loops[0].cels[0].rowTableOffset != 0);
+                    // The raw cel: compression 0, its data and no run-length
+                    // data.
+                    const size_t rawHeader = layout->loops[2].cels[0].headerOffset;
+                    Assert::AreEqual(0, (int)(*data)[rawHeader + 9]);
+                    Assert::AreEqual(15u, DwordOf(*data, rawHeader + 12));
+                    Assert::AreEqual(0u, DwordOf(*data, rawHeader + 16));
+                    Assert::AreEqual(0u, DwordOf(*data, rawHeader + 28));
+                }
+            }
+        }
+
+        // Forms of Sierra's views: a mirror of a mirror, a loop with no cel,
+        // and a native size of 0.
+        TEST_METHOD(MakeNewView_MirrorOfAMirrorAndALoopWithNoCel)
+        {
+            NewView view = MadeNewView(4);
+            view.nativeWidth = 0;
+            view.nativeHeight = 0;
+            NewViewLoop chain;
+            chain.mirrorOf = 1;
+            view.loops.push_back(chain);
+            view.loops.push_back(NewViewLoop());
+
+            sci::Result<std::vector<uint8_t>> data = MakeNewViewBytes(sciVersion2, view);
+
+            AssertOk(data);
+            sci::Result<ViewDescription> description = DescribeView(sciVersion2, *data);
+            AssertOk(description);
+            Assert::AreEqual((size_t)5, description->loops.size());
+            Assert::AreEqual(1, description->loops[3].mirrorOf);
+            Assert::AreEqual(2, description->loops[3].cels);
+            Assert::AreEqual(-1, description->loops[4].mirrorOf);
+            Assert::AreEqual(0, description->loops[4].cels);
+            Assert::AreEqual(0, (int)description->nativeWidth);
+            Assert::AreEqual(0, (int)description->nativeHeight);
+            // The interpreters read the cels of loop 3 from the header of
+            // loop 1: it has the count and the cel offset of loop 0.
+            sci::Result<ViewLayout> layout = ReadViewLayout(data->data(), data->size());
+            AssertOk(layout);
+            const size_t loop0 = layout->loops[0].headerOffset;
+            for (int mirror : { 1, 3 })
+            {
+                const size_t header = layout->loops[mirror].headerOffset;
+                Assert::AreEqual((int)(*data)[loop0 + 2], (int)(*data)[header + 2]);
+                Assert::AreEqual(DwordOf(*data, loop0 + 12), DwordOf(*data, header + 12));
+            }
+
+            // As in Sierra's views: the header of loop 1 has the count 0, so
+            // loop 3 shows no cel. Loop 1 still shows the cels of loop 0.
+            view.loops[1].headerCels = 0;
+            sci::Result<std::vector<uint8_t>> none = MakeNewViewBytes(sciVersion2, view);
+            AssertOk(none);
+            sci::Result<ViewDescription> noneDescription = DescribeView(sciVersion2, *none);
+            AssertOk(noneDescription);
+            Assert::AreEqual(2, noneDescription->loops[1].cels);
+            Assert::AreEqual(0, noneDescription->loops[3].cels);
+        }
+
+        TEST_METHOD(MirroredLoop_FollowsTheChain)
+        {
+            const std::vector<int> mirrorOf = { -1, 0, -1, 1, -1 };
+            Assert::AreEqual(0, MirroredLoop(mirrorOf, 0));
+            Assert::AreEqual(0, MirroredLoop(mirrorOf, 1));
+            Assert::AreEqual(2, MirroredLoop(mirrorOf, 2));
+            Assert::AreEqual(0, MirroredLoop(mirrorOf, 3));
+            Assert::AreEqual(-1, MirroredLoop(mirrorOf, 5), L"no such loop");
+            Assert::AreEqual(-1, MirroredLoop({ -1, 1 }, 1), L"a mirror of itself");
+            Assert::AreEqual(-1, MirroredLoop({ -1, 2 }, 1), L"a mirror of a loop that is not there");
+            Assert::AreEqual(-1, MirroredLoop({ 1, 2, 0 }, 0), L"a cycle");
+        }
+
+        TEST_METHOD(MakeNewView_Checks)
+        {
+            auto fails = [](const std::function<void(NewView &)> &change, sci::ErrorCode code, const std::string &text)
+            {
+                NewView view = MadeNewView(4);
+                change(view);
+                sci::Result<std::vector<uint8_t>> data = MakeNewViewBytes(sciVersion2, view);
+                Assert::IsFalse(data.has_value(), Wide(text).c_str());
+                AssertError(data.error(), code, text);
+            };
+            fails([](NewView &view) { view.loops.clear(); }, sci::ErrorCode::Usage, "a view has 1 to 255 loops, not 0");
+            fails([](NewView &view) { view.loops[1].mirrorOf = 1; }, sci::ErrorCode::Usage,
+                "loop 1 mirrors loop 1; a mirror shows the cels of another loop of the view, and a chain of mirrors ends at a loop that is not a mirror");
+            fails([](NewView &view) { view.loops[1].mirrorOf = 3; }, sci::ErrorCode::Usage, "loop 1 mirrors loop 3; a mirror shows");
+            fails([](NewView &view) { view.loops[0].cels.clear(); view.loops[0].mirrorOf = 1; }, sci::ErrorCode::Usage, "loop 0 mirrors loop 1; a mirror shows");
+            fails([](NewView &view) { view.loops[1].cels = view.loops[0].cels; }, sci::ErrorCode::Usage, "loop 1 mirrors loop 0, so it has no cels of its own");
+            fails([](NewView &view) { view.loops[2].cels.resize(256, view.loops[2].cels[0]); }, sci::ErrorCode::Usage, "loop 2 has 256 cels; a loop has 255 cels or fewer");
+            fails([](NewView &view) { view.loops[1].headerCels = 3; }, sci::ErrorCode::Usage, "the header of loop 1 would give 3 cels to a mirror of it, and loop 0 at the end of its chain has 2");
+            fails([](NewView &view) { view.loops[0].headerCels = 0; }, sci::ErrorCode::Usage, "loop 0 is not a mirror; the count of its header is the count of its cels");
+            fails([](NewView &view) { view.loops[0].cels[1].width = 0; view.loops[0].cels[1].pixels.clear(); }, sci::ErrorCode::Usage, "cel 1 of loop 0 has 0 x 5 pixels");
+            fails([](NewView &view) { view.loops[0].cels[0].x = 40000; }, sci::ErrorCode::Usage, "cel 0 of loop 0 has the placement 40000,3");
+            fails([](NewView &view) { view.loops[0].cels[0].pixels.pop_back(); }, sci::ErrorCode::Usage, "cel 0 of loop 0 has 5 x 3 pixels, and 14 bytes of pixels");
+            fails([](NewView &view) { view.palette.entrySize = 3; }, sci::ErrorCode::Usage, "the 3-byte entries of a palette have one flag, and the entries 10 and 50 have the flags 1 and 0");
+            fails([](NewView &view) { view.palette.entryCount = 247; }, sci::ErrorCode::Usage, "a palette cannot store 247 entries from entry 10");
+            AssertError(MakeNewViewBytes(sciVersion0, MadeNewView(4)).error(), sci::ErrorCode::Unsupported, "a view of the format ega cannot be made");
+        }
+
+        // Sierra's interpreter of SCI1.1 reads 16-bit offsets.
+        TEST_METHOD(MakeNewView_LargerThan64KB_IsOnlyForSci2)
+        {
+            NewView view;
+            NewViewLoop loop;
+            NewViewCel cel;
+            cel.width = 256;
+            cel.height = 257;
+            for (int i = 0; i < (256 * 257); i++)
+            {
+                // No two adjacent pixels are the same: each pixel is literal.
+                cel.pixels.push_back((uint8_t)(1 + (i % 251)));
+            }
+            loop.cels.push_back(cel);
+            view.loops.push_back(loop);
+
+            AssertError(MakeNewViewBytes(sciVersion1_1, view).error(), sci::ErrorCode::Unsupported, "Sierra's interpreter of SCI1.1 reads a view of 65535 bytes or fewer");
+            AssertOk(MakeNewViewBytes(sciVersion2, view));
+        }
+
+        // The bytes of a palette read back.
+        TEST_METHOD(MakePaletteBytes_ReadsBack)
+        {
+            for (int entrySize : { 4, 3 })
+            {
+                PicPaletteDescription palette = MadeNewView(entrySize).palette;
+                sci::Result<std::vector<uint8_t>> bytes = MakePaletteBytes(palette);
+                AssertOk(bytes);
+                Assert::AreEqual((size_t)(37 + (90 * entrySize)), bytes->size());
+                // A palette at offset 0 is no palette: one byte goes first.
+                std::vector<uint8_t> data = { 0 };
+                data.insert(data.end(), bytes->begin(), bytes->end());
+                sci::Result<PicPaletteDescription> read = DescribePaletteAt(data, 1, true);
+                AssertOk(read);
+                Assert::IsTrue(read->present && (read->firstEntry == 10) && (read->entryCount == 90) && (read->entrySize == entrySize));
+                Assert::IsTrue(read->flags == palette.flags);
+                for (int entry = 10; entry < 100; entry++)
+                {
+                    Assert::IsTrue(read->colors[entry] == palette.colors[entry]);
+                }
+            }
+            PicPaletteDescription none;
+            AssertError(MakePaletteBytes(none).error(), sci::ErrorCode::Usage, "there is no palette to write");
+            PicPaletteDescription fiveBytes = MadeNewView(4).palette;
+            fiveBytes.entrySize = 5;
+            AssertError(MakePaletteBytes(fiveBytes).error(), sci::ErrorCode::Usage, "a palette entry has 3 or 4 bytes, not 5");
+            PicPaletteDescription pastTheEnd = MadeNewView(4).palette;
+            pastTheEnd.firstEntry = 256;
+            pastTheEnd.entryCount = 0;
+            AssertError(MakePaletteBytes(pastTheEnd).error(), sci::ErrorCode::Usage, "a palette cannot store 0 entries from entry 256");
         }
     };
 

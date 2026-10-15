@@ -841,3 +841,311 @@ sci::Result<std::vector<std::vector<uint8_t>>> GetAllViewCelPixels(const SCIVers
     }
     return cels;
 }
+
+int MirroredLoop(const std::vector<int> &mirrorOf, size_t loop)
+{
+    if (loop >= mirrorOf.size())
+    {
+        return -1;
+    }
+    // A chain longer than the count of the loops has a cycle.
+    size_t at = loop;
+    for (size_t steps = 0; steps <= mirrorOf.size(); steps++)
+    {
+        const int next = mirrorOf[at];
+        if (next < 0)
+        {
+            return (int)at;
+        }
+        if (((size_t)next >= mirrorOf.size()) || ((size_t)next == at))
+        {
+            return -1;
+        }
+        at = (size_t)next;
+    }
+    return -1;
+}
+
+namespace
+{
+    // The checks of MakeNewViewBytes on the loops and the cels.
+    sci::Status CheckNewView(const NewView &view)
+    {
+        if (view.loops.empty() || (view.loops.size() > 255))
+        {
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("a view has 1 to 255 loops, not {0}", view.loops.size()));
+        }
+        std::vector<int> mirrorOf;
+        for (const NewViewLoop &loop : view.loops)
+        {
+            mirrorOf.push_back(loop.mirrorOf);
+        }
+        for (size_t l = 0; l < view.loops.size(); l++)
+        {
+            const NewViewLoop &loop = view.loops[l];
+            if (loop.mirrorOf >= 0)
+            {
+                const int shown = MirroredLoop(mirrorOf, l);
+                if (shown < 0)
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("loop {0} mirrors loop {1}; a mirror shows the cels of another loop of the view, and a chain of mirrors ends at a loop that is not a mirror", l, loop.mirrorOf));
+                }
+                if (!loop.cels.empty())
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("loop {0} mirrors loop {1}, so it has no cels of its own", l, loop.mirrorOf));
+                }
+                if ((loop.headerCels >= 0) && ((size_t)loop.headerCels > view.loops[shown].cels.size()))
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("the header of loop {0} would give {1} cels to a mirror of it, and loop {2} at the end of its chain has {3}", l, loop.headerCels,
+                        shown, view.loops[shown].cels.size()));
+                }
+                continue;
+            }
+            if (loop.headerCels >= 0)
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("loop {0} is not a mirror; the count of its header is the count of its cels", l));
+            }
+            if (loop.cels.size() > 255)
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("loop {0} has {1} cels; a loop has 255 cels or fewer", l, loop.cels.size()));
+            }
+            for (size_t c = 0; c < loop.cels.size(); c++)
+            {
+                const NewViewCel &cel = loop.cels[c];
+                const std::string celText = fmt::format("cel {0} of loop {1}", c, l);
+                if ((cel.width < 1) || (cel.width > 65535) || (cel.height < 1) || (cel.height > 65535))
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} has {1} x {2} pixels; a cel has 1 to 65535 pixels in each direction", celText, cel.width, cel.height));
+                }
+                if ((cel.x < -32768) || (cel.x > 32767) || (cel.y < -32768) || (cel.y > 32767))
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} has the placement {1},{2}; x and y are -32768 to 32767", celText, cel.x, cel.y));
+                }
+                if (cel.pixels.size() != ((size_t)cel.width * (size_t)cel.height))
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} has {1} x {2} pixels, and {3} bytes of pixels", celText, cel.width, cel.height, cel.pixels.size()));
+                }
+            }
+        }
+        return sci::Ok();
+    }
+
+    // The two palettes store the same entries, with the same flags and
+    // colours.
+    bool SamePalette(const PicPaletteDescription &one, const PicPaletteDescription &two)
+    {
+        if ((one.present != two.present) || (one.firstEntry != two.firstEntry) || (one.entryCount != two.entryCount) || (one.present && (one.entrySize != two.entrySize)))
+        {
+            return false;
+        }
+        for (int entry = one.firstEntry; entry < (one.firstEntry + one.entryCount); entry++)
+        {
+            if ((one.flags[entry] != two.flags[entry]) || (one.colors[entry] != two.colors[entry]))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+sci::Result<std::vector<uint8_t>> MakeNewViewBytes(const SCIVersion &version, const NewView &view)
+{
+    if (!CanReadViewImage(version.ViewFormat))
+    {
+        return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("a view of the format {0} cannot be made; only the formats vga11 and vga2 can", ViewFormatName(version.ViewFormat)));
+    }
+    SCI_TRY(CheckNewView(view));
+    std::vector<uint8_t> paletteBytes;
+    if (view.palette.present)
+    {
+        SCI_TRY_ASSIGN(paletteBytes, MakePaletteBytes(view.palette));
+    }
+
+    std::unique_ptr<ResourceEntity> entity(CreateViewResource(version));
+    // The palette goes after the data of the cels, so the writer gets none.
+    entity->RemoveComponent<PaletteComponent>();
+    RasterComponent &raster = entity->GetComponent<RasterComponent>();
+    raster.Loops.clear();
+    raster.ScaleFlags = view.scaleFlags;
+    raster.Resolution = version.DefaultResolution;
+    for (size_t l = 0; l < view.loops.size(); l++)
+    {
+        const NewViewLoop &newLoop = view.loops[l];
+        Loop loop;
+        if (newLoop.mirrorOf >= 0)
+        {
+            loop.IsMirror = true;
+            loop.MirrorOf = (uint8_t)newLoop.mirrorOf;
+        }
+        for (const NewViewCel &newCel : newLoop.cels)
+        {
+            // The writer gets a raw cel as a cel of 1 pixel.
+            const size16 size = newCel.raw ? size16(1, 1) : size16((uint16_t)newCel.width, (uint16_t)newCel.height);
+            Cel cel(size, point16((int16_t)newCel.x, (int16_t)newCel.y), newCel.skipColor);
+            if (StrideOf(cel) != (size_t)cel.GetStride())
+            {
+                // The writer works with the 16-bit stride of the cel.
+                return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("a cel of {0} pixels wide cannot be written", newCel.width));
+            }
+            cel.Data.allocate(cel.GetDataSize());
+            cel.Data.fill(newCel.skipColor);
+            if (!newCel.raw)
+            {
+                SCI_TRY(SetCelTopDownPixels(cel, newCel.pixels));
+            }
+            loop.Cels.push_back(std::move(cel));
+        }
+        raster.Loops.push_back(std::move(loop));
+    }
+    // The loop that each loop shows the cels of. The writer gives a mirror
+    // the count of its cels: those of that loop.
+    std::vector<int> mirrorOf;
+    for (const NewViewLoop &loop : view.loops)
+    {
+        mirrorOf.push_back(loop.mirrorOf);
+    }
+    std::vector<size_t> shown;
+    for (size_t l = 0; l < view.loops.size(); l++)
+    {
+        shown.push_back((size_t)MirroredLoop(mirrorOf, l));
+    }
+    for (size_t l = 0; l < raster.Loops.size(); l++)
+    {
+        if (raster.Loops[l].IsMirror)
+        {
+            raster.Loops[l].Cels = raster.Loops[shown[l]].Cels;
+        }
+    }
+
+    // The exception boundary of the writer.
+    SCI_TRY_ASSIGN(std::vector<uint8_t> data, sci::Guard("writing the view", [&]() -> sci::Result<std::vector<uint8_t>>
+    {
+        sci::ostream stream;
+        std::map<BlobKey, uint32_t> propertyBag;
+        entity->WriteTo(stream, false, 0, propertyBag);
+        const uint8_t *bytes = stream.GetInternalPointer();
+        return std::vector<uint8_t>(bytes, bytes + stream.GetDataSize());
+    }));
+    if (data.size() < ViewHeaderBytes)
+    {
+        return sci::Fail(sci::ErrorCode::Internal, fmt::format("the view writer wrote {0} bytes", data.size()));
+    }
+    data[3] = view.scaleFlags;
+    data[4] = view.byte4;
+    data[5] = view.resolution;
+    data[14] = (uint8_t)(view.nativeWidth & 0xff);
+    data[15] = (uint8_t)(view.nativeWidth >> 8);
+    data[16] = (uint8_t)(view.nativeHeight & 0xff);
+    data[17] = (uint8_t)(view.nativeHeight >> 8);
+    SCI_TRY_ASSIGN(ViewLayout written, ReadViewLayout(data.data(), data.size()));
+    // The interpreters read the cel count and the cel offset of a mirror from
+    // the header of the loop that it mirrors. That loop can be a mirror too:
+    // so each mirror gets the offset of the loop at the end of its chain, and
+    // its headerCels or the count of that loop.
+    for (size_t l = 0; l < view.loops.size(); l++)
+    {
+        if (view.loops[l].mirrorOf >= 0)
+        {
+            const uint32_t loopHeader = written.loops[l].headerOffset;
+            const uint32_t shownHeader = written.loops[shown[l]].headerOffset;
+            data[loopHeader + 2] = (view.loops[l].headerCels >= 0) ? (uint8_t)view.loops[l].headerCels : data[shownHeader + 2];
+            PutDwordAt(data, loopHeader + 12, DwordAt(data.data(), shownHeader + 12));
+        }
+    }
+    // The pixels of the raw cels.
+    for (size_t l = 0; l < view.loops.size(); l++)
+    {
+        for (size_t c = 0; (c < view.loops[l].cels.size()) && (c < written.loops[l].cels.size()); c++)
+        {
+            const NewViewCel &cel = view.loops[l].cels[c];
+            if (!cel.raw)
+            {
+                continue;
+            }
+            const size_t header = written.loops[l].cels[c].headerOffset;
+            const uint32_t pixelCount = (uint32_t)cel.pixels.size();
+            data[header] = (uint8_t)(cel.width & 0xff);
+            data[header + 1] = (uint8_t)(cel.width >> 8);
+            data[header + 2] = (uint8_t)(cel.height & 0xff);
+            data[header + 3] = (uint8_t)(cel.height >> 8);
+            data[header + 9] = 0;
+            // The data of the cel, and no run-length data.
+            PutDwordAt(data, header + 12, pixelCount);
+            PutDwordAt(data, header + 16, 0);
+            PutDwordAt(data, header + 24, OffsetAtEnd(data));
+            PutDwordAt(data, header + 28, 0);
+            PutDwordAt(data, header + 32, 0);
+            data.insert(data.end(), cel.pixels.begin(), cel.pixels.end());
+        }
+    }
+    if (view.palette.present)
+    {
+        PutDwordAt(data, 8, OffsetAtEnd(data));
+        data.insert(data.end(), paletteBytes.begin(), paletteBytes.end());
+    }
+    if ((version.ViewFormat == ViewFormat::VGA1_1) && (data.size() > 0xffff))
+    {
+        return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("the view would have {0} bytes; Sierra's interpreter of SCI1.1 reads a view of 65535 bytes or fewer", data.size()));
+    }
+
+    // The bytes must read back as the view.
+    SCI_TRY_ASSIGN(ViewDescription after, DescribeView(version, data));
+    SCI_TRY_ASSIGN(std::vector<std::vector<uint8_t>> pixels, GetAllViewCelPixels(version, data));
+    bool same = (after.loops.size() == view.loops.size()) && (after.scaleFlags == view.scaleFlags) && (after.byte4 == view.byte4) && (after.resolution == view.resolution) &&
+        SamePalette(after.palette, view.palette) && (after.nativeWidth == view.nativeWidth) && (after.nativeHeight == view.nativeHeight);
+    size_t stored = 0;
+    for (size_t l = 0; same && (l < view.loops.size()); l++)
+    {
+        const NewViewLoop &loop = view.loops[l];
+        // A mirror gets the count of the header of the loop that it names.
+        size_t cels = loop.cels.size();
+        if (loop.mirrorOf >= 0)
+        {
+            const NewViewLoop &named = view.loops[loop.mirrorOf];
+            cels = ((named.mirrorOf >= 0) && (named.headerCels >= 0)) ? (size_t)named.headerCels : view.loops[shown[l]].cels.size();
+        }
+        same = (after.loops[l].mirrorOf == loop.mirrorOf) && ((size_t)after.loops[l].cels == cels);
+        for (size_t c = 0; same && (c < loop.cels.size()); c++)
+        {
+            const NewViewCel &cel = loop.cels[c];
+            same = (stored < after.cels.size()) && (stored < pixels.size());
+            if (same)
+            {
+                const ViewCelDescription &read = after.cels[stored];
+                same = (read.loop == (int)l) && (read.cel == (int)c) && (read.width == cel.width) && (read.height == cel.height) && (read.x == cel.x) && (read.y == cel.y) &&
+                    (read.skipColor == cel.skipColor) && (read.raw == cel.raw) && (pixels[stored] == cel.pixels);
+            }
+            stored++;
+        }
+    }
+    same = same && (stored == after.cels.size());
+    // The headers that the readers of SCI Companion do not read: the flag and
+    // the cel offset of each mirror, and the compression byte of each cel
+    // (the SCI32 interpreter decodes a cel by it). The row table of each SCI2
+    // cel that is not raw gives its pixels too.
+    SCI_TRY_ASSIGN(ViewLayout layout, ReadViewLayout(data.data(), data.size()));
+    const bool sci2 = (version.ViewFormat == ViewFormat::VGA2);
+    size_t index = 0;
+    for (size_t l = 0; same && (l < layout.loops.size()); l++)
+    {
+        const ViewLoopLayout &loop = layout.loops[l];
+        if (view.loops[l].mirrorOf >= 0)
+        {
+            same = (data[loop.headerOffset + 1] == 1) && (loop.celOffset == layout.loops[shown[l]].celOffset);
+        }
+        for (const ViewCelLayout &cel : loop.cels)
+        {
+            const uint8_t compression = cel.IsRaw() ? 0 : (sci2 ? 0x8a : 0x0a);
+            std::vector<uint8_t> rows;
+            same = same && (cel.compression == compression) &&
+                (!sci2 || cel.IsRaw() || ((cel.rowTableOffset != 0) && DecodeByRowTable(data, cel, rows) && (index < pixels.size()) && (rows == pixels[index])));
+            index++;
+        }
+    }
+    if (!same)
+    {
+        return sci::Fail(sci::ErrorCode::Internal, "the new view does not read back as the view that was written");
+    }
+    return data;
+}

@@ -338,6 +338,63 @@ sci::Result<PicPaletteDescription> DescribePaletteAt(const std::vector<uint8_t> 
     return palette;
 }
 
+sci::Result<std::vector<uint8_t>> MakePaletteBytes(const PicPaletteDescription &palette)
+{
+    if (!palette.present)
+    {
+        return sci::Fail(sci::ErrorCode::Usage, "there is no palette to write");
+    }
+    const int first = palette.firstEntry;
+    const int count = palette.entryCount;
+    if ((first < 0) || (first > 255) || (count < 0) || ((first + count) > 256))
+    {
+        return sci::Fail(sci::ErrorCode::Usage, fmt::format("a palette cannot store {0} entries from entry {1}; a palette has the entries 0 to 255", count, first));
+    }
+    if ((palette.entrySize != 3) && (palette.entrySize != 4))
+    {
+        return sci::Fail(sci::ErrorCode::Usage, fmt::format("a palette entry has 3 or 4 bytes, not {0}", palette.entrySize));
+    }
+    const bool threeBytes = (palette.entrySize == 3);
+    const uint8_t sharedFlag = (count > 0) ? palette.flags[first] : (uint8_t)0;
+    for (int entry = first; threeBytes && (entry < (first + count)); entry++)
+    {
+        if (palette.flags[entry] != sharedFlag)
+        {
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("the 3-byte entries of a palette have one flag, and the entries {0} and {1} have the flags {2} and {3}",
+                first, entry, (int)sharedFlag, (int)palette.flags[entry]));
+        }
+    }
+    // The header of 37 bytes (WritePaletteShortForm).
+    std::vector<uint8_t> bytes(37, 0);
+    bytes[0] = 0x0e;
+    bytes[10] = 1;
+    const uint32_t sizeWord = (uint32_t)(palette.entrySize * count + 22);
+    bytes[13] = (uint8_t)(sizeWord & 0xff);
+    bytes[14] = (uint8_t)(sizeWord >> 8);
+    bytes[15] = '9';
+    bytes[16] = '9';
+    bytes[17] = '9';
+    bytes[25] = (uint8_t)first;
+    bytes[29] = (uint8_t)(count & 0xff);
+    bytes[30] = (uint8_t)(count >> 8);
+    // The flag of the 3-byte entries, and the format: 1 for 3-byte entries,
+    // 0 for 4-byte entries (whose byte 31 is 3, as WritePaletteShortForm
+    // writes it).
+    bytes[31] = threeBytes ? sharedFlag : (uint8_t)3;
+    bytes[32] = threeBytes ? 1 : 0;
+    for (int entry = first; entry < (first + count); entry++)
+    {
+        if (!threeBytes)
+        {
+            bytes.push_back(palette.flags[entry]);
+        }
+        bytes.push_back(palette.colors[entry].red);
+        bytes.push_back(palette.colors[entry].green);
+        bytes.push_back(palette.colors[entry].blue);
+    }
+    return bytes;
+}
+
 std::array<bool, 256> PicCelDescription::UsedEntries() const
 {
     std::array<bool, 256> used = {};

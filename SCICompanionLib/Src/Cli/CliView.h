@@ -1,16 +1,17 @@
 #pragma once
 
-// The parts of the view commands (plan sections 4.10 to 4.12): a row of view
+// The parts of the view commands (plan sections 4.10 to 4.13): a row of view
 // list from the bytes of a view, the two tables of view list, the files of
-// view export, and the new bytes of a view for view import, which need no
-// game; and the write of the patch file of a view. The commands
-// (CliViewCommands.cpp) read the views of a game and call them; a test
-// calls the parts that need no game with the bytes of a view.
+// view export, the new bytes of a view for view import, and the new view of
+// view add, which need no game; and the write of the patch file of a view.
+// The commands (CliViewCommands.cpp) read the views of a game and call them;
+// a test calls the parts that need no game with the bytes of a view.
 
 #include "CliPic.h"
 #include "Result.h"
 #include "Version.h"
 #include "ViewImage.h"
+#include "ViewSidecar.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -113,4 +114,37 @@ namespace cli
     // ReplaceViewCelPixels. A warning is a text with no view number.
     sci::Result<std::vector<uint8_t>> MakeViewImportData(const SCIVersion &version, const std::vector<uint8_t> &data, const ViewDescription &description, const std::array<bool, 256> &usedEntries,
         const std::vector<ViewImportImage> &images, const PicImportPalette &palette, bool allowUnusedEntries, std::vector<std::string> &warnings);
+
+    // The new view (MakeNewViewBytes) of a .toml file of the form of view
+    // export and the images of its cels (one ViewImportImage for each
+    // [[cel]] with a file). It reads these keys:
+    //  - [view]: scale_flags, byte_4, resolution, native_width and
+    //    native_height. loops and cels, when they are not 0, must be the
+    //    counts of the file.
+    //  - [palette]: with present, the palette stores the entries
+    //    stored_first to stored_first + stored_count - 1, with entries of
+    //    entry_size bytes (0: 4), and the flags of the runs of flags (an
+    //    entry with no run: 1). An entry gets the colour of the colour
+    //    tables of the images, which must have the stored entries, and must
+    //    agree for each entry with a flag that is not 0. With no [palette]
+    //    or no present, the view has no palette.
+    //  - [[loop]]: index (0 to n - 1, each one time), mirror_of (a chain of
+    //    mirrors ends at a loop that is not a mirror: MirroredLoop), and
+    //    cels (when it is not 0: the count of the cels of the loop, or of
+    //    the loop at the end of the chain of a mirror). For a mirror of a
+    //    mirror, cels (also 0) is the count of the header of the mirror
+    //    that it names (NewViewLoop::headerCels), as export gives it. When
+    //    the loop at the end of the chain has cels, 0 gives a warning for
+    //    each such mirror of a mirror: it shows no cel.
+    //  - [[cel]]: loop, cel (0 to n - 1 in a loop, each one time), file, x,
+    //    y, skip_color and raw. width and height come from the image; when
+    //    they are not 0, they must be its size. A mirror loop has no [[cel]];
+    //    a loop that is not a mirror can have none, as some of Sierra's
+    //    views have.
+    // Each pixel that is not the skip colour of its cel must be an entry that
+    // the new palette (a flag that is not 0) or palette999Used marks; with
+    // allowUnusedEntries this is a warning. Usage for a file or an image
+    // that fails a check (the message names it).
+    sci::Result<NewView> MakeAddedView(const ViewSidecar &sidecar, const std::vector<ViewImportImage> &images, const std::array<bool, 256> &palette999Used, bool allowUnusedEntries,
+        std::vector<std::string> &warnings);
 }

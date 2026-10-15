@@ -354,16 +354,19 @@ game data other than the template games.
   .\UnitTests\Tools\PicRoundTripSweep.ps1 -Game <a copy of the game folder> -Work I:\tmp\pic-sweep
   ```
 - `Tools\ViewRoundTripSweep.ps1` (local use) is the round-trip check of
-  `scic view export` and `scic view import` on a game (CI has only the
-  SCI1.1 template). It only reads the game folder: all commands run on
-  copies in a run folder. It exports each view, imports the files with no
-  change (no view may get a patch file), imports them with two palette
-  entries swapped in each image, and exports again from a game copy with
-  those patch files. It checks that each view has one BMP file for each
-  stored cel, that the game copy lists each changed view as before from
-  its patch file (header `80 80 00 00`), and that each swapped image comes
-  back byte for byte. It writes `roundtrip.csv` and the logs, and takes
-  `-AllowUnusedIndices` as the pic sweep does:
+  `scic view export`, `scic view import` and `scic view add` on a game
+  (CI has only the SCI1.1 template). It only reads the game folder: all
+  commands run on copies in a run folder. It exports each view, imports
+  the files with no change (no view may get a patch file), imports them
+  with two palette entries swapped in each image, and exports again from a
+  game copy with those patch files. It checks that each view has one BMP
+  file for each stored cel, that the game copy lists each changed view as
+  before from its patch file (header `80 80 00 00`), and that each swapped
+  image comes back byte for byte. Then it adds each exported view again
+  (`--replace`) and checks that the export of the new views gives the same
+  images and the same facts in the `.toml` files. It writes
+  `roundtrip.csv` and the logs, and takes `-AllowUnusedIndices` as the
+  pic sweep does:
 
   ```
   .\UnitTests\Tools\ViewRoundTripSweep.ps1 -Game <a copy of the game folder> -Work I:\tmp\view-sweep

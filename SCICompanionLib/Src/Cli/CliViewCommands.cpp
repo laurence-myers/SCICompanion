@@ -859,6 +859,9 @@ namespace cli
                 output.Warning(viewText + ": " + warning);
             }
             SCI_TRY_ASSIGN(std::vector<uint8_t> data, std::move(made));
+            // A view too large for a resource fails here, so that it loses
+            // the patch file of an earlier run.
+            SCI_TRY(CheckResourceSize(version, (DWORD)data.size(), ResourceType::View));
             unchanged = (data == source.data);
             return data;
         }
@@ -1123,6 +1126,363 @@ namespace cli
             summary += "; stopped by Ctrl+C";
         }
         output.Message(summary + ".");
+        return ExitCodeForFacts(facts);
+    }
+
+    sci::Result<NewView> MakeAddedView(const ViewSidecar &sidecar, const std::vector<ViewImportImage> &images, const std::array<bool, 256> &palette999Used, bool allowUnusedEntries,
+        std::vector<std::string> &warnings)
+    {
+        NewView view;
+        view.scaleFlags = (uint8_t)sidecar.scaleFlags;
+        view.byte4 = (uint8_t)sidecar.byte4;
+        view.resolution = (uint8_t)sidecar.resolution;
+        view.nativeWidth = (uint16_t)sidecar.nativeWidth;
+        view.nativeHeight = (uint16_t)sidecar.nativeHeight;
+
+        // The loops, by their index.
+        const size_t loopCount = sidecar.loops.size();
+        if ((loopCount == 0) || (loopCount > 255))
+        {
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("the file has {0} [[loop]] tables; a view has 1 to 255 loops", loopCount));
+        }
+        if ((sidecar.loopCount != 0) && ((size_t)sidecar.loopCount != loopCount))
+        {
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("[view] loops is {0}, and the file has {1} [[loop]] tables", sidecar.loopCount, loopCount));
+        }
+        std::vector<const ViewSidecarLoop *> loops(loopCount, nullptr);
+        for (const ViewSidecarLoop &loop : sidecar.loops)
+        {
+            if ((loop.index < 0) || ((size_t)loop.index >= loopCount) || (loops[loop.index] != nullptr))
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("a [[loop]] has the index {0}; the indices of the {1} loops are 0 to {2}, each one time", loop.index, loopCount, loopCount - 1));
+            }
+            loops[loop.index] = &loop;
+        }
+        view.loops.resize(loopCount);
+        for (size_t l = 0; l < loopCount; l++)
+        {
+            view.loops[l].mirrorOf = loops[l]->mirrorOf;
+        }
+
+        // The cels, by their loop and cel.
+        std::vector<std::vector<const ViewSidecarCel *>> cels(loopCount);
+        for (const ViewSidecarCel &cel : sidecar.cels)
+        {
+            const std::string celText = fmt::format("cel {0} of loop {1}", cel.cel, cel.loop);
+            if ((cel.loop < 0) || ((size_t)cel.loop >= loopCount))
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("the [[cel]] of {0}: the view has no loop {1}", celText, cel.loop));
+            }
+            if (loops[cel.loop]->mirrorOf >= 0)
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("the [[cel]] of {0}: loop {1} mirrors loop {2}, so it has no cels of its own", celText, cel.loop, loops[cel.loop]->mirrorOf));
+            }
+            std::vector<const ViewSidecarCel *> &loopCels = cels[cel.loop];
+            if ((cel.cel < 0) || (cel.cel > 254))
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("the [[cel]] of {0}: a loop has the cels 0 to 254", celText));
+            }
+            if ((size_t)cel.cel >= loopCels.size())
+            {
+                loopCels.resize((size_t)cel.cel + 1, nullptr);
+            }
+            if (loopCels[cel.cel] != nullptr)
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("the file has two [[cel]] tables for {0}", celText));
+            }
+            loopCels[cel.cel] = &cel;
+        }
+        // A loop that is not a mirror can have no cel, as some of Sierra's
+        // views have.
+        size_t storedCels = 0;
+        for (size_t l = 0; l < loopCount; l++)
+        {
+            const auto gap = std::find(cels[l].begin(), cels[l].end(), nullptr);
+            if (gap != cels[l].end())
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("loop {0} has no [[cel]] for cel {1}; the cels of a loop are 0 to n - 1", l, gap - cels[l].begin()));
+            }
+            storedCels += cels[l].size();
+        }
+        if ((sidecar.celCount != 0) && ((size_t)sidecar.celCount != storedCels))
+        {
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("[view] cels is {0}, and the file has {1} [[cel]] tables", sidecar.celCount, storedCels));
+        }
+        std::vector<int> mirrorOf;
+        for (size_t l = 0; l < loopCount; l++)
+        {
+            mirrorOf.push_back(loops[l]->mirrorOf);
+        }
+        for (size_t l = 0; l < loopCount; l++)
+        {
+            const int shown = MirroredLoop(mirrorOf, l);
+            if (shown < 0)
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("loop {0} mirrors loop {1}; a mirror shows the cels of another loop of the view, and a chain of mirrors ends at a loop that is not a mirror", l, mirrorOf[l]));
+            }
+            // A mirror of a mirror gets the count of the header of the
+            // mirror that it names (Sierra's views have 0 there): its cels
+            // key gives that count.
+            const int named = mirrorOf[l];
+            if ((named >= 0) && (mirrorOf[named] >= 0))
+            {
+                NewViewLoop &namedLoop = view.loops[named];
+                if ((namedLoop.headerCels >= 0) && (namedLoop.headerCels != loops[l]->cels))
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("two loops mirror loop {0}, and their [[loop]] tables have other cels ({1} and {2})", named, namedLoop.headerCels, loops[l]->cels));
+                }
+                // When the loop at the end of the chain has cels, 0 makes a
+                // mirror with no cel.
+                if ((loops[l]->cels == 0) && !cels[shown].empty())
+                {
+                    warnings.push_back(fmt::format("loop {0} mirrors loop {1}, which is a mirror, and the [[loop]] of loop {0} has cels = 0 (or no cels key): the interpreters give loop {0} no cel, as in some of Sierra's views",
+                        l, named));
+                }
+                namedLoop.headerCels = loops[l]->cels;
+                continue;
+            }
+            const size_t count = cels[shown].size();
+            if ((loops[l]->cels != 0) && ((size_t)loops[l]->cels != count))
+            {
+                return sci::Fail(sci::ErrorCode::Usage, ((size_t)shown == l) ? fmt::format("the [[loop]] of loop {0} has cels = {1}, and the loop has {2}", l, loops[l]->cels, CountText(count, "cel")) :
+                    fmt::format("the [[loop]] of loop {0} has cels = {1}, and loop {2}, whose cels it shows, has {3}", l, loops[l]->cels, shown, CountText(count, "cel")));
+            }
+        }
+
+        // The image of each cel.
+        std::vector<std::vector<const ViewImportImage *>> celImages(loopCount);
+        for (size_t l = 0; l < loopCount; l++)
+        {
+            celImages[l].assign(cels[l].size(), nullptr);
+        }
+        for (const ViewImportImage &image : images)
+        {
+            if ((image.loop >= 0) && ((size_t)image.loop < loopCount) && (image.cel >= 0) && ((size_t)image.cel < celImages[image.loop].size()))
+            {
+                celImages[image.loop][image.cel] = &image;
+            }
+        }
+
+        // The palette.
+        if (sidecar.hasPalette)
+        {
+            PicPaletteDescription &palette = view.palette;
+            palette.present = true;
+            palette.firstEntry = sidecar.storedFirst;
+            palette.entryCount = sidecar.storedCount;
+            palette.entrySize = (sidecar.entrySize == 0) ? 4 : sidecar.entrySize;
+            const int last = sidecar.storedFirst + sidecar.storedCount - 1;
+            if (last > 255)
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("[palette] stores {0} entries from entry {1}; a palette has the entries 0 to 255", sidecar.storedCount, sidecar.storedFirst));
+            }
+            for (int entry = palette.firstEntry; entry <= last; entry++)
+            {
+                palette.flags[entry] = 1;
+            }
+            for (const PicSidecarFlagRun &run : sidecar.flags)
+            {
+                if ((run.first < palette.firstEntry) || (run.last > last))
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("[palette] flags has the run {0}-{1}, which is not in the stored entries {2}-{3}", run.first, run.last, palette.firstEntry, last));
+                }
+                std::fill(palette.flags.begin() + run.first, palette.flags.begin() + run.last + 1, (uint8_t)run.flag);
+            }
+            // The colours come from the colour tables of the images.
+            const ViewImportImage *first = nullptr;
+            for (const ViewImportImage &image : images)
+            {
+                if ((sidecar.storedCount > 0) && (image.image.colorCount <= last))
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}: the colour table has {1} {2}, and the palette stores the entries {3}-{4}", image.name, image.image.colorCount,
+                        (image.image.colorCount == 1) ? "entry" : "entries", palette.firstEntry, last));
+                }
+                if (first == nullptr)
+                {
+                    first = &image;
+                    continue;
+                }
+                for (int entry = palette.firstEntry; entry <= last; entry++)
+                {
+                    if ((palette.flags[entry] != 0) && (image.image.colors[entry] != first->image.colors[entry]))
+                    {
+                        return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} and {1} have another colour for entry {2}; the images of a view must have one palette", first->name, image.name, entry));
+                    }
+                }
+            }
+            for (int entry = palette.firstEntry; (first != nullptr) && (entry <= last); entry++)
+            {
+                palette.colors[entry] = first->image.colors[entry];
+            }
+        }
+        std::array<bool, 256> used = palette999Used;
+        for (size_t entry = 0; entry < used.size(); entry++)
+        {
+            used[entry] = used[entry] || (view.palette.flags[entry] != 0);
+        }
+
+        // The cels, with the checks of their images.
+        for (size_t l = 0; l < loopCount; l++)
+        {
+            for (size_t c = 0; c < cels[l].size(); c++)
+            {
+                const ViewSidecarCel &cel = *cels[l][c];
+                const std::string celText = fmt::format("cel {0} of loop {1}", c, l);
+                const ViewImportImage *image = celImages[l][c];
+                if (cel.file.empty() || (image == nullptr))
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("the [[cel]] of {0} names no image file", celText));
+                }
+                if (((cel.width != 0) && (cel.width != image->image.width)) || ((cel.height != 0) && (cel.height != image->image.height)))
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} has {1} x {2} pixels, and the [[cel]] of {3} has {4} x {5}", image->name, image->image.width, image->image.height, celText,
+                        cel.width, cel.height));
+                }
+                // A new cel has no old pixels: the check of the skip colour
+                // compares the pixels with themselves, and only the check of
+                // the entries applies.
+                SCI_TRY(CheckImportPixels(image->name, celText, "view", (uint8_t)cel.skipColor, image->image.width, image->image.pixels, image->image.pixels, used, allowUnusedEntries, warnings));
+                NewViewCel newCel;
+                newCel.width = image->image.width;
+                newCel.height = image->image.height;
+                newCel.x = cel.x;
+                newCel.y = cel.y;
+                newCel.skipColor = (uint8_t)cel.skipColor;
+                newCel.pixels = image->image.pixels;
+                newCel.raw = cel.raw;
+                view.loops[l].cels.push_back(std::move(newCel));
+            }
+        }
+        return view;
+    }
+
+    namespace
+    {
+        // The new bytes of the view of the .toml file. The cel files are in
+        // the folder of the .toml file.
+        sci::Result<std::vector<uint8_t>> MakeAddedViewData(GameSession &session, const std::string &sidecarPath, bool allowUnused, CliOutput &output, const std::string &viewText, size_t &loops, size_t &cels)
+        {
+            SCI_TRY_ASSIGN(ViewSidecar sidecar, ReadViewSidecarFile(sidecarPath));
+            const std::string folder = fs::path(sidecarPath).parent_path().string();
+            std::vector<ViewImportImage> images;
+            for (const ViewSidecarCel &cel : sidecar.cels)
+            {
+                if (cel.file.empty())
+                {
+                    continue;
+                }
+                ViewImportImage image;
+                image.loop = cel.loop;
+                image.cel = cel.cel;
+                image.name = folder + "\\" + cel.file;
+                SCI_TRY_ASSIGN(image.image, ReadIndexedBmpFile(image.name));
+                images.push_back(std::move(image));
+            }
+            const PaletteComponent *palette999 = session.ResourceMap().GetPalette999();
+            const std::array<bool, 256> palette999Used = (palette999 != nullptr) ? UsedPaletteEntries(*palette999) : std::array<bool, 256>{};
+            std::vector<std::string> warnings;
+            sci::Result<NewView> view = MakeAddedView(sidecar, images, palette999Used, allowUnused, warnings);
+            for (const std::string &warning : warnings)
+            {
+                output.Warning(viewText + ": " + warning);
+            }
+            SCI_TRY(view);
+            loops = view->loops.size();
+            cels = 0;
+            for (const NewViewLoop &loop : view->loops)
+            {
+                cels += loop.cels.size();
+            }
+            SCI_TRY_ASSIGN(std::vector<uint8_t> data, MakeNewViewBytes(session.Version(), *view));
+            // A view too large for a resource fails here, so that it loses
+            // the patch file of an earlier run.
+            SCI_TRY(CheckResourceSize(session.Version(), (DWORD)data.size(), ResourceType::View));
+            return data;
+        }
+    }
+
+    sci::Result<ExitCode> RunViewAdd(GameSession &session, const ViewAddOptions &options, const CommonOptions &common, CliOutput &output)
+    {
+        const std::string outDir = AbsolutePath(options.outDir);
+        SCI_TRY(CheckOutputFolder(session, outDir));
+        int number = 0;
+        if (!ParseNumber(options.view, number))
+        {
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("\"{0}\" is not a view number (0 to 65535)", options.view));
+        }
+        const std::string sidecarPath = AbsolutePath(options.from);
+        std::error_code ec;
+        if (!fs::is_regular_file(sidecarPath, ec))
+        {
+            return sci::Fail(sci::ErrorCode::NotFound, "the .toml file does not exist: " + sidecarPath);
+        }
+        const std::vector<int> views = ResourceNumbersOf(session, ResourceType::View);
+        if (!options.replace && (std::find(views.begin(), views.end(), number) != views.end()))
+        {
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("the game has view {0}; give --replace to make a new view in its place, or use scic view import to change the cels of the view", number));
+        }
+        // The resource map reads palette 999 one time, here: a warning of its
+        // reader goes to the output once.
+        sci::Status palette999 = sci::Guard("reading palette 999", [&]() -> sci::Status
+        {
+            session.ResourceMap().GetPalette999();
+            return sci::Ok();
+        });
+        if (!palette999)
+        {
+            output.Warning(palette999.error().ToString());
+        }
+
+        ReportFacts facts;
+        if (CancelFlag().load())
+        {
+            facts.cancelled = true;
+            output.Message("Added no view; stopped by Ctrl+C.");
+            return ExitCodeForFacts(facts);
+        }
+        const std::string viewText = ViewText(number);
+        const std::string path = outDir + "\\" + GetFileNameFor(ResourceType::View, number, NoBase36, session.Version());
+        SetCurrentItem("adding " + viewText);
+        bool writeFailed = false;
+        size_t loops = 0;
+        size_t cels = 0;
+        // The exception boundary of the view.
+        sci::Status status = sci::Guard("adding " + viewText, [&]() -> sci::Status
+        {
+            sci::Result<std::vector<uint8_t>> made = sci::Guard("making " + viewText, [&]() -> sci::Result<std::vector<uint8_t>>
+            {
+                return MakeAddedViewData(session, sidecarPath, options.allowUnusedIndices, output, viewText, loops, cels);
+            });
+            if (!made)
+            {
+                // The output folder keeps no patch file of the view of an
+                // earlier run.
+                sci::Status removed = RemoveOldPatchFile(path, viewText, "failed", common.dryRun, output);
+                if (!removed)
+                {
+                    writeFailed = true;
+                    output.Error(viewText + ": " + removed.error().ToString());
+                }
+                return sci::Fail(made.error());
+            }
+            return WriteViewPatchFile(session, number, *made, path, common.dryRun, output, writeFailed);
+        });
+        SetCurrentItem("");
+        if (!status)
+        {
+            output.Error(viewText + ": " + status.error().ToString());
+            if (status.error().code == sci::ErrorCode::Internal)
+            {
+                facts.internal = true;
+            }
+            else if (!writeFailed)
+            {
+                facts.otherFailures = true;
+            }
+            facts.writeFailed = writeFailed;
+            return ExitCodeForFacts(facts);
+        }
+        output.Message(fmt::format("{0} {1} ({2}, {3}) as {4}.", common.dryRun ? "A run would add" : "Added", viewText, CountText(loops, "loop"), CountText(cels, "cel"), path));
         return ExitCodeForFacts(facts);
     }
 }
