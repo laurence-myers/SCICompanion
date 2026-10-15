@@ -190,9 +190,6 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   can have other bytes there (30 of the 548 views of the hi-res LSL6 in
   one run). The pixels are the same. `scic view palette` and `scic dev
   palette-use` read only the pixels.
-- SCI Companion does not read Sierra's view patches that start with
-  `80 84` (`GetResourceOffsetInFile` takes the data at offset 10; it is at
-  26 + byte 3): issue laurence-myers/SCICompanion#311.
 
 ### The core library (E1)
 

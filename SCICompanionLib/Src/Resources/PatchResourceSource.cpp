@@ -69,16 +69,17 @@ bool PatchFilesResourceSource::ReadNextEntry(ResourceTypeFlags typeFlags, Iterat
 				patchFile.hFile = CreateFile(fullPath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 				if (patchFile.hFile != INVALID_HANDLE_VALUE)
 				{
-					// Read the first two bytes. The first is the type, the next is the offset.
-					uint8_t word[2];
+					// Read the first bytes. The first is the type, the next is the offset, and
+					// some forms have a count in the fourth (GetPatchDataGap).
+					uint8_t first[4] = {};
 					DWORD cbRead;
-					if (ReadFile(patchFile.hFile, &word, sizeof(word), &cbRead, nullptr) && (cbRead == sizeof(word)))
+					if (ReadFile(patchFile.hFile, first, sizeof(first), &cbRead, nullptr) && (cbRead >= 2))
 					{
-						ResourceType type = (ResourceType)(word[0] & 0x7f);
+						ResourceType type = (ResourceType)(first[0] & 0x7f);
 						if (IsFlagSet(typeFlags, ResourceTypeToFlag(type)))
 						{
 							entry.Number = number;
-							entry.Offset = GetResourceOffsetInFile(word[1]) + 2;	// For the word we just read.
+							entry.Offset = GetPatchDataGap(first, cbRead) + 2;	// For the first two bytes.
 							entry.Type = type;
 							entry.ExtraData = _nextIndex;
 							entry.PackageNumber = 0;

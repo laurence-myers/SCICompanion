@@ -307,6 +307,57 @@ namespace UnitTests
             std::filesystem::remove_all(dir, ec);
         }
 
+        // Sierra's view patches of SCI1.1 and SCI2: the type byte, 80 or 84,
+        // 00, a count in byte 3, that many bytes of a file name, 22 more
+        // bytes, then the view at 26 + the count. The file reader and the
+        // patch files of a game take the data there.
+        TEST_METHOD(PatchFileHeader_SierraViewWithFileName)
+        {
+            NoAppState noAppState;
+            std::vector<uint8_t> data;
+            for (int i = 0; i < 100; i++)
+            {
+                data.push_back((uint8_t)(i + 1));
+            }
+            struct Case
+            {
+                const char *name;
+                uint8_t secondByte;
+                std::string fileName;
+            };
+            const std::vector<Case> cases =
+            {
+                { "80 84 with a file name", 0x84, "C:\\GABRIEL\\ANIM\\V56\\DIBS_1\\000.DIB" },
+                { "80 84 with no file name", 0x84, "" },
+                { "80 80 with a file name", 0x80, "ABC" },
+            };
+            GameCopy game;
+            const std::string folder = game.Make(TemplateSci11);
+            for (size_t i = 0; i < cases.size(); i++)
+            {
+                const Case &test = cases[i];
+                std::vector<uint8_t> bytes = { 0x80, test.secondByte, 0x00, (uint8_t)test.fileName.size() };
+                bytes.insert(bytes.end(), test.fileName.begin(), test.fileName.end());
+                bytes.insert(bytes.end(), 22, 0xee);
+                bytes.insert(bytes.end(), data.begin(), data.end());
+                const std::string path = folder + "\\" + std::to_string(700 + i) + ".v56";
+                WriteFileBytes(path, bytes);
+
+                ResourceBlob read;
+                Assert::IsTrue(SUCCEEDED(read.CreateFromFile(nullptr, path, sciVersion2, ResourceSaveLocation::Patch, -1, -1)), Wide(std::string("read: ") + test.name).c_str());
+                Assert::IsTrue(read.GetType() == ResourceType::View, Wide(std::string("the type of ") + test.name).c_str());
+                Assert::IsTrue(data == std::vector<uint8_t>(read.GetData(), read.GetData() + read.GetLength()), Wide(std::string("the data of the file ") + test.name).c_str());
+            }
+
+            GameSession &session = game.Open();
+            for (size_t i = 0; i < cases.size(); i++)
+            {
+                std::unique_ptr<ResourceBlob> blob = session.ResourceMap().MostRecentResource(ResourceType::View, (int)(700 + i), false);
+                Assert::IsTrue(blob != nullptr, Wide(std::string("the game has the patch ") + cases[i].name).c_str());
+                Assert::IsTrue(data == std::vector<uint8_t>(blob->GetData(), blob->GetData() + blob->GetLength()), Wide(std::string("the data of the patch in the game ") + cases[i].name).c_str());
+            }
+        }
+
         // Narrowing a resource header from the agnostic form must reject a
         // compressed size that overflows the on-disk field. Before the fix the
         // overflow check tested the (still-zero) destination member instead of the

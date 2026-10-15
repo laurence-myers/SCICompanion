@@ -24,6 +24,10 @@ modernizing the build. Broad highlights since the previous release:
   game that is saved as a patch file (`.p56`) gets the 4-byte header of
   Sierra's own SCI2 pic patches. Before, it got the 26-byte header of an
   SCI1.1 pic, and ScummVM read the pic from the wrong offset.
+* **Sierra's later view patch files load.** The view patches (`.v56`) of
+  Gabriel Knight 2, Lighthouse, Phantasmagoria 1 and 2 and Police Quest:
+  SWAT start with `80 84` and a file name. SCI Companion now finds the view
+  after the file name, as Sierra's interpreters do.
 * **A saved pic keeps the lines that go off the picture.** A line or a pen
   pattern that ends above or to the left of the picture (a negative
   coordinate) stays the same when SCI Companion saves the pic. Before, the
