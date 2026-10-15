@@ -1,11 +1,13 @@
 #include "stdafx.h"
 #include "CppUnitTest.h"
 #include "ViewImage.h"
+#include "ViewSidecar.h"
 #include "View.h"
 #include "ResourceEntity.h"
 #include "SierraViewBytes.h"
 #include "TestSupport.h"
 #include "format.h"
+#include <filesystem>
 #include <map>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -230,6 +232,149 @@ namespace UnitTests
 
             Assert::IsFalse(view.has_value());
             AssertError(view.error(), sci::ErrorCode::Format, "the reader repaired damaged data: Empty loop found: loop 1.");
+        }
+    };
+
+    // The .toml file of scic view export (ViewSidecar.h).
+    TEST_CLASS(TestViewSidecar)
+    {
+        // The sidecar of the view of ThreeLoopView, with a source and files.
+        static ViewSidecar MadeSidecar()
+        {
+            sci::Result<ViewDescription> view = DescribeView(sciVersion2, MakeSierraView(ThreeLoopView()));
+            AssertOk(view, "setup: the description of the view");
+            ViewSidecar sidecar = MakeViewSidecar(*view);
+            sidecar.view = 7;
+            sidecar.from = "patch";
+            sidecar.size = 1234;
+            sidecar.crc32 = 0x89abcdef;
+            sidecar.palette999 = { IndexRun{ 0, 63 } };
+            sidecar.used = { IndexRun{ 0, 99 } };
+            sidecar.cels[0].file = "7.l0.c0.bmp";
+            sidecar.cels[2].file = "7.l2.c0.bmp";
+            return sidecar;
+        }
+
+    public:
+        TEST_METHOD(Text_IsTomlWithTheValues)
+        {
+            const std::string text = ViewSidecarText(MadeSidecar());
+
+            Assert::IsTrue(text.rfind("# scic view export: view 7.", 0) == 0, Wide(text).c_str());
+            for (const char *part : { "view = 7", "format = 'vga2'", "from = 'patch'", "size = 1234", "crc32 = 0x89ABCDEF", "loops = 3", "cels = 3", "resolution = 1", "scale_flags = 0",
+                "present = true", "stored_first = 0", "stored_count = 256", "entry_size = 4", "flags = [ [ 0, 9, 0 ], [ 10, 99, 1 ], [ 100, 255, 0 ] ]",
+                "palette_999 = [ [ 0, 63 ] ]", "used = [ [ 0, 99 ] ]", "mirror_of = 0", "file = '7.l0.c0.bmp'", "file = '7.l2.c0.bmp'", "raw = true", "skip_color = 255",
+                "entries = [ [ 20, 24 ] ]", "skip_pixels = 3", "x = -2" })
+            {
+                Assert::IsTrue(text.find(part) != std::string::npos, Wide(std::string(part) + " in:\n" + text).c_str());
+            }
+            Assert::AreEqual((size_t)1, CountOf(text, "mirror_of"), L"only the mirror has mirror_of");
+            Assert::AreEqual((size_t)2, CountOf(text, "file = "), L"a cel with no file has no file key");
+        }
+
+        TEST_METHOD(Parse_GivesBackWhatTextWrote)
+        {
+            const ViewSidecar written = MadeSidecar();
+
+            sci::Result<ViewSidecar> read = ParseViewSidecar(ViewSidecarText(written));
+
+            AssertOk(read);
+            Assert::IsTrue(read->hasView && read->hasCrc32);
+            Assert::AreEqual(written.view, read->view);
+            Assert::AreEqual(written.format, read->format);
+            Assert::AreEqual(written.from, read->from);
+            Assert::AreEqual(written.size, read->size);
+            Assert::AreEqual(written.crc32, read->crc32);
+            Assert::AreEqual(written.loopCount, read->loopCount);
+            Assert::AreEqual(written.celCount, read->celCount);
+            Assert::AreEqual(written.scaleFlags, read->scaleFlags);
+            Assert::AreEqual(written.resolution, read->resolution);
+            Assert::AreEqual(written.hasPalette, read->hasPalette);
+            Assert::AreEqual(written.storedFirst, read->storedFirst);
+            Assert::AreEqual(written.storedCount, read->storedCount);
+            Assert::AreEqual(written.entrySize, read->entrySize);
+            Assert::AreEqual(written.flags.size(), read->flags.size());
+            for (size_t i = 0; i < written.flags.size(); i++)
+            {
+                Assert::IsTrue((written.flags[i].first == read->flags[i].first) && (written.flags[i].last == read->flags[i].last) && (written.flags[i].flag == read->flags[i].flag));
+            }
+            Assert::IsTrue(written.palette999 == read->palette999);
+            Assert::IsTrue(written.used == read->used);
+            Assert::AreEqual(written.loops.size(), read->loops.size());
+            for (size_t i = 0; i < written.loops.size(); i++)
+            {
+                Assert::AreEqual(written.loops[i].index, read->loops[i].index);
+                Assert::AreEqual(written.loops[i].cels, read->loops[i].cels);
+                Assert::AreEqual(written.loops[i].mirrorOf, read->loops[i].mirrorOf);
+            }
+            Assert::AreEqual(written.cels.size(), read->cels.size());
+            for (size_t i = 0; i < written.cels.size(); i++)
+            {
+                const ViewSidecarCel &a = written.cels[i];
+                const ViewSidecarCel &b = read->cels[i];
+                Assert::IsTrue((a.loop == b.loop) && (a.cel == b.cel) && (a.file == b.file) && (a.width == b.width) && (a.height == b.height) && (a.x == b.x) && (a.y == b.y) &&
+                    (a.skipColor == b.skipColor) && (a.raw == b.raw) && (a.entries == b.entries) && (a.skipPixels == b.skipPixels), Wide(fmt::format("cel {0}", i)).c_str());
+            }
+        }
+
+        TEST_METHOD(Parse_KeysThatAreNotThereKeepTheirValues)
+        {
+            sci::Result<ViewSidecar> read = ParseViewSidecar("[[cel]]\nloop = 1\ncel = 2\nfile = 'a.bmp'\n");
+
+            AssertOk(read);
+            Assert::IsFalse(read->hasView);
+            Assert::IsFalse(read->hasCrc32);
+            Assert::IsFalse(read->hasPalette);
+            Assert::AreEqual((size_t)1, read->cels.size());
+            Assert::AreEqual(1, read->cels[0].loop);
+            Assert::AreEqual(2, read->cels[0].cel);
+            Assert::AreEqual(std::string("a.bmp"), read->cels[0].file);
+            Assert::AreEqual(0, read->cels[0].skipColor);
+        }
+
+        TEST_METHOD(Parse_BadText_IsFormat)
+        {
+            const std::vector<std::pair<std::string, std::string>> cases =
+            {
+                { "[source\n", "" },
+                { "source = 3\n", "\"source\" is not a table ([source])" },
+                { "[source]\nview = 70000\n", "[source]: \"view\" is 70000; it must be 0 to 65535" },
+                { "[view]\nresolution = 'one'\n", "[view]: \"resolution\" is not a whole number" },
+                { "[palette]\nflags = [ [ 3, 1, 0 ] ]\n", "an element of \"flags\" is not 3 numbers" },
+                { "loop = 3\n", "\"loop\" is not an array of tables ([[loop]])" },
+                { "loop = [ 3 ]\n", "an element of \"loop\" is not a table ([[loop]])" },
+                { "[[loop]]\ncels = 2\n", "a [[loop]] has no index" },
+                { "[[loop]]\nindex = 1\nmirror_of = 300\n", "[[loop]] 1: \"mirror_of\" is 300; it must be 0 to 255" },
+                { "[[cel]]\nloop = 0\n", "a [[cel]] has no loop or no cel" },
+                { "[[cel]]\nloop = 0\ncel = 1\nfile = 'sub\\\\a.bmp'\n", "[[cel]] 0 1: \"file\" must be a file name with no folder" },
+                { "[[cel]]\nloop = 0\ncel = 1\nraw = 1\n", "[[cel]] 0 1: \"raw\" is not true or false" },
+            };
+            for (const auto &test : cases)
+            {
+                sci::Result<ViewSidecar> read = ParseViewSidecar(test.first);
+                Assert::IsFalse(read.has_value(), Wide(test.first).c_str());
+                AssertError(read.error(), sci::ErrorCode::Format, test.second);
+                Assert::IsTrue(read.error().where.line > 0, Wide(test.first + ": " + read.error().ToString()).c_str());
+            }
+        }
+
+        TEST_METHOD(ReadFile_MissingFileAndBadFile)
+        {
+            const std::string folder = (std::filesystem::temp_directory_path() / ("scicompanion-viewsidecar-" + std::to_string(GetCurrentProcessId()))).string();
+            std::filesystem::create_directories(folder);
+            const std::string missing = folder + "\\missing.toml";
+            sci::Result<ViewSidecar> notThere = ReadViewSidecarFile(missing);
+            Assert::IsFalse(notThere.has_value());
+            Assert::IsTrue(notThere.error().code == sci::ErrorCode::NotFound, Wide(notThere.error().ToString()).c_str());
+            Assert::AreEqual(missing, notThere.error().where.file);
+
+            const std::string bad = folder + "\\bad.toml";
+            WriteFileText(bad, "[[cel]]\nloop = 'x'\ncel = 0\n");
+            sci::Result<ViewSidecar> badRead = ReadViewSidecarFile(bad);
+            Assert::IsFalse(badRead.has_value());
+            AssertError(badRead.error(), sci::ErrorCode::Format, "[[cel]]: \"loop\" is not a whole number");
+            Assert::AreEqual(bad, badRead.error().where.file);
+            RemoveFolder(folder);
         }
 
         // The view header of some views of SQ6 has 20 bytes (the word at

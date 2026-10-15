@@ -342,6 +342,32 @@ namespace cli
     // that the game does not have (Usage), and after Ctrl+C (Cancelled).
     sci::Result<ExitCode> RunViewList(GameSession &session, const ViewListOptions &options, CliOutput &output);
 
+    // scic view export (plan section 4.11).
+    struct ViewExportOptions
+    {
+        std::string gameFolder;
+        // Numbers and ranges (100-199), or all.
+        std::vector<std::string> views;
+        bool all = false;
+        std::string outDir;
+    };
+
+    // Writes, for each view, a BMP file for each stored cel and a .toml file
+    // (ViewSidecar.h) into the output folder (MakeViewExportFiles). The
+    // pixels of a file are the palette entries of the cel, and its colour
+    // table is the palette of the view over palette 999 of the game. The
+    // files of a view are all made before the first is written. --dry-run
+    // writes nothing and lists the files. A view runs in its own exception
+    // boundary, so a view that fails does not stop the next one. With --all,
+    // a view with no stored cel is skipped and counted; a named view with no
+    // cel fails. The exit code: 6 when a view failed (also a view of a
+    // format that scic does not read, and a view whose reader repaired
+    // damaged data), 9 when a file could not be written, 7 after Ctrl+C, 1
+    // for a bug. Fails when the run cannot start: the output folder does not
+    // exist (NotFound), or it is the game folder or a folder inside it
+    // (Usage), or a selector is bad (Usage).
+    sci::Result<ExitCode> RunViewExport(GameSession &session, const ViewExportOptions &options, const CommonOptions &common, CliOutput &output);
+
     // scic view palette (plan section 4.9).
     struct ViewPaletteOptions
     {

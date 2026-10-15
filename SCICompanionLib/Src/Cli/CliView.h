@@ -1,10 +1,12 @@
 #pragma once
 
-// The parts of the view commands (plan section 4.10) that need no game: a
-// row of view list from the bytes of a view, and the two tables of view
-// list. The commands (CliViewCommands.cpp) read the views of a game and
-// call them; a test calls them with the bytes of a view.
+// The parts of the view commands (plan sections 4.10 and 4.11) that need no
+// game: a row of view list from the bytes of a view, the two tables of view
+// list, and the files of view export. The commands (CliViewCommands.cpp)
+// read the views of a game and call them; a test calls them with the bytes
+// of a view.
 
+#include "CliPic.h"
 #include "Result.h"
 #include "Version.h"
 #include "ViewImage.h"
@@ -48,4 +50,17 @@ namespace cli
     // The tsv table of view list: ViewListTsvHeader, then a line for each
     // row. A cell with no value is empty.
     std::string ViewListTsvTable(const std::vector<ViewListRow> &rows);
+
+    // The name of the BMP file of a cel: <view>.l<loop>.c<cel>.bmp.
+    std::string ViewCelFileName(int view, int loop, int cel);
+
+    // The files of view export for one view: a BMP file for each stored cel
+    // (ViewCelFileName), in the order of the cels, then <view>.toml. The
+    // pixels of a BMP file are the bytes of the cel, and its colour table is
+    // "colors" (the palette of the view over palette 999); the .toml file
+    // gets the used entries of "colors" and of palette999 (null: the game
+    // has none). Unsupported for a view with no stored cel; the errors of
+    // GetAllViewCelPixels and of EncodeIndexedBmp.
+    sci::Result<std::vector<PicExportFile>> MakeViewExportFiles(const SCIVersion &version, int number, const std::vector<uint8_t> &data, const ViewDescription &description, bool fromPatch,
+        const PaletteComponent &colors, const PaletteComponent *palette999);
 }

@@ -175,3 +175,8 @@ sci::Result<ViewDescription> DescribeView(const SCIVersion &version, const std::
 // padding. Usage for a cel that the view does not store (also a cel of a
 // mirror, and of a loop whose header has no cel); else as DescribeView.
 sci::Result<std::vector<uint8_t>> GetViewCelPixels(const SCIVersion &version, const std::vector<uint8_t> &data, int loop, int cel);
+
+// The pixels of each stored cel, in the order of ViewDescription::cels (the
+// loops that are not mirrors, in order), as GetViewCelPixels gives them. The
+// errors of DescribeView.
+sci::Result<std::vector<std::vector<uint8_t>>> GetAllViewCelPixels(const SCIVersion &version, const std::vector<uint8_t> &data);

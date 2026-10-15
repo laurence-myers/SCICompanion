@@ -172,7 +172,9 @@
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PaletteUse.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PicImage.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PicSidecar.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\SidecarToml.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Resources\ViewImage.h" />
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\ViewSidecar.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Resources\ViewPalette.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PatchResourceSource.h" />
     <ClInclude Include="..\SCICompanionLib\Src\Resources\Pic.h" />
@@ -311,7 +313,9 @@
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PaletteUse.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PicImage.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PicSidecar.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\SidecarToml.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Resources\ViewImage.cpp" />
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\ViewSidecar.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Resources\ViewPalette.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PatchResourceSource.cpp" />
     <ClCompile Include="..\SCICompanionLib\Src\Resources\Pic.cpp" />

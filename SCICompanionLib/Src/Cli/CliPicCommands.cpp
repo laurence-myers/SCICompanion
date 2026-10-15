@@ -256,40 +256,40 @@ namespace cli
             // cel that cannot be exported writes no file.
             SCI_TRY_ASSIGN(std::vector<PicExportFile> files, MakePicExportFiles(version, number, source.data, description, source.fromPatch, *merged, session.ResourceMap().GetPalette999(), everyCel));
 
-            // Each file that is there already must open for writing, so that a
-            // file that cannot be replaced fails the pic before its first
-            // write. The write shares read and write (WriteBytesToFile).
-            for (const PicExportFile &file : files)
-            {
-                sci::Status writable = CheckFileCanBeReplaced(outDir + "\\" + file.name, FILE_SHARE_READ | FILE_SHARE_WRITE);
-                if (!writable)
-                {
-                    result.writeFailed = true;
-                    return writable;
-                }
-            }
-            for (const PicExportFile &file : files)
-            {
-                const std::string path = outDir + "\\" + file.name;
-                if (!file.isText)
-                {
-                    result.cels++;
-                }
-                if (dryRun)
-                {
-                    output.Message("Would write " + path);
-                    continue;
-                }
-                sci::Status written = file.isText ? WriteTextToFile(path, file.text) : WriteBytesToFile(path, file.bytes);
-                if (!written)
-                {
-                    result.writeFailed = true;
-                    return written;
-                }
-                output.Detail("Wrote " + path);
-            }
-            return sci::Ok();
+            result.cels = (size_t)std::count_if(files.begin(), files.end(), [](const PicExportFile &file) { return !file.isText; });
+            return WriteExportFiles(outDir, files, dryRun, output, result.writeFailed);
         }
+    }
+
+    sci::Status WriteExportFiles(const std::string &outDir, const std::vector<PicExportFile> &files, bool dryRun, CliOutput &output, bool &writeFailed)
+    {
+        // The write shares read and write (WriteBytesToFile).
+        for (const PicExportFile &file : files)
+        {
+            sci::Status writable = CheckFileCanBeReplaced(outDir + "\\" + file.name, FILE_SHARE_READ | FILE_SHARE_WRITE);
+            if (!writable)
+            {
+                writeFailed = true;
+                return writable;
+            }
+        }
+        for (const PicExportFile &file : files)
+        {
+            const std::string path = outDir + "\\" + file.name;
+            if (dryRun)
+            {
+                output.Message("Would write " + path);
+                continue;
+            }
+            sci::Status written = file.isText ? WriteTextToFile(path, file.text) : WriteBytesToFile(path, file.bytes);
+            if (!written)
+            {
+                writeFailed = true;
+                return written;
+            }
+            output.Detail("Wrote " + path);
+        }
+        return sci::Ok();
     }
 
     PicListRow MakePicListRow(const SCIVersion &version, int number, const std::vector<uint8_t> &data, bool fromPatch)

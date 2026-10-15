@@ -301,3 +301,19 @@ sci::Result<std::vector<uint8_t>> GetViewCelPixels(const SCIVersion &version, co
     }
     return CelTopDownPixels(read.view->GetComponent<RasterComponent>().Loops[loop].Cels[cel]);
 }
+
+sci::Result<std::vector<std::vector<uint8_t>>> GetAllViewCelPixels(const SCIVersion &version, const std::vector<uint8_t> &data)
+{
+    SCI_TRY_ASSIGN(ViewRead read, ReadView(version, data));
+    const RasterComponent &raster = read.view->GetComponent<RasterComponent>();
+    std::vector<std::vector<uint8_t>> cels;
+    for (size_t i = 0; i < read.layout.loops.size(); i++)
+    {
+        for (size_t c = 0; c < read.layout.loops[i].cels.size(); c++)
+        {
+            SCI_TRY_ASSIGN(std::vector<uint8_t> pixels, CelTopDownPixels(raster.Loops[i].Cels[c]));
+            cels.push_back(std::move(pixels));
+        }
+    }
+    return cels;
+}
