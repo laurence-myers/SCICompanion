@@ -337,9 +337,9 @@ namespace cli
     // view runs in its own exception boundary. It writes nothing. Success,
     // or PartialFailure when a view cannot be read (its row has the error),
     // also a view whose reader repaired damaged data (the reader logs a
-    // warning and puts data of its own in the place of the damaged data). Fails for a selector that is not a number or
-    // a range, and for a view that the game does not have (Usage), and
-    // after Ctrl+C (Cancelled).
+    // warning and puts data of its own in the place of the damaged data).
+    // Fails for a selector that is not a number or a range, and for a view
+    // that the game does not have (Usage), and after Ctrl+C (Cancelled).
     sci::Result<ExitCode> RunViewList(GameSession &session, const ViewListOptions &options, CliOutput &output);
 
     // scic view palette (plan section 4.9).

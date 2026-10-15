@@ -1,13 +1,14 @@
 #pragma once
 
 // What the commands on the pics, the views and the palettes of a game share
-// (plan sections 4.7 to 4.9): the resources that a selector names, the check
-// of an output folder, and the sink for the repairs of a reader.
+// (plan sections 4.7 to 4.10): the resources that a selector names, the
+// check of an output folder, the CRC-32 of a resource and the text table of
+// list. The sink for the repairs of a reader (RepairLogSink) is in
+// CoreLog.h.
 
 #include "CoreLog.h"
 #include "Result.h"
 #include <cstdint>
-#include <mutex>
 #include <string>
 #include <vector>
 
@@ -49,23 +50,4 @@ namespace cli
     // when it is not a folder, Usage when it is the game folder or a folder
     // inside it (a game can read patch files from a folder of its own).
     sci::Status CheckOutputFolder(GameSession &session, const std::string &outDir);
-
-    // Keeps the warnings and the errors that the readers log while a
-    // resource is read: a reader repairs some damage (a palette that stores
-    // entries past 255, a cel with a size that is not possible) and only
-    // logs it. A codec can log from another thread.
-    class RepairLogSink : public ILogSink
-    {
-    public:
-        ~RepairLogSink();
-
-        void Write(LogLevel level, const std::string &text) override;
-        // The texts of the warnings and the errors so far, with a space
-        // between them; empty for none.
-        std::string Text();
-
-    private:
-        std::mutex _mutex;
-        std::string _text;
-    };
 }

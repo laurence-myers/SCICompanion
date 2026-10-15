@@ -111,7 +111,8 @@ struct Cel;
 sci::Result<std::vector<uint8_t>> CelTopDownPixels(const Cel &cel);
 
 // Puts rows from the top (width * height bytes) into the cel. The padding
-// bytes of the cel stay. Format as CelTopDownPixels.
+// bytes of the cel stay. Format as CelTopDownPixels; Usage when the pixels
+// are not width * height bytes.
 sci::Status SetCelTopDownPixels(Cel &cel, const std::vector<uint8_t> &pixels);
 
 // The palette at paletteOffset of the data; a palette that is not there

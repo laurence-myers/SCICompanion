@@ -12,14 +12,20 @@
 //    an SCI2 view (5), the offset of the palette (8, 4 bytes; 0: no
 //    palette), the size of a loop header (12) and of a cel header (13);
 //  - a loop header for each loop, after the view header: the loop that it
-//    mirrors (0, 0xff: no mirror), the count of its cels (2), and the
-//    offset of its first cel header (12, 4 bytes);
+//    mirrors (0, 0xff: no mirror), the flag that the game flips it with
+//    (1), the count of its cels (2; a loop that is not a mirror can have no
+//    cel), and the offset of its first cel header (12, 4 bytes);
 //  - the cel headers of a loop that is not a mirror, one after the other:
 //    the width (0), the height (2), x (4) and y (6) as signed words, the
 //    skip colour (8), the compression byte (9), the offsets of the
 //    run-length data (24) and of the literal data (28; 0: the cel is raw,
 //    and its pixels are at the offset of the run-length data), and the
 //    offset of the row table of an SCI2 cel (32).
+//
+// A mirror is a loop that shows the cels of another loop, as the reader of
+// the views of SCI Companion reads it: byte 0 of its header is not 0xff.
+// The SCI32 interpreter flips such a loop only when byte 1 of its header is
+// 1, and takes the count of the cels from the header of the other loop.
 
 #include "PicImage.h"
 #include "Result.h"
@@ -113,7 +119,8 @@ struct ViewLoopDescription
     int index = 0;
     // The loop that this loop mirrors; -1 for a loop that is not a mirror.
     int mirrorOf = -1;
-    // The cels of the loop; a mirror has those of the loop that it mirrors.
+    // The cels of the loop. A mirror has the count of the header of the loop
+    // that it mirrors.
     int cels = 0;
 };
 
@@ -154,14 +161,17 @@ bool CanReadViewImage(ViewFormat format);
 sci::Result<std::unique_ptr<ResourceEntity>> ParseViewResource(const SCIVersion &version, const std::vector<uint8_t> &data);
 
 // What the view has: the layout of its headers, the pixels of its cels as
-// the reader of the views gives them, and its palette. Unsupported for a
-// view format that these functions do not read; else the errors of
-// ReadViewLayout and ParseViewResource; Format when the reader gives other
-// loops or cels than the headers have, and for a palette that cannot be
-// read.
+// the reader of the views gives them, and its palette. A loop that is not a
+// mirror and whose header has no cel has no cel here (the reader gives it a
+// 1 x 1 cel). Unsupported for a view format that these functions do not
+// read; else the errors of ReadViewLayout and ParseViewResource; Format when
+// the reader repairs damaged data (it logs a warning or an error and puts
+// data of its own in the place of the damaged data, for example a cel for a
+// mirror loop that gets no cel), when the reader gives other loops or cels
+// than the headers have, and for a palette that cannot be read.
 sci::Result<ViewDescription> DescribeView(const SCIVersion &version, const std::vector<uint8_t> &data);
 
 // The pixels of a cel: width * height bytes, the top row first, with no
 // padding. Usage for a cel that the view does not store (also a cel of a
-// mirror); else as DescribeView.
+// mirror, and of a loop whose header has no cel); else as DescribeView.
 sci::Result<std::vector<uint8_t>> GetViewCelPixels(const SCIVersion &version, const std::vector<uint8_t> &data, int loop, int cel);

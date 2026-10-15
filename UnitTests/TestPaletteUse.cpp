@@ -567,11 +567,14 @@ namespace UnitTests
         {
             _gameFolder = _game.Make(TemplateSci11);
             {
-                // A view whose second loop has no cel: the reader of the
+                // A view whose second loop mirrors itself: the reader of the
                 // views logs a warning and gives the loop a cel.
                 GameSession &session = _game.Open();
                 std::unique_ptr<ResourceEntity> view = MakeViewWithPalette(session);
-                view->GetComponent<RasterComponent>().Loops.push_back(Loop());
+                Loop mirror;
+                mirror.IsMirror = true;
+                mirror.MirrorOf = 1;
+                view->GetComponent<RasterComponent>().Loops.push_back(mirror);
                 WriteViewPatch(session, 5, BytesOf(*view, 5));
                 _game.CloseSessions();
             }

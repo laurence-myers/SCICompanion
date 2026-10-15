@@ -195,17 +195,99 @@ namespace UnitTests
             AssertError(DescribeView(sciVersion1_Late, data).error(), sci::ErrorCode::Unsupported, "a view of the format vga1 cannot be read");
         }
 
-        // A loop that is not a mirror and has no cel: the reader of the views
-        // gives it a cel, and the description refuses the view.
-        TEST_METHOD(Describe_LoopWithNoCel_IsFormat)
+        // A loop that is not a mirror and whose header has no cel is a form
+        // of Sierra's views (view 905 of QfG4): it has no cel, and a mirror of
+        // it has none. The reader logs no repair (DescribeView would give it
+        // as an error).
+        TEST_METHOD(Describe_LoopWhoseHeaderHasNoCel_HasNoCel)
         {
             MadeView made = ThreeLoopView();
             made.loops[2].cels.clear();
+            MadeLoop mirror;
+            mirror.mirrorOf = 2;
+            made.loops.push_back(mirror);
+            const std::vector<uint8_t> data = MakeSierraView(made);
+
+            sci::Result<ViewDescription> view = DescribeView(sciVersion2, data);
+
+            AssertOk(view);
+            Assert::AreEqual((size_t)4, view->loops.size());
+            Assert::AreEqual(0, view->loops[2].cels);
+            Assert::AreEqual(0, view->loops[3].cels);
+            Assert::AreEqual(2, view->loops[1].cels);
+            Assert::AreEqual((size_t)2, view->cels.size());
+            AssertError(GetViewCelPixels(sciVersion2, data, 2, 0).error(), sci::ErrorCode::Usage, "loop 2 has no cel 0; it has 0 cels");
+        }
+
+        // A loop that mirrors itself gets no cel from the reader, which then
+        // repairs the view with a cel of its own and a warning.
+        TEST_METHOD(Describe_MirrorOfItself_IsARepair)
+        {
+            MadeView made = ThreeLoopView();
+            made.loops[1].mirrorOf = 1;
 
             sci::Result<ViewDescription> view = DescribeView(sciVersion2, MakeSierraView(made));
 
             Assert::IsFalse(view.has_value());
-            AssertError(view.error(), sci::ErrorCode::Format, "loop 2: the reader of the views gives 1 cel, and the loop header has 0");
+            AssertError(view.error(), sci::ErrorCode::Format, "the reader repaired damaged data: Empty loop found: loop 1.");
+        }
+
+        // The view header of some views of SQ6 has 20 bytes (the word at
+        // offset 0 is 18): the loop headers come after it.
+        TEST_METHOD(Layout_LongerViewHeader)
+        {
+            MadeView made = ThreeLoopView();
+            made.headerWord = 18;
+            made.scaleFlags = 1;
+            const std::vector<uint8_t> data = MakeSierraView(made);
+
+            sci::Result<ViewLayout> layout = ReadViewLayout(data.data(), data.size());
+            sci::Result<ViewDescription> view = DescribeView(sciVersion2, data);
+
+            AssertOk(layout);
+            Assert::AreEqual((uint32_t)20, layout->headerSize);
+            Assert::AreEqual((uint32_t)(20 + 16), layout->loops[1].headerOffset);
+            AssertOk(view);
+            Assert::AreEqual(1, (int)view->scaleFlags);
+            Assert::AreEqual((size_t)3, view->cels.size());
+            Assert::AreEqual(1u, view->Find(2, 0)->pixelCounts[45]);
+        }
+
+        // Two cel headers can point at the same data.
+        TEST_METHOD(Layout_TwoCelHeadersWithOneData)
+        {
+            MadeView made = ThreeLoopView();
+            MadeCel copy = made.loops[0].cels[1];
+            copy.sharesDataWithPrevious = true;
+            copy.x = 7;
+            made.loops[0].cels.push_back(copy);
+            const std::vector<uint8_t> data = MakeSierraView(made);
+
+            sci::Result<ViewLayout> layout = ReadViewLayout(data.data(), data.size());
+
+            AssertOk(layout);
+            const std::vector<ViewCelLayout> &cels = layout->loops[0].cels;
+            Assert::AreEqual((size_t)3, cels.size());
+            Assert::AreEqual(cels[1].rleOffset, cels[2].rleOffset);
+            Assert::AreEqual(cels[1].literalOffset, cels[2].literalOffset);
+            Assert::AreEqual(7, cels[2].x);
+            sci::Result<std::vector<uint8_t>> pixels = GetViewCelPixels(sciVersion2, data, 0, 2);
+            AssertOk(pixels);
+            Assert::IsTrue(copy.pixels == *pixels);
+        }
+
+        TEST_METHOD(SetCelTopDownPixels_NeedsThePixelsOfTheCel)
+        {
+            Cel cel;
+            cel.size = size16(3, 2);
+            cel.Data.allocate(cel.GetDataSize());
+            cel.Data.fill(0);
+
+            AssertError(SetCelTopDownPixels(cel, std::vector<uint8_t>(5, 1)).error(), sci::ErrorCode::Usage, "the cel has 3 x 2 pixels (6 bytes), and the new pixels are 5 bytes");
+            AssertOk(SetCelTopDownPixels(cel, { 1, 2, 3, 4, 5, 6 }));
+            sci::Result<std::vector<uint8_t>> pixels = CelTopDownPixels(cel);
+            AssertOk(pixels);
+            Assert::IsTrue((std::vector<uint8_t>{ 1, 2, 3, 4, 5, 6 }) == *pixels);
         }
     };
 }

@@ -40,6 +40,9 @@ namespace sierraview
     struct MadeView
     {
         std::vector<MadeLoop> loops;
+        // The word at offset 0: the bytes of the view header less 2. The
+        // header has 18 bytes or more; the bytes after 18 are 0.
+        int headerWord = 16;
         int celHeaderSize = 52;
         // SCI2: each cel has a row table, and the compression byte is 0x8a
         // (0x0a for SCI1.1).
@@ -144,13 +147,13 @@ namespace sierraview
         {
             storedCels += (loop.mirrorOf < 0) ? loop.cels.size() : 0;
         }
-        const size_t loopHeaders = 18;
+        const size_t loopHeaders = (size_t)view.headerWord + 2;
         const size_t celHeaders = loopHeaders + (16 * loopCount);
         const size_t palette = celHeaders + (view.celHeaderSize * storedCels);
         const size_t paletteSize = view.hasPalette ? (37 + ((size_t)view.paletteCount * view.entrySize)) : 0;
         std::vector<uint8_t> bytes(palette + paletteSize, 0);
 
-        PutWord(bytes, 0, 16);
+        PutWord(bytes, 0, (uint32_t)view.headerWord);
         bytes[2] = (uint8_t)loopCount;
         bytes[3] = view.scaleFlags;
         bytes[4] = 1;

@@ -298,6 +298,10 @@ sci::Status SetCelTopDownPixels(Cel &cel, const std::vector<uint8_t> &pixels)
     SCI_TRY(CheckCelData(cel));
     const size_t width = cel.size.cx;
     const size_t height = cel.size.cy;
+    if (pixels.size() != (width * height))
+    {
+        return sci::Fail(sci::ErrorCode::Usage, fmt::format("the cel has {0} x {1} pixels ({2} bytes), and the new pixels are {3} bytes", width, height, width * height, pixels.size()));
+    }
     const size_t stride = StrideOf(cel);
     for (size_t y = 0; (width > 0) && (y < height); y++)
     {

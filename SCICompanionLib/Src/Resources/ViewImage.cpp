@@ -6,6 +6,7 @@
 #include "ResourceUtil.h"
 #include "ResourceSourceFlags.h"
 #include "GameFolderHelper.h"
+#include "CoreLog.h"
 #include "format.h"
 
 namespace
@@ -38,8 +39,9 @@ namespace
     }
 
     // The view as its headers and as the reader of the views give it. The
-    // reader must give the loops and the cels of the headers: a reader that
-    // repairs damaged data (an empty loop gets a cel) gives others.
+    // reader must log no repair, and it must give the loops and the cels of
+    // the headers. A loop that is not a mirror and whose header has no cel
+    // gets a 1 x 1 cel from the reader.
     struct ViewRead
     {
         ViewLayout layout;
@@ -54,7 +56,18 @@ namespace
         }
         ViewRead read;
         SCI_TRY_ASSIGN(read.layout, ReadViewLayout(data.data(), data.size()));
-        SCI_TRY_ASSIGN(read.view, ParseViewResource(version, data));
+        RepairLogSink repairs;
+        sci::Result<std::unique_ptr<ResourceEntity>> view = [&]()
+        {
+            ScopedCoreLogSink scopedSink(repairs);
+            return ParseViewResource(version, data);
+        }();
+        const std::string repaired = repairs.Text();
+        if (!repaired.empty())
+        {
+            return sci::Fail(sci::ErrorCode::Format, "the reader repaired damaged data: " + repaired);
+        }
+        SCI_TRY_ASSIGN(read.view, std::move(view));
         const RasterComponent &raster = read.view->GetComponent<RasterComponent>();
         if (raster.Loops.size() != read.layout.loops.size())
         {
@@ -63,7 +76,8 @@ namespace
         for (size_t i = 0; i < raster.Loops.size(); i++)
         {
             const ViewLoopLayout &loop = read.layout.loops[i];
-            if ((loop.mirrorOf < 0) && (raster.Loops[i].Cels.size() != loop.cels.size()))
+            const size_t expected = loop.cels.empty() ? 1 : loop.cels.size();
+            if ((loop.mirrorOf < 0) && (raster.Loops[i].Cels.size() != expected))
             {
                 return sci::Fail(sci::ErrorCode::Format, fmt::format("loop {0}: the reader of the views gives {1}, and the loop header has {2}", i, CountText(raster.Loops[i].Cels.size(), "cel"), loop.cels.size()));
             }
@@ -240,7 +254,9 @@ sci::Result<ViewDescription> DescribeView(const SCIVersion &version, const std::
         ViewLoopDescription loop;
         loop.index = (int)i;
         loop.mirrorOf = loopLayout.mirrorOf;
-        loop.cels = (int)raster.Loops[i].Cels.size();
+        // A mirror has the cels of the loop that it mirrors: the count of the
+        // header of that loop, as the SCI32 interpreter takes it.
+        loop.cels = (loopLayout.mirrorOf < 0) ? (int)loopLayout.cels.size() : read.layout.loops[loopLayout.mirrorOf].celCount;
         description.loops.push_back(loop);
         for (size_t c = 0; c < loopLayout.cels.size(); c++)
         {

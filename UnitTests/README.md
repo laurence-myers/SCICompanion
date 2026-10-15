@@ -299,15 +299,22 @@ game data other than the template games.
   functions under the commands are `TestPicImage.cpp` (on the pic files of
   `Files\Pics`, SCI2 too) and `TestIndexedBmp.cpp` (the 8-bit BMP reader
   and writer).
-- `TestCliView.cpp` runs `scic view palette` (plan section 4.9) on the
-  SCI1.1 template. The views of the template have no palette that marks an
-  entry, so each test makes its views and puts them into the game copy as
-  patch files: a view with 4-byte palette entries from the view writer,
-  and the same view with its palette changed in place to 3-byte entries.
-  The tests compare the bytes of each patch file with the bytes of the
-  view, and read the game copy with the patch file through `scic dev
-  palette-use`. The class `TestViewPalette` calls the functions under the
-  command (`Src\Resources\ViewPalette.h`) with views of SCI1.1 and of SCI2.
+- `TestCliView.cpp` runs `scic view list` and `scic view palette` (plan
+  sections 4.9 and 4.10) on the SCI1.1 template. The views of the template
+  have no palette that marks an entry, so each test makes its views and
+  puts them into the game copy as patch files: a view with 4-byte palette
+  entries from the view writer, the same view with its palette changed in
+  place to 3-byte entries, and views in Sierra's own form. The tests
+  compare the bytes of each patch file with the bytes of the view, and read
+  the game copy with the patch file through `scic dev palette-use`. The
+  class `TestViewPalette` calls the functions under the palette command
+  (`Src\Resources\ViewPalette.h`) with views of SCI1.1 and of SCI2.
+- `TestViewImage.cpp` tests the functions under the view commands
+  (`Src\Resources\ViewImage.h`: the layout of the headers, the description
+  and the pixels of a cel). `SierraViewBytes.h` makes views in the form of
+  Sierra's views of SCI1.1 and SCI2 (cel headers of 36 or 52 bytes, mirror
+  loops, loops with no cel, raw cels, two cel headers with one data, 3- and
+  4-byte palettes); the view writer of SCI Companion makes another layout.
 - `TestDecompileRun.cpp` and `TestCompileBatch.cpp` test the services under
   the commands (`DecompileRun`, `CompileBatch`), with event hooks that throw
   at a chosen point.
