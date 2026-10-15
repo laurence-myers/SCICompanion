@@ -319,6 +319,29 @@ namespace cli
     // (Usage).
     sci::Result<ExitCode> RunPicImport(GameSession &session, const PicImportOptions &options, const CommonOptions &common, CliOutput &output);
 
+    // scic view list (plan section 4.10).
+    struct ViewListOptions
+    {
+        std::string gameFolder;
+        // Numbers and ranges (100-199); empty: every view.
+        std::vector<std::string> views;
+        std::string format = "text";
+    };
+
+    // Prints a row for each view (MakeViewListRow): its format, its loops
+    // and mirror loops, its stored cels and raw cels, its resolution byte,
+    // where the view comes from, its size in bytes and its CRC-32, what its
+    // palette stores, the count of the skip pixels, and the palette entries
+    // that its palette marks and that its pixels have. A view of a format
+    // with no image that scic reads (ega, vga1) gets a row with no cels. A
+    // view runs in its own exception boundary. It writes nothing. Success,
+    // or PartialFailure when a view cannot be read (its row has the error),
+    // also a view whose reader repaired damaged data (the reader logs a
+    // warning and puts data of its own in the place of the damaged data).
+    // Fails for a selector that is not a number or a range, and for a view
+    // that the game does not have (Usage), and after Ctrl+C (Cancelled).
+    sci::Result<ExitCode> RunViewList(GameSession &session, const ViewListOptions &options, CliOutput &output);
+
     // scic view palette (plan section 4.9).
     struct ViewPaletteOptions
     {

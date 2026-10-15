@@ -612,13 +612,14 @@ scic script sco       <game-folder> (<script> ... | --all) [options]
 scic pic list         <game-folder> [--pic <pic> ...] [options]
 scic pic export       <game-folder> (--pic <pic> ... | --all) --out-dir <folder> [options]
 scic pic import       <game-folder> (--pic <pic> --image <file> | --in-dir <folder>) --out-dir <folder> [options]
+scic view list        <game-folder> [--view <view> ...] [options]
 scic view palette     <game-folder> --view <view> ... (--colors-from <file> | --clear-used) --palette-range <first>-<last> --out-dir <folder> [options]
 scic help [group [command]]
 scic --version
 ```
 
 - `script` is the first command group, `pic` (section 4.7) the second, and
-  `view` (section 4.9) the third. Later groups use the same pattern
+  `view` (sections 4.9 and 4.10) the third. Later groups use the same pattern
   (section 13): for example `scic resource extract`, `scic package rebuild`.
 - `scic script` with no command, and `scic help script`, list the script
   commands. `scic pic` and `scic help pic` list the pic commands, and
@@ -1120,7 +1121,7 @@ from the lowest number:
 |---|---|
 | `kind` | `view` or `palette`. |
 | `number`, `source` | The number of the resource; `package` or `patch` (the copy that the game uses). |
-| `loops`, `cels` | The counts of a view; `-` for a palette. |
+| `loops`, `cels` | The counts of a view, as the reader of the views gives it: a mirror counts the cels of its loop, and a loop with no cel counts the 1 x 1 cel that the reader gives it. `-` for a palette. |
 | `palette_entries` | The entries that the palette of the resource marks as used, as runs: `0-63,80-235`; `-` for none (also for a view with no palette). |
 | `pixel_entries` | The entries of the pixels of the cels of a view, without the transparent colour of each cel; `-` for none, and for a palette. |
 | `colors` | With `--colors`: `entry=rrggbb` for each entry of `palette_entries`, with a space between them. Else `-`. |
@@ -1270,6 +1271,55 @@ Rules:
   (before: 0-235), so the entries 80-235 have no mark`.
 - The summary: `Wrote 40 of 42 views into <folder>; 1 view with no change;
   1 view failed.`
+
+### 4.10 `scic view list`
+
+```
+scic view list C:\Games\LSL6
+scic view list C:\Games\LSL6 --view 600-610 --format tsv
+```
+
+Purpose: the facts of the views of a game, before an export or an import.
+It reads the views of SCI1.1 (`vga11`) and SCI2 (`vga2`), and it does not
+read the data folder. A view selector is as in section 4.9. The source of a
+view is the copy that the game uses: a patch file in the game folder, else
+the package. The functions under the command are in
+`Src\Resources\ViewImage.h` (the layout of the headers, the description,
+the pixels of a cel) and `Src\Cli\CliView.h`.
+
+`list` shows one row for each view (all views, or those of `--view`), and
+writes nothing:
+
+| Column (`--format tsv`) | Meaning |
+|---|---|
+| `number`, `format` | The view, and `ega`, `vga1`, `vga11` or `vga2`. |
+| `loops`, `mirror_loops` | The count of loops, and of those that mirror another loop (byte 0 of the loop header is not `0xff`; such a loop shows the cels of the other loop and stores none). The SCI32 interpreter flips a mirror only when byte 1 of its header is 1. |
+| `cels`, `raw_cels` | The count of the cels that the view stores (the cels of the loops that are not mirrors), and of those with no run-length data (the offset of the literal data in the cel header is 0). A loop that is not a mirror can have no cel: some of Sierra's views have such loops (view 905 of QfG4, view 588 of SQ6). |
+| `resolution` | Byte 5 of the view header (SCI2 only). In ScummVM 1 is 640 x 480 and 2 is 640 x 400. |
+| `source`, `bytes`, `crc32` | `package` or `patch`, the size of the view resource, and the CRC-32 of its bytes (8 hex digits). |
+| `palette_first`, `palette_count`, `entry_size` | The entries that the palette of the view stores, and the bytes of an entry (3 or 4). Empty for a view with no palette. |
+| `skip_pixels` | The count of the pixels with the skip colour of their cel. |
+| `palette_entries` | The entries that the palette marks as used, as runs: `0-63,80-235`. A 4-byte entry has its own flag byte; the 3-byte entries have the flag byte of the palette header, as in the SCI32 interpreter (section 4.8). |
+| `pixel_entries` | The entries that the pixels of the stored cels have, without the skip colour of each cel. |
+| `error` | Why a view cannot be read. Such a view makes the exit code 6. |
+
+The text table has the same values; the palette is one column
+(`0-255 (4)`; `none` for a palette that stores no entry; `-` for no
+palette). A view of a format with no image that `scic` reads (`ega`,
+`vga1`) gets a row with its format, source, size and CRC-32.
+
+Rules:
+
+- Each view runs in its own exception boundary. A view that cannot be
+  read has its error in its row. So has a view that a reader repaired (the
+  reader logs a warning and puts data of its own in the place of damaged
+  data, for example a cel for a loop that mirrors itself), and a view whose
+  headers do not agree with what the reader gives. A loop with no cel is
+  not damage: the reader gives it a 1 x 1 cel with no warning, and `list`
+  counts no cel for it.
+- A view of the form of an SCI1 view in an SCI1.1 or SCI2 game (loop
+  headers of more than 32 bytes) has the error `Unsupported`.
+- Ctrl+C stops the run with no table (exit 7).
 
 ## 5. Where compiled output goes
 
@@ -1634,7 +1684,7 @@ section 5.3, which section 5.22 uses), plus code 9.
 | 2 | Usage error: bad option, unknown script, header file given to `compile` |
 | 3 | Cannot open the game (also a damaged or empty `resource.map`) or start the batch, or the data folder is missing (script commands), or the output folder of `pic export`, `pic import` or `view palette` is missing, or the input folder of `pic import` is missing, or the BMP file of `view palette` cannot be read |
 | 5 | Compile errors |
-| 6 | Partial failure: some scripts failed for a reason that is not a compile error, or the decompiler reported an error in a script that it wrote, or a pic of a pic command failed, or a view of `view palette` failed |
+| 6 | Partial failure: some scripts failed for a reason that is not a compile error, or the decompiler reported an error in a script that it wrote, or a pic of a pic command failed, or a view of a view command failed (also a view that `view list` cannot read) |
 | 7 | Cancelled |
 | 8 | Write refused (`WriteRefused`): for example, a patch file would hide a package write, or a script of the commit used the new `.sco` of a script that the commit does not write (section 4.5) |
 | 9 | Write failed: the commit, the tables, a move, `game.ini`, main's `.sco`, or the return of a `.sco` to its state before the compile failed (any code but `Internal`, `WriteRefused` and `Cancelled`), or a file write of a script failed (`Io`; a `.scd` that cannot be written is a warning), or a file of `pic export`, a patch file of `pic import` or of `view palette`, or the table of a `dev` command could not be written, or a patch file of an earlier run of `view palette` could not be removed |

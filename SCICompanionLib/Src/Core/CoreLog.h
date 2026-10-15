@@ -12,6 +12,7 @@
 
 #include <sal.h>
 #include <cstdarg>
+#include <mutex>
 #include <string>
 
 enum class LogLevel
@@ -51,6 +52,25 @@ void CoreLogFormatV(LogLevel level, const char *format, va_list args);
 // the context. For a boundary that goes on after a failure (a worker
 // thread, a best-effort read). Never throws.
 void CoreLogCurrentException(const std::string &context);
+
+// Keeps the warnings and the errors that the readers log while a resource is
+// read: a reader repairs some damage (a palette that stores entries past
+// 255, a cel with a size that is not possible, a mirror loop with no cel)
+// and only logs it. A codec can log from another thread.
+class RepairLogSink : public ILogSink
+{
+public:
+    ~RepairLogSink();
+
+    void Write(LogLevel level, const std::string &text) override;
+    // The texts of the warnings and the errors so far, with a space between
+    // them; empty for none.
+    std::string Text();
+
+private:
+    std::mutex _mutex;
+    std::string _text;
+};
 
 // Installs a sink for the life of this object, then puts back the one before.
 // The sink before must live longer than this object.

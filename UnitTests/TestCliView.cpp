@@ -4,6 +4,7 @@
 #include "CliCommands.h"
 #include "CliConsole.h"
 #include "CliHost.h"
+#include "CliView.h"
 #include "GameSession.h"
 #include "IndexedBmp.h"
 #include "PaletteOperations.h"
@@ -16,7 +17,9 @@
 #include "ResourceUtil.h"
 #include "View.h"
 #include "ViewPalette.h"
+#include "crc.h"
 #include "format.h"
+#include "SierraViewBytes.h"
 #include "TestSupport.h"
 #include <algorithm>
 #include <array>
@@ -78,9 +81,18 @@ namespace
     // palette of 256 entries of 4 bytes. The cel has the transparent colour
     // 0. The palette marks the entries 60 to 99 (flag 1) and 200 (flag 3) as
     // used, and entry e has OldColor(e). With no palette, the view has none.
-    // With an empty loop, the view has a second loop with no cel: the reader
-    // of the views logs a warning and gives that loop a cel.
-    std::vector<uint8_t> MakeViewBytes(const SCIVersion &version, const std::vector<uint8_t> &pixels = { 64, 65, 0, 0, 70, 64 }, bool withPalette = true, bool withEmptyLoop = false)
+    enum class SecondLoop
+    {
+        None,
+        // A second loop with no cel, as some of Sierra's views have: the
+        // reader of the views gives it a 1 x 1 cel and logs nothing.
+        Empty,
+        // A second loop that mirrors itself: the reader of the views logs a
+        // warning and gives that loop a cel (a repair).
+        MirrorsItself,
+    };
+
+    std::vector<uint8_t> MakeViewBytes(const SCIVersion &version, const std::vector<uint8_t> &pixels = { 64, 65, 0, 0, 70, 64 }, bool withPalette = true, SecondLoop secondLoop = SecondLoop::None)
     {
         std::unique_ptr<ResourceEntity> view(CreateViewResource(version));
         RasterComponent &raster = view->GetComponent<RasterComponent>();
@@ -100,9 +112,15 @@ namespace
         Loop loop;
         loop.Cels.push_back(cel);
         raster.Loops.push_back(loop);
-        if (withEmptyLoop)
+        if (secondLoop != SecondLoop::None)
         {
-            raster.Loops.push_back(Loop());
+            Loop second;
+            if (secondLoop == SecondLoop::MirrorsItself)
+            {
+                second.IsMirror = true;
+                second.MirrorOf = 1;
+            }
+            raster.Loops.push_back(second);
         }
         if (withPalette)
         {
@@ -183,9 +201,9 @@ namespace
     }
 
     // The view of MakeViewBytes with 3-byte entries.
-    std::vector<uint8_t> MakeThreeByteViewBytes(const SCIVersion &version, int first, int count, uint8_t flag, const std::vector<uint8_t> &pixels = { 64, 65, 0, 0, 70, 64 }, bool withEmptyLoop = false)
+    std::vector<uint8_t> MakeThreeByteViewBytes(const SCIVersion &version, int first, int count, uint8_t flag, const std::vector<uint8_t> &pixels = { 64, 65, 0, 0, 70, 64 }, SecondLoop secondLoop = SecondLoop::None)
     {
-        std::vector<uint8_t> view = MakeViewBytes(version, pixels, true, withEmptyLoop);
+        std::vector<uint8_t> view = MakeViewBytes(version, pixels, true, secondLoop);
         StoreEntries(view, first, count, true, flag);
         return view;
     }
@@ -286,6 +304,40 @@ namespace
             }
         }
         return std::string();
+    }
+
+    // The lines of the text, with no line end.
+    std::vector<std::string> LinesOf(const std::string &text)
+    {
+        std::vector<std::string> lines;
+        std::istringstream stream(text);
+        std::string line;
+        while (std::getline(stream, line))
+        {
+            if (!line.empty() && (line.back() == '\r'))
+            {
+                line.pop_back();
+            }
+            lines.push_back(line);
+        }
+        return lines;
+    }
+
+    // The cells of a line of a tsv table.
+    std::vector<std::string> TabFieldsOf(const std::string &line)
+    {
+        std::vector<std::string> fields;
+        size_t start = 0;
+        for (;;)
+        {
+            const size_t tab = line.find('\t', start);
+            fields.push_back(line.substr(start, (tab == std::string::npos) ? std::string::npos : (tab - start)));
+            if (tab == std::string::npos)
+            {
+                return fields;
+            }
+            start = tab + 1;
+        }
     }
 
     // The text with one space for each run of spaces and line ends: the
@@ -1082,13 +1134,13 @@ namespace UnitTests
             Assert::IsTrue(FileNamesOf(_patches).empty(), L"no patch file is written");
         }
 
-        // A view whose second loop has no cel: the reader of the views logs
-        // a warning and gives the loop a cel. The repair is the reason that
-        // the view fails, also when the change of its palette fails.
+        // A view whose second loop mirrors itself: the reader of the views
+        // logs a warning and gives the loop a cel. The repair is the reason
+        // that the view fails, also when the change of its palette fails.
         TEST_METHOD(Palette_ViewThatItsReaderRepaired_FailsTheViewWithTheRepairAsTheReason)
         {
-            PutViewIntoGame(5, MakeViewBytes(sciVersion1_1, { 64, 65, 0, 0, 70, 64 }, true, true));
-            PutViewIntoGame(6, MakeThreeByteViewBytes(sciVersion1_1, 0, 236, 1, { 64, 65, 0, 0, 70, 64 }, true));
+            PutViewIntoGame(5, MakeViewBytes(sciVersion1_1, { 64, 65, 0, 0, 70, 64 }, true, SecondLoop::MirrorsItself));
+            PutViewIntoGame(6, MakeThreeByteViewBytes(sciVersion1_1, 0, 236, 1, { 64, 65, 0, 0, 70, 64 }, SecondLoop::MirrorsItself));
             const std::string bmp = WriteColorsBmp();
             const auto expectTheRepair = [&](const cli::StringConsole &console, int number)
             {
@@ -1108,6 +1160,19 @@ namespace UnitTests
             cli::StringConsole range = Expect(6, { "view", "palette", _gameFolder, "--view", "5", "6", "--clear-used", "--palette-range", "60-200", "--out-dir", _patches });
             expectTheRepair(range, 5);
             expectTheRepair(range, 6);
+        }
+
+        // A loop with no cel is a form of Sierra's views, not damage: the
+        // palette of such a view changes.
+        TEST_METHOD(Palette_ViewWithALoopThatHasNoCel_Changes)
+        {
+            const std::vector<uint8_t> view = MakeViewBytes(sciVersion1_1, { 64, 65, 0, 0, 70, 64 }, true, SecondLoop::Empty);
+            PutViewIntoGame(5, view);
+            const std::string bmp = WriteColorsBmp();
+
+            cli::StringConsole console = Expect(0, { "view", "palette", _gameFolder, "--view", "5", "--colors-from", bmp, "--palette-range", "80-235", "--out-dir", _patches });
+
+            Assert::AreEqual(view.size(), PatchDataOf(5).size(), Wide(console.err).c_str());
         }
 
         TEST_METHOD(Palette_ColorsFrom_BmpThatCannotGiveTheColours_StopsTheRun)
@@ -1367,19 +1432,214 @@ namespace UnitTests
             Assert::IsTrue(FileNamesOf(_patches).empty(), L"no patch file is written");
         }
 
+        TEST_METHOD(List_Text_HasARowForEachView)
+        {
+            cli::StringConsole console = Expect(0, { "view", "list", _gameFolder });
+
+            std::vector<std::string> lines = LinesOf(console.out);
+            Assert::AreEqual((size_t)17, lines.size(), Wide(console.out).c_str());
+            Assert::AreEqual(std::string("View  Format  Loops  Mirrors  Cels  Raw  Res  Source   Bytes  CRC32     Palette  Skip px  Palette entries  Pixel entries"), lines[0]);
+            Assert::IsTrue(lines[1].rfind("   0  vga11       9        3    40    0    -  package  22707  ", 0) == 0, Wide(console.out).c_str());
+            Assert::IsTrue(Has(lines[1], "  -          15457  -                0-4,8,11-15,48-51"), Wide(console.out).c_str());
+            // View 996 has a palette that stores no entry.
+            const std::string row996 = LineWith(console.out, " 996");
+            Assert::IsTrue(Has(row996, "  none           9  -                -"), Wide(console.out).c_str());
+            for (const std::string &line : lines)
+            {
+                Assert::IsFalse(line.empty() || (line.back() == ' '), Wide("no spaces at the end of a line: \"" + line + "\"").c_str());
+            }
+            Assert::IsTrue(console.err.empty(), Wide(console.err).c_str());
+        }
+
+        // A view of the form of Sierra's views, as a patch file: 3 loops
+        // (one a mirror, one with a raw cel) and a palette of 4-byte entries.
+        TEST_METHOD(List_Tsv_HasTheValuesOfTheView)
+        {
+            sierraview::MadeView made = sierraview::ThreeLoopView();
+            made.sci2 = false;
+            const std::vector<uint8_t> data = sierraview::MakeSierraView(made);
+            PutViewIntoGame(500, data);
+
+            cli::StringConsole console = Expect(0, { "view", "list", _gameFolder, "--format", "tsv" });
+
+            std::vector<std::string> lines = LinesOf(console.out);
+            Assert::AreEqual((size_t)18, lines.size(), Wide(console.out).c_str());
+            Assert::AreEqual(std::string("number\tformat\tloops\tmirror_loops\tcels\traw_cels\tresolution\tsource\tbytes\tcrc32\tpalette_first\tpalette_count\tentry_size\t"
+                "skip_pixels\tpalette_entries\tpixel_entries\terror"), lines[0]);
+            const size_t columns = TabFieldsOf(lines[0]).size();
+            Assert::AreEqual((size_t)17, columns);
+            for (const std::string &line : lines)
+            {
+                Assert::AreEqual(columns, TabFieldsOf(line).size(), Wide(line).c_str());
+            }
+            const std::vector<std::string> expected = { "500", "vga11", "3", "1", "3", "1", "", "patch", std::to_string(data.size()),
+                fmt::format("{0:08x}", (uint32_t)crcFast(data.data(), (int)data.size())), "0", "256", "4", "3", "10-99", "10-16,20-24,40-45", "" };
+            Assert::IsTrue(expected == TabFieldsOf(LineWith(console.out, "500\t")), Wide(console.out).c_str());
+            // View 996 of the package has a palette that stores no entry.
+            const std::vector<std::string> row996 = TabFieldsOf(LineWith(console.out, "996\t"));
+            Assert::AreEqual(std::string("package"), row996[7]);
+            Assert::AreEqual(std::string("0"), row996[11]);
+            Assert::AreEqual(std::string(), row996[14]);
+        }
+
+        // The resolution byte is a cell of an SCI2 view only.
+        TEST_METHOD(List_Sci2Game_HasTheResolutionByte)
+        {
+            sierraview::MadeView made = sierraview::ThreeLoopView();
+            made.resolution = 2;
+            const std::vector<uint8_t> data = sierraview::MakeSierraView(made);
+
+            cli::ViewListRow row = cli::MakeViewListRow(sciVersion2, 7, data, false);
+
+            Assert::IsTrue(row.described && row.error.empty(), Wide(row.error).c_str());
+            const std::vector<std::string> fields = TabFieldsOf(LinesOf(cli::ViewListTsvTable({ row }))[1]);
+            Assert::AreEqual(std::string("vga2"), fields[1]);
+            Assert::AreEqual(std::string("2"), fields[6]);
+            Assert::AreEqual(std::string("package"), fields[7]);
+            const std::vector<std::string> text = LinesOf(cli::ViewListTextTable({ row }));
+            Assert::IsTrue(text[1].rfind("   7  vga2        3        1     3    1    2  package", 0) == 0, Wide(text[1]).c_str());
+        }
+
+        TEST_METHOD(List_Selectors)
+        {
+            cli::StringConsole two = Expect(0, { "view", "list", _gameFolder, "--format", "tsv", "--view", "996", "0" });
+            std::vector<std::string> lines = LinesOf(two.out);
+            Assert::AreEqual((size_t)3, lines.size(), Wide(two.out).c_str());
+            Assert::AreEqual(std::string("0"), TabFieldsOf(lines[1])[0]);
+            Assert::AreEqual(std::string("996"), TabFieldsOf(lines[2])[0]);
+
+            cli::StringConsole range = Expect(0, { "view", "list", _gameFolder, "--format", "tsv", "--view", "980-989" });
+            Assert::AreEqual((size_t)6, LinesOf(range.out).size(), Wide(range.out).c_str());
+
+            cli::StringConsole unknown = Expect(2, { "view", "list", _gameFolder, "--view", "5" });
+            Assert::IsTrue(Has(unknown.err, "the game has no view 5") && unknown.out.empty(), Wide(unknown.out + unknown.err).c_str());
+            cli::StringConsole bad = Expect(2, { "view", "list", _gameFolder, "--view", "abc" });
+            Assert::IsTrue(Has(bad.err, "\"abc\" is not a view number or a range of view numbers"), Wide(bad.err).c_str());
+        }
+
+        // A view that cannot be read, and a view whose reader repaired damaged
+        // data (a loop that mirrors itself gets a cel), have the error in
+        // their row: exit 6.
+        TEST_METHOD(List_ViewsThatCannotBeRead_HaveTheErrorInTheirRow)
+        {
+            PutViewIntoGame(501, std::vector<uint8_t>(100, 0xff));
+            PutViewIntoGame(502, MakeViewBytes(sciVersion1_1, { 64, 65, 0, 0, 70, 64 }, true, SecondLoop::MirrorsItself));
+
+            cli::StringConsole console = Expect(6, { "view", "list", _gameFolder, "--format", "tsv" });
+
+            const std::vector<std::string> unreadable = TabFieldsOf(LineWith(console.out, "501\t"));
+            Assert::AreEqual(std::string("patch"), unreadable[7], Wide(console.out).c_str());
+            Assert::AreEqual(std::string("100"), unreadable[8], Wide(console.out).c_str());
+            Assert::AreEqual(std::string(), unreadable[2], Wide(console.out).c_str());
+            // Its loop headers would have 255 bytes.
+            Assert::IsTrue(Has(unreadable[16], "the view has the form of an SCI1 view (its loop headers have 255 bytes) [unsupported]"), Wide(console.out).c_str());
+            const std::vector<std::string> repaired = TabFieldsOf(LineWith(console.out, "502\t"));
+            Assert::AreEqual(std::string("patch"), repaired[7], Wide(console.out).c_str());
+            Assert::AreEqual(std::string(), repaired[2], Wide(console.out).c_str());
+            Assert::IsTrue(Has(repaired[16], "the reader repaired damaged data: Empty loop found") && Has(repaired[16], "[format]"), Wide(console.out).c_str());
+            // The other views have no error.
+            Assert::AreEqual(std::string(), TabFieldsOf(LineWith(console.out, "0\t"))[16]);
+
+            cli::StringConsole text = Expect(6, { "view", "list", _gameFolder, "--view", "501" });
+            Assert::IsTrue(Has(text.out, "(unreadable: "), Wide(text.out).c_str());
+        }
+
+        // A loop with no cel is a form of Sierra's views: no error, and the
+        // loop counts no cel.
+        TEST_METHOD(List_ViewWithALoopThatHasNoCel_HasNoError)
+        {
+            PutViewIntoGame(503, MakeViewBytes(sciVersion1_1, { 64, 65, 0, 0, 70, 64 }, true, SecondLoop::Empty));
+
+            cli::StringConsole console = Expect(0, { "view", "list", _gameFolder, "--format", "tsv", "--view", "503" });
+
+            const std::vector<std::string> row = TabFieldsOf(LineWith(console.out, "503\t"));
+            Assert::AreEqual(std::string("2"), row[2], Wide(console.out).c_str());
+            Assert::AreEqual(std::string("1"), row[4], Wide(console.out).c_str());
+            Assert::AreEqual(std::string(), row[16], Wide(console.out).c_str());
+        }
+
+        // A view of the package whose data cannot be decompressed: the read
+        // of its resource fails, and its row has the error.
+        TEST_METHOD(List_ViewOfThePackageThatCannotBeRead_HasTheErrorInItsRow)
+        {
+            // The header of view 996 in the volume: the type byte, the number,
+            // the two sizes and the compression method (an unknown one here).
+            const std::string volume = _gameFolder + "\\resource.000";
+            std::vector<uint8_t> bytes = ReadFileBytes(volume);
+            const std::vector<uint8_t> header = { 0x80, 0xe4, 0x03 };
+            auto at = std::search(bytes.begin(), bytes.end(), header.begin(), header.end());
+            Assert::IsTrue(at != bytes.end(), L"setup: the header of view 996 in the volume");
+            *(at + 7) = 0x63;
+            *(at + 8) = 0x00;
+            WriteFileBytes(volume, bytes);
+
+            cli::StringConsole console = Expect(6, { "view", "list", _gameFolder, "--format", "tsv", "--view", "996", "0" });
+
+            const std::vector<std::string> row = TabFieldsOf(LineWith(console.out, "996\t"));
+            Assert::AreEqual(std::string(), row[7], Wide(console.out).c_str());
+            Assert::IsTrue(Has(row[16], "view 996") && Has(row[16], "[format]"), Wide(console.out).c_str());
+            Assert::AreEqual(std::string(), TabFieldsOf(LineWith(console.out, "0\t"))[16], Wide(console.out).c_str());
+        }
+
+        // A view of an EGA game has no image that scic reads: a row with its
+        // format, and no cels.
+        TEST_METHOD(List_EgaGame_HasRowsWithNoImage)
+        {
+            _gameFolder = _game.Make(TemplateSci0);
+
+            cli::StringConsole console = Expect(0, { "view", "list", _gameFolder, "--format", "tsv" });
+
+            std::vector<std::string> lines = LinesOf(console.out);
+            Assert::IsTrue(lines.size() > 1, Wide(console.out).c_str());
+            for (size_t i = 1; i < lines.size(); i++)
+            {
+                std::vector<std::string> fields = TabFieldsOf(lines[i]);
+                Assert::AreEqual(std::string("ega"), fields[1], Wide(lines[i]).c_str());
+                Assert::AreEqual(std::string(), fields[2], Wide(lines[i]).c_str());
+                Assert::IsFalse(fields[7].empty() || fields[8].empty(), Wide(lines[i]).c_str());
+                Assert::AreEqual(std::string(), fields[16], Wide(lines[i]).c_str());
+            }
+            cli::StringConsole text = Expect(0, { "view", "list", _gameFolder });
+            Assert::IsTrue(Has(text.out, "  ega         -        -     -    -    -  package"), Wide(text.out).c_str());
+        }
+
+        TEST_METHOD(List_WritesNothing)
+        {
+            const auto before = FilesOf(_gameFolder);
+
+            Expect(0, { "view", "list", _gameFolder });
+            Expect(0, { "view", "list", _gameFolder, "--format", "tsv" });
+
+            Assert::IsTrue(before == FilesOf(_gameFolder), L"no file of the game changes");
+        }
+
+        TEST_METHOD(List_CtrlC_ExitsWith7)
+        {
+            cli::CancelFlag().store(true);
+
+            cli::StringConsole console;
+            int code = cli::RunCli({ "view", "list", _gameFolder }, console);
+            cli::CancelFlag().store(false);
+
+            Assert::AreEqual(7, code, Wide(console.out + console.err).c_str());
+            Assert::IsTrue(console.out.empty(), Wide(console.out).c_str());
+        }
+
         TEST_METHOD(Help_ListsTheViewCommand)
         {
             cli::StringConsole group = Expect(0, { "view" });
-            Assert::IsTrue(Has(group.out, "palette") && Has(group.out, "scic view"), Wide(group.out).c_str());
+            Assert::IsTrue(Has(group.out, "palette") && Has(group.out, "list") && Has(group.out, "scic view"), Wide(group.out).c_str());
+            cli::StringConsole helpList = Expect(0, { "help", "view", "list" });
+            Assert::IsTrue(Has(helpList.out, "--view") && Has(helpList.out, "--format") && Has(helpList.out, "scic view list"), Wide(helpList.out).c_str());
             cli::StringConsole helpGroup = Expect(0, { "help", "view" });
             Assert::IsTrue(Has(helpGroup.out, "palette"), Wide(helpGroup.out).c_str());
             cli::StringConsole helpPalette = Expect(0, { "help", "view", "palette" });
             Assert::IsTrue(Has(helpPalette.out, "--view") && Has(helpPalette.out, "--colors-from") && Has(helpPalette.out, "--clear-used") && Has(helpPalette.out, "--palette-range") &&
                 Has(helpPalette.out, "--out-dir") && Has(helpPalette.out, "scic view palette"), Wide(helpPalette.out).c_str());
             cli::StringConsole root = Expect(0, { "help" });
-            Assert::IsTrue(Has(OneLine(root.out), "pic import, view palette."), Wide(root.out).c_str());
+            Assert::IsTrue(Has(OneLine(root.out), "pic import, view list, view palette."), Wide(root.out).c_str());
             // The line of the group in the list of the commands.
-            Assert::IsTrue(Has(OneLine(root.out), " view The view commands: palette."), Wide(root.out).c_str());
+            Assert::IsTrue(Has(OneLine(root.out), " view The view commands: list, palette."), Wide(root.out).c_str());
         }
     };
 }

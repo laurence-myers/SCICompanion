@@ -3,34 +3,12 @@
 #include "PaletteUse.h"
 #include "PicImage.h"
 #include "View.h"
-#include "ResourceBlob.h"
+#include "ViewImage.h"
 #include "ResourceEntity.h"
-#include "ResourceUtil.h"
-#include "ResourceSourceFlags.h"
-#include "GameFolderHelper.h"
 #include "format.h"
 
 namespace
 {
-    // The view as SCI Companion reads it.
-    sci::Result<std::unique_ptr<ResourceEntity>> ParseView(const SCIVersion &version, const std::vector<uint8_t> &data)
-    {
-        GameFolderHelper helper;
-        // The blob has a name, so that it does not look for one in a game.
-        ResourceBlob blob(helper, "view", ResourceType::View, data, version.DefaultVolumeFile, -1, NoBase36, version, ResourceSourceFlags::PatchFile);
-        sci::Result<std::unique_ptr<ResourceEntity>> view = TryCreateResourceFromResourceData(blob);
-        if (!view)
-        {
-            // The number of the view is not known here: the caller names it.
-            view.error().where.resource.clear();
-        }
-        else if ((*view)->TryGetComponent<RasterComponent>() == nullptr)
-        {
-            return sci::Fail(sci::ErrorCode::Format, "the resource is not a view");
-        }
-        return view;
-    }
-
     // What these functions read of a view before they change it.
     struct ViewRead
     {
@@ -50,7 +28,7 @@ namespace
             return sci::Fail(sci::ErrorCode::Unsupported, "the palette of a view of this game version cannot change; only a view of SCI1.1 or SCI2 can");
         }
         ViewRead read;
-        SCI_TRY_ASSIGN(read.view, ParseView(version, data));
+        SCI_TRY_ASSIGN(read.view, ParseViewResource(version, data));
         const PaletteComponent *palette = read.view->TryGetComponent<PaletteComponent>();
         if (palette == nullptr)
         {
@@ -106,7 +84,7 @@ namespace
         edit.usedBefore = read.used;
         edit.before = read.layout;
         SCI_TRY_ASSIGN(edit.after, ReadPaletteLayout(data.data(), data.size(), read.paletteOffset));
-        SCI_TRY_ASSIGN(std::unique_ptr<ResourceEntity> readBack, ParseView(version, data));
+        SCI_TRY_ASSIGN(std::unique_ptr<ResourceEntity> readBack, ParseViewResource(version, data));
         if (!SameViewCels(read.view->GetComponent<RasterComponent>(), readBack->GetComponent<RasterComponent>()))
         {
             return sci::Fail(sci::ErrorCode::Unsupported, "the cels of the view are not the same after the change of its palette: a cel and the palette have bytes in common");

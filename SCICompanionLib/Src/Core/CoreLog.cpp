@@ -53,6 +53,26 @@ void RemoveCoreLogSink(ILogSink *sink)
     g_coreLogSink.compare_exchange_strong(expected, nullptr);
 }
 
+RepairLogSink::~RepairLogSink()
+{
+    RemoveCoreLogSink(this);
+}
+
+void RepairLogSink::Write(LogLevel level, const std::string &text)
+{
+    if (level != LogLevel::Info)
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+        _text += (_text.empty() ? "" : " ") + text;
+    }
+}
+
+std::string RepairLogSink::Text()
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _text;
+}
+
 void CoreLog(LogLevel level, const std::string &text)
 {
     ILogSink *sink = g_coreLogSink.load();

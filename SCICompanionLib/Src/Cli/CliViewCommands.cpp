@@ -2,6 +2,7 @@
 #include "CliCommands.h"
 #include "CliHost.h"
 #include "CliResources.h"
+#include "CliView.h"
 #include "GameSession.h"
 #include "GameFolderHelper.h"
 #include "ResourceMap.h"
@@ -12,7 +13,9 @@
 #include "ViewPalette.h"
 #include "IndexedBmp.h"
 #include "FileWrite.h"
+#include "ViewImage.h"
 #include "format.h"
+#include <algorithm>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -29,6 +32,143 @@ namespace cli
         std::string RunsText(const std::array<bool, 256> &entries)
         {
             return IndexRunsText(IndexRunsOf(entries));
+        }
+
+        // A view of the game: the most recent copy of its resource (a patch
+        // file, else the package).
+        struct ViewSource
+        {
+            std::unique_ptr<ResourceBlob> blob;
+            std::vector<uint8_t> data;
+            bool fromPatch = false;
+        };
+
+        // NotFound when the game has no such view; Format when its resource
+        // is damaged.
+        sci::Result<ViewSource> ReadViewSource(GameSession &session, int number)
+        {
+            ViewSource source;
+            source.blob = session.ResourceMap().MostRecentResource(ResourceType::View, number, false);
+            if (!source.blob)
+            {
+                return sci::Fail(sci::ErrorCode::NotFound, fmt::format("the game has no view {0}", number));
+            }
+            SCI_TRY(CheckResourceData(*source.blob));
+            const uint8_t *bytes = source.blob->GetData();
+            source.data.assign(bytes, bytes + source.blob->GetLength());
+            source.fromPatch = IsFlagSet(source.blob->GetSourceFlags(), ResourceSourceFlags::PatchFile);
+            return std::move(source);
+        }
+
+        // The row of a view of the game. The exception boundary of the view:
+        // a view that cannot be read, or whose reader repaired damaged data,
+        // has the error in its row.
+        ViewListRow RowOf(GameSession &session, int number)
+        {
+            RepairLogSink repairs;
+            sci::Result<ViewListRow> row = [&]() -> sci::Result<ViewListRow>
+            {
+                ScopedCoreLogSink scopedSink(repairs);
+                return sci::Guard("reading " + ViewText(number), [&]() -> sci::Result<ViewListRow>
+                {
+                    SCI_TRY_ASSIGN(ViewSource source, ReadViewSource(session, number));
+                    return MakeViewListRow(session.Version(), number, source.data, source.fromPatch);
+                });
+            }();
+            const std::string repaired = repairs.Text();
+            if (row && repaired.empty())
+            {
+                return *row;
+            }
+            ViewListRow unread = row ? *row : ViewListRow();
+            unread.number = number;
+            unread.format = ViewFormatName(session.Version().ViewFormat);
+            unread.described = false;
+            if (repaired.empty())
+            {
+                unread.error = row.error().ToString();
+            }
+            else
+            {
+                sci::Error error;
+                error.code = sci::ErrorCode::Format;
+                error.message = "the reader repaired damaged data: " + repaired;
+                unread.error = error.ToString();
+            }
+            return unread;
+        }
+
+        // "0-255 (4)": the entries that a palette stores, and the bytes of an
+        // entry; "none" for a palette that stores no entry; "-" for no
+        // palette.
+        std::string StoredCell(const PicPaletteDescription &palette)
+        {
+            if (!palette.present)
+            {
+                return "-";
+            }
+            if (palette.entryCount == 0)
+            {
+                return "none";
+            }
+            return fmt::format("{0}-{1} ({2})", palette.firstEntry, palette.firstEntry + palette.entryCount - 1, palette.entrySize);
+        }
+
+        uint32_t SkipPixelsOf(const ViewDescription &description)
+        {
+            uint32_t pixels = 0;
+            for (const ViewCelDescription &cel : description.cels)
+            {
+                pixels += cel.SkipPixels();
+            }
+            return pixels;
+        }
+
+        // The resolution byte of an SCI2 view; empty for another format.
+        std::string ResolutionCell(const ViewDescription &description)
+        {
+            return (description.format == ViewFormat::VGA2) ? fmt::format("{0}", (int)description.resolution) : std::string();
+        }
+
+        // A cell with "-" for no value.
+        std::string OrDash(const std::string &text)
+        {
+            return text.empty() ? std::string("-") : text;
+        }
+
+        // The cells of the row for the text table, in the order of the
+        // header.
+        std::vector<std::string> TextCells(const ViewListRow &row)
+        {
+            std::vector<std::string> cells = { fmt::format("{0}", row.number), row.format };
+            const ViewDescription &view = row.description;
+            if (row.described)
+            {
+                cells.push_back(fmt::format("{0}", view.loops.size()));
+                cells.push_back(fmt::format("{0}", view.MirrorLoops()));
+                cells.push_back(fmt::format("{0}", view.cels.size()));
+                cells.push_back(fmt::format("{0}", view.RawCels()));
+                cells.push_back(OrDash(ResolutionCell(view)));
+            }
+            else
+            {
+                cells.insert(cells.end(), 5, "-");
+            }
+            cells.push_back(OrDash(row.source));
+            cells.push_back(row.source.empty() ? std::string("-") : fmt::format("{0}", row.bytes));
+            cells.push_back(row.source.empty() ? std::string("-") : fmt::format("{0:08x}", row.crc32));
+            if (row.described)
+            {
+                cells.push_back(StoredCell(view.palette));
+                cells.push_back(fmt::format("{0}", SkipPixelsOf(view)));
+                cells.push_back(OrDash(RunsText(view.palette.UsedEntries())));
+                cells.push_back(OrDash(RunsText(view.PixelEntries())));
+            }
+            else
+            {
+                cells.insert(cells.end(), 4, "-");
+            }
+            return cells;
         }
 
         // "0-235" for the entries that a palette stores; "no entry" for none.
@@ -120,15 +260,9 @@ namespace cli
             sci::Result<ViewPaletteEdit> edited = [&]() -> sci::Result<ViewPaletteEdit>
             {
                 ScopedCoreLogSink scopedSink(repairs);
-                std::unique_ptr<ResourceBlob> source = session.ResourceMap().MostRecentResource(ResourceType::View, number, false);
-                if (!source)
-                {
-                    return sci::Fail(sci::ErrorCode::NotFound, fmt::format("the game has no view {0}", number));
-                }
-                SCI_TRY(CheckResourceData(*source));
-                const std::vector<uint8_t> data(source->GetData(), source->GetData() + source->GetLength());
-                return action.clearUsed ? ClearViewPaletteMarks(session.Version(), data, action.first, action.last) :
-                    ReplaceViewPaletteColors(session.Version(), data, action.first, action.last, action.colors);
+                SCI_TRY_ASSIGN(ViewSource source, ReadViewSource(session, number));
+                return action.clearUsed ? ClearViewPaletteMarks(session.Version(), source.data, action.first, action.last) :
+                    ReplaceViewPaletteColors(session.Version(), source.data, action.first, action.last, action.colors);
             }();
             if (!repairs.Text().empty())
             {
@@ -230,6 +364,107 @@ namespace cli
             output.Detail("Wrote " + path);
             return sci::Ok();
         }
+    }
+
+    const char *const ViewListTsvHeader =
+        "number\tformat\tloops\tmirror_loops\tcels\traw_cels\tresolution\tsource\tbytes\tcrc32\tpalette_first\tpalette_count\tentry_size\t"
+        "skip_pixels\tpalette_entries\tpixel_entries\terror\n";
+
+    ViewListRow MakeViewListRow(const SCIVersion &version, int number, const std::vector<uint8_t> &data, bool fromPatch)
+    {
+        ViewListRow row;
+        row.number = number;
+        row.format = ViewFormatName(version.ViewFormat);
+        row.source = fromPatch ? "patch" : "package";
+        row.bytes = data.size();
+        row.crc32 = Crc32Of(data);
+        if (CanReadViewImage(version.ViewFormat))
+        {
+            // The exception boundary of the description.
+            sci::Result<ViewDescription> description = sci::Guard(fmt::format("reading view {0}", number), [&]() { return DescribeView(version, data); });
+            if (description)
+            {
+                row.description = std::move(*description);
+                row.described = true;
+            }
+            else
+            {
+                row.error = description.error().ToString();
+            }
+        }
+        return row;
+    }
+
+    // The numbers to the right, the texts to the left. The entries are the
+    // last columns: they can be long.
+    std::string ViewListTextTable(const std::vector<ViewListRow> &rows)
+    {
+        const std::vector<std::string> header = { "View", "Format", "Loops", "Mirrors", "Cels", "Raw", "Res", "Source", "Bytes", "CRC32", "Palette", "Skip px", "Palette entries", "Pixel entries" };
+        const std::vector<bool> right = { true, false, true, true, true, true, true, false, true, false, false, true, false, false };
+        std::vector<std::vector<std::string>> cells;
+        std::vector<std::string> errors;
+        for (const ViewListRow &row : rows)
+        {
+            cells.push_back(TextCells(row));
+            errors.push_back(row.error);
+        }
+        return AlignedTextTable(header, right, cells, errors);
+    }
+
+    std::string ViewListTsvTable(const std::vector<ViewListRow> &rows)
+    {
+        std::string text = ViewListTsvHeader;
+        for (const ViewListRow &row : rows)
+        {
+            text += fmt::format("{0}\t{1}\t", row.number, row.format);
+            const ViewDescription &view = row.description;
+            if (row.described)
+            {
+                text += fmt::format("{0}\t{1}\t{2}\t{3}\t{4}\t", view.loops.size(), view.MirrorLoops(), view.cels.size(), view.RawCels(), ResolutionCell(view));
+            }
+            else
+            {
+                text += "\t\t\t\t\t";
+            }
+            text += row.source.empty() ? std::string("\t\t\t") : fmt::format("{0}\t{1}\t{2:08x}\t", row.source, row.bytes, row.crc32);
+            if (row.described)
+            {
+                const PicPaletteDescription &palette = view.palette;
+                text += palette.present ? fmt::format("{0}\t{1}\t{2}\t", palette.firstEntry, palette.entryCount, palette.entrySize) : std::string("\t\t\t");
+                text += fmt::format("{0}\t{1}\t{2}\t", SkipPixelsOf(view), RunsText(palette.UsedEntries()), RunsText(view.PixelEntries()));
+            }
+            else
+            {
+                text += "\t\t\t\t\t\t";
+            }
+            text += row.error + "\n";
+        }
+        return text;
+    }
+
+    sci::Result<ExitCode> RunViewList(GameSession &session, const ViewListOptions &options, CliOutput &output)
+    {
+        std::vector<int> views = ResourceNumbersOf(session, ResourceType::View);
+        if (!options.views.empty())
+        {
+            SCI_TRY_ASSIGN(views, SelectResourceNumbers(views, options.views, "view"));
+        }
+        std::vector<ViewListRow> rows;
+        for (int number : views)
+        {
+            if (CancelFlag().load())
+            {
+                // Ctrl+C while the views were read: no table, and the run
+                // fails (exit code 7).
+                return sci::Fail(sci::ErrorCode::Cancelled, "stopped by Ctrl+C");
+            }
+            SetCurrentItem("reading " + ViewText(number));
+            rows.push_back(RowOf(session, number));
+        }
+        SetCurrentItem("");
+        output.Result((options.format == "tsv") ? ViewListTsvTable(rows) : ViewListTextTable(rows));
+        bool unreadable = std::any_of(rows.begin(), rows.end(), [](const ViewListRow &row) { return !row.error.empty(); });
+        return unreadable ? ExitCode::PartialFailure : ExitCode::Success;
     }
 
     sci::Result<ExitCode> RunViewPalette(GameSession &session, const ViewPaletteOptions &options, const CommonOptions &common, CliOutput &output)

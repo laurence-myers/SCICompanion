@@ -16,7 +16,6 @@
 #include "PicSidecar.h"
 #include "IndexedBmp.h"
 #include "FileWrite.h"
-#include "crc.h"
 #include "format.h"
 #include <algorithm>
 #include <cwctype>
@@ -85,12 +84,6 @@ namespace cli
             bool fromPatch = false;
             uint32_t crc32 = 0;
         };
-
-        // The CRC-32 of the bytes of a pic resource.
-        uint32_t Crc32Of(const std::vector<uint8_t> &data)
-        {
-            return data.empty() ? 0 : (uint32_t)crcFast(data.data(), (int)data.size());
-        }
 
         // NotFound when the game has no such pic; Format when its resource is
         // damaged.
@@ -330,40 +323,14 @@ namespace cli
     {
         const std::vector<std::string> header = { "Pic", "Format", "Size", "Cels", "Comp", "Background cel", "Source", "Bytes", "CRC32", "Skip px", "Palette entries", "Pixel entries" };
         const std::vector<bool> right = { true, false, false, true, true, false, false, true, false, true, false, false };
-        std::vector<std::vector<std::string>> table = { header };
+        std::vector<std::vector<std::string>> cells;
+        std::vector<std::string> errors;
         for (const PicListRow &row : rows)
         {
-            table.push_back(TextCells(row));
+            cells.push_back(TextCells(row));
+            errors.push_back(row.error);
         }
-        std::vector<size_t> widths(header.size(), 0);
-        for (const std::vector<std::string> &cells : table)
-        {
-            for (size_t i = 0; i < cells.size(); i++)
-            {
-                widths[i] = (std::max)(widths[i], cells[i].size());
-            }
-        }
-        std::string text;
-        for (size_t r = 0; r < table.size(); r++)
-        {
-            std::string line;
-            for (size_t i = 0; i < table[r].size(); i++)
-            {
-                const std::string &cell = table[r][i];
-                const std::string padding(widths[i] - cell.size(), ' ');
-                line += (i == 0) ? "" : "  ";
-                line += right[i] ? (padding + cell) : (cell + padding);
-            }
-            // No spaces at the end of a line, and none before the error but
-            // the two that divide it from the last cell.
-            line.erase(line.find_last_not_of(' ') + 1);
-            if ((r > 0) && !rows[r - 1].error.empty())
-            {
-                line += "  (unreadable: " + rows[r - 1].error + ")";
-            }
-            text += line + "\n";
-        }
-        return text;
+        return AlignedTextTable(header, right, cells, errors);
     }
 
     std::string PicListTsvTable(const std::vector<PicListRow> &rows)
