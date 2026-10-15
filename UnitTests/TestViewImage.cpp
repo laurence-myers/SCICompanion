@@ -40,6 +40,99 @@ namespace
     {
         Assert::IsTrue((error.code == code) && (error.ToString().find(part) != std::string::npos), Wide(error.ToString()).c_str());
     }
+
+    uint32_t DwordOf(const std::vector<uint8_t> &data, size_t at)
+    {
+        return (uint32_t)data[at] | ((uint32_t)data[at + 1] << 8) | ((uint32_t)data[at + 2] << 16) | ((uint32_t)data[at + 3] << 24);
+    }
+
+    // The pixels of a run-length cel as ScummVM draws an SCI2 cel: each row
+    // starts at the offsets of the row table, and has width pixels. An
+    // assert fails for a run that goes past the end of its row.
+    std::vector<uint8_t> DecodeWithRowTable(const std::vector<uint8_t> &data, size_t celHeader)
+    {
+        const int width = data[celHeader] | (data[celHeader + 1] << 8);
+        const int height = data[celHeader + 2] | (data[celHeader + 3] << 8);
+        const uint8_t skip = data[celHeader + 8];
+        const uint32_t rle = DwordOf(data, celHeader + 24);
+        const uint32_t literal = DwordOf(data, celHeader + 28);
+        const uint32_t table = DwordOf(data, celHeader + 32);
+        std::vector<uint8_t> pixels;
+        for (int y = 0; y < height; y++)
+        {
+            size_t r = rle + DwordOf(data, table + (4 * (size_t)y));
+            size_t l = literal + DwordOf(data, table + (4 * ((size_t)height + y)));
+            int x = 0;
+            while (x < width)
+            {
+                const uint8_t code = data[r++];
+                int count = code & 0x3f;
+                if ((code & 0xc0) == 0xc0)
+                {
+                    pixels.insert(pixels.end(), count, skip);
+                }
+                else if ((code & 0xc0) == 0x80)
+                {
+                    pixels.insert(pixels.end(), count, data[l++]);
+                }
+                else
+                {
+                    count += (code & 0x40) ? 64 : 0;
+                    pixels.insert(pixels.end(), data.begin() + l, data.begin() + l + count);
+                    l += count;
+                }
+                Assert::IsTrue(count > 0, L"a run of no pixel");
+                x += count;
+            }
+            Assert::AreEqual(width, x, L"a run goes past the end of its row");
+        }
+        return pixels;
+    }
+
+    // The offsets of the cel headers of the view, in the order of the
+    // stored cels.
+    std::vector<size_t> CelHeadersOf(const std::vector<uint8_t> &data)
+    {
+        sci::Result<ViewLayout> layout = ReadViewLayout(data.data(), data.size());
+        AssertOk(layout, "the layout of the view");
+        std::vector<size_t> headers;
+        for (const ViewLoopLayout &loop : layout->loops)
+        {
+            for (const ViewCelLayout &cel : loop.cels)
+            {
+                headers.push_back(cel.headerOffset);
+            }
+        }
+        return headers;
+    }
+
+    // The offsets where the two byte vectors differ, in the bytes that both
+    // have.
+    std::vector<size_t> DifferencesOf(const std::vector<uint8_t> &one, const std::vector<uint8_t> &two)
+    {
+        std::vector<size_t> at;
+        for (size_t i = 0; i < (std::min)(one.size(), two.size()); i++)
+        {
+            if (one[i] != two[i])
+            {
+                at.push_back(i);
+            }
+        }
+        return at;
+    }
+
+    // Pixels of the size from first, with runs of the skip colour, runs of
+    // one colour longer than 63, and single pixels.
+    std::vector<uint8_t> MixedPixels(int width, int height, uint8_t skip, uint8_t first)
+    {
+        std::vector<uint8_t> pixels((size_t)width * height);
+        for (size_t i = 0; i < pixels.size(); i++)
+        {
+            const size_t block = i / 70;
+            pixels[i] = (block % 3 == 0) ? skip : ((block % 3 == 1) ? first : (uint8_t)(first + 1 + (i % 5)));
+        }
+        return pixels;
+    }
 }
 
 namespace UnitTests
@@ -283,6 +376,147 @@ namespace UnitTests
             sci::Result<std::vector<uint8_t>> pixels = GetViewCelPixels(sciVersion2, data, 0, 2);
             AssertOk(pixels);
             Assert::IsTrue(copy.pixels == *pixels);
+        }
+
+        // Each row is its own runs, and the row table gives its start: a
+        // decoder of each row from the row table gives the pixels.
+        TEST_METHOD(Encode_EachRowIsItsOwnRuns)
+        {
+            for (const std::pair<int, int> &size : std::vector<std::pair<int, int>>{ { 1, 1 }, { 3, 2 }, { 150, 7 }, { 64, 3 }, { 200, 1 } })
+            {
+                const std::vector<uint8_t> pixels = MixedPixels(size.first, size.second, 9, 40);
+                const EncodedViewCel encoded = EncodeViewCel(size.first, size.second, 9, pixels);
+
+                // A view with this one cel, as the bytes of the encoder.
+                std::vector<uint8_t> data(36 + 8);
+                PutWord(data, 0, (uint32_t)size.first);
+                PutWord(data, 2, (uint32_t)size.second);
+                data[8] = 9;
+                PutDword(data, 24, (uint32_t)data.size());
+                data.insert(data.end(), encoded.rle.begin(), encoded.rle.end());
+                PutDword(data, 28, (uint32_t)data.size());
+                data.insert(data.end(), encoded.literal.begin(), encoded.literal.end());
+                const size_t table = data.size();
+                PutDword(data, 32, (uint32_t)table);
+                data.resize(table + (8 * (size_t)size.second));
+                for (int y = 0; y < size.second; y++)
+                {
+                    PutDword(data, table + (4 * (size_t)y), encoded.rleRows[y]);
+                    PutDword(data, table + (4 * ((size_t)size.second + y)), encoded.literalRows[y]);
+                }
+
+                Assert::IsTrue(pixels == DecodeWithRowTable(data, 0), Wide(fmt::format("{0} x {1}", size.first, size.second)).c_str());
+            }
+        }
+
+        // A cel with run-length data gets new data after the end of the
+        // view; only the 5 fields of its header change in the old bytes.
+        TEST_METHOD(Replace_RunLengthCel_AppendsItsDataAndKeepsEachOtherByte)
+        {
+            for (bool sci2 : { true, false })
+            {
+                MadeView made = ThreeLoopView();
+                made.sci2 = sci2;
+                const SCIVersion &version = sci2 ? sciVersion2 : sciVersion1_1;
+                const std::vector<uint8_t> data = MakeSierraView(made);
+                const size_t header = CelHeadersOf(data)[0];
+                const std::vector<uint8_t> pixels = { 60, 60, 60, 61, 0, 0, 62, 63, 64, 64, 65, 65, 65, 65, 0 };
+
+                sci::Result<std::vector<uint8_t>> patched = ReplaceViewCelPixels(version, data, { ViewCelPixels{ 0, 0, pixels } });
+
+                AssertOk(patched);
+                Assert::IsTrue(patched->size() > data.size());
+                for (size_t at : DifferencesOf(data, *patched))
+                {
+                    const bool field = (at >= header + 12) && (at < header + 36) && !((at >= header + 20) && (at < header + 24));
+                    Assert::IsTrue(field && (sci2 || (at < header + 32)), Wide(fmt::format("byte {0} changed", at)).c_str());
+                }
+                sci::Result<std::vector<std::vector<uint8_t>>> cels = GetAllViewCelPixels(version, *patched);
+                AssertOk(cels);
+                Assert::IsTrue(pixels == (*cels)[0]);
+                Assert::IsTrue(made.loops[0].cels[1].pixels == (*cels)[1]);
+                Assert::IsTrue(made.loops[2].cels[0].pixels == (*cels)[2]);
+                Assert::AreEqual((uint32_t)data.size(), DwordOf(*patched, header + 24));
+                if (sci2)
+                {
+                    Assert::IsTrue(pixels == DecodeWithRowTable(*patched, header));
+                }
+                const uint32_t rle = DwordOf(*patched, header + 16);
+                Assert::AreEqual(DwordOf(*patched, header + 28) - DwordOf(*patched, header + 24), rle);
+            }
+        }
+
+        // A raw cel that no other header points at changes in place.
+        TEST_METHOD(Replace_RawCel_ChangesInPlace)
+        {
+            const std::vector<uint8_t> data = MakeSierraView(ThreeLoopView());
+            const std::vector<uint8_t> pixels = { 50, 51, 52, 53, 54, 55 };
+
+            sci::Result<std::vector<uint8_t>> patched = ReplaceViewCelPixels(sciVersion2, data, { ViewCelPixels{ 2, 0, pixels } });
+
+            AssertOk(patched);
+            Assert::AreEqual(data.size(), patched->size());
+            const uint32_t at = DwordOf(data, CelHeadersOf(data)[2] + 24);
+            const std::vector<size_t> differences = DifferencesOf(data, *patched);
+            Assert::IsFalse(differences.empty());
+            for (size_t offset : differences)
+            {
+                Assert::IsTrue((offset >= at) && (offset < at + 6), Wide(fmt::format("byte {0} changed", offset)).c_str());
+            }
+            sci::Result<std::vector<uint8_t>> read = GetViewCelPixels(sciVersion2, *patched, 2, 0);
+            AssertOk(read);
+            Assert::IsTrue(pixels == *read);
+        }
+
+        // Two cel headers that point at one data: the changed cel gets new
+        // data, and the other keeps the old data (a raw cel and a cel with
+        // run-length data).
+        TEST_METHOD(Replace_SharedData_TheOtherCelKeepsIt)
+        {
+            for (bool raw : { false, true })
+            {
+                MadeView made = ThreeLoopView();
+                MadeCel first = made.loops[0].cels[1];
+                first.raw = raw;
+                MadeCel copy = first;
+                copy.sharesDataWithPrevious = true;
+                made.loops[0].cels = { first, copy };
+                const std::vector<uint8_t> data = MakeSierraView(made);
+                std::vector<uint8_t> pixels = first.pixels;
+                pixels[3] = 77;
+
+                sci::Result<std::vector<uint8_t>> patched = ReplaceViewCelPixels(sciVersion2, data, { ViewCelPixels{ 0, 1, pixels } });
+
+                AssertOk(patched);
+                sci::Result<std::vector<std::vector<uint8_t>>> cels = GetAllViewCelPixels(sciVersion2, *patched);
+                AssertOk(cels);
+                Assert::IsTrue(first.pixels == (*cels)[0], L"the other cel keeps its pixels");
+                Assert::IsTrue(pixels == (*cels)[1]);
+                Assert::IsTrue(patched->size() > data.size(), L"the new data is after the view");
+            }
+        }
+
+        TEST_METHOD(Replace_NoChange_GivesTheSameBytes)
+        {
+            const MadeView made = ThreeLoopView();
+            const std::vector<uint8_t> data = MakeSierraView(made);
+
+            sci::Result<std::vector<uint8_t>> patched = ReplaceViewCelPixels(sciVersion2, data, { ViewCelPixels{ 0, 0, made.loops[0].cels[0].pixels }, ViewCelPixels{ 2, 0, made.loops[2].cels[0].pixels } });
+
+            AssertOk(patched);
+            Assert::IsTrue(data == *patched);
+        }
+
+        TEST_METHOD(Replace_BadCels_AreUsage)
+        {
+            const MadeView made = ThreeLoopView();
+            const std::vector<uint8_t> data = MakeSierraView(made);
+            const std::vector<uint8_t> pixels = made.loops[0].cels[0].pixels;
+
+            AssertError(ReplaceViewCelPixels(sciVersion2, data, { ViewCelPixels{ 1, 0, pixels } }).error(), sci::ErrorCode::Usage, "the view stores no cel 0 of loop 1");
+            AssertError(ReplaceViewCelPixels(sciVersion2, data, { ViewCelPixels{ 0, 5, pixels } }).error(), sci::ErrorCode::Usage, "the view stores no cel 5 of loop 0");
+            AssertError(ReplaceViewCelPixels(sciVersion2, data, { ViewCelPixels{ 0, 0, pixels }, ViewCelPixels{ 0, 0, pixels } }).error(), sci::ErrorCode::Usage, "two pixel sets are for cel 0 of loop 0");
+            AssertError(ReplaceViewCelPixels(sciVersion2, data, { ViewCelPixels{ 0, 0, std::vector<uint8_t>(14, 10) } }).error(), sci::ErrorCode::Usage, "cel 0 of loop 0 has 5 x 3 pixels (15 bytes), and the new pixels are 14 bytes");
         }
 
         TEST_METHOD(SetCelTopDownPixels_NeedsThePixelsOfTheCel)

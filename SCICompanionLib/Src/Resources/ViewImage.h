@@ -184,6 +184,50 @@ sci::Result<ViewDescription> DescribeView(const SCIVersion &version, const std::
 // mirror, and of a loop whose header has no cel); else as DescribeView.
 sci::Result<std::vector<uint8_t>> GetViewCelPixels(const SCIVersion &version, const std::vector<uint8_t> &data, int loop, int cel);
 
+// New pixels for one stored cel: width * height bytes, the top row first.
+struct ViewCelPixels
+{
+    int loop = 0;
+    int cel = 0;
+    std::vector<uint8_t> pixels;
+};
+
+// The run-length data of the pixels of a cel (width * height bytes, the top
+// row first), as Sierra's views of SCI1.1 and SCI2 have it: each row is its
+// own runs (a run of the skip colour, a run of one colour, or literal
+// pixels; 63 pixels or fewer), and the row table gives the start of each
+// row in the run-length data and in the literal data.
+struct EncodedViewCel
+{
+    std::vector<uint8_t> rle;
+    std::vector<uint8_t> literal;
+    // For each row: the offset of its first byte in rle, then in literal.
+    std::vector<uint32_t> rleRows;
+    std::vector<uint32_t> literalRows;
+};
+EncodedViewCel EncodeViewCel(int width, int height, uint8_t skipColor, const std::vector<uint8_t> &pixels);
+
+// The bytes of the view with new pixels in some of its stored cels. The view
+// changes in place, so that the bytes that the readers of SCI Companion do
+// not read stay as Sierra wrote them:
+//  - a cel whose pixels do not change keeps its bytes;
+//  - a raw cel whose pixels no other cel header points at gets its new
+//    pixels in the same place;
+//  - each other changed cel gets new data after the last byte of the view:
+//    its run-length data, its literal data and (SCI2) its row table
+//    (EncodeViewCel), or the pixels of a raw cel. Its cel header gets the
+//    new offsets (24, 28 and, for SCI2, 32) and, for run-length data, the
+//    new sizes (12: the run-length and the literal data; 16: the run-length
+//    data). The old data stays: another cel header can point at it.
+// No other byte changes. The new bytes must then read back (DescribeView)
+// with the same loops, sizes, placements and skip colours, the new pixels
+// in the changed cels, and the old pixels in the others.
+//
+// Usage for a cel that the view does not store, for two pixel sets for one
+// cel, and for pixels that are not width * height bytes; Internal when the
+// new bytes do not read back as they must; else the errors of DescribeView.
+sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version, const std::vector<uint8_t> &data, const std::vector<ViewCelPixels> &cels);
+
 // The pixels of each stored cel, in the order of ViewDescription::cels (the
 // loops that are not mirrors, in order), as GetViewCelPixels gives them. The
 // errors of DescribeView.

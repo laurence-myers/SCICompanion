@@ -310,8 +310,9 @@ game data other than the template games.
   class `TestViewPalette` calls the functions under the palette command
   (`Src\Resources\ViewPalette.h`) with views of SCI1.1 and of SCI2.
 - `TestViewImage.cpp` tests the functions under the view commands
-  (`Src\Resources\ViewImage.h`: the layout of the headers, the description
-  and the pixels of a cel), and the class `TestViewSidecar` the writer and
+  (`Src\Resources\ViewImage.h`: the layout of the headers, the description,
+  the pixels of a cel, and the in-place write of new pixels, with a decoder
+  of the SCI2 row table as ScummVM reads it), and the class `TestViewSidecar` the writer and
   the reader of the `.toml` file of `scic view export`
   (`Src\Resources\ViewSidecar.h`). `SierraViewBytes.h` makes views in the form of
   Sierra's views of SCI1.1 and SCI2 (cel headers of 36 or 52 bytes, mirror

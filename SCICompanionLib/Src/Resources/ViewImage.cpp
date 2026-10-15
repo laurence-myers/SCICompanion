@@ -308,6 +308,181 @@ sci::Result<std::vector<uint8_t>> GetViewCelPixels(const SCIVersion &version, co
     return CelTopDownPixels(read.view->GetComponent<RasterComponent>().Loops[loop].Cels[cel]);
 }
 
+EncodedViewCel EncodeViewCel(int width, int height, uint8_t skipColor, const std::vector<uint8_t> &pixels)
+{
+    // The longest run: the count has 6 bits.
+    const int MaxRun = 63;
+    EncodedViewCel encoded;
+    for (int y = 0; y < height; y++)
+    {
+        encoded.rleRows.push_back((uint32_t)encoded.rle.size());
+        encoded.literalRows.push_back((uint32_t)encoded.literal.size());
+        const uint8_t *row = pixels.data() + ((size_t)y * (size_t)width);
+        // The count of the pixels from x that have the colour of x.
+        auto sameFrom = [&](int x)
+        {
+            int count = 1;
+            while (((x + count) < width) && (row[x + count] == row[x]) && (count < MaxRun))
+            {
+                count++;
+            }
+            return count;
+        };
+        int x = 0;
+        while (x < width)
+        {
+            const int same = sameFrom(x);
+            if (row[x] == skipColor)
+            {
+                encoded.rle.push_back((uint8_t)(0xc0 | same));
+                x += same;
+            }
+            else if (same >= 3)
+            {
+                encoded.rle.push_back((uint8_t)(0x80 | same));
+                encoded.literal.push_back(row[x]);
+                x += same;
+            }
+            else
+            {
+                // Literal pixels, up to the skip colour or a run of 3.
+                int count = 0;
+                while (((x + count) < width) && (count < MaxRun) && (row[x + count] != skipColor) && (sameFrom(x + count) < 3))
+                {
+                    count++;
+                }
+                encoded.rle.push_back((uint8_t)count);
+                encoded.literal.insert(encoded.literal.end(), row + x, row + x + count);
+                x += count;
+            }
+        }
+    }
+    return encoded;
+}
+
+namespace
+{
+    void PutDwordAt(std::vector<uint8_t> &data, size_t at, uint32_t value)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            data[at + i] = (uint8_t)((value >> (8 * i)) & 0xff);
+        }
+    }
+
+    uint32_t OffsetAtEnd(const std::vector<uint8_t> &data)
+    {
+        return (uint32_t)data.size();
+    }
+}
+
+sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version, const std::vector<uint8_t> &data, const std::vector<ViewCelPixels> &cels)
+{
+    SCI_TRY_ASSIGN(ViewDescription before, DescribeView(version, data));
+    SCI_TRY_ASSIGN(std::vector<std::vector<uint8_t>> oldPixels, GetAllViewCelPixels(version, data));
+    SCI_TRY_ASSIGN(ViewLayout layout, ReadViewLayout(data.data(), data.size()));
+    const bool sci2 = (version.ViewFormat == ViewFormat::VGA2);
+
+    // The index in before.cels of each changed cel, and its new pixels.
+    std::vector<std::pair<size_t, const std::vector<uint8_t> *>> changes;
+    for (const ViewCelPixels &cel : cels)
+    {
+        const ViewCelDescription *found = before.Find(cel.loop, cel.cel);
+        if (found == nullptr)
+        {
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("the view stores no cel {0} of loop {1}", cel.cel, cel.loop));
+        }
+        const size_t index = (size_t)(found - before.cels.data());
+        if (std::any_of(changes.begin(), changes.end(), [&](const std::pair<size_t, const std::vector<uint8_t> *> &change) { return change.first == index; }))
+        {
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("two pixel sets are for cel {0} of loop {1}", cel.cel, cel.loop));
+        }
+        const size_t count = (size_t)found->width * (size_t)found->height;
+        if (cel.pixels.size() != count)
+        {
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("cel {0} of loop {1} has {2} x {3} pixels ({4} bytes), and the new pixels are {5} bytes", cel.cel, cel.loop, found->width, found->height, count, cel.pixels.size()));
+        }
+        changes.emplace_back(index, &cel.pixels);
+    }
+
+    // The cel headers in the order of before.cels.
+    std::vector<const ViewCelLayout *> headers;
+    for (const ViewLoopLayout &loop : layout.loops)
+    {
+        for (const ViewCelLayout &cel : loop.cels)
+        {
+            headers.push_back(&cel);
+        }
+    }
+
+    std::vector<uint8_t> patched = data;
+    for (const auto &change : changes)
+    {
+        const std::vector<uint8_t> &pixels = *change.second;
+        if (pixels == oldPixels[change.first])
+        {
+            continue;
+        }
+        const ViewCelLayout &header = *headers[change.first];
+        const ViewCelDescription &cel = before.cels[change.first];
+        if (header.IsRaw())
+        {
+            const bool shared = std::count_if(headers.begin(), headers.end(), [&](const ViewCelLayout *other) { return other->rleOffset == header.rleOffset; }) > 1;
+            const bool inData = ((uint64_t)header.rleOffset + pixels.size()) <= data.size();
+            if (!shared && inData)
+            {
+                std::copy(pixels.begin(), pixels.end(), patched.begin() + header.rleOffset);
+            }
+            else
+            {
+                PutDwordAt(patched, header.headerOffset + 24, OffsetAtEnd(patched));
+                patched.insert(patched.end(), pixels.begin(), pixels.end());
+            }
+            continue;
+        }
+        const EncodedViewCel encoded = EncodeViewCel(cel.width, cel.height, cel.skipColor, pixels);
+        PutDwordAt(patched, header.headerOffset + 12, (uint32_t)(encoded.rle.size() + encoded.literal.size()));
+        PutDwordAt(patched, header.headerOffset + 16, (uint32_t)encoded.rle.size());
+        PutDwordAt(patched, header.headerOffset + 24, OffsetAtEnd(patched));
+        patched.insert(patched.end(), encoded.rle.begin(), encoded.rle.end());
+        PutDwordAt(patched, header.headerOffset + 28, OffsetAtEnd(patched));
+        patched.insert(patched.end(), encoded.literal.begin(), encoded.literal.end());
+        if (sci2)
+        {
+            PutDwordAt(patched, header.headerOffset + 32, OffsetAtEnd(patched));
+            const size_t table = patched.size();
+            patched.resize(table + (8 * (size_t)cel.height));
+            for (int y = 0; y < cel.height; y++)
+            {
+                PutDwordAt(patched, table + (4 * (size_t)y), encoded.rleRows[y]);
+                PutDwordAt(patched, table + (4 * ((size_t)cel.height + y)), encoded.literalRows[y]);
+            }
+        }
+    }
+
+    // The new bytes must read back as the view with the new pixels.
+    SCI_TRY_ASSIGN(ViewDescription after, DescribeView(version, patched));
+    SCI_TRY_ASSIGN(std::vector<std::vector<uint8_t>> newPixels, GetAllViewCelPixels(version, patched));
+    bool same = (after.loops.size() == before.loops.size()) && (after.cels.size() == before.cels.size());
+    for (size_t i = 0; same && (i < before.loops.size()); i++)
+    {
+        same = (after.loops[i].mirrorOf == before.loops[i].mirrorOf) && (after.loops[i].cels == before.loops[i].cels);
+    }
+    for (size_t i = 0; same && (i < before.cels.size()); i++)
+    {
+        const ViewCelDescription &a = before.cels[i];
+        const ViewCelDescription &b = after.cels[i];
+        same = (a.loop == b.loop) && (a.cel == b.cel) && (a.width == b.width) && (a.height == b.height) && (a.x == b.x) && (a.y == b.y) && (a.skipColor == b.skipColor);
+        auto change = std::find_if(changes.begin(), changes.end(), [&](const std::pair<size_t, const std::vector<uint8_t> *> &c) { return c.first == i; });
+        same = same && (newPixels[i] == ((change != changes.end()) ? *change->second : oldPixels[i]));
+    }
+    if (!same)
+    {
+        return sci::Fail(sci::ErrorCode::Internal, "the view with the new pixels does not read back as the view with these pixels");
+    }
+    return patched;
+}
+
 sci::Result<std::vector<std::vector<uint8_t>>> GetAllViewCelPixels(const SCIVersion &version, const std::vector<uint8_t> &data)
 {
     SCI_TRY_ASSIGN(ViewRead read, ReadView(version, data));
