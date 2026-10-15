@@ -385,7 +385,9 @@ namespace UnitTests
             for (const std::pair<int, int> &size : std::vector<std::pair<int, int>>{ { 1, 1 }, { 3, 2 }, { 150, 7 }, { 64, 3 }, { 200, 1 } })
             {
                 const std::vector<uint8_t> pixels = MixedPixels(size.first, size.second, 9, 40);
-                const EncodedViewCel encoded = EncodeViewCel(size.first, size.second, 9, pixels);
+                sci::Result<EncodedViewCel> made = EncodeViewCel(size.first, size.second, 9, pixels);
+                AssertOk(made);
+                const EncodedViewCel &encoded = *made;
 
                 // A view with this one cel, as the bytes of the encoder.
                 std::vector<uint8_t> data(36 + 8);
@@ -441,9 +443,139 @@ namespace UnitTests
                 {
                     Assert::IsTrue(pixels == DecodeWithRowTable(*patched, header));
                 }
+                // The sizes of the header: the run-length data, and that
+                // and the literal data.
                 const uint32_t rle = DwordOf(*patched, header + 16);
                 Assert::AreEqual(DwordOf(*patched, header + 28) - DwordOf(*patched, header + 24), rle);
+                const uint32_t end = sci2 ? DwordOf(*patched, header + 32) : (uint32_t)patched->size();
+                Assert::AreEqual(end - DwordOf(*patched, header + 24), DwordOf(*patched, header + 12));
             }
+        }
+
+        // New run-length data that is not longer than the old data takes
+        // its place: the view keeps its size.
+        TEST_METHOD(Replace_RunLengthCel_ThatFits_ChangesInPlace)
+        {
+            for (bool sci2 : { true, false })
+            {
+                MadeView made = ThreeLoopView();
+                made.sci2 = sci2;
+                const SCIVersion &version = sci2 ? sciVersion2 : sciVersion1_1;
+                std::vector<CelPlace> places;
+                const std::vector<uint8_t> data = MakeSierraView(made, &places);
+                const std::vector<uint8_t> pixels(15, 20);
+
+                sci::Result<std::vector<uint8_t>> patched = ReplaceViewCelPixels(version, data, { ViewCelPixels{ 0, 0, pixels } });
+
+                AssertOk(patched);
+                Assert::AreEqual(data.size(), patched->size());
+                const size_t header = places[0].header;
+                for (size_t at : DifferencesOf(data, *patched))
+                {
+                    const bool sizes = (at >= header + 12) && (at < header + 20);
+                    // The data of cel 0 is before the data of cel 1.
+                    const bool own = (at >= places[0].rle) && (at < places[1].rle);
+                    Assert::IsTrue(sizes || own, Wide(fmt::format("byte {0} changed", at)).c_str());
+                }
+                Assert::AreEqual((uint32_t)places[0].rle, DwordOf(*patched, header + 24));
+                Assert::AreEqual(3u, DwordOf(*patched, header + 16));
+                Assert::AreEqual(6u, DwordOf(*patched, header + 12));
+                sci::Result<std::vector<uint8_t>> read = GetViewCelPixels(version, *patched, 0, 0);
+                AssertOk(read);
+                Assert::IsTrue(pixels == *read);
+                if (sci2)
+                {
+                    Assert::IsTrue(pixels == DecodeWithRowTable(*patched, header));
+                }
+            }
+        }
+
+        // A raw cel whose data is also bytes of the palette gets new data
+        // after the view: the palette keeps its bytes.
+        TEST_METHOD(Replace_RawCelInThePalette_AppendsItsData)
+        {
+            const std::vector<uint8_t> original = MakeSierraView(ThreeLoopView());
+            std::vector<uint8_t> data = original;
+            const size_t header = CelHeadersOf(data)[2];
+            const uint32_t palette = DwordOf(data, 8);
+            PutDword(data, header + 24, palette + 40);
+            const std::vector<uint8_t> pixels = { 50, 51, 52, 53, 54, 55 };
+
+            sci::Result<std::vector<uint8_t>> patched = ReplaceViewCelPixels(sciVersion2, data, { ViewCelPixels{ 2, 0, pixels } });
+
+            AssertOk(patched);
+            Assert::AreEqual(data.size() + 6, patched->size());
+            Assert::AreEqual((uint32_t)data.size(), DwordOf(*patched, header + 24));
+            for (size_t at : DifferencesOf(data, *patched))
+            {
+                Assert::IsTrue((at >= header + 24) && (at < header + 28), Wide(fmt::format("byte {0} changed", at)).c_str());
+            }
+        }
+
+        // A raw cel whose pixels are not all in the view gets new data after
+        // the view.
+        TEST_METHOD(Replace_RawCelPastTheEnd_AppendsItsData)
+        {
+            std::vector<uint8_t> data = MakeSierraView(ThreeLoopView());
+            const size_t header = CelHeadersOf(data)[2];
+            Assert::AreEqual((uint32_t)(data.size() - 6), DwordOf(data, header + 24), L"setup: the raw cel is the last data");
+            data.resize(data.size() - 2);
+            const std::vector<uint8_t> pixels = { 50, 51, 52, 53, 54, 55 };
+
+            sci::Result<std::vector<uint8_t>> patched = ReplaceViewCelPixels(sciVersion2, data, { ViewCelPixels{ 2, 0, pixels } });
+
+            AssertOk(patched);
+            Assert::AreEqual(data.size() + 6, patched->size());
+            Assert::AreEqual((uint32_t)data.size(), DwordOf(*patched, header + 24));
+        }
+
+        TEST_METHOD(Replace_CelsThatCannotChange_AreUnsupported)
+        {
+            const MadeView made = ThreeLoopView();
+            const std::vector<uint8_t> data = MakeSierraView(made);
+            const std::vector<size_t> headers = CelHeadersOf(data);
+            std::vector<uint8_t> pixels = made.loops[0].cels[0].pixels;
+            pixels[0] = 99;
+
+            // Byte 10 with the bit 0x80.
+            std::vector<uint8_t> flagged = data;
+            flagged[headers[0] + 10] = 0x80;
+            AssertError(ReplaceViewCelPixels(sciVersion2, flagged, { ViewCelPixels{ 0, 0, pixels } }).error(), sci::ErrorCode::Unsupported, "byte 10 of the header of cel 0 of loop 0");
+
+            // Loop 2 points at the cel headers of loop 0.
+            std::vector<uint8_t> twins = data;
+            const size_t loop2 = 18 + 32;
+            twins[loop2 + 2] = 2;
+            PutDword(twins, loop2 + 12, DwordOf(twins, 18 + 12));
+            AssertError(ReplaceViewCelPixels(sciVersion2, twins, { ViewCelPixels{ 2, 0, pixels } }).error(), sci::ErrorCode::Unsupported, "cel 0 of loop 2 has the cel header of cel 0 of loop 0");
+        }
+
+        // Sierra's interpreter of SCI1.1 reads a view of 65535 bytes or
+        // fewer.
+        TEST_METHOD(Replace_Sci11ViewOver64KB_IsUnsupported)
+        {
+            MadeView made;
+            made.sci2 = false;
+            MadeLoop loop;
+            loop.cels.push_back(PatternCel(250, 200, 0, 1, 250));
+            loop.cels.push_back(PatternCel(250, 200, 0, 7, 1));
+            made.loops.push_back(loop);
+            made.hasPalette = false;
+            const std::vector<uint8_t> data = MakeSierraView(made);
+            Assert::IsTrue(data.size() < 0xffff, L"setup: a view under 64 KB");
+
+            sci::Result<std::vector<uint8_t>> patched = ReplaceViewCelPixels(sciVersion1_1, data, { ViewCelPixels{ 0, 1, PatternCel(250, 200, 0, 1, 250).pixels } });
+
+            Assert::IsFalse(patched.has_value());
+            AssertError(patched.error(), sci::ErrorCode::Unsupported, "Sierra's interpreter of SCI1.1 reads a view of 65535 bytes or fewer");
+            // The same change in an SCI2 view.
+            made.sci2 = true;
+            AssertOk(ReplaceViewCelPixels(sciVersion2, MakeSierraView(made), { ViewCelPixels{ 0, 1, PatternCel(250, 200, 0, 1, 250).pixels } }));
+        }
+
+        TEST_METHOD(Encode_PixelsOfAnotherSize_IsUsage)
+        {
+            AssertError(EncodeViewCel(3, 2, 0, std::vector<uint8_t>(5, 1)).error(), sci::ErrorCode::Usage, "a cel of 3 x 2 pixels needs 6 bytes of pixels, not 5");
         }
 
         // A raw cel that no other header points at changes in place.
