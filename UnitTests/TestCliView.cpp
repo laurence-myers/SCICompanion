@@ -2542,10 +2542,42 @@ namespace UnitTests
             Assert::IsFalse(fs::exists(_gameFolder + "\\0.v56"));
             Assert::IsTrue(package == ViewBytesOfGame(0));
 
-            // No patch file now: a usage error, and nothing changes.
+            // View 900 has no patch file: a usage error before the first
+            // removal, so the patch file of view 0 stays.
+            PutViewIntoGame(0, MakeViewBytes(sciVersion1_1));
             cli::StringConsole none = Expect(2, { "view", "remove", _gameFolder, "--view", "0", "900", "--from", "patch" });
-            Assert::IsTrue(Has(none.err, "view 0 has no patch file, and --from patch removes only a patch file"), Wide(none.err).c_str());
-            Assert::IsTrue(package == ViewBytesOfGame(0));
+            Assert::IsTrue(Has(none.err, "view 900 has no patch file, and --from patch removes only a patch file"), Wide(none.err).c_str());
+            Assert::IsTrue(fs::exists(_gameFolder + "\\0.v56"));
+        }
+
+        // A patch file with a name that is not the standard one goes: the
+        // removal deletes each patch file with the name that it has on disk,
+        // and the messages name it. A view with no copy in the package:
+        // --from patch says that the game has no copy then.
+        TEST_METHOD(Remove_PatchFilesWithOtherNames)
+        {
+            const std::string other = _gameFolder + "\\view.777";
+            std::vector<uint8_t> bytes = ViewPatchHeader();
+            const std::vector<uint8_t> data = MakeViewBytes(sciVersion1_1);
+            bytes.insert(bytes.end(), data.begin(), data.end());
+            WriteFileBytes(other, bytes);
+            Assert::IsFalse(ViewBytesOfGame(777).empty(), L"setup: the game reads view.777");
+
+            cli::StringConsole dry = Expect(0, { "view", "remove", _gameFolder, "--view", "777", "--from", "patch", "--dry-run" });
+            Assert::IsTrue(Has(dry.err, "Would remove the patch file " + other) && Has(dry.err, "view 777: the game would then have no copy of the view"), Wide(dry.err).c_str());
+            Assert::IsFalse(Has(dry.err, "in the package"), Wide(dry.err).c_str());
+
+            // Two patch files of one view: both go, each with its name.
+            PutViewIntoGame(777, MakeViewBytes(sciVersion1_1, { 64, 64, 0, 0, 70, 64 }));
+            cli::StringConsole console = Expect(0, { "view", "remove", _gameFolder, "--view", "777", "--from", "patch", "-v" });
+
+            const std::string all = console.out + console.err;
+            Assert::IsTrue(Has(all, "Removed the patch file " + other) && Has(all, "Removed the patch file " + _gameFolder + "\\777.v56"), Wide(all).c_str());
+            Assert::IsTrue(Has(console.err, "view 777: the game now has no copy of the view"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Removed 1 of 1 view (2 patch files, 0 package entries)."), Wide(console.err).c_str());
+            Assert::IsFalse(fs::exists(other));
+            Assert::IsFalse(fs::exists(_gameFolder + "\\777.v56"));
+            Assert::IsTrue(ViewBytesOfGame(777).empty());
         }
 
         TEST_METHOD(Remove_DryRun_RemovesNothing)
@@ -2593,10 +2625,26 @@ namespace UnitTests
             cli::StringConsole console = Expect(9, { "view", "remove", _gameFolder, "--view", "0", "900" });
 
             SetFileAttributesA(patch.c_str(), FILE_ATTRIBUTE_NORMAL);
-            Assert::IsTrue(Has(console.err, "scic: error: view 0: the patch file " + patch + " cannot be removed: "), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "scic: error: view 0: a patch file of view 0 cannot be removed: ") && Has(console.err, "Deleting " + patch + ": "), Wide(console.err).c_str());
+            Assert::IsFalse(Has(console.err, "[io] [io]"), Wide(console.err).c_str());
             Assert::IsTrue(Has(console.err, "Removed 1 of 2 views") && Has(console.err, "; 1 view failed."), Wide(console.err).c_str());
             Assert::IsTrue(fs::exists(patch));
             Assert::IsTrue(ViewBytesOfGame(900).empty(), L"view 900 goes");
+        }
+
+        // A package write that stops halfway (the map cannot be replaced):
+        // the error names the .bak files to rename.
+        TEST_METHOD(Remove_PackageWriteThatStopsHalfway_NamesTheBakFiles)
+        {
+            const std::string map = _gameFolder + "\\resource.map";
+            Assert::IsTrue(SetFileAttributesA(map.c_str(), FILE_ATTRIBUTE_READONLY) != FALSE, L"setup: a read-only map");
+
+            cli::StringConsole console = Expect(9, { "view", "remove", _gameFolder, "--view", "900" });
+
+            SetFileAttributesA(map.c_str(), FILE_ATTRIBUTE_NORMAL);
+            Assert::IsTrue(Has(console.err, "scic: error: view 900: the entry of view 900 in package 0 cannot be removed: "), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "a volume was replaced, and the files that match it stay: ") && Has(console.err, "rename each one to its name without .bak"),
+                Wide(console.err).c_str());
         }
 
         // The Result form of the removal: a copy that the source does not

@@ -89,27 +89,50 @@ std::unique_ptr<ResourceSource> CreateResourceSource(ResourceTypeFlags flagsHint
 }
 
 // The body of RemoveResource; an exception can escape it.
-static sci::Status RemoveResourceOrThrow(CResourceMap &resourceMap, const ResourceBlob &data);
+static sci::Status RemoveResourceOrThrow(CResourceMap &resourceMap, const ResourceBlob &data, std::string *removedFile);
+
+void ShowRemoveError(const sci::Error &error)
+{
+	if (error.code == sci::ErrorCode::NotFound)
+	{
+		SafeMessageBox("Resource not found.", MB_ERRORFLAGS);
+		return;
+	}
+	// The text with its context (for example, the .bak files of a package
+	// write that stopped halfway) and its location, with no code, and with
+	// a capital first letter.
+	std::string text = error.ToString();
+	const size_t code = text.rfind(" [");
+	if ((code != std::string::npos) && !text.empty() && (text.back() == ']'))
+	{
+		text.erase(code);
+	}
+	if (!text.empty())
+	{
+		text[0] = (char)toupper((unsigned char)text[0]);
+	}
+	SafeMessageBox(text, MB_OK | ((error.code == sci::ErrorCode::Unsupported) ? MB_ICONERROR : MB_ICONWARNING));
+}
 
 void DeleteResource(CResourceMap &resourceMap, const ResourceBlob &data)
 {
 	sci::Status removed = RemoveResource(resourceMap, data);
 	if (!removed)
 	{
-		SafeMessageBox((removed.error().code == sci::ErrorCode::NotFound) ? std::string("Resource not found.") : removed.error().ToString(), MB_ERRORFLAGS);
+		ShowRemoveError(removed.error());
 	}
 }
 
-sci::Status RemoveResource(CResourceMap &resourceMap, const ResourceBlob &data)
+sci::Status RemoveResource(CResourceMap &resourceMap, const ResourceBlob &data, std::string *removedFile)
 {
 	// The exception boundary of the removal.
 	return sci::Guard("removing a resource", [&]() -> sci::Status
 	{
-		return RemoveResourceOrThrow(resourceMap, data);
+		return RemoveResourceOrThrow(resourceMap, data, removedFile);
 	});
 }
 
-static sci::Status RemoveResourceOrThrow(CResourceMap &resourceMap, const ResourceBlob &data)
+static sci::Status RemoveResourceOrThrow(CResourceMap &resourceMap, const ResourceBlob &data, std::string *removedFile)
 {
 	ResourceTypeFlags typeFlags = ResourceTypeToFlag(data.GetType());
 	IteratorState iteratorState;
@@ -135,80 +158,85 @@ static sci::Status RemoveResourceOrThrow(CResourceMap &resourceMap, const Resour
 	{
 		return sci::Fail(sci::ErrorCode::Unsupported, "the source of the resource cannot remove it");
 	}
+	ResourceMapEntryAgnostic mapEntry;
+	std::unique_ptr<ResourceMapEntryAgnostic> mapEntryToRemove;
+	while (resourceSource->ReadNextEntry(typeFlags, iteratorState, mapEntry, nullptr))
 	{
-		ResourceMapEntryAgnostic mapEntry;
-		std::unique_ptr<ResourceMapEntryAgnostic> mapEntryToRemove;
-		while (resourceSource->ReadNextEntry(typeFlags, iteratorState, mapEntry, nullptr))
+		if ((mapEntry.Number == data.GetNumber()) &&
+			(mapEntry.PackageNumber == data.GetPackageHint()))
 		{
-			if ((mapEntry.Number == data.GetNumber()) &&
-				(mapEntry.PackageNumber == data.GetPackageHint()))
+			if (encounteredOne)
 			{
-				if (encounteredOne)
+				// At least two of these resources left.
+				isLastOne = false;
+				if (mapEntryToRemove)
 				{
-					// At least two of these resources left.
-					isLastOne = false;
-					if (mapEntryToRemove)
-					{
-						// No point in continuing iterating, we've done our job and found the info we need.
-						break;
-					}
+					// No point in continuing iterating, we've done our job and found the info we need.
+					break;
 				}
-				encounteredOne = true;
+			}
+			encounteredOne = true;
 
-				if (!mapEntryToRemove)
+			if (!mapEntryToRemove)
+			{
+				// If this is a match, now we need to get it from the actual volume and compare bits.
+				ResourceHeaderAgnostic header;
+				sci::istream volumeStream = resourceSource->GetHeaderAndPositionedStream(mapEntry, header);
+				if ((header.cbCompressed == data.GetCompressedLength()) &&
+					(header.cbDecompressed == data.GetDecompressedLength()) &&
+					(header.CompressionMethod == data.GetEncoding()))
 				{
-					// If this is a match, now we need to get it from the actual volume and compare bits.
-					ResourceHeaderAgnostic header;
-					sci::istream volumeStream = resourceSource->GetHeaderAndPositionedStream(mapEntry, header);
-					if ((header.cbCompressed == data.GetCompressedLength()) &&
-						(header.cbDecompressed == data.GetDecompressedLength()) &&
-						(header.CompressionMethod == data.GetEncoding()))
+					// Let's compare some bits to see if it's really identical
+					// Either cbCompressed is the same as decompressed (no compression), or else the ResourceBlob should have compressed data in it for us to compare with.
+					const uint8_t *data1;
+					const uint8_t *data2 = volumeStream.GetInternalPointer() + volumeStream.tellg();
+					size_t dataLength;
+					if (header.CompressionMethod != 0)
 					{
-						// Let's compare some bits to see if it's really identical
-						// Either cbCompressed is the same as decompressed (no compression), or else the ResourceBlob should have compressed data in it for us to compare with.
-						const uint8_t *data1;
-						const uint8_t *data2 = volumeStream.GetInternalPointer() + volumeStream.tellg();
-						size_t dataLength;
-						if (header.CompressionMethod != 0)
+						data1 = data.GetDataCompressed();
+						dataLength = header.cbCompressed;
+					}
+					else
+					{
+						assert(header.cbCompressed == header.cbDecompressed);
+						data1 = data.GetData();
+						dataLength = header.cbDecompressed;
+					}
+					if (volumeStream.getBytesRemaining() >= dataLength)
+					{
+						// An empty resource has no bytes to compare; its blob has no
+						// data. So it matches, and the removal does not give
+						// NotFound.
+						if ((dataLength == 0) || (data1 && data2 && (0 == memcmp(data1, data2, header.cbCompressed))))
 						{
-							data1 = data.GetDataCompressed();
-							dataLength = header.cbCompressed;
-						}
-						else
-						{
-							assert(header.cbCompressed == header.cbDecompressed);
-							data1 = data.GetData();
-							dataLength = header.cbDecompressed;
-						}
-						if (volumeStream.getBytesRemaining() >= dataLength)
-						{
-							// An empty resource has no bytes to compare; its blob has no
-							// data. So it matches, and the delete does not fail with
-							// "Resource not found."
-							if ((dataLength == 0) || (data1 && data2 && (0 == memcmp(data1, data2, header.cbCompressed))))
-							{
-								// Finally yes, they are identical. We know which one to remove.
-								mapEntryToRemove = std::make_unique<ResourceMapEntryAgnostic>(mapEntry);
-							}
+							// Finally yes, they are identical. We know which one to remove.
+							mapEntryToRemove = std::make_unique<ResourceMapEntryAgnostic>(mapEntry);
 						}
 					}
 				}
 			}
 		}
+	}
 
-		// Do the actual remove
-		if (!mapEntryToRemove)
-		{
-			return sci::Fail(sci::ErrorCode::NotFound, "the source of the resource has no entry with its number and its bytes");
-		}
-		resourceSource->RemoveEntry(*mapEntryToRemove);
+	// Do the actual remove
+	if (!mapEntryToRemove)
+	{
+		return sci::Fail(sci::ErrorCode::NotFound, "the source of the resource has no entry with its number and its bytes");
+	}
+	// The name on disk of a patch file.
+	const PatchFilesResourceSource *patchSource = dynamic_cast<const PatchFilesResourceSource *>(resourceSource.get());
+	const std::string patchFile = patchSource ? patchSource->ListedFilePath(*mapEntryToRemove) : std::string();
+	resourceSource->RemoveEntry(*mapEntryToRemove);
+	if (removedFile)
+	{
+		*removedFile = patchFile;
+	}
 
-		if (isLastOne && (data.GetType() == ResourceType::Script) && resourceMap.GetAppServices())
-		{
-			// The GUI asks whether to remove the script from game.ini, and its
-			// source file too.
-			resourceMap.GetAppServices()->OnLastScriptDeleted(resourceMap, data);
-		}
+	if (isLastOne && (data.GetType() == ResourceType::Script) && resourceMap.GetAppServices())
+	{
+		// The GUI asks whether to remove the script from game.ini, and its
+		// source file too.
+		resourceMap.GetAppServices()->OnLastScriptDeleted(resourceMap, data);
 	}
 	return sci::Ok();
 }

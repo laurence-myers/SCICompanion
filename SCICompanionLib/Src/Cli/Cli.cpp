@@ -332,12 +332,12 @@ namespace cli
         viewAdd->add_flag("--allow-unused-indices", viewAddOptions.allowUnusedIndices, "A pixel with a palette entry that the new palette and palette 999 do not mark as used is a warning, not an error.");
         CLI::Option *addOutDirOption = viewAdd->add_option("--out-dir", viewAddOptions.outDir, "The folder for the patch file. It must exist, and it must not be the game folder or a folder inside it.")->required();
 
-        CLI::App *viewRemove = view->add_subcommand("remove", "Remove views from the game: each copy (the patch file, and the entries in the package: the map and the volume are written again), or only the patch file. It changes the game. A script that uses a removed view fails in the game.");
+        CLI::App *viewRemove = view->add_subcommand("remove", "Remove views from the game: each copy (the patch files, and the entries in the package: the map and the volume are written again), or only the patch files. It changes the game. A script that uses a removed view fails in the game.");
         viewRemove->fallthrough();
         viewRemove->footer(CommonFooter);
         viewRemove->add_option("game-folder", viewRemoveOptions.gameFolder, "The game folder.")->required();
         viewRemove->add_option("--view", viewRemoveOptions.views, "View numbers or ranges (100-199).")->required();
-        viewRemove->add_option("--from", viewRemoveOptions.from, "all (default): each copy of the view; patch: only its patch file, so that the game uses the copy in the package.")
+        viewRemove->add_option("--from", viewRemoveOptions.from, "all (default): each copy of the view; patch: only its patch files, so that the game uses the copy in the package, or has no copy of the view.")
             ->check(CLI::IsMember({ "all", "patch" }));
 
         CLI::App *viewPalette = view->add_subcommand("palette", "Change the palette of views of SCI1.1 and SCI2 in place: new colours for a range of entries, or no \"used\" mark for them. Each view is written as a patch file into a folder. The game does not change.");

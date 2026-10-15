@@ -1594,8 +1594,11 @@ version: it does not read the view data.
 - `--from all` (the default): each copy of the view, the patch file first,
   then each entry in the resource package (the map and the volume are
   written again, as the delete of the GUI does). `--from patch`: only the
-  patch file; the game then uses the copy in the package, and a message
-  says so.
+  patch files; the game then uses the copy in the package, or has no copy
+  of the view, and a message says which. A patch file can have a name that
+  is not the standard one (`view.777`, `777.v16`): the removal deletes
+  each patch file with the name that it has on disk, and the messages name
+  it.
 - The removal is `CResourceMap::RemoveResource` (`Src\Resources\ResourceMap.h`)
   and `RemoveResource` (`ResourceMapOperations.h`): the `Result` form of
   the delete of the GUI, with no UI. The GUI form (`DeleteResource`) shows
@@ -1611,11 +1614,14 @@ Rules:
   and nothing changes.
 - Each view runs in its own exception boundary. A removal from the package
   moves the other entries, so the copies of a view are read again after
-  each removal. A copy that cannot be removed is an error line, the next
-  view goes on, and the exit code is 9.
+  each removal; a removal that leaves as many copies is `Internal`. A copy
+  that cannot be removed is an error line, the next view goes on, and the
+  exit code is 9.
 - `--dry-run` removes nothing, and lists what a run would remove (`Would
-  remove the patch file ...`, `Would remove the entry of view 600 in
-  package 0`).
+  remove the patch file C:\Games\LSL6\600.v56`, `Would remove the entry of
+  view 600 in package 0`).
+- An error of a removal keeps its context: for example, the `.bak` files to
+  rename after a package write that stopped halfway.
 - Ctrl+C stops the run before the next view (exit 7).
 - The summary: `Removed 2 of 2 views (1 patch file, 2 package entries).`
 

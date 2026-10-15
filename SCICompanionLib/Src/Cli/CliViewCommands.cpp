@@ -18,6 +18,7 @@
 #include "PaletteUse.h"
 #include "ResourceEntity.h"
 #include "ResourceContainer.h"
+#include "PatchResourceSource.h"
 #include "format.h"
 #include <algorithm>
 #include <filesystem>
@@ -1530,15 +1531,38 @@ namespace cli
             return std::vector<int>(numbers.begin(), numbers.end());
         }
 
-        // "the patch file C:\Games\LSL6\600.v56", "the entry of view 600 in
-        // package 0".
-        std::string CopyText(GameSession &session, int number, const ResourceBlob &copy)
+        // "a patch file of view 600" (its name can differ from the standard
+        // one), "the entry of view 600 in package 0".
+        std::string CopyText(int number, const ResourceBlob &copy)
         {
             if (IsPatchFile(copy))
             {
-                return "the patch file " + session.Helper().GameFolder + "\\" + GetFileNameFor(ResourceType::View, number, NoBase36, session.Version());
+                return fmt::format("a patch file of view {0}", number);
             }
             return fmt::format("the entry of view {0} in package {1}", number, copy.GetPackageHint());
+        }
+
+        // The paths of the patch files of a view, with their names on disk.
+        std::vector<std::string> PatchFilePathsOfView(GameSession &session, int number)
+        {
+            std::vector<std::string> paths;
+            PatchFilesResourceSource source(ResourceTypeFlags::View, session.Version(), session.Helper().GameFolder, ResourceSourceFlags::PatchFile);
+            IteratorState state;
+            ResourceMapEntryAgnostic entry;
+            while (source.ReadNextEntry(ResourceTypeFlags::View, state, entry, nullptr))
+            {
+                const std::string path = source.ListedFilePath(entry);
+                if ((entry.Number == number) && !path.empty())
+                {
+                    paths.push_back(path);
+                }
+            }
+            return paths;
+        }
+
+        bool HasPackageCopy(const std::vector<std::unique_ptr<ResourceBlob>> &copies)
+        {
+            return std::any_of(copies.begin(), copies.end(), [](const std::unique_ptr<ResourceBlob> &copy) { return !IsPatchFile(*copy); });
         }
 
         // What the removal of one view did.
@@ -1553,42 +1577,58 @@ namespace cli
             const std::string viewText = ViewText(number);
             if (dryRun)
             {
+                for (const std::string &path : PatchFilePathsOfView(session, number))
+                {
+                    output.Message("Would remove the patch file " + path);
+                    result.patchFiles++;
+                }
                 for (const std::unique_ptr<ResourceBlob> &copy : CopiesOfView(session, number, patchOnly))
                 {
-                    output.Message("Would remove " + CopyText(session, number, *copy));
-                    (IsPatchFile(*copy) ? result.patchFiles : result.packageEntries)++;
+                    if (!IsPatchFile(*copy))
+                    {
+                        output.Message("Would remove " + CopyText(number, *copy));
+                        result.packageEntries++;
+                    }
                 }
             }
             else
             {
                 // A removal from the package writes the map and the volume
                 // again, and the other copies move: so the copies are read
-                // again after each removal. A view has 256 copies or fewer.
-                for (int pass = 0; ; pass++)
+                // again after each removal. Each removal must take one copy
+                // away.
+                std::vector<std::unique_ptr<ResourceBlob>> copies = CopiesOfView(session, number, patchOnly);
+                while (!copies.empty())
                 {
-                    std::vector<std::unique_ptr<ResourceBlob>> copies = CopiesOfView(session, number, patchOnly);
-                    if (copies.empty())
-                    {
-                        break;
-                    }
-                    if (pass >= 256)
-                    {
-                        return sci::Fail(sci::ErrorCode::Internal, fmt::format("{0} still has a copy after 256 removals", viewText));
-                    }
                     const ResourceBlob &copy = *copies.front();
-                    const std::string copyText = CopyText(session, number, copy);
-                    sci::Status removed = session.ResourceMap().RemoveResource(copy);
+                    std::string removedFile;
+                    sci::Status removed = session.ResourceMap().RemoveResource(copy, &removedFile);
                     if (!removed)
                     {
-                        return sci::Fail(removed.error().code, fmt::format("{0} cannot be removed: {1}", copyText, removed.error().ToString()));
+                        // The context of the error stays: it can name the
+                        // .bak files of a package write that stopped halfway.
+                        sci::Error error = removed.error();
+                        error.context.push_back(CopyText(number, copy) + " cannot be removed");
+                        return sci::Fail(std::move(error));
                     }
-                    output.Detail("Removed " + copyText);
+                    const std::string copyText = removedFile.empty() ? CopyText(number, copy) : ("the patch file " + removedFile);
+                    std::vector<std::unique_ptr<ResourceBlob>> left = CopiesOfView(session, number, patchOnly);
+                    if (left.size() >= copies.size())
+                    {
+                        return sci::Fail(sci::ErrorCode::Internal, fmt::format("the removal of {0} left {1} {2}", copyText, left.size(), (left.size() == 1) ? "copy" : "copies"));
+                    }
                     (IsPatchFile(copy) ? result.patchFiles : result.packageEntries)++;
+                    output.Detail("Removed " + copyText);
+                    copies = std::move(left);
                 }
             }
-            if (patchOnly && !CopiesOfView(session, number, false).empty())
+            if (patchOnly)
             {
-                output.Message(fmt::format("{0}: the game {1} the copy of the view in the package", viewText, dryRun ? "would then use" : "now uses"));
+                // A copy in the package stays after the run (in a dry run,
+                // the patch files are still there).
+                const bool package = HasPackageCopy(CopiesOfView(session, number, false));
+                output.Message(fmt::format("{0}: {1}", viewText, package ? (dryRun ? "the game would then use the copy of the view in the package" : "the game now uses the copy of the view in the package") :
+                    (dryRun ? "the game would then have no copy of the view" : "the game now has no copy of the view")));
             }
             return sci::Ok();
         }

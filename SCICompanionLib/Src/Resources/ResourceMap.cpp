@@ -784,11 +784,11 @@ void CResourceMap::DeleteResource(const ResourceBlob *pData)
 	sci::Status removed = RemoveResource(*pData);
 	if (!removed)
 	{
-		SafeMessageBox((removed.error().code == sci::ErrorCode::NotFound) ? std::string("Resource not found.") : removed.error().ToString(), MB_OK | MB_ICONWARNING);
+		ShowRemoveError(removed.error());
 	}
 }
 
-sci::Status CResourceMap::RemoveResource(const ResourceBlob &resource)
+sci::Status CResourceMap::RemoveResource(const ResourceBlob &resource, std::string *removedFile)
 {
 	// Without palette 999, we'll mis-identify the SCI type, and things will be bad
 	// (and also... we won't have a global palette)
@@ -796,7 +796,7 @@ sci::Status CResourceMap::RemoveResource(const ResourceBlob &resource)
 	{
 		return sci::Fail(sci::ErrorCode::Unsupported, "Palette 999 is the global palette and cannot be deleted.");
 	}
-	SCI_TRY(::RemoveResource(*this, resource));
+	SCI_TRY(::RemoveResource(*this, resource, removedFile));
 
 	// Call our syncs, so they update.
 	if (resource.GetType() == ResourceType::Script)

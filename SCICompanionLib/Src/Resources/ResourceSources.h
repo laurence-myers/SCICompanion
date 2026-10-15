@@ -410,17 +410,15 @@ public:
 		// the possibly corrupt resource map/package..
 		if (!found)
 		{
-			throw sci::DataError("the map has no entry of the resource to remove, so the map and the volume do not change", sci::ErrorCode::Internal);
+			throw sci::DataError("the second read of the map does not give the entry of the resource to remove, so the map and the volume do not change", sci::ErrorCode::Internal);
 		}
-		if (found)
-		{
-			// Combine the two write streams. Or rather, append stream 2 to the end of stream 1.
-			FinalizeMapStreams(mapStreamWrite1, mapStreamWrite2);
 
-			// Now we have mapStreamWrite1 and volumeStreamWrite that have the needed data.
-			// Let's ask the _FileDescriptor to replace things.
-			this->WriteAndReplaceMapAndVolumes(mapStreamWrite1, volumeStreamWrites);
-		}
+		// Combine the two write streams. Or rather, append stream 2 to the end of stream 1.
+		FinalizeMapStreams(mapStreamWrite1, mapStreamWrite2);
+
+		// Now we have mapStreamWrite1 and volumeStreamWrite that have the needed data.
+		// Let's ask the _FileDescriptor to replace things.
+		this->WriteAndReplaceMapAndVolumes(mapStreamWrite1, volumeStreamWrites);
 	}
 
 	void RebuildResources(bool force, ResourceSource &source, std::map<ResourceType, RebuildStats> &stats) override

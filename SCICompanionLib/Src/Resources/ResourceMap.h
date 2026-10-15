@@ -103,10 +103,10 @@ public:
 	void NotifyToReloadResourceType(ResourceType iType);
 	void NotifyToRegenerateImages();
 
-	// Removes the resource of the blob from its source (::RemoveResource), and
-	// tells the syncs. No UI. Unsupported for palette 999 (the global
-	// palette); else the errors of ::RemoveResource.
-	sci::Status RemoveResource(const ResourceBlob &resource);
+	// Removes the resource of the blob from its source (::RemoveResource,
+	// which gives removedFile), and tells the syncs. No UI. Unsupported for
+	// palette 999 (the global palette); else the errors of ::RemoveResource.
+	sci::Status RemoveResource(const ResourceBlob &resource, std::string *removedFile = nullptr);
 	// The GUI form of RemoveResource: it shows the error.
 	void DeleteResource(const ResourceBlob *pResource);
 
