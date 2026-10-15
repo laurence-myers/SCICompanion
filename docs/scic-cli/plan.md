@@ -1271,6 +1271,53 @@ Rules:
 - The summary: `Wrote 40 of 42 views into <folder>; 1 view with no change;
   1 view failed.`
 
+### 4.10 `scic view list`
+
+```
+scic view list C:\Games\LSL6
+scic view list C:\Games\LSL6 --view 600-610 --format tsv
+```
+
+Purpose: the facts of the views of a game, before an export or an import.
+It reads the views of SCI1.1 (`vga11`) and SCI2 (`vga2`), and it does not
+read the data folder. A view selector is as in section 4.9. The source of a
+view is the copy that the game uses: a patch file in the game folder, else
+the package. The functions under the command are in
+`Src\Resources\ViewImage.h` (the layout of the headers, the description,
+the pixels of a cel) and `Src\Cli\CliView.h`.
+
+`list` shows one row for each view (all views, or those of `--view`), and
+writes nothing:
+
+| Column (`--format tsv`) | Meaning |
+|---|---|
+| `number`, `format` | The view, and `ega`, `vga1`, `vga11` or `vga2`. |
+| `loops`, `mirror_loops` | The count of loops, and of those that mirror another loop (a mirror has the cels of its loop and stores none). |
+| `cels`, `raw_cels` | The count of the cels that the view stores (the cels of the loops that are not mirrors), and of those with no run-length data (the offset of the literal data in the cel header is 0). |
+| `resolution` | Byte 5 of the view header (SCI2 only). In ScummVM 1 is 640 x 480 and 2 is 640 x 400. |
+| `source`, `bytes`, `crc32` | `package` or `patch`, the size of the view resource, and the CRC-32 of its bytes (8 hex digits). |
+| `palette_first`, `palette_count`, `entry_size` | The entries that the palette of the view stores, and the bytes of an entry (3 or 4). Empty for a view with no palette. |
+| `skip_pixels` | The count of the pixels with the skip colour of their cel. |
+| `palette_entries` | The entries that the palette marks as used, as runs: `0-63,80-235`. A 4-byte entry has its own flag byte; the 3-byte entries have the flag byte of the palette header, as in the SCI32 interpreter (section 4.8). |
+| `pixel_entries` | The entries that the pixels of the stored cels have, without the skip colour of each cel. |
+| `error` | Why a view cannot be read. Such a view makes the exit code 6. |
+
+The text table has the same values; the palette is one column
+(`0-255 (4)`; `none` for a palette that stores no entry; `-` for no
+palette). A view of a format with no image that `scic` reads (`ega`,
+`vga1`) gets a row with its format, source, size and CRC-32.
+
+Rules:
+
+- Each view runs in its own exception boundary. A view that cannot be
+  read has its error in its row. So has a view that a reader repaired (the
+  reader logs a warning and puts data of its own in the place of damaged
+  data, for example a cel for a loop with no cel), and a view whose headers
+  do not agree with what the reader gives.
+- A view of the form of an SCI1 view in an SCI1.1 or SCI2 game (loop
+  headers of more than 32 bytes) has the error `Unsupported`.
+- Ctrl+C stops the run with no table (exit 7).
+
 ## 5. Where compiled output goes
 
 Two terms:

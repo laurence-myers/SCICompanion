@@ -6,6 +6,7 @@
 
 #include "CoreLog.h"
 #include "Result.h"
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -18,6 +19,16 @@ namespace cli
     // "1 pic", "2 pics", "0 errors": the count and the word, with an "s"
     // for each count but 1.
     std::string CountText(size_t count, const char *word);
+
+    // The CRC-32 of the bytes of a resource; 0 for no bytes.
+    uint32_t Crc32Of(const std::vector<uint8_t> &data);
+
+    // A text table of list: the header line, then a line for each row, with
+    // the columns aligned (right: the numbers to the right, the texts to the
+    // left), two spaces between the columns, and no space at the end of a
+    // line. A row with an error (errors has a text for each row; empty: no
+    // error) ends with "  (unreadable: <error>)".
+    std::string AlignedTextTable(const std::vector<std::string> &header, const std::vector<bool> &right, const std::vector<std::vector<std::string>> &rows, const std::vector<std::string> &errors);
 
     // A number of 0 to 65535: digits only, with any count of zeros before
     // them. False for another text; the number then keeps its value.

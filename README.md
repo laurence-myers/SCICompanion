@@ -15,7 +15,9 @@ modernizing the build. Broad highlights since the previous release:
   another tool can change the images. `scic pic import` puts the changed
   images back and writes each pic as a patch file; an SCI2 pic keeps all
   its other bytes.
-* **View palettes from the command line.** `scic view palette` changes the
+* **Views from the command line.** `scic view list` shows the loops, the
+  cels and the palette use of each view of SCI1.1 and SCI2.
+  `scic view palette` changes the
   palette of views of SCI1.1 and SCI2 in place, and writes each view as a
   patch file: new colours for a range of palette entries, from the colour
   table of a BMP file, or no "used" mark for a range of entries, so that a

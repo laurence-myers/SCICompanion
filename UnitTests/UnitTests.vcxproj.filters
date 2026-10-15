@@ -27,6 +27,9 @@
     <ClInclude Include="TestSupport.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SierraViewBytes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="IntegrationHarness.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -120,6 +123,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestCliView.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestViewImage.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="TestGameSession.cpp">

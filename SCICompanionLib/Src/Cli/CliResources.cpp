@@ -5,7 +5,9 @@
 #include "GameFolderHelper.h"
 #include "ResourceMap.h"
 #include "ResourceContainer.h"
+#include "crc.h"
 #include "format.h"
+#include <algorithm>
 #include <filesystem>
 #include <set>
 
@@ -14,6 +16,46 @@ namespace cli
     std::string CountText(size_t count, const char *word)
     {
         return fmt::format("{0} {1}{2}", count, word, (count == 1) ? "" : "s");
+    }
+
+    uint32_t Crc32Of(const std::vector<uint8_t> &data)
+    {
+        return data.empty() ? 0 : (uint32_t)crcFast(data.data(), (int)data.size());
+    }
+
+    std::string AlignedTextTable(const std::vector<std::string> &header, const std::vector<bool> &right, const std::vector<std::vector<std::string>> &rows, const std::vector<std::string> &errors)
+    {
+        std::vector<std::vector<std::string>> table = { header };
+        table.insert(table.end(), rows.begin(), rows.end());
+        std::vector<size_t> widths(header.size(), 0);
+        for (const std::vector<std::string> &cells : table)
+        {
+            for (size_t i = 0; i < cells.size(); i++)
+            {
+                widths[i] = (std::max)(widths[i], cells[i].size());
+            }
+        }
+        std::string text;
+        for (size_t r = 0; r < table.size(); r++)
+        {
+            std::string line;
+            for (size_t i = 0; i < table[r].size(); i++)
+            {
+                const std::string &cell = table[r][i];
+                const std::string padding(widths[i] - cell.size(), ' ');
+                line += (i == 0) ? "" : "  ";
+                line += right[i] ? (padding + cell) : (cell + padding);
+            }
+            // No spaces at the end of a line, and none before the error but
+            // the two that divide it from the last cell.
+            line.erase(line.find_last_not_of(' ') + 1);
+            if ((r > 0) && !errors[r - 1].empty())
+            {
+                line += "  (unreadable: " + errors[r - 1] + ")";
+            }
+            text += line + "\n";
+        }
+        return text;
     }
 
     bool ParseNumber(const std::string &text, int &number)

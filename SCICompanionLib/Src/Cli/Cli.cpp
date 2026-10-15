@@ -168,9 +168,10 @@ namespace cli
         PicListOptions picListOptions;
         PicExportOptions picExportOptions;
         PicImportOptions picImportOptions;
+        ViewListOptions viewListOptions;
         ViewPaletteOptions viewPaletteOptions;
 
-        CLI::App app("scic: the command line of SCI Companion. Commands: script list, script decompile, script sco, script compile, pic list, pic export, pic import, view palette. \"scic help <group> <command>\" shows a command.", "scic");
+        CLI::App app("scic: the command line of SCI Companion. Commands: script list, script decompile, script sco, script compile, pic list, pic export, pic import, view list, view palette. \"scic help <group> <command>\" shows a command.", "scic");
         // "/games/sq3" is a path, not an option.
         app.allow_windows_style_options(false);
         // One command: the words after it are its own (for example the topic of
@@ -282,10 +283,17 @@ namespace cli
         picImport->add_flag("--allow-unused-indices", picImportOptions.allowUnusedIndices, "A pixel with a palette entry that the pic and palette 999 do not mark as used is a warning, not an error.");
         CLI::Option *importOutDirOption = picImport->add_option("--out-dir", picImportOptions.outDir, "The folder for the patch files. It must exist, and it must not be the game folder or a folder inside it.")->required();
 
-        CLI::App *view = app.add_subcommand("view", "The view commands: palette.");
+        CLI::App *view = app.add_subcommand("view", "The view commands: list, palette.");
         view->fallthrough();
         view->require_subcommand(0, 1);
         view->footer(CommonFooter);
+
+        CLI::App *viewList = view->add_subcommand("list", "Show the loops, the cels and the palette use of each view. It writes nothing.");
+        viewList->fallthrough();
+        viewList->footer(CommonFooter);
+        viewList->add_option("game-folder", viewListOptions.gameFolder, "The game folder.")->required();
+        viewList->add_option("--view", viewListOptions.views, "View numbers or ranges (100-199). Default: every view.");
+        viewList->add_option("--format", viewListOptions.format, "text (default) or tsv.")->check(CLI::IsMember({ "text", "tsv" }));
 
         CLI::App *viewPalette = view->add_subcommand("palette", "Change the palette of views of SCI1.1 and SCI2 in place: new colours for a range of entries, or no \"used\" mark for them. Each view is written as a patch file into a folder. The game does not change.");
         viewPalette->fallthrough();
@@ -598,7 +606,7 @@ namespace cli
             logged.Help(HelpOf(pic, "scic pic"));
             return (int)ExitCode::Success;
         }
-        if (view->parsed() && !viewPalette->parsed())
+        if (view->parsed() && !viewList->parsed() && !viewPalette->parsed())
         {
             // "scic view" lists the view commands.
             logged.Help(HelpOf(view, "scic view"));
@@ -665,7 +673,8 @@ namespace cli
         std::string gameFolder = decompile->parsed() ? decompileOptions.gameFolder :
             (sco->parsed() ? scoOptions.gameFolder : (compile->parsed() ? compileOptions.gameFolder :
             (picList->parsed() ? picListOptions.gameFolder : (picExport->parsed() ? picExportOptions.gameFolder :
-            (picImport->parsed() ? picImportOptions.gameFolder : (viewPalette->parsed() ? viewPaletteOptions.gameFolder : listOptions.gameFolder))))));
+            (picImport->parsed() ? picImportOptions.gameFolder : (viewList->parsed() ? viewListOptions.gameFolder :
+            (viewPalette->parsed() ? viewPaletteOptions.gameFolder : listOptions.gameFolder)))))));
         sci::Status opened = session.Open(AbsolutePath(gameFolder));
         if (!opened)
         {
@@ -701,6 +710,10 @@ namespace cli
             if (picImport->parsed())
             {
                 return RunPicImport(session, picImportOptions, common, logged);
+            }
+            if (viewList->parsed())
+            {
+                return RunViewList(session, viewListOptions, logged);
             }
             if (viewPalette->parsed())
             {

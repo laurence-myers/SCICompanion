@@ -102,6 +102,25 @@ struct PicDescription
     PicPaletteDescription palette;
 };
 
+struct Cel;
+
+// The pixels of a cel as rows from the top, with no padding: width * height
+// bytes. A cel as SCI Companion holds it has the bottom row first, and each
+// row has the bytes of its stride. Format when the cel has fewer bytes than
+// its size needs.
+sci::Result<std::vector<uint8_t>> CelTopDownPixels(const Cel &cel);
+
+// Puts rows from the top (width * height bytes) into the cel. The padding
+// bytes of the cel stay. Format as CelTopDownPixels.
+sci::Status SetCelTopDownPixels(Cel &cel, const std::vector<uint8_t> &pixels);
+
+// The palette at paletteOffset of the data; a palette that is not there
+// (present is false) for the offset 0. A 4-byte entry has its own flag
+// byte. A 3-byte entry gets the flag 1, or with headerFlag the flag byte of
+// the palette header, which the SCI32 interpreter gives to each stored
+// 3-byte entry. The errors of ReadPaletteLayout.
+sci::Result<PicPaletteDescription> DescribePaletteAt(const std::vector<uint8_t> &data, uint32_t paletteOffset, bool headerFlag = false);
+
 // "ega", "vga1", "vga11" or "vga2".
 const char *PicFormatName(PicFormat format);
 
