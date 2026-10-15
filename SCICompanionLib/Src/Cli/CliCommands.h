@@ -368,6 +368,46 @@ namespace cli
     // (Usage), or a selector is bad (Usage).
     sci::Result<ExitCode> RunViewExport(GameSession &session, const ViewExportOptions &options, const CommonOptions &common, CliOutput &output);
 
+    // scic view import (plan section 4.12).
+    struct ViewImportOptions
+    {
+        std::string gameFolder;
+        // One image: the view, the loop, the cel and the BMP file.
+        std::string view;
+        int loop = 0;
+        int cel = 0;
+        std::string image;
+        // Or a folder with the files of scic view export.
+        std::string inDir;
+        std::string palette = "keep";       // keep or replace
+        std::string paletteRange;
+        bool allowUnusedIndices = false;
+        std::string outDir;
+    };
+
+    // Puts the pixels of 8-bit BMP files into cels of views
+    // (MakeViewImportData), and writes each view as a patch file into the
+    // output folder (never into the game). The view changes in place
+    // (ReplaceViewCelPixels). With --in-dir, each .toml file of the folder
+    // gives a view and the files of its cels; a CRC-32 in it that is not
+    // that of the view in the game is a warning. A view with no change (no
+    // byte would be another byte) is a warning, and gets no patch file.
+    //
+    // After a run, the output folder has the patch file of a named view only
+    // when this run changed the view: a view that fails, or that has no
+    // change, loses the patch file that an earlier run left there (a
+    // message says so), as in view palette.
+    //
+    // A view runs in its own exception boundary, so a view that fails does
+    // not stop the next one. --dry-run does all checks, writes and removes
+    // nothing. The exit code: 6 when a view failed, 9 when a patch file
+    // could not be written or removed, 7 after Ctrl+C, 1 for a bug. Fails
+    // when the run cannot start: the output folder or the input folder does
+    // not exist (NotFound), the output folder is the game folder or a
+    // folder inside it, the view is not a number of a view of the game, or
+    // the input folder has no .toml file (Usage).
+    sci::Result<ExitCode> RunViewImport(GameSession &session, const ViewImportOptions &options, const CommonOptions &common, CliOutput &output);
+
     // scic view palette (plan section 4.9).
     struct ViewPaletteOptions
     {

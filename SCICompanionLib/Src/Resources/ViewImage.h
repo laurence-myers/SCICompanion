@@ -205,24 +205,37 @@ struct EncodedViewCel
     std::vector<uint32_t> rleRows;
     std::vector<uint32_t> literalRows;
 };
-// Usage when the pixels are not width * height bytes.
-sci::Result<EncodedViewCel> EncodeViewCel(int width, int height, uint8_t skipColor, const std::vector<uint8_t> &pixels);
+// fillRun is the shortest run of one colour (not the skip colour) that gets
+// a run code; a shorter run is literal pixels. Sierra's encoders used 2 or
+// 3. Usage when the pixels are not width * height bytes, or fillRun is not
+// 2 or more.
+sci::Result<EncodedViewCel> EncodeViewCel(int width, int height, uint8_t skipColor, const std::vector<uint8_t> &pixels, int fillRun = 3);
 
 // The bytes of the view with new pixels in some of its stored cels. The view
 // changes in place, so that the bytes that the readers of SCI Companion do
 // not read stay as Sierra wrote them:
 //  - a cel whose pixels do not change keeps its bytes;
-//  - a changed cel whose data no other data of the view has (the headers,
-//    the palette, the data of another cel header) takes the place of its
-//    old data when it fits there: the pixels of a raw cel, or the
-//    run-length data, the literal data and (SCI2) the row table
-//    (EncodeViewCel) that are not longer than the old ones;
-//  - each other changed cel gets its new data after the last byte of the
-//    view, and its cel header gets the new offsets (24, 28 and, for SCI2,
-//    32). The old data stays: another cel header can point at it.
-// The header of a changed cel with run-length data gets the new sizes (12:
-// the run-length and the literal data; 16: the run-length data). No other
-// byte changes. So a view that is imported again from its own patch file
+//  - a changed cel with run-length data whose data no other data of the
+//    view has, and whose new pixels have the runs of its codes (each run
+//    of the skip colour is still the skip colour, each run of one colour
+//    is still one colour that is not the skip colour, and a literal pixel
+//    has the skip colour only where the old pixel has it; for example two
+//    colours that swap), keeps its codes, its row table and its sizes:
+//    only its literal data changes, in its place;
+//  - another changed cel whose data no other data of the view has (the
+//    headers, the palette, the data of another cel header) takes the
+//    place of its old data when it fits there: the pixels of a raw cel, or
+//    the run-length data, the literal data and the row table of an SCI2
+//    cel whose header has one (EncodeViewCel, with runs of 3, 2 or 4
+//    pixels and more as run codes: the first form that fits) that are not
+//    longer than the old ones;
+//  - each other changed cel gets its new data (the shortest form) after
+//    the last byte of the view, and its cel header gets the new offsets
+//    (24, 28 and, for an SCI2 cel with a row table, 32). The old data
+//    stays: another cel header can point at it.
+// The header of a changed cel with new run-length codes gets the new sizes
+// (12: the run-length and the literal data; 16: the run-length data). No
+// other byte changes. So a view that is imported again from its own patch file
 // can grow, when the new data of a cel is longer than the data before it.
 // The new bytes must then read back (DescribeView) with the same loops,
 // sizes, placements and skip colours, the new pixels in the changed cels
