@@ -573,6 +573,106 @@ namespace UnitTests
             Assert::AreNotEqual((int)data[places[0].rle], (int)(*moved)[DwordOf(*moved, places[0].header + 24)]);
         }
 
+        // A run of one colour that gets a new colour keeps its run code; a
+        // run that gets the skip colour gets a new code.
+        TEST_METHOD(Replace_FillRunWithANewColour_KeepsItsCode)
+        {
+            MadeView made;
+            made.sci2 = false;
+            made.hasPalette = false;
+            MadeLoop loop;
+            MadeCel cel;
+            cel.width = 6;
+            cel.height = 1;
+            cel.skip = 0;
+            cel.pixels = { 5, 5, 5, 5, 1, 2 };
+            loop.cels.push_back(cel);
+            made.loops.push_back(loop);
+            std::vector<CelPlace> places;
+            const std::vector<uint8_t> data = MakeSierraView(made, &places);
+            Assert::AreEqual(0x84, (int)data[places[0].rle], L"setup: a run code of 4 pixels");
+
+            sci::Result<std::vector<uint8_t>> patched = ReplaceViewCelPixels(sciVersion1_1, data, { ViewCelPixels{ 0, 0, { 7, 7, 7, 7, 2, 1 } } });
+
+            AssertOk(patched);
+            Assert::AreEqual(data.size(), patched->size());
+            for (size_t at : DifferencesOf(data, *patched))
+            {
+                Assert::IsTrue((at >= places[0].literal) && (at < places[0].literal + 3), Wide(fmt::format("byte {0} changed", at)).c_str());
+            }
+            Assert::AreEqual(7, (int)(*patched)[places[0].literal]);
+
+            sci::Result<std::vector<uint8_t>> skipped = ReplaceViewCelPixels(sciVersion1_1, data, { ViewCelPixels{ 0, 0, { 0, 0, 0, 0, 2, 1 } } });
+            AssertOk(skipped);
+            Assert::AreEqual(0xc4, (int)(*skipped)[DwordOf(*skipped, places[0].header + 24)]);
+        }
+
+        // A last code that covers more pixels than the cel has: the code
+        // stays, and the bytes after the last pixel keep their values.
+        TEST_METHOD(Replace_LastCodePastTheEndOfTheCel_KeepsItsCode)
+        {
+            MadeView made;
+            made.sci2 = false;
+            made.hasPalette = false;
+            MadeLoop loop;
+            MadeCel fill;
+            fill.width = 4;
+            fill.height = 1;
+            fill.skip = 0;
+            fill.pixels = { 5, 5, 5, 5 };
+            MadeCel literalCel = fill;
+            literalCel.pixels = { 1, 2, 3, 4 };
+            loop.cels = { fill, literalCel };
+            made.loops.push_back(loop);
+            std::vector<CelPlace> places;
+            std::vector<uint8_t> data = MakeSierraView(made, &places);
+            Assert::AreEqual(data.size(), places[1].literal + 4, L"setup: the literal data of cel 1 ends the view");
+            data[places[0].rle] = 0x86;
+            data[places[1].rle] = 6;
+            data.push_back(77);
+            data.push_back(78);
+            sci::Result<std::vector<uint8_t>> before = GetViewCelPixels(sciVersion1_1, data, 0, 1);
+            AssertOk(before);
+            Assert::IsTrue(literalCel.pixels == *before, L"setup: the reader stops at the end of the cel");
+
+            sci::Result<std::vector<uint8_t>> patched = ReplaceViewCelPixels(sciVersion1_1, data, { ViewCelPixels{ 0, 0, { 6, 6, 6, 6 } }, ViewCelPixels{ 0, 1, { 4, 3, 2, 1 } } });
+
+            AssertOk(patched);
+            Assert::AreEqual(data.size(), patched->size());
+            for (size_t at : DifferencesOf(data, *patched))
+            {
+                const bool fillByte = (at == places[0].literal);
+                const bool literalByte = (at >= places[1].literal) && (at < places[1].literal + 4);
+                Assert::IsTrue(fillByte || literalByte, Wide(fmt::format("byte {0} changed", at)).c_str());
+            }
+            Assert::AreEqual(6, (int)(*patched)[places[0].literal]);
+            Assert::AreEqual(77, (int)(*patched)[data.size() - 2]);
+            Assert::AreEqual(78, (int)(*patched)[data.size() - 1]);
+        }
+
+        // An SCI2 cel whose row table is not in the data: the cel does not
+        // keep its codes, and gets its new data and a new row table after the
+        // view.
+        TEST_METHOD(Replace_Sci2CelWithARowTablePastTheEnd_GetsNewData)
+        {
+            const MadeView made = ThreeLoopView();
+            std::vector<CelPlace> places;
+            std::vector<uint8_t> data = MakeSierraView(made, &places);
+            PutDword(data, places[0].header + 32, (uint32_t)data.size());
+            std::vector<uint8_t> pixels = made.loops[0].cels[0].pixels;
+            std::swap(pixels[0], pixels[1]);
+
+            sci::Result<std::vector<uint8_t>> patched = ReplaceViewCelPixels(sciVersion2, data, { ViewCelPixels{ 0, 0, pixels } });
+
+            AssertOk(patched);
+            Assert::AreEqual((uint32_t)data.size(), DwordOf(*patched, places[0].header + 24), L"the new data starts at the end of the old view");
+            const uint32_t table = DwordOf(*patched, places[0].header + 32);
+            Assert::IsTrue((table > data.size()) && ((table + (8 * 3)) == patched->size()));
+            sci::Result<std::vector<uint8_t>> read = GetViewCelPixels(sciVersion2, *patched, 0, 0);
+            AssertOk(read);
+            Assert::IsTrue(pixels == *read);
+        }
+
         // An SCI2 cel with no row table (the offset in its header is 0): it
         // gets none.
         TEST_METHOD(Replace_Sci2CelWithNoRowTable)

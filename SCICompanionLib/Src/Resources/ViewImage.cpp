@@ -482,18 +482,18 @@ namespace
     // The literal data that the run-length codes of a cel need for new
     // pixels (top row first, as the reader of the views fills the cel): the
     // codes stay as they are, so each run of the skip colour must still be
-    // the skip colour, each run of one colour must still be one colour, and
-    // a literal pixel can have the skip colour only where the old pixel had
-    // it (Sierra's encoder of SCI1.1 put such pixels in literal runs).
-    // A byte of literal data that no pixel gives (a code that goes past the
-    // end of the cel) keeps its old value. False when the new pixels do not
-    // have these runs, or when the codes or the literal data go past the end
-    // of the data.
-    bool LiteralForOldCodes(const std::vector<uint8_t> &data, uint32_t rle, uint32_t literalOffset, const std::vector<uint8_t> &pixels, const std::vector<uint8_t> &oldPixels, uint8_t skipColor,
+    // the skip colour, each run of one colour must still be one colour that
+    // is not the skip colour, and a literal pixel can have the skip colour
+    // only where the old pixel had it (Sierra's encoder of SCI1.1 put such
+    // pixels in literal runs). The literal data ends with the last pixel: a
+    // byte after it (of a last code that goes past the end of the cel) keeps
+    // its old value. False when the new pixels do not have these runs, or
+    // when the codes or the literal data go past the end of the data.
+    bool LiteralForOldCodes(const std::vector<uint8_t> &data, uint32_t rleOffset, uint32_t literalOffset, const std::vector<uint8_t> &pixels, const std::vector<uint8_t> &oldPixels, uint8_t skipColor,
         std::vector<uint8_t> &literal)
     {
         literal.clear();
-        size_t at = rle;
+        size_t at = rleOffset;
         size_t done = 0;
         auto oldByte = [&]() { return data[(size_t)literalOffset + literal.size()]; };
         while (done < pixels.size())
@@ -525,7 +525,7 @@ namespace
                 }
                 break;
             case 2:
-                if ((used > 0) && std::any_of(run, run + used, [&](uint8_t pixel) { return pixel != run[0]; }))
+                if ((used > 0) && ((run[0] == skipColor) || std::any_of(run, run + used, [&](uint8_t pixel) { return pixel != run[0]; })))
                 {
                     return false;
                 }
@@ -540,10 +540,6 @@ namespace
                     }
                 }
                 literal.insert(literal.end(), run, run + used);
-                for (size_t extra = used; extra < count; extra++)
-                {
-                    literal.push_back(oldByte());
-                }
                 break;
             }
             done += count;
@@ -719,10 +715,13 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
             }
             continue;
         }
+        // An SCI2 cel has a row table when its header gives one.
+        const bool rowTable = sci2 && (header.rowTableOffset != 0);
+        const bool rowTableInData = !rowTable || (((uint64_t)header.rowTableOffset + (8 * (uint64_t)cel.height)) <= data.size());
         // New pixels with the runs of the old codes keep the codes (and the
         // row table of SCI2): only the literal data changes, in its place.
         std::vector<uint8_t> literal;
-        if (alone && LiteralForOldCodes(data, header.rleOffset, header.literalOffset, pixels, oldPixels[change.first], cel.skipColor, literal))
+        if (alone && rowTableInData && LiteralForOldCodes(data, header.rleOffset, header.literalOffset, pixels, oldPixels[change.first], cel.skipColor, literal))
         {
             std::copy(literal.begin(), literal.end(), patched.begin() + header.literalOffset);
             changedRunLength.push_back(change.first);
@@ -732,28 +731,23 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
         // there and no other data has those bytes. Sierra's encoders gave a
         // run code to runs of 2 or of 3 pixels, so each form is tried: the
         // first that fits, else the shortest.
-        // An SCI2 cel has a row table when its header gives one.
-        const bool rowTable = sci2 && (header.rowTableOffset != 0);
         uint64_t rleBytes = 0;
         uint64_t literalBytes = 0;
-        const bool place = alone && RunLengthSizes(data, header.rleOffset, header.literalOffset, pixels.size(), rleBytes, literalBytes) &&
-            (!rowTable || (((uint64_t)header.rowTableOffset + (8 * (uint64_t)cel.height)) <= data.size()));
-        EncodedViewCel encoded;
-        bool fits = false;
-        bool first = true;
-        for (int fillRun : { 3, 2, 4 })
+        const bool place = alone && rowTableInData && RunLengthSizes(data, header.rleOffset, header.literalOffset, pixels.size(), rleBytes, literalBytes);
+        auto fitsInPlace = [&](const EncodedViewCel &form) { return place && (form.rle.size() <= rleBytes) && (form.literal.size() <= literalBytes); };
+        SCI_TRY_ASSIGN(EncodedViewCel encoded, EncodeViewCel(cel.width, cel.height, cel.skipColor, pixels, 3));
+        bool fits = fitsInPlace(encoded);
+        for (int fillRun : { 2, 4 })
         {
-            SCI_TRY_ASSIGN(EncodedViewCel form, EncodeViewCel(cel.width, cel.height, cel.skipColor, pixels, fillRun));
-            const bool formFits = place && (form.rle.size() <= rleBytes) && (form.literal.size() <= literalBytes);
-            if (first || formFits || (!fits && ((form.rle.size() + form.literal.size()) < (encoded.rle.size() + encoded.literal.size()))))
-            {
-                encoded = std::move(form);
-                fits = formFits;
-                first = false;
-            }
             if (fits)
             {
                 break;
+            }
+            SCI_TRY_ASSIGN(EncodedViewCel form, EncodeViewCel(cel.width, cel.height, cel.skipColor, pixels, fillRun));
+            fits = fitsInPlace(form);
+            if (fits || ((form.rle.size() + form.literal.size()) < (encoded.rle.size() + encoded.literal.size())))
+            {
+                encoded = std::move(form);
             }
         }
         changedRunLength.push_back(change.first);

@@ -1060,8 +1060,10 @@ How a pic changes:
   be inside the entries that the pic stores (`stored_first`,
   `stored_count`): a palette cannot grow in place. Only the red, the green
   and the blue of the entries change. An entry of the range that the pic
-  does not mark as used gives a warning: the game takes its colour from
-  another palette.
+  does not mark as used keeps its colour: the game takes its colour from
+  another palette. An image with another colour for such an entry than
+  the colour table of `export` gives a warning, as the colour does not go
+  into the pic.
 - The patch file of an SCI2 pic starts with `81 81 00 00`, as Sierra's own
   SCI2 pic patches do: ScummVM takes the data at offset 4. The patch file
   of an SCI1.1 pic starts with `81 80` and 24 bytes of 0.
@@ -1078,8 +1080,8 @@ The checks of a pic, all before its patch file is written:
   (`used` of the `.toml` file). The error names the entries.
   `--allow-unused-indices` makes it a warning.
 - With `--palette replace`: the colour table of each image has the entries
-  of the range, and the images of one pic have the same colours in the
-  range.
+  of the range, and the images of one pic have the same colours for the
+  entries that get them.
 
 Rules of `import`:
 
@@ -1408,32 +1410,33 @@ How a view changes (`ReplaceViewCelPixels`, `Src\Resources\ViewImage.h`):
   as Sierra wrote them (the resolution byte, the filler of the headers, the
   palette form, the raw cels). A cel with no change keeps its bytes. A
   changed cel whose new pixels have the runs of its old run-length codes
-  (each run of the skip colour or of one colour is still such a run, and a
-  literal pixel has the skip colour only where the old pixel has it, as
-  Sierra's encoder of SCI1.1 wrote single skip pixels; for example two
-  colours that swap, or any change inside literal runs) keeps its codes,
-  its row table and its
+  (each run of the skip colour is still such a run, each run of one colour
+  is still one colour that is not the skip colour, and a literal pixel has
+  the skip colour only where the old pixel has it, as Sierra's encoder of
+  SCI1.1 wrote single skip pixels; for example two colours that swap, or
+  any change inside literal runs) keeps its codes, its row table and its
   sizes: only its literal data changes, in its place. Else a changed cel
-  takes the place of its old data when its new data fits there
-  and no other data of the view has those bytes; else its data goes after
-  the end of the view, and its cel header gets the new offsets. The
-  run-length data has Sierra's form: each row is its own runs of 63 pixels
-  or fewer, and an SCI2 cel gets a row table when its header has one.
-  Sierra's encoders gave a run
-  code to runs of 2 pixels (SCI1.1) or of 3, so the import tries runs of 3,
-  2 and 4 and more, and takes the first form that fits in place (else the
-  shortest form). The new bytes must read back
+  takes the place of its old data when its new data fits there and no
+  other data of the view has those bytes; else its data goes after the end
+  of the view, and its cel header gets the new offsets. The run-length
+  data has Sierra's form: each row is its own runs of 63 pixels or fewer,
+  and an SCI2 cel gets a row table when its header has one. Sierra's
+  encoders gave a run code to runs of 2 pixels (SCI1.1) or of 3, so the
+  import tries runs of 3, 2 and 4 and more, and takes the first form that
+  fits in place (else the shortest form). The new bytes must read back
   with the new pixels (also through the SCI2 row tables) and with the same
   loops, placements, skip colours and palette.
 - `--palette keep` (the default) does not change the palette.
   `--palette replace --palette-range <first>-<last>` gives the entries of
   the range that the palette of the view stores and marks as used the
-  colours of the colour table of the images. A stored entry with no
-  "used" mark keeps its colour: the game takes its colour from another
-  palette, and the colour table of an exported image has the colour of
-  palette 999 there, so the images of `export` give no change. Entries of
-  the range that the palette does not store give a warning. A view with no
-  palette fails.
+  colours of the colour table of the images, and the images must have one
+  colour for each of these entries. A stored entry with no "used" mark
+  keeps its colour: the game takes its colour from another palette. An
+  image with another colour for such an entry than the colour table of
+  `export` gives a warning, as the colour does not go into the view.
+  Entries of the range that the palette does not store give a warning. A
+  view with no palette fails. `pic import --palette replace` has the same
+  rule for the entries with no mark (section 4.7).
 - A view whose images give no change (no byte would be another byte) gets
   no patch file, and gives a warning. After a run, `--out-dir` has the
   patch file of a named view only when this run changed it: a view that
@@ -1458,7 +1461,8 @@ The checks of a view, all before its patch file is written:
   (`used` of the `.toml` file). The error names the entries.
   `--allow-unused-indices` makes it a warning.
 - With `--palette replace`: the colour table of each image has the entries
-  of the range, and the images of one view have the same colours in it.
+  of the range, and the images of one view have the same colours for the
+  entries that get them.
 
 Rules:
 
@@ -1472,7 +1476,8 @@ Rules:
   view that failed makes the exit code 6. So does a `.toml` file that
   cannot be read, that has no view number, that names no image file (its
   view also loses the patch file of an earlier run), or that names a view
-  that an earlier `.toml` file of the folder named.
+  that an earlier `.toml` file of the folder named (also an earlier file
+  whose view failed: then neither file gives the view a patch file).
   Palette 999 is read one time, before the first view.
 - A patch file that is there already must open for writing. A patch file
   that cannot be written, or a patch file of an earlier run that cannot be

@@ -1952,7 +1952,8 @@ namespace UnitTests
 
         // The entries that the view does not mark as used (the images have
         // the colours of palette 999 there) keep their colours: the exported
-        // images give no change.
+        // images give no change. Another colour there gives a warning, and
+        // images that differ only there agree.
         TEST_METHOD(Import_PaletteReplace_EntriesWithNoMarkKeepTheirColours)
         {
             const std::string folder = ExportView500();
@@ -1960,6 +1961,14 @@ namespace UnitTests
             cli::StringConsole console = Expect(0, { "view", "import", _gameFolder, "--in-dir", folder, "--palette", "replace", "--palette-range", "0-9", "--out-dir", _patches });
 
             Assert::IsTrue(Has(console.err, "view 500: the images have the pixels of the view: the view does not change"), Wide(console.err).c_str());
+            Assert::IsFalse(Has(console.err, "keep their colours"), Wide(console.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty());
+
+            ChangeBmp(folder + "\\500.l0.c0.bmp", [](IndexedBmp &bmp) { bmp.colors[5] = IndexedBmpColor{ 1, 2, 3 }; });
+            cli::StringConsole other = Expect(0, { "view", "import", _gameFolder, "--in-dir", folder, "--palette", "replace", "--palette-range", "0-9", "--out-dir", _patches });
+            Assert::IsTrue(Has(other.err, "scic: warning: view 500: the view does not mark the entries 5 as used, so they keep their colours (the game takes their colours from another palette); the images have other colours for them, which the view does not get"),
+                Wide(other.err).c_str());
+            Assert::IsTrue(Has(other.err, "view 500: the images have the pixels of the view: the view does not change"), Wide(other.err).c_str());
             Assert::IsTrue(FileNamesOf(_patches).empty());
         }
 
@@ -2096,6 +2105,23 @@ namespace UnitTests
             Assert::IsTrue(Has(console.err, "c-no-file.toml") && Has(console.err, "the file names no image file of a cel"), Wide(console.err).c_str());
             Assert::IsTrue(Has(console.err, "view 500: the view is in two .toml files of the input folder; the second is ") && Has(console.err, "a-copy.toml"), Wide(console.err).c_str());
             Assert::IsTrue(Has(console.err, "Imported 1 of 4 views (3 cels) into ") && Has(console.err, "; 3 views failed."), Wide(console.err).c_str());
+        }
+
+        // A .toml file whose view failed still names the view: a later file
+        // of the same view fails too.
+        TEST_METHOD(Import_InDir_ViewOfAnEarlierFileThatFailed_Fails)
+        {
+            const std::string folder = ExportView500();
+            // "500-old.toml" comes before "500.toml".
+            WriteFileText(folder + "\\500-old.toml", "[source]\nview = 500\n");
+            ChangeBmp(folder + "\\500.l0.c0.bmp", [](IndexedBmp &image) { image.pixels[0] = 50; });
+
+            cli::StringConsole console = Expect(6, { "view", "import", _gameFolder, "--in-dir", folder, "--out-dir", _patches });
+
+            Assert::IsTrue(Has(console.err, "500-old.toml") && Has(console.err, "the file names no image file of a cel"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "view 500: the view is in two .toml files of the input folder; the second is ") && Has(console.err, "500.toml"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Imported 0 of 2 views (0 cels) into ") && Has(console.err, "; 2 views failed."), Wide(console.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty());
         }
 
         TEST_METHOD(Import_InDir_CrcOfAnotherCopy_IsAWarning)

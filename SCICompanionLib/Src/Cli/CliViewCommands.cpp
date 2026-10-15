@@ -505,12 +505,7 @@ namespace cli
             image.width = cel.width;
             image.height = cel.height;
             image.pixels = std::move(pixels[i]);
-            for (size_t entry = 0; entry < image.colors.size(); entry++)
-            {
-                image.colors[entry].red = colors.Colors[entry].rgbRed;
-                image.colors[entry].green = colors.Colors[entry].rgbGreen;
-                image.colors[entry].blue = colors.Colors[entry].rgbBlue;
-            }
+            image.colors = ExportColorTable(colors);
             PicExportFile file;
             file.name = ViewCelFileName(number, cel.loop, cel.cel);
             sci::Result<std::vector<uint8_t>> bytes = EncodeIndexedBmp(image);
@@ -673,8 +668,8 @@ namespace cli
     {
         SCI_TRY_ASSIGN(std::vector<std::vector<uint8_t>> oldPixels, GetAllViewCelPixels(version, data));
         std::vector<ViewCelPixels> cels;
-        // The first image: its colour table has the colours of the range.
-        const ViewImportImage *rangeColors = nullptr;
+        // The images whose colour tables give the colours of the range.
+        std::vector<std::pair<std::string, const IndexedBmp *>> rangeImages;
         for (const ViewImportImage &image : images)
         {
             const std::string celText = fmt::format("cel {0} of loop {1}", image.cel, image.loop);
@@ -705,20 +700,7 @@ namespace cli
                     return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}: the colour table has {1} {2}, and the palette range is {3}-{4}", image.name, image.image.colorCount,
                         (image.image.colorCount == 1) ? "entry" : "entries", palette.first, palette.last));
                 }
-                if (rangeColors == nullptr)
-                {
-                    rangeColors = &image;
-                }
-                else
-                {
-                    for (int entry = palette.first; entry <= palette.last; entry++)
-                    {
-                        if (image.image.colors[entry] != rangeColors->image.colors[entry])
-                        {
-                            return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} and {1} have another colour for entry {2}; the images of a view must have one palette", rangeColors->name, image.name, entry));
-                        }
-                    }
-                }
+                rangeImages.emplace_back(image.name, &image.image);
             }
             ViewCelPixels pixels;
             pixels.loop = image.loop;
@@ -728,24 +710,15 @@ namespace cli
         }
 
         std::vector<uint8_t> newData = data;
-        if (rangeColors != nullptr)
+        if (!rangeImages.empty())
         {
             if (!description.palette.present)
             {
                 return sci::Fail(sci::ErrorCode::Unsupported, "the view has no palette, so no entry can get a new colour");
             }
-            // An entry that the view does not mark as used keeps its colour:
-            // the game takes the colour of such an entry from another
-            // palette, and the colour table of an exported image has that
-            // colour there.
-            std::array<IndexedBmpColor, 256> colors = rangeColors->image.colors;
-            for (int entry = palette.first; entry <= palette.last; entry++)
-            {
-                if (description.palette.flags[entry] == 0)
-                {
-                    colors[entry] = description.palette.colors[entry];
-                }
-            }
+            // An entry that the view does not mark as used keeps its colour.
+            std::array<IndexedBmpColor, 256> colors = {};
+            SCI_TRY_ASSIGN(colors, ReplacedPaletteColors(rangeImages, palette, description.palette, "view", warnings));
             SCI_TRY_ASSIGN(ViewPaletteEdit edit, ReplaceViewPaletteColors(version, newData, palette.first, palette.last, colors));
             std::array<bool, 256> notStored = {};
             for (int entry = palette.first; entry <= palette.last; entry++)
@@ -878,7 +851,9 @@ namespace cli
                 images.push_back(std::move(image));
             }
             std::vector<std::string> warnings;
-            sci::Result<std::vector<uint8_t>> made = MakeViewImportData(version, source.data, description, UsedPaletteEntries(*merged), images, palette, allowUnused, warnings);
+            PicImportPalette viewPalette = palette;
+            viewPalette.exportColors = ExportColorTable(*merged);
+            sci::Result<std::vector<uint8_t>> made = MakeViewImportData(version, source.data, description, UsedPaletteEntries(*merged), images, viewPalette, allowUnused, warnings);
             for (const std::string &warning : warnings)
             {
                 output.Warning(viewText + ": " + warning);

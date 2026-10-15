@@ -13,6 +13,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 struct PaletteComponent;
@@ -97,15 +98,33 @@ namespace cli
         IndexedBmp image;
     };
 
-    // The palette part of pic import. With "replace", the colours of the
-    // entries first to last of the pic come from the colour tables of the
-    // images.
+    // The palette part of pic import and view import. With "replace", the
+    // colours of the entries first to last come from the colour tables of
+    // the images (ReplacedPaletteColors).
     struct PicImportPalette
     {
         bool replace = false;
         int first = 0;
         int last = 0;
+        // The colour table that export gives the images of the resource
+        // (ExportColorTable of its palette over palette 999).
+        std::array<IndexedBmpColor, 256> exportColors = {};
     };
+
+    // The colour table of an exported image: the colours of the palette.
+    std::array<IndexedBmpColor, 256> ExportColorTable(const PaletteComponent &colors);
+
+    // The colours of the entries first to last of a palette for "replace",
+    // from the colour tables of the images (a name for messages, and the
+    // image). An entry that the palette stores and marks as used (a flag
+    // that is not 0) gets the colour of the images; the images must have one
+    // colour for it (Usage; owner names the resource: "pic", "view"). Each
+    // other entry keeps its colour (stored.colors): the game takes the
+    // colour of an entry with no mark from another palette. When an image
+    // has another colour than palette.exportColors for a stored entry with
+    // no mark, a warning names the entries.
+    sci::Result<std::array<IndexedBmpColor, 256>> ReplacedPaletteColors(const std::vector<std::pair<std::string, const IndexedBmp *>> &images, const PicImportPalette &palette,
+        const PicPaletteDescription &stored, const char *owner, std::vector<std::string> &warnings);
 
     // A .toml file of an input folder of import.
     struct SidecarFile
@@ -135,7 +154,9 @@ namespace cli
         const std::vector<uint8_t> &newPixels, const std::array<bool, 256> &used, bool allowUnused, std::vector<std::string> &warnings);
 
     // The bytes of a pic with the pixels of the images in its cels, and with
-    // the colours of the palette range when the palette says "replace". Each
+    // the colours of the palette range when the palette says "replace"
+    // (ReplacedPaletteColors: an entry that the pic does not mark as used
+    // keeps its colour). Each
     // image is checked before the pic changes:
     //  - the pic has the cel, one image is for one cel, and the cel is not
     //    compressed (Unsupported);
@@ -146,7 +167,8 @@ namespace cli
     //    pic or palette 999 marks as used). With allowUnusedEntries this is
     //    a warning;
     //  - with "replace": the colour table of the image has the entries of
-    //    the range, and the images have the same colours in the range.
+    //    the range, and the images have the same colours for the entries
+    //    that get them (ReplacedPaletteColors).
     // An image that fails a check gives Usage. Then the errors of
     // ReplacePaletteRange and ReplaceCelPixels. A warning is a text with no
     // pic number; the warnings of a pic that fails are also there.

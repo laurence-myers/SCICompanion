@@ -401,12 +401,7 @@ namespace cli
             image.height = cel.height;
             // Unsupported for a cel with run-length data in an SCI2 pic.
             SCI_TRY_ASSIGN(image.pixels, GetCelPixels(version, data, cel.index));
-            for (size_t i = 0; i < image.colors.size(); i++)
-            {
-                image.colors[i].red = colors.Colors[i].rgbRed;
-                image.colors[i].green = colors.Colors[i].rgbGreen;
-                image.colors[i].blue = colors.Colors[i].rgbBlue;
-            }
+            image.colors = ExportColorTable(colors);
             PicExportFile file;
             file.name = background ? fmt::format("{0}.bmp", number) : fmt::format("{0}.cel{1}.bmp", number, cel.index);
             SCI_TRY_ASSIGN(file.bytes, EncodeIndexedBmp(image));
@@ -624,6 +619,8 @@ namespace cli
                 return sci::Fail(sci::ErrorCode::Internal, "the palette of the pic could not be made");
             }
             const std::array<bool, 256> used = UsedEntriesOf(merged.get());
+            PicImportPalette picPalette = palette;
+            picPalette.exportColors = ExportColorTable(*merged);
 
             // Each image is read, and then all are checked, before the pic
             // changes.
@@ -637,7 +634,7 @@ namespace cli
                 images.push_back(std::move(image));
             }
             std::vector<std::string> warnings;
-            sci::Result<std::vector<uint8_t>> made = MakePicImportData(version, source.data, description, used, images, palette, allowUnused, warnings);
+            sci::Result<std::vector<uint8_t>> made = MakePicImportData(version, source.data, description, used, images, picPalette, allowUnused, warnings);
             for (const std::string &warning : warnings)
             {
                 output.Warning(picText + ": " + warning);
@@ -676,8 +673,8 @@ namespace cli
     {
         // The cel of each image, in the order of the images.
         std::vector<int> cels;
-        // The first image: its colour table has the colours of the range.
-        const PicImportImage *rangeColors = nullptr;
+        // The images whose colour tables give the colours of the range.
+        std::vector<std::pair<std::string, const IndexedBmp *>> rangeImages;
         for (const PicImportImage &image : images)
         {
             const int index = (image.cel < 0) ? description.backgroundCel : image.cel;
@@ -708,44 +705,17 @@ namespace cli
                     return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}: the colour table has {1} {2}, and the palette range is {3}-{4}", image.name, image.image.colorCount,
                         (image.image.colorCount == 1) ? "entry" : "entries", palette.first, palette.last));
                 }
-                if (rangeColors == nullptr)
-                {
-                    rangeColors = &image;
-                }
-                else
-                {
-                    for (int entry = palette.first; entry <= palette.last; entry++)
-                    {
-                        if (image.image.colors[entry] != rangeColors->image.colors[entry])
-                        {
-                            return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} and {1} have another colour for entry {2}; the images of a pic must have one palette", rangeColors->name, image.name, entry));
-                        }
-                    }
-                }
+                rangeImages.emplace_back(image.name, &image.image);
             }
             cels.push_back(index);
         }
 
         std::vector<uint8_t> newData = data;
-        if (rangeColors != nullptr)
+        if (!rangeImages.empty())
         {
-            SCI_TRY_ASSIGN(newData, ReplacePaletteRange(version, newData, palette.first, palette.last, rangeColors->image.colors));
-            // The range is inside the stored entries here. An entry with the
-            // flag 0 gets its new colour, but the game does not use it.
-            std::array<bool, 256> notUsed = {};
-            bool anyNotUsed = false;
-            for (int entry = palette.first; entry <= palette.last; entry++)
-            {
-                if (description.palette.flags[entry] == 0)
-                {
-                    notUsed[entry] = true;
-                    anyNotUsed = true;
-                }
-            }
-            if (anyNotUsed)
-            {
-                warnings.push_back(fmt::format("the pic does not mark the entries {0} as used, so the game takes their colours from another palette", IndexRunsText(IndexRunsOf(notUsed))));
-            }
+            std::array<IndexedBmpColor, 256> colors = {};
+            SCI_TRY_ASSIGN(colors, ReplacedPaletteColors(rangeImages, palette, description.palette, "pic", warnings));
+            SCI_TRY_ASSIGN(newData, ReplacePaletteRange(version, newData, palette.first, palette.last, colors));
         }
         for (size_t i = 0; i < images.size(); i++)
         {
@@ -833,6 +803,62 @@ namespace cli
             warnings.push_back(text);
         }
         return sci::Ok();
+    }
+
+    std::array<IndexedBmpColor, 256> ExportColorTable(const PaletteComponent &colors)
+    {
+        std::array<IndexedBmpColor, 256> table = {};
+        for (size_t entry = 0; entry < table.size(); entry++)
+        {
+            table[entry].red = colors.Colors[entry].rgbRed;
+            table[entry].green = colors.Colors[entry].rgbGreen;
+            table[entry].blue = colors.Colors[entry].rgbBlue;
+        }
+        return table;
+    }
+
+    sci::Result<std::array<IndexedBmpColor, 256>> ReplacedPaletteColors(const std::vector<std::pair<std::string, const IndexedBmp *>> &images, const PicImportPalette &palette,
+        const PicPaletteDescription &stored, const char *owner, std::vector<std::string> &warnings)
+    {
+        std::array<IndexedBmpColor, 256> colors = stored.colors;
+        if (images.empty())
+        {
+            return colors;
+        }
+        // The stored entries with no mark for which an image has a colour
+        // that export did not give it.
+        std::array<bool, 256> kept = {};
+        const std::pair<std::string, const IndexedBmp *> &first = images.front();
+        for (int entry = (std::max)(palette.first, 0); (entry <= palette.last) && (entry < 256); entry++)
+        {
+            const bool isStored = stored.present && (entry >= stored.firstEntry) && (entry < (stored.firstEntry + stored.entryCount));
+            if (!isStored)
+            {
+                continue;
+            }
+            if (stored.flags[entry] != 0)
+            {
+                colors[entry] = first.second->colors[entry];
+                for (const std::pair<std::string, const IndexedBmp *> &image : images)
+                {
+                    if (image.second->colors[entry] != colors[entry])
+                    {
+                        return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} and {1} have another colour for entry {2}; the images of a {3} must have one palette", first.first, image.first, entry, owner));
+                    }
+                }
+            }
+            else
+            {
+                kept[entry] = std::any_of(images.begin(), images.end(), [&](const std::pair<std::string, const IndexedBmp *> &image) { return image.second->colors[entry] != palette.exportColors[entry]; });
+            }
+        }
+        const std::vector<IndexRun> keptRuns = IndexRunsOf(kept);
+        if (!keptRuns.empty())
+        {
+            warnings.push_back(fmt::format("the {0} does not mark the entries {1} as used, so they keep their colours (the game takes their colours from another palette); the images have other colours for them, which the {0} does not get",
+                owner, IndexRunsText(keptRuns)));
+        }
+        return colors;
     }
 
     bool ParsePaletteRange(const std::string &text, int &first, int &last)
