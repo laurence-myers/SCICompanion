@@ -22,7 +22,8 @@ PatchFilesResourceSource::PatchFilesResourceSource(ResourceTypeFlags types, SCIV
 	_hFind(INVALID_HANDLE_VALUE),
 	_version(version),
 	_stillMore(true),
-	_sourceFlags(sourceFlags)
+	_sourceFlags(sourceFlags),
+	_nextIndex(0)
 {
 	// Prepare a filter against which to 
 	uint32_t flags = (uint32_t)types;
@@ -147,10 +148,25 @@ sci::istream PatchFilesResourceSource::GetPositionedStreamAndResourceSizeIncludi
 	return stream;
 }
 
+std::string PatchFilesResourceSource::ListedFilePath(const ResourceMapEntryAgnostic &mapEntry) const
+{
+	auto listed = _indexToFilename.find((int)mapEntry.ExtraData);
+	return (listed != _indexToFilename.end()) ? (_gameFolder + "\\" + listed->second) : std::string();
+}
+
 void PatchFilesResourceSource::RemoveEntry(const ResourceMapEntryAgnostic &mapEntry)
 {
-	std::string filename = GetFileNameFor(mapEntry.Type, mapEntry.Number, mapEntry.Base36Number, _version);
-	std::string fullPath = _gameFolder + "\\" + filename;
+	// A patch file can have a name that is not the standard one (view.777,
+	// 777.v16, 0777.v56): the listed name is the name on disk.
+	const std::string fullPath = ListedFilePath(mapEntry);
+	if (fullPath.empty())
+	{
+		throw sci::DataError("this source did not list the entry of the patch file to remove", sci::ErrorCode::Internal);
+	}
+	if (!PathFileExists(fullPath.c_str()))
+	{
+		throw sci::DataError("the patch file " + fullPath + " is not there to remove", sci::ErrorCode::NotFound);
+	}
 	deletefile(fullPath);
 }
 

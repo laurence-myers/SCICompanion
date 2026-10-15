@@ -488,6 +488,29 @@ namespace cli
     // and there is no --replace (Usage).
     sci::Result<ExitCode> RunViewAdd(GameSession &session, const ViewAddOptions &options, const CommonOptions &common, CliOutput &output);
 
+    // scic view remove (plan section 4.14).
+    struct ViewRemoveOptions
+    {
+        std::string gameFolder;
+        // Numbers and ranges (100-199).
+        std::vector<std::string> views;
+        // all: each copy of a view (its patch file and its entries in the
+        // package); patch: only its patch file.
+        std::string from = "all";
+    };
+
+    // Removes views from the game (CResourceMap::RemoveResource): each copy,
+    // or with "patch" only the patch file, so that the game then uses the
+    // copy in the package (a message says so). It is the one view command
+    // that changes the game. A view runs in its own exception boundary. The
+    // views of the selectors must all be in the game, and with "patch" each
+    // must have a patch file, before the first removal. --dry-run removes
+    // nothing and lists what a run would remove. The exit code: 9 when a copy
+    // could not be removed, 7 after Ctrl+C, 1 for a bug. Fails when the run
+    // cannot start: a selector is bad or names a view that the game does not
+    // have, or a view has no patch file with "patch" (Usage).
+    sci::Result<ExitCode> RunViewRemove(GameSession &session, const ViewRemoveOptions &options, const CommonOptions &common, CliOutput &output);
+
     // scic dev compare-structure (hidden): the structure of the functions of
     // a folder of decompiled scripts against another decompile.
     struct CompareStructureOptions

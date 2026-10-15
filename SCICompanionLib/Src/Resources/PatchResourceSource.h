@@ -41,7 +41,14 @@ public:
 	sci::istream GetHeaderAndPositionedStream(const ResourceMapEntryAgnostic &mapEntry, ResourceHeaderAgnostic &headerEntry) override;
 	sci::istream GetPositionedStreamAndResourceSizeIncludingHeader(const ResourceMapEntryAgnostic &mapEntry, uint32_t &size, bool &includesHeader) override;
 
+	// Deletes the file that ReadNextEntry listed for the entry, with the name
+	// that it has on disk. NotFound when the file is not there; Internal for
+	// an entry that this source did not list.
 	void RemoveEntry(const ResourceMapEntryAgnostic &mapEntry) override;
+	// The path of the file that ReadNextEntry listed for the entry, in the
+	// folder of this source; empty for an entry that this source did not
+	// list.
+	std::string ListedFilePath(const ResourceMapEntryAgnostic &mapEntry) const;
 	AppendBehavior AppendResources(const std::vector<const ResourceBlob*> &blobs) override;
 	void RebuildResources(bool force, ResourceSource &source, std::map<ResourceType, RebuildStats> &stats) override {} // Nothing to do here.
 

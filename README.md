@@ -23,7 +23,8 @@ modernizing the build. Broad highlights since the previous release:
   each view as a patch file; the view changes in place, so the bytes that
   SCI Companion does not change stay as Sierra wrote them. `scic view add`
   makes a new view from files of the same form, and writes it as a patch
-  file.
+  file. `scic view remove` takes views out of the game: each copy, or only
+  the patch files.
   `scic view palette` changes the
   palette of views of SCI1.1 and SCI2 in place, and writes each view as a
   patch file: new colours for a range of palette entries, from the colour

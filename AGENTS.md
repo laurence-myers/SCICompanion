@@ -27,7 +27,7 @@ The `SCICompanion` project is a thin `.exe` wrapper over both libraries.
 The `SCICompanionCli` project is a thin wrapper too: it builds `scic.exe`,
 the command-line tool (`scic script list`, `decompile`, `sco` and
 `compile`; `scic pic list`, `export` and `import`; `scic view list`,
-`export`, `import`, `add` and `palette`),
+`export`, `import`, `add`, `remove` and `palette`),
 whose code is in `SCICompanionLib\Src\Cli`. It links only
 `SCICompanionCore`. Its design is in `docs\scic-cli\plan.md`. Tests are in
 `UnitTests`.
