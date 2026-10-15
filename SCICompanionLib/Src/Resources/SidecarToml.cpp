@@ -85,6 +85,10 @@ namespace sidecartoml
 
     sci::Status ReadFlagRuns(const toml::table &table, const std::string &name, const char *key, std::vector<PicSidecarFlagRun> &runs)
     {
+        if (table.get(key) == nullptr)
+        {
+            return sci::Ok();
+        }
         SCI_TRY_ASSIGN(std::vector<std::vector<int>> arrays, ReadEntryArrays(table, name, key, 3));
         runs.clear();
         for (const std::vector<int> &numbers : arrays)
@@ -177,6 +181,10 @@ namespace sidecartoml
 
     sci::Status ReadRuns(const toml::table &table, const std::string &name, const char *key, std::vector<IndexRun> &runs)
     {
+        if (table.get(key) == nullptr)
+        {
+            return sci::Ok();
+        }
         SCI_TRY_ASSIGN(std::vector<std::vector<int>> arrays, ReadEntryArrays(table, name, key, 2));
         runs.clear();
         for (const std::vector<int> &numbers : arrays)

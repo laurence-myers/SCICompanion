@@ -175,7 +175,12 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   header, and a header can declare no palette. `scic dev palette-use`
   reads the flag byte of the header; `scic pic list` and the `.toml` file
   of `export` do not. For the views and the palette resources of the
-  hi-res LSL6, the two rules give the same table.
+  hi-res LSL6, the two rules give the same table. `scic view list` and the
+  `flags` of the `.toml` file of `scic view export` read the flag byte of
+  the header; the `used` key and the colour table of `view export` come
+  from `ReadPalette`. No view of 7 games (Eco2, GK1 CD, KQ6 CD, LB2, QfG4
+  CD, SQ6, the hi-res LSL6; 1015 palettes of 3-byte entries) has the flag
+  0 in such a header.
 - `--out` of `scic dev compare-structure` and of `scic dev compare-meaning`
   can be a file of the game: the table then takes its place. `scic dev
   palette-use` refuses such a file.
@@ -285,6 +290,11 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   command on a game with SCI2 views has a local run only (the hi-res LSL6:
   548 views, no error); CI has the SCI1.1 template. A view of SCI1 (its
   used entries come from the palette as the reader gives it) has no test.
+- `scic view list` and `scic view export`: a repair that a reader logs
+  while the resource of a view is found and checked (`ReadViewSource`,
+  before the view is read; `RowOf` and `ExportView` give it as the error
+  of the view). No test can make a reader log there: the tests have the
+  repairs of the view reader, which `DescribeView` gives.
 - `scic view palette`: the error for a view of SCI1.1 that has the form of
   an SCI1 view, an internal error of one view (exit 1), an exception while
   a view is read (the patch file of an earlier run then goes too), a

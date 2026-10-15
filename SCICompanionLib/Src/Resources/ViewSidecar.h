@@ -56,8 +56,13 @@ struct ViewSidecar
     // [view]
     int loopCount = 0;
     int celCount = 0;
+    // Bytes 3, 4 and 5 of the view header, and its native size (bytes 14
+    // to 17).
     int scaleFlags = 0;
+    int byte4 = 1;
     int resolution = 0;
+    int nativeWidth = 0;
+    int nativeHeight = 0;
     // [palette]
     bool hasPalette = false;
     int storedFirst = 0;
@@ -77,8 +82,8 @@ struct ViewSidecar
 };
 
 // The parts of the sidecar that the description of the view gives: the
-// format, the loops, the scale flags and the resolution, the palette of the
-// view, and each stored cel with no file. The caller sets the source,
+// format, the loops, the bytes of the view header, the palette of the view,
+// and each stored cel with no file. The caller sets the source,
 // palette999, used, and the files.
 ViewSidecar MakeViewSidecar(const ViewDescription &description);
 

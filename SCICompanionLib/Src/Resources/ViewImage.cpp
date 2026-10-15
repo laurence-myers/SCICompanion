@@ -96,10 +96,13 @@ sci::Result<ViewLayout> ReadViewLayout(const uint8_t *data, size_t size)
     layout.headerSize = (uint32_t)WordAt(data, 0) + 2;
     const int loopCount = data[2];
     layout.scaleFlags = data[3];
+    layout.byte4 = data[4];
     layout.resolution = data[5];
     layout.paletteOffset = DwordAt(data, 8);
     layout.loopHeaderSize = data[12];
     layout.celHeaderSize = data[13];
+    layout.nativeWidth = WordAt(data, 14);
+    layout.nativeHeight = WordAt(data, 16);
     if (layout.loopHeaderSize > 32)
     {
         return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("the view has the form of an SCI1 view (its loop headers have {0} bytes)", (int)layout.loopHeaderSize));
@@ -247,7 +250,10 @@ sci::Result<ViewDescription> DescribeView(const SCIVersion &version, const std::
     ViewDescription description;
     description.format = version.ViewFormat;
     description.scaleFlags = read.layout.scaleFlags;
+    description.byte4 = read.layout.byte4;
     description.resolution = read.layout.resolution;
+    description.nativeWidth = read.layout.nativeWidth;
+    description.nativeHeight = read.layout.nativeHeight;
     for (size_t i = 0; i < read.layout.loops.size(); i++)
     {
         const ViewLoopLayout &loopLayout = read.layout.loops[i];

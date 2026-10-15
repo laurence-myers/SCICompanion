@@ -537,39 +537,39 @@ namespace cli
             bool writeFailed = false;
         };
 
-        // The files of a view: its description, the colours as SCI Companion
+        // The files of a view: its description (DescribeView gives Format
+        // for a view that its reader repaired), the colours as SCI Companion
         // shows the view (its palette over palette 999), then the write.
-        // Format for a view that a reader repaired while its resource was
-        // read.
+        // Format also for a repair that a reader logs while the resource of
+        // the view is found and checked.
         sci::Status ExportView(GameSession &session, int number, bool everyView, const std::string &outDir, bool dryRun, CliOutput &output, ViewExportResult &result)
         {
             RepairLogSink repairs;
-            sci::Result<std::vector<PicExportFile>> made = [&]() -> sci::Result<std::vector<PicExportFile>>
+            sci::Result<ViewSource> read = [&]()
             {
                 ScopedCoreLogSink scopedSink(repairs);
-                SCI_TRY_ASSIGN(ViewSource source, ReadViewSource(session, number));
-                const SCIVersion &version = session.Version();
-                SCI_TRY_ASSIGN(ViewDescription description, DescribeView(version, source.data));
-                if (description.cels.empty() && everyView)
-                {
-                    result.skipped = true;
-                    return std::vector<PicExportFile>();
-                }
-                SCI_TRY_ASSIGN(std::unique_ptr<ResourceEntity> entity, TryCreateResourceFromResourceData(*source.blob));
-                std::unique_ptr<PaletteComponent> merged = session.ResourceMap().GetMergedPalette(*entity, 999);
-                if (!merged)
-                {
-                    return sci::Fail(sci::ErrorCode::Internal, "the palette of the view could not be made");
-                }
-                return MakeViewExportFiles(version, number, source.data, description, source.fromPatch, *merged, session.ResourceMap().GetPalette999());
+                return ReadViewSource(session, number);
             }();
             const std::string repaired = repairs.Text();
             if (!repaired.empty())
             {
-                result.skipped = false;
                 return sci::Fail(sci::ErrorCode::Format, "the reader repaired damaged data: " + repaired);
             }
-            SCI_TRY_ASSIGN(std::vector<PicExportFile> files, std::move(made));
+            SCI_TRY_ASSIGN(ViewSource source, std::move(read));
+            const SCIVersion &version = session.Version();
+            SCI_TRY_ASSIGN(ViewDescription description, DescribeView(version, source.data));
+            if (description.cels.empty() && everyView)
+            {
+                result.skipped = true;
+                return sci::Ok();
+            }
+            SCI_TRY_ASSIGN(std::unique_ptr<ResourceEntity> entity, TryCreateResourceFromResourceData(*source.blob));
+            std::unique_ptr<PaletteComponent> merged = session.ResourceMap().GetMergedPalette(*entity, 999);
+            if (!merged)
+            {
+                return sci::Fail(sci::ErrorCode::Internal, "the palette of the view could not be made");
+            }
+            SCI_TRY_ASSIGN(std::vector<PicExportFile> files, MakeViewExportFiles(version, number, source.data, description, source.fromPatch, *merged, session.ResourceMap().GetPalette999()));
             result.cels = (size_t)std::count_if(files.begin(), files.end(), [](const PicExportFile &file) { return !file.isText; });
             return WriteExportFiles(outDir, files, dryRun, output, result.writeFailed);
         }
@@ -583,6 +583,17 @@ namespace cli
         if (!options.all)
         {
             SCI_TRY_ASSIGN(views, SelectResourceNumbers(views, options.views, "view"));
+        }
+        // The resource map reads palette 999 one time, here: a warning of its
+        // reader goes to the output once, and is not a repair of a view.
+        sci::Status palette999 = sci::Guard("reading palette 999", [&]() -> sci::Status
+        {
+            session.ResourceMap().GetPalette999();
+            return sci::Ok();
+        });
+        if (!palette999)
+        {
+            output.Warning(palette999.error().ToString());
         }
 
         ReportFacts facts;

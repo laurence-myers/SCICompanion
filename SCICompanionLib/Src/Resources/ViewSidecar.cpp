@@ -13,7 +13,10 @@ ViewSidecar MakeViewSidecar(const ViewDescription &description)
     sidecar.loopCount = (int)description.loops.size();
     sidecar.celCount = (int)description.cels.size();
     sidecar.scaleFlags = description.scaleFlags;
+    sidecar.byte4 = description.byte4;
     sidecar.resolution = description.resolution;
+    sidecar.nativeWidth = description.nativeWidth;
+    sidecar.nativeHeight = description.nativeHeight;
     sidecar.hasPalette = description.palette.present;
     sidecar.storedFirst = description.palette.firstEntry;
     sidecar.storedCount = description.palette.entryCount;
@@ -60,7 +63,10 @@ std::string ViewSidecarText(const ViewSidecar &sidecar)
     view.insert("loops", (int64_t)sidecar.loopCount);
     view.insert("cels", (int64_t)sidecar.celCount);
     view.insert("scale_flags", (int64_t)sidecar.scaleFlags);
+    view.insert("byte_4", (int64_t)sidecar.byte4);
     view.insert("resolution", (int64_t)sidecar.resolution);
+    view.insert("native_width", (int64_t)sidecar.nativeWidth);
+    view.insert("native_height", (int64_t)sidecar.nativeHeight);
 
     toml::table palette;
     palette.insert("present", sidecar.hasPalette);
@@ -140,7 +146,10 @@ namespace
             SCI_TRY(ReadNumber(*view, "[view]", "loops", 0, 255, sidecar.loopCount));
             SCI_TRY(ReadNumber(*view, "[view]", "cels", 0, 65535, sidecar.celCount));
             SCI_TRY(ReadNumber(*view, "[view]", "scale_flags", 0, 255, sidecar.scaleFlags));
+            SCI_TRY(ReadNumber(*view, "[view]", "byte_4", 0, 255, sidecar.byte4));
             SCI_TRY(ReadNumber(*view, "[view]", "resolution", 0, 255, sidecar.resolution));
+            SCI_TRY(ReadNumber(*view, "[view]", "native_width", 0, 65535, sidecar.nativeWidth));
+            SCI_TRY(ReadNumber(*view, "[view]", "native_height", 0, 65535, sidecar.nativeHeight));
         }
 
         SCI_TRY_ASSIGN(const toml::table *palette, TableOf(root, "palette"));

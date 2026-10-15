@@ -1752,6 +1752,34 @@ namespace UnitTests
             Assert::IsTrue(Has(ega.err, "the image of a view of the format ega cannot be read") && Has(ega.err, "[unsupported]"), Wide(ega.err).c_str());
         }
 
+        // A palette 999 that its reader repairs (it stores entries past 255)
+        // gives a warning; no view fails for it.
+        TEST_METHOD(Export_DamagedPalette999_IsAWarning)
+        {
+            std::vector<uint8_t> palette;
+            {
+                GameSession &session = _game.Open();
+                std::unique_ptr<ResourceBlob> blob = session.ResourceMap().MostRecentResource(ResourceType::Palette, 999, false);
+                Assert::IsNotNull(blob.get(), L"setup: palette 999 of the template");
+                palette.assign(blob->GetData(), blob->GetData() + blob->GetLength());
+                _game.CloseSessions();
+            }
+            palette[25] = 200;
+            palette[29] = 100;
+            palette[30] = 0;
+            std::vector<uint8_t> patch = { 0x8b, 0x00 };
+            patch.insert(patch.end(), palette.begin(), palette.end());
+            WriteFileBytes(_gameFolder + "\\999.pal", patch);
+            const std::string folder = _outDir + "\\exported";
+            fs::create_directories(folder);
+
+            cli::StringConsole console = Expect(0, { "view", "export", _gameFolder, "--view", "0", "900", "--out-dir", folder, "--dry-run" });
+
+            Assert::AreEqual((size_t)1, CountOf(console.err, "scic: warning: "), Wide(console.err).c_str());
+            Assert::IsFalse(Has(console.err, "scic: error: "), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "A run would export 2 of 2 views"), Wide(console.err).c_str());
+        }
+
         // A file that cannot be replaced fails the view before its first
         // write: exit 9.
         TEST_METHOD(Export_FileThatCannotBeWritten_ExitsWith9)

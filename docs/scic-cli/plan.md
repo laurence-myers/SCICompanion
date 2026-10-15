@@ -1351,8 +1351,8 @@ section 4.9.
 | Table | Keys |
 |---|---|
 | `[source]` | `view`; `format` (`vga11` or `vga2`); `from` (`package` or `patch`); `size` (bytes); `crc32` (a hex integer) |
-| `[view]` | `loops`; `cels` (the stored cels); `scale_flags` (byte 3 of the view header); `resolution` (byte 5) |
-| `[palette]` | `present`; `stored_first`, `stored_count`; `entry_size` (3 or 4); `flags` (runs `[first, last, flag]` of the flag bytes of the stored entries; a 3-byte entry has the flag of the palette header, as the SCI32 interpreter reads it); `palette_999`; `used` (the entries that the view or palette 999 marks as used) |
+| `[view]` | `loops`; `cels` (the stored cels); `scale_flags`, `byte_4` and `resolution` (bytes 3, 4 and 5 of the view header); `native_width`, `native_height` (bytes 14 to 17: the size in which SCI Companion shows the view) |
+| `[palette]` | `present`; `stored_first`, `stored_count`; `entry_size` (3 or 4); `flags` (runs `[first, last, flag]` of the flag bytes of the stored entries; a 3-byte entry has the flag of the palette header, as the SCI32 interpreter reads it); `palette_999`; `used` (the entries that the view or palette 999 marks as used, as SCI Companion reads the palette: a stored 3-byte entry counts as used, also when the flag of the header is 0; the colour table has the colours of these entries) |
 | `[[loop]]` | `index`; `cels`; `mirror_of` (only for a mirror loop) |
 | `[[cel]]` | `loop`; `cel`; `file`; `width`; `height`; `x`; `y`; `skip_color`; `raw` (no run-length data); `entries` (the entries of its pixels, without the skip colour); `skip_pixels` |
 
@@ -1367,6 +1367,9 @@ Rules:
   does not read (`ega`, `vga1`), a view that cannot be read or that a
   reader repaired (section 4.10), and a named view with no stored cel.
   With `--all`, a view with no stored cel is skipped and counted.
+- Palette 999 is read one time, before the first view. A warning of its
+  reader (for example a palette that stores entries past 255) is a
+  warning of the run, not an error of a view.
 - The files of a view are all made in memory, and each file that is there
   already must open for writing, before the first is written. A file that
   cannot be written makes the exit code 9.
@@ -1736,12 +1739,12 @@ section 5.3, which section 5.22 uses), plus code 9.
 | 0 | Success |
 | 1 | Internal error (a bug, or an escaped exception) |
 | 2 | Usage error: bad option, unknown script, header file given to `compile` |
-| 3 | Cannot open the game (also a damaged or empty `resource.map`) or start the batch, or the data folder is missing (script commands), or the output folder of `pic export`, `pic import` or `view palette` is missing, or the input folder of `pic import` is missing, or the BMP file of `view palette` cannot be read |
+| 3 | Cannot open the game (also a damaged or empty `resource.map`) or start the batch, or the data folder is missing (script commands), or the output folder of `pic export`, `pic import`, `view export` or `view palette` is missing, or the input folder of `pic import` is missing, or the BMP file of `view palette` cannot be read |
 | 5 | Compile errors |
 | 6 | Partial failure: some scripts failed for a reason that is not a compile error, or the decompiler reported an error in a script that it wrote, or a pic of a pic command failed, or a view of a view command failed (also a view that `view list` cannot read) |
 | 7 | Cancelled |
 | 8 | Write refused (`WriteRefused`): for example, a patch file would hide a package write, or a script of the commit used the new `.sco` of a script that the commit does not write (section 4.5) |
-| 9 | Write failed: the commit, the tables, a move, `game.ini`, main's `.sco`, or the return of a `.sco` to its state before the compile failed (any code but `Internal`, `WriteRefused` and `Cancelled`), or a file write of a script failed (`Io`; a `.scd` that cannot be written is a warning), or a file of `pic export`, a patch file of `pic import` or of `view palette`, or the table of a `dev` command could not be written, or a patch file of an earlier run of `view palette` could not be removed |
+| 9 | Write failed: the commit, the tables, a move, `game.ini`, main's `.sco`, or the return of a `.sco` to its state before the compile failed (any code but `Internal`, `WriteRefused` and `Cancelled`), or a file write of a script failed (`Io`; a `.scd` that cannot be written is a warning), or a file of `pic export` or of `view export`, a patch file of `pic import` or of `view palette`, or the table of a `dev` command could not be written, or a patch file of an earlier run of `view palette` could not be removed |
 
 The mapping is one function in `Src\Cli\`, with a unit test for each case:
 

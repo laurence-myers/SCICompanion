@@ -8,9 +8,11 @@
 //
 // The layout of such a view:
 //  - a view header: its size at offset 0 (2 bytes; the header has 2 bytes
-//    more), the count of loops (2), the scale flags (3), the resolution of
-//    an SCI2 view (5), the offset of the palette (8, 4 bytes; 0: no
-//    palette), the size of a loop header (12) and of a cel header (13);
+//    more), the count of loops (2), the scale flags (3), a byte that is 1
+//    in most views (4), the resolution of an SCI2 view (5), the offset of
+//    the palette (8, 4 bytes; 0: no palette), the size of a loop header
+//    (12) and of a cel header (13), and the native width and height (14
+//    and 16, 2 bytes each; SCI Companion shows the view in that size);
 //  - a loop header for each loop, after the view header: the loop that it
 //    mirrors (0, 0xff: no mirror), the flag that the game flips it with
 //    (1), the count of its cels (2; a loop that is not a mirror can have no
@@ -77,10 +79,13 @@ struct ViewLayout
     // The bytes of the view header: the size word + 2.
     uint32_t headerSize = 0;
     uint8_t scaleFlags = 0;
+    uint8_t byte4 = 0;
     uint8_t resolution = 0;
     uint32_t paletteOffset = 0;
     uint8_t loopHeaderSize = 0;
     uint8_t celHeaderSize = 0;
+    uint16_t nativeWidth = 0;
+    uint16_t nativeHeight = 0;
     std::vector<ViewLoopLayout> loops;
 };
 
@@ -127,9 +132,12 @@ struct ViewLoopDescription
 struct ViewDescription
 {
     ViewFormat format = ViewFormat::EGA;
-    // Byte 3 and byte 5 of the view header.
+    // Bytes 3, 4 and 5 of the view header, and its native size.
     uint8_t scaleFlags = 0;
+    uint8_t byte4 = 0;
     uint8_t resolution = 0;
+    uint16_t nativeWidth = 0;
+    uint16_t nativeHeight = 0;
     std::vector<ViewLoopDescription> loops;
     // The cels of the loops that are not mirrors, in the order of the loops.
     std::vector<ViewCelDescription> cels;
