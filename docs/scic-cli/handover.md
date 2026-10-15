@@ -122,6 +122,16 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 - An SCI2.1 package header has no type mark, so a zeroed header of view 0
   reads as a valid empty resource. Damage that sets only the two sizes to
   0 reads as an empty resource.
+- Patch headers (`GetPatchDataGap`): an SCI2 pic patch that starts with
+  `81 80` is read at 26 + byte 3, and Sierra's SCI32 interpreter reads it
+  at 4 (`ResPic::SeekToData`). Sierra's SCI2 pic patches start with
+  `81 81 00 00` (read at 4), and SCI Companion writes that form; no `81 80`
+  file of an SCI2 game is known.
+- SCI Companion writes a palette patch as `8B 00` and the data (read at 2).
+  Sierra's interpreters take a palette patch at 4 + byte 3
+  (`ResPal::SeekToData` of SCI32, `VOLLOAD.C` of SCI16), so they would read
+  such a file at another offset. Found by inspection; not run in an
+  interpreter or in ScummVM.
 - The Decompile dialog's "Reset filenames" protects no file (older than
   the branch). The dialog names the scripts through `game.ini`, so it
   needs a GUI helper with no name map.

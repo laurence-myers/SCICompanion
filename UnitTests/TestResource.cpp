@@ -254,6 +254,33 @@ namespace UnitTests
                 L"a truncated patch file must fail cleanly rather than parse a bogus huge size");
         }
 
+        // A patch file of 0 or 1 byte has no type word: the read fails with an
+        // error code, and throws nothing.
+        TEST_METHOD(PatchFileOfLessThanTwoBytes_Fails)
+        {
+            std::string dir = GetRandomTempFolder();
+            std::error_code ec;
+            std::filesystem::create_directories(dir, ec);
+            for (const std::vector<uint8_t> &bytes : { std::vector<uint8_t>(), std::vector<uint8_t>{ 0x81 } })
+            {
+                const std::string path = dir + "\\" + std::to_string(bytes.size()) + ".v56";
+                WriteFileBytes(path, bytes);
+                const std::wstring name = Wide(std::to_string(bytes.size()) + " bytes");
+                HRESULT hr = S_OK;
+                try
+                {
+                    ResourceBlob blob;
+                    hr = blob.CreateFromFile(nullptr, path, sciVersion1_1, ResourceSaveLocation::Patch, -1, -1);
+                }
+                catch (const std::exception &)
+                {
+                    Assert::Fail((L"the read throws: " + name).c_str());
+                }
+                Assert::IsTrue(FAILED(hr), (L"the read fails: " + name).c_str());
+            }
+            std::filesystem::remove_all(dir, ec);
+        }
+
         // The header of a patch file of a pic or a view. An SCI2 pic has 81 81
         // 00 00: the header of Sierra's SCI2 pic patches, and ScummVM takes the
         // data of an SCI2 pic patch at offset 4. An SCI1.1 pic and a view of
@@ -307,11 +334,14 @@ namespace UnitTests
             std::filesystem::remove_all(dir, ec);
         }
 
-        // Sierra's view patches of SCI1.1 and SCI2: the type byte, 80 or 84,
-        // 00, a count in byte 3, that many bytes of a file name, 22 more
-        // bytes, then the view at 26 + the count. The file reader and the
-        // patch files of a game take the data there.
-        TEST_METHOD(PatchFileHeader_SierraViewWithFileName)
+        // Sierra's patch headers. A view or pic patch: the type byte, 80 or
+        // 84, 00, a count in byte 3, that many bytes of a file name, 22 more
+        // bytes, then the data at 26 + the count. A palette patch: the type
+        // byte, 80, 00, a count, that many bytes, then the data at 4 + the
+        // count. Another type with the second byte 84 keeps the gap of 8
+        // bytes, and a file of 2 bytes is an empty resource. The file reader
+        // and the patch files of a game take the data there.
+        TEST_METHOD(PatchFileHeader_SierraForms)
         {
             NoAppState noAppState;
             std::vector<uint8_t> data;
@@ -319,42 +349,59 @@ namespace UnitTests
             {
                 data.push_back((uint8_t)(i + 1));
             }
+            // The header of a view or pic patch with a file name.
+            auto viewForm = [](uint8_t typeByte, uint8_t secondByte, const std::string &fileName)
+            {
+                std::vector<uint8_t> bytes = { typeByte, secondByte, 0x00, (uint8_t)fileName.size() };
+                bytes.insert(bytes.end(), fileName.begin(), fileName.end());
+                bytes.insert(bytes.end(), 22, 0xee);
+                return bytes;
+            };
             struct Case
             {
                 const char *name;
-                uint8_t secondByte;
-                std::string fileName;
+                ResourceType type;
+                const char *extension;
+                std::vector<uint8_t> header;
+                bool empty;
             };
             const std::vector<Case> cases =
             {
-                { "80 84 with a file name", 0x84, "C:\\GABRIEL\\ANIM\\V56\\DIBS_1\\000.DIB" },
-                { "80 84 with no file name", 0x84, "" },
-                { "80 80 with a file name", 0x80, "ABC" },
+                { "a view, 80 84 with a file name", ResourceType::View, "v56", viewForm(0x80, 0x84, "C:\\GABRIEL\\ANIM\\V56\\DIBS_1\\000.DIB"), false },
+                { "a view, 80 84 with no file name", ResourceType::View, "v56", viewForm(0x80, 0x84, ""), false },
+                { "a view, 80 80 with a file name", ResourceType::View, "v56", viewForm(0x80, 0x80, "ABC"), false },
+                { "a pic, 81 80 with a file name", ResourceType::Pic, "p56", viewForm(0x81, 0x80, "ABC"), false },
+                { "a palette, 8b 80 with no count", ResourceType::Palette, "pal", { 0x8b, 0x80, 0x00, 0x00 }, false },
+                { "a palette, 8b 80 with a count", ResourceType::Palette, "pal", { 0x8b, 0x80, 0x00, 0x03, 0xee, 0xee, 0xee }, false },
+                { "a script, 82 84", ResourceType::Script, "scr", { 0x82, 0x84, 0x00, 0x05, 0xee, 0xee, 0xee, 0xee, 0xee, 0xee }, false },
+                { "a text of 2 bytes, 83 00", ResourceType::Text, "tex", { 0x83, 0x00 }, true },
             };
             GameCopy game;
             const std::string folder = game.Make(TemplateSci11);
             for (size_t i = 0; i < cases.size(); i++)
             {
                 const Case &test = cases[i];
-                std::vector<uint8_t> bytes = { 0x80, test.secondByte, 0x00, (uint8_t)test.fileName.size() };
-                bytes.insert(bytes.end(), test.fileName.begin(), test.fileName.end());
-                bytes.insert(bytes.end(), 22, 0xee);
-                bytes.insert(bytes.end(), data.begin(), data.end());
-                const std::string path = folder + "\\" + std::to_string(700 + i) + ".v56";
+                std::vector<uint8_t> bytes = test.header;
+                const std::vector<uint8_t> expected = test.empty ? std::vector<uint8_t>() : data;
+                bytes.insert(bytes.end(), expected.begin(), expected.end());
+                const std::string path = folder + "\\" + std::to_string(700 + i) + "." + test.extension;
                 WriteFileBytes(path, bytes);
 
                 ResourceBlob read;
-                Assert::IsTrue(SUCCEEDED(read.CreateFromFile(nullptr, path, sciVersion2, ResourceSaveLocation::Patch, -1, -1)), Wide(std::string("read: ") + test.name).c_str());
-                Assert::IsTrue(read.GetType() == ResourceType::View, Wide(std::string("the type of ") + test.name).c_str());
-                Assert::IsTrue(data == std::vector<uint8_t>(read.GetData(), read.GetData() + read.GetLength()), Wide(std::string("the data of the file ") + test.name).c_str());
+                Assert::IsTrue(SUCCEEDED(read.CreateFromFile(nullptr, path, sciVersion1_1, ResourceSaveLocation::Patch, -1, -1)), Wide(std::string("read: ") + test.name).c_str());
+                Assert::IsTrue(read.GetType() == test.type, Wide(std::string("the type of ") + test.name).c_str());
+                Assert::IsTrue(expected == std::vector<uint8_t>(read.GetData(), read.GetData() + read.GetLength()), Wide(std::string("the data of the file: ") + test.name).c_str());
             }
 
             GameSession &session = game.Open();
             for (size_t i = 0; i < cases.size(); i++)
             {
-                std::unique_ptr<ResourceBlob> blob = session.ResourceMap().MostRecentResource(ResourceType::View, (int)(700 + i), false);
-                Assert::IsTrue(blob != nullptr, Wide(std::string("the game has the patch ") + cases[i].name).c_str());
-                Assert::IsTrue(data == std::vector<uint8_t>(blob->GetData(), blob->GetData() + blob->GetLength()), Wide(std::string("the data of the patch in the game ") + cases[i].name).c_str());
+                const Case &test = cases[i];
+                std::unique_ptr<ResourceBlob> blob = session.ResourceMap().MostRecentResource(test.type, (int)(700 + i), false);
+                Assert::IsTrue(blob != nullptr, Wide(std::string("the game has the patch: ") + test.name).c_str());
+                const std::vector<uint8_t> expected = test.empty ? std::vector<uint8_t>() : data;
+                const std::vector<uint8_t> actual = (blob->GetLength() == 0) ? std::vector<uint8_t>() : std::vector<uint8_t>(blob->GetData(), blob->GetData() + blob->GetLength());
+                Assert::IsTrue(expected == actual, Wide(std::string("the data of the patch in the game: ") + test.name).c_str());
             }
         }
 

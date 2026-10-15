@@ -450,15 +450,24 @@ uint32_t GetPatchDataGap(const uint8_t *header, size_t byteCount)
 	{
 		return 0;
 	}
+	const ResourceType type = (ResourceType)(header[0] & 0x7f);
 	const uint8_t secondByte = header[1];
-	// A view patch of Sierra's form: the type byte, 80 or 84, 00, a count, the
-	// count of bytes (a file name), and 22 more bytes. Sierra's interpreters
-	// (ResView::SeekToData of SCI32, VOLLOAD.C of SCI16) and ScummVM skip the
-	// count plus 22 bytes after byte 3.
-	const bool isView = ((ResourceType)(header[0] & 0x7f) == ResourceType::View);
-	if (isView && (secondByte & 0x80) && (((secondByte & 0x7f) == 0) || ((secondByte & 0x7f) == 4)))
+	const uint32_t count = (byteCount >= 4) ? header[3] : 0;
+	// A view or pic patch of Sierra's form: the type byte, 80 or 84, 00, a
+	// count, the count of bytes (a file name), and 22 more bytes. Sierra's
+	// interpreters (ResView::SeekToData of SCI32, VOLLOAD.C of SCI16) and
+	// ScummVM skip the count plus 22 bytes after byte 3.
+	const bool sierraForm = ((secondByte & 0x80) != 0) && (((secondByte & 0x7f) == 0) || ((secondByte & 0x7f) == 4));
+	if (sierraForm && ((type == ResourceType::View) || (type == ResourceType::Pic)))
 	{
-		return 24 + ((byteCount >= 4) ? header[3] : 0);
+		return 24 + count;
+	}
+	// A palette patch of Sierra's form: the type byte, 80, 00, a count, and
+	// the count of bytes. Sierra's interpreters (ResPal::SeekToData of SCI32,
+	// VOLLOAD.C of SCI16) skip the count after byte 3.
+	if ((secondByte == 0x80) && (type == ResourceType::Palette))
+	{
+		return 2 + count;
 	}
 	return GetResourceOffsetInFile(secondByte);
 }
@@ -505,8 +514,14 @@ HRESULT ResourceBlob::CreateFromHandle(PCTSTR pszName, HANDLE hFile, int iPackag
 	const DWORD start = SetFilePointer(hFile, 0, nullptr, FILE_CURRENT);
 	uint8_t first[4] = {};
 	DWORD cbRead = 0;
-	BOOL fRead = ReadFile(hFile, first, sizeof(first), &cbRead, NULL);
-	fRead = (start != INVALID_SET_FILE_POINTER) && (cbRead >= 2);
+	// A failed SetFilePointer or ReadFile sets the last error.
+	BOOL fRead = (start != INVALID_SET_FILE_POINTER) && ReadFile(hFile, first, sizeof(first), &cbRead, NULL);
+	if (fRead && (cbRead < 2))
+	{
+		// A file of 0 or 1 byte has no type word.
+		fRead = FALSE;
+		SetLastError(ERROR_INVALID_DATA);
+	}
 	const uint16_t w = (uint16_t)(first[0] | (first[1] << 8));
 	if (fRead)
 	{
