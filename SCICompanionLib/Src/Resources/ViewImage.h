@@ -184,6 +184,62 @@ sci::Result<ViewDescription> DescribeView(const SCIVersion &version, const std::
 // mirror, and of a loop whose header has no cel); else as DescribeView.
 sci::Result<std::vector<uint8_t>> GetViewCelPixels(const SCIVersion &version, const std::vector<uint8_t> &data, int loop, int cel);
 
+// New pixels for one stored cel: width * height bytes, the top row first.
+struct ViewCelPixels
+{
+    int loop = 0;
+    int cel = 0;
+    std::vector<uint8_t> pixels;
+};
+
+// The run-length data of the pixels of a cel (width * height bytes, the top
+// row first), as Sierra's views of SCI1.1 and SCI2 have it: each row is its
+// own runs (a run of the skip colour, a run of one colour, or literal
+// pixels; 63 pixels or fewer), and the row table gives the start of each
+// row in the run-length data and in the literal data.
+struct EncodedViewCel
+{
+    std::vector<uint8_t> rle;
+    std::vector<uint8_t> literal;
+    // For each row: the offset of its first byte in rle, then in literal.
+    std::vector<uint32_t> rleRows;
+    std::vector<uint32_t> literalRows;
+};
+// Usage when the pixels are not width * height bytes.
+sci::Result<EncodedViewCel> EncodeViewCel(int width, int height, uint8_t skipColor, const std::vector<uint8_t> &pixels);
+
+// The bytes of the view with new pixels in some of its stored cels. The view
+// changes in place, so that the bytes that the readers of SCI Companion do
+// not read stay as Sierra wrote them:
+//  - a cel whose pixels do not change keeps its bytes;
+//  - a changed cel whose data no other data of the view has (the headers,
+//    the palette, the data of another cel header) takes the place of its
+//    old data when it fits there: the pixels of a raw cel, or the
+//    run-length data, the literal data and (SCI2) the row table
+//    (EncodeViewCel) that are not longer than the old ones;
+//  - each other changed cel gets its new data after the last byte of the
+//    view, and its cel header gets the new offsets (24, 28 and, for SCI2,
+//    32). The old data stays: another cel header can point at it.
+// The header of a changed cel with run-length data gets the new sizes (12:
+// the run-length and the literal data; 16: the run-length data). No other
+// byte changes. So a view that is imported again from its own patch file
+// can grow, when the new data of a cel is longer than the data before it.
+// The new bytes must then read back (DescribeView) with the same loops,
+// sizes, placements and skip colours, the new pixels in the changed cels
+// and the old pixels in the others, the same pixels through the row tables
+// of SCI2, and the same palette bytes.
+//
+// Usage for a cel that the view does not store, for two pixel sets for one
+// cel, and for pixels that are not width * height bytes; Unsupported for a
+// changed cel whose header is also the header of another cel (two loops
+// that point at the same cel headers), for a changed cel whose header has
+// the bit 0x80 in byte 10 (the interpreters then take the skip and remap
+// colours of the pixels from that byte), and for an SCI1.1 view that would
+// have more than 65535 bytes (Sierra's interpreter of SCI1.1 reads 16-bit
+// sizes and offsets); Internal when the new bytes do not read back as they
+// must; else the errors of DescribeView and of ReadPaletteLayout.
+sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version, const std::vector<uint8_t> &data, const std::vector<ViewCelPixels> &cels);
+
 // The pixels of each stored cel, in the order of ViewDescription::cels (the
 // loops that are not mirrors, in order), as GetViewCelPixels gives them. The
 // errors of DescribeView.
