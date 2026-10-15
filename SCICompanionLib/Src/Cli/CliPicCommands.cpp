@@ -604,55 +604,6 @@ namespace cli
             return job;
         }
 
-        // Checks the new pixels of a cel against its pixels in the game: a
-        // pixel has the skip colour where the cel has it and nowhere else,
-        // and each other pixel is a used entry. Usage for a pixel that
-        // fails a check; an unused entry is a warning when the options allow
-        // it.
-        sci::Status CheckNewPixels(const std::string &imagePath, const PicCelDescription &cel, const std::vector<uint8_t> &oldPixels, const std::vector<uint8_t> &newPixels,
-            const std::array<bool, 256> &used, bool allowUnused, std::vector<std::string> &warnings)
-        {
-            size_t skipChanges = 0;
-            size_t firstSkipChange = 0;
-            size_t unusedPixels = 0;
-            std::array<bool, 256> unused = {};
-            for (size_t i = 0; i < newPixels.size(); i++)
-            {
-                const bool wasSkip = (oldPixels[i] == cel.skipColor);
-                const bool isSkip = (newPixels[i] == cel.skipColor);
-                if (wasSkip != isSkip)
-                {
-                    if (skipChanges == 0)
-                    {
-                        firstSkipChange = i;
-                    }
-                    skipChanges++;
-                }
-                else if (!isSkip && !used[newPixels[i]])
-                {
-                    unused[newPixels[i]] = true;
-                    unusedPixels++;
-                }
-            }
-            if (skipChanges > 0)
-            {
-                return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}: {1} to or from the skip colour {2} of cel {3} (the first at {4},{5}); the pixels of the skip colour must stay where they are",
-                    imagePath, (skipChanges == 1) ? std::string("1 pixel changes") : fmt::format("{0} pixels change", skipChanges), (int)cel.skipColor, cel.index,
-                    firstSkipChange % (size_t)cel.width, firstSkipChange / (size_t)cel.width));
-            }
-            if (unusedPixels > 0)
-            {
-                const std::string text = fmt::format("{0}: {1} of cel {2} {3} palette entries that the pic and palette 999 do not mark as used: {4}",
-                    imagePath, CountText(unusedPixels, "pixel"), cel.index, (unusedPixels == 1) ? "has" : "have", IndexRunsText(IndexRunsOf(unused)));
-                if (!allowUnused)
-                {
-                    return sci::Fail(sci::ErrorCode::Usage, text + " (--allow-unused-indices makes this a warning)");
-                }
-                warnings.push_back(text);
-            }
-            return sci::Ok();
-        }
-
         sci::Status ImportPic(GameSession &session, const PicImportJob &job, const PicImportPalette &palette, bool allowUnused, const std::string &outDir, bool dryRun, CliOutput &output, PicImportResult &result)
         {
             const std::string picText = PicText(job.number);
@@ -749,7 +700,7 @@ namespace cli
                 return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} has {1} x {2} pixels, and cel {3} has {4} x {5}", image.name, image.image.width, image.image.height, index, cel.width, cel.height));
             }
             SCI_TRY_ASSIGN(std::vector<uint8_t> oldPixels, GetCelPixels(version, data, index));
-            SCI_TRY(CheckNewPixels(image.name, cel, oldPixels, image.image.pixels, usedEntries, allowUnusedEntries, warnings));
+            SCI_TRY(CheckImportPixels(image.name, fmt::format("cel {0}", cel.index), "pic", cel.skipColor, cel.width, oldPixels, image.image.pixels, usedEntries, allowUnusedEntries, warnings));
             if (palette.replace)
             {
                 if (image.image.colorCount <= palette.last)
@@ -803,6 +754,87 @@ namespace cli
         return newData;
     }
 
+    sci::Result<std::vector<SidecarFile>> ListSidecarFiles(const std::string &inDir, const char *exportCommand)
+    {
+        std::error_code ec;
+        if (!fs::is_directory(inDir, ec))
+        {
+            return sci::Fail(sci::ErrorCode::NotFound, "the input folder does not exist: " + inDir);
+        }
+        std::vector<SidecarFile> files;
+        // The names are compared as wide text: path::string() throws for a
+        // name with a character that the ANSI code page does not have.
+        std::error_code listError;
+        for (fs::directory_iterator it(inDir, listError), end; !listError && (it != end); it.increment(listError))
+        {
+            std::wstring extension = it->path().extension().wstring();
+            std::transform(extension.begin(), extension.end(), extension.begin(), [](wchar_t ch) { return (wchar_t)towlower(ch); });
+            if ((extension != L".toml") || !it->is_regular_file(ec))
+            {
+                continue;
+            }
+            SidecarFile file;
+            std::string name;
+            file.badName = !NarrowFileName(it->path(), name);
+            file.path = inDir + "\\" + name;
+            files.push_back(file);
+        }
+        if (listError)
+        {
+            return sci::Fail(sci::ErrorCode::Io, fmt::format("the input folder cannot be read: {0}: {1}", inDir, listError.message()));
+        }
+        if (files.empty())
+        {
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("the input folder has no .toml file of {0}: {1}", exportCommand, inDir));
+        }
+        std::sort(files.begin(), files.end(), [](const SidecarFile &a, const SidecarFile &b) { return a.path < b.path; });
+        return files;
+    }
+
+    sci::Status CheckImportPixels(const std::string &imagePath, const std::string &celText, const char *owner, uint8_t skipColor, int width, const std::vector<uint8_t> &oldPixels,
+        const std::vector<uint8_t> &newPixels, const std::array<bool, 256> &used, bool allowUnused, std::vector<std::string> &warnings)
+    {
+        size_t skipChanges = 0;
+        size_t firstSkipChange = 0;
+        size_t unusedPixels = 0;
+        std::array<bool, 256> unused = {};
+        for (size_t i = 0; i < newPixels.size(); i++)
+        {
+            const bool wasSkip = (oldPixels[i] == skipColor);
+            const bool isSkip = (newPixels[i] == skipColor);
+            if (wasSkip != isSkip)
+            {
+                if (skipChanges == 0)
+                {
+                    firstSkipChange = i;
+                }
+                skipChanges++;
+            }
+            else if (!isSkip && !used[newPixels[i]])
+            {
+                unused[newPixels[i]] = true;
+                unusedPixels++;
+            }
+        }
+        if (skipChanges > 0)
+        {
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}: {1} to or from the skip colour {2} of {3} (the first at {4},{5}); the pixels of the skip colour must stay where they are",
+                imagePath, (skipChanges == 1) ? std::string("1 pixel changes") : fmt::format("{0} pixels change", skipChanges), (int)skipColor, celText,
+                firstSkipChange % (size_t)width, firstSkipChange / (size_t)width));
+        }
+        if (unusedPixels > 0)
+        {
+            const std::string text = fmt::format("{0}: {1} of {2} {3} palette entries that the {4} and palette 999 do not mark as used: {5}",
+                imagePath, CountText(unusedPixels, "pixel"), celText, (unusedPixels == 1) ? "has" : "have", owner, IndexRunsText(IndexRunsOf(unused)));
+            if (!allowUnused)
+            {
+                return sci::Fail(sci::ErrorCode::Usage, text + " (--allow-unused-indices makes this a warning)");
+            }
+            warnings.push_back(text);
+        }
+        return sci::Ok();
+    }
+
     bool ParsePaletteRange(const std::string &text, int &first, int &last)
     {
         size_t dash = text.find('-');
@@ -846,38 +878,14 @@ namespace cli
         std::vector<Work> works;
         if (!options.inDir.empty())
         {
-            const std::string inDir = AbsolutePath(options.inDir);
-            std::error_code ec;
-            if (!fs::is_directory(inDir, ec))
+            SCI_TRY_ASSIGN(std::vector<SidecarFile> files, ListSidecarFiles(AbsolutePath(options.inDir), "scic pic export"));
+            for (const SidecarFile &file : files)
             {
-                return sci::Fail(sci::ErrorCode::NotFound, "the input folder does not exist: " + inDir);
-            }
-            // The names are compared as wide text: path::string() throws for
-            // a name with a character that the ANSI code page does not have.
-            std::error_code listError;
-            for (fs::directory_iterator it(inDir, listError), end; !listError && (it != end); it.increment(listError))
-            {
-                std::wstring extension = it->path().extension().wstring();
-                std::transform(extension.begin(), extension.end(), extension.begin(), [](wchar_t ch) { return (wchar_t)towlower(ch); });
-                if ((extension != L".toml") || !it->is_regular_file(ec))
-                {
-                    continue;
-                }
                 Work work;
-                std::string name;
-                work.badName = !NarrowFileName(it->path(), name);
-                work.sidecarPath = inDir + "\\" + name;
+                work.sidecarPath = file.path;
+                work.badName = file.badName;
                 works.push_back(work);
             }
-            if (listError)
-            {
-                return sci::Fail(sci::ErrorCode::Io, fmt::format("the input folder cannot be read: {0}: {1}", inDir, listError.message()));
-            }
-            if (works.empty())
-            {
-                return sci::Fail(sci::ErrorCode::Usage, "the input folder has no .toml file of scic pic export: " + inDir);
-            }
-            std::sort(works.begin(), works.end(), [](const Work &a, const Work &b) { return a.sidecarPath < b.sidecarPath; });
         }
         else
         {

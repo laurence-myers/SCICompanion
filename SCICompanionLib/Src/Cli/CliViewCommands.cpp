@@ -20,6 +20,7 @@
 #include "format.h"
 #include <algorithm>
 #include <filesystem>
+#include <set>
 
 namespace fs = std::filesystem;
 
@@ -340,33 +341,38 @@ namespace cli
                 result.writeFailed = !removed;
                 return removed;
             }
-            SCI_TRY(CheckResourceSize(version, (DWORD)edit.data.size(), ResourceType::View));
+            return WriteViewPatchFile(session, number, edit.data, path, dryRun, output, result.writeFailed);
+        }
+    }
 
-            // The write of a patch file shares nothing (ResourceBlob::SaveToFile).
-            sci::Status writable = CheckFileCanBeReplaced(path, 0);
-            if (!writable)
-            {
-                result.writeFailed = true;
-                return writable;
-            }
-            if (dryRun)
-            {
-                output.Message("Would write " + path);
-                return sci::Ok();
-            }
-            ResourceBlob blob(session.Helper(), nullptr, ResourceType::View, edit.data, version.DefaultVolumeFile, number, NoBase36, version, ResourceSourceFlags::PatchFile);
-            HRESULT hr = blob.SaveToFile(path);
-            if (FAILED(hr))
-            {
-                result.writeFailed = true;
-                // No file with a part of the view stays.
-                sci::Error error = sci::FromHResult(hr, "Writing " + path);
-                DeleteFileA(path.c_str());
-                return sci::Fail(error);
-            }
-            output.Detail("Wrote " + path);
+    sci::Status WriteViewPatchFile(GameSession &session, int number, const std::vector<uint8_t> &data, const std::string &path, bool dryRun, CliOutput &output, bool &writeFailed)
+    {
+        const SCIVersion &version = session.Version();
+        SCI_TRY(CheckResourceSize(version, (DWORD)data.size(), ResourceType::View));
+        // The write of a patch file shares nothing (ResourceBlob::SaveToFile).
+        sci::Status writable = CheckFileCanBeReplaced(path, 0);
+        if (!writable)
+        {
+            writeFailed = true;
+            return writable;
+        }
+        if (dryRun)
+        {
+            output.Message("Would write " + path);
             return sci::Ok();
         }
+        ResourceBlob blob(session.Helper(), nullptr, ResourceType::View, data, version.DefaultVolumeFile, number, NoBase36, version, ResourceSourceFlags::PatchFile);
+        HRESULT hr = blob.SaveToFile(path);
+        if (FAILED(hr))
+        {
+            writeFailed = true;
+            // No file with a part of the view stays.
+            sci::Error error = sci::FromHResult(hr, "Writing " + path);
+            DeleteFileA(path.c_str());
+            return sci::Fail(error);
+        }
+        output.Detail("Wrote " + path);
+        return sci::Ok();
     }
 
     const char *const ViewListTsvHeader =
@@ -649,6 +655,397 @@ namespace cli
         if (skipped > 0)
         {
             summary += fmt::format("; {0} no cel", (skipped == 1) ? "1 view has" : fmt::format("{0} views have", skipped));
+        }
+        if (failed > 0)
+        {
+            summary += fmt::format("; {0} failed", CountText(failed, "view"));
+        }
+        if (facts.cancelled)
+        {
+            summary += "; stopped by Ctrl+C";
+        }
+        output.Message(summary + ".");
+        return ExitCodeForFacts(facts);
+    }
+
+    sci::Result<std::vector<uint8_t>> MakeViewImportData(const SCIVersion &version, const std::vector<uint8_t> &data, const ViewDescription &description, const std::array<bool, 256> &usedEntries,
+        const std::vector<ViewImportImage> &images, const PicImportPalette &palette, bool allowUnusedEntries, std::vector<std::string> &warnings)
+    {
+        SCI_TRY_ASSIGN(std::vector<std::vector<uint8_t>> oldPixels, GetAllViewCelPixels(version, data));
+        std::vector<ViewCelPixels> cels;
+        // The first image: its colour table has the colours of the range.
+        const ViewImportImage *rangeColors = nullptr;
+        for (const ViewImportImage &image : images)
+        {
+            const std::string celText = fmt::format("cel {0} of loop {1}", image.cel, image.loop);
+            const ViewCelDescription *cel = description.Find(image.loop, image.cel);
+            if (cel == nullptr)
+            {
+                if ((image.loop >= 0) &&((size_t)image.loop < description.loops.size()) && (description.loops[image.loop].mirrorOf >= 0))
+                {
+                    const int mirrorOf = description.loops[image.loop].mirrorOf;
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}: loop {1} mirrors loop {2}, so it stores no cel; its cels are those of loop {2}", image.name, image.loop, mirrorOf));
+                }
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}: the view stores no {1}", image.name, celText));
+            }
+            if (std::any_of(cels.begin(), cels.end(), [&](const ViewCelPixels &other) { return (other.loop == image.loop) && (other.cel == image.cel); }))
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("two images are for {0}", celText));
+            }
+            if ((image.image.width != cel->width) || (image.image.height != cel->height))
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} has {1} x {2} pixels, and {3} has {4} x {5}", image.name, image.image.width, image.image.height, celText, cel->width, cel->height));
+            }
+            const size_t index = (size_t)(cel - description.cels.data());
+            SCI_TRY(CheckImportPixels(image.name, celText, "view", cel->skipColor, cel->width, oldPixels[index], image.image.pixels, usedEntries, allowUnusedEntries, warnings));
+            if (palette.replace)
+            {
+                if (image.image.colorCount <= palette.last)
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}: the colour table has {1} {2}, and the palette range is {3}-{4}", image.name, image.image.colorCount,
+                        (image.image.colorCount == 1) ? "entry" : "entries", palette.first, palette.last));
+                }
+                if (rangeColors == nullptr)
+                {
+                    rangeColors = &image;
+                }
+                else
+                {
+                    for (int entry = palette.first; entry <= palette.last; entry++)
+                    {
+                        if (image.image.colors[entry] != rangeColors->image.colors[entry])
+                        {
+                            return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} and {1} have another colour for entry {2}; the images of a view must have one palette", rangeColors->name, image.name, entry));
+                        }
+                    }
+                }
+            }
+            ViewCelPixels pixels;
+            pixels.loop = image.loop;
+            pixels.cel = image.cel;
+            pixels.pixels = image.image.pixels;
+            cels.push_back(std::move(pixels));
+        }
+
+        std::vector<uint8_t> newData = data;
+        if (rangeColors != nullptr)
+        {
+            if (!description.palette.present)
+            {
+                return sci::Fail(sci::ErrorCode::Unsupported, "the view has no palette, so no entry can get a new colour");
+            }
+            SCI_TRY_ASSIGN(ViewPaletteEdit edit, ReplaceViewPaletteColors(version, newData, palette.first, palette.last, rangeColors->image.colors));
+            std::array<bool, 256> notStored = {};
+            std::array<bool, 256> notUsed = {};
+            for (int entry = palette.first; entry <= palette.last; entry++)
+            {
+                notStored[entry] = !edit.entries[entry];
+                notUsed[entry] = edit.entries[entry] && !edit.usedBefore[entry];
+            }
+            if (!RunsText(notStored).empty())
+            {
+                warnings.push_back(fmt::format("its palette stores {0}, so the entries {1} of the range get no colour", StoredText(edit.before), RunsText(notStored)));
+            }
+            if (!RunsText(notUsed).empty())
+            {
+                warnings.push_back(fmt::format("its palette does not mark the entries {0} as used, so the game takes their colours from another palette", RunsText(notUsed)));
+            }
+            newData = std::move(edit.data);
+        }
+        return ReplaceViewCelPixels(version, newData, cels);
+    }
+
+    namespace
+    {
+        // The image of one cel of a view import, before it is read.
+        struct ViewImportCel
+        {
+            int loop = 0;
+            int cel = 0;
+            std::string imagePath;
+        };
+
+        // The images of an import for one view.
+        struct ViewImportJob
+        {
+            int number = 0;
+            std::vector<ViewImportCel> cels;
+            // The CRC-32 that the sidecar of the images has for the view.
+            bool hasCrc32 = false;
+            uint32_t crc32 = 0;
+            std::string sidecarPath;
+        };
+
+        // What the import of one view did.
+        struct ViewImportResult
+        {
+            size_t cels = 0;
+            // The view has no change, and gets no patch file.
+            bool unchanged = false;
+            // A patch file could not be written or removed.
+            bool writeFailed = false;
+        };
+
+        // The job of a sidecar file: the view, and the cels that have a file.
+        // The files are in the folder of the sidecar.
+        sci::Result<ViewImportJob> JobOfViewSidecar(const std::string &sidecarPath)
+        {
+            SCI_TRY_ASSIGN(ViewSidecar sidecar, ReadViewSidecarFile(sidecarPath));
+            sci::ErrorLocation where;
+            where.file = sidecarPath;
+            if (!sidecar.hasView)
+            {
+                return sci::Fail(sci::ErrorCode::Format, "the file has no view number ([source] view): it is not a file of scic view export", where);
+            }
+            ViewImportJob job;
+            job.number = sidecar.view;
+            job.hasCrc32 = sidecar.hasCrc32;
+            job.crc32 = sidecar.crc32;
+            job.sidecarPath = sidecarPath;
+            const std::string folder = fs::path(sidecarPath).parent_path().string();
+            for (const ViewSidecarCel &cel : sidecar.cels)
+            {
+                if (!cel.file.empty())
+                {
+                    ViewImportCel importCel;
+                    importCel.loop = cel.loop;
+                    importCel.cel = cel.cel;
+                    importCel.imagePath = folder + "\\" + cel.file;
+                    job.cels.push_back(importCel);
+                }
+            }
+            if (job.cels.empty())
+            {
+                return sci::Fail(sci::ErrorCode::Usage, "the file names no image file of a cel", where);
+            }
+            return job;
+        }
+
+        // The new bytes of the view, or the same bytes for a view with no
+        // change. Format for a view that a reader repaired while its resource
+        // was read (DescribeView gives Format for a repair of the reader of
+        // the view).
+        sci::Result<std::vector<uint8_t>> MakeImportedView(GameSession &session, const ViewImportJob &job, const PicImportPalette &palette, bool allowUnused, CliOutput &output, bool &unchanged)
+        {
+            const std::string viewText = ViewText(job.number);
+            RepairLogSink repairs;
+            sci::Result<ViewSource> read = [&]()
+            {
+                ScopedCoreLogSink scopedSink(repairs);
+                return ReadViewSource(session, job.number);
+            }();
+            const std::string repaired = repairs.Text();
+            if (!repaired.empty())
+            {
+                return sci::Fail(sci::ErrorCode::Format, "the reader repaired damaged data: " + repaired);
+            }
+            SCI_TRY_ASSIGN(ViewSource source, std::move(read));
+            const SCIVersion &version = session.Version();
+            SCI_TRY_ASSIGN(ViewDescription description, DescribeView(version, source.data));
+            const uint32_t crc32 = Crc32Of(source.data);
+            if (job.hasCrc32 && (job.crc32 != crc32))
+            {
+                output.Warning(fmt::format("{0}: {1} has the CRC-32 {2:08x}, and the view in the game has {3:08x}: the images are of another copy of the view", viewText, job.sidecarPath, job.crc32, crc32));
+            }
+
+            // The entries that the game has a colour for: those that the
+            // view or palette 999 marks as used (the palette of export).
+            SCI_TRY_ASSIGN(std::unique_ptr<ResourceEntity> entity, TryCreateResourceFromResourceData(*source.blob));
+            std::unique_ptr<PaletteComponent> merged = session.ResourceMap().GetMergedPalette(*entity, 999);
+            if (!merged)
+            {
+                return sci::Fail(sci::ErrorCode::Internal, "the palette of the view could not be made");
+            }
+
+            // Each image is read, and then all are checked, before the view
+            // changes.
+            std::vector<ViewImportImage> images;
+            for (const ViewImportCel &importCel : job.cels)
+            {
+                ViewImportImage image;
+                image.loop = importCel.loop;
+                image.cel = importCel.cel;
+                image.name = importCel.imagePath;
+                SCI_TRY_ASSIGN(image.image, ReadIndexedBmpFile(importCel.imagePath));
+                images.push_back(std::move(image));
+            }
+            std::vector<std::string> warnings;
+            sci::Result<std::vector<uint8_t>> made = MakeViewImportData(version, source.data, description, UsedPaletteEntries(*merged), images, palette, allowUnused, warnings);
+            for (const std::string &warning : warnings)
+            {
+                output.Warning(viewText + ": " + warning);
+            }
+            SCI_TRY_ASSIGN(std::vector<uint8_t> data, std::move(made));
+            unchanged = (data == source.data);
+            return data;
+        }
+
+        sci::Status ImportView(GameSession &session, const ViewImportJob &job, const PicImportPalette &palette, bool allowUnused, const std::string &outDir, bool dryRun, CliOutput &output, ViewImportResult &result)
+        {
+            const std::string viewText = ViewText(job.number);
+            const std::string path = outDir + "\\" + GetFileNameFor(ResourceType::View, job.number, NoBase36, session.Version());
+            bool unchanged = false;
+            // The exception boundary of the view: a view that fails loses its
+            // old patch file also after an exception.
+            sci::Result<std::vector<uint8_t>> made = sci::Guard("importing " + viewText, [&]() -> sci::Result<std::vector<uint8_t>>
+            {
+                return MakeImportedView(session, job, palette, allowUnused, output, unchanged);
+            });
+            if (!made)
+            {
+                sci::Status removed = RemoveOldPatchFile(path, viewText, "failed", dryRun, output);
+                if (!removed)
+                {
+                    result.writeFailed = true;
+                    output.Error(viewText + ": " + removed.error().ToString());
+                }
+                return sci::Fail(made.error());
+            }
+            result.cels = job.cels.size();
+            if (unchanged)
+            {
+                result.unchanged = true;
+                output.Warning(fmt::format("{0}: the images have the pixels of the view: the view does not change, and gets no patch file", viewText));
+                sci::Status removed = RemoveOldPatchFile(path, viewText, "has no change", dryRun, output);
+                result.writeFailed = !removed;
+                return removed;
+            }
+            return WriteViewPatchFile(session, job.number, *made, path, dryRun, output, result.writeFailed);
+        }
+    }
+
+    sci::Result<ExitCode> RunViewImport(GameSession &session, const ViewImportOptions &options, const CommonOptions &common, CliOutput &output)
+    {
+        const std::string outDir = AbsolutePath(options.outDir);
+        SCI_TRY(CheckOutputFolder(session, outDir));
+        PicImportPalette palette;
+        palette.replace = (options.palette == "replace");
+        if (palette.replace && !ParsePaletteRange(options.paletteRange, palette.first, palette.last))
+        {
+            return sci::Fail(sci::ErrorCode::Usage, "--palette replace needs --palette-range first-last, two entries of 0 to 255 (for example 80-235)");
+        }
+
+        // A job, or the sidecar file that gives it (read in the exception
+        // boundary of its view).
+        struct Work
+        {
+            ViewImportJob job;
+            std::string sidecarPath;
+            bool badName = false;
+        };
+        std::vector<Work> works;
+        if (!options.inDir.empty())
+        {
+            SCI_TRY_ASSIGN(std::vector<SidecarFile> files, ListSidecarFiles(AbsolutePath(options.inDir), "scic view export"));
+            for (const SidecarFile &file : files)
+            {
+                Work work;
+                work.sidecarPath = file.path;
+                work.badName = file.badName;
+                works.push_back(work);
+            }
+        }
+        else
+        {
+            Work work;
+            if (!ParseNumber(options.view, work.job.number))
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("\"{0}\" is not a view number", options.view));
+            }
+            const std::vector<int> views = ResourceNumbersOf(session, ResourceType::View);
+            if (std::find(views.begin(), views.end(), work.job.number) == views.end())
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("the game has no view {0}", work.job.number));
+            }
+            ViewImportCel cel;
+            cel.loop = options.loop;
+            cel.cel = options.cel;
+            cel.imagePath = AbsolutePath(options.image);
+            work.job.cels.push_back(cel);
+            works.push_back(work);
+        }
+        // The resource map reads palette 999 one time, here: a warning of its
+        // reader goes to the output once, and is not a repair of a view.
+        sci::Status palette999 = sci::Guard("reading palette 999", [&]() -> sci::Status
+        {
+            session.ResourceMap().GetPalette999();
+            return sci::Ok();
+        });
+        if (!palette999)
+        {
+            output.Warning(palette999.error().ToString());
+        }
+
+        ReportFacts facts;
+        size_t imported = 0;
+        size_t cels = 0;
+        size_t unchanged = 0;
+        size_t failed = 0;
+        std::set<int> done;
+        for (Work &work : works)
+        {
+            if (CancelFlag().load())
+            {
+                facts.cancelled = true;
+                break;
+            }
+            // The name of the work in a message: the sidecar file until its
+            // view is known.
+            std::string name = work.sidecarPath.empty() ? ViewText(work.job.number) : work.sidecarPath;
+            SetCurrentItem("importing " + name);
+            ViewImportResult result;
+            // The exception boundary of the view.
+            sci::Status status = sci::Guard("importing " + name, [&]() -> sci::Status
+            {
+                if (work.badName)
+                {
+                    return sci::Fail(sci::ErrorCode::Unsupported, "the name of the file has a character that the ANSI code page of Windows does not have, so scic cannot open the file");
+                }
+                if (!work.sidecarPath.empty())
+                {
+                    SCI_TRY_ASSIGN(work.job, JobOfViewSidecar(work.sidecarPath));
+                    name = ViewText(work.job.number);
+                    SetCurrentItem("importing " + name);
+                }
+                if (!done.insert(work.job.number).second)
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("the view is in two .toml files of the input folder; the second is {0}", work.sidecarPath));
+                }
+                return ImportView(session, work.job, palette, options.allowUnusedIndices, outDir, common.dryRun, output, result);
+            });
+            if (!status)
+            {
+                failed++;
+                // An error of a sidecar file whose view is not known has the
+                // file as its location, so the line needs no name before it.
+                const bool hasItsFile = (name == work.sidecarPath) && !status.error().where.file.empty();
+                output.Error(hasItsFile ? status.error().ToString() : (name + ": " + status.error().ToString()));
+                if (status.error().code == sci::ErrorCode::Internal)
+                {
+                    facts.internal = true;
+                }
+                else if (!result.writeFailed)
+                {
+                    facts.otherFailures = true;
+                }
+            }
+            else if (result.unchanged)
+            {
+                unchanged++;
+            }
+            else
+            {
+                imported++;
+                cels += result.cels;
+            }
+            facts.writeFailed = facts.writeFailed || result.writeFailed;
+        }
+        SetCurrentItem("");
+
+        std::string summary = fmt::format("{0} {1} of {2} ({3}) into {4}", common.dryRun ? "A run would import" : "Imported", imported, CountText(works.size(), "view"), CountText(cels, "cel"), outDir);
+        if (unchanged > 0)
+        {
+            summary += fmt::format("; {0} with no change", CountText(unchanged, "view"));
         }
         if (failed > 0)
         {

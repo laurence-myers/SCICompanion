@@ -107,6 +107,33 @@ namespace cli
         int last = 0;
     };
 
+    // A .toml file of an input folder of import.
+    struct SidecarFile
+    {
+        // The path in the ANSI code page.
+        std::string path;
+        // The name of the file has a character that the ANSI code page does
+        // not have, so scic cannot open the file; path has '?' for such a
+        // character.
+        bool badName = false;
+    };
+
+    // The .toml files of the folder (the extension in any case), in the
+    // order of their paths. NotFound when the folder does not exist; Io when
+    // it cannot be read; Usage when it has no .toml file (the message names
+    // exportCommand, the command that writes such files).
+    sci::Result<std::vector<SidecarFile>> ListSidecarFiles(const std::string &inDir, const char *exportCommand);
+
+    // Checks the new pixels of a cel against its pixels in the game (both
+    // with width pixels in a row): a pixel has the skip colour where the cel
+    // has it and nowhere else, and each other pixel is an entry of "used".
+    // celText names the cel in a message ("cel 3", "cel 2 of loop 1"), and
+    // owner its resource ("pic", "view"). Usage for a pixel that fails a
+    // check; with allowUnused, an entry that is not used is a warning (a
+    // text in warnings) and not an error.
+    sci::Status CheckImportPixels(const std::string &imagePath, const std::string &celText, const char *owner, uint8_t skipColor, int width, const std::vector<uint8_t> &oldPixels,
+        const std::vector<uint8_t> &newPixels, const std::array<bool, 256> &used, bool allowUnused, std::vector<std::string> &warnings);
+
     // The bytes of a pic with the pixels of the images in its cels, and with
     // the colours of the palette range when the palette says "replace". Each
     // image is checked before the pic changes:

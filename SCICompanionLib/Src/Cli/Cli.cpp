@@ -170,9 +170,10 @@ namespace cli
         PicImportOptions picImportOptions;
         ViewListOptions viewListOptions;
         ViewExportOptions viewExportOptions;
+        ViewImportOptions viewImportOptions;
         ViewPaletteOptions viewPaletteOptions;
 
-        CLI::App app("scic: the command line of SCI Companion. Commands: script list, script decompile, script sco, script compile, pic list, pic export, pic import, view list, view export, view palette. \"scic help <group> <command>\" shows a command.", "scic");
+        CLI::App app("scic: the command line of SCI Companion. Commands: script list, script decompile, script sco, script compile, pic list, pic export, pic import, view list, view export, view import, view palette. \"scic help <group> <command>\" shows a command.", "scic");
         // "/games/sq3" is a path, not an option.
         app.allow_windows_style_options(false);
         // One command: the words after it are its own (for example the topic of
@@ -284,7 +285,7 @@ namespace cli
         picImport->add_flag("--allow-unused-indices", picImportOptions.allowUnusedIndices, "A pixel with a palette entry that the pic and palette 999 do not mark as used is a warning, not an error.");
         CLI::Option *importOutDirOption = picImport->add_option("--out-dir", picImportOptions.outDir, "The folder for the patch files. It must exist, and it must not be the game folder or a folder inside it.")->required();
 
-        CLI::App *view = app.add_subcommand("view", "The view commands: list, export, palette.");
+        CLI::App *view = app.add_subcommand("view", "The view commands: list, export, import, palette.");
         view->fallthrough();
         view->require_subcommand(0, 1);
         view->footer(CommonFooter);
@@ -303,6 +304,21 @@ namespace cli
         viewExport->add_option("--view", viewExportOptions.views, "View numbers or ranges (100-199). Or give --all.");
         viewExport->add_flag("--all", viewExportOptions.all, "Every view of the game.");
         CLI::Option *viewExportOutDirOption = viewExport->add_option("--out-dir", viewExportOptions.outDir, "The folder for the files. It must exist, and it must not be the game folder or a folder inside it.")->required();
+
+        CLI::App *viewImport = view->add_subcommand("import", "Put the pixels of 8-bit BMP files into cels of views of SCI1.1 and SCI2, and write each view as a patch file into a folder. The view changes in place. The game does not change.");
+        viewImport->fallthrough();
+        viewImport->footer(CommonFooter);
+        viewImport->add_option("game-folder", viewImportOptions.gameFolder, "The game folder.")->required();
+        CLI::Option *importViewOption = viewImport->add_option("--view", viewImportOptions.view, "The number of the view of --image.");
+        CLI::Option *importLoopOption = viewImport->add_option("--loop", viewImportOptions.loop, "The loop of --image (default 0).")->check(CLI::Range(0, 255));
+        CLI::Option *importViewCelOption = viewImport->add_option("--cel", viewImportOptions.cel, "The cel of --image (default 0).")->check(CLI::Range(0, 255));
+        CLI::Option *importViewImageOption = viewImport->add_option("--image", viewImportOptions.image, "An 8-bit BMP file, not compressed, with the size of the cel.");
+        CLI::Option *importViewInDirOption = viewImport->add_option("--in-dir", viewImportOptions.inDir, "A folder with the files of scic view export: each .toml file gives a view and the BMP files of its cels.");
+        viewImport->add_option("--palette", viewImportOptions.palette, "keep (default): the palette of the view does not change; replace: the entries of --palette-range that the palette of the view stores get the colours of the colour table of the images.")
+            ->check(CLI::IsMember({ "keep", "replace" }));
+        CLI::Option *importViewRangeOption = viewImport->add_option("--palette-range", viewImportOptions.paletteRange, "With --palette replace: the palette entries that get new colours, as first-last (for example 80-235).");
+        viewImport->add_flag("--allow-unused-indices", viewImportOptions.allowUnusedIndices, "A pixel with a palette entry that the view and palette 999 do not mark as used is a warning, not an error.");
+        CLI::Option *importViewOutDirOption = viewImport->add_option("--out-dir", viewImportOptions.outDir, "The folder for the patch files. It must exist, and it must not be the game folder or a folder inside it.")->required();
 
         CLI::App *viewPalette = view->add_subcommand("palette", "Change the palette of views of SCI1.1 and SCI2 in place: new colours for a range of entries, or no \"used\" mark for them. Each view is written as a patch file into a folder. The game does not change.");
         viewPalette->fallthrough();
@@ -480,6 +496,46 @@ namespace cli
                     return viewExportOptions.all ? "give --all or --view, not both" : "give --all, or --view with one or more views";
                 }
             }
+            if (viewImport->parsed())
+            {
+                // Plan section 4.12: one image (--view and --image, with
+                // --loop and --cel or not) or a folder (--in-dir), not both
+                // and not neither.
+                const bool oneImage = (importViewOption->count() > 0) || (importViewImageOption->count() > 0) || (importLoopOption->count() > 0) || (importViewCelOption->count() > 0);
+                const bool folder = (importViewInDirOption->count() > 0);
+                if ((importViewOutDirOption->count() > 0) && viewImportOptions.outDir.empty())
+                {
+                    return "--out-dir needs a folder";
+                }
+                if (folder && viewImportOptions.inDir.empty())
+                {
+                    return "--in-dir needs a folder";
+                }
+                if (oneImage == folder)
+                {
+                    return folder ? "give --in-dir, or --view with --image, not both" : "give --in-dir, or --view with --image";
+                }
+                if (oneImage && (viewImportOptions.view.empty() || viewImportOptions.image.empty()))
+                {
+                    return "an image needs --view and --image";
+                }
+                const bool replace = (viewImportOptions.palette == "replace");
+                const bool range = (importViewRangeOption->count() > 0);
+                if (range && !replace)
+                {
+                    return "--palette-range needs --palette replace";
+                }
+                if (replace && !range)
+                {
+                    return "--palette replace needs --palette-range";
+                }
+                int first = 0;
+                int last = 0;
+                if (range && !ParsePaletteRange(viewImportOptions.paletteRange, first, last))
+                {
+                    return "--palette-range is first-last, two palette entries of 0 to 255 (for example 80-235)";
+                }
+            }
             if (viewPalette->parsed())
             {
                 // Plan section 4.9: one action, new colours or no mark.
@@ -628,7 +684,7 @@ namespace cli
             logged.Help(HelpOf(pic, "scic pic"));
             return (int)ExitCode::Success;
         }
-        if (view->parsed() && !viewList->parsed() && !viewExport->parsed() && !viewPalette->parsed())
+        if (view->parsed() && !viewList->parsed() && !viewExport->parsed() && !viewImport->parsed() && !viewPalette->parsed())
         {
             // "scic view" lists the view commands.
             logged.Help(HelpOf(view, "scic view"));
@@ -696,7 +752,8 @@ namespace cli
             (sco->parsed() ? scoOptions.gameFolder : (compile->parsed() ? compileOptions.gameFolder :
             (picList->parsed() ? picListOptions.gameFolder : (picExport->parsed() ? picExportOptions.gameFolder :
             (picImport->parsed() ? picImportOptions.gameFolder : (viewList->parsed() ? viewListOptions.gameFolder :
-            (viewExport->parsed() ? viewExportOptions.gameFolder : (viewPalette->parsed() ? viewPaletteOptions.gameFolder : listOptions.gameFolder))))))));
+            (viewExport->parsed() ? viewExportOptions.gameFolder : (viewImport->parsed() ? viewImportOptions.gameFolder :
+            (viewPalette->parsed() ? viewPaletteOptions.gameFolder : listOptions.gameFolder)))))))));
         sci::Status opened = session.Open(AbsolutePath(gameFolder));
         if (!opened)
         {
@@ -740,6 +797,10 @@ namespace cli
             if (viewExport->parsed())
             {
                 return RunViewExport(session, viewExportOptions, common, logged);
+            }
+            if (viewImport->parsed())
+            {
+                return RunViewImport(session, viewImportOptions, common, logged);
             }
             if (viewPalette->parsed())
             {
