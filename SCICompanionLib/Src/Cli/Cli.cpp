@@ -173,8 +173,9 @@ namespace cli
         ViewImportOptions viewImportOptions;
         ViewPaletteOptions viewPaletteOptions;
         ViewAddOptions viewAddOptions;
+        ViewRemoveOptions viewRemoveOptions;
 
-        CLI::App app("scic: the command line of SCI Companion. Commands: script list, script decompile, script sco, script compile, pic list, pic export, pic import, view list, view export, view import, view add, view palette. \"scic help <group> <command>\" shows a command.", "scic");
+        CLI::App app("scic: the command line of SCI Companion. Commands: script list, script decompile, script sco, script compile, pic list, pic export, pic import, view list, view export, view import, view add, view remove, view palette. \"scic help <group> <command>\" shows a command.", "scic");
         // "/games/sq3" is a path, not an option.
         app.allow_windows_style_options(false);
         // One command: the words after it are its own (for example the topic of
@@ -286,7 +287,7 @@ namespace cli
         picImport->add_flag("--allow-unused-indices", picImportOptions.allowUnusedIndices, "A pixel with a palette entry that the pic and palette 999 do not mark as used is a warning, not an error.");
         CLI::Option *importOutDirOption = picImport->add_option("--out-dir", picImportOptions.outDir, "The folder for the patch files. It must exist, and it must not be the game folder or a folder inside it.")->required();
 
-        CLI::App *view = app.add_subcommand("view", "The view commands: list, export, import, add, palette.");
+        CLI::App *view = app.add_subcommand("view", "The view commands: list, export, import, add, remove, palette.");
         view->fallthrough();
         view->require_subcommand(0, 1);
         view->footer(CommonFooter);
@@ -330,6 +331,14 @@ namespace cli
         viewAdd->add_flag("--replace", viewAddOptions.replace, "The game can have the view: the patch file then takes its place when it goes into the game.");
         viewAdd->add_flag("--allow-unused-indices", viewAddOptions.allowUnusedIndices, "A pixel with a palette entry that the new palette and palette 999 do not mark as used is a warning, not an error.");
         CLI::Option *addOutDirOption = viewAdd->add_option("--out-dir", viewAddOptions.outDir, "The folder for the patch file. It must exist, and it must not be the game folder or a folder inside it.")->required();
+
+        CLI::App *viewRemove = view->add_subcommand("remove", "Remove views from the game: each copy (the patch file, and the entries in the package: the map and the volume are written again), or only the patch file. It changes the game. A script that uses a removed view fails in the game.");
+        viewRemove->fallthrough();
+        viewRemove->footer(CommonFooter);
+        viewRemove->add_option("game-folder", viewRemoveOptions.gameFolder, "The game folder.")->required();
+        viewRemove->add_option("--view", viewRemoveOptions.views, "View numbers or ranges (100-199).")->required();
+        viewRemove->add_option("--from", viewRemoveOptions.from, "all (default): each copy of the view; patch: only its patch file, so that the game uses the copy in the package.")
+            ->check(CLI::IsMember({ "all", "patch" }));
 
         CLI::App *viewPalette = view->add_subcommand("palette", "Change the palette of views of SCI1.1 and SCI2 in place: new colours for a range of entries, or no \"used\" mark for them. Each view is written as a patch file into a folder. The game does not change.");
         viewPalette->fallthrough();
@@ -706,7 +715,7 @@ namespace cli
             logged.Help(HelpOf(pic, "scic pic"));
             return (int)ExitCode::Success;
         }
-        if (view->parsed() && !viewList->parsed() && !viewExport->parsed() && !viewImport->parsed() && !viewAdd->parsed() && !viewPalette->parsed())
+        if (view->parsed() && !viewList->parsed() && !viewExport->parsed() && !viewImport->parsed() && !viewAdd->parsed() && !viewRemove->parsed() && !viewPalette->parsed())
         {
             // "scic view" lists the view commands.
             logged.Help(HelpOf(view, "scic view"));
@@ -775,7 +784,7 @@ namespace cli
             (picList->parsed() ? picListOptions.gameFolder : (picExport->parsed() ? picExportOptions.gameFolder :
             (picImport->parsed() ? picImportOptions.gameFolder : (viewList->parsed() ? viewListOptions.gameFolder :
             (viewExport->parsed() ? viewExportOptions.gameFolder : (viewImport->parsed() ? viewImportOptions.gameFolder :
-            (viewPalette->parsed() ? viewPaletteOptions.gameFolder : (viewAdd->parsed() ? viewAddOptions.gameFolder : listOptions.gameFolder))))))))));
+            (viewPalette->parsed() ? viewPaletteOptions.gameFolder : (viewAdd->parsed() ? viewAddOptions.gameFolder : (viewRemove->parsed() ? viewRemoveOptions.gameFolder : listOptions.gameFolder)))))))))));
         sci::Status opened = session.Open(AbsolutePath(gameFolder));
         if (!opened)
         {
@@ -831,6 +840,10 @@ namespace cli
             if (viewAdd->parsed())
             {
                 return RunViewAdd(session, viewAddOptions, common, logged);
+            }
+            if (viewRemove->parsed())
+            {
+                return RunViewRemove(session, viewRemoveOptions, common, logged);
             }
             return RunScriptList(session, listOptions, logged);
         });

@@ -103,6 +103,11 @@ public:
 	void NotifyToReloadResourceType(ResourceType iType);
 	void NotifyToRegenerateImages();
 
+	// Removes the resource of the blob from its source (::RemoveResource), and
+	// tells the syncs. No UI. Unsupported for palette 999 (the global
+	// palette); else the errors of ::RemoveResource.
+	sci::Status RemoveResource(const ResourceBlob &resource);
+	// The GUI form of RemoveResource: it shows the error.
 	void DeleteResource(const ResourceBlob *pResource);
 
 	// Opens the game in the folder (an empty folder closes it). The GUI form:

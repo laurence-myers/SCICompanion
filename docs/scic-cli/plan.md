@@ -616,13 +616,14 @@ scic view list        <game-folder> [--view <view> ...] [options]
 scic view export      <game-folder> (--view <view> ... | --all) --out-dir <folder> [options]
 scic view import      <game-folder> (--view <view> [--loop <loop>] [--cel <cel>] --image <file> | --in-dir <folder>) --out-dir <folder> [options]
 scic view add         <game-folder> --view <view> --from <file.toml> --out-dir <folder> [options]
+scic view remove      <game-folder> --view <view> ... [--from all|patch] [options]
 scic view palette     <game-folder> --view <view> ... (--colors-from <file> | --clear-used) --palette-range <first>-<last> --out-dir <folder> [options]
 scic help [group [command]]
 scic --version
 ```
 
 - `script` is the first command group, `pic` (section 4.7) the second, and
-  `view` (sections 4.9 to 4.13) the third. Later groups use the same pattern
+  `view` (sections 4.9 to 4.14) the third. Later groups use the same pattern
   (section 13): for example `scic resource extract`, `scic package rebuild`.
 - `scic script` with no command, and `scic help script`, list the script
   commands. `scic pic` and `scic help pic` list the pic commands, and
@@ -1578,6 +1579,46 @@ Rules:
   run would write (`Would write ...`).
 - The summary: `Added view 9000 (3 loops, 12 cels) as <file>.`
 
+### 4.14 `scic view remove`
+
+```
+scic view remove C:\Games\LSL6 --view 9000
+scic view remove C:\Games\LSL6 --view 600 610-615 --from patch --dry-run
+```
+
+Purpose: take views out of the game, so that the game has no such view
+(for example the views of a clean-up that go into the pic). It is the one
+view command that changes the game. It takes the views of each game
+version: it does not read the view data.
+
+- `--from all` (the default): each copy of the view, the patch file first,
+  then each entry in the resource package (the map and the volume are
+  written again, as the delete of the GUI does). `--from patch`: only the
+  patch file; the game then uses the copy in the package, and a message
+  says so.
+- The removal is `CResourceMap::RemoveResource` (`Src\Resources\ResourceMap.h`)
+  and `RemoveResource` (`ResourceMapOperations.h`): the `Result` form of
+  the delete of the GUI, with no UI. The GUI form (`DeleteResource`) shows
+  its error.
+- No check of the scripts: a script that uses a removed view fails in the
+  game. The help says so.
+
+Rules:
+
+- The selectors (numbers and ranges) must name views of the game (a copy
+  in the package that a patch file hides counts), and with `--from patch`
+  each view must have a patch file, before the first removal: else exit 2,
+  and nothing changes.
+- Each view runs in its own exception boundary. A removal from the package
+  moves the other entries, so the copies of a view are read again after
+  each removal. A copy that cannot be removed is an error line, the next
+  view goes on, and the exit code is 9.
+- `--dry-run` removes nothing, and lists what a run would remove (`Would
+  remove the patch file ...`, `Would remove the entry of view 600 in
+  package 0`).
+- Ctrl+C stops the run before the next view (exit 7).
+- The summary: `Removed 2 of 2 views (1 patch file, 2 package entries).`
+
 ## 5. Where compiled output goes
 
 Two terms:
@@ -1944,7 +1985,7 @@ section 5.3, which section 5.22 uses), plus code 9.
 | 6 | Partial failure: some scripts failed for a reason that is not a compile error, or the decompiler reported an error in a script that it wrote, or a pic of a pic command failed, or a view of a view command failed (also a view that `view list` cannot read) |
 | 7 | Cancelled |
 | 8 | Write refused (`WriteRefused`): for example, a patch file would hide a package write, or a script of the commit used the new `.sco` of a script that the commit does not write (section 4.5) |
-| 9 | Write failed: the commit, the tables, a move, `game.ini`, main's `.sco`, or the return of a `.sco` to its state before the compile failed (any code but `Internal`, `WriteRefused` and `Cancelled`), or a file write of a script failed (`Io`; a `.scd` that cannot be written is a warning), or a file of `pic export` or of `view export`, a patch file of `pic import`, `view import`, `view add` or `view palette`, or the table of a `dev` command could not be written, or a patch file of an earlier run of `view import`, `view add` or `view palette` could not be removed |
+| 9 | Write failed: the commit, the tables, a move, `game.ini`, main's `.sco`, or the return of a `.sco` to its state before the compile failed (any code but `Internal`, `WriteRefused` and `Cancelled`), or a file write of a script failed (`Io`; a `.scd` that cannot be written is a warning), or a file of `pic export` or of `view export`, a patch file of `pic import`, `view import`, `view add` or `view palette`, or the table of a `dev` command could not be written, or a patch file of an earlier run of `view import`, `view add` or `view palette` could not be removed, or a copy of a view of `view remove` could not be removed |
 
 The mapping is one function in `Src\Cli\`, with a unit test for each case:
 

@@ -406,10 +406,12 @@ public:
 			}
 		}
 
-		assert(found);
-
 		// If we didn't find the resource to remove, there might have been a problem with the enumeration. Don't write
 		// the possibly corrupt resource map/package..
+		if (!found)
+		{
+			throw sci::DataError("the map has no entry of the resource to remove, so the map and the volume do not change", sci::ErrorCode::Internal);
+		}
 		if (found)
 		{
 			// Combine the two write streams. Or rather, append stream 2 to the end of stream 1.

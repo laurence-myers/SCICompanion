@@ -88,10 +88,29 @@ std::unique_ptr<ResourceSource> CreateResourceSource(ResourceTypeFlags flagsHint
 	return std::unique_ptr<ResourceSource>(nullptr);
 }
 
+// The body of RemoveResource; an exception can escape it.
+static sci::Status RemoveResourceOrThrow(CResourceMap &resourceMap, const ResourceBlob &data);
+
 void DeleteResource(CResourceMap &resourceMap, const ResourceBlob &data)
 {
-	const GameFolderHelper &helper = resourceMap.Helper();
+	sci::Status removed = RemoveResource(resourceMap, data);
+	if (!removed)
+	{
+		SafeMessageBox((removed.error().code == sci::ErrorCode::NotFound) ? std::string("Resource not found.") : removed.error().ToString(), MB_ERRORFLAGS);
+	}
+}
 
+sci::Status RemoveResource(CResourceMap &resourceMap, const ResourceBlob &data)
+{
+	// The exception boundary of the removal.
+	return sci::Guard("removing a resource", [&]() -> sci::Status
+	{
+		return RemoveResourceOrThrow(resourceMap, data);
+	});
+}
+
+static sci::Status RemoveResourceOrThrow(CResourceMap &resourceMap, const ResourceBlob &data)
+{
 	ResourceTypeFlags typeFlags = ResourceTypeToFlag(data.GetType());
 	IteratorState iteratorState;
 
@@ -112,7 +131,10 @@ void DeleteResource(CResourceMap &resourceMap, const ResourceBlob &data)
 
 	// This is the thing that changes based on version and messagemap or blah.
 	std::unique_ptr<ResourceSource> resourceSource = CreateResourceSource(ResourceTypeToFlag(data.GetType()), resourceMap.Helper(), sourcFlags, ResourceSourceAccessFlags::ReadWrite, -1, &resourceMap);
-	if (resourceSource)
+	if (!resourceSource)
+	{
+		return sci::Fail(sci::ErrorCode::Unsupported, "the source of the resource cannot remove it");
+	}
 	{
 		ResourceMapEntryAgnostic mapEntry;
 		std::unique_ptr<ResourceMapEntryAgnostic> mapEntryToRemove;
@@ -177,18 +199,16 @@ void DeleteResource(CResourceMap &resourceMap, const ResourceBlob &data)
 		// Do the actual remove
 		if (!mapEntryToRemove)
 		{
-			SafeMessageBox("Resource not found.", MB_ERRORFLAGS);
+			return sci::Fail(sci::ErrorCode::NotFound, "the source of the resource has no entry with its number and its bytes");
 		}
-		else
-		{
-			resourceSource->RemoveEntry(*mapEntryToRemove);
-		}
+		resourceSource->RemoveEntry(*mapEntryToRemove);
 
-		if (mapEntryToRemove && isLastOne && (data.GetType() == ResourceType::Script) && resourceMap.GetAppServices())
+		if (isLastOne && (data.GetType() == ResourceType::Script) && resourceMap.GetAppServices())
 		{
 			// The GUI asks whether to remove the script from game.ini, and its
 			// source file too.
 			resourceMap.GetAppServices()->OnLastScriptDeleted(resourceMap, data);
 		}
 	}
+	return sci::Ok();
 }

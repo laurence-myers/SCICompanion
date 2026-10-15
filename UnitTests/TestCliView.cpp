@@ -2495,6 +2495,142 @@ namespace UnitTests
             Assert::IsTrue(FileNamesOf(_patches).empty());
         }
 
+        // The bytes of the copy of a view that the game uses; empty when the
+        // game has no such view.
+        std::vector<uint8_t> ViewBytesOfGame(int number)
+        {
+            GameSession &session = _game.Open();
+            std::unique_ptr<ResourceBlob> blob = session.ResourceMap().MostRecentResource(ResourceType::View, number, false);
+            std::vector<uint8_t> data;
+            if (blob)
+            {
+                data.assign(blob->GetData(), blob->GetData() + blob->GetLength());
+            }
+            _game.CloseSessions();
+            return data;
+        }
+
+        // Each copy goes: the patch file and the entry in the package. The
+        // other views keep their bytes.
+        TEST_METHOD(Remove_EachCopy)
+        {
+            const std::vector<uint8_t> other = ViewBytesOfGame(900);
+            Assert::IsFalse(ViewBytesOfGame(0).empty(), L"setup: view 0 of the template is in the package");
+            PutViewIntoGame(0, MakeViewBytes(sciVersion1_1));
+
+            cli::StringConsole console = Expect(0, { "view", "remove", _gameFolder, "--view", "0" });
+
+            Assert::IsTrue(Has(console.err, "Removed 1 of 1 view (1 patch file, 1 package entry)."), Wide(console.err).c_str());
+            Assert::IsFalse(fs::exists(_gameFolder + "\\0.v56"));
+            Assert::IsTrue(ViewBytesOfGame(0).empty(), L"the game has no view 0");
+            Assert::IsTrue(other == ViewBytesOfGame(900), L"view 900 keeps its bytes");
+            cli::StringConsole gone = Expect(2, { "view", "remove", _gameFolder, "--view", "0" });
+            Assert::IsTrue(Has(gone.err, "the game has no view 0"), Wide(gone.err).c_str());
+            Expect(0, { "view", "list", _gameFolder, "--view", "900" });
+        }
+
+        TEST_METHOD(Remove_FromPatch_KeepsThePackageCopy)
+        {
+            const std::vector<uint8_t> package = ViewBytesOfGame(0);
+            PutViewIntoGame(0, MakeViewBytes(sciVersion1_1));
+            Assert::IsFalse(package == ViewBytesOfGame(0), L"setup: the patch file hides the package copy");
+
+            cli::StringConsole console = Expect(0, { "view", "remove", _gameFolder, "--view", "0", "--from", "patch" });
+
+            Assert::IsTrue(Has(console.err, "view 0: the game now uses the copy of the view in the package"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Removed 1 of 1 view (1 patch file, 0 package entries)."), Wide(console.err).c_str());
+            Assert::IsFalse(fs::exists(_gameFolder + "\\0.v56"));
+            Assert::IsTrue(package == ViewBytesOfGame(0));
+
+            // No patch file now: a usage error, and nothing changes.
+            cli::StringConsole none = Expect(2, { "view", "remove", _gameFolder, "--view", "0", "900", "--from", "patch" });
+            Assert::IsTrue(Has(none.err, "view 0 has no patch file, and --from patch removes only a patch file"), Wide(none.err).c_str());
+            Assert::IsTrue(package == ViewBytesOfGame(0));
+        }
+
+        TEST_METHOD(Remove_DryRun_RemovesNothing)
+        {
+            PutViewIntoGame(0, MakeViewBytes(sciVersion1_1));
+            const std::vector<uint8_t> map = ReadFileBytes(_gameFolder + "\\resource.map");
+            const std::vector<uint8_t> volume = ReadFileBytes(_gameFolder + "\\resource.000");
+
+            cli::StringConsole console = Expect(0, { "view", "remove", _gameFolder, "--view", "0", "--dry-run" });
+
+            Assert::IsTrue(Has(console.err, "Would remove the patch file " + _gameFolder + "\\0.v56") && Has(console.err, "Would remove the entry of view 0 in package 0"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "A run would remove 1 of 1 view (1 patch file, 1 package entry)."), Wide(console.err).c_str());
+            Assert::IsTrue(fs::exists(_gameFolder + "\\0.v56"));
+            Assert::IsTrue(map == ReadFileBytes(_gameFolder + "\\resource.map"));
+            Assert::IsTrue(volume == ReadFileBytes(_gameFolder + "\\resource.000"));
+            cli::StringConsole patch = Expect(0, { "view", "remove", _gameFolder, "--view", "0", "--from", "patch", "--dry-run" });
+            Assert::IsTrue(Has(patch.err, "view 0: the game would then use the copy of the view in the package"), Wide(patch.err).c_str());
+        }
+
+        TEST_METHOD(Remove_UsageErrors)
+        {
+            const std::vector<std::pair<std::vector<std::string>, std::string>> cases =
+            {
+                { { "view", "remove", _gameFolder, "--view", "5000" }, "the game has no view 5000" },
+                { { "view", "remove", _gameFolder, "--view", "abc" }, "\"abc\" is not a view number or a range of view numbers" },
+                { { "view", "remove", _gameFolder, "--view", "0", "--from", "package" }, "--from" },
+                { { "view", "remove", _gameFolder }, "--view" },
+            };
+            for (const auto &test : cases)
+            {
+                cli::StringConsole console = Expect(2, test.first);
+                Assert::IsTrue(Has(console.err, test.second), Wide(test.second + ": " + console.err).c_str());
+            }
+            Assert::IsFalse(ViewBytesOfGame(0).empty());
+        }
+
+        // A patch file that cannot be removed: exit 9, and the next view goes
+        // on.
+        TEST_METHOD(Remove_PatchFileThatCannotBeRemoved_ExitsWith9)
+        {
+            PutViewIntoGame(0, MakeViewBytes(sciVersion1_1));
+            const std::string patch = _gameFolder + "\\0.v56";
+            Assert::IsTrue(SetFileAttributesA(patch.c_str(), FILE_ATTRIBUTE_READONLY) != FALSE, L"setup: a read-only patch file");
+
+            cli::StringConsole console = Expect(9, { "view", "remove", _gameFolder, "--view", "0", "900" });
+
+            SetFileAttributesA(patch.c_str(), FILE_ATTRIBUTE_NORMAL);
+            Assert::IsTrue(Has(console.err, "scic: error: view 0: the patch file " + patch + " cannot be removed: "), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Removed 1 of 2 views") && Has(console.err, "; 1 view failed."), Wide(console.err).c_str());
+            Assert::IsTrue(fs::exists(patch));
+            Assert::IsTrue(ViewBytesOfGame(900).empty(), L"view 900 goes");
+        }
+
+        // The Result form of the removal: a copy that the source does not
+        // have, and palette 999.
+        TEST_METHOD(RemoveResource_Errors)
+        {
+            {
+                GameSession &session = _game.Open();
+                const SCIVersion &version = session.Version();
+                ResourceBlob other(session.Helper(), nullptr, ResourceType::View, MakeViewBytes(version), version.DefaultVolumeFile, 900, NoBase36, version, ResourceSourceFlags::ResourceMap);
+                sci::Status notFound = session.ResourceMap().RemoveResource(other);
+                Assert::IsTrue(!notFound && (notFound.error().code == sci::ErrorCode::NotFound), notFound ? L"no error" : Wide(notFound.error().ToString()).c_str());
+                std::unique_ptr<ResourceBlob> palette = session.ResourceMap().MostRecentResource(ResourceType::Palette, 999, false);
+                Assert::IsNotNull(palette.get(), L"setup: palette 999");
+                sci::Status global = session.ResourceMap().RemoveResource(*palette);
+                Assert::IsTrue(!global && (global.error().code == sci::ErrorCode::Unsupported) && Has(global.error().message, "Palette 999 is the global palette"),
+                    global ? L"no error" : Wide(global.error().ToString()).c_str());
+                _game.CloseSessions();
+            }
+            Assert::IsFalse(ViewBytesOfGame(900).empty(), L"view 900 stays");
+        }
+
+        TEST_METHOD(Remove_CtrlC_ExitsWith7)
+        {
+            cli::CancelFlag().store(true);
+
+            cli::StringConsole console;
+            int code = cli::RunCli({ "view", "remove", _gameFolder, "--view", "0" }, console);
+            cli::CancelFlag().store(false);
+
+            Assert::AreEqual(7, code, Wide(console.out + console.err).c_str());
+            Assert::IsFalse(ViewBytesOfGame(0).empty(), L"nothing is removed");
+        }
+
         TEST_METHOD(Help_ListsTheViewCommand)
         {
             cli::StringConsole group = Expect(0, { "view" });
@@ -2507,9 +2643,12 @@ namespace UnitTests
             Assert::IsTrue(Has(helpPalette.out, "--view") && Has(helpPalette.out, "--colors-from") && Has(helpPalette.out, "--clear-used") && Has(helpPalette.out, "--palette-range") &&
                 Has(helpPalette.out, "--out-dir") && Has(helpPalette.out, "scic view palette"), Wide(helpPalette.out).c_str());
             cli::StringConsole root = Expect(0, { "help" });
-            Assert::IsTrue(Has(OneLine(root.out), "pic import, view list, view export, view import, view add, view palette."), Wide(root.out).c_str());
+            Assert::IsTrue(Has(OneLine(root.out), "pic import, view list, view export, view import, view add, view remove, view palette."), Wide(root.out).c_str());
             // The line of the group in the list of the commands.
-            Assert::IsTrue(Has(OneLine(root.out), " view The view commands: list, export, import, add, palette."), Wide(root.out).c_str());
+            Assert::IsTrue(Has(OneLine(root.out), " view The view commands: list, export, import, add, remove, palette."), Wide(root.out).c_str());
+            cli::StringConsole helpRemove = Expect(0, { "help", "view", "remove" });
+            Assert::IsTrue(Has(helpRemove.out, "--view") && Has(helpRemove.out, "--from") && Has(OneLine(helpRemove.out), "A script that uses a removed view fails in the game") &&
+                Has(helpRemove.out, "scic view remove"), Wide(helpRemove.out).c_str());
             cli::StringConsole helpAdd = Expect(0, { "help", "view", "add" });
             Assert::IsTrue(Has(helpAdd.out, "--view") && Has(helpAdd.out, "--from") && Has(helpAdd.out, "--replace") && Has(helpAdd.out, "--allow-unused-indices") && Has(helpAdd.out, "--out-dir") &&
                 Has(helpAdd.out, "scic view add"), Wide(helpAdd.out).c_str());
