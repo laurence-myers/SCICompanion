@@ -547,6 +547,13 @@ void movefile(const std::string &from, const std::string &to);
 void replacefile(const std::string &from, const std::string &to);
 void testopenforwrite(const std::string &filename);
 uint32_t GetResourceOffsetInFile(uint8_t secondHeaderByte);
+// The count of the bytes between the first 2 bytes of a patch file and its
+// data. header has the first bytes of the file, byteCount of them (4 or
+// fewer for a short file). A view or pic patch whose second byte is 80 or
+// 84 has its data at 26 + byte 3, and a palette patch whose second byte is
+// 80 at 4 + byte 3; another file has the gap of GetResourceOffsetInFile for
+// its second byte. 0 for fewer than 2 bytes.
+uint32_t GetPatchDataGap(const uint8_t *header, size_t byteCount);
 extern const TCHAR g_szResourceSpec[];
 extern const TCHAR* g_szResourceSpecByType[(unsigned int)ResourceType::Max];
 std::string GetMessageFromLastError(const std::string &details);

@@ -444,6 +444,34 @@ uint32_t GetResourceOffsetInFile(uint8_t secondHeaderByte)
 	return secondHeaderByte;
 }
 
+uint32_t GetPatchDataGap(const uint8_t *header, size_t byteCount)
+{
+	if (byteCount < 2)
+	{
+		return 0;
+	}
+	const ResourceType type = (ResourceType)(header[0] & 0x7f);
+	const uint8_t secondByte = header[1];
+	const uint32_t count = (byteCount >= 4) ? header[3] : 0;
+	// A view or pic patch of Sierra's form: the type byte, 80 or 84, 00, a
+	// count, the count of bytes (a file name), and 22 more bytes. Sierra's
+	// interpreters (ResView::SeekToData of SCI32, VOLLOAD.C of SCI16) and
+	// ScummVM skip the count plus 22 bytes after byte 3.
+	const bool sierraForm = ((secondByte & 0x80) != 0) && (((secondByte & 0x7f) == 0) || ((secondByte & 0x7f) == 4));
+	if (sierraForm && ((type == ResourceType::View) || (type == ResourceType::Pic)))
+	{
+		return 24 + count;
+	}
+	// A palette patch of Sierra's form: the type byte, 80, 00, a count, and
+	// the count of bytes. Sierra's interpreters (ResPal::SeekToData of SCI32,
+	// VOLLOAD.C of SCI16) skip the count after byte 3.
+	if ((secondByte == 0x80) && (type == ResourceType::Palette))
+	{
+		return 2 + count;
+	}
+	return GetResourceOffsetInFile(secondByte);
+}
+
 void _AssignDefaultResourceSourceFlags(ResourceBlob &blob, ResourceSaveLocation saveLocation)
 {
 	switch (blob.GetType())
@@ -480,13 +508,21 @@ HRESULT ResourceBlob::CreateFromHandle(PCTSTR pszName, HANDLE hFile, int iPackag
 {
 	header.PackageHint = (uint16_t)iPackageHint;
 	HRESULT hr = E_FAIL;
-	// This is the case of a resource existing in a solitary file.
-	// Just a WORD consisting of 0x80 | type
-	uint16_t w;
-	DWORD cbRequested = sizeof(w);
-	DWORD cbRead;
-	BOOL fRead = ReadFile(hFile, &w, cbRequested, &cbRead, NULL);
-	fRead = (cbRead == cbRequested);
+	// This is the case of a resource existing in a solitary file: a WORD
+	// consisting of 0x80 | type and the byte of the header size, and in some
+	// forms a count in byte 3 (GetPatchDataGap).
+	const DWORD start = SetFilePointer(hFile, 0, nullptr, FILE_CURRENT);
+	uint8_t first[4] = {};
+	DWORD cbRead = 0;
+	// A failed SetFilePointer or ReadFile sets the last error.
+	BOOL fRead = (start != INVALID_SET_FILE_POINTER) && ReadFile(hFile, first, sizeof(first), &cbRead, NULL);
+	if (fRead && (cbRead < 2))
+	{
+		// A file of 0 or 1 byte has no type word.
+		fRead = FALSE;
+		SetLastError(ERROR_INVALID_DATA);
+	}
+	const uint16_t w = (uint16_t)(first[0] | (first[1] << 8));
 	if (fRead)
 	{
 		if ((w & 0x80) == 0)
@@ -505,7 +541,7 @@ HRESULT ResourceBlob::CreateFromHandle(PCTSTR pszName, HANDLE hFile, int iPackag
 			DWORD dwSize = GetFileSize(hFile, NULL);
 			if (dwSize != INVALID_FILE_SIZE)
 			{
-				DWORD gapUntilData = GetResourceOffsetInFile((uint8_t)(w >> 8));
+				DWORD gapUntilData = GetPatchDataGap(first, cbRead);
 				if (dwSize < (gapUntilData + sizeof(w)))
 				{
 					// The file is too short to hold the header gap plus the type word.
@@ -516,7 +552,7 @@ HRESULT ResourceBlob::CreateFromHandle(PCTSTR pszName, HANDLE hFile, int iPackag
 				}
 				else
 				{
-					SetFilePointer(hFile, gapUntilData, nullptr, FILE_CURRENT);
+					SetFilePointer(hFile, start + sizeof(w) + gapUntilData, nullptr, FILE_BEGIN);
 					dwSize -= gapUntilData;
 
 					header.cbDecompressed = dwSize - sizeof(w);
