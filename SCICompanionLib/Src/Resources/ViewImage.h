@@ -257,3 +257,87 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
 // loops that are not mirrors, in order), as GetViewCelPixels gives them. The
 // errors of DescribeView.
 sci::Result<std::vector<std::vector<uint8_t>>> GetAllViewCelPixels(const SCIVersion &version, const std::vector<uint8_t> &data);
+
+// A cel of a new view: its pixels are width * height bytes, the top row
+// first.
+struct NewViewCel
+{
+    int width = 0;
+    int height = 0;
+    int x = 0;
+    int y = 0;
+    uint8_t skipColor = 0;
+    std::vector<uint8_t> pixels;
+    // The pixels are stored as they are, with no run-length data (Sierra's
+    // magnifier cels).
+    bool raw = false;
+};
+
+struct NewViewLoop
+{
+    // The loop that this loop mirrors (it can be a mirror too); -1 for a
+    // loop with cels of its own.
+    int mirrorOf = -1;
+    // The cels of a loop that is not a mirror (some of Sierra's views have
+    // such loops with no cel); none for a mirror.
+    std::vector<NewViewCel> cels;
+    // For a mirror: the cel count of its own header. The interpreters give
+    // it to a mirror of this mirror (Sierra's views have 0 there, so such a
+    // mirror shows no cel). -1: the count of the loop at the end of its
+    // chain.
+    int headerCels = -1;
+};
+
+// The loop that loop shows the cels of: the loop itself, else the end of its
+// chain of mirrors (mirrorOf has the loop that each loop mirrors, -1 for a
+// loop that is not a mirror). -1 for a mirror of a loop that is not there or
+// of itself, and for a chain with a cycle.
+int MirroredLoop(const std::vector<int> &mirrorOf, size_t loop);
+
+// A new view (scic view add).
+struct NewView
+{
+    // Bytes 3, 4 and 5 of the view header.
+    uint8_t scaleFlags = 0;
+    uint8_t byte4 = 1;
+    uint8_t resolution = 0;
+    // Bytes 14 to 17 of the view header (many of Sierra's views have 0).
+    uint16_t nativeWidth = 0;
+    uint16_t nativeHeight = 0;
+    std::vector<NewViewLoop> loops;
+    // The palette of the view (MakePaletteBytes); not present: no palette.
+    PicPaletteDescription palette;
+};
+
+// The bytes of a new view of SCI1.1 or SCI2. The view writer of SCI Companion
+// writes the headers and the cels (ViewWriteToVGA11 or ViewWriteToVGA2: 0x0a
+// or 0x8a as byte 9 of each cel header, and a row table for each SCI2 cel);
+// then bytes 3, 4, 5 and 14 to 17 of the view header get the values of the
+// view. The pixels of a raw cel go after the last byte: its header gets 0 as
+// byte 9 and as the offsets of the literal data and of the row table, the
+// offset of the pixels as the offset of the run-length data, and
+// width * height as the two sizes (the writer has a cel of 1 pixel there).
+// Then the palette (MakePaletteBytes) goes after the last byte, at the
+// offset of bytes 8 to 11. A mirror loop gets the flag 1 in byte 1 of its
+// header (the SCI32 interpreter flips it), the cel offset (bytes 12 to 15)
+// of the loop at the end of its chain of mirrors (MirroredLoop), and as its
+// cel count (byte 2) its headerCels, else the count of that loop: the
+// interpreters read the count and the offset from the header of the loop
+// that a mirror names, which can be a mirror too. The bytes must read back
+// (DescribeView, GetAllViewCelPixels) with the loops, the mirrors and their
+// counts, the cels (sizes, placements, skip colours, raw or not, pixels,
+// also through the row table of each SCI2 cel that is not raw), the header
+// bytes and the palette of the view.
+//
+// Usage for no loop or more than 255 loops; for a mirror whose chain does
+// not end at a loop that is not a mirror (a loop that is not there, the
+// mirror itself, a cycle), or that has cels; for a headerCels of a loop
+// that is not a mirror, or of more than the count of the loop at the end of
+// the chain; for a loop with more than 255 cels; for a cel with a
+// width or a height of 0 or more than 65535 pixels, a placement that is not
+// in -32768 to 32767, or pixels that are not width * height bytes; and the
+// errors of MakePaletteBytes. Unsupported for a view format that is not
+// vga11 or vga2, for a cel too wide for the writer, and for an SCI1.1 view
+// that would have more than 65535 bytes. Internal when the bytes do not
+// read back as they must.
+sci::Result<std::vector<uint8_t>> MakeNewViewBytes(const SCIVersion &version, const NewView &view);

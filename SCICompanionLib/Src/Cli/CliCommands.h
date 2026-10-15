@@ -458,6 +458,36 @@ namespace cli
     // the range (Usage).
     sci::Result<ExitCode> RunViewPalette(GameSession &session, const ViewPaletteOptions &options, const CommonOptions &common, CliOutput &output);
 
+    // scic view add (plan section 4.13).
+    struct ViewAddOptions
+    {
+        std::string gameFolder;
+        // The number of the new view.
+        std::string view;
+        // A .toml file of the form of scic view export; the BMP files of its
+        // cels are in its folder.
+        std::string from;
+        // The game can have the view.
+        bool replace = false;
+        bool allowUnusedIndices = false;
+        std::string outDir;
+    };
+
+    // Makes a new view from a .toml file of the form of view export and the
+    // BMP files of its cels (MakeAddedView, MakeNewViewBytes), and writes it
+    // as a patch file into the output folder (never into the game). A run
+    // has one view. It runs in an exception boundary: a view that fails is
+    // an error line, and loses the patch file that an earlier run left in the
+    // output folder (a message says so). --dry-run does all checks, writes
+    // and removes nothing. The exit code: 6 when the view failed (also a game
+    // version that is not SCI1.1 or SCI2), 9 when the patch file could not be
+    // written or removed, 7 after Ctrl+C, 1 for a bug. Fails when the run
+    // cannot start: the output folder or the .toml file does not exist
+    // (NotFound), the output folder is the game folder or a folder inside
+    // it, the view is not a number of 0 to 65535, or the game has the view
+    // and there is no --replace (Usage).
+    sci::Result<ExitCode> RunViewAdd(GameSession &session, const ViewAddOptions &options, const CommonOptions &common, CliOutput &output);
+
     // scic dev compare-structure (hidden): the structure of the functions of
     // a folder of decompiled scripts against another decompile.
     struct CompareStructureOptions

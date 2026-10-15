@@ -27,7 +27,7 @@ The `SCICompanion` project is a thin `.exe` wrapper over both libraries.
 The `SCICompanionCli` project is a thin wrapper too: it builds `scic.exe`,
 the command-line tool (`scic script list`, `decompile`, `sco` and
 `compile`; `scic pic list`, `export` and `import`; `scic view list`,
-`export`, `import` and `palette`),
+`export`, `import`, `add` and `palette`),
 whose code is in `SCICompanionLib\Src\Cli`. It links only
 `SCICompanionCore`. Its design is in `docs\scic-cli\plan.md`. Tests are in
 `UnitTests`.
@@ -107,7 +107,7 @@ whose code is in `SCICompanionLib\Src\Cli`. It links only
   runs the pic commands as a round trip on a copy of a game (local use
   only: run it after a change of the pic commands, on a game with SCI2
   pics); `UnitTests\Tools\ViewRoundTripSweep.ps1` does the same for the
-  view commands (run it after a change of view export or import). See
+  view commands (run it after a change of view export, import or add). See
   `UnitTests\README.md`.
 - The decompiler corpus gate: `UnitTests\Tools\DecompileGate.ps1` (local use
   only; the games are not in CI) decompiles a sample of each game of a

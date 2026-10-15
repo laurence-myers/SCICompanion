@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <array>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <sstream>
 #include <string>
@@ -2220,6 +2221,250 @@ namespace UnitTests
             Assert::IsTrue(none.error().code == sci::ErrorCode::Unsupported);
         }
 
+        // The text of a .toml file of export with no source and no file
+        // names: the facts of the view.
+        static std::string FactsOf(const std::string &path)
+        {
+            sci::Result<ViewSidecar> sidecar = ReadViewSidecarFile(path);
+            AssertOk(sidecar, path);
+            sidecar->view = 0;
+            sidecar->from.clear();
+            sidecar->size = 0;
+            sidecar->crc32 = 0;
+            for (ViewSidecarCel &cel : sidecar->cels)
+            {
+                cel.file.clear();
+            }
+            return ViewSidecarText(*sidecar);
+        }
+
+        // A view made from the files of export (4-byte entries for 0 to 255,
+        // and 3-byte entries for 10 to 99) exports the same images and the
+        // same facts.
+        TEST_METHOD(Add_FromTheFilesOfExport_ExportsTheSameFiles)
+        {
+            sierraview::MadeView threeBytes = sierraview::ThreeLoopView();
+            threeBytes.sci2 = false;
+            threeBytes.entrySize = 3;
+            threeBytes.paletteFirst = 10;
+            threeBytes.paletteCount = 90;
+            PutViewIntoGame(501, sierraview::MakeSierraView(threeBytes));
+            const std::string folder = ExportView500();
+            Expect(0, { "view", "export", _gameFolder, "--view", "501", "--out-dir", folder });
+
+            cli::StringConsole added = Expect(0, { "view", "add", _gameFolder, "--view", "9000", "--from", folder + "\\500.toml", "--out-dir", _patches });
+            Expect(0, { "view", "add", _gameFolder, "--view", "9001", "--from", folder + "\\501.toml", "--out-dir", _patches });
+
+            Assert::IsTrue(Has(added.err, "Added view 9000 (3 loops, 3 cels) as " + _patches + "\\9000.v56."), Wide(added.err).c_str());
+            CopyPatchesToGame();
+            const std::string again = _outDir + "\\again";
+            fs::create_directories(again);
+            Expect(0, { "view", "export", _gameFolder, "--view", "9000", "9001", "--out-dir", again });
+            for (const std::pair<int, int> &views : std::vector<std::pair<int, int>>{ { 500, 9000 }, { 501, 9001 } })
+            {
+                const std::string from = std::to_string(views.first);
+                const std::string to = std::to_string(views.second);
+                Assert::AreEqual(FactsOf(folder + "\\" + from + ".toml"), FactsOf(again + "\\" + to + ".toml"));
+                for (const char *cel : { ".l0.c0.bmp", ".l0.c1.bmp", ".l2.c0.bmp" })
+                {
+                    Assert::IsTrue(ReadFileBytes(folder + "\\" + from + cel) == ReadFileBytes(again + "\\" + to + cel), Wide(to + cel).c_str());
+                }
+            }
+        }
+
+        TEST_METHOD(Add_ViewOfTheGame_NeedsReplace)
+        {
+            const std::string folder = ExportView500();
+            ChangeBmp(folder + "\\500.l0.c1.bmp", [](IndexedBmp &image) { image.pixels[2] = 30; });
+
+            cli::StringConsole has = Expect(2, { "view", "add", _gameFolder, "--view", "500", "--from", folder + "\\500.toml", "--out-dir", _patches });
+            Assert::IsTrue(Has(has.err, "the game has view 500; give --replace to make a new view in its place, or use scic view import to change the cels of the view"), Wide(has.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty());
+
+            Expect(0, { "view", "add", _gameFolder, "--view", "500", "--from", folder + "\\500.toml", "--replace", "--out-dir", _patches });
+            Assert::IsTrue(ReadIndexedBmpFile(folder + "\\500.l0.c1.bmp")->pixels == PixelsWithPatches(0, 1));
+        }
+
+        // The checks of the file and of the images (MakeAddedView).
+        TEST_METHOD(AddedView_Checks)
+        {
+            const std::string folder = ExportView500();
+            sci::Result<ViewSidecar> base = ReadViewSidecarFile(folder + "\\500.toml");
+            AssertOk(base);
+            std::vector<cli::ViewImportImage> baseImages;
+            for (const ViewSidecarCel &cel : base->cels)
+            {
+                cli::ViewImportImage image;
+                image.loop = cel.loop;
+                image.cel = cel.cel;
+                image.name = cel.file;
+                image.image = *ReadIndexedBmpFile(folder + "\\" + cel.file);
+                baseImages.push_back(image);
+            }
+            const std::array<bool, 256> noEntries = {};
+            std::vector<std::string> warnings;
+
+            sci::Result<NewView> view = cli::MakeAddedView(*base, baseImages, noEntries, false, warnings);
+
+            AssertOk(view);
+            Assert::IsTrue(warnings.empty());
+            Assert::AreEqual((size_t)3, view->loops.size());
+            Assert::AreEqual(0, view->loops[1].mirrorOf);
+            Assert::AreEqual(1, (int)view->resolution);
+            Assert::AreEqual(640, (int)view->nativeWidth);
+            Assert::IsTrue(view->palette.present && (view->palette.entryCount == 256) && (view->palette.flags[10] == 1) && (view->palette.flags[100] == 0));
+            Assert::IsTrue((view->loops[0].cels[0].x == -2) && (view->loops[0].cels[0].y == 3) && (view->loops[0].cels[1].skipColor == 255));
+
+            auto fails = [&](const std::function<void(ViewSidecar &, std::vector<cli::ViewImportImage> &)> &change, const std::string &text)
+            {
+                ViewSidecar sidecar = *base;
+                std::vector<cli::ViewImportImage> images = baseImages;
+                change(sidecar, images);
+                std::vector<std::string> ignored;
+                sci::Result<NewView> failed = cli::MakeAddedView(sidecar, images, noEntries, false, ignored);
+                Assert::IsFalse(failed.has_value(), Wide(text).c_str());
+                Assert::IsTrue((failed.error().code == sci::ErrorCode::Usage) && Has(failed.error().message, text), Wide(text + "\n" + failed.error().ToString()).c_str());
+            };
+            using Images = std::vector<cli::ViewImportImage>;
+            fails([](ViewSidecar &s, Images &) { s.loops.clear(); }, "the file has 0 [[loop]] tables; a view has 1 to 255 loops");
+            fails([](ViewSidecar &s, Images &) { s.loopCount = 4; }, "[view] loops is 4, and the file has 3 [[loop]] tables");
+            fails([](ViewSidecar &s, Images &) { s.loops[1].index = 0; }, "a [[loop]] has the index 0; the indices of the 3 loops are 0 to 2, each one time");
+            fails([](ViewSidecar &s, Images &) { ViewSidecarCel cel = s.cels[0]; cel.loop = 1; s.cels.push_back(cel); }, "the [[cel]] of cel 0 of loop 1: loop 1 mirrors loop 0, so it has no cels of its own");
+            fails([](ViewSidecar &s, Images &) { s.cels[1].cel = 2; }, "loop 0 has no [[cel]] for cel 1; the cels of a loop are 0 to n - 1");
+            fails([](ViewSidecar &s, Images &) { s.cels[1].cel = 0; }, "the file has two [[cel]] tables for cel 0 of loop 0");
+            fails([](ViewSidecar &s, Images &) { s.cels.pop_back(); s.celCount = 0; }, "the [[loop]] of loop 2 has cels = 1, and the loop has 0 cels");
+            fails([](ViewSidecar &s, Images &) { s.celCount = 9; }, "[view] cels is 9, and the file has 3 [[cel]] tables");
+            fails([](ViewSidecar &s, Images &) { s.loops[0].cels = 3; }, "the [[loop]] of loop 0 has cels = 3, and the loop has 2 cels");
+            fails([](ViewSidecar &s, Images &) { s.loops[1].cels = 1; }, "the [[loop]] of loop 1 has cels = 1, and the loop has 2 cels");
+            fails([](ViewSidecar &s, Images &) { s.loops[1].mirrorOf = 1; }, "loop 1 mirrors loop 1; a mirror shows the cels of another loop of the view, and a chain of mirrors ends at a loop that is not a mirror");
+            fails([](ViewSidecar &s, Images &) { s.cels[0].width = 6; }, "500.l0.c0.bmp has 5 x 3 pixels, and the [[cel]] of cel 0 of loop 0 has 6 x 3");
+            fails([](ViewSidecar &s, Images &i) { s.cels[0].file.clear(); i.erase(i.begin()); }, "the [[cel]] of cel 0 of loop 0 names no image file");
+            fails([](ViewSidecar &, Images &i) { i[0].image.pixels[0] = 150; }, "500.l0.c0.bmp: 1 pixel of cel 0 of loop 0 has palette entries that the view and palette 999 do not mark as used: 150");
+            fails([](ViewSidecar &, Images &i) { i[1].image.colors[50] = IndexedBmpColor{ 9, 9, 9 }; }, "500.l0.c0.bmp and 500.l0.c1.bmp have another colour for entry 50; the images of a view must have one palette");
+            fails([](ViewSidecar &, Images &i) { i[0].image.colorCount = 100; }, "500.l0.c0.bmp: the colour table has 100 entries, and the palette stores the entries 0-255");
+            fails([](ViewSidecar &s, Images &) { s.flags.push_back(PicSidecarFlagRun{ 0, 256, 1 }); }, "[palette] flags has the run 0-256, which is not in the stored entries 0-255");
+            fails([](ViewSidecar &s, Images &) { s.storedFirst = 200; s.storedCount = 100; }, "[palette] stores 100 entries from entry 200");
+
+            // An unused entry is a warning with allowUnusedEntries, and
+            // images that differ in an entry with no mark agree.
+            Images images = baseImages;
+            images[0].image.pixels[0] = 150;
+            images[1].image.colors[5] = IndexedBmpColor{ 9, 9, 9 };
+            warnings.clear();
+            sci::Result<NewView> allowed = cli::MakeAddedView(*base, images, noEntries, true, warnings);
+            AssertOk(allowed);
+            Assert::IsTrue((warnings.size() == 1) && Has(warnings[0], "do not mark as used: 150"), Wide(warnings.empty() ? std::string() : warnings[0]).c_str());
+            Assert::IsTrue(images[0].image.colors[5] == allowed->palette.colors[5], L"the first image gives the colour of an entry with no mark");
+            // A mirror of a mirror: its cels key is the count of the header
+            // of the mirror that it names.
+            ViewSidecar chain = *base;
+            ViewSidecarLoop chainLoop;
+            chainLoop.index = 3;
+            chainLoop.mirrorOf = 1;
+            chainLoop.cels = 0;
+            chain.loops.push_back(chainLoop);
+            chain.loopCount = 4;
+            sci::Result<NewView> chained = cli::MakeAddedView(chain, baseImages, noEntries, false, warnings);
+            AssertOk(chained);
+            Assert::AreEqual(0, chained->loops[1].headerCels);
+            Assert::AreEqual(-1, chained->loops[3].headerCels);
+            chainLoop.index = 4;
+            chainLoop.cels = 2;
+            chain.loops.push_back(chainLoop);
+            chain.loopCount = 5;
+            sci::Result<NewView> twoCounts = cli::MakeAddedView(chain, baseImages, noEntries, false, warnings);
+            Assert::IsTrue(!twoCounts.has_value() && Has(twoCounts.error().message, "two loops mirror loop 1, and their [[loop]] tables have other cels (0 and 2)"),
+                twoCounts.has_value() ? L"no error" : Wide(twoCounts.error().ToString()).c_str());
+            // A stored entry with no flag run gets the flag 1.
+            ViewSidecar noRuns = *base;
+            noRuns.flags.clear();
+            sci::Result<NewView> marked = cli::MakeAddedView(noRuns, baseImages, noEntries, false, warnings);
+            AssertOk(marked);
+            Assert::IsTrue((marked->palette.flags[0] == 1) && (marked->palette.flags[255] == 1));
+            // A file with no palette gives a view with no palette.
+            ViewSidecar noPalette = *base;
+            noPalette.hasPalette = false;
+            warnings.clear();
+            sci::Result<NewView> none = cli::MakeAddedView(noPalette, baseImages, noEntries, true, warnings);
+            AssertOk(none);
+            Assert::IsFalse(none->palette.present);
+            Assert::AreEqual((size_t)3, warnings.size(), L"a warning for each cel: no entry has a mark");
+        }
+
+        TEST_METHOD(Add_ViewThatFails_ExitsWith6AndLosesTheOldPatchFile)
+        {
+            WriteFileText(_outDir + "\\bad.toml", "[[loop]]\nindex = 0\nmirror_of = 0\n");
+            WriteFileText(_patches + "\\9000.v56", "old");
+
+            cli::StringConsole console = Expect(6, { "view", "add", _gameFolder, "--view", "9000", "--from", _outDir + "\\bad.toml", "--out-dir", _patches });
+
+            Assert::IsTrue(Has(console.err, "scic: error: view 9000: loop 0 mirrors loop 0; a mirror shows the cels of another loop of the view") && Has(console.err, "[usage]"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Removed " + _patches + "\\9000.v56 of an earlier run: view 9000 failed"), Wide(console.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty());
+
+            // A game whose views scic cannot make.
+            const std::string folder = ExportView500();
+            _gameFolder = _game.Make(TemplateSci0);
+            cli::StringConsole ega = Expect(6, { "view", "add", _gameFolder, "--view", "9000", "--from", folder + "\\500.toml", "--out-dir", _patches });
+            Assert::IsTrue(Has(ega.err, "view 9000: a view of the format ega cannot be made; only the formats vga11 and vga2 can [unsupported]"), Wide(ega.err).c_str());
+        }
+
+        TEST_METHOD(Add_UsageErrors)
+        {
+            const std::string folder = ExportView500();
+            const std::string from = folder + "\\500.toml";
+            const std::vector<std::pair<std::vector<std::string>, std::string>> cases =
+            {
+                { { "view", "add", _gameFolder, "--view", "abc", "--from", from, "--out-dir", _patches }, "\"abc\" is not a view number (0 to 65535)" },
+                { { "view", "add", _gameFolder, "--view", "70000", "--from", from, "--out-dir", _patches }, "\"70000\" is not a view number (0 to 65535)" },
+                { { "view", "add", _gameFolder, "--view", "9000", "--from", "", "--out-dir", _patches }, "--from needs a .toml file" },
+                { { "view", "add", _gameFolder, "--view", "9000", "--from", from, "--out-dir", "" }, "--out-dir needs a folder" },
+                { { "view", "add", _gameFolder, "--view", "9000", "--from", from, "--out-dir", _gameFolder }, "the output folder is the game folder" },
+            };
+            for (const auto &test : cases)
+            {
+                cli::StringConsole console = Expect(2, test.first);
+                Assert::IsTrue(Has(console.err, test.second), Wide(test.second + ": " + console.err).c_str());
+            }
+            cli::StringConsole missing = Expect(3, { "view", "add", _gameFolder, "--view", "9000", "--from", folder + "\\missing.toml", "--out-dir", _patches });
+            Assert::IsTrue(Has(missing.err, "the .toml file does not exist: "), Wide(missing.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty());
+        }
+
+        TEST_METHOD(Add_DryRun_WritesNothing)
+        {
+            const std::string folder = ExportView500();
+
+            cli::StringConsole console = Expect(0, { "view", "add", _gameFolder, "--view", "9000", "--from", folder + "\\500.toml", "--out-dir", _patches, "--dry-run" });
+
+            Assert::IsTrue(Has(console.err, "Would write " + _patches + "\\9000.v56") && Has(console.err, "A run would add view 9000 (3 loops, 3 cels) as "), Wide(console.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty());
+        }
+
+        TEST_METHOD(Add_PatchFileThatCannotBeWritten_ExitsWith9)
+        {
+            const std::string folder = ExportView500();
+            WriteReadOnlyFile(_patches + "\\9000.v56", "read-only");
+
+            cli::StringConsole console = Expect(9, { "view", "add", _gameFolder, "--view", "9000", "--from", folder + "\\500.toml", "--out-dir", _patches });
+
+            Assert::IsTrue(Has(console.err, "scic: error: view 9000: ") && Has(console.err, "9000.v56"), Wide(console.err).c_str());
+            Assert::AreEqual(std::string("read-only"), ReadFileText(_patches + "\\9000.v56"));
+        }
+
+        TEST_METHOD(Add_CtrlC_ExitsWith7)
+        {
+            const std::string folder = ExportView500();
+            cli::CancelFlag().store(true);
+
+            cli::StringConsole console;
+            int code = cli::RunCli({ "view", "add", _gameFolder, "--view", "9000", "--from", folder + "\\500.toml", "--out-dir", _patches }, console);
+            cli::CancelFlag().store(false);
+
+            Assert::AreEqual(7, code, Wide(console.out + console.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty());
+        }
+
         TEST_METHOD(Help_ListsTheViewCommand)
         {
             cli::StringConsole group = Expect(0, { "view" });
@@ -2232,9 +2477,12 @@ namespace UnitTests
             Assert::IsTrue(Has(helpPalette.out, "--view") && Has(helpPalette.out, "--colors-from") && Has(helpPalette.out, "--clear-used") && Has(helpPalette.out, "--palette-range") &&
                 Has(helpPalette.out, "--out-dir") && Has(helpPalette.out, "scic view palette"), Wide(helpPalette.out).c_str());
             cli::StringConsole root = Expect(0, { "help" });
-            Assert::IsTrue(Has(OneLine(root.out), "pic import, view list, view export, view import, view palette."), Wide(root.out).c_str());
+            Assert::IsTrue(Has(OneLine(root.out), "pic import, view list, view export, view import, view add, view palette."), Wide(root.out).c_str());
             // The line of the group in the list of the commands.
-            Assert::IsTrue(Has(OneLine(root.out), " view The view commands: list, export, import, palette."), Wide(root.out).c_str());
+            Assert::IsTrue(Has(OneLine(root.out), " view The view commands: list, export, import, add, palette."), Wide(root.out).c_str());
+            cli::StringConsole helpAdd = Expect(0, { "help", "view", "add" });
+            Assert::IsTrue(Has(helpAdd.out, "--view") && Has(helpAdd.out, "--from") && Has(helpAdd.out, "--replace") && Has(helpAdd.out, "--allow-unused-indices") && Has(helpAdd.out, "--out-dir") &&
+                Has(helpAdd.out, "scic view add"), Wide(helpAdd.out).c_str());
             cli::StringConsole helpImport = Expect(0, { "help", "view", "import" });
             Assert::IsTrue(Has(helpImport.out, "--in-dir") && Has(helpImport.out, "--loop") && Has(helpImport.out, "--palette-range") && Has(helpImport.out, "scic view import"), Wide(helpImport.out).c_str());
             cli::StringConsole helpExport = Expect(0, { "help", "view", "export" });
