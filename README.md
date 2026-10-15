@@ -17,6 +17,9 @@ modernizing the build. Broad highlights since the previous release:
   its other bytes.
 * **Views from the command line.** `scic view list` shows the loops, the
   cels and the palette use of each view of SCI1.1 and SCI2.
+  `scic view export` writes each cel as an 8-bit BMP file whose pixels are
+  the palette entries of the game, with a `.toml` file of the facts of
+  each view.
   `scic view palette` changes the
   palette of views of SCI1.1 and SCI2 in place, and writes each view as a
   patch file: new colours for a range of palette entries, from the colour

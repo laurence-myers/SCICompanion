@@ -289,7 +289,13 @@
     <ClCompile Include="..\SCICompanionLib\Src\Resources\PicImage.cpp">
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\SidecarToml.cpp">
+      <Filter>Source Files\Resources</Filter>
+    </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Resources\ViewImage.cpp">
+      <Filter>Source Files\Resources</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SCICompanionLib\Src\Resources\ViewSidecar.cpp">
       <Filter>Source Files\Resources</Filter>
     </ClCompile>
     <ClCompile Include="..\SCICompanionLib\Src\Resources\ViewPalette.cpp">
@@ -722,7 +728,13 @@ $include
     <ClInclude Include="..\SCICompanionLib\Src\Resources\PicImage.h">
       <Filter>Source Files\Resources</Filter>
     </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\SidecarToml.h">
+      <Filter>Source Files\Resources</Filter>
+    </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Resources\ViewImage.h">
+      <Filter>Source Files\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SCICompanionLib\Src\Resources\ViewSidecar.h">
       <Filter>Source Files\Resources</Filter>
     </ClInclude>
     <ClInclude Include="..\SCICompanionLib\Src\Resources\ViewPalette.h">

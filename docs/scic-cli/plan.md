@@ -613,13 +613,14 @@ scic pic list         <game-folder> [--pic <pic> ...] [options]
 scic pic export       <game-folder> (--pic <pic> ... | --all) --out-dir <folder> [options]
 scic pic import       <game-folder> (--pic <pic> --image <file> | --in-dir <folder>) --out-dir <folder> [options]
 scic view list        <game-folder> [--view <view> ...] [options]
+scic view export      <game-folder> (--view <view> ... | --all) --out-dir <folder> [options]
 scic view palette     <game-folder> --view <view> ... (--colors-from <file> | --clear-used) --palette-range <first>-<last> --out-dir <folder> [options]
 scic help [group [command]]
 scic --version
 ```
 
 - `script` is the first command group, `pic` (section 4.7) the second, and
-  `view` (sections 4.9 and 4.10) the third. Later groups use the same pattern
+  `view` (sections 4.9 to 4.11) the third. Later groups use the same pattern
   (section 13): for example `scic resource extract`, `scic package rebuild`.
 - `scic script` with no command, and `scic help script`, list the script
   commands. `scic pic` and `scic help pic` list the pic commands, and
@@ -1321,6 +1322,62 @@ Rules:
   headers of more than 32 bytes) has the error `Unsupported`.
 - Ctrl+C stops the run with no table (exit 7).
 
+### 4.11 `scic view export`
+
+```
+scic view export C:\Games\LSL6 --all --out-dir C:\work\views
+scic view export C:\Games\LSL6 --view 600-610 --out-dir C:\work\views --dry-run
+```
+
+Purpose: move the cels of views out of a game with their exact palette
+entries, so that another tool can change them (section 4.7 has the same
+for pics). It reads the views of SCI1.1 and SCI2, and it does not read the
+data folder. The view selectors and the source of a view are as in
+section 4.9.
+
+`export` writes, into `--out-dir`, for each view:
+
+- `<view>.l<loop>.c<cel>.bmp` for each stored cel (the cels of the loops
+  that are not mirrors). A mirror loop gets no file: it shows the cels of
+  its loop. A BMP file is 8-bit and not compressed, with 256 table
+  entries. Its pixels are the bytes of the cel, the top row first. Its
+  colour table is the palette as SCI Companion shows the view: the palette
+  of the view, and palette 999 of the game for the entries that the view
+  does not mark as used (`GetMergedPalette`).
+- `<view>.toml`: the facts of the view (`Src\Resources\ViewSidecar.h`),
+  for the tool that changes the images and for `view import` and
+  `view add`. A run of entries is `[first, last]`.
+
+| Table | Keys |
+|---|---|
+| `[source]` | `view`; `format` (`vga11` or `vga2`); `from` (`package` or `patch`); `size` (bytes); `crc32` (a hex integer) |
+| `[view]` | `loops`; `cels` (the stored cels); `scale_flags`, `byte_4` and `resolution` (bytes 3, 4 and 5 of the view header); `native_width`, `native_height` (bytes 14 to 17: the size in which SCI Companion shows the view) |
+| `[palette]` | `present`; `stored_first`, `stored_count`; `entry_size` (3 or 4); `flags` (runs `[first, last, flag]` of the flag bytes of the stored entries; a 3-byte entry has the flag of the palette header, as the SCI32 interpreter reads it); `palette_999`; `used` (the entries that the view or palette 999 marks as used, as SCI Companion reads the palette: a stored 3-byte entry counts as used, also when the flag of the header is 0; the colour table has the colours of these entries) |
+| `[[loop]]` | `index`; `cels`; `mirror_of` (only for a mirror loop) |
+| `[[cel]]` | `loop`; `cel`; `file`; `width`; `height`; `x`; `y`; `skip_color`; `raw` (no run-length data); `entries` (the entries of its pixels, without the skip colour); `skip_pixels` |
+
+Rules:
+
+- It needs `--all` or `--view` with one or more views, not both.
+- `--out-dir` has the rules of `pic export`: it must exist (exit 3), and it
+  must not be the game folder or a folder inside it (exit 2).
+- Each view runs in its own exception boundary: a view that fails is an
+  error line (`scic: error: view 600: ...`), and the next view goes on. A
+  view that failed makes the exit code 6: a view of a format that `scic`
+  does not read (`ega`, `vga1`), a view that cannot be read or that a
+  reader repaired (section 4.10), and a named view with no stored cel.
+  With `--all`, a view with no stored cel is skipped and counted.
+- Palette 999 is read one time, before the first view. A warning of its
+  reader (for example a palette that stores entries past 255) is a
+  warning of the run, not an error of a view.
+- The files of a view are all made in memory, and each file that is there
+  already must open for writing, before the first is written. A file that
+  cannot be written makes the exit code 9.
+- `--dry-run` does all checks, writes nothing, and lists the files
+  (`Would write ...`).
+- The summary: `Exported 547 of 548 views (8760 cels) into <folder>; 1 view
+  has no cel.`
+
 ## 5. Where compiled output goes
 
 Two terms:
@@ -1682,12 +1739,12 @@ section 5.3, which section 5.22 uses), plus code 9.
 | 0 | Success |
 | 1 | Internal error (a bug, or an escaped exception) |
 | 2 | Usage error: bad option, unknown script, header file given to `compile` |
-| 3 | Cannot open the game (also a damaged or empty `resource.map`) or start the batch, or the data folder is missing (script commands), or the output folder of `pic export`, `pic import` or `view palette` is missing, or the input folder of `pic import` is missing, or the BMP file of `view palette` cannot be read |
+| 3 | Cannot open the game (also a damaged or empty `resource.map`) or start the batch, or the data folder is missing (script commands), or the output folder of `pic export`, `pic import`, `view export` or `view palette` is missing, or the input folder of `pic import` is missing, or the BMP file of `view palette` cannot be read |
 | 5 | Compile errors |
 | 6 | Partial failure: some scripts failed for a reason that is not a compile error, or the decompiler reported an error in a script that it wrote, or a pic of a pic command failed, or a view of a view command failed (also a view that `view list` cannot read) |
 | 7 | Cancelled |
 | 8 | Write refused (`WriteRefused`): for example, a patch file would hide a package write, or a script of the commit used the new `.sco` of a script that the commit does not write (section 4.5) |
-| 9 | Write failed: the commit, the tables, a move, `game.ini`, main's `.sco`, or the return of a `.sco` to its state before the compile failed (any code but `Internal`, `WriteRefused` and `Cancelled`), or a file write of a script failed (`Io`; a `.scd` that cannot be written is a warning), or a file of `pic export`, a patch file of `pic import` or of `view palette`, or the table of a `dev` command could not be written, or a patch file of an earlier run of `view palette` could not be removed |
+| 9 | Write failed: the commit, the tables, a move, `game.ini`, main's `.sco`, or the return of a `.sco` to its state before the compile failed (any code but `Internal`, `WriteRefused` and `Cancelled`), or a file write of a script failed (`Io`; a `.scd` that cannot be written is a warning), or a file of `pic export` or of `view export`, a patch file of `pic import` or of `view palette`, or the table of a `dev` command could not be written, or a patch file of an earlier run of `view palette` could not be removed |
 
 The mapping is one function in `Src\Cli\`, with a unit test for each case:
 
@@ -2052,7 +2109,7 @@ session, return `Result`, then add a command group.
 | `scic resource delete` | `DeleteResource` (`Src\Resources\ResourceMapOperations.cpp`) | message boxes (`:180-221`) |
 | `scic package rebuild` | `PurgeUnnecessaryResources` (`MainFrm.cpp:1979`), `RebuildResources`, `PostRepackage.cmd` | It is in `MainFrm.cpp`. In patch mode it builds only from patch files, so it drops package-only resources. |
 | `scic script disassemble` | `DisassembleScript` (`Src\Compile\Disassembler.cpp`) | `ShowTextFile` must become stdout |
-| `scic pic render`, `scic view export` | image code, GDI+ | needs `GdiplusStartup`; the pic and sound validators open dialogs (`Src\Resources\Pic.cpp:1152`, `Src\Resources\Sound.cpp:1821`) |
+| `scic pic render` | image code, GDI+ | needs `GdiplusStartup`; the pic and sound validators open dialogs (`Src\Resources\Pic.cpp:1152`, `Src\Resources\Sound.cpp:1821`) |
 | `scic message export`, `scic message import` | message resources, `.shm` headers | |
 | `scic vocab ...` | `Vocab000` | editor prompts (`Vocab000.cpp:47, 390, 452`) |
 

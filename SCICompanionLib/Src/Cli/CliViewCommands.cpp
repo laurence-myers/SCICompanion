@@ -14,6 +14,9 @@
 #include "IndexedBmp.h"
 #include "FileWrite.h"
 #include "ViewImage.h"
+#include "ViewSidecar.h"
+#include "PaletteUse.h"
+#include "ResourceEntity.h"
 #include "format.h"
 #include <algorithm>
 #include <filesystem>
@@ -465,6 +468,198 @@ namespace cli
         output.Result((options.format == "tsv") ? ViewListTsvTable(rows) : ViewListTextTable(rows));
         bool unreadable = std::any_of(rows.begin(), rows.end(), [](const ViewListRow &row) { return !row.error.empty(); });
         return unreadable ? ExitCode::PartialFailure : ExitCode::Success;
+    }
+
+    std::string ViewCelFileName(int view, int loop, int cel)
+    {
+        return fmt::format("{0}.l{1}.c{2}.bmp", view, loop, cel);
+    }
+
+    sci::Result<std::vector<PicExportFile>> MakeViewExportFiles(const SCIVersion &version, int number, const std::vector<uint8_t> &data, const ViewDescription &description, bool fromPatch,
+        const PaletteComponent &colors, const PaletteComponent *palette999)
+    {
+        if (description.cels.empty())
+        {
+            return sci::Fail(sci::ErrorCode::Unsupported, "the view has no cel to export");
+        }
+        ViewSidecar sidecar = MakeViewSidecar(description);
+        sidecar.view = number;
+        sidecar.from = fromPatch ? "patch" : "package";
+        sidecar.size = (uint32_t)data.size();
+        sidecar.crc32 = Crc32Of(data);
+        sidecar.palette999 = IndexRunsOf((palette999 != nullptr) ? UsedPaletteEntries(*palette999) : std::array<bool, 256>{});
+        sidecar.used = IndexRunsOf(UsedPaletteEntries(colors));
+
+        SCI_TRY_ASSIGN(std::vector<std::vector<uint8_t>> pixels, GetAllViewCelPixels(version, data));
+        std::vector<PicExportFile> files;
+        for (size_t i = 0; i < description.cels.size(); i++)
+        {
+            const ViewCelDescription &cel = description.cels[i];
+            IndexedBmp image;
+            image.width = cel.width;
+            image.height = cel.height;
+            image.pixels = std::move(pixels[i]);
+            for (size_t entry = 0; entry < image.colors.size(); entry++)
+            {
+                image.colors[entry].red = colors.Colors[entry].rgbRed;
+                image.colors[entry].green = colors.Colors[entry].rgbGreen;
+                image.colors[entry].blue = colors.Colors[entry].rgbBlue;
+            }
+            PicExportFile file;
+            file.name = ViewCelFileName(number, cel.loop, cel.cel);
+            sci::Result<std::vector<uint8_t>> bytes = EncodeIndexedBmp(image);
+            if (!bytes)
+            {
+                return sci::Fail(bytes.error().code, fmt::format("loop {0} cel {1}: {2}", cel.loop, cel.cel, bytes.error().message));
+            }
+            file.bytes = std::move(*bytes);
+            sidecar.cels[i].file = file.name;
+            files.push_back(std::move(file));
+        }
+        PicExportFile sidecarFile;
+        sidecarFile.name = fmt::format("{0}.toml", number);
+        sidecarFile.text = ViewSidecarText(sidecar);
+        sidecarFile.isText = true;
+        files.push_back(std::move(sidecarFile));
+        return files;
+    }
+
+    namespace
+    {
+        // What the export of one view did.
+        struct ViewExportResult
+        {
+            size_t cels = 0;
+            // The view has no stored cel, and the export of every view
+            // skipped it.
+            bool skipped = false;
+            // The failure is a file that could not be written.
+            bool writeFailed = false;
+        };
+
+        // The files of a view: its description (DescribeView gives Format
+        // for a view that its reader repaired), the colours as SCI Companion
+        // shows the view (its palette over palette 999), then the write.
+        // Format also for a repair that a reader logs while the resource of
+        // the view is found and checked.
+        sci::Status ExportView(GameSession &session, int number, bool everyView, const std::string &outDir, bool dryRun, CliOutput &output, ViewExportResult &result)
+        {
+            RepairLogSink repairs;
+            sci::Result<ViewSource> read = [&]()
+            {
+                ScopedCoreLogSink scopedSink(repairs);
+                return ReadViewSource(session, number);
+            }();
+            const std::string repaired = repairs.Text();
+            if (!repaired.empty())
+            {
+                return sci::Fail(sci::ErrorCode::Format, "the reader repaired damaged data: " + repaired);
+            }
+            SCI_TRY_ASSIGN(ViewSource source, std::move(read));
+            const SCIVersion &version = session.Version();
+            SCI_TRY_ASSIGN(ViewDescription description, DescribeView(version, source.data));
+            if (description.cels.empty() && everyView)
+            {
+                result.skipped = true;
+                return sci::Ok();
+            }
+            SCI_TRY_ASSIGN(std::unique_ptr<ResourceEntity> entity, TryCreateResourceFromResourceData(*source.blob));
+            std::unique_ptr<PaletteComponent> merged = session.ResourceMap().GetMergedPalette(*entity, 999);
+            if (!merged)
+            {
+                return sci::Fail(sci::ErrorCode::Internal, "the palette of the view could not be made");
+            }
+            SCI_TRY_ASSIGN(std::vector<PicExportFile> files, MakeViewExportFiles(version, number, source.data, description, source.fromPatch, *merged, session.ResourceMap().GetPalette999()));
+            result.cels = (size_t)std::count_if(files.begin(), files.end(), [](const PicExportFile &file) { return !file.isText; });
+            return WriteExportFiles(outDir, files, dryRun, output, result.writeFailed);
+        }
+    }
+
+    sci::Result<ExitCode> RunViewExport(GameSession &session, const ViewExportOptions &options, const CommonOptions &common, CliOutput &output)
+    {
+        const std::string outDir = AbsolutePath(options.outDir);
+        SCI_TRY(CheckOutputFolder(session, outDir));
+        std::vector<int> views = ResourceNumbersOf(session, ResourceType::View);
+        if (!options.all)
+        {
+            SCI_TRY_ASSIGN(views, SelectResourceNumbers(views, options.views, "view"));
+        }
+        // The resource map reads palette 999 one time, here: a warning of its
+        // reader goes to the output once, and is not a repair of a view.
+        sci::Status palette999 = sci::Guard("reading palette 999", [&]() -> sci::Status
+        {
+            session.ResourceMap().GetPalette999();
+            return sci::Ok();
+        });
+        if (!palette999)
+        {
+            output.Warning(palette999.error().ToString());
+        }
+
+        ReportFacts facts;
+        size_t exported = 0;
+        size_t cels = 0;
+        size_t skipped = 0;
+        size_t failed = 0;
+        for (int number : views)
+        {
+            if (CancelFlag().load())
+            {
+                facts.cancelled = true;
+                break;
+            }
+            SetCurrentItem("exporting " + ViewText(number));
+            ViewExportResult result;
+            // The exception boundary of the view.
+            sci::Status status = sci::Guard("exporting " + ViewText(number), [&]() -> sci::Status
+            {
+                return ExportView(session, number, options.all, outDir, common.dryRun, output, result);
+            });
+            if (!status)
+            {
+                failed++;
+                output.Error(ViewText(number) + ": " + status.error().ToString());
+                if (status.error().code == sci::ErrorCode::Internal)
+                {
+                    facts.internal = true;
+                }
+                else if (result.writeFailed)
+                {
+                    facts.writeFailed = true;
+                }
+                else
+                {
+                    facts.otherFailures = true;
+                }
+            }
+            else if (result.skipped)
+            {
+                skipped++;
+                output.Detail(ViewText(number) + " has no cel: skipped");
+            }
+            else
+            {
+                exported++;
+                cels += result.cels;
+            }
+        }
+        SetCurrentItem("");
+
+        std::string summary = fmt::format("{0} {1} of {2} ({3}) into {4}", common.dryRun ? "A run would export" : "Exported", exported, CountText(views.size(), "view"), CountText(cels, "cel"), outDir);
+        if (skipped > 0)
+        {
+            summary += fmt::format("; {0} no cel", (skipped == 1) ? "1 view has" : fmt::format("{0} views have", skipped));
+        }
+        if (failed > 0)
+        {
+            summary += fmt::format("; {0} failed", CountText(failed, "view"));
+        }
+        if (facts.cancelled)
+        {
+            summary += "; stopped by Ctrl+C";
+        }
+        output.Message(summary + ".");
+        return ExitCodeForFacts(facts);
     }
 
     sci::Result<ExitCode> RunViewPalette(GameSession &session, const ViewPaletteOptions &options, const CommonOptions &common, CliOutput &output)

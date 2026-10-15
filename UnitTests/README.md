@@ -299,8 +299,8 @@ game data other than the template games.
   functions under the commands are `TestPicImage.cpp` (on the pic files of
   `Files\Pics`, SCI2 too) and `TestIndexedBmp.cpp` (the 8-bit BMP reader
   and writer).
-- `TestCliView.cpp` runs `scic view list` and `scic view palette` (plan
-  sections 4.9 and 4.10) on the SCI1.1 template. The views of the template
+- `TestCliView.cpp` runs `scic view list`, `export` and `palette` (plan
+  sections 4.9 to 4.11) on the SCI1.1 template. The views of the template
   have no palette that marks an entry, so each test makes its views and
   puts them into the game copy as patch files: a view with 4-byte palette
   entries from the view writer, the same view with its palette changed in
@@ -311,7 +311,9 @@ game data other than the template games.
   (`Src\Resources\ViewPalette.h`) with views of SCI1.1 and of SCI2.
 - `TestViewImage.cpp` tests the functions under the view commands
   (`Src\Resources\ViewImage.h`: the layout of the headers, the description
-  and the pixels of a cel). `SierraViewBytes.h` makes views in the form of
+  and the pixels of a cel), and the class `TestViewSidecar` the writer and
+  the reader of the `.toml` file of `scic view export`
+  (`Src\Resources\ViewSidecar.h`). `SierraViewBytes.h` makes views in the form of
   Sierra's views of SCI1.1 and SCI2 (cel headers of 36 or 52 bytes, mirror
   loops, loops with no cel, raw cels, two cel headers with one data, 3- and
   4-byte palettes); the view writer of SCI Companion makes another layout.

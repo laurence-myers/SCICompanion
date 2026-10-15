@@ -64,6 +64,16 @@ namespace cli
         bool isText = false;
     };
 
+    class CliOutput;
+
+    // Writes the files of an export (of a pic or of a view) into the output
+    // folder. Each file that is there already must open for writing before
+    // the first file is written, so a file that cannot be replaced writes
+    // nothing. A dry run writes nothing and gives "Would write <path>" for
+    // each file. writeFailed is set when a file cannot be written (also by
+    // the check).
+    sci::Status WriteExportFiles(const std::string &outDir, const std::vector<PicExportFile> &files, bool dryRun, CliOutput &output, bool &writeFailed);
+
     // The files of pic export for one pic, in the order of the cels, the
     // .toml file last: <number>.bmp for the background cel (the cel with the
     // largest area), <number>.cel<index>.bmp for each other cel when

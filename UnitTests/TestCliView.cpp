@@ -17,6 +17,7 @@
 #include "ResourceUtil.h"
 #include "View.h"
 #include "ViewPalette.h"
+#include "ViewSidecar.h"
 #include "crc.h"
 #include "format.h"
 #include "SierraViewBytes.h"
@@ -1625,6 +1626,215 @@ namespace UnitTests
             Assert::IsTrue(console.out.empty(), Wide(console.out).c_str());
         }
 
+        // The files of a Sierra-form view: a BMP file for each stored cel
+        // (none for the mirror), with the pixels of the cel and the colours of
+        // the view over palette 999, and the .toml file.
+        TEST_METHOD(Export_WritesTheBmpsAndTheSidecar)
+        {
+            sierraview::MadeView made = sierraview::ThreeLoopView();
+            made.sci2 = false;
+            const std::vector<uint8_t> data = sierraview::MakeSierraView(made);
+            PutViewIntoGame(500, data);
+            const std::string folder = _outDir + "\\exported";
+            fs::create_directories(folder);
+
+            cli::StringConsole console = Expect(0, { "view", "export", _gameFolder, "--view", "500", "--out-dir", folder });
+
+            Assert::IsTrue(std::vector<std::string>{ "500.l0.c0.bmp", "500.l0.c1.bmp", "500.l2.c0.bmp", "500.toml" } == FileNamesOf(folder), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "Exported 1 of 1 view (3 cels) into "), Wide(console.err).c_str());
+            const std::vector<std::pair<std::string, const sierraview::MadeCel *>> cels = { { "500.l0.c0.bmp", &made.loops[0].cels[0] }, { "500.l0.c1.bmp", &made.loops[0].cels[1] }, { "500.l2.c0.bmp", &made.loops[2].cels[0] } };
+            for (const auto &cel : cels)
+            {
+                sci::Result<IndexedBmp> image = ReadIndexedBmpFile(folder + "\\" + cel.first);
+                AssertOk(image, cel.first);
+                Assert::AreEqual(cel.second->width, image->width);
+                Assert::IsTrue(cel.second->pixels == image->pixels, Wide(cel.first).c_str());
+                // Entry 50: the view marks it, so it has the colour of the view.
+                Assert::AreEqual((int)made.colors[50][0], (int)image->colors[50].red);
+                Assert::AreEqual((int)made.colors[50][1], (int)image->colors[50].green);
+            }
+            // Entry 5: the view does not mark it, so it has the colour of
+            // palette 999 of the game.
+            GameSession &session = _game.Open();
+            const PaletteComponent *palette999 = session.ResourceMap().GetPalette999();
+            Assert::IsNotNull(palette999);
+            sci::Result<IndexedBmp> first = ReadIndexedBmpFile(folder + "\\500.l0.c0.bmp");
+            AssertOk(first);
+            Assert::AreEqual((int)palette999->Colors[5].rgbGreen, (int)first->colors[5].green);
+
+            sci::Result<ViewSidecar> sidecar = ReadViewSidecarFile(folder + "\\500.toml");
+            AssertOk(sidecar);
+            Assert::AreEqual(500, sidecar->view);
+            Assert::AreEqual(std::string("vga11"), sidecar->format);
+            Assert::AreEqual(std::string("patch"), sidecar->from);
+            Assert::AreEqual((uint32_t)data.size(), sidecar->size);
+            Assert::AreEqual((uint32_t)crcFast(data.data(), (int)data.size()), sidecar->crc32);
+            Assert::AreEqual((size_t)3, sidecar->loops.size());
+            Assert::AreEqual(0, sidecar->loops[1].mirrorOf);
+            Assert::AreEqual((size_t)3, sidecar->cels.size());
+            Assert::AreEqual(std::string("500.l2.c0.bmp"), sidecar->cels[2].file);
+            Assert::IsTrue(sidecar->cels[2].raw);
+            Assert::AreEqual(-2, sidecar->cels[0].x);
+            // The used entries: those of the view (10 to 99) and of palette 999.
+            std::array<bool, 256> used = UsedPaletteEntries(*palette999);
+            std::fill(used.begin() + 10, used.begin() + 100, true);
+            Assert::AreEqual(IndexRunsText(IndexRunsOf(used)), IndexRunsText(sidecar->used));
+            Assert::AreEqual(IndexRunsText(IndexRunsOf(UsedPaletteEntries(*palette999))), IndexRunsText(sidecar->palette999));
+        }
+
+        // A view whose only loop has no cel: --all skips it and counts it; a
+        // named view with no cel fails.
+        TEST_METHOD(Export_ViewWithNoCel)
+        {
+            sierraview::MadeView made = sierraview::ThreeLoopView();
+            made.sci2 = false;
+            made.loops = { sierraview::MadeLoop() };
+            PutViewIntoGame(501, sierraview::MakeSierraView(made));
+            const std::string folder = _outDir + "\\exported";
+            fs::create_directories(folder);
+
+            cli::StringConsole all = Expect(0, { "view", "export", _gameFolder, "--all", "--out-dir", folder });
+            Assert::IsTrue(Has(all.err, "Exported 16 of 17 views (") && Has(all.err, "; 1 view has no cel."), Wide(all.err).c_str());
+            Assert::IsFalse(fs::exists(folder + "\\501.toml"));
+
+            cli::StringConsole named = Expect(6, { "view", "export", _gameFolder, "--view", "501", "--out-dir", folder });
+            Assert::IsTrue(Has(named.err, "scic: error: view 501: the view has no cel to export [unsupported]"), Wide(named.err).c_str());
+        }
+
+        TEST_METHOD(Export_DryRun_WritesNothing)
+        {
+            const std::string folder = _outDir + "\\exported";
+            fs::create_directories(folder);
+
+            cli::StringConsole console = Expect(0, { "view", "export", _gameFolder, "--view", "900", "--out-dir", folder, "--dry-run" });
+
+            Assert::IsTrue(FileNamesOf(folder).empty(), L"a dry run writes nothing");
+            Assert::IsTrue(Has(console.err, "Would write " + folder + "\\900.l0.c0.bmp") && Has(console.err, "Would write " + folder + "\\900.toml"), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "A run would export 1 of 1 view (3 cels) into "), Wide(console.err).c_str());
+        }
+
+        TEST_METHOD(Export_UsageErrors)
+        {
+            const std::string folder = _outDir + "\\exported";
+            fs::create_directories(folder);
+            cli::StringConsole neither = Expect(2, { "view", "export", _gameFolder, "--out-dir", folder });
+            Assert::IsTrue(Has(neither.err, "give --all, or --view with one or more views"), Wide(neither.err).c_str());
+            cli::StringConsole both = Expect(2, { "view", "export", _gameFolder, "--all", "--view", "0", "--out-dir", folder });
+            Assert::IsTrue(Has(both.err, "give --all or --view, not both"), Wide(both.err).c_str());
+            cli::StringConsole emptyOut = Expect(2, { "view", "export", _gameFolder, "--all", "--out-dir", "" });
+            Assert::IsTrue(Has(emptyOut.err, "--out-dir needs a folder"), Wide(emptyOut.err).c_str());
+            cli::StringConsole noOut = Expect(2, { "view", "export", _gameFolder, "--all" });
+            Assert::IsTrue(Has(noOut.err, "--out-dir"), Wide(noOut.err).c_str());
+            cli::StringConsole game = Expect(2, { "view", "export", _gameFolder, "--all", "--out-dir", _gameFolder });
+            Assert::IsTrue(Has(game.err, "the output folder is the game folder"), Wide(game.err).c_str());
+            cli::StringConsole missing = Expect(3, { "view", "export", _gameFolder, "--all", "--out-dir", _outDir + "\\missing" });
+            Assert::IsTrue(Has(missing.err, "the output folder does not exist"), Wide(missing.err).c_str());
+            cli::StringConsole unknown = Expect(2, { "view", "export", _gameFolder, "--view", "5", "--out-dir", folder });
+            Assert::IsTrue(Has(unknown.err, "the game has no view 5"), Wide(unknown.err).c_str());
+            Assert::IsTrue(FileNamesOf(folder).empty(), L"no file is written");
+        }
+
+        // A view that fails does not stop the next one: a view that its reader
+        // repaired, and the views of an EGA game.
+        TEST_METHOD(Export_ViewsThatFail_ExitWith6)
+        {
+            PutViewIntoGame(502, MakeViewBytes(sciVersion1_1, { 64, 65, 0, 0, 70, 64 }, true, SecondLoop::MirrorsItself));
+            const std::string folder = _outDir + "\\exported";
+            fs::create_directories(folder);
+
+            cli::StringConsole repaired = Expect(6, { "view", "export", _gameFolder, "--view", "502", "900", "--out-dir", folder });
+            Assert::IsTrue(Has(repaired.err, "scic: error: view 502: ") && Has(repaired.err, "the reader repaired damaged data: Empty loop found") && Has(repaired.err, "[format]"), Wide(repaired.err).c_str());
+            Assert::IsTrue(Has(repaired.err, "Exported 1 of 2 views (3 cels) into ") && Has(repaired.err, "; 1 view failed."), Wide(repaired.err).c_str());
+            Assert::IsTrue(fs::exists(folder + "\\900.toml") && !fs::exists(folder + "\\502.toml"));
+
+            _gameFolder = _game.Make(TemplateSci0);
+            cli::StringConsole ega = Expect(6, { "view", "export", _gameFolder, "--all", "--out-dir", folder });
+            Assert::IsTrue(Has(ega.err, "the image of a view of the format ega cannot be read") && Has(ega.err, "[unsupported]"), Wide(ega.err).c_str());
+        }
+
+        // A palette 999 that its reader repairs (it stores entries past 255)
+        // gives a warning; no view fails for it.
+        TEST_METHOD(Export_DamagedPalette999_IsAWarning)
+        {
+            std::vector<uint8_t> palette;
+            {
+                GameSession &session = _game.Open();
+                std::unique_ptr<ResourceBlob> blob = session.ResourceMap().MostRecentResource(ResourceType::Palette, 999, false);
+                Assert::IsNotNull(blob.get(), L"setup: palette 999 of the template");
+                palette.assign(blob->GetData(), blob->GetData() + blob->GetLength());
+                _game.CloseSessions();
+            }
+            palette[25] = 200;
+            palette[29] = 100;
+            palette[30] = 0;
+            std::vector<uint8_t> patch = { 0x8b, 0x00 };
+            patch.insert(patch.end(), palette.begin(), palette.end());
+            WriteFileBytes(_gameFolder + "\\999.pal", patch);
+            const std::string folder = _outDir + "\\exported";
+            fs::create_directories(folder);
+
+            cli::StringConsole console = Expect(0, { "view", "export", _gameFolder, "--view", "0", "900", "--out-dir", folder, "--dry-run" });
+
+            Assert::AreEqual((size_t)1, CountOf(console.err, "scic: warning: "), Wide(console.err).c_str());
+            Assert::IsFalse(Has(console.err, "scic: error: "), Wide(console.err).c_str());
+            Assert::IsTrue(Has(console.err, "A run would export 2 of 2 views"), Wide(console.err).c_str());
+        }
+
+        // A file that cannot be replaced fails the view before its first
+        // write: exit 9.
+        TEST_METHOD(Export_FileThatCannotBeWritten_ExitsWith9)
+        {
+            const std::string folder = _outDir + "\\exported";
+            fs::create_directories(folder);
+            WriteReadOnlyFile(folder + "\\900.toml", "read-only");
+
+            cli::StringConsole console = Expect(9, { "view", "export", _gameFolder, "--view", "900", "--out-dir", folder });
+
+            Assert::IsTrue(Has(console.err, "scic: error: view 900: ") && Has(console.err, "900.toml"), Wide(console.err).c_str());
+            Assert::IsFalse(fs::exists(folder + "\\900.l0.c0.bmp"), L"no file of the view is written");
+        }
+
+        TEST_METHOD(Export_CtrlC_ExitsWith7)
+        {
+            const std::string folder = _outDir + "\\exported";
+            fs::create_directories(folder);
+            cli::CancelFlag().store(true);
+
+            cli::StringConsole console;
+            int code = cli::RunCli({ "view", "export", _gameFolder, "--all", "--out-dir", folder }, console);
+            cli::CancelFlag().store(false);
+
+            Assert::AreEqual(7, code, Wide(console.out + console.err).c_str());
+            Assert::IsTrue(Has(console.err, "stopped by Ctrl+C"), Wide(console.err).c_str());
+            Assert::IsTrue(FileNamesOf(folder).empty(), L"no file is written");
+        }
+
+        // The files of an SCI2 view, with no game.
+        TEST_METHOD(ExportFiles_Sci2View)
+        {
+            const std::vector<uint8_t> data = sierraview::MakeSierraView(sierraview::ThreeLoopView());
+            sci::Result<ViewDescription> description = DescribeView(sciVersion2, data);
+            AssertOk(description);
+            PaletteComponent colors;
+
+            sci::Result<std::vector<cli::PicExportFile>> files = cli::MakeViewExportFiles(sciVersion2, 9, data, *description, false, colors, nullptr);
+
+            AssertOk(files);
+            std::vector<std::string> names;
+            for (const cli::PicExportFile &file : *files)
+            {
+                names.push_back(file.name);
+            }
+            Assert::IsTrue(std::vector<std::string>{ "9.l0.c0.bmp", "9.l0.c1.bmp", "9.l2.c0.bmp", "9.toml" } == names);
+            Assert::IsTrue(Has(files->back().text, "format = 'vga2'") && Has(files->back().text, "resolution = 1") && Has(files->back().text, "palette_999 = []"), Wide(files->back().text).c_str());
+
+            ViewDescription noCel = *description;
+            noCel.cels.clear();
+            sci::Result<std::vector<cli::PicExportFile>> none = cli::MakeViewExportFiles(sciVersion2, 9, data, noCel, false, colors, nullptr);
+            Assert::IsFalse(none.has_value());
+            Assert::IsTrue(none.error().code == sci::ErrorCode::Unsupported);
+        }
+
         TEST_METHOD(Help_ListsTheViewCommand)
         {
             cli::StringConsole group = Expect(0, { "view" });
@@ -1637,9 +1847,11 @@ namespace UnitTests
             Assert::IsTrue(Has(helpPalette.out, "--view") && Has(helpPalette.out, "--colors-from") && Has(helpPalette.out, "--clear-used") && Has(helpPalette.out, "--palette-range") &&
                 Has(helpPalette.out, "--out-dir") && Has(helpPalette.out, "scic view palette"), Wide(helpPalette.out).c_str());
             cli::StringConsole root = Expect(0, { "help" });
-            Assert::IsTrue(Has(OneLine(root.out), "pic import, view list, view palette."), Wide(root.out).c_str());
+            Assert::IsTrue(Has(OneLine(root.out), "pic import, view list, view export, view palette."), Wide(root.out).c_str());
             // The line of the group in the list of the commands.
-            Assert::IsTrue(Has(OneLine(root.out), " view The view commands: list, palette."), Wide(root.out).c_str());
+            Assert::IsTrue(Has(OneLine(root.out), " view The view commands: list, export, palette."), Wide(root.out).c_str());
+            cli::StringConsole helpExport = Expect(0, { "help", "view", "export" });
+            Assert::IsTrue(Has(helpExport.out, "--view") && Has(helpExport.out, "--all") && Has(helpExport.out, "--out-dir") && Has(helpExport.out, "scic view export"), Wide(helpExport.out).c_str());
         }
     };
 }
