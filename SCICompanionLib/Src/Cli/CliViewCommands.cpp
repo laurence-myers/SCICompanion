@@ -859,6 +859,9 @@ namespace cli
                 output.Warning(viewText + ": " + warning);
             }
             SCI_TRY_ASSIGN(std::vector<uint8_t> data, std::move(made));
+            // A view too large for a resource fails here, so that it loses
+            // the patch file of an earlier run.
+            SCI_TRY(CheckResourceSize(version, (DWORD)data.size(), ResourceType::View));
             unchanged = (data == source.data);
             return data;
         }
@@ -1228,13 +1231,21 @@ namespace cli
                 {
                     return sci::Fail(sci::ErrorCode::Usage, fmt::format("two loops mirror loop {0}, and their [[loop]] tables have other cels ({1} and {2})", named, namedLoop.headerCels, loops[l]->cels));
                 }
+                // When the loop at the end of the chain has cels, 0 makes a
+                // mirror with no cel.
+                if ((loops[l]->cels == 0) && !cels[shown].empty())
+                {
+                    warnings.push_back(fmt::format("loop {0} mirrors loop {1}, which is a mirror, and the [[loop]] of loop {0} has cels = 0 (or no cels key): the interpreters give loop {0} no cel, as in some of Sierra's views",
+                        l, named));
+                }
                 namedLoop.headerCels = loops[l]->cels;
                 continue;
             }
             const size_t count = cels[shown].size();
             if ((loops[l]->cels != 0) && ((size_t)loops[l]->cels != count))
             {
-                return sci::Fail(sci::ErrorCode::Usage, fmt::format("the [[loop]] of loop {0} has cels = {1}, and the loop has {2}", l, loops[l]->cels, CountText(count, "cel")));
+                return sci::Fail(sci::ErrorCode::Usage, ((size_t)shown == l) ? fmt::format("the [[loop]] of loop {0} has cels = {1}, and the loop has {2}", l, loops[l]->cels, CountText(count, "cel")) :
+                    fmt::format("the [[loop]] of loop {0} has cels = {1}, and loop {2}, whose cels it shows, has {3}", l, loops[l]->cels, shown, CountText(count, "cel")));
             }
         }
 
@@ -1382,7 +1393,11 @@ namespace cli
             {
                 cels += loop.cels.size();
             }
-            return MakeNewViewBytes(session.Version(), *view);
+            SCI_TRY_ASSIGN(std::vector<uint8_t> data, MakeNewViewBytes(session.Version(), *view));
+            // A view too large for a resource fails here, so that it loses
+            // the patch file of an earlier run.
+            SCI_TRY(CheckResourceSize(session.Version(), (DWORD)data.size(), ResourceType::View));
+            return data;
         }
     }
 

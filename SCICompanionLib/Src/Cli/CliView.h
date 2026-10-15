@@ -4,9 +4,8 @@
 // list from the bytes of a view, the two tables of view list, the files of
 // view export, the new bytes of a view for view import, and the new view of
 // view add, which need no game; and the write of the patch file of a view.
-// The commands
-// (CliViewCommands.cpp) read the views of a game and call them; a test
-// calls the parts that need no game with the bytes of a view.
+// The commands (CliViewCommands.cpp) read the views of a game and call them;
+// a test calls the parts that need no game with the bytes of a view.
 
 #include "CliPic.h"
 #include "Result.h"
@@ -134,7 +133,9 @@ namespace cli
     //    cels (when it is not 0: the count of the cels of the loop, or of
     //    the loop at the end of the chain of a mirror). For a mirror of a
     //    mirror, cels (also 0) is the count of the header of the mirror
-    //    that it names (NewViewLoop::headerCels), as export gives it.
+    //    that it names (NewViewLoop::headerCels), as export gives it. When
+    //    the loop at the end of the chain has cels, 0 gives a warning for
+    //    each such mirror of a mirror: it shows no cel.
     //  - [[cel]]: loop, cel (0 to n - 1 in a loop, each one time), file, x,
     //    y, skip_color and raw. width and height come from the image; when
     //    they are not 0, they must be its size. A mirror loop has no [[cel]];

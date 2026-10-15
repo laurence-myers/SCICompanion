@@ -2335,7 +2335,7 @@ namespace UnitTests
             fails([](ViewSidecar &s, Images &) { s.cels.pop_back(); s.celCount = 0; }, "the [[loop]] of loop 2 has cels = 1, and the loop has 0 cels");
             fails([](ViewSidecar &s, Images &) { s.celCount = 9; }, "[view] cels is 9, and the file has 3 [[cel]] tables");
             fails([](ViewSidecar &s, Images &) { s.loops[0].cels = 3; }, "the [[loop]] of loop 0 has cels = 3, and the loop has 2 cels");
-            fails([](ViewSidecar &s, Images &) { s.loops[1].cels = 1; }, "the [[loop]] of loop 1 has cels = 1, and the loop has 2 cels");
+            fails([](ViewSidecar &s, Images &) { s.loops[1].cels = 1; }, "the [[loop]] of loop 1 has cels = 1, and loop 0, whose cels it shows, has 2 cels");
             fails([](ViewSidecar &s, Images &) { s.loops[1].mirrorOf = 1; }, "loop 1 mirrors loop 1; a mirror shows the cels of another loop of the view, and a chain of mirrors ends at a loop that is not a mirror");
             fails([](ViewSidecar &s, Images &) { s.cels[0].width = 6; }, "500.l0.c0.bmp has 5 x 3 pixels, and the [[cel]] of cel 0 of loop 0 has 6 x 3");
             fails([](ViewSidecar &s, Images &i) { s.cels[0].file.clear(); i.erase(i.begin()); }, "the [[cel]] of cel 0 of loop 0 names no image file");
@@ -2364,17 +2364,47 @@ namespace UnitTests
             chainLoop.cels = 0;
             chain.loops.push_back(chainLoop);
             chain.loopCount = 4;
+            warnings.clear();
             sci::Result<NewView> chained = cli::MakeAddedView(chain, baseImages, noEntries, false, warnings);
             AssertOk(chained);
             Assert::AreEqual(0, chained->loops[1].headerCels);
             Assert::AreEqual(-1, chained->loops[3].headerCels);
+            Assert::IsTrue((warnings.size() == 1) &&
+                Has(warnings[0], "loop 3 mirrors loop 1, which is a mirror, and the [[loop]] of loop 3 has cels = 0 (or no cels key): the interpreters give loop 3 no cel"),
+                Wide(warnings.empty() ? std::string("no warning") : warnings[0]).c_str());
+            warnings.clear();
+            chain.loops.back().cels = 2;
+            AssertOk(cli::MakeAddedView(chain, baseImages, noEntries, false, warnings));
+            Assert::IsTrue(warnings.empty(), L"a mirror of a mirror with cels: no warning");
+            // Each mirror of the mirror with cels = 0 gets the warning.
+            chain.loops.back().cels = 0;
             chainLoop.index = 4;
-            chainLoop.cels = 2;
             chain.loops.push_back(chainLoop);
             chain.loopCount = 5;
+            warnings.clear();
+            AssertOk(cli::MakeAddedView(chain, baseImages, noEntries, false, warnings));
+            Assert::AreEqual((size_t)2, warnings.size());
+            Assert::IsTrue(Has(warnings[1], "the interpreters give loop 4 no cel"), Wide(warnings[1]).c_str());
+            chain.loops.back().cels = 2;
             sci::Result<NewView> twoCounts = cli::MakeAddedView(chain, baseImages, noEntries, false, warnings);
             Assert::IsTrue(!twoCounts.has_value() && Has(twoCounts.error().message, "two loops mirror loop 1, and their [[loop]] tables have other cels (0 and 2)"),
                 twoCounts.has_value() ? L"no error" : Wide(twoCounts.error().ToString()).c_str());
+            // A mirror of a mirror of a loop with no cel: 0 is the only count,
+            // and there is no warning.
+            ViewSidecar empty = *base;
+            ViewSidecarLoop emptyLoop;
+            emptyLoop.index = 3;
+            empty.loops.push_back(emptyLoop);
+            emptyLoop.index = 4;
+            emptyLoop.mirrorOf = 3;
+            empty.loops.push_back(emptyLoop);
+            emptyLoop.index = 5;
+            emptyLoop.mirrorOf = 4;
+            empty.loops.push_back(emptyLoop);
+            empty.loopCount = 6;
+            warnings.clear();
+            AssertOk(cli::MakeAddedView(empty, baseImages, noEntries, false, warnings));
+            Assert::IsTrue(warnings.empty(), warnings.empty() ? L"" : Wide(warnings[0]).c_str());
             // A stored entry with no flag run gets the flag 1.
             ViewSidecar noRuns = *base;
             noRuns.flags.clear();

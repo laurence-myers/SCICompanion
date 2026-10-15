@@ -1,9 +1,9 @@
 <#
     The round-trip check of scic view export, scic view import and scic view
     add on a game (docs/scic-cli/plan.md, sections 4.11 to 4.13). For local
-    use: CI does
-    not run it (CI has only the SCI1.1 template; the check is for a game
-    with many views, for example the hi-res Leisure Suit Larry 6).
+    use: CI does not run it (CI has only the SCI1.1 template; the check is
+    for a game with many views, for example the hi-res Leisure Suit Larry
+    6).
 
     The script only reads the game folder. It copies the files of the game
     folder (not its subfolders) into a new run folder under -Work, and all
@@ -344,7 +344,7 @@ foreach ($number in ($original.Keys | Sort-Object)) {
             $row.note = "add: $reason"
             # A refusal (a view of more than 64 KB in SCI1.1) is a note; any
             # other reason is a failure.
-            if ($reason -notmatch '\[unsupported\]$') { $failures.Add("view ${number}: export took the view and add did not: $reason") }
+            if ($reason -notmatch "Sierra's interpreter of SCI1\.1 reads a view of 65535 bytes or fewer \[unsupported\]$") { $failures.Add("view ${number}: export took the view and add did not: $reason") }
         }
     }
     $rows.Add([pscustomobject]$row)

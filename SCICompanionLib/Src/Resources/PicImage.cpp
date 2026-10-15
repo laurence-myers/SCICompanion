@@ -346,7 +346,7 @@ sci::Result<std::vector<uint8_t>> MakePaletteBytes(const PicPaletteDescription &
     }
     const int first = palette.firstEntry;
     const int count = palette.entryCount;
-    if ((first < 0) || (count < 0) || ((first + count) > 256))
+    if ((first < 0) || (first > 255) || (count < 0) || ((first + count) > 256))
     {
         return sci::Fail(sci::ErrorCode::Usage, fmt::format("a palette cannot store {0} entries from entry {1}; a palette has the entries 0 to 255", count, first));
     }

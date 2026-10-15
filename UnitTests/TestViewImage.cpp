@@ -1015,6 +1015,13 @@ namespace UnitTests
                     const bool sci2 = (version->ViewFormat == ViewFormat::VGA2);
                     Assert::AreEqual(sci2 ? 0x8a : 0x0a, (int)(*data)[layout->loops[0].cels[0].headerOffset + 9]);
                     Assert::AreEqual(sci2, layout->loops[0].cels[0].rowTableOffset != 0);
+                    // The raw cel: compression 0, its data and no run-length
+                    // data.
+                    const size_t rawHeader = layout->loops[2].cels[0].headerOffset;
+                    Assert::AreEqual(0, (int)(*data)[rawHeader + 9]);
+                    Assert::AreEqual(15u, DwordOf(*data, rawHeader + 12));
+                    Assert::AreEqual(0u, DwordOf(*data, rawHeader + 16));
+                    Assert::AreEqual(0u, DwordOf(*data, rawHeader + 28));
                 }
             }
         }
@@ -1116,7 +1123,7 @@ namespace UnitTests
             cel.height = 257;
             for (int i = 0; i < (256 * 257); i++)
             {
-                // No two pixels of a row are the same: each pixel is literal.
+                // No two adjacent pixels are the same: each pixel is literal.
                 cel.pixels.push_back((uint8_t)(1 + (i % 251)));
             }
             loop.cels.push_back(cel);
@@ -1152,6 +1159,10 @@ namespace UnitTests
             PicPaletteDescription fiveBytes = MadeNewView(4).palette;
             fiveBytes.entrySize = 5;
             AssertError(MakePaletteBytes(fiveBytes).error(), sci::ErrorCode::Usage, "a palette entry has 3 or 4 bytes, not 5");
+            PicPaletteDescription pastTheEnd = MadeNewView(4).palette;
+            pastTheEnd.firstEntry = 256;
+            pastTheEnd.entryCount = 0;
+            AssertError(MakePaletteBytes(pastTheEnd).error(), sci::ErrorCode::Usage, "a palette cannot store 0 entries from entry 256");
         }
     };
 

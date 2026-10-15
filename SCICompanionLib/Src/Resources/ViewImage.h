@@ -313,10 +313,12 @@ struct NewView
 // writes the headers and the cels (ViewWriteToVGA11 or ViewWriteToVGA2: 0x0a
 // or 0x8a as byte 9 of each cel header, and a row table for each SCI2 cel);
 // then bytes 3, 4, 5 and 14 to 17 of the view header get the values of the
-// view. The pixels of a raw cel go after the last byte: its header gets 0 as
-// byte 9 and as the offsets of the literal data and of the row table, the
-// offset of the pixels as the offset of the run-length data, and
-// width * height as the two sizes (the writer has a cel of 1 pixel there).
+// view. The pixels of a raw cel go after the last byte, and its header (where
+// the writer has a cel of 1 pixel) gets them as Sierra's raw cels have
+// them: 0 as byte 9 and as the offsets of the literal data and of the row
+// table, the offset of the pixels as the offset of the run-length data,
+// width * height as the size of its data (12), and 0 as the size of its
+// run-length data (16).
 // Then the palette (MakePaletteBytes) goes after the last byte, at the
 // offset of bytes 8 to 11. A mirror loop gets the flag 1 in byte 1 of its
 // header (the SCI32 interpreter flips it), the cel offset (bytes 12 to 15)
@@ -325,9 +327,9 @@ struct NewView
 // interpreters read the count and the offset from the header of the loop
 // that a mirror names, which can be a mirror too. The bytes must read back
 // (DescribeView, GetAllViewCelPixels) with the loops, the mirrors and their
-// counts, the cels (sizes, placements, skip colours, raw or not, pixels,
-// also through the row table of each SCI2 cel that is not raw), the header
-// bytes and the palette of the view.
+// counts, flags and cel offsets, the cels (sizes, placements, skip colours,
+// raw or not, compression bytes, pixels, also through the row table of each
+// SCI2 cel that is not raw), the header bytes and the palette of the view.
 //
 // Usage for no loop or more than 255 loops; for a mirror whose chain does
 // not end at a loop that is not a mirror (a loop that is not there, the

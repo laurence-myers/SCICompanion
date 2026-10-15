@@ -364,8 +364,9 @@ game data other than the template games.
   before from its patch file (header `80 80 00 00`), and that each swapped
   image comes back byte for byte. Then it adds each exported view again
   (`--replace`) and checks that the export of the new views gives the same
-  images and the same facts in the `.toml` files. It writes `roundtrip.csv` and the logs, and takes
-  `-AllowUnusedIndices` as the pic sweep does:
+  images and the same facts in the `.toml` files. It writes
+  `roundtrip.csv` and the logs, and takes `-AllowUnusedIndices` as the
+  pic sweep does:
 
   ```
   .\UnitTests\Tools\ViewRoundTripSweep.ps1 -Game <a copy of the game folder> -Work I:\tmp\view-sweep

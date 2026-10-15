@@ -128,9 +128,9 @@ sci::Result<PicPaletteDescription> DescribePaletteAt(const std::vector<uint8_t> 
 // 3-byte entries with their one flag (the flag of the first stored entry) in
 // the header. The other bytes of the header are those of
 // WritePaletteShortForm. In a view, DescribePaletteAt with headerFlag reads
-// the palette back. Usage when the palette is not present, when the entries
-// are not in 0 to 255, when the entry size is not 3 or 4, and for 3-byte
-// entries whose flags are not all the same.
+// the palette back. Usage when the palette is not present, when the first
+// entry or the entries are not in 0 to 255, when the entry size is not 3 or
+// 4, and for 3-byte entries whose flags are not all the same.
 sci::Result<std::vector<uint8_t>> MakePaletteBytes(const PicPaletteDescription &palette);
 
 // "ega", "vga1", "vga11" or "vga2".

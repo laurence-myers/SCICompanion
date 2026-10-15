@@ -1070,8 +1070,9 @@ sci::Result<std::vector<uint8_t>> MakeNewViewBytes(const SCIVersion &version, co
             data[header + 2] = (uint8_t)(cel.height & 0xff);
             data[header + 3] = (uint8_t)(cel.height >> 8);
             data[header + 9] = 0;
+            // The data of the cel, and no run-length data.
             PutDwordAt(data, header + 12, pixelCount);
-            PutDwordAt(data, header + 16, pixelCount);
+            PutDwordAt(data, header + 16, 0);
             PutDwordAt(data, header + 24, OffsetAtEnd(data));
             PutDwordAt(data, header + 28, 0);
             PutDwordAt(data, header + 32, 0);
@@ -1119,19 +1120,27 @@ sci::Result<std::vector<uint8_t>> MakeNewViewBytes(const SCIVersion &version, co
         }
     }
     same = same && (stored == after.cels.size());
-    // The row table of each SCI2 cel that is not raw gives its pixels too.
-    if (same && (version.ViewFormat == ViewFormat::VGA2))
+    // The headers that the readers of SCI Companion do not read: the flag and
+    // the cel offset of each mirror, and the compression byte of each cel
+    // (the SCI32 interpreter decodes a cel by it). The row table of each SCI2
+    // cel that is not raw gives its pixels too.
+    SCI_TRY_ASSIGN(ViewLayout layout, ReadViewLayout(data.data(), data.size()));
+    const bool sci2 = (version.ViewFormat == ViewFormat::VGA2);
+    size_t index = 0;
+    for (size_t l = 0; same && (l < layout.loops.size()); l++)
     {
-        SCI_TRY_ASSIGN(ViewLayout layout, ReadViewLayout(data.data(), data.size()));
-        size_t index = 0;
-        for (const ViewLoopLayout &loop : layout.loops)
+        const ViewLoopLayout &loop = layout.loops[l];
+        if (view.loops[l].mirrorOf >= 0)
         {
-            for (const ViewCelLayout &cel : loop.cels)
-            {
-                std::vector<uint8_t> rows;
-                same = same && (cel.IsRaw() || ((cel.rowTableOffset != 0) && DecodeByRowTable(data, cel, rows) && (index < pixels.size()) && (rows == pixels[index])));
-                index++;
-            }
+            same = (data[loop.headerOffset + 1] == 1) && (loop.celOffset == layout.loops[shown[l]].celOffset);
+        }
+        for (const ViewCelLayout &cel : loop.cels)
+        {
+            const uint8_t compression = cel.IsRaw() ? 0 : (sci2 ? 0x8a : 0x0a);
+            std::vector<uint8_t> rows;
+            same = same && (cel.compression == compression) &&
+                (!sci2 || cel.IsRaw() || ((cel.rowTableOffset != 0) && DecodeByRowTable(data, cel, rows) && (index < pixels.size()) && (rows == pixels[index])));
+            index++;
         }
     }
     if (!same)

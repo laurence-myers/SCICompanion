@@ -1534,7 +1534,9 @@ writes the view as a patch file (`<view>.v56`, with the header of section
     mirror the cel count of the header of the loop that it names: for a
     mirror of a mirror, `cels` (also 0, as in Sierra's views, where such a
     mirror shows no cel) is that count, and it goes into the header of the
-    named mirror. 1 to 255 loops.
+    named mirror. When the loop at the end of the chain has cels, a count
+    of 0 (or no `cels` key) gives a warning for each such mirror of a
+    mirror: it shows no cel. 1 to 255 loops.
   - `[[cel]]`: `loop`, `cel` (0 to n - 1 in each loop that is not a
     mirror, each one time, 255 cels or fewer), `file`, `x`, `y`,
     `skip_color` and `raw`. A mirror loop has no `[[cel]]`; a loop that is
@@ -1556,10 +1558,12 @@ writes the view as a patch file (`<view>.v56`, with the header of section
   goes after the last byte. A mirror loop gets the flag 1 in byte 1 of its
   header, the cel offset of the loop at the end of its chain, and the cel
   count of that loop (or the count that a mirror of it gives). The new
-  bytes must read back
-  with the loops, the cels (also through the SCI2 row tables), the header
-  bytes and the palette, else `Internal`. An SCI1.1 view of more than
-  65535 bytes is `Unsupported`.
+  bytes must read back with the loops (also the flag and the cel offset of
+  each mirror), the cels (also their compression bytes, and through the
+  SCI2 row tables), the header bytes and the palette, else `Internal`. An
+  SCI1.1 view of more than 65535 bytes is `Unsupported`, and so is a view
+  too large for a resource of the game (checked before the old patch file
+  goes).
 
 Rules:
 
