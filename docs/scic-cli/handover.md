@@ -271,12 +271,11 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   options have no test and no sweep step: `--cel all` to "every cel" in
   `RunPicExport` has the sweep only, and `--cel <index>` of `import` for a
   cel that is not cel 0 has neither (the sweep uses `--in-dir`).
-- A patch file of `import` on the screen of a game. ScummVM 2026.3 takes
-  the data of an SCI2 pic patch at offset 4 (its log, with probe files),
-  and the patch files have Sierra's header `81 81 00 00`. An automatic run
-  of the hi-res LSL6 in ScummVM showed a black screen for 40 seconds with
-  and without patch files, so no picture was compared. Sierra's
-  interpreter was not run.
+- A patch file of `import` on the screen of a game: Sierra's interpreter
+  was not run with one, and ScummVM was not run with one of an SCI1.1
+  game, or with a patch of `--palette replace`. ScummVM 2026.3 draws an
+  SCI2 pic patch with the palette kept correctly (the hi-res LSL6: the
+  background cel and an overlay cel).
 - A patch file of `import` that fails to write after its check (a full
   disk; `ResourceBlob::SaveToFile` gives the error, exit 9), a pic that is
   too big for a resource after the import (`CheckResourceSize`), an
