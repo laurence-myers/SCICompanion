@@ -312,6 +312,22 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   Sierra's interpreter were not run with one. That a view gives its marked
   entries to the screen comes from the ScummVM source
   (`GfxPalette32::mergePalette`, `HunkPalette::toPalette`).
+- A patch file of `view import` or `view add` on the screen of a game:
+  ScummVM and Sierra's interpreter were not run with one. The round-trip
+  sweep reads the patch files back with the readers of SCI Companion only.
+  The mirror headers of `view add` come from the ScummVM source
+  (`GfxView::initData`, `CelObjView`): each mirror gets the cel offset of
+  the loop at the end of its chain, and as its cel count the `cels` key of
+  a mirror that mirrors it (`headerCels`), else the count of that loop.
+- `view import` and `view add`: a view too large for a resource
+  (`CheckResourceSize`, before the patch file of an earlier run goes) can
+  happen only in an SCI2 game (in SCI1.1 the 64 KB check comes first), and
+  the tests have no SCI2 game.
+- `view remove`: three `Internal` errors (the second read of the map does
+  not give the entry; an entry that the patch source did not list; a
+  removal that leaves as many copies of the view, in `RemoveView`), the
+  message box text of the GUI forms (`ShowRemoveError`), and that the GUI
+  delete does not tell its syncs after a removal that failed.
 
 ## Questions for you
 
@@ -321,7 +337,10 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   import of an image with no change fails: 90 of the 165 exported pics of
   KQ7, 5 of 51 of GK1, 3 of 59 of QfG4, 1 of 119 of SQ6 (none in LSL6 and
   SQ5). Should the check also accept an entry that the cel has already?
-  Then only an entry that is new to the cel is an error.
+  Then only an entry that is new to the cel is an error. `view import`
+  and `view add` have the same rule: the round-trip sweep of Eco2 needs
+  `-AllowUnusedIndices` (the hi-res LSL6 does not; the sweeps of GK1, KQ6,
+  LB2, QfG4 and SQ6 ran with it).
 
 ## Outside this branch
 

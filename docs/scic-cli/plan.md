@@ -2291,11 +2291,13 @@ GUI changes in this plan (all others are refactors with no visible change):
   `game.ini` and no `src\` (the run must not create `game.ini`). Each
   command must exit with 0 and print no internal error, and each summary
   must name every script that `list` found (review of `34c1ba40`: "No
-  script to compile." exits with 0). The step runs also when a test step
-  failed. The integration step of the build job runs the integration
-  tests. The ASan job builds only `UnitTests`, so the in-process CLI tests
-  get ASan coverage with no change. The static-analysis job runs the
-  failure-handling check.
+  script to compile." exits with 0). It also runs the pic commands and the
+  view commands (list, export, import of the exported files with no
+  change, add, and remove on a third copy) on the template. The step runs
+  also when a test step failed. The integration step of the build job
+  runs the integration tests. The ASan job builds only `UnitTests`, so the
+  in-process CLI tests get ASan coverage with no change. The
+  static-analysis job runs the failure-handling check.
 
 ## 11. Decisions
 

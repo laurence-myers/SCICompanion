@@ -333,7 +333,11 @@ game data other than the template games.
   `scic pic export --all` and `scic pic import` on the first copy, with a
   data folder that has no `include\`: export must write a BMP file and a
   `.toml` file for each pic with a cel, and import must write a patch file
-  for each of them from the files of export.
+  for each of them from the files of export. The view commands run there
+  too: `view export --all` must write a `.toml` file for each view with a
+  cel, `view import` of those files must write no patch file (no view
+  changes), `view add` must make view 9999 from the first `.toml` file,
+  and `view remove` (on a third copy) must take one view out.
 - `Tools\PicRoundTripSweep.ps1` (local use) is the round-trip check of the
   pic commands on a game, for example one with SCI2 pics (CI has only the
   SCI1.1 template). It only reads the game folder: all commands run on

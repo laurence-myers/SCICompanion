@@ -101,7 +101,9 @@ whose code is in `SCICompanionLib\Src\Cli`. It links only
   on a temp copy of a template game. `TestCliIntegration` (an integration test) starts
   `Release\scic.exe`. CI also has a smoke step that runs `scic script
   list`, `script decompile --all`, `script compile --all`, `pic list`,
-  `pic export --all` and `pic import` on copies of the SCI1.1 template.
+  `pic export --all`, `pic import`, `view list`, `view export --all`,
+  `view import`, `view add` and `view remove` on copies of the SCI1.1
+  template.
   `UnitTests\Tools\CliCorpusSweep.ps1` runs the script commands on copies
   of a local game library, and `UnitTests\Tools\PicRoundTripSweep.ps1`
   runs the pic commands as a round trip on a copy of a game (local use
