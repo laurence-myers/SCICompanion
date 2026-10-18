@@ -1635,14 +1635,32 @@ namespace UnitTests
                 }
             }
 
-            // An entry of the range that the pic does not mark as used: a
-            // warning.
+            // The entries of the range that the pic does not mark as used keep
+            // their colours. An image colour that is not the colour of export
+            // for such an entry gives a warning.
             PicDescription unmarked = *description;
             unmarked.palette.flags[12] = 0;
             unmarked.palette.flags[13] = 0;
-            AssertOk(cli::MakePicImportData(sciVersion2, data, unmarked, AllEntries(), { one }, palette, false, warnings), "import with entries that are not marked");
-            Assert::IsTrue(std::vector<std::string>({ "the pic does not mark the entries 12-13 as used, so the game takes their colours from another palette" }) == warnings,
+            cli::PicImportPalette exported = palette;
+            exported.exportColors = one.image.colors;
+            AssertOk(cli::MakePicImportData(sciVersion2, data, unmarked, AllEntries(), { one }, exported, false, warnings), "import of the export colours");
+            Assert::IsTrue(warnings.empty(), Wide(warnings.empty() ? std::string() : warnings[0]).c_str());
+            exported.exportColors[13] = IndexedBmpColor{ 1, 1, 1 };
+            sci::Result<std::vector<uint8_t>> kept = cli::MakePicImportData(sciVersion2, data, unmarked, AllEntries(), { one }, exported, false, warnings);
+            AssertOk(kept, "import with entries that are not marked");
+            Assert::IsTrue(std::vector<std::string>({ "the pic does not mark the entries 13 as used, so they keep their colours (the game takes their colours from another palette); the images have other colours for them, which the pic does not get" }) == warnings,
                 Wide(warnings.empty() ? std::string("no warning") : warnings[0]).c_str());
+            sci::Result<PicDescription> keptDescription = DescribePic(sciVersion2, *kept);
+            AssertOk(keptDescription, "describe the pic with entries that are not marked");
+            Assert::IsTrue(description->palette.colors[12] == keptDescription->palette.colors[12]);
+            Assert::IsTrue(description->palette.colors[13] == keptDescription->palette.colors[13]);
+            Assert::IsTrue(one.image.colors[14] == keptDescription->palette.colors[14]);
+            Assert::IsTrue(one.image.colors[12] != description->palette.colors[12], L"setup: the image has another colour for entry 12");
+            // Images that differ only in an entry with no mark agree.
+            cli::PicImportImage otherUnmarked = two;
+            otherUnmarked.image.colors[12] = IndexedBmpColor{ 9, 9, 9 };
+            warnings.clear();
+            AssertOk(cli::MakePicImportData(sciVersion2, data, unmarked, AllEntries(), { one, otherUnmarked }, exported, false, warnings), "images that differ in an entry with no mark");
 
             auto fails = [&](const std::vector<cli::PicImportImage> &images, const cli::PicImportPalette &range, const std::string &text)
             {

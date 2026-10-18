@@ -122,6 +122,16 @@ the design is in `plan.md`. A commit that closes an item removes it here.
 - An SCI2.1 package header has no type mark, so a zeroed header of view 0
   reads as a valid empty resource. Damage that sets only the two sizes to
   0 reads as an empty resource.
+- Patch headers (`GetPatchDataGap`): an SCI2 pic patch that starts with
+  `81 80` is read at 26 + byte 3, and Sierra's SCI32 interpreter reads it
+  at 4 (`ResPic::SeekToData`). Sierra's SCI2 pic patches start with
+  `81 81 00 00` (read at 4), and SCI Companion writes that form; no `81 80`
+  file of an SCI2 game is known.
+- SCI Companion writes a palette patch as `8B 00` and the data (read at 2).
+  Sierra's interpreters take a palette patch at 4 + byte 3
+  (`ResPal::SeekToData` of SCI32, `VOLLOAD.C` of SCI16), so they would read
+  such a file at another offset. Found by inspection; not run in an
+  interpreter or in ScummVM.
 - The Decompile dialog's "Reset filenames" protects no file (older than
   the branch). The dialog names the scripts through `game.ini`, so it
   needs a GUI helper with no name map.
@@ -165,10 +175,36 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   header, and a header can declare no palette. `scic dev palette-use`
   reads the flag byte of the header; `scic pic list` and the `.toml` file
   of `export` do not. For the views and the palette resources of the
-  hi-res LSL6, the two rules give the same table.
+  hi-res LSL6, the two rules give the same table. `scic view list` and the
+  `flags` of the `.toml` file of `scic view export` read the flag byte of
+  the header; the `used` key and the colour table of `view export` come
+  from `ReadPalette`. No view of 7 games (Eco2, GK1 CD, KQ6 CD, LB2, QfG4
+  CD, SQ6, the hi-res LSL6; 1015 palettes of 3-byte entries) has the flag
+  0 in such a header.
 - `--out` of `scic dev compare-structure` and of `scic dev compare-meaning`
   can be a file of the game: the table then takes its place. `scic dev
   palette-use` refuses such a file.
+
+### View commands
+
+- `scic view palette --clear-used` cannot take the mark from an entry in
+  the middle of a palette with 3-byte entries: such a palette has one flag
+  for all its entries, so only its last entries can go (a smaller count).
+  A view that stores entries after the range fails. Of the 42 views of the
+  hi-res LSL6 that mark the entries 80 to 235 and have no pixel there, 8
+  store more: 339, 375, 376, 378, 379 and 3312 store 0 to 247, and 861 and
+  862 store 0 to 255. The tool does not change for them: they get the new
+  colours of their pic (`--colors-from`). No code changes such a palette
+  to 4-byte entries (the resource would grow).
+- The check that a view reads back with the same cels (`SameViewCels`)
+  sees what the reader of the views reads. Palette bytes that are also
+  bytes of the row table of an SCI2 cel, or of a header field that the
+  reader skips, are not found.
+- The reader of the views gives the padding bytes of the rows of a cel of
+  a mirrored loop no value (`SyncCelMirrorState`), so two reads of one view
+  can have other bytes there (30 of the 548 views of the hi-res LSL6 in
+  one run). The pixels are the same. `scic view palette` and `scic dev
+  palette-use` read only the pixels.
 
 ### The core library (E1)
 
@@ -235,12 +271,11 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   options have no test and no sweep step: `--cel all` to "every cel" in
   `RunPicExport` has the sweep only, and `--cel <index>` of `import` for a
   cel that is not cel 0 has neither (the sweep uses `--in-dir`).
-- A patch file of `import` on the screen of a game. ScummVM 2026.3 takes
-  the data of an SCI2 pic patch at offset 4 (its log, with probe files),
-  and the patch files have Sierra's header `81 81 00 00`. An automatic run
-  of the hi-res LSL6 in ScummVM showed a black screen for 40 seconds with
-  and without patch files, so no picture was compared. Sierra's
-  interpreter was not run.
+- A patch file of `import` on the screen of a game: Sierra's interpreter
+  was not run with one, and ScummVM was not run with one of an SCI1.1
+  game, or with a patch of `--palette replace`. ScummVM 2026.3 draws an
+  SCI2 pic patch with the palette kept correctly (the hi-res LSL6: the
+  background cel and an overlay cel).
 - A patch file of `import` that fails to write after its check (a full
   disk; `ResourceBlob::SaveToFile` gives the error, exit 9), a pic that is
   too big for a resource after the import (`CheckResourceSize`), an
@@ -254,6 +289,46 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   command on a game with SCI2 views has a local run only (the hi-res LSL6:
   548 views, no error); CI has the SCI1.1 template. A view of SCI1 (its
   used entries come from the palette as the reader gives it) has no test.
+- `scic view list` and `scic view export`: a repair that a reader logs
+  while the resource of a view is found and checked (`ReadViewSource`,
+  before the view is read; `RowOf` and `ExportView` give it as the error
+  of the view). No test can make a reader log there: the tests have the
+  repairs of the view reader, which `DescribeView` gives.
+- `scic view palette`: the error for a view of SCI1.1 that has the form of
+  an SCI1 view, an internal error of one view (exit 1), an exception while
+  a view is read (the patch file of an earlier run then goes too), a
+  repair that a reader logs while the resource of the view is found and
+  checked (the tests have a repair of the view reader), and a patch file
+  that fails to write after its check (no file with a part of the view
+  stays). The command on a game with SCI2 views has a local run only (4
+  views of the hi-res LSL6: the patch files have other bytes only in the
+  palette, and `scic dev palette-use` reads the game copy with them as
+  expected; a dry run of each action on the 548 views gave no internal
+  error); CI has the SCI1.1 template, and the tests call the functions
+  under the command with views of SCI2 that the view writer makes. No test
+  has a view with a mirrored loop.
+- A patch file of `view palette` on the screen of a game: ScummVM and
+  Sierra's interpreter were not run with one. That a view gives its marked
+  entries to the screen comes from the ScummVM source
+  (`GfxPalette32::mergePalette`, `HunkPalette::toPalette`).
+- A patch file of `view import` or `view add` on the screen of a game:
+  Sierra's interpreter was not run with one, and ScummVM was not run with
+  one of an SCI1.1 game. ScummVM 2026.3 draws them correctly for the hi-res
+  LSL6 (SCI2): a changed cel, a mirror loop, raw cels and a raw mirror
+  loop. A mirror of a mirror (the `headerCels` rule) was not on the
+  screen. The mirror headers of `view add` come from the ScummVM source
+  (`GfxView::initData`, `CelObjView`): each mirror gets the cel offset of
+  the loop at the end of its chain, and as its cel count the `cels` key of
+  a mirror that mirrors it (`headerCels`), else the count of that loop.
+- `view import` and `view add`: a view too large for a resource
+  (`CheckResourceSize`, before the patch file of an earlier run goes) can
+  happen only in an SCI2 game (in SCI1.1 the 64 KB check comes first), and
+  the tests have no SCI2 game.
+- `view remove`: three `Internal` errors (the second read of the map does
+  not give the entry; an entry that the patch source did not list; a
+  removal that leaves as many copies of the view, in `RemoveView`), the
+  message box text of the GUI forms (`ShowRemoveError`), and that the GUI
+  delete does not tell its syncs after a removal that failed.
 
 ## Questions for you
 
@@ -263,7 +338,10 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   import of an image with no change fails: 90 of the 165 exported pics of
   KQ7, 5 of 51 of GK1, 3 of 59 of QfG4, 1 of 119 of SQ6 (none in LSL6 and
   SQ5). Should the check also accept an entry that the cel has already?
-  Then only an entry that is new to the cel is an error.
+  Then only an entry that is new to the cel is an error. `view import`
+  and `view add` have the same rule: the round-trip sweep of Eco2 needs
+  `-AllowUnusedIndices` (the hi-res LSL6 does not; the sweeps of GK1, KQ6,
+  LB2, QfG4 and SQ6 ran with it).
 
 ## Outside this branch
 

@@ -15,10 +15,30 @@ modernizing the build. Broad highlights since the previous release:
   another tool can change the images. `scic pic import` puts the changed
   images back and writes each pic as a patch file; an SCI2 pic keeps all
   its other bytes.
+* **Views from the command line.** `scic view list` shows the loops, the
+  cels and the palette use of each view of SCI1.1 and SCI2.
+  `scic view export` writes each cel as an 8-bit BMP file whose pixels are
+  the palette entries of the game, with a `.toml` file of the facts of
+  each view. `scic view import` puts the changed images back and writes
+  each view as a patch file; the view changes in place, so the bytes that
+  SCI Companion does not change stay as Sierra wrote them. `scic view add`
+  makes a new view from files of the same form, and writes it as a patch
+  file. `scic view remove` takes views out of the game: each copy, or only
+  the patch files.
+  `scic view palette` changes the
+  palette of views of SCI1.1 and SCI2 in place, and writes each view as a
+  patch file: new colours for a range of palette entries, from the colour
+  table of a BMP file, or no "used" mark for a range of entries, so that a
+  view does not put its own colours over the new colours of a pic.
 * **Patch files of SCI2 pics that the game can read.** A pic of an SCI2
   game that is saved as a patch file (`.p56`) gets the 4-byte header of
   Sierra's own SCI2 pic patches. Before, it got the 26-byte header of an
   SCI1.1 pic, and ScummVM read the pic from the wrong offset.
+* **Sierra's later view and palette patch files load.** The view patches
+  (`.v56`) of Gabriel Knight 2, Lighthouse, Phantasmagoria 1 and 2 and
+  Police Quest: SWAT start with `80 84` and a file name, and the palette
+  patches (`.pal`) of Phantasmagoria 2 start with `8B 80`. SCI Companion
+  now finds the data after the header, as Sierra's interpreters do.
 * **A saved pic keeps the lines that go off the picture.** A line or a pen
   pattern that ends above or to the left of the picture (a negative
   coordinate) stays the same when SCI Companion saves the pic. Before, the

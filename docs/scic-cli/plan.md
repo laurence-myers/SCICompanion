@@ -612,15 +612,22 @@ scic script sco       <game-folder> (<script> ... | --all) [options]
 scic pic list         <game-folder> [--pic <pic> ...] [options]
 scic pic export       <game-folder> (--pic <pic> ... | --all) --out-dir <folder> [options]
 scic pic import       <game-folder> (--pic <pic> --image <file> | --in-dir <folder>) --out-dir <folder> [options]
+scic view list        <game-folder> [--view <view> ...] [options]
+scic view export      <game-folder> (--view <view> ... | --all) --out-dir <folder> [options]
+scic view import      <game-folder> (--view <view> [--loop <loop>] [--cel <cel>] --image <file> | --in-dir <folder>) --out-dir <folder> [options]
+scic view add         <game-folder> --view <view> --from <file.toml> --out-dir <folder> [options]
+scic view remove      <game-folder> --view <view> ... [--from all|patch] [options]
+scic view palette     <game-folder> --view <view> ... (--colors-from <file> | --clear-used) --palette-range <first>-<last> --out-dir <folder> [options]
 scic help [group [command]]
 scic --version
 ```
 
-- `script` is the first command group, and `pic` (section 4.7) the second.
-  Later groups use the same pattern (section 13): for example
-  `scic resource extract`, `scic package rebuild`.
+- `script` is the first command group, `pic` (section 4.7) the second, and
+  `view` (sections 4.9 to 4.14) the third. Later groups use the same pattern
+  (section 13): for example `scic resource extract`, `scic package rebuild`.
 - `scic script` with no command, and `scic help script`, list the script
-  commands. `scic pic` and `scic help pic` list the pic commands.
+  commands. `scic pic` and `scic help pic` list the pic commands, and
+  `scic view` and `scic help view` the view commands.
 
 Common options (all commands):
 
@@ -1055,8 +1062,10 @@ How a pic changes:
   be inside the entries that the pic stores (`stored_first`,
   `stored_count`): a palette cannot grow in place. Only the red, the green
   and the blue of the entries change. An entry of the range that the pic
-  does not mark as used gives a warning: the game takes its colour from
-  another palette.
+  does not mark as used keeps its colour: the game takes its colour from
+  another palette. An image with another colour for such an entry than
+  the colour table of `export` gives a warning, as the colour does not go
+  into the pic.
 - The patch file of an SCI2 pic starts with `81 81 00 00`, as Sierra's own
   SCI2 pic patches do: ScummVM takes the data at offset 4. The patch file
   of an SCI1.1 pic starts with `81 80` and 24 bytes of 0.
@@ -1073,8 +1082,8 @@ The checks of a pic, all before its patch file is written:
   (`used` of the `.toml` file). The error names the entries.
   `--allow-unused-indices` makes it a warning.
 - With `--palette replace`: the colour table of each image has the entries
-  of the range, and the images of one pic have the same colours in the
-  range.
+  of the range, and the images of one pic have the same colours for the
+  entries that get them.
 
 Rules of `import`:
 
@@ -1118,7 +1127,7 @@ from the lowest number:
 |---|---|
 | `kind` | `view` or `palette`. |
 | `number`, `source` | The number of the resource; `package` or `patch` (the copy that the game uses). |
-| `loops`, `cels` | The counts of a view; `-` for a palette. |
+| `loops`, `cels` | The counts of a view, as the reader of the views gives it: a mirror counts the cels of its loop, and a loop with no cel counts the 1 x 1 cel that the reader gives it. `-` for a palette. |
 | `palette_entries` | The entries that the palette of the resource marks as used, as runs: `0-63,80-235`; `-` for none (also for a view with no palette). |
 | `pixel_entries` | The entries of the pixels of the cels of a view, without the transparent colour of each cel; `-` for none, and for a palette. |
 | `colors` | With `--colors`: `entry=rrggbb` for each entry of `palette_entries`, with a space between them. Else `-`. |
@@ -1147,6 +1156,474 @@ Rules:
   palette of their own in the place of some damaged data and log a warning,
   and such a row would show damaged data as good data.
 - A table that cannot be written makes the exit code 9.
+
+### 4.9 `scic view palette`
+
+```
+scic view palette C:\Games\LSL6 --view 430 --colors-from C:\work\430.bmp --palette-range 80-235 --out-dir C:\work\patches
+scic view palette C:\Games\LSL6 --view 631 635 --clear-used --palette-range 80-235 --out-dir C:\work\patches
+scic view palette C:\Games\LSL6 --view 400-499 --clear-used --palette-range 80-235 --out-dir C:\work\patches --dry-run
+```
+
+Purpose: a pic that got new colours in a range of palette entries (`scic
+pic import --palette replace`) loses them when the game draws a view whose
+palette marks these entries as used (section 4.8). `view palette` changes
+the palette of a view in one of two ways, so that the view fits the pic. It
+reads the views of SCI1.1 and SCI2, and it does not read the data folder.
+
+A view selector is a number (`430`) or a range (`400-499`: each view of the
+game in the range); a number that is not a view of the game, and a range
+with no view, are usage errors. The source of a view is the copy that the
+game uses: a patch file in the game folder, else the package.
+
+The two actions (one for each run):
+
+- `--colors-from <file>`: each entry of the range that the palette of the
+  view stores gets the colour that the colour table of the file has for it.
+  The file is an 8-bit BMP file that is not compressed, for example a file
+  of `scic pic export` that another tool changed; its pixels are not read.
+  Only the red, the green and the blue of the entries change: the "used"
+  marks stay. An entry of the range that the palette does not store does
+  not change. An entry that gets a colour and has no mark gives a warning:
+  the game takes its colour from another palette.
+- `--clear-used`: the entries of the range lose their "used" mark, so the
+  view does not give them to the screen. The colours stay. A palette has
+  one of two forms:
+  - 4-byte entries, each with its own flag byte: the flag byte of each
+    stored entry of the range becomes 0.
+  - 3-byte entries, with one flag byte in the header for all of them. With
+    the flag 0 the palette marks no entry, and nothing changes. Else an
+    entry loses its mark only when the palette stores fewer entries. The
+    count of the stored entries in the header becomes smaller, so that the
+    first entry of the range is the first that the palette does not store.
+    The size word of the header (at offset 13: 22 + the count x 3) gets
+    the value of the new count; a size word that has another value keeps
+    it, and `-v` says so. No reader needs the word (ScummVM `HunkPalette`,
+    and `PalAddr` and `SOLPalette::operator=` of Sierra's SCI32 and
+    `CopyNew2OldPalette` of SCI16, read the count), but the palette stays
+    as the palettes of the games are. The bytes of the entries after the
+    new count stay in the resource; a reader does not read them. So the
+    range must reach the last stored entry: a view that stores the entries
+    0 to 247 fails with the range `80-235`, and the error says why.
+
+  A view with a pixel (not the transparent colour of its cel) in an entry
+  that would lose its mark fails: the view would lose the colour of that
+  pixel. A pixel in an entry of the range that has no mark is no error.
+
+How a view changes:
+
+- In place: the patch file has the bytes of the view resource, with other
+  values only in the palette bytes of the action: the colours, the flag
+  bytes, or the 2 bytes of the count and the 2 bytes of the size word. The
+  size of the resource and the bytes of the cels stay. After the change
+  the view must read back with the same cels
+  (`Src\Resources\ViewPalette.h`). That check sees what the reader of the
+  views reads: the size, the placement, the transparent colour and the
+  pixels of each cel. It does not see palette bytes that are also bytes of
+  the row table of an SCI2 cel, or of a header field that the reader skips.
+- A view with no change gets no patch file, and gives a warning. For
+  `--colors-from` that is a palette that stores no entry of the range, or
+  whose entries of the range have the colours of the file (the marks do
+  not matter). For `--clear-used` it is a palette with no mark in the
+  range: no stored entry there, 4-byte entries with the flag 0, or 3-byte
+  entries with the flag 0 in the header.
+- After a run, `--out-dir` has `<view>.v56` for a named view only when this
+  run changed that view. So a view that fails, or that has no change, also
+  loses the `<view>.v56` that an earlier run left in `--out-dir`, and a
+  message says so (`Removed ... of an earlier run: view 430 has no
+  change`). A write that fails leaves no file with a part of the view. The
+  files of views that the run does not name stay.
+- The patch file is `<view>.v56` in `--out-dir`. It starts with `80 80` and
+  24 bytes of 0, and the view comes at offset 26. That is the header that
+  SCI Companion writes for a view of SCI1.1 and of SCI2. ScummVM takes the
+  data of a view patch of SCI1.1 or later at offset 26 plus the value of
+  byte 3 (`ResourceManager::processPatch`), and Sierra's interpreters read
+  only byte 0 and byte 3 of the header (`ResView::SeekToData` in
+  `RESTYPE.CPP` of SCI32, and `VOLLOAD.C` of SCI16). Sierra's own view
+  patches of SCI1.1 and SCI2 (Space Quest 5, the CD versions of Gabriel
+  Knight 1 and Police Quest 4) start with `80 80 00 00` and have the view
+  at offset 26; their bytes 4 to 25 are not all 0. Sierra's later view
+  patches (Phantasmagoria 1 and 2, Gabriel Knight 2, Lighthouse, Police
+  Quest: SWAT) start with `80 84 00`, then a count in byte 3 and that many
+  bytes of a file name before the 22 bytes; ScummVM reads both forms.
+
+Rules:
+
+- It needs `--view` with one or more views, `--palette-range`, `--out-dir`,
+  and one of `--colors-from` and `--clear-used`, not both.
+- `--out-dir` has the rules of `pic export`: it must exist (exit 3), and it
+  must not be the game folder or a folder inside it (exit 2). The game does
+  not change: to use a patch file, copy it into the game folder.
+- The BMP file is read one time, before the first view. A file that cannot
+  be read stops the run (exit 3), and so does a colour table that does not
+  have the entries of the range (exit 2).
+- Each view runs in its own exception boundary: a view that fails is an
+  error line (`scic: error: view 430: ...`), it gets no patch file, and the
+  next view goes on. A view that failed makes the exit code 6. The view
+  itself does not allow the change (`Unsupported`): a view of a game that
+  is not SCI1.1 or SCI2, a view with no palette, a view with a pixel in an
+  entry that would lose its mark, and a palette with one flag for all its
+  entries that stores entries after the range. Or the view cannot be read
+  (`Format`), which is also the error of a view that its reader repaired
+  (the reader logs a warning and puts a cel of its own in the place of
+  damaged data): the repair is then the reason, also when the change
+  fails.
+- A patch file that is there already must open for writing before the
+  write. A patch file that cannot be written, or a patch file of an
+  earlier run that cannot be removed, makes the exit code 9.
+- `--dry-run` does all checks, writes and removes nothing, and lists the
+  patch files (`Would write ...`, `Would remove ...`).
+- `-v` shows what changed in each view: `view 631: its palette stores 0-79
+  (before: 0-235), so the entries 80-235 have no mark`.
+- The summary: `Wrote 40 of 42 views into <folder>; 1 view with no change;
+  1 view failed.`
+
+### 4.10 `scic view list`
+
+```
+scic view list C:\Games\LSL6
+scic view list C:\Games\LSL6 --view 600-610 --format tsv
+```
+
+Purpose: the facts of the views of a game, before an export or an import.
+It reads the views of SCI1.1 (`vga11`) and SCI2 (`vga2`), and it does not
+read the data folder. A view selector is as in section 4.9. The source of a
+view is the copy that the game uses: a patch file in the game folder, else
+the package. The functions under the command are in
+`Src\Resources\ViewImage.h` (the layout of the headers, the description,
+the pixels of a cel) and `Src\Cli\CliView.h`.
+
+`list` shows one row for each view (all views, or those of `--view`), and
+writes nothing:
+
+| Column (`--format tsv`) | Meaning |
+|---|---|
+| `number`, `format` | The view, and `ega`, `vga1`, `vga11` or `vga2`. |
+| `loops`, `mirror_loops` | The count of loops, and of those that mirror another loop (byte 0 of the loop header is not `0xff`; such a loop shows the cels of the other loop and stores none). The SCI32 interpreter flips a mirror only when byte 1 of its header is 1. |
+| `cels`, `raw_cels` | The count of the cels that the view stores (the cels of the loops that are not mirrors), and of those with no run-length data (the offset of the literal data in the cel header is 0). A loop that is not a mirror can have no cel: some of Sierra's views have such loops (view 905 of QfG4, view 588 of SQ6). |
+| `resolution` | Byte 5 of the view header (SCI2 only). In ScummVM 1 is 640 x 480 and 2 is 640 x 400. |
+| `source`, `bytes`, `crc32` | `package` or `patch`, the size of the view resource, and the CRC-32 of its bytes (8 hex digits). |
+| `palette_first`, `palette_count`, `entry_size` | The entries that the palette of the view stores, and the bytes of an entry (3 or 4). Empty for a view with no palette. |
+| `skip_pixels` | The count of the pixels with the skip colour of their cel. |
+| `palette_entries` | The entries that the palette marks as used, as runs: `0-63,80-235`. A 4-byte entry has its own flag byte; the 3-byte entries have the flag byte of the palette header, as in the SCI32 interpreter (section 4.8). |
+| `pixel_entries` | The entries that the pixels of the stored cels have, without the skip colour of each cel. |
+| `error` | Why a view cannot be read. Such a view makes the exit code 6. |
+
+The text table has the same values; the palette is one column
+(`0-255 (4)`; `none` for a palette that stores no entry; `-` for no
+palette). A view of a format with no image that `scic` reads (`ega`,
+`vga1`) gets a row with its format, source, size and CRC-32.
+
+Rules:
+
+- Each view runs in its own exception boundary. A view that cannot be
+  read has its error in its row. So has a view that a reader repaired (the
+  reader logs a warning and puts data of its own in the place of damaged
+  data, for example a cel for a loop that mirrors itself), and a view whose
+  headers do not agree with what the reader gives. A loop with no cel is
+  not damage: the reader gives it a 1 x 1 cel with no warning, and `list`
+  counts no cel for it.
+- A view of the form of an SCI1 view in an SCI1.1 or SCI2 game (loop
+  headers of more than 32 bytes) has the error `Unsupported`.
+- Ctrl+C stops the run with no table (exit 7).
+
+### 4.11 `scic view export`
+
+```
+scic view export C:\Games\LSL6 --all --out-dir C:\work\views
+scic view export C:\Games\LSL6 --view 600-610 --out-dir C:\work\views --dry-run
+```
+
+Purpose: move the cels of views out of a game with their exact palette
+entries, so that another tool can change them (section 4.7 has the same
+for pics). It reads the views of SCI1.1 and SCI2, and it does not read the
+data folder. The view selectors and the source of a view are as in
+section 4.9.
+
+`export` writes, into `--out-dir`, for each view:
+
+- `<view>.l<loop>.c<cel>.bmp` for each stored cel (the cels of the loops
+  that are not mirrors). A mirror loop gets no file: it shows the cels of
+  its loop. A BMP file is 8-bit and not compressed, with 256 table
+  entries. Its pixels are the bytes of the cel, the top row first. Its
+  colour table is the palette as SCI Companion shows the view: the palette
+  of the view, and palette 999 of the game for the entries that the view
+  does not mark as used (`GetMergedPalette`).
+- `<view>.toml`: the facts of the view (`Src\Resources\ViewSidecar.h`),
+  for the tool that changes the images and for `view import` and
+  `view add`. A run of entries is `[first, last]`.
+
+| Table | Keys |
+|---|---|
+| `[source]` | `view`; `format` (`vga11` or `vga2`); `from` (`package` or `patch`); `size` (bytes); `crc32` (a hex integer) |
+| `[view]` | `loops`; `cels` (the stored cels); `scale_flags`, `byte_4` and `resolution` (bytes 3, 4 and 5 of the view header); `native_width`, `native_height` (bytes 14 to 17: the size in which SCI Companion shows the view) |
+| `[palette]` | `present`; `stored_first`, `stored_count`; `entry_size` (3 or 4); `flags` (runs `[first, last, flag]` of the flag bytes of the stored entries; a 3-byte entry has the flag of the palette header, as the SCI32 interpreter reads it); `palette_999`; `used` (the entries that the view or palette 999 marks as used, as SCI Companion reads the palette: a stored 3-byte entry counts as used, also when the flag of the header is 0; the colour table has the colours of these entries) |
+| `[[loop]]` | `index`; `cels`; `mirror_of` (only for a mirror loop) |
+| `[[cel]]` | `loop`; `cel`; `file`; `width`; `height`; `x`; `y`; `skip_color`; `raw` (no run-length data); `entries` (the entries of its pixels, without the skip colour); `skip_pixels` |
+
+Rules:
+
+- It needs `--all` or `--view` with one or more views, not both.
+- `--out-dir` has the rules of `pic export`: it must exist (exit 3), and it
+  must not be the game folder or a folder inside it (exit 2).
+- Each view runs in its own exception boundary: a view that fails is an
+  error line (`scic: error: view 600: ...`), and the next view goes on. A
+  view that failed makes the exit code 6: a view of a format that `scic`
+  does not read (`ega`, `vga1`), a view that cannot be read or that a
+  reader repaired (section 4.10), and a named view with no stored cel.
+  With `--all`, a view with no stored cel is skipped and counted.
+- Palette 999 is read one time, before the first view. A warning of its
+  reader (for example a palette that stores entries past 255) is a
+  warning of the run, not an error of a view.
+- The files of a view are all made in memory, and each file that is there
+  already must open for writing, before the first is written. A file that
+  cannot be written makes the exit code 9.
+- `--dry-run` does all checks, writes nothing, and lists the files
+  (`Would write ...`).
+- The summary: `Exported 547 of 548 views (8760 cels) into <folder>; 1 view
+  has no cel.`
+
+### 4.12 `scic view import`
+
+```
+scic view import C:\Games\LSL6 --in-dir C:\work\views --out-dir C:\work\patches
+scic view import C:\Games\LSL6 --view 600 --loop 0 --cel 3 --image C:\work\600.l0.c3.bmp --out-dir C:\work\patches
+scic view import C:\Games\LSL6 --in-dir C:\work\views --palette replace --palette-range 80-235 --out-dir C:\work\patches
+```
+
+Purpose: put the changed images of `view export` back into the views, as
+`pic import` does for pics (section 4.7). It reads the views of SCI1.1 and
+SCI2, and it does not read the data folder. It writes each view as a patch
+file (`<view>.v56`, with the header of section 4.9) into `--out-dir`; the
+game does not change. The images come in one of two ways:
+
+- `--in-dir <folder>`: a folder with the files of `view export`. Each
+  `.toml` file gives a view (`[source] view`) and the BMP file of each cel
+  (`file` of a `[[cel]]`, with its `loop` and `cel`). A `[[cel]]` with no
+  `file` keeps its pixels. A `[source] crc32` that is not the CRC-32 of the
+  view in the game gives a warning. The other keys are not used, but each
+  must have its type and a value in its range.
+- `--view <view> --image <file>`, with `--loop` and `--cel` (default 0):
+  one image for one cel.
+
+How a view changes (`ReplaceViewCelPixels`, `Src\Resources\ViewImage.h`):
+
+- In place: the bytes that the readers of SCI Companion do not read stay
+  as Sierra wrote them (the resolution byte, the filler of the headers, the
+  palette form, the raw cels). A cel with no change keeps its bytes. A
+  changed cel whose new pixels have the runs of its old run-length codes
+  (each run of the skip colour is still such a run, each run of one colour
+  is still one colour that is not the skip colour, and a literal pixel has
+  the skip colour only where the old pixel has it, as Sierra's encoder of
+  SCI1.1 wrote single skip pixels; for example two colours that swap, or
+  any change inside literal runs) keeps its codes, its row table and its
+  sizes: only its literal data changes, in its place. Else a changed cel
+  takes the place of its old data when its new data fits there and no
+  other data of the view has those bytes; else its data goes after the end
+  of the view, and its cel header gets the new offsets. The run-length
+  data has Sierra's form: each row is its own runs of 63 pixels or fewer,
+  and an SCI2 cel gets a row table when its header has one. Sierra's
+  encoders gave a run code to runs of 2 pixels (SCI1.1) or of 3, so the
+  import tries runs of 3, 2 and 4 and more, and takes the first form that
+  fits in place (else the shortest form). The new bytes must read back
+  with the new pixels (also through the SCI2 row tables) and with the same
+  loops, placements, skip colours and palette.
+- `--palette keep` (the default) does not change the palette.
+  `--palette replace --palette-range <first>-<last>` gives the entries of
+  the range that the palette of the view stores and marks as used the
+  colours of the colour table of the images, and the images must have one
+  colour for each of these entries. A stored entry with no "used" mark
+  keeps its colour: the game takes its colour from another palette. An
+  image with another colour for such an entry than the colour table of
+  `export` gives a warning, as the colour does not go into the view.
+  Entries of the range that the palette does not store give a warning. A
+  view with no palette fails. `pic import --palette replace` has the same
+  rule for the entries with no mark (section 4.7).
+- A view whose images give no change (no byte would be another byte) gets
+  no patch file, and gives a warning. After a run, `--out-dir` has the
+  patch file of a named view only when this run changed it: a view that
+  fails, or that has no change, loses the patch file of an earlier run
+  (`Removed ...`), as in `view palette`.
+- Unsupported: an SCI1.1 view that would have more than 65535 bytes
+  (Sierra's interpreter of SCI1.1 reads 16-bit offsets), a cel whose header
+  two loops share, and a cel whose byte 10 has the bit `0x80` (the
+  interpreters then take the skip and remap colours of the pixels from that
+  byte).
+
+The checks of a view, all before its patch file is written:
+
+- Each image is an 8-bit BMP file that is not compressed, with the width
+  and the height of its cel.
+- The view stores the cel: a loop that mirrors another loop stores none
+  (the error names the loop to give the image to), and one image is for
+  one cel.
+- A pixel has the skip colour of the cel where the cel has it, and nowhere
+  else.
+- Each other pixel is an entry that the view or palette 999 marks as used
+  (`used` of the `.toml` file). The error names the entries.
+  `--allow-unused-indices` makes it a warning.
+- With `--palette replace`: the colour table of each image has the entries
+  of the range, and the images of one view have the same colours for the
+  entries that get them.
+
+Rules:
+
+- It needs `--in-dir`, or `--view` with `--image`, not both. `--loop` and
+  `--cel` go with `--image`. `--palette-range` and `--palette replace` go
+  together.
+- `--out-dir` has the rules of `pic export` (exit 3 or 2). The folder of
+  `--in-dir` must exist (exit 3) and have a `.toml` file (exit 2).
+- Each view runs in its own exception boundary: a view that fails a check
+  is an error line, it gets no patch file, and the next view goes on. A
+  view that failed makes the exit code 6. So does a `.toml` file that
+  cannot be read, that has no view number, that names no image file (its
+  view also loses the patch file of an earlier run), or that names a view
+  that an earlier `.toml` file of the folder named (also an earlier file
+  whose view failed: then neither file gives the view a patch file).
+  Palette 999 is read one time, before the first view.
+- A patch file that is there already must open for writing. A patch file
+  that cannot be written, or a patch file of an earlier run that cannot be
+  removed, makes the exit code 9.
+- `--dry-run` does all checks, writes and removes nothing, and lists the
+  patch files (`Would write ...`).
+- The summary: `Imported 538 of 548 views (8708 cels) into <folder>; 10
+  views with no change.`
+
+`UnitTests\Tools\ViewRoundTripSweep.ps1` (local use) runs export, import
+with no change, import with 2 entries swapped in each image, and export
+again on copies of a game, and compares the images byte for byte. It also
+adds each exported view again (`view add`, section 4.13) and compares.
+
+### 4.13 `scic view add`
+
+```
+scic view add C:\Games\LSL6 --view 9000 --from C:\work\views\600.toml --out-dir C:\work\patches
+scic view add C:\Games\LSL6 --view 600 --from C:\work\new\600.toml --replace --out-dir C:\work\patches --dry-run
+```
+
+Purpose: make a new view (for example a new door, or a view in the place
+of a view of the game) from the files of the form of `view export`. It
+makes views of SCI1.1 and SCI2, and it does not read the data folder. It
+writes the view as a patch file (`<view>.v56`, with the header of section
+4.9) into `--out-dir`; the game does not change.
+
+- `--from` is one `.toml` file of the form of `view export`
+  (`Src\Resources\ViewSidecar.h`). The BMP files of its cels are in its
+  folder. `--view` is the number of the new view; the `[source]` table of
+  the file is not used.
+- The game must not have the view (`Usage`, exit 2), but with
+  `--replace`: the patch file then takes the place of the view of the
+  game when it goes into the game.
+- The keys that `add` reads (`MakeAddedView`, `Src\Cli\CliView.h`):
+  - `[view]`: `scale_flags`, `byte_4` and `resolution` (bytes 3, 4 and 5
+    of the view header), `native_width` and `native_height` (bytes 14 to
+    17; many of Sierra's views have 0). `loops` and `cels`, when they are
+    not 0, must be the counts of the file.
+  - `[palette]`: with `present = true`, the palette stores the entries
+    `stored_first` to `stored_first + stored_count - 1`, with entries of
+    `entry_size` bytes (0: 4), and the flags of `flags` (an entry with no
+    run: 1; the 3-byte entries must have one flag, the flag of the
+    header). The colour of each stored entry comes from the colour tables
+    of the images. Each table must have the stored entries, and the
+    tables must agree for each entry with a flag that is not 0. With no
+    `present`, the view has no palette.
+  - `[[loop]]`: `index` (0 to n - 1, each one time), `mirror_of` (another
+    loop of the view; it can be a mirror too, as in some of Sierra's
+    views, but the chain of mirrors must end at a loop that is not a
+    mirror), and `cels` (when it is not 0: the count of the cels of the
+    loop, or of the loop at the end of the chain). The interpreters give a
+    mirror the cel count of the header of the loop that it names: for a
+    mirror of a mirror, `cels` (also 0, as in Sierra's views, where such a
+    mirror shows no cel) is that count, and it goes into the header of the
+    named mirror. When the loop at the end of the chain has cels, a count
+    of 0 (or no `cels` key) gives a warning for each such mirror of a
+    mirror: it shows no cel. 1 to 255 loops.
+  - `[[cel]]`: `loop`, `cel` (0 to n - 1 in each loop that is not a
+    mirror, each one time, 255 cels or fewer), `file`, `x`, `y`,
+    `skip_color` and `raw`. A mirror loop has no `[[cel]]`; a loop that is
+    not a mirror can have none, as some of Sierra's views have. `width` and
+    `height` come from the BMP file; when they are not 0, they must be its
+    size.
+  - The other keys of `export` (`entries`, `skip_pixels`, `used`, ...) are
+    not used, but each must have its type and a value in its range.
+- Each BMP file is 8-bit and not compressed. Each pixel that is not the
+  skip colour of its cel must be an entry that the new palette (a flag
+  that is not 0) or palette 999 marks as used; `--allow-unused-indices`
+  makes it a warning.
+- The write (`MakeNewViewBytes`, `Src\Resources\ViewImage.h`): the view
+  writer of SCI Companion writes the headers and the cels (a new view has
+  no Sierra layout to keep), then the bytes 3, 4, 5 and 14 to 17 get the
+  values of the file. A raw cel (`raw = true`, Sierra's magnifier cels)
+  gets its pixels as they are, after the data of the writer. The palette
+  (`MakePaletteBytes`, the form of the file: 3-byte or 4-byte entries)
+  goes after the last byte. A mirror loop gets the flag 1 in byte 1 of its
+  header, the cel offset of the loop at the end of its chain, and the cel
+  count of that loop (or the count that a mirror of it gives). The new
+  bytes must read back with the loops (also the flag and the cel offset of
+  each mirror), the cels (also their compression bytes, and through the
+  SCI2 row tables), the header bytes and the palette, else `Internal`. An
+  SCI1.1 view of more than 65535 bytes is `Unsupported`, and so is a view
+  too large for a resource of the game (checked before the old patch file
+  goes).
+
+Rules:
+
+- The view runs in an exception boundary: a view that fails is an error
+  line (exit 6; also a game version that is not SCI1.1 or SCI2), and it
+  loses the patch file of an earlier run in `--out-dir` (`Removed ...`).
+- `--out-dir` has the rules of `pic export` (exit 3 or 2). A `--from` file
+  that does not exist: exit 3. A `--view` that is not 0 to 65535: exit 2.
+- A patch file that cannot be written, or a patch file of an earlier run
+  that cannot be removed: exit 9.
+- `--dry-run` does all checks, writes and removes nothing, and says what a
+  run would write (`Would write ...`).
+- The summary: `Added view 9000 (3 loops, 12 cels) as <file>.`
+
+### 4.14 `scic view remove`
+
+```
+scic view remove C:\Games\LSL6 --view 9000
+scic view remove C:\Games\LSL6 --view 600 610-615 --from patch --dry-run
+```
+
+Purpose: take views out of the game, so that the game has no such view
+(for example the views of a clean-up that go into the pic). It is the one
+view command that changes the game. It takes the views of each game
+version: it does not read the view data.
+
+- `--from all` (the default): each copy of the view, the patch file first,
+  then each entry in the resource package (the map and the volume are
+  written again, as the delete of the GUI does). `--from patch`: only the
+  patch files; the game then uses the copy in the package, or has no copy
+  of the view, and a message says which. A patch file can have a name that
+  is not the standard one (`view.777`, `777.v16`): the removal deletes
+  each patch file with the name that it has on disk, and the messages name
+  it.
+- The removal is `CResourceMap::RemoveResource` (`Src\Resources\ResourceMap.h`)
+  and `RemoveResource` (`ResourceMapOperations.h`): the `Result` form of
+  the delete of the GUI, with no UI. The GUI form (`DeleteResource`) shows
+  its error.
+- No check of the scripts: a script that uses a removed view fails in the
+  game. The help says so.
+
+Rules:
+
+- The selectors (numbers and ranges) must name views of the game (a copy
+  in the package that a patch file hides counts), and with `--from patch`
+  each view must have a patch file, before the first removal: else exit 2,
+  and nothing changes.
+- Each view runs in its own exception boundary. A removal from the package
+  moves the other entries, so the copies of a view are read again after
+  each removal; a removal that leaves as many copies is `Internal`. A copy
+  that cannot be removed is an error line, the next view goes on, and the
+  exit code is 9.
+- `--dry-run` removes nothing, and lists what a run would remove (`Would
+  remove the patch file C:\Games\LSL6\600.v56`, `Would remove the entry of
+  view 600 in package 0`).
+- An error of a removal keeps its context: for example, the `.bak` files to
+  rename after a package write that stopped halfway.
+- Ctrl+C stops the run before the next view (exit 7).
+- The summary: `Removed 2 of 2 views (1 patch file, 2 package entries).`
 
 ## 5. Where compiled output goes
 
@@ -1509,12 +1986,12 @@ section 5.3, which section 5.22 uses), plus code 9.
 | 0 | Success |
 | 1 | Internal error (a bug, or an escaped exception) |
 | 2 | Usage error: bad option, unknown script, header file given to `compile` |
-| 3 | Cannot open the game (also a damaged or empty `resource.map`) or start the batch, or the data folder is missing (script commands), or the output folder of `pic export` or `pic import` is missing, or the input folder of `pic import` is missing |
+| 3 | Cannot open the game (also a damaged or empty `resource.map`) or start the batch, or the data folder is missing (script commands), or the output folder of `pic export`, `pic import`, `view export`, `view import`, `view add` or `view palette` is missing, or the input folder of `pic import` or `view import` is missing, or the BMP file of `view palette` cannot be read, or the `.toml` file of `view add` does not exist |
 | 5 | Compile errors |
-| 6 | Partial failure: some scripts failed for a reason that is not a compile error, or the decompiler reported an error in a script that it wrote, or a pic of a pic command failed |
+| 6 | Partial failure: some scripts failed for a reason that is not a compile error, or the decompiler reported an error in a script that it wrote, or a pic of a pic command failed, or a view of a view command failed (also a view that `view list` cannot read) |
 | 7 | Cancelled |
 | 8 | Write refused (`WriteRefused`): for example, a patch file would hide a package write, or a script of the commit used the new `.sco` of a script that the commit does not write (section 4.5) |
-| 9 | Write failed: the commit, the tables, a move, `game.ini`, main's `.sco`, or the return of a `.sco` to its state before the compile failed (any code but `Internal`, `WriteRefused` and `Cancelled`), or a file write of a script failed (`Io`; a `.scd` that cannot be written is a warning) |
+| 9 | Write failed: the commit, the tables, a move, `game.ini`, main's `.sco`, or the return of a `.sco` to its state before the compile failed (any code but `Internal`, `WriteRefused` and `Cancelled`), or a file write of a script failed (`Io`; a `.scd` that cannot be written is a warning), or a file of `pic export` or of `view export`, a patch file of `pic import`, `view import`, `view add` or `view palette`, or the table of a `dev` command could not be written, or a patch file of an earlier run of `view import`, `view add` or `view palette` could not be removed, or a copy of a view of `view remove` could not be removed |
 
 The mapping is one function in `Src\Cli\`, with a unit test for each case:
 
@@ -1814,11 +2291,13 @@ GUI changes in this plan (all others are refactors with no visible change):
   `game.ini` and no `src\` (the run must not create `game.ini`). Each
   command must exit with 0 and print no internal error, and each summary
   must name every script that `list` found (review of `34c1ba40`: "No
-  script to compile." exits with 0). The step runs also when a test step
-  failed. The integration step of the build job runs the integration
-  tests. The ASan job builds only `UnitTests`, so the in-process CLI tests
-  get ASan coverage with no change. The static-analysis job runs the
-  failure-handling check.
+  script to compile." exits with 0). It also runs the pic commands and the
+  view commands (list, export, import of the exported files with no
+  change, add, and remove on a third copy) on the template. The step runs
+  also when a test step failed. The integration step of the build job
+  runs the integration tests. The ASan job builds only `UnitTests`, so the
+  in-process CLI tests get ASan coverage with no change. The
+  static-analysis job runs the failure-handling check.
 
 ## 11. Decisions
 
@@ -1879,7 +2358,7 @@ session, return `Result`, then add a command group.
 | `scic resource delete` | `DeleteResource` (`Src\Resources\ResourceMapOperations.cpp`) | message boxes (`:180-221`) |
 | `scic package rebuild` | `PurgeUnnecessaryResources` (`MainFrm.cpp:1979`), `RebuildResources`, `PostRepackage.cmd` | It is in `MainFrm.cpp`. In patch mode it builds only from patch files, so it drops package-only resources. |
 | `scic script disassemble` | `DisassembleScript` (`Src\Compile\Disassembler.cpp`) | `ShowTextFile` must become stdout |
-| `scic pic render`, `scic view export` | image code, GDI+ | needs `GdiplusStartup`; the pic and sound validators open dialogs (`Src\Resources\Pic.cpp:1152`, `Src\Resources\Sound.cpp:1821`) |
+| `scic pic render` | image code, GDI+ | needs `GdiplusStartup`; the pic and sound validators open dialogs (`Src\Resources\Pic.cpp:1152`, `Src\Resources\Sound.cpp:1821`) |
 | `scic message export`, `scic message import` | message resources, `.shm` headers | |
 | `scic vocab ...` | `Vocab000` | editor prompts (`Vocab000.cpp:47, 390, 452`) |
 

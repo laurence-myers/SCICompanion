@@ -26,8 +26,9 @@ in two static libraries:
 The `SCICompanion` project is a thin `.exe` wrapper over both libraries.
 The `SCICompanionCli` project is a thin wrapper too: it builds `scic.exe`,
 the command-line tool (`scic script list`, `decompile`, `sco` and
-`compile`; `scic pic list`, `export` and `import`), whose code is in
-`SCICompanionLib\Src\Cli`. It links only
+`compile`; `scic pic list`, `export` and `import`; `scic view list`,
+`export`, `import`, `add`, `remove` and `palette`),
+whose code is in `SCICompanionLib\Src\Cli`. It links only
 `SCICompanionCore`. Its design is in `docs\scic-cli\plan.md`. Tests are in
 `UnitTests`.
 
@@ -95,17 +96,21 @@ the command-line tool (`scic script list`, `decompile`, `sco` and
 
 - Integration tests are those whose test-class name contains `Integration`; the
   default run excludes them, so it never spawns a thread or a process.
-- The command-line tool: `TestCli` and `TestCliPic` run `cli::RunCli` in
-  the test process, with a console that keeps the output, on a temp copy of
-  a template game. `TestCliIntegration` (an integration test) starts
+- The command-line tool: `TestCli`, `TestCliPic` and `TestCliView` run
+  `cli::RunCli` in the test process, with a console that keeps the output,
+  on a temp copy of a template game. `TestCliIntegration` (an integration test) starts
   `Release\scic.exe`. CI also has a smoke step that runs `scic script
   list`, `script decompile --all`, `script compile --all`, `pic list`,
-  `pic export --all` and `pic import` on copies of the SCI1.1 template.
+  `pic export --all`, `pic import`, `view list`, `view export --all`,
+  `view import`, `view add` and `view remove` on copies of the SCI1.1
+  template.
   `UnitTests\Tools\CliCorpusSweep.ps1` runs the script commands on copies
   of a local game library, and `UnitTests\Tools\PicRoundTripSweep.ps1`
   runs the pic commands as a round trip on a copy of a game (local use
   only: run it after a change of the pic commands, on a game with SCI2
-  pics). See `UnitTests\README.md`.
+  pics); `UnitTests\Tools\ViewRoundTripSweep.ps1` does the same for the
+  view commands (run it after a change of view export, import or add). See
+  `UnitTests\README.md`.
 - The decompiler corpus gate: `UnitTests\Tools\DecompileGate.ps1` (local use
   only; the games are not in CI) decompiles a sample of each game of a
   local library (or every script, with `-Full`), and compares it with

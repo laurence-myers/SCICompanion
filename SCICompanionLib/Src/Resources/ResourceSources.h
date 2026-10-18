@@ -406,19 +406,19 @@ public:
 			}
 		}
 
-		assert(found);
-
 		// If we didn't find the resource to remove, there might have been a problem with the enumeration. Don't write
 		// the possibly corrupt resource map/package..
-		if (found)
+		if (!found)
 		{
-			// Combine the two write streams. Or rather, append stream 2 to the end of stream 1.
-			FinalizeMapStreams(mapStreamWrite1, mapStreamWrite2);
-
-			// Now we have mapStreamWrite1 and volumeStreamWrite that have the needed data.
-			// Let's ask the _FileDescriptor to replace things.
-			this->WriteAndReplaceMapAndVolumes(mapStreamWrite1, volumeStreamWrites);
+			throw sci::DataError("the second read of the map does not give the entry of the resource to remove, so the map and the volume do not change", sci::ErrorCode::Internal);
 		}
+
+		// Combine the two write streams. Or rather, append stream 2 to the end of stream 1.
+		FinalizeMapStreams(mapStreamWrite1, mapStreamWrite2);
+
+		// Now we have mapStreamWrite1 and volumeStreamWrite that have the needed data.
+		// Let's ask the _FileDescriptor to replace things.
+		this->WriteAndReplaceMapAndVolumes(mapStreamWrite1, volumeStreamWrites);
 	}
 
 	void RebuildResources(bool force, ResourceSource &source, std::map<ResourceType, RebuildStats> &stats) override

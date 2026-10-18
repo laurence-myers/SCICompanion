@@ -2,6 +2,7 @@
 #include "CliCommands.h"
 #include "CliHost.h"
 #include "CliPic.h"
+#include "CliResources.h"
 #include "GameSession.h"
 #include "GameFolderHelper.h"
 #include "ResourceMap.h"
@@ -15,7 +16,6 @@
 #include "PicSidecar.h"
 #include "IndexedBmp.h"
 #include "FileWrite.h"
-#include "crc.h"
 #include "format.h"
 #include <algorithm>
 #include <cwctype>
@@ -63,86 +63,16 @@ namespace cli
             return fmt::format("pic {0}", number);
         }
 
-        // "1 pic", "2 pics".
-        std::string CountText(size_t count, const char *word)
-        {
-            return fmt::format("{0} {1}{2}", count, word, (count == 1) ? "" : "s");
-        }
-
         // The numbers of the pics of the game, from the lowest.
         std::vector<int> PicNumbersOf(GameSession &session)
         {
-            std::set<int> numbers;
-            auto container = session.ResourceMap().Resources(ResourceTypeFlags::Pic, session.Helper().GetDefaultEnumFlags() | ResourceEnumFlags::MostRecentOnly);
-            for (auto it = container->begin(); it != container->end(); ++it)
-            {
-                numbers.insert(it.GetResourceNumber());
-            }
-            return std::vector<int>(numbers.begin(), numbers.end());
+            return ResourceNumbersOf(session, ResourceType::Pic);
         }
 
-        // A number of 0 to 65535: digits only, with any count of zeros before
-        // them.
-        bool ParseNumber(const std::string &text, int &number)
-        {
-            if (text.empty())
-            {
-                return false;
-            }
-            int value = 0;
-            for (char ch : text)
-            {
-                if ((ch < '0') || (ch > '9'))
-                {
-                    return false;
-                }
-                value = (value * 10) + (ch - '0');
-                if (value > 65535)
-                {
-                    return false;
-                }
-            }
-            number = value;
-            return true;
-        }
-
-        // The pics of the game that the selectors name: a number ("230") or a
-        // range ("100-199"), from the lowest, each pic once. Usage for a text
-        // that is not a number or a range, for a number that is not a pic of
-        // the game, and for a range with no pic of the game.
+        // The pics of the game that the selectors name (SelectResourceNumbers).
         sci::Result<std::vector<int>> SelectPics(const std::vector<int> &all, const std::vector<std::string> &selectors)
         {
-            std::set<int> selected;
-            for (const std::string &selector : selectors)
-            {
-                int first = 0;
-                int last = 0;
-                size_t dash = selector.find('-');
-                bool parsed = (dash == std::string::npos) ? ParseNumber(selector, first) :
-                    (ParseNumber(selector.substr(0, dash), first) && ParseNumber(selector.substr(dash + 1), last));
-                if (dash == std::string::npos)
-                {
-                    last = first;
-                }
-                if (!parsed || (first > last))
-                {
-                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("\"{0}\" is not a pic number or a range of pic numbers (for example 230 or 100-199)", selector));
-                }
-                bool any = false;
-                for (int number : all)
-                {
-                    if ((number >= first) && (number <= last))
-                    {
-                        selected.insert(number);
-                        any = true;
-                    }
-                }
-                if (!any)
-                {
-                    return sci::Fail(sci::ErrorCode::Usage, (first == last) ? fmt::format("the game has no pic {0}", first) : fmt::format("the game has no pic in the range {0}-{1}", first, last));
-                }
-            }
-            return std::vector<int>(selected.begin(), selected.end());
+            return SelectResourceNumbers(all, selectors, "pic");
         }
 
         // A pic of the game: the most recent copy of its resource.
@@ -154,12 +84,6 @@ namespace cli
             bool fromPatch = false;
             uint32_t crc32 = 0;
         };
-
-        // The CRC-32 of the bytes of a pic resource.
-        uint32_t Crc32Of(const std::vector<uint8_t> &data)
-        {
-            return data.empty() ? 0 : (uint32_t)crcFast(data.data(), (int)data.size());
-        }
 
         // NotFound when the game has no such pic; Format when its resource is
         // damaged.
@@ -210,27 +134,6 @@ namespace cli
                 }
             }
             return entries;
-        }
-
-        // The output folder of export: NotFound when it is not a folder,
-        // Usage when it is the game folder or a folder inside it (a game can
-        // read patch files from a folder of its own).
-        sci::Status CheckOutputFolder(GameSession &session, const std::string &outDir)
-        {
-            std::error_code ec;
-            if (!fs::is_directory(outDir, ec))
-            {
-                return sci::Fail(sci::ErrorCode::NotFound, "the output folder does not exist: " + outDir);
-            }
-            switch (PlaceInGameFolder(session.Helper().GameFolder, outDir))
-            {
-            case GameFolderPlace::GameFolder:
-                return sci::Fail(sci::ErrorCode::Usage, "the output folder is the game folder; give a folder outside the game");
-            case GameFolderPlace::Inside:
-                return sci::Fail(sci::ErrorCode::Usage, "the output folder is inside the game folder; give a folder outside the game");
-            default:
-                return sci::Ok();
-            }
         }
 
         // The row of a pic of the game. The exception boundary of the pic: a
@@ -353,40 +256,40 @@ namespace cli
             // cel that cannot be exported writes no file.
             SCI_TRY_ASSIGN(std::vector<PicExportFile> files, MakePicExportFiles(version, number, source.data, description, source.fromPatch, *merged, session.ResourceMap().GetPalette999(), everyCel));
 
-            // Each file that is there already must open for writing, so that a
-            // file that cannot be replaced fails the pic before its first
-            // write. The write shares read and write (WriteBytesToFile).
-            for (const PicExportFile &file : files)
-            {
-                sci::Status writable = CheckFileCanBeReplaced(outDir + "\\" + file.name, FILE_SHARE_READ | FILE_SHARE_WRITE);
-                if (!writable)
-                {
-                    result.writeFailed = true;
-                    return writable;
-                }
-            }
-            for (const PicExportFile &file : files)
-            {
-                const std::string path = outDir + "\\" + file.name;
-                if (!file.isText)
-                {
-                    result.cels++;
-                }
-                if (dryRun)
-                {
-                    output.Message("Would write " + path);
-                    continue;
-                }
-                sci::Status written = file.isText ? WriteTextToFile(path, file.text) : WriteBytesToFile(path, file.bytes);
-                if (!written)
-                {
-                    result.writeFailed = true;
-                    return written;
-                }
-                output.Detail("Wrote " + path);
-            }
-            return sci::Ok();
+            result.cels = (size_t)std::count_if(files.begin(), files.end(), [](const PicExportFile &file) { return !file.isText; });
+            return WriteExportFiles(outDir, files, dryRun, output, result.writeFailed);
         }
+    }
+
+    sci::Status WriteExportFiles(const std::string &outDir, const std::vector<PicExportFile> &files, bool dryRun, CliOutput &output, bool &writeFailed)
+    {
+        // The write shares read and write (WriteBytesToFile).
+        for (const PicExportFile &file : files)
+        {
+            sci::Status writable = CheckFileCanBeReplaced(outDir + "\\" + file.name, FILE_SHARE_READ | FILE_SHARE_WRITE);
+            if (!writable)
+            {
+                writeFailed = true;
+                return writable;
+            }
+        }
+        for (const PicExportFile &file : files)
+        {
+            const std::string path = outDir + "\\" + file.name;
+            if (dryRun)
+            {
+                output.Message("Would write " + path);
+                continue;
+            }
+            sci::Status written = file.isText ? WriteTextToFile(path, file.text) : WriteBytesToFile(path, file.bytes);
+            if (!written)
+            {
+                writeFailed = true;
+                return written;
+            }
+            output.Detail("Wrote " + path);
+        }
+        return sci::Ok();
     }
 
     PicListRow MakePicListRow(const SCIVersion &version, int number, const std::vector<uint8_t> &data, bool fromPatch)
@@ -420,40 +323,14 @@ namespace cli
     {
         const std::vector<std::string> header = { "Pic", "Format", "Size", "Cels", "Comp", "Background cel", "Source", "Bytes", "CRC32", "Skip px", "Palette entries", "Pixel entries" };
         const std::vector<bool> right = { true, false, false, true, true, false, false, true, false, true, false, false };
-        std::vector<std::vector<std::string>> table = { header };
+        std::vector<std::vector<std::string>> cells;
+        std::vector<std::string> errors;
         for (const PicListRow &row : rows)
         {
-            table.push_back(TextCells(row));
+            cells.push_back(TextCells(row));
+            errors.push_back(row.error);
         }
-        std::vector<size_t> widths(header.size(), 0);
-        for (const std::vector<std::string> &cells : table)
-        {
-            for (size_t i = 0; i < cells.size(); i++)
-            {
-                widths[i] = (std::max)(widths[i], cells[i].size());
-            }
-        }
-        std::string text;
-        for (size_t r = 0; r < table.size(); r++)
-        {
-            std::string line;
-            for (size_t i = 0; i < table[r].size(); i++)
-            {
-                const std::string &cell = table[r][i];
-                const std::string padding(widths[i] - cell.size(), ' ');
-                line += (i == 0) ? "" : "  ";
-                line += right[i] ? (padding + cell) : (cell + padding);
-            }
-            // No spaces at the end of a line, and none before the error but
-            // the two that divide it from the last cell.
-            line.erase(line.find_last_not_of(' ') + 1);
-            if ((r > 0) && !rows[r - 1].error.empty())
-            {
-                line += "  (unreadable: " + rows[r - 1].error + ")";
-            }
-            text += line + "\n";
-        }
-        return text;
+        return AlignedTextTable(header, right, cells, errors);
     }
 
     std::string PicListTsvTable(const std::vector<PicListRow> &rows)
@@ -524,12 +401,7 @@ namespace cli
             image.height = cel.height;
             // Unsupported for a cel with run-length data in an SCI2 pic.
             SCI_TRY_ASSIGN(image.pixels, GetCelPixels(version, data, cel.index));
-            for (size_t i = 0; i < image.colors.size(); i++)
-            {
-                image.colors[i].red = colors.Colors[i].rgbRed;
-                image.colors[i].green = colors.Colors[i].rgbGreen;
-                image.colors[i].blue = colors.Colors[i].rgbBlue;
-            }
+            image.colors = ExportColorTable(colors);
             PicExportFile file;
             file.name = background ? fmt::format("{0}.bmp", number) : fmt::format("{0}.cel{1}.bmp", number, cel.index);
             SCI_TRY_ASSIGN(file.bytes, EncodeIndexedBmp(image));
@@ -727,55 +599,6 @@ namespace cli
             return job;
         }
 
-        // Checks the new pixels of a cel against its pixels in the game: a
-        // pixel has the skip colour where the cel has it and nowhere else,
-        // and each other pixel is a used entry. Usage for a pixel that
-        // fails a check; an unused entry is a warning when the options allow
-        // it.
-        sci::Status CheckNewPixels(const std::string &imagePath, const PicCelDescription &cel, const std::vector<uint8_t> &oldPixels, const std::vector<uint8_t> &newPixels,
-            const std::array<bool, 256> &used, bool allowUnused, std::vector<std::string> &warnings)
-        {
-            size_t skipChanges = 0;
-            size_t firstSkipChange = 0;
-            size_t unusedPixels = 0;
-            std::array<bool, 256> unused = {};
-            for (size_t i = 0; i < newPixels.size(); i++)
-            {
-                const bool wasSkip = (oldPixels[i] == cel.skipColor);
-                const bool isSkip = (newPixels[i] == cel.skipColor);
-                if (wasSkip != isSkip)
-                {
-                    if (skipChanges == 0)
-                    {
-                        firstSkipChange = i;
-                    }
-                    skipChanges++;
-                }
-                else if (!isSkip && !used[newPixels[i]])
-                {
-                    unused[newPixels[i]] = true;
-                    unusedPixels++;
-                }
-            }
-            if (skipChanges > 0)
-            {
-                return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}: {1} to or from the skip colour {2} of cel {3} (the first at {4},{5}); the pixels of the skip colour must stay where they are",
-                    imagePath, (skipChanges == 1) ? std::string("1 pixel changes") : fmt::format("{0} pixels change", skipChanges), (int)cel.skipColor, cel.index,
-                    firstSkipChange % (size_t)cel.width, firstSkipChange / (size_t)cel.width));
-            }
-            if (unusedPixels > 0)
-            {
-                const std::string text = fmt::format("{0}: {1} of cel {2} {3} palette entries that the pic and palette 999 do not mark as used: {4}",
-                    imagePath, CountText(unusedPixels, "pixel"), cel.index, (unusedPixels == 1) ? "has" : "have", IndexRunsText(IndexRunsOf(unused)));
-                if (!allowUnused)
-                {
-                    return sci::Fail(sci::ErrorCode::Usage, text + " (--allow-unused-indices makes this a warning)");
-                }
-                warnings.push_back(text);
-            }
-            return sci::Ok();
-        }
-
         sci::Status ImportPic(GameSession &session, const PicImportJob &job, const PicImportPalette &palette, bool allowUnused, const std::string &outDir, bool dryRun, CliOutput &output, PicImportResult &result)
         {
             const std::string picText = PicText(job.number);
@@ -796,6 +619,8 @@ namespace cli
                 return sci::Fail(sci::ErrorCode::Internal, "the palette of the pic could not be made");
             }
             const std::array<bool, 256> used = UsedEntriesOf(merged.get());
+            PicImportPalette picPalette = palette;
+            picPalette.exportColors = ExportColorTable(*merged);
 
             // Each image is read, and then all are checked, before the pic
             // changes.
@@ -809,7 +634,7 @@ namespace cli
                 images.push_back(std::move(image));
             }
             std::vector<std::string> warnings;
-            sci::Result<std::vector<uint8_t>> made = MakePicImportData(version, source.data, description, used, images, palette, allowUnused, warnings);
+            sci::Result<std::vector<uint8_t>> made = MakePicImportData(version, source.data, description, used, images, picPalette, allowUnused, warnings);
             for (const std::string &warning : warnings)
             {
                 output.Warning(picText + ": " + warning);
@@ -848,8 +673,8 @@ namespace cli
     {
         // The cel of each image, in the order of the images.
         std::vector<int> cels;
-        // The first image: its colour table has the colours of the range.
-        const PicImportImage *rangeColors = nullptr;
+        // The images whose colour tables give the colours of the range.
+        std::vector<std::pair<std::string, const IndexedBmp *>> rangeImages;
         for (const PicImportImage &image : images)
         {
             const int index = (image.cel < 0) ? description.backgroundCel : image.cel;
@@ -872,7 +697,7 @@ namespace cli
                 return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} has {1} x {2} pixels, and cel {3} has {4} x {5}", image.name, image.image.width, image.image.height, index, cel.width, cel.height));
             }
             SCI_TRY_ASSIGN(std::vector<uint8_t> oldPixels, GetCelPixels(version, data, index));
-            SCI_TRY(CheckNewPixels(image.name, cel, oldPixels, image.image.pixels, usedEntries, allowUnusedEntries, warnings));
+            SCI_TRY(CheckImportPixels(image.name, fmt::format("cel {0}", cel.index), "pic", cel.skipColor, cel.width, oldPixels, image.image.pixels, usedEntries, allowUnusedEntries, warnings));
             if (palette.replace)
             {
                 if (image.image.colorCount <= palette.last)
@@ -880,50 +705,160 @@ namespace cli
                     return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}: the colour table has {1} {2}, and the palette range is {3}-{4}", image.name, image.image.colorCount,
                         (image.image.colorCount == 1) ? "entry" : "entries", palette.first, palette.last));
                 }
-                if (rangeColors == nullptr)
-                {
-                    rangeColors = &image;
-                }
-                else
-                {
-                    for (int entry = palette.first; entry <= palette.last; entry++)
-                    {
-                        if (image.image.colors[entry] != rangeColors->image.colors[entry])
-                        {
-                            return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} and {1} have another colour for entry {2}; the images of a pic must have one palette", rangeColors->name, image.name, entry));
-                        }
-                    }
-                }
+                rangeImages.emplace_back(image.name, &image.image);
             }
             cels.push_back(index);
         }
 
         std::vector<uint8_t> newData = data;
-        if (rangeColors != nullptr)
+        if (!rangeImages.empty())
         {
-            SCI_TRY_ASSIGN(newData, ReplacePaletteRange(version, newData, palette.first, palette.last, rangeColors->image.colors));
-            // The range is inside the stored entries here. An entry with the
-            // flag 0 gets its new colour, but the game does not use it.
-            std::array<bool, 256> notUsed = {};
-            bool anyNotUsed = false;
-            for (int entry = palette.first; entry <= palette.last; entry++)
-            {
-                if (description.palette.flags[entry] == 0)
-                {
-                    notUsed[entry] = true;
-                    anyNotUsed = true;
-                }
-            }
-            if (anyNotUsed)
-            {
-                warnings.push_back(fmt::format("the pic does not mark the entries {0} as used, so the game takes their colours from another palette", IndexRunsText(IndexRunsOf(notUsed))));
-            }
+            std::array<IndexedBmpColor, 256> colors = {};
+            SCI_TRY_ASSIGN(colors, ReplacedPaletteColors(rangeImages, palette, description.palette, "pic", warnings));
+            SCI_TRY_ASSIGN(newData, ReplacePaletteRange(version, newData, palette.first, palette.last, colors));
         }
         for (size_t i = 0; i < images.size(); i++)
         {
             SCI_TRY_ASSIGN(newData, ReplaceCelPixels(version, newData, cels[i], images[i].image.pixels));
         }
         return newData;
+    }
+
+    sci::Result<std::vector<SidecarFile>> ListSidecarFiles(const std::string &inDir, const char *exportCommand)
+    {
+        std::error_code ec;
+        if (!fs::is_directory(inDir, ec))
+        {
+            return sci::Fail(sci::ErrorCode::NotFound, "the input folder does not exist: " + inDir);
+        }
+        std::vector<SidecarFile> files;
+        // The names are compared as wide text: path::string() throws for a
+        // name with a character that the ANSI code page does not have.
+        std::error_code listError;
+        for (fs::directory_iterator it(inDir, listError), end; !listError && (it != end); it.increment(listError))
+        {
+            std::wstring extension = it->path().extension().wstring();
+            std::transform(extension.begin(), extension.end(), extension.begin(), [](wchar_t ch) { return (wchar_t)towlower(ch); });
+            if ((extension != L".toml") || !it->is_regular_file(ec))
+            {
+                continue;
+            }
+            SidecarFile file;
+            std::string name;
+            file.badName = !NarrowFileName(it->path(), name);
+            file.path = inDir + "\\" + name;
+            files.push_back(file);
+        }
+        if (listError)
+        {
+            return sci::Fail(sci::ErrorCode::Io, fmt::format("the input folder cannot be read: {0}: {1}", inDir, listError.message()));
+        }
+        if (files.empty())
+        {
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("the input folder has no .toml file of {0}: {1}", exportCommand, inDir));
+        }
+        std::sort(files.begin(), files.end(), [](const SidecarFile &a, const SidecarFile &b) { return a.path < b.path; });
+        return files;
+    }
+
+    sci::Status CheckImportPixels(const std::string &imagePath, const std::string &celText, const char *owner, uint8_t skipColor, int width, const std::vector<uint8_t> &oldPixels,
+        const std::vector<uint8_t> &newPixels, const std::array<bool, 256> &used, bool allowUnused, std::vector<std::string> &warnings)
+    {
+        size_t skipChanges = 0;
+        size_t firstSkipChange = 0;
+        size_t unusedPixels = 0;
+        std::array<bool, 256> unused = {};
+        for (size_t i = 0; i < newPixels.size(); i++)
+        {
+            const bool wasSkip = (oldPixels[i] == skipColor);
+            const bool isSkip = (newPixels[i] == skipColor);
+            if (wasSkip != isSkip)
+            {
+                if (skipChanges == 0)
+                {
+                    firstSkipChange = i;
+                }
+                skipChanges++;
+            }
+            else if (!isSkip && !used[newPixels[i]])
+            {
+                unused[newPixels[i]] = true;
+                unusedPixels++;
+            }
+        }
+        if (skipChanges > 0)
+        {
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}: {1} to or from the skip colour {2} of {3} (the first at {4},{5}); the pixels of the skip colour must stay where they are",
+                imagePath, (skipChanges == 1) ? std::string("1 pixel changes") : fmt::format("{0} pixels change", skipChanges), (int)skipColor, celText,
+                firstSkipChange % (size_t)width, firstSkipChange / (size_t)width));
+        }
+        if (unusedPixels > 0)
+        {
+            const std::string text = fmt::format("{0}: {1} of {2} {3} palette entries that the {4} and palette 999 do not mark as used: {5}",
+                imagePath, CountText(unusedPixels, "pixel"), celText, (unusedPixels == 1) ? "has" : "have", owner, IndexRunsText(IndexRunsOf(unused)));
+            if (!allowUnused)
+            {
+                return sci::Fail(sci::ErrorCode::Usage, text + " (--allow-unused-indices makes this a warning)");
+            }
+            warnings.push_back(text);
+        }
+        return sci::Ok();
+    }
+
+    std::array<IndexedBmpColor, 256> ExportColorTable(const PaletteComponent &colors)
+    {
+        std::array<IndexedBmpColor, 256> table = {};
+        for (size_t entry = 0; entry < table.size(); entry++)
+        {
+            table[entry].red = colors.Colors[entry].rgbRed;
+            table[entry].green = colors.Colors[entry].rgbGreen;
+            table[entry].blue = colors.Colors[entry].rgbBlue;
+        }
+        return table;
+    }
+
+    sci::Result<std::array<IndexedBmpColor, 256>> ReplacedPaletteColors(const std::vector<std::pair<std::string, const IndexedBmp *>> &images, const PicImportPalette &palette,
+        const PicPaletteDescription &stored, const char *owner, std::vector<std::string> &warnings)
+    {
+        std::array<IndexedBmpColor, 256> colors = stored.colors;
+        if (images.empty())
+        {
+            return colors;
+        }
+        // The stored entries with no mark for which an image has a colour
+        // that export did not give it.
+        std::array<bool, 256> kept = {};
+        const std::pair<std::string, const IndexedBmp *> &first = images.front();
+        for (int entry = (std::max)(palette.first, 0); (entry <= palette.last) && (entry < 256); entry++)
+        {
+            const bool isStored = stored.present && (entry >= stored.firstEntry) && (entry < (stored.firstEntry + stored.entryCount));
+            if (!isStored)
+            {
+                continue;
+            }
+            if (stored.flags[entry] != 0)
+            {
+                colors[entry] = first.second->colors[entry];
+                for (const std::pair<std::string, const IndexedBmp *> &image : images)
+                {
+                    if (image.second->colors[entry] != colors[entry])
+                    {
+                        return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} and {1} have another colour for entry {2}; the images of a {3} must have one palette", first.first, image.first, entry, owner));
+                    }
+                }
+            }
+            else
+            {
+                kept[entry] = std::any_of(images.begin(), images.end(), [&](const std::pair<std::string, const IndexedBmp *> &image) { return image.second->colors[entry] != palette.exportColors[entry]; });
+            }
+        }
+        const std::vector<IndexRun> keptRuns = IndexRunsOf(kept);
+        if (!keptRuns.empty())
+        {
+            warnings.push_back(fmt::format("the {0} does not mark the entries {1} as used, so they keep their colours (the game takes their colours from another palette); the images have other colours for them, which the {0} does not get",
+                owner, IndexRunsText(keptRuns)));
+        }
+        return colors;
     }
 
     bool ParsePaletteRange(const std::string &text, int &first, int &last)
@@ -969,38 +904,14 @@ namespace cli
         std::vector<Work> works;
         if (!options.inDir.empty())
         {
-            const std::string inDir = AbsolutePath(options.inDir);
-            std::error_code ec;
-            if (!fs::is_directory(inDir, ec))
+            SCI_TRY_ASSIGN(std::vector<SidecarFile> files, ListSidecarFiles(AbsolutePath(options.inDir), "scic pic export"));
+            for (const SidecarFile &file : files)
             {
-                return sci::Fail(sci::ErrorCode::NotFound, "the input folder does not exist: " + inDir);
-            }
-            // The names are compared as wide text: path::string() throws for
-            // a name with a character that the ANSI code page does not have.
-            std::error_code listError;
-            for (fs::directory_iterator it(inDir, listError), end; !listError && (it != end); it.increment(listError))
-            {
-                std::wstring extension = it->path().extension().wstring();
-                std::transform(extension.begin(), extension.end(), extension.begin(), [](wchar_t ch) { return (wchar_t)towlower(ch); });
-                if ((extension != L".toml") || !it->is_regular_file(ec))
-                {
-                    continue;
-                }
                 Work work;
-                std::string name;
-                work.badName = !NarrowFileName(it->path(), name);
-                work.sidecarPath = inDir + "\\" + name;
+                work.sidecarPath = file.path;
+                work.badName = file.badName;
                 works.push_back(work);
             }
-            if (listError)
-            {
-                return sci::Fail(sci::ErrorCode::Io, fmt::format("the input folder cannot be read: {0}: {1}", inDir, listError.message()));
-            }
-            if (works.empty())
-            {
-                return sci::Fail(sci::ErrorCode::Usage, "the input folder has no .toml file of scic pic export: " + inDir);
-            }
-            std::sort(works.begin(), works.end(), [](const Work &a, const Work &b) { return a.sidecarPath < b.sidecarPath; });
         }
         else
         {

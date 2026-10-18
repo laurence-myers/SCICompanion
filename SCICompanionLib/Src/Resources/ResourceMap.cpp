@@ -781,35 +781,36 @@ void CResourceMap::RemoveSync(IResourceMapEvents *pSync)
 //
 void CResourceMap::DeleteResource(const ResourceBlob *pData)
 {
-	// Early bail out. Without palette 999, we'll mis-identify the SCI type, and things will be bad
-	// (and also... we won't have a global palette)
-	if ((pData->GetType() == ResourceType::Palette) && (pData->GetNumber() == 999))
+	sci::Status removed = RemoveResource(*pData);
+	if (!removed)
 	{
-		SafeMessageBox("Palette 999 is the global palette and cannot be deleted.", MB_OK | MB_ICONERROR);
-		return;
+		ShowRemoveError(removed.error());
 	}
+}
 
-	try
+sci::Status CResourceMap::RemoveResource(const ResourceBlob &resource, std::string *removedFile)
+{
+	// Without palette 999, we'll mis-identify the SCI type, and things will be bad
+	// (and also... we won't have a global palette)
+	if ((resource.GetType() == ResourceType::Palette) && (resource.GetNumber() == 999))
 	{
-		::DeleteResource(*this, *pData);
+		return sci::Fail(sci::ErrorCode::Unsupported, "Palette 999 is the global palette and cannot be deleted.");
 	}
-	catch (std::exception &e)
-	{
-		SafeMessageBox(e.what(), MB_OK | MB_ICONWARNING);
-	}
+	SCI_TRY(::RemoveResource(*this, resource, removedFile));
 
 	// Call our syncs, so they update.
-	if (pData->GetType() == ResourceType::Script)
+	if (resource.GetType() == ResourceType::Script)
 	{
 		// We'll need to re-gen this:
 		_globalCompiledScriptLookups.reset(nullptr);
 	}
 
-	for_each(_syncs.begin(), _syncs.end(), bind2nd(mem_fun(&IResourceMapEvents::OnResourceDeleted), pData));
-	if (pData->GetType() == ResourceType::Palette)
+	for_each(_syncs.begin(), _syncs.end(), bind2nd(mem_fun(&IResourceMapEvents::OnResourceDeleted), &resource));
+	if (resource.GetType() == ResourceType::Palette)
 	{
 		_paletteListNeedsUpdate = true;
 	}
+	return sci::Ok();
 }
 
 //

@@ -102,6 +102,7 @@ exit /b 0</Command>
   <ItemGroup>
     <ClInclude Include="Helper.h" />
     <ClInclude Include="TestSupport.h" />
+    <ClInclude Include="SierraViewBytes.h" />
     <ClInclude Include="IntegrationHarness.h" />
     <ClInclude Include="DecompileHelper.h" />
     <ClInclude Include="ScopeShapes.h" />
@@ -136,6 +137,8 @@ exit /b 0</Command>
     <ClCompile Include="TestPicWrite.cpp" />
     <ClCompile Include="TestCliPic.cpp" />
     <ClCompile Include="TestPaletteUse.cpp" />
+    <ClCompile Include="TestCliView.cpp" />
+    <ClCompile Include="TestViewImage.cpp" />
     <ClCompile Include="TestGameSession.cpp" />
     <ClCompile Include="TestPatchWrites.cpp" />
     <ClCompile Include="TestDeferredWrites.cpp" />

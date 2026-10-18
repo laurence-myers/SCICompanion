@@ -319,6 +319,198 @@ namespace cli
     // (Usage).
     sci::Result<ExitCode> RunPicImport(GameSession &session, const PicImportOptions &options, const CommonOptions &common, CliOutput &output);
 
+    // scic view list (plan section 4.10).
+    struct ViewListOptions
+    {
+        std::string gameFolder;
+        // Numbers and ranges (100-199); empty: every view.
+        std::vector<std::string> views;
+        std::string format = "text";
+    };
+
+    // Prints a row for each view (MakeViewListRow): its format, its loops
+    // and mirror loops, its stored cels and raw cels, its resolution byte,
+    // where the view comes from, its size in bytes and its CRC-32, what its
+    // palette stores, the count of the skip pixels, and the palette entries
+    // that its palette marks and that its pixels have. A view of a format
+    // with no image that scic reads (ega, vga1) gets a row with no cels. A
+    // view runs in its own exception boundary. It writes nothing. Success,
+    // or PartialFailure when a view cannot be read (its row has the error),
+    // also a view whose reader repaired damaged data (the reader logs a
+    // warning and puts data of its own in the place of the damaged data).
+    // Fails for a selector that is not a number or a range, and for a view
+    // that the game does not have (Usage), and after Ctrl+C (Cancelled).
+    sci::Result<ExitCode> RunViewList(GameSession &session, const ViewListOptions &options, CliOutput &output);
+
+    // scic view export (plan section 4.11).
+    struct ViewExportOptions
+    {
+        std::string gameFolder;
+        // Numbers and ranges (100-199), or all.
+        std::vector<std::string> views;
+        bool all = false;
+        std::string outDir;
+    };
+
+    // Writes, for each view, a BMP file for each stored cel and a .toml file
+    // (ViewSidecar.h) into the output folder (MakeViewExportFiles). The
+    // pixels of a file are the palette entries of the cel, and its colour
+    // table is the palette of the view over palette 999 of the game. The
+    // files of a view are all made before the first is written. --dry-run
+    // writes nothing and lists the files. A view runs in its own exception
+    // boundary, so a view that fails does not stop the next one. With --all,
+    // a view with no stored cel is skipped and counted; a named view with no
+    // cel fails. The exit code: 6 when a view failed (also a view of a
+    // format that scic does not read, and a view whose reader repaired
+    // damaged data), 9 when a file could not be written, 7 after Ctrl+C, 1
+    // for a bug. Fails when the run cannot start: the output folder does not
+    // exist (NotFound), or it is the game folder or a folder inside it
+    // (Usage), or a selector is bad (Usage).
+    sci::Result<ExitCode> RunViewExport(GameSession &session, const ViewExportOptions &options, const CommonOptions &common, CliOutput &output);
+
+    // scic view import (plan section 4.12).
+    struct ViewImportOptions
+    {
+        std::string gameFolder;
+        // One image: the view, the loop, the cel and the BMP file.
+        std::string view;
+        int loop = 0;
+        int cel = 0;
+        std::string image;
+        // Or a folder with the files of scic view export.
+        std::string inDir;
+        std::string palette = "keep";       // keep or replace
+        std::string paletteRange;
+        bool allowUnusedIndices = false;
+        std::string outDir;
+    };
+
+    // Puts the pixels of 8-bit BMP files into cels of views
+    // (MakeViewImportData), and writes each view as a patch file into the
+    // output folder (never into the game). The view changes in place
+    // (ReplaceViewCelPixels). With --in-dir, each .toml file of the folder
+    // gives a view and the files of its cels; a CRC-32 in it that is not
+    // that of the view in the game is a warning. A view with no change (no
+    // byte would be another byte) is a warning, and gets no patch file.
+    //
+    // After a run, the output folder has the patch file of a named view only
+    // when this run changed the view: a view that fails, or that has no
+    // change, loses the patch file that an earlier run left there (a
+    // message says so), as in view palette.
+    //
+    // A view runs in its own exception boundary, so a view that fails does
+    // not stop the next one. --dry-run does all checks, writes and removes
+    // nothing. The exit code: 6 when a view failed, 9 when a patch file
+    // could not be written or removed, 7 after Ctrl+C, 1 for a bug. Fails
+    // when the run cannot start: the output folder or the input folder does
+    // not exist (NotFound), the output folder is the game folder or a
+    // folder inside it, the view is not a number of a view of the game, or
+    // the input folder has no .toml file (Usage).
+    sci::Result<ExitCode> RunViewImport(GameSession &session, const ViewImportOptions &options, const CommonOptions &common, CliOutput &output);
+
+    // scic view palette (plan section 4.9).
+    struct ViewPaletteOptions
+    {
+        std::string gameFolder;
+        // Numbers and ranges (100-199).
+        std::vector<std::string> views;
+        // One of two actions. The first: an 8-bit BMP file whose colour table
+        // has the new colours of the entries of the range.
+        std::string colorsFrom;
+        // The second: the entries of the range lose their "used" mark.
+        bool clearUsed = false;
+        // "A-B": the palette entries of the action.
+        std::string paletteRange;
+        std::string outDir;
+    };
+
+    // Changes the palette of each view in place, and writes the view as a
+    // patch file into the output folder (never into the game). The source is
+    // the most recent resource of the view. The new bytes are the bytes of
+    // the view, with other values only in its palette:
+    //  - colorsFrom: each entry of the range that the palette stores gets the
+    //    colour of the colour table of the BMP file (ReplaceViewPaletteColors).
+    //    An entry that the palette does not mark as used is a warning.
+    //  - clearUsed: the entries of the range lose their "used" mark
+    //    (ClearViewPaletteMarks): the flag bytes of 4-byte entries become 0,
+    //    and a palette with one flag for all its entries stores fewer
+    //    entries. A view with a pixel in an entry that loses its mark fails.
+    // A view with no change (no byte of it would be another byte) is a
+    // warning, and gets no patch file.
+    //
+    // After a run, the output folder has the patch file of a named view only
+    // when this run changed the view: a view that fails, or that has no
+    // change, loses the patch file that an earlier run left there (a
+    // message says so), and a write that fails leaves no file.
+    //
+    // A view runs in its own exception boundary, so a view that fails does
+    // not stop the next one: a view of a game version that is not SCI1.1 or
+    // SCI2, a view with no palette, a view that a reader repaired (the
+    // repair is the reason, also when the change fails), and a view that
+    // fails a check of its action. --dry-run does all checks, writes and
+    // removes nothing, and says what a run would write and remove. The exit
+    // code: 6 when a view failed, 9 when a patch file could not be written
+    // or removed, 7 after Ctrl+C, 1 for a bug. Fails when the
+    // run cannot start: the output folder does not exist (NotFound), or it
+    // is the game folder or a folder inside it (Usage), a selector or the
+    // range is bad (Usage), the BMP file cannot be read (the errors of
+    // ReadIndexedBmpFile), or its colour table does not have the entries of
+    // the range (Usage).
+    sci::Result<ExitCode> RunViewPalette(GameSession &session, const ViewPaletteOptions &options, const CommonOptions &common, CliOutput &output);
+
+    // scic view add (plan section 4.13).
+    struct ViewAddOptions
+    {
+        std::string gameFolder;
+        // The number of the new view.
+        std::string view;
+        // A .toml file of the form of scic view export; the BMP files of its
+        // cels are in its folder.
+        std::string from;
+        // The game can have the view.
+        bool replace = false;
+        bool allowUnusedIndices = false;
+        std::string outDir;
+    };
+
+    // Makes a new view from a .toml file of the form of view export and the
+    // BMP files of its cels (MakeAddedView, MakeNewViewBytes), and writes it
+    // as a patch file into the output folder (never into the game). A run
+    // has one view. It runs in an exception boundary: a view that fails is
+    // an error line, and loses the patch file that an earlier run left in the
+    // output folder (a message says so). --dry-run does all checks, writes
+    // and removes nothing. The exit code: 6 when the view failed (also a game
+    // version that is not SCI1.1 or SCI2), 9 when the patch file could not be
+    // written or removed, 7 after Ctrl+C, 1 for a bug. Fails when the run
+    // cannot start: the output folder or the .toml file does not exist
+    // (NotFound), the output folder is the game folder or a folder inside
+    // it, the view is not a number of 0 to 65535, or the game has the view
+    // and there is no --replace (Usage).
+    sci::Result<ExitCode> RunViewAdd(GameSession &session, const ViewAddOptions &options, const CommonOptions &common, CliOutput &output);
+
+    // scic view remove (plan section 4.14).
+    struct ViewRemoveOptions
+    {
+        std::string gameFolder;
+        // Numbers and ranges (100-199).
+        std::vector<std::string> views;
+        // all: each copy of a view (its patch file and its entries in the
+        // package); patch: only its patch file.
+        std::string from = "all";
+    };
+
+    // Removes views from the game (CResourceMap::RemoveResource): each copy,
+    // or with "patch" only the patch file, so that the game then uses the
+    // copy in the package (a message says so). It is the one view command
+    // that changes the game. A view runs in its own exception boundary. The
+    // views of the selectors must all be in the game, and with "patch" each
+    // must have a patch file, before the first removal. --dry-run removes
+    // nothing and lists what a run would remove. The exit code: 9 when a copy
+    // could not be removed, 7 after Ctrl+C, 1 for a bug. Fails when the run
+    // cannot start: a selector is bad or names a view that the game does not
+    // have, or a view has no patch file with "patch" (Usage).
+    sci::Result<ExitCode> RunViewRemove(GameSession &session, const ViewRemoveOptions &options, const CommonOptions &common, CliOutput &output);
+
     // scic dev compare-structure (hidden): the structure of the functions of
     // a folder of decompiled scripts against another decompile.
     struct CompareStructureOptions

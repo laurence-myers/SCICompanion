@@ -619,7 +619,15 @@ void PostReadProcessing(ResourceEntity &resource, RasterComponent &raster)
 		Loop &loop = raster.Loops[i];
 		if (loop.Cels.size() == 0)
 		{
-			CoreLogFormat(LogLevel::Warning, "Empty loop found: view: %d, loop %zu.", resource.ResourceNumber, i);
+			// A view that is read from bytes with no game has no number.
+			if (resource.ResourceNumber < 0)
+			{
+				CoreLogFormat(LogLevel::Warning, "Empty loop found: loop %zu.", i);
+			}
+			else
+			{
+				CoreLogFormat(LogLevel::Warning, "Empty loop found: view: %d, loop %zu.", resource.ResourceNumber, i);
+			}
 			// Make degenerate
 			loop.Cels.push_back(Cel());
 			CreateDegenerate(loop.Cels[0], loop.Cels[0].TransparentColor);
@@ -1118,6 +1126,19 @@ void ViewReadFromVGA11Helper(ResourceEntity &resource, sci::istream &byteStream,
 		sci::istream streamLoop(byteStream);
 		streamLoop.seekg(header.headerSize + (header.loopHeaderSize * i));  // Start of this loop's data
 		ReadLoopFromVGA(resource, streamLoop, raster.Loops[i], i, header.celHeaderSize, isSCI2);
+	}
+
+	// A loop that is not a mirror and whose header has no cel is a form of
+	// Sierra's views (for example view 905 of QfG4 and view 588 of SQ6), not
+	// damage. It gets a 1 x 1 cel with no warning, so that each loop has a
+	// cel as PostReadProcessing requires.
+	for (Loop &loop : raster.Loops)
+	{
+		if (!loop.IsMirror && loop.Cels.empty())
+		{
+			loop.Cels.push_back(Cel());
+			CreateDegenerate(loop.Cels[0], loop.Cels[0].TransparentColor);
+		}
 	}
 
 	// Now fill in mirrors. They seem setup a little differently than in earlier versions of views,

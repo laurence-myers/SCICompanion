@@ -1,21 +1,10 @@
 #include "stdafx.h"
 #include "PicSidecar.h"
-#include "TomlFile.h"
+#include "SidecarToml.h"
 #include "format.h"
 #include <sstream>
 
-namespace
-{
-    toml::array RunsArray(const std::vector<IndexRun> &runs)
-    {
-        toml::array array;
-        for (const IndexRun &run : runs)
-        {
-            array.push_back(toml::array{ (int64_t)run.first, (int64_t)run.last });
-        }
-        return array;
-    }
-}
+using namespace sidecartoml;
 
 PicSidecar MakePicSidecar(const PicDescription &description)
 {
@@ -28,23 +17,7 @@ PicSidecar MakePicSidecar(const PicDescription &description)
     sidecar.storedFirst = description.palette.firstEntry;
     sidecar.storedCount = description.palette.entryCount;
     sidecar.entrySize = description.palette.entrySize;
-    for (int i = 0; i < description.palette.entryCount; i++)
-    {
-        const int entry = description.palette.firstEntry + i;
-        const int flag = description.palette.flags[entry];
-        if (!sidecar.flags.empty() && (sidecar.flags.back().last == (entry - 1)) && (sidecar.flags.back().flag == flag))
-        {
-            sidecar.flags.back().last = entry;
-        }
-        else
-        {
-            PicSidecarFlagRun run;
-            run.first = entry;
-            run.last = entry;
-            run.flag = flag;
-            sidecar.flags.push_back(run);
-        }
-    }
+    sidecar.flags = FlagRunsOf(description.palette);
     for (const PicCelDescription &cel : description.cels)
     {
         PicSidecarCel sidecarCel;
@@ -86,12 +59,7 @@ std::string PicSidecarText(const PicSidecar &sidecar)
     palette.insert("stored_first", (int64_t)sidecar.storedFirst);
     palette.insert("stored_count", (int64_t)sidecar.storedCount);
     palette.insert("entry_size", (int64_t)sidecar.entrySize);
-    toml::array flags;
-    for (const PicSidecarFlagRun &run : sidecar.flags)
-    {
-        flags.push_back(toml::array{ (int64_t)run.first, (int64_t)run.last, (int64_t)run.flag });
-    }
-    palette.insert("flags", std::move(flags));
+    palette.insert("flags", FlagRunsArray(sidecar.flags));
     palette.insert("palette_999", RunsArray(sidecar.palette999));
     palette.insert("used", RunsArray(sidecar.used));
 
@@ -133,175 +101,6 @@ std::string PicSidecarText(const PicSidecar &sidecar)
 
 namespace
 {
-    // The error of a key, with the line of the key in the file.
-    tl::unexpected<sci::Error> BadKey(const toml::node &node, const std::string &message)
-    {
-        sci::ErrorLocation where;
-        where.line = (int)node.source().begin.line;
-        where.column = (int)node.source().begin.column;
-        return sci::Fail(sci::ErrorCode::Format, message, where);
-    }
-
-    // The whole number of a key, from low to high. The value stays when the
-    // table has no such key.
-    template<typename T>
-    sci::Status ReadNumber(const toml::table &table, const std::string &name, const char *key, int64_t low, int64_t high, T &value)
-    {
-        const toml::node *node = table.get(key);
-        if (node == nullptr)
-        {
-            return sci::Ok();
-        }
-        std::optional<int64_t> number = node->value_exact<int64_t>();
-        if (!number)
-        {
-            return BadKey(*node, fmt::format("{0}: \"{1}\" is not a whole number", name, key));
-        }
-        if ((*number < low) || (*number > high))
-        {
-            return BadKey(*node, fmt::format("{0}: \"{1}\" is {2}; it must be {3} to {4}", name, key, *number, low, high));
-        }
-        value = (T)*number;
-        return sci::Ok();
-    }
-
-    sci::Status ReadText(const toml::table &table, const std::string &name, const char *key, std::string &value)
-    {
-        const toml::node *node = table.get(key);
-        if (node == nullptr)
-        {
-            return sci::Ok();
-        }
-        std::optional<std::string> text = node->value_exact<std::string>();
-        if (!text)
-        {
-            return BadKey(*node, fmt::format("{0}: \"{1}\" is not a text", name, key));
-        }
-        value = *text;
-        return sci::Ok();
-    }
-
-    sci::Status ReadFlag(const toml::table &table, const std::string &name, const char *key, bool &value)
-    {
-        const toml::node *node = table.get(key);
-        if (node == nullptr)
-        {
-            return sci::Ok();
-        }
-        std::optional<bool> flag = node->value_exact<bool>();
-        if (!flag)
-        {
-            return BadKey(*node, fmt::format("{0}: \"{1}\" is not true or false", name, key));
-        }
-        value = *flag;
-        return sci::Ok();
-    }
-
-    // The numbers of an array of arrays of palette entries: each inner array
-    // has "count" numbers of 0 to 255, and its first is not more than its
-    // second.
-    sci::Result<std::vector<std::vector<int>>> ReadEntryArrays(const toml::table &table, const std::string &name, const char *key, size_t count)
-    {
-        std::vector<std::vector<int>> arrays;
-        const toml::node *node = table.get(key);
-        if (node == nullptr)
-        {
-            return arrays;
-        }
-        const toml::array *outer = node->as_array();
-        if (outer == nullptr)
-        {
-            return BadKey(*node, fmt::format("{0}: \"{1}\" is not an array", name, key));
-        }
-        for (const toml::node &element : *outer)
-        {
-            const toml::array *inner = element.as_array();
-            std::vector<int> numbers;
-            if ((inner != nullptr) && (inner->size() == count))
-            {
-                for (const toml::node &number : *inner)
-                {
-                    std::optional<int64_t> entry = number.value_exact<int64_t>();
-                    if (entry && (*entry >= 0) && (*entry <= 255))
-                    {
-                        numbers.push_back((int)*entry);
-                    }
-                }
-            }
-            if ((numbers.size() != count) || (numbers[0] > numbers[1]))
-            {
-                return BadKey(element, fmt::format("{0}: an element of \"{1}\" is not {2} numbers of 0 to 255 with the first not more than the second", name, key, count));
-            }
-            arrays.push_back(numbers);
-        }
-        return arrays;
-    }
-
-    sci::Status ReadRuns(const toml::table &table, const std::string &name, const char *key, std::vector<IndexRun> &runs)
-    {
-        SCI_TRY_ASSIGN(std::vector<std::vector<int>> arrays, ReadEntryArrays(table, name, key, 2));
-        runs.clear();
-        for (const std::vector<int> &numbers : arrays)
-        {
-            IndexRun run;
-            run.first = numbers[0];
-            run.last = numbers[1];
-            runs.push_back(run);
-        }
-        return sci::Ok();
-    }
-
-    // A file name with no folder: no separator, no drive, and not "." or
-    // "..".
-    bool IsPlainFileName(const std::string &name)
-    {
-        return !name.empty() && (name != ".") && (name != "..") && (name.find_first_of("\\/:") == std::string::npos);
-    }
-
-    // The text of a TOML file (UTF-8) in the ANSI code page, as a path has
-    // it. False for a character that the code page does not have.
-    bool AnsiOfUtf8(const std::string &utf8, std::string &ansi)
-    {
-        ansi.clear();
-        if (utf8.empty())
-        {
-            return true;
-        }
-        int wideLength = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), (int)utf8.size(), nullptr, 0);
-        if (wideLength <= 0)
-        {
-            return false;
-        }
-        std::wstring wide(wideLength, L'\0');
-        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(), (int)utf8.size(), &wide[0], wideLength);
-        BOOL usedDefault = FALSE;
-        int length = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide.data(), wideLength, nullptr, 0, nullptr, &usedDefault);
-        if ((length <= 0) || usedDefault)
-        {
-            return false;
-        }
-        ansi.assign(length, '\0');
-        WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, wide.data(), wideLength, &ansi[0], length, nullptr, nullptr);
-        return true;
-    }
-
-    // The table of a key of the root; null when the root has no such key.
-    // Format for a key that is not a table.
-    sci::Result<const toml::table *> TableOf(const toml::table &root, const char *key)
-    {
-        const toml::node *node = root.get(key);
-        if (node == nullptr)
-        {
-            return (const toml::table *)nullptr;
-        }
-        const toml::table *table = node->as_table();
-        if (table == nullptr)
-        {
-            return BadKey(*node, fmt::format("\"{0}\" is not a table ([{0}])", key));
-        }
-        return table;
-    }
-
     sci::Result<PicSidecar> SidecarOf(const toml::table &root)
     {
         PicSidecar sidecar;
@@ -332,15 +131,7 @@ namespace
             SCI_TRY(ReadNumber(*palette, "[palette]", "stored_first", 0, 255, sidecar.storedFirst));
             SCI_TRY(ReadNumber(*palette, "[palette]", "stored_count", 0, 256, sidecar.storedCount));
             SCI_TRY(ReadNumber(*palette, "[palette]", "entry_size", 0, 4, sidecar.entrySize));
-            SCI_TRY_ASSIGN(std::vector<std::vector<int>> flags, ReadEntryArrays(*palette, "[palette]", "flags", 3));
-            for (const std::vector<int> &numbers : flags)
-            {
-                PicSidecarFlagRun run;
-                run.first = numbers[0];
-                run.last = numbers[1];
-                run.flag = numbers[2];
-                sidecar.flags.push_back(run);
-            }
+            SCI_TRY(ReadFlagRuns(*palette, "[palette]", "flags", sidecar.flags));
             SCI_TRY(ReadRuns(*palette, "[palette]", "palette_999", sidecar.palette999));
             SCI_TRY(ReadRuns(*palette, "[palette]", "used", sidecar.used));
         }
@@ -362,19 +153,7 @@ namespace
                 PicSidecarCel sidecarCel;
                 SCI_TRY(ReadNumber(*cel, "[[cel]]", "index", 0, 255, sidecarCel.index));
                 const std::string name = fmt::format("[[cel]] {0}", sidecarCel.index);
-                if (const toml::node *file = cel->get("file"))
-                {
-                    std::string text;
-                    SCI_TRY(ReadText(*cel, name, "file", text));
-                    if (!AnsiOfUtf8(text, sidecarCel.file))
-                    {
-                        return BadKey(*file, fmt::format("{0}: \"file\" has a character that the ANSI code page of Windows does not have", name));
-                    }
-                    if (!IsPlainFileName(sidecarCel.file))
-                    {
-                        return BadKey(*file, fmt::format("{0}: \"file\" must be a file name with no folder", name));
-                    }
-                }
+                SCI_TRY(ReadFileName(*cel, name, "file", sidecarCel.file));
                 SCI_TRY(ReadNumber(*cel, name, "width", 0, 65535, sidecarCel.width));
                 SCI_TRY(ReadNumber(*cel, name, "height", 0, 65535, sidecarCel.height));
                 SCI_TRY(ReadNumber(*cel, name, "x", -32768, 32767, sidecarCel.x));
@@ -393,36 +172,10 @@ namespace
 
 sci::Result<PicSidecar> ParsePicSidecar(const std::string &text)
 {
-    // The exception boundary of the TOML parser.
-    return sci::Guard("reading the sidecar of a pic", [&]() -> sci::Result<PicSidecar>
-    {
-        toml::table root;
-        try
-        {
-            root = toml::parse(text);
-        }
-        catch (const toml::parse_error &error)
-        {
-            sci::ErrorLocation where;
-            where.line = (int)error.source().begin.line;
-            where.column = (int)error.source().begin.column;
-            return sci::Fail(sci::ErrorCode::Format, std::string(error.description()), where);
-        }
-        return SidecarOf(root);
-    });
+    return ParseSidecarText<PicSidecar>(text, "a pic", SidecarOf);
 }
 
 sci::Result<PicSidecar> ReadPicSidecarFile(const std::string &path)
 {
-    // The exception boundary of the walk of the tables.
-    sci::Result<PicSidecar> sidecar = sci::Guard("reading " + path, [&]() -> sci::Result<PicSidecar>
-    {
-        SCI_TRY_ASSIGN(toml::table root, ParseTomlFile(path));
-        return SidecarOf(root);
-    });
-    if (!sidecar && sidecar.error().where.file.empty())
-    {
-        sidecar.error().where.file = path;
-    }
-    return sidecar;
+    return ReadSidecarFile<PicSidecar>(path, SidecarOf);
 }

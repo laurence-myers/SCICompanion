@@ -47,32 +47,6 @@ namespace
         return largest;
     }
 
-    sci::Result<PicPaletteDescription> DescribePalette(const std::vector<uint8_t> &data, uint32_t paletteOffset)
-    {
-        PicPaletteDescription palette;
-        if (paletteOffset == 0)
-        {
-            return palette;
-        }
-        SCI_TRY_ASSIGN(PaletteLayout layout, ReadPaletteLayout(data.data(), data.size(), paletteOffset));
-        palette.present = true;
-        palette.firstEntry = layout.firstEntry;
-        palette.entryCount = layout.entryCount;
-        palette.entrySize = layout.entrySize;
-        for (int i = 0; i < layout.entryCount; i++)
-        {
-            const uint8_t *entry = data.data() + layout.entriesOffset + ((size_t)i * (size_t)layout.entrySize);
-            const int index = layout.firstEntry + i;
-            // A 4-byte entry has its flag byte first.
-            const uint8_t *color = entry + ((layout.entrySize == 4) ? 1 : 0);
-            palette.flags[index] = (layout.entrySize == 4) ? entry[0] : (uint8_t)1;
-            palette.colors[index].red = color[0];
-            palette.colors[index].green = color[1];
-            palette.colors[index].blue = color[2];
-        }
-        return palette;
-    }
-
     // The pic as SCI Companion reads it. An SCI1.1 pic needs it: its cel is
     // run-length data.
     sci::Result<std::unique_ptr<ResourceEntity>> ParsePic(const SCIVersion &version, const std::vector<uint8_t> &data)
@@ -106,51 +80,6 @@ namespace
         return nullptr;
     }
 
-    // A cel as SCI Companion holds it has the bottom row first, and each row
-    // has the bytes of its stride. Format when the cel has fewer bytes.
-    sci::Status CheckCelData(const Cel &cel)
-    {
-        const size_t needed = StrideOf(cel) * (size_t)cel.size.cy;
-        if (cel.Data.size() < needed)
-        {
-            return sci::Fail(sci::ErrorCode::Format, fmt::format("the cel of the pic has {0} bytes; {1} x {2} pixels need {3}", cel.Data.size(), cel.size.cx, cel.size.cy, needed));
-        }
-        return sci::Ok();
-    }
-
-    // The pixels of the cel as rows from the top, with no padding.
-    sci::Result<std::vector<uint8_t>> TopDownPixels(const Cel &cel)
-    {
-        SCI_TRY(CheckCelData(cel));
-        const size_t width = cel.size.cx;
-        const size_t height = cel.size.cy;
-        const size_t stride = StrideOf(cel);
-        std::vector<uint8_t> pixels(width * height);
-        // A cel of no width has no bytes to point at.
-        for (size_t y = 0; (width > 0) && (y < height); y++)
-        {
-            const uint8_t *row = &cel.Data[(height - 1 - y) * stride];
-            std::copy(row, row + width, pixels.begin() + (y * width));
-        }
-        return pixels;
-    }
-
-    // Puts rows from the top (width * height bytes) into the cel. The
-    // padding bytes of the cel stay.
-    sci::Status SetTopDownPixels(Cel &cel, const std::vector<uint8_t> &pixels)
-    {
-        SCI_TRY(CheckCelData(cel));
-        const size_t width = cel.size.cx;
-        const size_t height = cel.size.cy;
-        const size_t stride = StrideOf(cel);
-        for (size_t y = 0; (width > 0) && (y < height); y++)
-        {
-            const uint8_t *row = pixels.data() + (y * width);
-            std::copy(row, row + width, &cel.Data[(height - 1 - y) * stride]);
-        }
-        return sci::Ok();
-    }
-
     // The two cels have the same size, placement, skip colour and pixels.
     bool SameCel(const Cel &one, const Cel &two)
     {
@@ -158,8 +87,8 @@ namespace
         {
             return false;
         }
-        sci::Result<std::vector<uint8_t>> onePixels = TopDownPixels(one);
-        sci::Result<std::vector<uint8_t>> twoPixels = TopDownPixels(two);
+        sci::Result<std::vector<uint8_t>> onePixels = CelTopDownPixels(one);
+        sci::Result<std::vector<uint8_t>> twoPixels = CelTopDownPixels(two);
         return onePixels && twoPixels && (*onePixels == *twoPixels);
     }
 
@@ -266,7 +195,7 @@ namespace
             description.cels.push_back(celDescription);
         }
         description.backgroundCel = LargestCel(description.cels);
-        SCI_TRY_ASSIGN(description.palette, DescribePalette(data, layout.paletteOffset));
+        SCI_TRY_ASSIGN(description.palette, DescribePaletteAt(data, layout.paletteOffset));
         return description;
     }
 
@@ -289,12 +218,12 @@ namespace
             celDescription.x = cel->placement.x;
             celDescription.y = cel->placement.y;
             celDescription.skipColor = cel->TransparentColor;
-            SCI_TRY_ASSIGN(std::vector<uint8_t> pixels, TopDownPixels(*cel));
+            SCI_TRY_ASSIGN(std::vector<uint8_t> pixels, CelTopDownPixels(*cel));
             CountPixels(pixels.data(), pixels.size(), celDescription.pixelCounts);
             description.cels.push_back(celDescription);
         }
         description.backgroundCel = LargestCel(description.cels);
-        SCI_TRY_ASSIGN(description.palette, DescribePalette(data, paletteOffset));
+        SCI_TRY_ASSIGN(description.palette, DescribePaletteAt(data, paletteOffset));
         return description;
     }
 }
@@ -332,6 +261,138 @@ std::string IndexRunsText(const std::vector<IndexRun> &runs)
         text += (run.first == run.last) ? fmt::format("{0}", run.first) : fmt::format("{0}-{1}", run.first, run.last);
     }
     return text;
+}
+
+namespace
+{
+    // Format when the cel has fewer bytes than its size needs.
+    sci::Status CheckCelData(const Cel &cel)
+    {
+        const size_t needed = StrideOf(cel) * (size_t)cel.size.cy;
+        if (cel.Data.size() < needed)
+        {
+            return sci::Fail(sci::ErrorCode::Format, fmt::format("the cel has {0} bytes; {1} x {2} pixels need {3}", cel.Data.size(), cel.size.cx, cel.size.cy, needed));
+        }
+        return sci::Ok();
+    }
+}
+
+sci::Result<std::vector<uint8_t>> CelTopDownPixels(const Cel &cel)
+{
+    SCI_TRY(CheckCelData(cel));
+    const size_t width = cel.size.cx;
+    const size_t height = cel.size.cy;
+    const size_t stride = StrideOf(cel);
+    std::vector<uint8_t> pixels(width * height);
+    // A cel of no width has no bytes to point at.
+    for (size_t y = 0; (width > 0) && (y < height); y++)
+    {
+        const uint8_t *row = &cel.Data[(height - 1 - y) * stride];
+        std::copy(row, row + width, pixels.begin() + (y * width));
+    }
+    return pixels;
+}
+
+sci::Status SetCelTopDownPixels(Cel &cel, const std::vector<uint8_t> &pixels)
+{
+    SCI_TRY(CheckCelData(cel));
+    const size_t width = cel.size.cx;
+    const size_t height = cel.size.cy;
+    if (pixels.size() != (width * height))
+    {
+        return sci::Fail(sci::ErrorCode::Usage, fmt::format("the cel has {0} x {1} pixels ({2} bytes), and the new pixels are {3} bytes", width, height, width * height, pixels.size()));
+    }
+    const size_t stride = StrideOf(cel);
+    for (size_t y = 0; (width > 0) && (y < height); y++)
+    {
+        const uint8_t *row = pixels.data() + (y * width);
+        std::copy(row, row + width, &cel.Data[(height - 1 - y) * stride]);
+    }
+    return sci::Ok();
+}
+
+sci::Result<PicPaletteDescription> DescribePaletteAt(const std::vector<uint8_t> &data, uint32_t paletteOffset, bool headerFlag)
+{
+    PicPaletteDescription palette;
+    if (paletteOffset == 0)
+    {
+        return palette;
+    }
+    SCI_TRY_ASSIGN(PaletteLayout layout, ReadPaletteLayout(data.data(), data.size(), paletteOffset));
+    palette.present = true;
+    palette.firstEntry = layout.firstEntry;
+    palette.entryCount = layout.entryCount;
+    palette.entrySize = layout.entrySize;
+    const uint8_t threeByteFlag = headerFlag ? layout.sharedFlag : (uint8_t)1;
+    for (int i = 0; i < layout.entryCount; i++)
+    {
+        const uint8_t *entry = data.data() + layout.entriesOffset + ((size_t)i * (size_t)layout.entrySize);
+        const int index = layout.firstEntry + i;
+        // A 4-byte entry has its flag byte first.
+        const uint8_t *color = entry + ((layout.entrySize == 4) ? 1 : 0);
+        palette.flags[index] = (layout.entrySize == 4) ? entry[0] : threeByteFlag;
+        palette.colors[index].red = color[0];
+        palette.colors[index].green = color[1];
+        palette.colors[index].blue = color[2];
+    }
+    return palette;
+}
+
+sci::Result<std::vector<uint8_t>> MakePaletteBytes(const PicPaletteDescription &palette)
+{
+    if (!palette.present)
+    {
+        return sci::Fail(sci::ErrorCode::Usage, "there is no palette to write");
+    }
+    const int first = palette.firstEntry;
+    const int count = palette.entryCount;
+    if ((first < 0) || (first > 255) || (count < 0) || ((first + count) > 256))
+    {
+        return sci::Fail(sci::ErrorCode::Usage, fmt::format("a palette cannot store {0} entries from entry {1}; a palette has the entries 0 to 255", count, first));
+    }
+    if ((palette.entrySize != 3) && (palette.entrySize != 4))
+    {
+        return sci::Fail(sci::ErrorCode::Usage, fmt::format("a palette entry has 3 or 4 bytes, not {0}", palette.entrySize));
+    }
+    const bool threeBytes = (palette.entrySize == 3);
+    const uint8_t sharedFlag = (count > 0) ? palette.flags[first] : (uint8_t)0;
+    for (int entry = first; threeBytes && (entry < (first + count)); entry++)
+    {
+        if (palette.flags[entry] != sharedFlag)
+        {
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("the 3-byte entries of a palette have one flag, and the entries {0} and {1} have the flags {2} and {3}",
+                first, entry, (int)sharedFlag, (int)palette.flags[entry]));
+        }
+    }
+    // The header of 37 bytes (WritePaletteShortForm).
+    std::vector<uint8_t> bytes(37, 0);
+    bytes[0] = 0x0e;
+    bytes[10] = 1;
+    const uint32_t sizeWord = (uint32_t)(palette.entrySize * count + 22);
+    bytes[13] = (uint8_t)(sizeWord & 0xff);
+    bytes[14] = (uint8_t)(sizeWord >> 8);
+    bytes[15] = '9';
+    bytes[16] = '9';
+    bytes[17] = '9';
+    bytes[25] = (uint8_t)first;
+    bytes[29] = (uint8_t)(count & 0xff);
+    bytes[30] = (uint8_t)(count >> 8);
+    // The flag of the 3-byte entries, and the format: 1 for 3-byte entries,
+    // 0 for 4-byte entries (whose byte 31 is 3, as WritePaletteShortForm
+    // writes it).
+    bytes[31] = threeBytes ? sharedFlag : (uint8_t)3;
+    bytes[32] = threeBytes ? 1 : 0;
+    for (int entry = first; entry < (first + count); entry++)
+    {
+        if (!threeBytes)
+        {
+            bytes.push_back(palette.flags[entry]);
+        }
+        bytes.push_back(palette.colors[entry].red);
+        bytes.push_back(palette.colors[entry].green);
+        bytes.push_back(palette.colors[entry].blue);
+    }
+    return bytes;
 }
 
 std::array<bool, 256> PicCelDescription::UsedEntries() const
@@ -414,7 +475,7 @@ sci::Result<std::vector<uint8_t>> GetCelPixels(const SCIVersion &version, const 
         {
             return NoSuchCel(cel, (target == nullptr) ? 0 : 1);
         }
-        return TopDownPixels(*target);
+        return CelTopDownPixels(*target);
     }
     default:
         return NoImage(version.PicFormat);
@@ -449,7 +510,7 @@ sci::Result<std::vector<uint8_t>> ReplaceCelPixels(const SCIVersion &version, co
             // The writer works with the 16-bit stride of the cel.
             return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("a cel of {0} pixels wide cannot be written", target->size.cx));
         }
-        SCI_TRY(SetTopDownPixels(*target, pixels));
+        SCI_TRY(SetCelTopDownPixels(*target, pixels));
         // The exception boundary of the write of the pic.
         SCI_TRY_ASSIGN(std::vector<uint8_t> written, sci::Guard("writing the pic", [&]() -> sci::Result<std::vector<uint8_t>>
         {

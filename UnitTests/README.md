@@ -299,6 +299,25 @@ game data other than the template games.
   functions under the commands are `TestPicImage.cpp` (on the pic files of
   `Files\Pics`, SCI2 too) and `TestIndexedBmp.cpp` (the 8-bit BMP reader
   and writer).
+- `TestCliView.cpp` runs `scic view list`, `export`, `import` and
+  `palette` (plan sections 4.9 to 4.12) on the SCI1.1 template. The views of the template
+  have no palette that marks an entry, so each test makes its views and
+  puts them into the game copy as patch files: a view with 4-byte palette
+  entries from the view writer, the same view with its palette changed in
+  place to 3-byte entries, and views in Sierra's own form. The tests
+  compare the bytes of each patch file with the bytes of the view, and read
+  the game copy with the patch file through `scic dev palette-use`. The
+  class `TestViewPalette` calls the functions under the palette command
+  (`Src\Resources\ViewPalette.h`) with views of SCI1.1 and of SCI2.
+- `TestViewImage.cpp` tests the functions under the view commands
+  (`Src\Resources\ViewImage.h`: the layout of the headers, the description,
+  the pixels of a cel, and the in-place write of new pixels, with a decoder
+  of the SCI2 row table as ScummVM reads it), and the class `TestViewSidecar` the writer and
+  the reader of the `.toml` file of `scic view export`
+  (`Src\Resources\ViewSidecar.h`). `SierraViewBytes.h` makes views in the form of
+  Sierra's views of SCI1.1 and SCI2 (cel headers of 36 or 52 bytes, mirror
+  loops, loops with no cel, raw cels, two cel headers with one data, 3- and
+  4-byte palettes); the view writer of SCI Companion makes another layout.
 - `TestDecompileRun.cpp` and `TestCompileBatch.cpp` test the services under
   the commands (`DecompileRun`, `CompileBatch`), with event hooks that throw
   at a chosen point.
@@ -314,7 +333,11 @@ game data other than the template games.
   `scic pic export --all` and `scic pic import` on the first copy, with a
   data folder that has no `include\`: export must write a BMP file and a
   `.toml` file for each pic with a cel, and import must write a patch file
-  for each of them from the files of export.
+  for each of them from the files of export. The view commands run there
+  too: `view export --all` must write a `.toml` file for each view with a
+  cel, `view import` of those files must write no patch file (no view
+  changes), `view add` must make view 9999 from the first `.toml` file,
+  and `view remove` (on a third copy) must take one view out.
 - `Tools\PicRoundTripSweep.ps1` (local use) is the round-trip check of the
   pic commands on a game, for example one with SCI2 pics (CI has only the
   SCI1.1 template). It only reads the game folder: all commands run on
@@ -333,6 +356,24 @@ game data other than the template games.
 
   ```
   .\UnitTests\Tools\PicRoundTripSweep.ps1 -Game <a copy of the game folder> -Work I:\tmp\pic-sweep
+  ```
+- `Tools\ViewRoundTripSweep.ps1` (local use) is the round-trip check of
+  `scic view export`, `scic view import` and `scic view add` on a game
+  (CI has only the SCI1.1 template). It only reads the game folder: all
+  commands run on copies in a run folder. It exports each view, imports
+  the files with no change (no view may get a patch file), imports them
+  with two palette entries swapped in each image, and exports again from a
+  game copy with those patch files. It checks that each view has one BMP
+  file for each stored cel, that the game copy lists each changed view as
+  before from its patch file (header `80 80 00 00`), and that each swapped
+  image comes back byte for byte. Then it adds each exported view again
+  (`--replace`) and checks that the export of the new views gives the same
+  images and the same facts in the `.toml` files. It writes
+  `roundtrip.csv` and the logs, and takes `-AllowUnusedIndices` as the
+  pic sweep does:
+
+  ```
+  .\UnitTests\Tools\ViewRoundTripSweep.ps1 -Game <a copy of the game folder> -Work I:\tmp\view-sweep
   ```
 - `Tools\CliCorpusSweep.ps1` (local use) runs the same three commands on
   copies of a game library, and writes a CSV of the exit codes, error

@@ -13,6 +13,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 struct PaletteComponent;
@@ -64,6 +65,16 @@ namespace cli
         bool isText = false;
     };
 
+    class CliOutput;
+
+    // Writes the files of an export (of a pic or of a view) into the output
+    // folder. Each file that is there already must open for writing before
+    // the first file is written, so a file that cannot be replaced writes
+    // nothing. A dry run writes nothing and gives "Would write <path>" for
+    // each file. writeFailed is set when a file cannot be written (also by
+    // the check).
+    sci::Status WriteExportFiles(const std::string &outDir, const std::vector<PicExportFile> &files, bool dryRun, CliOutput &output, bool &writeFailed);
+
     // The files of pic export for one pic, in the order of the cels, the
     // .toml file last: <number>.bmp for the background cel (the cel with the
     // largest area), <number>.cel<index>.bmp for each other cel when
@@ -87,18 +98,65 @@ namespace cli
         IndexedBmp image;
     };
 
-    // The palette part of pic import. With "replace", the colours of the
-    // entries first to last of the pic come from the colour tables of the
-    // images.
+    // The palette part of pic import and view import. With "replace", the
+    // colours of the entries first to last come from the colour tables of
+    // the images (ReplacedPaletteColors).
     struct PicImportPalette
     {
         bool replace = false;
         int first = 0;
         int last = 0;
+        // The colour table that export gives the images of the resource
+        // (ExportColorTable of its palette over palette 999).
+        std::array<IndexedBmpColor, 256> exportColors = {};
     };
 
+    // The colour table of an exported image: the colours of the palette.
+    std::array<IndexedBmpColor, 256> ExportColorTable(const PaletteComponent &colors);
+
+    // The colours of the entries first to last of a palette for "replace",
+    // from the colour tables of the images (a name for messages, and the
+    // image). An entry that the palette stores and marks as used (a flag
+    // that is not 0) gets the colour of the images; the images must have one
+    // colour for it (Usage; owner names the resource: "pic", "view"). Each
+    // other entry keeps its colour (stored.colors): the game takes the
+    // colour of an entry with no mark from another palette. When an image
+    // has another colour than palette.exportColors for a stored entry with
+    // no mark, a warning names the entries.
+    sci::Result<std::array<IndexedBmpColor, 256>> ReplacedPaletteColors(const std::vector<std::pair<std::string, const IndexedBmp *>> &images, const PicImportPalette &palette,
+        const PicPaletteDescription &stored, const char *owner, std::vector<std::string> &warnings);
+
+    // A .toml file of an input folder of import.
+    struct SidecarFile
+    {
+        // The path in the ANSI code page.
+        std::string path;
+        // The name of the file has a character that the ANSI code page does
+        // not have, so scic cannot open the file; path has '?' for such a
+        // character.
+        bool badName = false;
+    };
+
+    // The .toml files of the folder (the extension in any case), in the
+    // order of their paths. NotFound when the folder does not exist; Io when
+    // it cannot be read; Usage when it has no .toml file (the message names
+    // exportCommand, the command that writes such files).
+    sci::Result<std::vector<SidecarFile>> ListSidecarFiles(const std::string &inDir, const char *exportCommand);
+
+    // Checks the new pixels of a cel against its pixels in the game (both
+    // with width pixels in a row): a pixel has the skip colour where the cel
+    // has it and nowhere else, and each other pixel is an entry of "used".
+    // celText names the cel in a message ("cel 3", "cel 2 of loop 1"), and
+    // owner its resource ("pic", "view"). Usage for a pixel that fails a
+    // check; with allowUnused, an entry that is not used is a warning (a
+    // text in warnings) and not an error.
+    sci::Status CheckImportPixels(const std::string &imagePath, const std::string &celText, const char *owner, uint8_t skipColor, int width, const std::vector<uint8_t> &oldPixels,
+        const std::vector<uint8_t> &newPixels, const std::array<bool, 256> &used, bool allowUnused, std::vector<std::string> &warnings);
+
     // The bytes of a pic with the pixels of the images in its cels, and with
-    // the colours of the palette range when the palette says "replace". Each
+    // the colours of the palette range when the palette says "replace"
+    // (ReplacedPaletteColors: an entry that the pic does not mark as used
+    // keeps its colour). Each
     // image is checked before the pic changes:
     //  - the pic has the cel, one image is for one cel, and the cel is not
     //    compressed (Unsupported);
@@ -109,7 +167,8 @@ namespace cli
     //    pic or palette 999 marks as used). With allowUnusedEntries this is
     //    a warning;
     //  - with "replace": the colour table of the image has the entries of
-    //    the range, and the images have the same colours in the range.
+    //    the range, and the images have the same colours for the entries
+    //    that get them (ReplacedPaletteColors).
     // An image that fails a check gives Usage. Then the errors of
     // ReplacePaletteRange and ReplaceCelPixels. A warning is a text with no
     // pic number; the warnings of a pic that fails are also there.

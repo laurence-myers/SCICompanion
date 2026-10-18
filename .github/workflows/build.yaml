@@ -54,7 +54,7 @@ jobs:
       run: .\UnitTests\RunTests.ps1 -Configuration ${{ matrix.configuration }} -Integration -BlameHang
 
     # Smoke test of the command-line tool (docs/scic-cli/plan.md, section 10).
-    # Run the built scic.exe as a user does, on two copies of the SCI1.1
+    # Run the built scic.exe as a user does, on copies of the SCI1.1
     # template in the runner's temp folder: the template as it ships (its
     # own sources compile first, as a dry run that writes nothing), and a
     # game that SCI Companion never opened (no game.ini, no src\). Each
@@ -62,7 +62,9 @@ jobs:
     # must name every script that list found, and the second game must not
     # get a game.ini. The pic commands run on the first copy: pic list, pic
     # export of every pic into a folder of the runner's temp folder, and
-    # pic import of those files into a second folder.
+    # pic import of those files into a second folder. The view commands run
+    # on it too (list, export, import, add), and view remove on a third
+    # copy.
     # The step runs also when a test step failed, so that its result shows.
     - name: Smoke test scic.exe
       if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -120,6 +122,31 @@ jobs:
         Assert-Line (Invoke-Scic pic import $shipped --in-dir $picFiles --out-dir $picPatches --data-dir $noData).All "Imported $withCel of $withCel pics"
         $patches = @(Get-ChildItem $picPatches -Filter "*.p56").Count
         if ($patches -ne $withCel) { throw "scic pic import wrote $patches patch files for $withCel pics with a cel." }
+        # The view commands: list has a row for each view (tsv: column 5 is
+        # its count of stored cels), export writes a .toml file for each view
+        # with a cel, the import of those files changes no view (no patch
+        # file), add makes view 9999 from the first .toml file, and remove
+        # takes a view out of a third copy of the template.
+        $viewFiles = Join-Path $root "views"
+        $viewPatches = Join-Path $root "view-patches"
+        New-Item -ItemType Directory -Force $viewFiles, $viewPatches | Out-Null
+        $viewRows = @((Invoke-Scic view list $shipped --format tsv --data-dir $noData).Out | Where-Object { $_ -match '^\d+\t' })
+        if ($viewRows.Count -lt 2) { throw "scic view list found fewer than 2 views in $shipped." }
+        $viewsWithCel = @($viewRows | Where-Object { ($_ -split "`t")[4] -ne '0' }).Count
+        Assert-Line (Invoke-Scic view export $shipped --all --out-dir $viewFiles --data-dir $noData).All "Exported $viewsWithCel of $($viewRows.Count) views"
+        $sidecars = @(Get-ChildItem $viewFiles -Filter "*.toml")
+        if ($sidecars.Count -ne $viewsWithCel) { throw "scic view export wrote $($sidecars.Count) .toml files for $viewsWithCel views with a cel." }
+        Assert-Line (Invoke-Scic view import $shipped --in-dir $viewFiles --out-dir $viewPatches --data-dir $noData).All "Imported 0 of $viewsWithCel views"
+        if (@(Get-ChildItem $viewPatches).Count -ne 0) { throw "scic view import of the exported files wrote a patch file." }
+        Assert-Line (Invoke-Scic view add $shipped --view 9999 --from $sidecars[0].FullName --out-dir $viewPatches --data-dir $noData).All "Added view 9999"
+        if (-not (Test-Path (Join-Path $viewPatches "9999.v56"))) { throw "scic view add wrote no 9999.v56." }
+        $removeGame = Join-Path $root "SCI1.1-view-remove"
+        Copy-Item $template $removeGame -Recurse
+        $removed = ($viewRows[0] -split "`t")[0]
+        Assert-Line (Invoke-Scic view remove $removeGame --view $removed --data-dir $noData).All "Removed 1 of 1 view"
+        $leftRows = @((Invoke-Scic view list $removeGame --format tsv --data-dir $noData).Out | Where-Object { $_ -match '^\d+\t' })
+        if ($leftRows.Count -ne ($viewRows.Count - 1)) { throw "scic view remove left $($leftRows.Count) of $($viewRows.Count) views." }
+        if ($leftRows | Where-Object { $_.StartsWith("$removed`t") }) { throw "scic view remove left view $removed in the game." }
         foreach ($game in @($shipped, $neverOpened)) {
           # A row of the table (stdout) starts with the script number.
           $count = @((Invoke-Scic script list $game).Out | Where-Object { $_ -match '^\s*\d+\s' }).Count

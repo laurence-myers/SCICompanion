@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "CliCommands.h"
 #include "CliHost.h"
+#include "CliResources.h"
 #include "GameSession.h"
 #include "GameFolderHelper.h"
 #include "ScriptNameMap.h"
@@ -760,12 +761,6 @@ namespace cli
                 return "into " + write.outDir;
             }
             return ToThePackage(helper, write) ? std::string("into the package") : std::string("as patch files");
-        }
-
-        // "1 error", "2 errors".
-        std::string CountText(size_t count, const char *word)
-        {
-            return fmt::format("{0} {1}{2}", count, word, (count == 1) ? "" : "s");
         }
 
         // Plan section 4.5, step 6: the diagnostics of the last pass (a script
