@@ -324,6 +324,17 @@ CD, PQ4, KQ7). Each image that `import` took came back byte for byte.
   (`CheckResourceSize`, before the patch file of an earlier run goes) can
   happen only in an SCI2 game (in SCI1.1 the 64 KB check comes first), and
   the tests have no SCI2 game.
+- `view import --allow-skip-changes` / `--allow-size-changes`: a cel of
+  new skip pixels or a new size seldom fits in place, so its data goes
+  after the view and the old data stays (another cel header can point at
+  it). View 900 of LSL6 with a ring around each cel grows from 109785 to
+  232841 bytes (`view add --replace` of the same files: 109822). A
+  compaction of the data that no header points at would take it back.
+  Neither a patch file with skip changes nor one with new cel sizes was
+  on the screen of a game (only exported again, and compared). The SCI1.1
+  limits on a new placement (no new `y` below 0, no size over 32767) come
+  from the ScummVM source (`GfxView::initData`, kViewVga11), not from
+  Sierra's interpreter.
 - `view remove`: three `Internal` errors (the second read of the map does
   not give the entry; an entry that the patch source did not list; a
   removal that leaves as many copies of the view, in `RemoveView`), the

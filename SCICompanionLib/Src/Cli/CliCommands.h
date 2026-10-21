@@ -382,6 +382,10 @@ namespace cli
         std::string palette = "keep";       // keep or replace
         std::string paletteRange;
         bool allowUnusedIndices = false;
+        // A pixel can change to or from the skip colour of its cel.
+        bool allowSkipChanges = false;
+        // With --in-dir: an image can have another size than its cel.
+        bool allowSizeChanges = false;
         std::string outDir;
     };
 
@@ -392,6 +396,9 @@ namespace cli
     // gives a view and the files of its cels; a CRC-32 in it that is not
     // that of the view in the game is a warning. A view with no change (no
     // byte would be another byte) is a warning, and gets no patch file.
+    // --allow-skip-changes and --allow-size-changes turn off the checks of
+    // ViewImportAllow; with --allow-size-changes, a cel gets the size of its
+    // image and the placement of its [[cel]] in the .toml file.
     //
     // After a run, the output folder has the patch file of a named view only
     // when this run changed the view: a view that fails, or that has no
@@ -404,8 +411,9 @@ namespace cli
     // could not be written or removed, 7 after Ctrl+C, 1 for a bug. Fails
     // when the run cannot start: the output folder or the input folder does
     // not exist (NotFound), the output folder is the game folder or a
-    // folder inside it, the view is not a number of a view of the game, or
-    // the input folder has no .toml file (Usage).
+    // folder inside it, the view is not a number of a view of the game, the
+    // input folder has no .toml file, or --allow-size-changes has no
+    // --in-dir (Usage).
     sci::Result<ExitCode> RunViewImport(GameSession &session, const ViewImportOptions &options, const CommonOptions &common, CliOutput &output);
 
     // scic view palette (plan section 4.9).

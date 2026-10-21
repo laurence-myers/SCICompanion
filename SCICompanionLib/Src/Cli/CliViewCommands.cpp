@@ -666,7 +666,7 @@ namespace cli
     }
 
     sci::Result<std::vector<uint8_t>> MakeViewImportData(const SCIVersion &version, const std::vector<uint8_t> &data, const ViewDescription &description, const std::array<bool, 256> &usedEntries,
-        const std::vector<ViewImportImage> &images, const PicImportPalette &palette, bool allowUnusedEntries, std::vector<std::string> &warnings)
+        const std::vector<ViewImportImage> &images, const PicImportPalette &palette, const ViewImportAllow &allow, std::vector<std::string> &warnings)
     {
         SCI_TRY_ASSIGN(std::vector<std::vector<uint8_t>> oldPixels, GetAllViewCelPixels(version, data));
         std::vector<ViewCelPixels> cels;
@@ -689,12 +689,28 @@ namespace cli
             {
                 return sci::Fail(sci::ErrorCode::Usage, fmt::format("two images are for {0}", celText));
             }
-            if ((image.image.width != cel->width) || (image.image.height != cel->height))
+            const bool sameSize = (image.image.width == cel->width) && (image.image.height == cel->height);
+            if (allow.sizeChanges)
+            {
+                if (!image.hasSidecarCel)
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0}: a cel can change its size only with its [[cel]] of a .toml file, which gives its placement", image.name));
+                }
+                if (((image.width != 0) && (image.width != image.image.width)) || ((image.height != 0) && (image.height != image.image.height)))
+                {
+                    return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} has {1} x {2} pixels, and its [[cel]] in the .toml file has {3} x {4}", image.name, image.image.width, image.image.height, image.width, image.height));
+                }
+            }
+            else if (!sameSize)
             {
                 return sci::Fail(sci::ErrorCode::Usage, fmt::format("{0} has {1} x {2} pixels, and {3} has {4} x {5}", image.name, image.image.width, image.image.height, celText, cel->width, cel->height));
             }
             const size_t index = (size_t)(cel - description.cels.data());
-            SCI_TRY(CheckImportPixels(image.name, celText, "view", cel->skipColor, cel->width, oldPixels[index], image.image.pixels, usedEntries, allowUnusedEntries, warnings));
+            // The skip check compares the pixels with themselves when it is
+            // off: then only the check of the used entries is left.
+            const bool skipCheck = sameSize && !allow.skipChanges;
+            const std::vector<uint8_t> &before = skipCheck ? oldPixels[index] : image.image.pixels;
+            SCI_TRY(CheckImportPixels(image.name, celText, "view", cel->skipColor, image.image.width, before, image.image.pixels, usedEntries, allow.unusedEntries, warnings));
             if (palette.replace)
             {
                 if (image.image.colorCount <= palette.last)
@@ -708,6 +724,15 @@ namespace cli
             pixels.loop = image.loop;
             pixels.cel = image.cel;
             pixels.pixels = image.image.pixels;
+            if (allow.sizeChanges)
+            {
+                pixels.newSize = true;
+                pixels.width = image.image.width;
+                pixels.height = image.image.height;
+                // A key that the [[cel]] does not have keeps the placement.
+                pixels.x = image.hasX ? image.x : cel->x;
+                pixels.y = image.hasY ? image.y : cel->y;
+            }
             cels.push_back(std::move(pixels));
         }
 
@@ -744,6 +769,14 @@ namespace cli
             int loop = 0;
             int cel = 0;
             std::string imagePath;
+            // The [[cel]] of a .toml file: its size and its placement.
+            bool hasSidecarCel = false;
+            int width = 0;
+            int height = 0;
+            int x = 0;
+            int y = 0;
+            bool hasX = false;
+            bool hasY = false;
         };
 
         // The images of an import for one view.
@@ -792,6 +825,13 @@ namespace cli
                     importCel.loop = cel.loop;
                     importCel.cel = cel.cel;
                     importCel.imagePath = folder + "\\" + cel.file;
+                    importCel.hasSidecarCel = true;
+                    importCel.width = cel.width;
+                    importCel.height = cel.height;
+                    importCel.x = cel.x;
+                    importCel.y = cel.y;
+                    importCel.hasX = cel.hasX;
+                    importCel.hasY = cel.hasY;
                     job.cels.push_back(importCel);
                 }
             }
@@ -802,7 +842,7 @@ namespace cli
         // change. Usage for a sidecar file that names no image file; Format
         // for a view that a reader repaired while its resource was read
         // (DescribeView gives Format for a repair of the reader of the view).
-        sci::Result<std::vector<uint8_t>> MakeImportedView(GameSession &session, const ViewImportJob &job, const PicImportPalette &palette, bool allowUnused, CliOutput &output, bool &unchanged)
+        sci::Result<std::vector<uint8_t>> MakeImportedView(GameSession &session, const ViewImportJob &job, const PicImportPalette &palette, const ViewImportAllow &allow, CliOutput &output, bool &unchanged)
         {
             const std::string viewText = ViewText(job.number);
             if (job.cels.empty())
@@ -849,13 +889,20 @@ namespace cli
                 image.loop = importCel.loop;
                 image.cel = importCel.cel;
                 image.name = importCel.imagePath;
+                image.hasSidecarCel = importCel.hasSidecarCel;
+                image.width = importCel.width;
+                image.height = importCel.height;
+                image.x = importCel.x;
+                image.y = importCel.y;
+                image.hasX = importCel.hasX;
+                image.hasY = importCel.hasY;
                 SCI_TRY_ASSIGN(image.image, ReadIndexedBmpFile(importCel.imagePath));
                 images.push_back(std::move(image));
             }
             std::vector<std::string> warnings;
             PicImportPalette viewPalette = palette;
             viewPalette.exportColors = ExportColorTable(*merged);
-            sci::Result<std::vector<uint8_t>> made = MakeViewImportData(version, source.data, description, UsedPaletteEntries(*merged), images, viewPalette, allowUnused, warnings);
+            sci::Result<std::vector<uint8_t>> made = MakeViewImportData(version, source.data, description, UsedPaletteEntries(*merged), images, viewPalette, allow, warnings);
             for (const std::string &warning : warnings)
             {
                 output.Warning(viewText + ": " + warning);
@@ -868,7 +915,7 @@ namespace cli
             return data;
         }
 
-        sci::Status ImportView(GameSession &session, const ViewImportJob &job, const PicImportPalette &palette, bool allowUnused, const std::string &outDir, bool dryRun, CliOutput &output, ViewImportResult &result)
+        sci::Status ImportView(GameSession &session, const ViewImportJob &job, const PicImportPalette &palette, const ViewImportAllow &allow, const std::string &outDir, bool dryRun, CliOutput &output, ViewImportResult &result)
         {
             const std::string viewText = ViewText(job.number);
             const std::string path = outDir + "\\" + GetFileNameFor(ResourceType::View, job.number, NoBase36, session.Version());
@@ -877,7 +924,7 @@ namespace cli
             // old patch file also after an exception.
             sci::Result<std::vector<uint8_t>> made = sci::Guard("importing " + viewText, [&]() -> sci::Result<std::vector<uint8_t>>
             {
-                return MakeImportedView(session, job, palette, allowUnused, output, unchanged);
+                return MakeImportedView(session, job, palette, allow, output, unchanged);
             });
             if (!made)
             {
@@ -911,6 +958,14 @@ namespace cli
         if (palette.replace && !ParsePaletteRange(options.paletteRange, palette.first, palette.last))
         {
             return sci::Fail(sci::ErrorCode::Usage, "--palette replace needs --palette-range first-last, two entries of 0 to 255 (for example 80-235)");
+        }
+        ViewImportAllow allow;
+        allow.unusedEntries = options.allowUnusedIndices;
+        allow.skipChanges = options.allowSkipChanges;
+        allow.sizeChanges = options.allowSizeChanges;
+        if (allow.sizeChanges && options.inDir.empty())
+        {
+            return sci::Fail(sci::ErrorCode::Usage, "--allow-size-changes needs --in-dir: the .toml file gives the placement of a cel of a new size");
         }
 
         // A job, or the sidecar file that gives it (read in the exception
@@ -999,7 +1054,7 @@ namespace cli
                 {
                     return sci::Fail(sci::ErrorCode::Usage, fmt::format("the view is in two .toml files of the input folder; the second is {0}", work.sidecarPath));
                 }
-                return ImportView(session, work.job, palette, options.allowUnusedIndices, outDir, common.dryRun, output, result);
+                return ImportView(session, work.job, palette, allow, outDir, common.dryRun, output, result);
             });
             if (!status)
             {

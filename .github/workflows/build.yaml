@@ -125,7 +125,8 @@ jobs:
         # The view commands: list has a row for each view (tsv: column 5 is
         # its count of stored cels), export writes a .toml file for each view
         # with a cel, the import of those files changes no view (no patch
-        # file), add makes view 9999 from the first .toml file, and remove
+        # file; also with the options that let skip pixels and cel sizes
+        # change), add makes view 9999 from the first .toml file, and remove
         # takes a view out of a third copy of the template.
         $viewFiles = Join-Path $root "views"
         $viewPatches = Join-Path $root "view-patches"
@@ -138,6 +139,8 @@ jobs:
         if ($sidecars.Count -ne $viewsWithCel) { throw "scic view export wrote $($sidecars.Count) .toml files for $viewsWithCel views with a cel." }
         Assert-Line (Invoke-Scic view import $shipped --in-dir $viewFiles --out-dir $viewPatches --data-dir $noData).All "Imported 0 of $viewsWithCel views"
         if (@(Get-ChildItem $viewPatches).Count -ne 0) { throw "scic view import of the exported files wrote a patch file." }
+        Assert-Line (Invoke-Scic view import $shipped --in-dir $viewFiles --allow-skip-changes --allow-size-changes --out-dir $viewPatches --data-dir $noData).All "Imported 0 of $viewsWithCel views"
+        if (@(Get-ChildItem $viewPatches).Count -ne 0) { throw "scic view import --allow-skip-changes --allow-size-changes of the exported files wrote a patch file." }
         Assert-Line (Invoke-Scic view add $shipped --view 9999 --from $sidecars[0].FullName --out-dir $viewPatches --data-dir $noData).All "Added view 9999"
         if (-not (Test-Path (Join-Path $viewPatches "9999.v56"))) { throw "scic view add wrote no 9999.v56." }
         $removeGame = Join-Path $root "SCI1.1-view-remove"

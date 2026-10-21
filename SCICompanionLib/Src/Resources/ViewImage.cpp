@@ -379,6 +379,12 @@ namespace
         }
     }
 
+    void PutWordAt(std::vector<uint8_t> &data, size_t at, uint16_t value)
+    {
+        data[at] = (uint8_t)(value & 0xff);
+        data[at + 1] = (uint8_t)(value >> 8);
+    }
+
     uint32_t OffsetAtEnd(const std::vector<uint8_t> &data)
     {
         return (uint32_t)data.size();
@@ -615,6 +621,20 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
     SCI_TRY_ASSIGN(ViewLayout layout, ReadViewLayout(data.data(), data.size()));
     const bool sci2 = (version.ViewFormat == ViewFormat::VGA2);
 
+    // The new size and placement of each cel: those of its header, or those
+    // of its ViewCelPixels with newSize.
+    struct CelPlace
+    {
+        int width = 0;
+        int height = 0;
+        int x = 0;
+        int y = 0;
+    };
+    std::vector<CelPlace> places;
+    for (const ViewCelDescription &cel : before.cels)
+    {
+        places.push_back(CelPlace{ cel.width, cel.height, cel.x, cel.y });
+    }
     // The index in before.cels of each changed cel, and its new pixels.
     std::vector<std::pair<size_t, const std::vector<uint8_t> *>> changes;
     for (const ViewCelPixels &cel : cels)
@@ -629,10 +649,37 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
         {
             return sci::Fail(sci::ErrorCode::Usage, fmt::format("two pixel sets are for cel {0} of loop {1}", cel.cel, cel.loop));
         }
-        const size_t count = (size_t)found->width * (size_t)found->height;
+        if (cel.newSize)
+        {
+            if ((cel.width < 1) || (cel.width > 65535) || (cel.height < 1) || (cel.height > 65535))
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("cel {0} of loop {1} would have {2} x {3} pixels; a cel has 1 to 65535 pixels in each direction", cel.cel, cel.loop, cel.width, cel.height));
+            }
+            if ((cel.x < -32768) || (cel.x > 32767) || (cel.y < -32768) || (cel.y > 32767))
+            {
+                return sci::Fail(sci::ErrorCode::Usage, fmt::format("cel {0} of loop {1} would have the placement {2},{3}; x and y are -32768 to 32767", cel.cel, cel.loop, cel.x, cel.y));
+            }
+            // ScummVM reads the size of an SCI1.1 cel as signed words, and
+            // adds 255 to a y below 0 (as Sierra's tools did).
+            if (version.ViewFormat == ViewFormat::VGA1_1)
+            {
+                if ((cel.width > 32767) || (cel.height > 32767))
+                {
+                    return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} of loop {1} would have {2} x {3} pixels; a cel of SCI1.1 has 32767 pixels or fewer in each direction", cel.cel, cel.loop, cel.width, cel.height));
+                }
+                if ((cel.y < 0) && (cel.y != found->y))
+                {
+                    return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} of loop {1} would have the y {2}; ScummVM reads a y below 0 of an SCI1.1 cel as y + 255, so a cel gets one only when it has it now", cel.cel, cel.loop, cel.y));
+                }
+            }
+            places[index] = CelPlace{ cel.width, cel.height, cel.x, cel.y };
+        }
+        const CelPlace &place = places[index];
+        const size_t count = (size_t)place.width * (size_t)place.height;
         if (cel.pixels.size() != count)
         {
-            return sci::Fail(sci::ErrorCode::Usage, fmt::format("cel {0} of loop {1} has {2} x {3} pixels ({4} bytes), and the new pixels are {5} bytes", cel.cel, cel.loop, found->width, found->height, count, cel.pixels.size()));
+            return sci::Fail(sci::ErrorCode::Usage, fmt::format("cel {0} of loop {1} {2} {3} x {4} pixels ({5} bytes), and the new pixels are {6} bytes", cel.cel, cel.loop, cel.newSize ? "would have" : "has",
+                place.width, place.height, count, cel.pixels.size()));
         }
         changes.emplace_back(index, &cel.pixels);
     }
@@ -668,12 +715,16 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
     for (const auto &change : changes)
     {
         const std::vector<uint8_t> &pixels = *change.second;
-        if (pixels == oldPixels[change.first])
+        const ViewCelLayout &header = *headers[change.first];
+        const ViewCelDescription &cel = before.cels[change.first];
+        const CelPlace &place = places[change.first];
+        const bool resized = (place.width != cel.width) || (place.height != cel.height);
+        const bool moved = (place.x != cel.x) || (place.y != cel.y);
+        const bool repainted = resized || (pixels != oldPixels[change.first]);
+        if (!repainted && !moved)
         {
             continue;
         }
-        const ViewCelLayout &header = *headers[change.first];
-        const ViewCelDescription &cel = before.cels[change.first];
         // Two loops can point at the same cel headers: such a header is one
         // cel for each of them.
         for (size_t other = 0; other < headers.size(); other++)
@@ -681,8 +732,19 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
             if ((other != change.first) && (headers[other]->headerOffset == header.headerOffset))
             {
                 const ViewCelDescription &twin = before.cels[other];
-                return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} of loop {1} has the cel header of cel {2} of loop {3}, so it cannot get pixels of its own", cel.cel, cel.loop, twin.cel, twin.loop));
+                return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} of loop {1} has the cel header of cel {2} of loop {3}, so it cannot get pixels, a size or a placement of its own", cel.cel, cel.loop, twin.cel, twin.loop));
             }
+        }
+        if (resized || moved)
+        {
+            PutWordAt(patched, header.headerOffset, (uint16_t)place.width);
+            PutWordAt(patched, header.headerOffset + 2, (uint16_t)place.height);
+            PutWordAt(patched, header.headerOffset + 4, (uint16_t)(int16_t)place.x);
+            PutWordAt(patched, header.headerOffset + 6, (uint16_t)(int16_t)place.y);
+        }
+        if (!repainted)
+        {
+            continue;
         }
         // With the bit 0x80, byte 10 of the header tells the interpreters
         // whether the pixels have the skip colour and remap colours.
@@ -690,6 +752,7 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
         {
             return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("byte 10 of the header of cel {0} of loop {1} describes its pixels (the bit 0x80 is set), and new pixels can make it wrong", cel.cel, cel.loop));
         }
+        const size_t oldCount = (size_t)cel.width * (size_t)cel.height;
         std::vector<ByteRange> others = fixed;
         for (const ViewCelLayout *other : headers)
         {
@@ -703,7 +766,8 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
         const bool alone = !OverlapAny(own, others);
         if (header.IsRaw())
         {
-            const bool inData = ((uint64_t)header.rleOffset + pixels.size()) <= data.size();
+            // The pixels of a raw cel take the bytes of its old pixels.
+            const bool inData = (pixels.size() <= oldCount) && (((uint64_t)header.rleOffset + pixels.size()) <= data.size());
             if (alone && inData)
             {
                 std::copy(pixels.begin(), pixels.end(), patched.begin() + header.rleOffset);
@@ -713,6 +777,10 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
                 PutDwordAt(patched, header.headerOffset + 24, OffsetAtEnd(patched));
                 patched.insert(patched.end(), pixels.begin(), pixels.end());
             }
+            if (resized)
+            {
+                PutDwordAt(patched, header.headerOffset + 12, (uint32_t)pixels.size());
+            }
             continue;
         }
         // An SCI2 cel has a row table when its header gives one.
@@ -721,7 +789,7 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
         // New pixels with the runs of the old codes keep the codes (and the
         // row table of SCI2): only the literal data changes, in its place.
         std::vector<uint8_t> literal;
-        if (alone && rowTableInData && LiteralForOldCodes(data, header.rleOffset, header.literalOffset, pixels, oldPixels[change.first], cel.skipColor, literal))
+        if (!resized && alone && rowTableInData && LiteralForOldCodes(data, header.rleOffset, header.literalOffset, pixels, oldPixels[change.first], cel.skipColor, literal))
         {
             std::copy(literal.begin(), literal.end(), patched.begin() + header.literalOffset);
             changedRunLength.push_back(change.first);
@@ -733,9 +801,10 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
         // first that fits, else the shortest.
         uint64_t rleBytes = 0;
         uint64_t literalBytes = 0;
-        const bool place = alone && rowTableInData && RunLengthSizes(data, header.rleOffset, header.literalOffset, pixels.size(), rleBytes, literalBytes);
-        auto fitsInPlace = [&](const EncodedViewCel &form) { return place && (form.rle.size() <= rleBytes) && (form.literal.size() <= literalBytes); };
-        SCI_TRY_ASSIGN(EncodedViewCel encoded, EncodeViewCel(cel.width, cel.height, cel.skipColor, pixels, 3));
+        // A row table of more rows does not fit in the old one.
+        const bool inPlace = alone && rowTableInData && (!rowTable || (place.height <= cel.height)) && RunLengthSizes(data, header.rleOffset, header.literalOffset, oldCount, rleBytes, literalBytes);
+        auto fitsInPlace = [&](const EncodedViewCel &form) { return inPlace && (form.rle.size() <= rleBytes) && (form.literal.size() <= literalBytes); };
+        SCI_TRY_ASSIGN(EncodedViewCel encoded, EncodeViewCel(place.width, place.height, cel.skipColor, pixels, 3));
         bool fits = fitsInPlace(encoded);
         for (int fillRun : { 2, 4 })
         {
@@ -743,7 +812,7 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
             {
                 break;
             }
-            SCI_TRY_ASSIGN(EncodedViewCel form, EncodeViewCel(cel.width, cel.height, cel.skipColor, pixels, fillRun));
+            SCI_TRY_ASSIGN(EncodedViewCel form, EncodeViewCel(place.width, place.height, cel.skipColor, pixels, fillRun));
             fits = fitsInPlace(form);
             if (fits || ((form.rle.size() + form.literal.size()) < (encoded.rle.size() + encoded.literal.size())))
             {
@@ -761,7 +830,7 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
             rleAt = OffsetAtEnd(patched);
             literalAt = rleAt + (uint32_t)encoded.rle.size();
             tableAt = literalAt + (uint32_t)encoded.literal.size();
-            patched.resize(patched.size() + encoded.rle.size() + encoded.literal.size() + (rowTable ? (8 * (size_t)cel.height) : 0));
+            patched.resize(patched.size() + encoded.rle.size() + encoded.literal.size() + (rowTable ? (8 * (size_t)place.height) : 0));
             PutDwordAt(patched, header.headerOffset + 24, rleAt);
             PutDwordAt(patched, header.headerOffset + 28, literalAt);
             if (rowTable)
@@ -773,10 +842,10 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
         std::copy(encoded.literal.begin(), encoded.literal.end(), patched.begin() + literalAt);
         if (rowTable)
         {
-            for (int y = 0; y < cel.height; y++)
+            for (int y = 0; y < place.height; y++)
             {
                 PutDwordAt(patched, tableAt + (4 * (size_t)y), encoded.rleRows[y]);
-                PutDwordAt(patched, tableAt + (4 * ((size_t)cel.height + y)), encoded.literalRows[y]);
+                PutDwordAt(patched, tableAt + (4 * ((size_t)place.height + y)), encoded.literalRows[y]);
             }
         }
     }
@@ -785,9 +854,9 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
         return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("the view would have {0} bytes; Sierra's interpreter of SCI1.1 reads a view of 65535 bytes or fewer", patched.size()));
     }
 
-    // The new bytes must read back as the view with the new pixels: in the
-    // reader of SCI Companion, and in the row tables of SCI2. The palette
-    // keeps its bytes.
+    // The new bytes must read back as the view with the new pixels, sizes
+    // and placements: in the reader of SCI Companion, and in the row tables
+    // of SCI2. The palette keeps its bytes.
     SCI_TRY_ASSIGN(ViewDescription after, DescribeView(version, patched));
     SCI_TRY_ASSIGN(std::vector<std::vector<uint8_t>> newPixels, GetAllViewCelPixels(version, patched));
     SCI_TRY_ASSIGN(ViewLayout newLayout, ReadViewLayout(patched.data(), patched.size()));
@@ -809,7 +878,8 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
     {
         const ViewCelDescription &a = before.cels[i];
         const ViewCelDescription &b = after.cels[i];
-        same = (a.loop == b.loop) && (a.cel == b.cel) && (a.width == b.width) && (a.height == b.height) && (a.x == b.x) && (a.y == b.y) && (a.skipColor == b.skipColor);
+        const CelPlace &place = places[i];
+        same = (a.loop == b.loop) && (a.cel == b.cel) && (place.width == b.width) && (place.height == b.height) && (place.x == b.x) && (place.y == b.y) && (a.skipColor == b.skipColor);
         auto change = std::find_if(changes.begin(), changes.end(), [&](const std::pair<size_t, const std::vector<uint8_t> *> &c) { return c.first == i; });
         const std::vector<uint8_t> &expected = (change != changes.end()) ? *change->second : oldPixels[i];
         same = same && (newPixels[i] == expected);

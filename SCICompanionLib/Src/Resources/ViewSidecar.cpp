@@ -195,6 +195,8 @@ namespace
             SCI_TRY(ReadNumber(*cel, name, "height", 0, 65535, sidecarCel.height));
             SCI_TRY(ReadNumber(*cel, name, "x", -32768, 32767, sidecarCel.x));
             SCI_TRY(ReadNumber(*cel, name, "y", -32768, 32767, sidecarCel.y));
+            sidecarCel.hasX = (cel->get("x") != nullptr);
+            sidecarCel.hasY = (cel->get("y") != nullptr);
             SCI_TRY(ReadNumber(*cel, name, "skip_color", 0, 255, sidecarCel.skipColor));
             SCI_TRY(ReadFlag(*cel, name, "raw", sidecarCel.raw));
             SCI_TRY(ReadRuns(*cel, name, "entries", sidecarCel.entries));
