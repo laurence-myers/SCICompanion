@@ -184,12 +184,19 @@ sci::Result<ViewDescription> DescribeView(const SCIVersion &version, const std::
 // mirror, and of a loop whose header has no cel); else as DescribeView.
 sci::Result<std::vector<uint8_t>> GetViewCelPixels(const SCIVersion &version, const std::vector<uint8_t> &data, int loop, int cel);
 
-// New pixels for one stored cel: width * height bytes, the top row first.
+// New pixels for one stored cel, the top row first: width * height bytes of
+// the cel, or, with newSize, of the new size of the cel.
 struct ViewCelPixels
 {
     int loop = 0;
     int cel = 0;
     std::vector<uint8_t> pixels;
+    // The cel gets width, height, x and y in its header.
+    bool newSize = false;
+    int width = 0;
+    int height = 0;
+    int x = 0;
+    int y = 0;
 };
 
 // The run-length data of the pixels of a cel (width * height bytes, the top
@@ -214,9 +221,13 @@ sci::Result<EncodedViewCel> EncodeViewCel(int width, int height, uint8_t skipCol
 // The bytes of the view with new pixels in some of its stored cels. The view
 // changes in place, so that the bytes that the readers of SCI Companion do
 // not read stay as Sierra wrote them:
-//  - a cel whose pixels do not change keeps its bytes;
+//  - a cel whose pixels, size and placement do not change keeps its bytes;
+//  - a cel that gets another size or placement (newSize) gets them in bytes
+//    0 to 7 of its header; a cel with only another placement keeps its
+//    data;
 //  - a changed cel with run-length data whose data no other data of the
-//    view has, and whose new pixels have the runs of its codes (each run
+//    view has, whose size does not change, and whose new pixels have the
+//    runs of its codes (each run
 //    of the skip colour is still the skip colour, each run of one colour
 //    is still one colour that is not the skip colour, and a literal pixel
 //    has the skip colour only where the old pixel has it; for example two
@@ -228,22 +239,27 @@ sci::Result<EncodedViewCel> EncodeViewCel(int width, int height, uint8_t skipCol
 //    the run-length data, the literal data and the row table of an SCI2
 //    cel whose header has one (EncodeViewCel, with runs of 3, 2 or 4
 //    pixels and more as run codes: the first form that fits) that are not
-//    longer than the old ones;
+//    longer than the old ones (a row table of no more rows);
 //  - each other changed cel gets its new data (the shortest form) after
 //    the last byte of the view, and its cel header gets the new offsets
 //    (24, 28 and, for an SCI2 cel with a row table, 32). The old data
 //    stays: another cel header can point at it.
 // The header of a changed cel with new run-length codes gets the new sizes
-// (12: the run-length and the literal data; 16: the run-length data). No
+// (12: the run-length and the literal data; 16: the run-length data), and
+// that of a raw cel of another size the new size of its pixels (12). No
 // other byte changes. So a view that is imported again from its own patch file
 // can grow, when the new data of a cel is longer than the data before it.
-// The new bytes must then read back (DescribeView) with the same loops,
-// sizes, placements and skip colours, the new pixels in the changed cels
-// and the old pixels in the others, the same pixels through the row tables
-// of SCI2, and the same palette bytes.
+// The new bytes must then read back (DescribeView) with the same loops, the
+// sizes and placements of the cels (the new ones of newSize), the same skip
+// colours, the new pixels in the changed cels and the old pixels in the
+// others, the same pixels through the row tables of SCI2, and the same
+// palette bytes. A mirror loop shows the cels of the loop that it mirrors,
+// so it shows the new cels too.
 //
 // Usage for a cel that the view does not store, for two pixel sets for one
-// cel, and for pixels that are not width * height bytes; Unsupported for a
+// cel, for a new size of 0 or more than 65535 pixels in a direction, for a
+// new placement that is not in -32768 to 32767, and for pixels that are not
+// width * height bytes; Unsupported for a
 // changed cel whose header is also the header of another cel (two loops
 // that point at the same cel headers), for a changed cel whose header has
 // the bit 0x80 in byte 10 (the interpreters then take the skip and remap

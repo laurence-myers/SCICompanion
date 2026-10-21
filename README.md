@@ -21,7 +21,10 @@ modernizing the build. Broad highlights since the previous release:
   the palette entries of the game, with a `.toml` file of the facts of
   each view. `scic view import` puts the changed images back and writes
   each view as a patch file; the view changes in place, so the bytes that
-  SCI Companion does not change stay as Sierra wrote them. `scic view add`
+  SCI Companion does not change stay as Sierra wrote them. With
+  `--allow-skip-changes` and `--allow-size-changes`, a sprite can get new
+  transparent pixels and a new cel size (for example an outline around
+  it). `scic view add`
   makes a new view from files of the same form, and writes it as a patch
   file. `scic view remove` takes views out of the game: each copy, or only
   the patch files.

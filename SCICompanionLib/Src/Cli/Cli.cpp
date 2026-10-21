@@ -320,6 +320,8 @@ namespace cli
             ->check(CLI::IsMember({ "keep", "replace" }));
         CLI::Option *importViewRangeOption = viewImport->add_option("--palette-range", viewImportOptions.paletteRange, "With --palette replace: the palette entries that get new colours, as first-last (for example 80-235).");
         viewImport->add_flag("--allow-unused-indices", viewImportOptions.allowUnusedIndices, "A pixel with a palette entry that the view and palette 999 do not mark as used is a warning, not an error.");
+        viewImport->add_flag("--allow-skip-changes", viewImportOptions.allowSkipChanges, "A pixel can change to or from the skip colour of its cel (for example an outline around a sprite); the cel is encoded again. Without it, the pixels of the skip colour must stay where they are.");
+        CLI::Option *importSizeChangesOption = viewImport->add_flag("--allow-size-changes", viewImportOptions.allowSizeChanges, "With --in-dir: an image can have another size than its cel. The cel gets the size of the image and the x and y of its [[cel]] in the .toml file, and the skip pixels of such a cel can change. Without it, an image must have the size of its cel.");
         CLI::Option *importViewOutDirOption = viewImport->add_option("--out-dir", viewImportOptions.outDir, "The folder for the patch files. It must exist, and it must not be the game folder or a folder inside it.")->required();
 
         CLI::App *viewAdd = view->add_subcommand("add", "Make a new view of SCI1.1 or SCI2 from a .toml file of the form of scic view export and the 8-bit BMP files of its cels, and write it as a patch file into a folder. The game does not change.");
@@ -538,6 +540,10 @@ namespace cli
                 if (oneImage && (viewImportOptions.view.empty() || viewImportOptions.image.empty()))
                 {
                     return "an image needs --view and --image";
+                }
+                if ((importSizeChangesOption->count() > 0) && !folder)
+                {
+                    return "--allow-size-changes needs --in-dir: the .toml file gives the placement of a cel of a new size";
                 }
                 const bool replace = (viewImportOptions.palette == "replace");
                 const bool range = (importViewRangeOption->count() > 0);

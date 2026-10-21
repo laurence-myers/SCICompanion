@@ -1389,6 +1389,7 @@ Rules:
 scic view import C:\Games\LSL6 --in-dir C:\work\views --out-dir C:\work\patches
 scic view import C:\Games\LSL6 --view 600 --loop 0 --cel 3 --image C:\work\600.l0.c3.bmp --out-dir C:\work\patches
 scic view import C:\Games\LSL6 --in-dir C:\work\views --palette replace --palette-range 80-235 --out-dir C:\work\patches
+scic view import C:\Games\LSL6 --in-dir C:\work\outlined --allow-skip-changes --allow-size-changes --out-dir C:\work\patches
 ```
 
 Purpose: put the changed images of `view export` back into the views, as
@@ -1401,8 +1402,9 @@ game does not change. The images come in one of two ways:
   `.toml` file gives a view (`[source] view`) and the BMP file of each cel
   (`file` of a `[[cel]]`, with its `loop` and `cel`). A `[[cel]]` with no
   `file` keeps its pixels. A `[source] crc32` that is not the CRC-32 of the
-  view in the game gives a warning. The other keys are not used, but each
-  must have its type and a value in its range.
+  view in the game gives a warning. The other keys are not used (but see
+  `--allow-size-changes`), but each must have its type and a value in its
+  range.
 - `--view <view> --image <file>`, with `--loop` and `--cel` (default 0):
   one image for one cel.
 
@@ -1428,6 +1430,13 @@ How a view changes (`ReplaceViewCelPixels`, `Src\Resources\ViewImage.h`):
   fits in place (else the shortest form). The new bytes must read back
   with the new pixels (also through the SCI2 row tables) and with the same
   loops, placements, skip colours and palette.
+- A cel of a new size (`--allow-size-changes`) gets the size and the
+  placement in bytes 0 to 7 of its header, and is encoded again for its
+  size: its new data takes the place of the old data when it fits there
+  (for SCI2, with a row table of no more rows), else it goes after the end
+  of the view. A raw cel of a new size gets the size of its pixels in
+  bytes 12 to 15. A loop that mirrors the loop of the cel shows the cel of
+  the new size: its header points at the same cel headers.
 - `--palette keep` (the default) does not change the palette.
   `--palette replace --palette-range <first>-<last>` gives the entries of
   the range that the palette of the view stores and marks as used the
@@ -1453,12 +1462,20 @@ How a view changes (`ReplaceViewCelPixels`, `Src\Resources\ViewImage.h`):
 The checks of a view, all before its patch file is written:
 
 - Each image is an 8-bit BMP file that is not compressed, with the width
-  and the height of its cel.
+  and the height of its cel. `--allow-size-changes` (only with `--in-dir`)
+  turns off the size check: the cel gets the width and the height of its
+  image and the `x` and `y` of its `[[cel]]`, so that a sprite that grows
+  stays where it was on the screen. The `width` and the `height` of the
+  `[[cel]]`, when they are not 0, must then be the size of the image (the
+  `.toml` file of `export` has the old size: give the new one, or 0).
 - The view stores the cel: a loop that mirrors another loop stores none
   (the error names the loop to give the image to), and one image is for
   one cel.
 - A pixel has the skip colour of the cel where the cel has it, and nowhere
-  else.
+  else. `--allow-skip-changes` turns this check off (for example for an
+  outline on the transparent pixels around a sprite), and so does a new
+  size of the cel. The default stays strict, as it catches the mistakes of
+  a clean-up of the pixels.
 - Each other pixel is an entry that the view or palette 999 marks as used
   (`used` of the `.toml` file). The error names the entries.
   `--allow-unused-indices` makes it a warning.
@@ -1470,7 +1487,7 @@ Rules:
 
 - It needs `--in-dir`, or `--view` with `--image`, not both. `--loop` and
   `--cel` go with `--image`. `--palette-range` and `--palette replace` go
-  together.
+  together. `--allow-size-changes` needs `--in-dir` (exit 2).
 - `--out-dir` has the rules of `pic export` (exit 3 or 2). The folder of
   `--in-dir` must exist (exit 3) and have a `.toml` file (exit 2).
 - Each view runs in its own exception boundary: a view that fails a check

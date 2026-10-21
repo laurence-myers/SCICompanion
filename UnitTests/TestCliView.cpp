@@ -2046,6 +2046,7 @@ namespace UnitTests
                 { { "view", "import", _gameFolder, "--view", "5", "--image", image, "--out-dir", _patches }, "the game has no view 5" },
                 { { "view", "import", _gameFolder, "--in-dir", _patches, "--out-dir", folder }, "the input folder has no .toml file of scic view export" },
                 { { "view", "import", _gameFolder, "--in-dir", folder, "--out-dir", _gameFolder }, "the output folder is the game folder" },
+                { { "view", "import", _gameFolder, "--view", "500", "--image", image, "--allow-size-changes", "--out-dir", _patches }, "--allow-size-changes needs --in-dir" },
             };
             for (const auto &test : cases)
             {
@@ -2164,6 +2165,246 @@ namespace UnitTests
             Assert::IsTrue(FileNamesOf(_patches).empty());
         }
 
+        // Exports view 500 of the game copy with the patch files of the
+        // output folder into a new folder, and gives the folder.
+        std::string ExportWithPatches(const std::string &name)
+        {
+            CopyPatchesToGame();
+            const std::string folder = _outDir + "\\" + name;
+            fs::create_directories(folder);
+            Expect(0, { "view", "export", _gameFolder, "--view", "500", "--out-dir", folder });
+            return folder;
+        }
+
+        // The pixels of each cel file of view 500 in the folder.
+        static std::map<std::string, std::vector<uint8_t>> CelPixelsIn(const std::string &folder)
+        {
+            std::map<std::string, std::vector<uint8_t>> cels;
+            for (const char *file : { "500.l0.c0.bmp", "500.l0.c1.bmp", "500.l2.c0.bmp" })
+            {
+                sci::Result<IndexedBmp> image = ReadIndexedBmpFile(folder + "\\" + file);
+                AssertOk(image, file);
+                cels[file] = image->pixels;
+            }
+            return cels;
+        }
+
+        // Sets the size and the placement of a [[cel]] of a .toml file.
+        static void SetSidecarCel(const std::string &path, int loop, int cel, int width, int height, int x, int y)
+        {
+            sci::Result<ViewSidecar> sidecar = ReadViewSidecarFile(path);
+            AssertOk(sidecar, path);
+            for (ViewSidecarCel &sidecarCel : sidecar->cels)
+            {
+                if ((sidecarCel.loop == loop) && (sidecarCel.cel == cel))
+                {
+                    sidecarCel.width = width;
+                    sidecarCel.height = height;
+                    sidecarCel.x = x;
+                    sidecarCel.y = y;
+                }
+            }
+            WriteFileText(path, ViewSidecarText(*sidecar));
+        }
+
+        // The pixels of cel 0 of loop 1 (the mirror of loop 0) of view 500 in
+        // the game copy, as the reader of SCI Companion shows them: each row
+        // the other way round.
+        std::vector<uint8_t> MirroredPixelsInGame(int &width, int &height)
+        {
+            GameSession &session = _game.Open();
+            std::unique_ptr<ResourceBlob> blob = session.ResourceMap().MostRecentResource(ResourceType::View, 500, false);
+            Assert::IsNotNull(blob.get());
+            const std::vector<uint8_t> data(blob->GetData(), blob->GetData() + blob->GetLength());
+            _game.CloseSessions();
+            sci::Result<std::unique_ptr<ResourceEntity>> view = ParseViewResource(sciVersion1_1, data);
+            AssertOk(view);
+            const Cel &cel = (*view)->GetComponent<RasterComponent>().Loops[1].Cels[0];
+            width = cel.size.cx;
+            height = cel.size.cy;
+            sci::Result<std::vector<uint8_t>> pixels = CelTopDownPixels(cel);
+            AssertOk(pixels);
+            std::vector<uint8_t> flipped = *pixels;
+            for (size_t row = 0; row < flipped.size(); row += (size_t)width)
+            {
+                std::reverse(flipped.begin() + row, flipped.begin() + row + width);
+            }
+            return flipped;
+        }
+
+        // Pixels that change to or from the skip colour: refused with the
+        // message of the check, and taken with --allow-skip-changes. The view
+        // exports back to the images that went in, and the mirror loop shows
+        // the new cel.
+        TEST_METHOD(Import_SkipChanges_NeedTheOption)
+        {
+            const std::string folder = ExportView500();
+            // Cel 0 of loop 0 (skip colour 0) gets a pixel of the skip
+            // colour; cel 1 (skip colour 255) loses one.
+            ChangeBmp(folder + "\\500.l0.c0.bmp", [](IndexedBmp &image) { image.pixels[3] = 0; });
+            ChangeBmp(folder + "\\500.l0.c1.bmp", [](IndexedBmp &image) { image.pixels[0] = 20; });
+            const std::map<std::string, std::vector<uint8_t>> images = CelPixelsIn(folder);
+
+            cli::StringConsole refused = Expect(6, { "view", "import", _gameFolder, "--in-dir", folder, "--out-dir", _patches });
+            Assert::IsTrue(Has(refused.err, "1 pixel changes to or from the skip colour 0 of cel 0 of loop 0 (the first at 3,0); the pixels of the skip colour must stay where they are [usage]"), Wide(refused.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty());
+            // --allow-size-changes does not turn off the check for a cel that
+            // keeps its size.
+            cli::StringConsole sizeOnly = Expect(6, { "view", "import", _gameFolder, "--in-dir", folder, "--allow-size-changes", "--out-dir", _patches });
+            Assert::IsTrue(Has(sizeOnly.err, "the pixels of the skip colour must stay where they are"), Wide(sizeOnly.err).c_str());
+
+            cli::StringConsole console = Expect(0, { "view", "import", _gameFolder, "--in-dir", folder, "--allow-skip-changes", "--out-dir", _patches });
+
+            Assert::IsTrue(Has(console.err, "Imported 1 of 1 view (3 cels) into "), Wide(console.err).c_str());
+            const std::string again = ExportWithPatches("again");
+            Assert::IsTrue(images == CelPixelsIn(again));
+            sci::Result<ViewSidecar> sidecar = ReadViewSidecarFile(again + "\\500.toml");
+            AssertOk(sidecar);
+            Assert::AreEqual(1u, sidecar->cels[0].skipPixels);
+            Assert::AreEqual(2u, sidecar->cels[1].skipPixels);
+            int width = 0;
+            int height = 0;
+            Assert::IsTrue(images.at("500.l0.c0.bmp") == MirroredPixelsInGame(width, height));
+        }
+
+        // An image of another size than its cel: refused with the message of
+        // the size check, and taken with --allow-size-changes. The cel gets
+        // the size of the image and the placement of its [[cel]]; the skip
+        // pixels of such a cel can change with no other option. The view
+        // exports back to the images and the placement, and the mirror loop
+        // shows the new cel.
+        TEST_METHOD(Import_SizeChanges_NeedTheOption)
+        {
+            const std::string folder = ExportView500();
+            // Cel 0 of loop 0 (5 x 3, at -2,3) grows by a ring of entry 15,
+            // with the skip colour in two corners.
+            ChangeBmp(folder + "\\500.l0.c0.bmp", [](IndexedBmp &image)
+            {
+                std::vector<uint8_t> pixels(7 * 5, 15);
+                for (int y = 0; y < 3; y++)
+                {
+                    std::copy(image.pixels.begin() + (y * 5), image.pixels.begin() + ((y + 1) * 5), pixels.begin() + ((y + 1) * 7) + 1);
+                }
+                pixels[0] = 0;
+                pixels[34] = 0;
+                image.width = 7;
+                image.height = 5;
+                image.pixels = pixels;
+            });
+            const std::map<std::string, std::vector<uint8_t>> images = CelPixelsIn(folder);
+
+            cli::StringConsole refused = Expect(6, { "view", "import", _gameFolder, "--in-dir", folder, "--out-dir", _patches });
+            Assert::IsTrue(Has(refused.err, "500.l0.c0.bmp has 7 x 5 pixels, and cel 0 of loop 0 has 5 x 3 [usage]"), Wide(refused.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty());
+            // The size of the [[cel]], when it is not 0, is that of the image.
+            cli::StringConsole otherSize = Expect(6, { "view", "import", _gameFolder, "--in-dir", folder, "--allow-size-changes", "--out-dir", _patches });
+            Assert::IsTrue(Has(otherSize.err, "500.l0.c0.bmp has 7 x 5 pixels, and its [[cel]] in the .toml file has 5 x 3 [usage]"), Wide(otherSize.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty());
+
+            SetSidecarCel(folder + "\\500.toml", 0, 0, 0, 0, -2, 4);
+            cli::StringConsole console = Expect(0, { "view", "import", _gameFolder, "--in-dir", folder, "--allow-size-changes", "--out-dir", _patches });
+
+            Assert::IsTrue(Has(console.err, "Imported 1 of 1 view (3 cels) into "), Wide(console.err).c_str());
+            const std::string again = ExportWithPatches("again");
+            Assert::IsTrue(images == CelPixelsIn(again));
+            sci::Result<ViewSidecar> sidecar = ReadViewSidecarFile(again + "\\500.toml");
+            AssertOk(sidecar);
+            const ViewSidecarCel &cel = sidecar->cels[0];
+            Assert::IsTrue((cel.loop == 0) && (cel.cel == 0) && (cel.width == 7) && (cel.height == 5) && (cel.x == -2) && (cel.y == 4), Wide(ViewSidecarText(*sidecar)).c_str());
+            Assert::IsTrue((sidecar->cels[1].x == 0) && (sidecar->cels[1].width == 4), L"the other cels keep their size and placement");
+            int width = 0;
+            int height = 0;
+            Assert::IsTrue(images.at("500.l0.c0.bmp") == MirroredPixelsInGame(width, height));
+            Assert::AreEqual(7, width);
+            Assert::AreEqual(5, height);
+
+            // The game has the new view now: the files of its export give no
+            // change.
+            cli::StringConsole noChange = Expect(0, { "view", "import", _gameFolder, "--in-dir", again, "--allow-size-changes", "--allow-skip-changes", "--out-dir", _patches });
+            Assert::IsTrue(Has(noChange.err, "view 500: the images have the pixels of the view: the view does not change, and gets no patch file"), Wide(noChange.err).c_str());
+        }
+
+        // The images of export with no change, with both options: no change,
+        // and no patch file.
+        TEST_METHOD(Import_WithTheOptions_NoChange_GetsNoPatchFile)
+        {
+            const std::string folder = ExportView500();
+
+            cli::StringConsole console = Expect(0, { "view", "import", _gameFolder, "--in-dir", folder, "--allow-skip-changes", "--allow-size-changes", "--out-dir", _patches });
+
+            Assert::IsTrue(Has(console.err, "scic: warning: view 500: the images have the pixels of the view: the view does not change, and gets no patch file"), Wide(console.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty());
+        }
+
+        // --palette replace with a cel of a new size: only the entries of the
+        // range get new colours.
+        TEST_METHOD(Import_SizeChanges_PaletteReplace_ChangesOnlyTheRange)
+        {
+            const std::string folder = ExportView500();
+            const std::string before = PaletteUseRowOf(500);
+            for (const char *file : { "500.l0.c0.bmp", "500.l0.c1.bmp", "500.l2.c0.bmp" })
+            {
+                ChangeBmp(folder + "\\" + file, [](IndexedBmp &bmp) { bmp.colors[12] = IndexedBmpColor{ 7, 8, 9 }; bmp.colors[13] = IndexedBmpColor{ 1, 1, 1 }; });
+            }
+            ChangeBmp(folder + "\\500.l2.c0.bmp", [](IndexedBmp &image)
+            {
+                image.width = 4;
+                image.pixels = { 0, 40, 41, 0, 0, 42, 43, 0 };
+            });
+            SetSidecarCel(folder + "\\500.toml", 2, 0, 4, 2, 1, 0);
+
+            Expect(0, { "view", "import", _gameFolder, "--in-dir", folder, "--allow-size-changes", "--palette", "replace", "--palette-range", "12-12", "--out-dir", _patches });
+
+            CopyPatchesToGame();
+            const std::string after = PaletteUseRowOf(500);
+            Assert::IsTrue(Has(after, "12=070809"), Wide(after).c_str());
+            for (int entry : { 11, 13, 40, 99 })
+            {
+                const std::string cell = ColorCell(entry, IndexedBmpColor{ (uint8_t)entry, (uint8_t)(255 - entry), (uint8_t)(entry / 2) });
+                Assert::IsTrue(Has(before, cell) && Has(after, cell), Wide(cell + ": " + after).c_str());
+            }
+        }
+
+        // The new bytes of an SCI2 view with a cel of a new size, with no
+        // game; an image with no [[cel]] cannot change its size.
+        TEST_METHOD(ImportData_Sci2View_NewSize)
+        {
+            sierraview::MadeView made = sierraview::ThreeLoopView();
+            const std::vector<uint8_t> data = sierraview::MakeSierraView(made);
+            sci::Result<ViewDescription> description = DescribeView(sciVersion2, data);
+            AssertOk(description);
+            std::array<bool, 256> used = {};
+            used.fill(true);
+            cli::ViewImportImage image;
+            image.loop = 0;
+            image.cel = 1;
+            image.name = "image";
+            image.image.width = 2;
+            image.image.height = 3;
+            image.image.pixels = { 255, 21, 22, 23, 24, 255 };
+            cli::ViewImportAllow allow;
+            allow.sizeChanges = true;
+            std::vector<std::string> warnings;
+
+            sci::Result<std::vector<uint8_t>> noCel = cli::MakeViewImportData(sciVersion2, data, *description, used, { image }, cli::PicImportPalette(), allow, warnings);
+            image.hasSidecarCel = true;
+            image.x = 3;
+            image.y = -1;
+            sci::Result<std::vector<uint8_t>> imported = cli::MakeViewImportData(sciVersion2, data, *description, used, { image }, cli::PicImportPalette(), allow, warnings);
+
+            Assert::IsFalse(noCel.has_value());
+            Assert::IsTrue(Has(noCel.error().message, "image: a cel can change its size only with its [[cel]] of a .toml file"), Wide(noCel.error().message).c_str());
+            AssertOk(imported);
+            sci::Result<ViewDescription> after = DescribeView(sciVersion2, *imported);
+            AssertOk(after);
+            const ViewCelDescription *cel = after->Find(0, 1);
+            Assert::IsTrue((cel->width == 2) && (cel->height == 3) && (cel->x == 3) && (cel->y == -1) && (cel->skipColor == 255));
+            sci::Result<std::vector<uint8_t>> pixels = GetViewCelPixels(sciVersion2, *imported, 0, 1);
+            AssertOk(pixels);
+            Assert::IsTrue(image.image.pixels == *pixels);
+            Assert::IsTrue(warnings.empty());
+        }
+
         // The new bytes of an SCI2 view, with no game: the pixels go into
         // their cels in place, and the resolution byte stays.
         TEST_METHOD(ImportData_Sci2View)
@@ -2185,7 +2426,7 @@ namespace UnitTests
             image.image.pixels[3] = 77;
             std::vector<std::string> warnings;
 
-            sci::Result<std::vector<uint8_t>> imported = cli::MakeViewImportData(sciVersion2, data, *description, used, { image }, cli::PicImportPalette(), false, warnings);
+            sci::Result<std::vector<uint8_t>> imported = cli::MakeViewImportData(sciVersion2, data, *description, used, { image }, cli::PicImportPalette(), cli::ViewImportAllow(), warnings);
 
             AssertOk(imported);
             Assert::AreEqual(2, (int)(*imported)[5]);
@@ -2701,7 +2942,8 @@ namespace UnitTests
             Assert::IsTrue(Has(helpAdd.out, "--view") && Has(helpAdd.out, "--from") && Has(helpAdd.out, "--replace") && Has(helpAdd.out, "--allow-unused-indices") && Has(helpAdd.out, "--out-dir") &&
                 Has(helpAdd.out, "scic view add"), Wide(helpAdd.out).c_str());
             cli::StringConsole helpImport = Expect(0, { "help", "view", "import" });
-            Assert::IsTrue(Has(helpImport.out, "--in-dir") && Has(helpImport.out, "--loop") && Has(helpImport.out, "--palette-range") && Has(helpImport.out, "scic view import"), Wide(helpImport.out).c_str());
+            Assert::IsTrue(Has(helpImport.out, "--in-dir") && Has(helpImport.out, "--loop") && Has(helpImport.out, "--palette-range") && Has(helpImport.out, "--allow-skip-changes") &&
+                Has(helpImport.out, "--allow-size-changes") && Has(helpImport.out, "scic view import"), Wide(helpImport.out).c_str());
             cli::StringConsole helpExport = Expect(0, { "help", "view", "export" });
             Assert::IsTrue(Has(helpExport.out, "--view") && Has(helpExport.out, "--all") && Has(helpExport.out, "--out-dir") && Has(helpExport.out, "scic view export"), Wide(helpExport.out).c_str());
         }
