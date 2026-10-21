@@ -729,8 +729,9 @@ namespace cli
                 pixels.newSize = true;
                 pixels.width = image.image.width;
                 pixels.height = image.image.height;
-                pixels.x = image.x;
-                pixels.y = image.y;
+                // A key that the [[cel]] does not have keeps the placement.
+                pixels.x = image.hasX ? image.x : cel->x;
+                pixels.y = image.hasY ? image.y : cel->y;
             }
             cels.push_back(std::move(pixels));
         }
@@ -774,6 +775,8 @@ namespace cli
             int height = 0;
             int x = 0;
             int y = 0;
+            bool hasX = false;
+            bool hasY = false;
         };
 
         // The images of an import for one view.
@@ -827,6 +830,8 @@ namespace cli
                     importCel.height = cel.height;
                     importCel.x = cel.x;
                     importCel.y = cel.y;
+                    importCel.hasX = cel.hasX;
+                    importCel.hasY = cel.hasY;
                     job.cels.push_back(importCel);
                 }
             }
@@ -889,6 +894,8 @@ namespace cli
                 image.height = importCel.height;
                 image.x = importCel.x;
                 image.y = importCel.y;
+                image.hasX = importCel.hasX;
+                image.hasY = importCel.hasY;
                 SCI_TRY_ASSIGN(image.image, ReadIndexedBmpFile(importCel.imagePath));
                 images.push_back(std::move(image));
             }

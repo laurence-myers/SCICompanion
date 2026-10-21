@@ -87,12 +87,15 @@ namespace cli
         std::string name;
         IndexedBmp image;
         // The [[cel]] of the image in a .toml file: its size (0: that of the
-        // image) and its placement.
+        // image) and its placement (with no x or no y key: hasX or hasY is
+        // false, and the cel keeps that value).
         bool hasSidecarCel = false;
         int width = 0;
         int height = 0;
         int x = 0;
         int y = 0;
+        bool hasX = true;
+        bool hasY = true;
     };
 
     // The checks of view import that an option makes a warning or turns off.
@@ -119,8 +122,10 @@ namespace cli
     //    allow.sizeChanges, the image needs its [[cel]] (hasSidecarCel)
     //    instead, and a width and a height there that are not 0 must be the
     //    size of the image: the cel gets the size of the image and the
-    //    placement (x, y) of the [[cel]] (ViewCelPixels::newSize), and the
-    //    loops that mirror its loop show it so too;
+    //    placement (x, y) of the [[cel]], also when its size does not change
+    //    (ViewCelPixels::newSize; a key that the [[cel]] does not have keeps
+    //    the value of the cel), and the loops that mirror its loop show it
+    //    so too;
     //  - a pixel has the skip colour of the cel where the cel has it, and
     //    nowhere else (CheckImportPixels). This check is off with
     //    allow.skipChanges, and for an image of another size than its cel;

@@ -659,6 +659,19 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
             {
                 return sci::Fail(sci::ErrorCode::Usage, fmt::format("cel {0} of loop {1} would have the placement {2},{3}; x and y are -32768 to 32767", cel.cel, cel.loop, cel.x, cel.y));
             }
+            // ScummVM reads the size of an SCI1.1 cel as signed words, and
+            // adds 255 to a y below 0 (as Sierra's tools did).
+            if (version.ViewFormat == ViewFormat::VGA1_1)
+            {
+                if ((cel.width > 32767) || (cel.height > 32767))
+                {
+                    return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} of loop {1} would have {2} x {3} pixels; a cel of SCI1.1 has 32767 pixels or fewer in each direction", cel.cel, cel.loop, cel.width, cel.height));
+                }
+                if ((cel.y < 0) && (cel.y != found->y))
+                {
+                    return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} of loop {1} would have the y {2}; ScummVM reads a y below 0 of an SCI1.1 cel as y + 255, so a cel gets one only when it has it now", cel.cel, cel.loop, cel.y));
+                }
+            }
             places[index] = CelPlace{ cel.width, cel.height, cel.x, cel.y };
         }
         const CelPlace &place = places[index];
@@ -719,7 +732,7 @@ sci::Result<std::vector<uint8_t>> ReplaceViewCelPixels(const SCIVersion &version
             if ((other != change.first) && (headers[other]->headerOffset == header.headerOffset))
             {
                 const ViewCelDescription &twin = before.cels[other];
-                return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} of loop {1} has the cel header of cel {2} of loop {3}, so it cannot get pixels of its own", cel.cel, cel.loop, twin.cel, twin.loop));
+                return sci::Fail(sci::ErrorCode::Unsupported, fmt::format("cel {0} of loop {1} has the cel header of cel {2} of loop {3}, so it cannot get pixels, a size or a placement of its own", cel.cel, cel.loop, twin.cel, twin.loop));
             }
         }
         if (resized || moved)

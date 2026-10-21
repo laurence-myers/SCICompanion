@@ -33,6 +33,9 @@ struct ViewSidecarCel
     int height = 0;
     int x = 0;
     int y = 0;
+    // False for a [[cel]] that was read and has no x key, or no y key.
+    bool hasX = true;
+    bool hasY = true;
     int skipColor = 0;
     bool raw = false;
     // The palette entries that the pixels of the cel have, without the skip
@@ -96,8 +99,8 @@ std::string ViewSidecarText(const ViewSidecar &sidecar);
 
 // Reads the sidecar from the text of a TOML file. It needs the index of each
 // [[loop]], and the loop and the cel of each [[cel]]; a key that is not
-// there keeps the value of a new ViewSidecar (hasView and hasCrc32 are
-// then false). The file of a cel must be a file name with no folder, in
+// there keeps the value of a new ViewSidecar (hasView, hasCrc32, and hasX
+// and hasY of a [[cel]], are then false). The file of a cel must be a file name with no folder, in
 // the ANSI code page. Format for text that is not TOML (the error has the
 // line and the column), for a key of another type (also a table that is
 // not a table), for a number that is not in its range, and for a bad file

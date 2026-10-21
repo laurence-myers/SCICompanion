@@ -1463,11 +1463,18 @@ The checks of a view, all before its patch file is written:
 
 - Each image is an 8-bit BMP file that is not compressed, with the width
   and the height of its cel. `--allow-size-changes` (only with `--in-dir`)
-  turns off the size check: the cel gets the width and the height of its
-  image and the `x` and `y` of its `[[cel]]`, so that a sprite that grows
-  stays where it was on the screen. The `width` and the `height` of the
-  `[[cel]]`, when they are not 0, must then be the size of the image (the
-  `.toml` file of `export` has the old size: give the new one, or 0).
+  turns off the size check: each cel with an image gets the width and the
+  height of its image and the `x` and `y` of its `[[cel]]`, also a cel
+  whose size does not change (a missing `x` or `y` key keeps the value of
+  the cel). Nothing moves a sprite of a new size for you: the `.toml` file
+  of `export` has the old placement, and the tool that grows a cel must
+  give the placement that keeps the sprite where it was (for example `y`
+  + 1 for a ring of 1 pixel around it). The `width` and the `height` of the
+  `[[cel]]`, when they are not 0, must be the size of the image (the
+  `.toml` file of `export` has the old size: give the new one, or 0). An
+  SCI1.1 cel gets no new `y` below 0 (ScummVM reads it as `y` + 255, as
+  Sierra's tools wrote it) and no size of more than 32767 pixels
+  (Unsupported).
 - The view stores the cel: a loop that mirrors another loop stores none
   (the error names the loop to give the image to), and one image is for
   one cel.

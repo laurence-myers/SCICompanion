@@ -259,10 +259,12 @@ sci::Result<EncodedViewCel> EncodeViewCel(int width, int height, uint8_t skipCol
 // Usage for a cel that the view does not store, for two pixel sets for one
 // cel, for a new size of 0 or more than 65535 pixels in a direction, for a
 // new placement that is not in -32768 to 32767, and for pixels that are not
-// width * height bytes; Unsupported for a
+// width * height bytes; Unsupported for a new size of more than 32767 pixels
+// in a direction of an SCI1.1 cel, and a new y below 0 of an SCI1.1 cel that
+// has another y now (ScummVM reads such a y as y + 255), for a
 // changed cel whose header is also the header of another cel (two loops
-// that point at the same cel headers), for a changed cel whose header has
-// the bit 0x80 in byte 10 (the interpreters then take the skip and remap
+// that point at the same cel headers), for a cel with new pixels or a new
+// size whose header has the bit 0x80 in byte 10 (the interpreters then take the skip and remap
 // colours of the pixels from that byte), and for an SCI1.1 view that would
 // have more than 65535 bytes (Sierra's interpreter of SCI1.1 reads 16-bit
 // sizes and offsets); Internal when the new bytes do not read back as they

@@ -2252,6 +2252,7 @@ namespace UnitTests
             // keeps its size.
             cli::StringConsole sizeOnly = Expect(6, { "view", "import", _gameFolder, "--in-dir", folder, "--allow-size-changes", "--out-dir", _patches });
             Assert::IsTrue(Has(sizeOnly.err, "the pixels of the skip colour must stay where they are"), Wide(sizeOnly.err).c_str());
+            Assert::IsTrue(FileNamesOf(_patches).empty());
 
             cli::StringConsole console = Expect(0, { "view", "import", _gameFolder, "--in-dir", folder, "--allow-skip-changes", "--out-dir", _patches });
 
@@ -2265,6 +2266,51 @@ namespace UnitTests
             int width = 0;
             int height = 0;
             Assert::IsTrue(images.at("500.l0.c0.bmp") == MirroredPixelsInGame(width, height));
+        }
+
+        // One image (--view and --image) with a pixel that changes to the
+        // skip colour.
+        TEST_METHOD(Import_OneImage_SkipChanges_NeedTheOption)
+        {
+            const std::string folder = ExportView500();
+            const std::string image = folder + "\\500.l0.c0.bmp";
+            ChangeBmp(image, [](IndexedBmp &bmp) { bmp.pixels[3] = 0; });
+
+            cli::StringConsole refused = Expect(6, { "view", "import", _gameFolder, "--view", "500", "--image", image, "--out-dir", _patches });
+            Expect(0, { "view", "import", _gameFolder, "--view", "500", "--image", image, "--allow-skip-changes", "--out-dir", _patches });
+
+            Assert::IsTrue(Has(refused.err, "1 pixel changes to or from the skip colour 0 of cel 0 of loop 0"), Wide(refused.err).c_str());
+            Assert::IsTrue(ReadIndexedBmpFile(image)->pixels == PixelsWithPatches(0, 0));
+        }
+
+        // A [[cel]] with no x key or no y key: the cel keeps that value of
+        // its placement.
+        TEST_METHOD(Import_SizeChanges_MissingPlacementKeys_KeepThePlacement)
+        {
+            const std::string folder = ExportView500();
+            ChangeBmp(folder + "\\500.l0.c0.bmp", [](IndexedBmp &image)
+            {
+                image.width = 5;
+                image.height = 4;
+                image.pixels.insert(image.pixels.begin(), { 0, 0, 12, 0, 0 });
+            });
+            SetSidecarCel(folder + "\\500.toml", 0, 0, 0, 0, -2, 3);
+            // Cel 0 of loop 0 is the only cel at -2,3.
+            std::string text = ReadFileText(folder + "\\500.toml");
+            for (const std::string line : { "x = -2\n", "y = 3\n" })
+            {
+                const size_t at = text.find(line);
+                Assert::IsTrue(at != std::string::npos, Wide(text).c_str());
+                text.erase(at, line.size());
+            }
+            WriteFileText(folder + "\\500.toml", text);
+
+            Expect(0, { "view", "import", _gameFolder, "--in-dir", folder, "--allow-size-changes", "--out-dir", _patches });
+
+            sci::Result<ViewSidecar> sidecar = ReadViewSidecarFile(ExportWithPatches("again") + "\\500.toml");
+            AssertOk(sidecar);
+            const ViewSidecarCel &cel = sidecar->cels[0];
+            Assert::IsTrue((cel.width == 5) && (cel.height == 4) && (cel.x == -2) && (cel.y == 3), Wide(ViewSidecarText(*sidecar)).c_str());
         }
 
         // An image of another size than its cel: refused with the message of
@@ -2311,7 +2357,12 @@ namespace UnitTests
             AssertOk(sidecar);
             const ViewSidecarCel &cel = sidecar->cels[0];
             Assert::IsTrue((cel.loop == 0) && (cel.cel == 0) && (cel.width == 7) && (cel.height == 5) && (cel.x == -2) && (cel.y == 4), Wide(ViewSidecarText(*sidecar)).c_str());
-            Assert::IsTrue((sidecar->cels[1].x == 0) && (sidecar->cels[1].width == 4), L"the other cels keep their size and placement");
+            for (size_t other : { (size_t)1, (size_t)2 })
+            {
+                const sierraview::MadeCel &made = (other == 1) ? sierraview::ThreeLoopView().loops[0].cels[1] : sierraview::ThreeLoopView().loops[2].cels[0];
+                const ViewSidecarCel &kept = sidecar->cels[other];
+                Assert::IsTrue((kept.width == made.width) && (kept.height == made.height) && (kept.x == made.x) && (kept.y == made.y), L"the other cels keep their size and placement");
+            }
             int width = 0;
             int height = 0;
             Assert::IsTrue(images.at("500.l0.c0.bmp") == MirroredPixelsInGame(width, height));
@@ -2355,7 +2406,12 @@ namespace UnitTests
 
             Expect(0, { "view", "import", _gameFolder, "--in-dir", folder, "--allow-size-changes", "--palette", "replace", "--palette-range", "12-12", "--out-dir", _patches });
 
-            CopyPatchesToGame();
+            const std::string again = ExportWithPatches("again");
+            sci::Result<ViewSidecar> sidecar = ReadViewSidecarFile(again + "\\500.toml");
+            AssertOk(sidecar);
+            const ViewSidecarCel &raw = sidecar->cels[2];
+            Assert::IsTrue((raw.loop == 2) && (raw.width == 4) && (raw.height == 2) && (raw.x == 1) && (raw.y == 0) && raw.raw, Wide(ViewSidecarText(*sidecar)).c_str());
+            Assert::IsTrue((std::vector<uint8_t>{ 0, 40, 41, 0, 0, 42, 43, 0 }) == ReadIndexedBmpFile(again + "\\500.l2.c0.bmp")->pixels);
             const std::string after = PaletteUseRowOf(500);
             Assert::IsTrue(Has(after, "12=070809"), Wide(after).c_str());
             for (int entry : { 11, 13, 40, 99 })
