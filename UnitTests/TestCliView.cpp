@@ -2357,9 +2357,10 @@ namespace UnitTests
             AssertOk(sidecar);
             const ViewSidecarCel &cel = sidecar->cels[0];
             Assert::IsTrue((cel.loop == 0) && (cel.cel == 0) && (cel.width == 7) && (cel.height == 5) && (cel.x == -2) && (cel.y == 4), Wide(ViewSidecarText(*sidecar)).c_str());
+            const sierraview::MadeView view = sierraview::ThreeLoopView();
             for (size_t other : { (size_t)1, (size_t)2 })
             {
-                const sierraview::MadeCel &made = (other == 1) ? sierraview::ThreeLoopView().loops[0].cels[1] : sierraview::ThreeLoopView().loops[2].cels[0];
+                const sierraview::MadeCel &made = (other == 1) ? view.loops[0].cels[1] : view.loops[2].cels[0];
                 const ViewSidecarCel &kept = sidecar->cels[other];
                 Assert::IsTrue((kept.width == made.width) && (kept.height == made.height) && (kept.x == made.x) && (kept.y == made.y), L"the other cels keep their size and placement");
             }
